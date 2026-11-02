@@ -408,7 +408,7 @@ mod tests {
         let minutes = store.buckets(Tier::Minute, device, "power").await.expect("buckets");
         let kept = Timestamp::from_millisecond(minute_of(now - 89 * 24 * 60 * MINUTE_MS) * MINUTE_MS);
         assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
-        assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 1);
+        assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 2);
         store.close().await;
         drop(std::fs::remove_dir_all(&dir));
     }

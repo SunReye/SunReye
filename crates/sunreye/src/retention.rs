@@ -135,8 +135,12 @@ mod tests {
         retain(&store, at("2026-08-05T23:00:00Z")).await.expect("retain");
         assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings"), [], "raw keeps 7 days");
         assert_eq!(starts(&store, Tier::Minute, device).await.len(), 2, "the 7 May minute is 90 days old");
-        assert_eq!(starts(&store, Tier::Hour, device).await.len(), 2);
-        assert_eq!(starts(&store, Tier::Day, device).await.len(), 2);
+        assert_eq!(
+            starts(&store, Tier::Hour, device).await.len(),
+            3,
+            "the 10 May hour closes as its minute goes"
+        );
+        assert_eq!(starts(&store, Tier::Day, device).await.len(), 3);
     }
 
     #[tokio::test]
@@ -145,5 +149,22 @@ mod tests {
         store.set_setting(key(Tier::Minute), &u64::MAX.to_string()).await.expect("setting");
         retain(&store, at("2026-05-10T00:00:00Z")).await.expect("retain");
         assert_eq!(starts(&store, Tier::Minute, device).await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_device_offline_past_raw_retention_keeps_its_last_hour_and_day() {
+        let (store, device) = with_readings(&["2026-05-10T09:30:00Z", "2026-05-10T10:30:00Z"]).await;
+        retain(&store, at("2026-05-18T12:00:00Z")).await.expect("retain");
+        let sample = Sample {
+            at_ms: at("2026-05-18T12:00:00Z").as_millisecond(),
+            values: vec![("power".into(), 1.0)],
+        };
+        let minute = ClosedMinute { minute: minute_of(sample.at_ms), samples: vec![sample] };
+        store.append_minute(device, &minute).await.expect("append");
+        assert_eq!(
+            starts(&store, Tier::Hour, device).await,
+            [at("2026-05-10T09:00:00Z"), at("2026-05-10T10:00:00Z")]
+        );
+        assert_eq!(starts(&store, Tier::Day, device).await, [at("2026-05-10T00:00:00Z")]);
     }
 }

@@ -83,13 +83,14 @@ impl Store {
     }
 
     /// Drops every device's minutes of readings that ended at or before `ended_by`; returns how many.
-    /// Batched as [`Store::drop_buckets`].
+    /// Batched as [`Store::drop_buckets`]. A device whose last minute goes gets its open hour and day first.
     pub async fn drop_readings(&self, ended_by: Timestamp) -> Result<u64, StoreError> {
         let first_kept = ended_by.as_millisecond().div_euclid(MINUTE_MS);
         let devices = sqlx::query_scalar!("SELECT id FROM device").fetch_all(&self.pool).await?;
         let pool = &self.pool;
         let mut dropped = 0;
         for device in devices {
+            self.close_last_before(device, first_kept).await?;
             dropped += in_batches(|| async move {
                 sqlx::query!(
                     "DELETE FROM reading_minute WHERE device_id = ? AND minute IN
@@ -105,6 +106,26 @@ impl Store {
             .await?;
         }
         Ok(dropped)
+    }
+
+    /// Rolls up the hour and day of the device's last minute when it is before `first_kept`: no later
+    /// minute is left to close them once that minute is dropped.
+    async fn close_last_before(&self, device_id: i64, first_kept: i64) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let last = sqlx::query_scalar!(
+            r#"SELECT max(minute) AS "minute: i64" FROM reading_minute WHERE device_id = ?"#,
+            device_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if let Some(last) = last.filter(|last| *last < first_kept) {
+            let ids = super::metric_ids(&mut *tx).await?;
+            let hour = last.div_euclid(MINUTES_PER_HOUR) * MINUTES_PER_HOUR;
+            roll_up_hour(&mut tx, device_id, hour, &ids).await?;
+            roll_up_day(&mut tx, device_id, last.div_euclid(MINUTES_PER_DAY) * MINUTES_PER_DAY, &ids).await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 }
 
