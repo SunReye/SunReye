@@ -162,6 +162,108 @@ describe("a profiles directory", () => {
       expect(all.readings["total_energy"]).toBeCloseTo(429496729.5, 6);
     });
 
+    test("role-kinds.ndjson maps each canonical role to the kind it prescribes", async () => {
+      const files = await buildProfileDecodeCorpus(dir);
+      const [roleKinds] = String(files["role-kinds.ndjson"])
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, string>);
+      expect(roleKinds).toMatchObject({
+        "pv.string.power": "measurement",
+        "production.total": "cumulative",
+        "inverter.status": "status",
+        "setting.work_mode": "setting",
+      });
+    });
+
+    describe("the manifest file", () => {
+      type Row = {
+        profile: { id: string; sha256: string };
+        manifest: {
+          id: string;
+          capabilities: Record<string, unknown>;
+          metrics: Array<Record<string, unknown>>;
+        };
+      };
+      let rows: Row[];
+      beforeAll(async () => {
+        const files = await buildProfileDecodeCorpus(dir);
+        rows = String(files["profile-manifest.ndjson"])
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as Row);
+      });
+
+      test("one line per profile, in the decode file's order, tied to the same source file", () => {
+        expect(rows.map((r) => [r.profile.id, r.manifest.id])).toEqual([
+          ["a", "deye-sg05lp3"],
+          ["b", "deye-sg05lp3"],
+        ]);
+        expect(rows.map((r) => r.profile.sha256)).toEqual(cases.map((c) => c.profile.sha256));
+      });
+
+      // Worked from the sample profile: two PV strings, three grid phases, `grid.`, `battery.` and
+      // `generator.` roles, `load.*` roles on a schemaVersion 1 file (a backup output), a solar-sell
+      // enable, a grid-charge switch and a `timeofuse` group.
+      test("capabilities follow the roles the sample maps", () => {
+        expect(rows[0]!.manifest.capabilities).toMatchObject({
+          battery: true,
+          pvStrings: 2,
+          phases: 3,
+          grid: true,
+          generator: true,
+          backupLoad: true,
+          features: ["solar_sell", "grid_charge", "time_of_use"],
+        });
+      });
+
+      test("kind and storage resolve from the explicit field, the role, the access and the unit", () => {
+        const byKey = new Map(rows[0]!.manifest.metrics.map((m) => [m.key, m]));
+        const pick = (key: string) => {
+          const { kind, storage, writable } = byKey.get(key)!;
+          return { kind, storage, writable };
+        };
+        expect(pick("battery.mode")).toEqual({
+          kind: "status",
+          storage: "series",
+          writable: false,
+        });
+        expect(pick("dc.pv1.power")).toEqual({
+          kind: "measurement",
+          storage: "series",
+          writable: false,
+        });
+        expect(pick("day_energy")).toEqual({
+          kind: "cumulative",
+          storage: "series",
+          writable: false,
+        });
+        expect(pick("timeofuse.selling")).toEqual({
+          kind: "setting",
+          storage: "config",
+          writable: true,
+        });
+        expect(pick("settings.system_time").kind).toBe("measurement");
+      });
+
+      test("a metric carries its range, enum labels, flow and index only when it has them", () => {
+        const byKey = new Map(rows[0]!.manifest.metrics.map((m) => [m.key, m]));
+        expect(byKey.get("battery.soc")!.range).toEqual({ min: 0, max: 100 });
+        expect(byKey.get("inverter.status")!.enumLabels).toEqual({
+          "0": "Standby",
+          "1": "Self-check",
+          "2": "Normal",
+          "3": "Alarm",
+          "4": "Fault",
+        });
+        expect(byKey.get("dc.pv2.power")!.index).toBe(2);
+        expect(byKey.get("dc.pv2.power")).not.toHaveProperty("range");
+        expect(byKey.get("dc.pv2.power")).not.toHaveProperty("flow");
+        expect(byKey.get("battery.power")).toHaveProperty("flow");
+        expect(byKey.get("settings.system_time")!.unit).toBeNull();
+      });
+    });
+
     test("an absent block leaves its metrics out rather than zero", () => {
       const absent = cases[0]!.cases.find((c) => c.name === "first-block-absent")!;
       const ramp = cases[0]!.cases.find((c) => c.name === "ramp")!;
