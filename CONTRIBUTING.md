@@ -315,9 +315,17 @@ pruning, changelog generation, why the manifest lives on `master`).
    from the individual conventional commits. Nothing enforces it — GitHub cannot set a merge
    strategy per base branch, and squash stays enabled for feature PRs into `dev`, where it is
    fine.
+
+   A merge commit's body must not hold a conventional subject. release-please splits a commit
+   body on them, and GitHub's default merge message puts the PR title in the body, so a PR
+   merged that way is listed twice — once for its title, once per commit (3.6.1 lists `#298`
+   twice). Squash a feature PR into `dev`, or clear the merge body; title the `dev` →
+   `master` PR `release: …`, a type release-please ignores.
 2. **release-please** (`.github/workflows/release-please.yml`) runs on the push to `master`
    and opens or updates a release PR with version bumps and CHANGELOG entries per component
-   (server, web, profile-sdk, addon). Nothing ships while that PR is open.
+   (server, addon, inverter-core, profile-sdk). Nothing ships while that PR is open.
+   Never hold a release tag back: release-please measures each changelog from the last
+   release it can find, so 2.0.0, which was never tagged, is re-listed inside 3.0.0.
 3. **Merge the release PR.** release-please tags the release (`server-v*`, `addon-v*`, …) and
    dispatches the Docker builds itself — tags created with `GITHUB_TOKEN` do not trigger
    `on: push: tags` workflows.
