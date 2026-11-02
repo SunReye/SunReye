@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# The committed `.sqlx` query cache (ADR 0004): `query!` is checked against the schema at compile time
+# from it, so a schema or query change needs it regenerated. Queries are described against a scratch
+# database migrated from crates/sunreye/migrations; never against a real one.
+#
+# Usage: scripts/sqlx-cache [--check]
+#   (none)   regenerate .sqlx
+#   --check  fail when .sqlx is stale (scripts/rust-gate runs the same check)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+check=()
+case ${1:-} in
+  "") ;;
+  --check) check=(--check) ;;
+  *) echo "usage: scripts/sqlx-cache [--check]" >&2; exit 2 ;;
+esac
+
+if ! command -v cargo-sqlx >/dev/null; then
+  echo "missing sqlx-cli: run scripts/setup-targets" >&2
+  exit 1
+fi
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+export DATABASE_URL=sqlite://$scratch/prepare.db
+
+cargo sqlx database create
+cargo sqlx migrate run --source crates/sunreye/migrations
+if ! cargo sqlx prepare --workspace "${check[@]}" -- --all-targets; then
+  if ((${#check[@]})); then
+    echo ".sqlx is stale: run scripts/sqlx-cache and commit .sqlx" >&2
+  fi
+  exit 1
+fi
