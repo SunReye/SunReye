@@ -1,6 +1,6 @@
 //! API keys: an admin issues one to an account for an integration, which presents it on `/api/v1`.
 //!
-//! A key carries 256 random bits, so one SHA-256 is enough to store it: no Argon2 memory per request,
+//! A key carries 256 random bits, so one SHA-256 is enough to store it: no bcrypt cost per request,
 //! and the store finds a key by its digest.
 
 use std::fmt::Write;

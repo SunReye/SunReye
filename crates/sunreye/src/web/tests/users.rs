@@ -42,7 +42,7 @@ async fn an_admin_creates_a_user_who_signs_in_and_is_listed() {
     let signed_in = login(&admin.anonymous(), USER_EMAIL, USER_PASSWORD, false).await;
     assert_eq!(signed_in.json(), account);
     let stored = core.store.account_by_email(USER_EMAIL).await.expect("store").expect("account");
-    assert!(stored.password_hash.starts_with("$argon2id$"), "Argon2id, never the password");
+    assert!(stored.password_hash.starts_with("$2b$12$"), "bcrypt, never the password");
 
     let listed = get(&admin, "/api/admin/users").await;
     assert_eq!(listed.status, StatusCode::OK);
@@ -63,7 +63,7 @@ async fn an_invalid_or_taken_account_is_refused_and_nothing_is_created() {
         (json!({"email": "no-at-sign", "name": "U", "password": USER_PASSWORD, "admin": false}), 400),
         (json!({"email": USER_EMAIL, "name": " ", "password": USER_PASSWORD, "admin": false}), 400),
         (json!({"email": USER_EMAIL, "name": "U", "password": "x".repeat(7), "admin": false}), 400),
-        (json!({"email": USER_EMAIL, "name": "U", "password": "x".repeat(129), "admin": false}), 400),
+        (json!({"email": USER_EMAIL, "name": "U", "password": "x".repeat(73), "admin": false}), 400),
         (json!({"email": USER_EMAIL}), 400),
         (json!({"email": "ADMIN@example.org", "name": "U", "password": USER_PASSWORD, "admin": false}), 409),
     ];

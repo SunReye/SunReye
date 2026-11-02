@@ -1040,7 +1040,7 @@ mod tests {
     }
 
     fn account(email: &str) -> NewAccount {
-        NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$argon2id$hash".into() }
+        NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$2b$12$hash".into() }
     }
 
     #[test]
@@ -1055,7 +1055,7 @@ mod tests {
         };
         for printed in [format!("{new:?}"), format!("{row:?}"), format!("{new:#?}")] {
             assert!(printed.contains("ada@example.org"), "{printed}");
-            assert!(!printed.contains("argon2"), "{printed}");
+            assert!(!printed.contains("$2b$"), "{printed}");
         }
     }
 
@@ -1070,7 +1070,7 @@ mod tests {
             id,
             email: "ada@example.org".into(),
             name: "Ada".into(),
-            password_hash: "$argon2id$hash".into(),
+            password_hash: "$2b$12$hash".into(),
             admin: true,
         };
         assert_eq!(store.account(id).await.expect("by id"), Some(want));

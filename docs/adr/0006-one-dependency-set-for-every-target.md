@@ -26,7 +26,8 @@ network bring-up and the Android Kotlin/JNI shell.
 - `scripts/ci`, the local merge gate, builds every crate for Linux and `aarch64-linux-android` from the
   first commit.
 - Budgets in `scripts/ci`: ≤ 32 MB resident on Linux and Android with no growth over 72 h; binary ≤ 25 MB
-  including the SPA. Re-set once after the first real build, then held.
+  including the SPA. Re-set once after the first real build, then held. Password hashing is bcrypt, not
+  Argon2id, to fit the resident budget (ADR 0003, #402).
 
 ## Consequences
 

@@ -13,12 +13,18 @@
 	const isSignup = $derived(mode === 'signup');
 	const isSignin = $derived(mode === 'signin');
 
+	// The core's rule: 8 characters to 72 UTF-8 bytes, the most bcrypt reads.
+	const utf8 = new TextEncoder();
+
 	const schema = $derived(
 		mode === 'signup'
 			? z.object({
 					name: z.string().min(2, m.auth_name_min()),
 					email: z.email(m.auth_email_invalid()),
-					password: z.string().min(8, m.auth_password_min())
+					password: z
+						.string()
+						.refine((p) => [...p].length >= 8, m.auth_password_min())
+						.refine((p) => utf8.encode(p).length <= 72, m.auth_password_max())
 				})
 			: z.object({
 					email: z.email(m.auth_email_invalid()),

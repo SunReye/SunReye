@@ -101,6 +101,7 @@
   "auth_name_min": "Name must be at least 2 characters",
   "auth_email_invalid": "Invalid email address",
   "auth_password_min": "Password must be at least 8 characters",
+  "auth_password_max": "Password must be at most 72 bytes (accented letters and emoji take more than one)",
   "auth_password_required": "Password is required",
   "auth_error_generic": "Something went wrong. Please try again.",
   "auth_create_account": "Create account",
