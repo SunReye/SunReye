@@ -116,6 +116,14 @@ asserts what a contended machine cannot change: layout, request counts, mount co
 lifecycle. The instruments are in `e2e/support/perf.ts` — `countRequests`, `countChartMounts`,
 `countTextMutations`, `measureScroll`, `throttleCpu`; the counting ones are contention-independent.
 
+### Browser specs against the real core
+
+`e2e-core/` is the one place the backend is not faked: `bun run e2e:core` builds `sunreye` and
+`sunreye-sim`, boots the core on a scratch data directory behind the Vite dev server's proxy, and a spec
+starts the simulator for the device's address. Expected values come from the oracle fixture the
+simulator replays. `bun run e2e` never runs it (its `testDir` is `e2e/`). Run it by name:
+`bun run --cwd apps/web e2e:core`.
+
 ### The worked example
 
 An `$effect` in `routes/(app)/+layout.svelte` took a reactive dependency on the `SvelteMap` of

@@ -1,6 +1,6 @@
 //! The SQLite store: one file under the data directory (ADR 0004), WAL mode, plain SQL through `sqlx`
 //! `query!` checked against the committed `.sqlx` cache. Each query has a test below against an
-//! in-memory database. Rollups are not here: SQLite stores and reads, it computes nothing.
+//! in-memory database. SQLite stores and reads; rollups are computed by `crate::rollup`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -13,6 +13,7 @@ use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
 mod accounts;
+mod tiers;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
 use crate::modbus::{Transport, UnknownTransport};
@@ -335,7 +336,8 @@ impl Store {
     }
 
     /// Adds a closed minute to the device's row for that minute, merging with samples already stored
-    /// there (a restart inside the minute), in one transaction.
+    /// there (a restart inside the minute), and rolls it up, in one transaction. A sample at an instant
+    /// already stored is dropped, so appending a minute twice counts it once.
     pub async fn append_minute(&self, device_id: i64, closed: &ClosedMinute) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await?;
         let mut ids = metric_ids(&mut *tx).await?;
@@ -358,7 +360,8 @@ impl Store {
             Some(row) => decode(closed.minute, &row.samples, &keys)?,
             None => Vec::new(),
         };
-        samples.extend(closed.samples.iter().cloned());
+        let stored_at: BTreeSet<i64> = samples.iter().map(|sample| sample.at_ms).collect();
+        samples.extend(closed.samples.iter().filter(|s| !stored_at.contains(&s.at_ms)).cloned());
         samples.sort_by_key(|sample| sample.at_ms);
         let blob = encode(closed.minute, &samples, &ids)?;
         sqlx::query!(
@@ -370,6 +373,7 @@ impl Store {
         )
         .execute(&mut *tx)
         .await?;
+        tiers::roll_up(&mut tx, device_id, closed.minute, &samples, &ids).await?;
         tx.commit().await?;
         Ok(())
     }

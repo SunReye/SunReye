@@ -146,6 +146,8 @@ if ((e2e)); then
   step e2e
   bun run e2e:types
   heavy bun run e2e
+  # The real core binary and the simulator, no faked backend.
+  heavy bun run --cwd apps/web e2e:core
 fi
 
 step "ci green"

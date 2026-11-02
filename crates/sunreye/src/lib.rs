@@ -8,6 +8,7 @@ pub mod poll;
 pub mod probe;
 pub mod profile;
 pub mod recent;
+pub mod retention;
 pub mod rollup;
 pub mod run;
 pub mod samples;
