@@ -3,7 +3,7 @@
 	import { resolve } from '$lib/resolve';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
 	import { apiErrorText } from '$lib/api-error';
 	import InverterForm from '$lib/components/settings/inverter-form.svelte';
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
@@ -55,8 +55,8 @@
 	let activated = $state(false);
 
 	async function loadRegistered() {
-		const { data } = await api.api.profiles.get();
-		if (data) registered = data as RegisteredProfile[];
+		const { data } = await core.GET('/api/profiles');
+		if (data) registered = data;
 	}
 	onMount(loadRegistered);
 
@@ -68,13 +68,15 @@
 	async function activate() {
 		if (!selectedId) return;
 		activating = true;
-		const { error } = await api.api.settings['active-profile'].put({ id: selectedId });
+		const { data, error } = await core.PUT('/api/settings/active-profile', { body: { id: selectedId } });
 		activating = false;
 		if (error) {
-			toast.error(m.setup_activate_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
+			toast.error(m.setup_activate_failed({ error: apiErrorText(error, m.conn_request_failed()) }));
 			return;
 		}
-		activated = true;
+		// A change that applies at once has nothing to restart for: straight to the dashboard.
+		if (data.restartRequired) activated = true;
+		else await goto(resolve('/'));
 	}
 
 	// The connection form test-reads against the chosen profile; `undefined`

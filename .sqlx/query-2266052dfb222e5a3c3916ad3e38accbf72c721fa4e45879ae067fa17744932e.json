@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO reading_minute (device_id, minute, samples) VALUES (?, ?, ?)\n             ON CONFLICT (device_id, minute) DO UPDATE SET samples = excluded.samples",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "2266052dfb222e5a3c3916ad3e38accbf72c721fa4e45879ae067fa17744932e"
+}

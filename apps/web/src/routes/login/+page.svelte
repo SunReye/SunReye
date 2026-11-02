@@ -3,7 +3,8 @@
 	import { resolve } from '$lib/resolve';
 	import * as Card from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
-	import { needsSetup, publicDashboardEnabled } from '$lib/setup';
+	import { publicDashboardEnabled } from '$lib/engine-admin';
+	import { needsSetup } from '$lib/setup';
 	import * as m from '$lib/paraglide/messages';
 	import AuthForm from '../../components/AuthForm.svelte';
 	import AuthShell from '../../components/AuthShell.svelte';
