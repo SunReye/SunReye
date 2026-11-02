@@ -662,6 +662,17 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
         activeProfileId: options.needsProfile ? null : MANIFEST.id,
       });
     }
+    // The Rust core's capabilities. This fake serves every area, like the engine it stands in for.
+    if (at("capabilities")) {
+      return json(route, {
+        history: true,
+        statistics: true,
+        controls: true,
+        automations: true,
+        restart: true,
+        profileSources: true,
+      });
+    }
     if (at("access-status")) {
       return json(route, { publicDashboard: options.publicDashboard ?? false });
     }

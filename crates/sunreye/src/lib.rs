@@ -1,11 +1,23 @@
-//! Startup flags of the core. Everything else is a setting the core stores.
+//! The core's library, run by the binary. Startup flags live here; everything else is a setting the core
+//! stores.
+
+pub mod decode;
+pub mod modbus;
+pub mod poll;
+pub mod probe;
+pub mod profile;
+pub mod run;
+pub mod samples;
+pub mod settings;
+pub mod store;
+pub mod web;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 
-pub mod store;
+pub use run::run;
 
 /// Startup flags. `--version` is absent on purpose: the version is the first log line.
 #[derive(Debug, Parser, PartialEq, Eq)]

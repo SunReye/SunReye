@@ -4,12 +4,30 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// A store directory of its own, so no test writes into the working directory or shares a file.
+fn fresh_data_dir() -> std::path::PathBuf {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("cli-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    drop(std::fs::remove_dir_all(&dir));
+    dir
+}
+
 fn spawn(args: &[&str]) -> Child {
-    Command::new(BIN).args(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("spawn sunreye")
+    Command::new(BIN)
+        .args(args)
+        .args(["--listen", "127.0.0.1:0"])
+        .arg("--data-dir")
+        .arg(fresh_data_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye")
 }
 
 /// Waits for the startup line, which is logged after the signal handlers exist.
@@ -70,6 +88,35 @@ fn logs_its_version_and_exits_zero_on_sigterm() {
 }
 
 #[test]
+fn logs_the_address_it_listens_on() {
+    let mut child = spawn(&[]);
+    let (_line, mut stderr) = started(&mut child);
+    let mut line = String::new();
+    stderr.read_line(&mut line).expect("a listening line");
+    assert!(line.contains("sunreye listening"), "{line}");
+    let bound = line.split("127.0.0.1:").nth(1).expect("an address in the line");
+    assert!(
+        !bound.starts_with("0 ") && !bound.starts_with('0'),
+        "the bound port, not the requested one: {line}"
+    );
+    assert!(signal(&child, "TERM").success());
+    assert!(child.wait().expect("wait").success());
+}
+
+#[test]
+fn a_listen_address_already_served_exits_non_zero_and_says_so() {
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = taken.local_addr().expect("addr").to_string();
+    let out = Command::new(BIN)
+        .args(["--listen", &addr, "--data-dir"])
+        .arg(fresh_data_dir())
+        .output()
+        .expect("run");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cannot listen"));
+}
+
+#[test]
 fn exits_zero_on_sigint() {
     let mut child = spawn(&["--log-level", "info"]);
     let (_line, _stderr) = started(&mut child);
@@ -91,4 +138,53 @@ fn log_level_error_silences_the_startup_line() {
     }
     assert!(status.success());
     assert!(logged.is_empty(), "unexpected output: {logged}");
+}
+
+#[test]
+fn an_unusable_data_dir_exits_non_zero_and_says_why() {
+    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not-a-directory");
+    std::fs::write(&file, b"x").expect("write");
+    let out = Command::new(BIN).arg("--data-dir").arg(&file).output().expect("run");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
+}
+
+/// Startup lines up to and including "sunreye listening".
+fn startup_lines(listen: &str) -> Vec<String> {
+    let mut child = Command::new(BIN)
+        .args(["--listen", listen, "--data-dir"])
+        .arg(fresh_data_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye");
+    let mut reader = BufReader::new(child.stderr.take().expect("piped stderr"));
+    let mut lines = Vec::new();
+    loop {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).expect("a startup line") > 0, "exited early: {lines:?}");
+        let listening = line.contains("sunreye listening");
+        lines.push(line);
+        if listening {
+            break;
+        }
+    }
+    assert!(signal(&child, "TERM").success());
+    assert!(child.wait().expect("wait").success());
+    lines
+}
+
+#[test]
+fn a_non_loopback_listen_address_logs_a_warning_naming_it() {
+    let lines = startup_lines("0.0.0.0:0");
+    let warning =
+        lines.iter().find(|l| l.contains("WARN")).unwrap_or_else(|| panic!("no warning: {lines:?}"));
+    assert!(warning.contains("0.0.0.0:0"), "{warning}");
+    assert!(warning.contains("not loopback"), "{warning}");
+}
+
+#[test]
+fn a_loopback_listen_address_logs_no_warning() {
+    let lines = startup_lines("127.0.0.1:0");
+    assert!(lines.iter().all(|l| !l.contains("WARN")), "{lines:?}");
 }
