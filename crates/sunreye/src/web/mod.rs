@@ -4,6 +4,7 @@ mod assets;
 mod auth;
 mod inverter;
 mod origin;
+mod password;
 mod setup;
 
 use std::sync::Arc;
@@ -62,6 +63,7 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::capabilities))
         .routes(routes!(auth::current, auth::logout))
         .route_layer(login_required!(Accounts))
+        .route_layer(middleware::map_response(auth::guard_body))
 }
 
 /// Settings: 401 without a session, 403 for an account that is not an admin.
@@ -73,6 +75,7 @@ fn admin() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::test))
         .route_layer(permission_required!(Accounts, Permission::Admin))
         .route_layer(login_required!(Accounts))
+        .route_layer(middleware::map_response(auth::guard_body))
 }
 
 /// The `OpenAPI` document of every route [`router`] serves under `/api`.

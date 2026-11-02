@@ -25,7 +25,12 @@ pub struct TestRequest {
     get,
     path = "/api/settings/inverter",
     operation_id = "readInverter",
-    responses((status = 200, body = InverterConfig), (status = 500, body = ErrorBody))
+    responses(
+        (status = 200, body = InverterConfig),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
 )]
 pub async fn read(State(core): State<Arc<Core>>) -> Result<Json<InverterConfig>, ApiError> {
     Ok(Json(read_inverter(&core.store).await?))
@@ -37,7 +42,13 @@ pub async fn read(State(core): State<Arc<Core>>) -> Result<Json<InverterConfig>,
     path = "/api/settings/inverter",
     operation_id = "saveInverter",
     request_body = InverterConfig,
-    responses((status = 200, body = InverterConfig), (status = 400, body = ErrorBody), (status = 500, body = ErrorBody))
+    responses(
+        (status = 200, body = InverterConfig),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
 )]
 pub async fn save(
     State(core): State<Arc<Core>>,
@@ -55,7 +66,13 @@ pub async fn save(
     path = "/api/settings/inverter/test",
     operation_id = "testInverter",
     request_body = TestRequest,
-    responses((status = 200, body = TestResult), (status = 400, body = ErrorBody), (status = 500, body = ErrorBody))
+    responses(
+        (status = 200, body = TestResult),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
 )]
 pub async fn test(
     State(core): State<Arc<Core>>,

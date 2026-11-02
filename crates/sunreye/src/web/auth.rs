@@ -2,10 +2,11 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use axum_login::{AuthUser, AuthnBackend, AuthzBackend};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,7 @@ use tower_sessions::cookie::time::Duration as Span;
 use utoipa::ToSchema;
 
 use super::origin::client_ip;
+use super::password::Passwords;
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::run::Core;
 use crate::store::{AccountRow, NewAccount, Store, StoreError};
@@ -33,9 +35,9 @@ impl AuthUser for AccountRow {
         self.id
     }
 
-    /// A changed password ends the sessions signed in with the old one.
+    /// Nothing changes a password yet, so no session is bound to one.
     fn session_auth_hash(&self) -> &[u8] {
-        self.password_hash.as_bytes()
+        &[]
     }
 }
 
@@ -43,11 +45,12 @@ impl AuthUser for AccountRow {
 #[derive(Debug, Clone)]
 pub struct Accounts {
     store: Arc<Store>,
+    passwords: Passwords,
 }
 
 impl Accounts {
     pub fn new(store: Arc<Store>) -> Self {
-        Self { store }
+        Self { store, passwords: Passwords::new() }
     }
 }
 
@@ -57,9 +60,6 @@ pub struct Credentials {
     password: String,
 }
 
-/// Checked against an unknown email, so it takes as long as a wrong password.
-static UNKNOWN_ACCOUNT: LazyLock<String> = LazyLock::new(|| password_auth::generate_hash("no such account"));
-
 impl AuthnBackend for Accounts {
     type User = AccountRow;
     type Credentials = Credentials;
@@ -67,10 +67,8 @@ impl AuthnBackend for Accounts {
 
     async fn authenticate(&self, credentials: Credentials) -> Result<Option<AccountRow>, StoreError> {
         let account = self.store.account_by_email(credentials.email.trim()).await?;
-        let hash = account.as_ref().map_or_else(|| UNKNOWN_ACCOUNT.clone(), |a| a.password_hash.clone());
-        let checked =
-            tokio::task::spawn_blocking(move || password_auth::verify_password(credentials.password, &hash));
-        let verified = checked.await.is_ok_and(|result| result.is_ok());
+        let hash = account.as_ref().map(|a| a.password_hash.clone());
+        let verified = self.passwords.verify(credentials.password, hash).await;
         Ok(account.filter(|_| verified))
     }
 
@@ -94,6 +92,16 @@ impl AuthzBackend for Accounts {
     ) -> impl Future<Output = Result<HashSet<Permission>, StoreError>> + Send {
         let permissions = if account.admin { HashSet::from([Permission::Admin]) } else { HashSet::new() };
         std::future::ready(Ok(permissions))
+    }
+}
+
+/// Gives a guard's bare 401 or 403 the API's error shape; answers with a body pass through.
+pub async fn guard_body(response: Response) -> Response {
+    let bare = axum::body::HttpBody::size_hint(response.body()).exact() == Some(0);
+    match response.status() {
+        StatusCode::UNAUTHORIZED if bare => ApiError::unauthorized("Not signed in").into_response(),
+        StatusCode::FORBIDDEN if bare => ApiError::forbidden("Admin only").into_response(),
+        _ => response,
     }
 }
 
@@ -193,10 +201,7 @@ pub async fn sign_up(
     if core.store.has_accounts().await? {
         return Err(closed());
     }
-    let password = request.password;
-    let password_hash = tokio::task::spawn_blocking(move || password_auth::generate_hash(password))
-        .await
-        .map_err(|_| ApiError::internal())?;
+    let password_hash = auth.backend.passwords.hash(request.password).await.ok_or_else(ApiError::internal)?;
     let new = NewAccount {
         email: request.email.trim().to_owned(),
         name: request.name.trim().to_owned(),
@@ -240,7 +245,7 @@ pub async fn login(
     get,
     path = "/api/auth/session",
     operation_id = "currentSession",
-    responses((status = 200, body = Account), (status = 401))
+    responses((status = 200, body = Account), (status = 401, body = ErrorBody))
 )]
 pub async fn current(auth: AuthSession) -> Result<Json<Account>, ApiError> {
     let account = auth.user.as_ref().ok_or_else(|| ApiError::unauthorized("Not signed in"))?;
@@ -251,7 +256,7 @@ pub async fn current(auth: AuthSession) -> Result<Json<Account>, ApiError> {
     delete,
     path = "/api/auth/session",
     operation_id = "logout",
-    responses((status = 204), (status = 401), (status = 500, body = ErrorBody))
+    responses((status = 204), (status = 401, body = ErrorBody), (status = 500, body = ErrorBody))
 )]
 pub async fn logout(mut auth: AuthSession) -> Result<StatusCode, ApiError> {
     auth.logout().await?;

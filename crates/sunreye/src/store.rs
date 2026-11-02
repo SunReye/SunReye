@@ -75,11 +75,18 @@ pub struct DeviceRow {
     pub logger_serial: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct NewAccount {
     pub email: String,
     pub name: String,
     pub password_hash: String,
+}
+
+/// Leaves the hash out of logs.
+impl std::fmt::Debug for NewAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewAccount").field("email", &self.email).finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -1043,6 +1050,22 @@ mod tests {
 
     fn account(email: &str) -> NewAccount {
         NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$argon2id$hash".into() }
+    }
+
+    #[test]
+    fn an_account_prints_without_its_password_hash() {
+        let new = account("ada@example.org");
+        let row = AccountRow {
+            id: 1,
+            email: new.email.clone(),
+            name: new.name.clone(),
+            password_hash: new.password_hash.clone(),
+            admin: true,
+        };
+        for printed in [format!("{new:?}"), format!("{row:?}"), format!("{new:#?}")] {
+            assert!(printed.contains("ada@example.org"), "{printed}");
+            assert!(!printed.contains("argon2"), "{printed}");
+        }
     }
 
     #[tokio::test]

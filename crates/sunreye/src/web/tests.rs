@@ -488,9 +488,13 @@ const ADMIN_ROUTES: [(&str, &str); 5] = [
 const SESSION_ROUTES: [(&str, &str); 3] =
     [("GET", "/api/capabilities"), ("GET", "/api/auth/session"), ("DELETE", "/api/auth/session")];
 
-async fn call(api: &Api, (method, path): (&str, &str)) -> StatusCode {
+async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
+    call_for_answer(api, route).await.status
+}
+
+async fn call_for_answer(api: &Api, (method, path): (&str, &str)) -> Answer {
     let method = Method::from_bytes(method.as_bytes()).expect("method");
-    send(api, method, path, Some(&connection(502).to_string())).await.status
+    send(api, method, path, Some(&connection(502).to_string())).await
 }
 
 #[tokio::test]
@@ -527,15 +531,13 @@ async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
 }
 
 #[tokio::test]
-async fn a_sign_up_without_an_email_a_name_or_a_long_enough_password_is_a_400() {
+async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
     let core = Core::open(&dir("sign-up-invalid")).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
     for body in [
         json!({"email": "", "name": "A", "password": ADMIN_PASSWORD}),
         json!({"email": "no-at-sign", "name": "A", "password": ADMIN_PASSWORD}),
         json!({"email": ADMIN_EMAIL, "name": " ", "password": ADMIN_PASSWORD}),
-        json!({"email": ADMIN_EMAIL, "name": "A", "password": "7chars!"}),
-        json!({"email": ADMIN_EMAIL, "name": "A", "password": "x".repeat(129)}),
         json!({"email": ADMIN_EMAIL}),
     ] {
         let answer = post(&api, "/api/auth/sign-up", &body).await;
@@ -545,6 +547,27 @@ async fn a_sign_up_without_an_email_a_name_or_a_long_enough_password_is_a_400() 
     assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": true}));
     drop(api);
     core.stop().await;
+}
+
+#[tokio::test]
+async fn a_password_of_8_to_128_characters_signs_up_and_one_outside_is_a_400() {
+    let cases = [
+        ("7", "x".repeat(7), StatusCode::BAD_REQUEST),
+        ("8", "x".repeat(8), StatusCode::OK),
+        ("128", "x".repeat(128), StatusCode::OK),
+        ("128 two-byte", "é".repeat(128), StatusCode::OK),
+        ("129", "x".repeat(129), StatusCode::BAD_REQUEST),
+    ];
+    for (name, password, want) in cases {
+        let core = Core::open(&dir(&format!("password-length-{name}"))).await.expect("core");
+        let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
+        assert_eq!(sign_up(&api, ADMIN_EMAIL, &password).await.status, want, "{name}");
+        if want == StatusCode::OK {
+            assert_eq!(login(&api, ADMIN_EMAIL, &password, false).await.status, StatusCode::OK, "{name}");
+        }
+        drop(api);
+        core.stop().await;
+    }
 }
 
 #[tokio::test]
@@ -634,7 +657,9 @@ async fn without_a_session_every_gated_route_is_refused() {
     let (core, admin) = open(&dir("anonymous")).await;
     let api = admin.anonymous();
     for route in ADMIN_ROUTES.into_iter().chain(SESSION_ROUTES) {
-        assert_eq!(call(&api, route).await, StatusCode::UNAUTHORIZED, "{route:?}");
+        let answer = call_for_answer(&api, route).await;
+        assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{route:?}");
+        assert_eq!(answer.json(), json!({"error": "Not signed in"}), "{route:?}");
     }
     for path in ["/api/setup-status", "/api/profile-status"] {
         assert_eq!(get(&api, path).await.status, StatusCode::OK, "{path} is public");
@@ -649,14 +674,16 @@ async fn a_plain_user_reaches_the_session_routes_and_is_refused_on_admin_routes(
     let account = NewAccount {
         email: "user@example.org".into(),
         name: "User".into(),
-        password_hash: password_auth::generate_hash(ADMIN_PASSWORD),
+        password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
     };
     core.store.add_plain_account(&account).await.expect("plain account");
     let signed_in = login(&admin.anonymous(), "user@example.org", ADMIN_PASSWORD, false).await;
     assert_eq!(signed_in.json()["admin"], false);
     let user = admin.with_cookie(&signed_in.session_cookie());
     for route in ADMIN_ROUTES {
-        assert_eq!(call(&user, route).await, StatusCode::FORBIDDEN, "{route:?}");
+        let answer = call_for_answer(&user, route).await;
+        assert_eq!(answer.status, StatusCode::FORBIDDEN, "{route:?}");
+        assert_eq!(answer.json(), json!({"error": "Admin only"}), "{route:?}");
     }
     assert_eq!(get(&user, "/api/capabilities").await.status, StatusCode::OK);
     assert_eq!(get(&user, "/api/auth/session").await.json()["email"], "user@example.org");

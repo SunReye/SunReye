@@ -710,10 +710,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
  "wasi",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1337,18 +1335,6 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link",
-]
-
-[[package]]
-name = "password-auth"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a2a4764cc1f8d961d802af27193c6f4f0124bd0e76e8393cf818e18880f0524"
-dependencies = [
- "argon2",
- "getrandom",
- "password-hash",
- "rand_core",
 ]
 
 [[package]]
@@ -2237,11 +2223,12 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "sunreye"
 version = "0.0.0"
 dependencies = [
+ "argon2",
  "axum",
  "axum-login",
  "clap",
  "http",
- "password-auth",
+ "password-hash",
  "rcgen",
  "reqwest",
  "rust-embed",
