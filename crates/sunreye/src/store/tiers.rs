@@ -1,9 +1,6 @@
-//! Rollup tiers (ADR 0004): buckets rolled up by [`crate::rollup`] as minutes are appended, in the same
-//! transaction as the minute, so a restart finds them in step with the readings.
-//!
-//! A minute's bucket is rolled up again each time the minute is appended. An hour and its day are rolled
-//! up when the device's next stored minute falls in a later hour or day; until then the readings are
-//! their only record, and a restart loses nothing.
+//! Rollup tiers (ADR 0004), rolled up in the transaction that appends a minute. A minute's bucket is
+//! rolled up on every append; an hour and its day once the device's next stored minute is in a later one.
+//! Until then the readings are their only record.
 
 use std::collections::BTreeMap;
 
@@ -27,7 +24,7 @@ const fn code(tier: Tier) -> i64 {
 }
 
 impl Store {
-    /// The `tier` buckets of `metric` on the device, oldest first.
+    /// The `tier` buckets of `metric` on the device, oldest first. The history endpoints (#385) read through it.
     pub async fn buckets(&self, tier: Tier, device_id: i64, metric: &str) -> Result<Vec<Bucket>, StoreError> {
         let tier = code(tier);
         let rows = sqlx::query!(
@@ -85,7 +82,7 @@ pub(super) async fn roll_up(
     }
     let day = previous.div_euclid(MINUTES_PER_DAY);
     if day < minute.div_euclid(MINUTES_PER_DAY) {
-        roll_up_day(conn, device_id, day * MINUTES_PER_DAY).await?;
+        roll_up_day(conn, device_id, day * MINUTES_PER_DAY, ids).await?;
     }
     Ok(())
 }
@@ -133,33 +130,33 @@ async fn roll_up_day(
     conn: &mut SqliteConnection,
     device_id: i64,
     first_minute: i64,
+    ids: &BTreeMap<String, u32>,
 ) -> Result<(), StoreError> {
     let from = first_minute * MINUTE_MS * US_PER_MS;
     let to = from + Tier::Day.width_us() - 1;
     let hour = code(Tier::Hour);
-    let rows = sqlx::query!(
-        r#"SELECT metric_id, start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
-           WHERE tier = ? AND start_us BETWEEN ? AND ? AND device_id = ? ORDER BY metric_id, start_us"#,
-        hour,
-        from,
-        to,
-        device_id
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    let mut hours: BTreeMap<u32, Vec<Partial>> = BTreeMap::new();
-    for row in rows {
-        let metric = u32::try_from(row.metric_id).map_err(|_| StoreError::Corrupt("metric id"))?;
-        hours.entry(metric).or_default().push(Partial {
+    for &metric in ids.values() {
+        let hours: Vec<Partial> = sqlx::query!(
+            "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
+             WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
+            device_id,
+            metric,
+            hour,
+            from,
+            to
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|row| Partial {
             start: row.start_us,
             first: (row.first_us, row.first),
             last: (row.last_us, row.last),
             weighted: row.weighted,
             max: row.max,
             min: row.min,
-        });
-    }
-    for (metric, hours) in hours {
+        })
+        .collect();
         append(conn, Tier::Day, device_id, metric, &days(&hours)).await?;
     }
     Ok(())
@@ -191,7 +188,7 @@ async fn append(
         sqlx::query!(
             "INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (tier, start_us, device_id, metric_id) DO UPDATE SET
+             ON CONFLICT (device_id, metric_id, tier, start_us) DO UPDATE SET
                avg = excluded.avg, max = excluded.max, min = excluded.min, first_us = excluded.first_us,
                first = excluded.first, last_us = excluded.last_us, last = excluded.last, weighted = excluded.weighted",
             code,
@@ -256,6 +253,79 @@ mod tests {
 
     async fn power(store: &Store, tier: Tier, device: i64) -> Vec<Bucket> {
         store.buckets(tier, device, "power").await.expect("buckets")
+    }
+
+    const METRICS: usize = 50;
+
+    fn poll(at_ms: i64) -> ClosedMinute {
+        let values = (0..METRICS).map(|m| (format!("m{m}"), 1.0)).collect();
+        ClosedMinute { minute: minute_of(at_ms), samples: vec![Sample { at_ms, values }] }
+    }
+
+    /// `device`'s minute tier holding `minutes` buckets of every metric, from the epoch on.
+    async fn fill_minutes(store: &Store, device: i64, minutes: i64) {
+        sqlx::query(
+            "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i + 1 < ?)
+             INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)
+             SELECT 0, i * 60000000, ?, metric.id, 1, 1, 1, i * 60000000, 1, i * 60000000, 1, 60000000 FROM n, metric",
+        )
+        .bind(minutes)
+        .bind(device)
+        .execute(&store.pool)
+        .await
+        .expect("fill");
+    }
+
+    #[tokio::test]
+    async fn a_new_devices_first_minute_on_a_full_store_reads_only_its_own_buckets() {
+        let (store, first) = with_device().await;
+        let late = 20_000 * MINUTE_MS;
+        store.append_minute(first, &poll(late)).await.expect("intern the metrics");
+        fill_minutes(&store, first, 4_000).await;
+        let connection =
+            NewConnection { transport: Transport::Tcp, host: "g".into(), port: 502, logger_serial: None };
+        let connection = store.add_connection(&connection).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 2 };
+        let second = store.add_device(&device).await.expect("device");
+        let started = std::time::Instant::now();
+        store.append_minute(second, &poll(late)).await.expect("append");
+        let took = started.elapsed();
+        assert!(took < std::time::Duration::from_millis(100), "{took:?}");
+    }
+
+    async fn plan(store: &Store, query: &str) -> String {
+        let rows: Vec<(i64, i64, i64, String)> = sqlx::query_as(&format!("EXPLAIN QUERY PLAN {query}"))
+            .fetch_all(&store.pool)
+            .await
+            .expect("plan");
+        rows.into_iter().map(|row| row.3).collect::<Vec<_>>().join("; ")
+    }
+
+    #[tokio::test]
+    async fn every_tier_query_searches_a_key_and_scans_no_table() {
+        let (store, _) = with_device().await;
+        let device_metric = "USING PRIMARY KEY (device_id=? AND metric_id=? AND tier=?";
+        // The text of each `rollup` query in this file.
+        for (query, uses) in [
+            (
+                "SELECT last FROM rollup WHERE tier = ? AND device_id = ? AND metric_id = ? AND start_us < ?
+                 ORDER BY start_us DESC LIMIT 1",
+                device_metric,
+            ),
+            (
+                "SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
+                 WHERE tier = ? AND device_id = ? AND metric.key = ? ORDER BY start_us",
+                device_metric,
+            ),
+            (
+                "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
+                 WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
+                device_metric,
+            ),
+        ] {
+            let plan = plan(&store, query).await;
+            assert!(plan.contains(uses) && !plan.contains("SCAN "), "{query}\n{plan}");
+        }
     }
 
     #[tokio::test]

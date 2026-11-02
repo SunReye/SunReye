@@ -1,59 +1,53 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT metric_id, start_us, first_us, first, last_us, last, weighted, max, min FROM rollup\n           WHERE tier = ? AND start_us BETWEEN ? AND ? AND device_id = ? ORDER BY metric_id, start_us",
+  "query": "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup\n             WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
   "describe": {
     "columns": [
       {
-        "name": "metric_id",
+        "name": "start_us",
         "ordinal": 0,
         "type_info": "Integer"
       },
       {
-        "name": "start_us",
+        "name": "first_us",
         "ordinal": 1,
         "type_info": "Integer"
       },
       {
-        "name": "first_us",
-        "ordinal": 2,
-        "type_info": "Integer"
-      },
-      {
         "name": "first",
-        "ordinal": 3,
+        "ordinal": 2,
         "type_info": "Float"
       },
       {
         "name": "last_us",
-        "ordinal": 4,
+        "ordinal": 3,
         "type_info": "Integer"
       },
       {
         "name": "last",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Float"
       },
       {
         "name": "weighted",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Float"
       },
       {
         "name": "max",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Float"
       },
       {
         "name": "min",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Float"
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 5
     },
     "nullable": [
-      false,
       false,
       false,
       false,
@@ -64,5 +58,5 @@
       false
     ]
   },
-  "hash": "8b7534e53390a3819f661665457568a8c10ec58108131690d1a6d5a9c17699be"
+  "hash": "d5cdb324568ad6b26583cf3ac41051ce2aaacb557a5a9bd0021c8938c6288fa5"
 }
