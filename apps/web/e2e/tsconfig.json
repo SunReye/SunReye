@@ -16,5 +16,5 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["./**/*.ts", "../playwright.config.ts"]
+  "include": ["./**/*.ts", "../e2e-core/**/*.ts", "../playwright.config.ts", "../playwright.core.config.ts"]
 }

@@ -4,6 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { paraglideOptions } from "./i18n.config";
 
+// The core the dev server proxies to. The real-binary browser layer (`playwright.core.config.ts`) boots
+// one on a port of its own.
+const core = `127.0.0.1:${process.env.SUNREYE_CORE_PORT ?? 3000}`;
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -66,9 +70,9 @@ export default defineConfig({
     // own `Host` is still what reaches the server, so a LAN origin still signs
     // in.
     proxy: {
-      "/api": { target: "http://127.0.0.1:3000", changeOrigin: false },
-      "/openapi": { target: "http://127.0.0.1:3000", changeOrigin: false },
-      "/ws": { target: "ws://127.0.0.1:3000", ws: true, changeOrigin: false },
+      "/api": { target: `http://${core}`, changeOrigin: false },
+      "/openapi": { target: `http://${core}`, changeOrigin: false },
+      "/ws": { target: `ws://${core}`, ws: true, changeOrigin: false },
     },
   },
 });
