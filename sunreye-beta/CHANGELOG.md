@@ -2,7 +2,7 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.6.1, shipped in `beta.20261102-d98ab83`.
+Unreleased work on `dev` since 3.6.1, shipped in `beta.20261102-780b4e2`.
 
 
 ### Bug Fixes
@@ -36,6 +36,11 @@ Unreleased work on `dev` since 3.6.1, shipped in `beta.20261102-d98ab83`.
 * **web:** add dashboard-live user journey ([57420eb](https://github.com/SunReye/SunReye/commit/57420eb32667226e4c14fc5ae7fac831a706d9b6))
 * **web:** record writes and created devices in the e2e mock backend ([a6e0462](https://github.com/SunReye/SunReye/commit/a6e0462f51c9378faedb90728121df51b2fec51a))
 * **web:** add a component layer on Vitest browser mode ([f53a99f](https://github.com/SunReye/SunReye/commit/f53a99fe3fb51a551487bd744f905000668170d2))
+
+
+### Miscellaneous Chores
+
+* **release:** drop the stale web changelog, record squash merges (#361) ([780b4e2](https://github.com/SunReye/SunReye/commit/780b4e24cd92fa5f51381ed31b05ffd479780d84))
 
 <!--
   This preamble is hand-written and version-independent. release-please owns the
