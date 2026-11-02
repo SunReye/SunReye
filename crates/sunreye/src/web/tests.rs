@@ -425,7 +425,14 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 14] = [
+const SERVED: [(&str, &str); 22] = [
+    ("get", "/api/admin/api-keys"),
+    ("post", "/api/admin/api-keys"),
+    ("post", "/api/admin/api-keys/revoke"),
+    ("get", "/api/admin/users"),
+    ("post", "/api/admin/users"),
+    ("delete", "/api/admin/users/{id}"),
+    ("put", "/api/admin/users/{id}/role"),
     ("delete", "/api/auth/session"),
     ("get", "/api/auth/session"),
     ("post", "/api/auth/login"),
@@ -436,6 +443,7 @@ const SERVED: [(&str, &str); 14] = [
     ("get", "/api/settings/inverter"),
     ("get", "/api/settings/profile-sources"),
     ("get", "/api/setup-status"),
+    ("get", "/api/v1/entities"),
     ("post", "/api/settings/inverter/test"),
     ("post", "/api/settings/profile-sources"),
     ("put", "/api/settings/active-profile"),
@@ -492,7 +500,7 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 7] = [
+const ADMIN_ROUTES: [(&str, &str); 14] = [
     ("GET", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profile-sources"),
     ("GET", "/api/profiles"),
@@ -500,6 +508,13 @@ const ADMIN_ROUTES: [(&str, &str); 7] = [
     ("GET", "/api/settings/inverter"),
     ("PUT", "/api/settings/inverter"),
     ("POST", "/api/settings/inverter/test"),
+    ("GET", "/api/admin/users"),
+    ("POST", "/api/admin/users"),
+    ("PUT", "/api/admin/users/1/role"),
+    ("DELETE", "/api/admin/users/1"),
+    ("GET", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys/revoke"),
 ];
 
 const SESSION_ROUTES: [(&str, &str); 3] =
@@ -693,7 +708,7 @@ async fn a_plain_user_reaches_the_session_routes_and_is_refused_on_admin_routes(
         name: "User".into(),
         password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
     };
-    core.store.add_plain_account(&account).await.expect("plain account");
+    core.store.add_account(&account, false).await.expect("plain account");
     let signed_in = login(&admin.anonymous(), "user@example.org", ADMIN_PASSWORD, false).await;
     assert_eq!(signed_in.json()["admin"], false);
     let user = admin.with_cookie(&signed_in.session_cookie());
@@ -941,3 +956,6 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
     drop(app);
     core.stop().await;
 }
+
+mod api_keys;
+mod users;

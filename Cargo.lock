@@ -2231,6 +2231,7 @@ dependencies = [
  "password-hash",
  "rcgen",
  "reqwest",
+ "ring",
  "rust-embed",
  "rustls",
  "serde",

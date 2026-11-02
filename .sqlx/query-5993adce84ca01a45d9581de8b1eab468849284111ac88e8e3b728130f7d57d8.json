@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO account (email, name, password_hash, admin) VALUES (?, ?, ?, ?)\n               ON CONFLICT (email) DO NOTHING RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5993adce84ca01a45d9581de8b1eab468849284111ac88e8e3b728130f7d57d8"
+}

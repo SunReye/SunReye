@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id FROM api_key WHERE key_hash = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "29ace11ba712e0a9b42fe1cacf515926a933fe8f2712690a58918613029710cc"
+}
