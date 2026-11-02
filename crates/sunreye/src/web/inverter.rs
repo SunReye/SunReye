@@ -84,8 +84,8 @@ pub async fn test(
         None => active_profile(&core.store).await?,
     };
     let Some(id) = id else { return Ok(Json(TestResult::failed("No profile selected"))) };
-    let Some(profile) = core.bundle.profile(&id) else {
+    let Some(profile) = core.profile(&id).await? else {
         return Ok(Json(TestResult::failed(format!("Unknown profile \"{id}\""))));
     };
-    Ok(Json(test_connection(profile, &request.config).await))
+    Ok(Json(test_connection(&profile, &request.config).await))
 }

@@ -5,6 +5,7 @@ mod auth;
 mod inverter;
 mod origin;
 mod password;
+mod profile_sources;
 mod setup;
 
 use std::sync::Arc;
@@ -73,6 +74,7 @@ fn admin() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
+        .routes(routes!(profile_sources::list, profile_sources::add))
         .route_layer(permission_required!(Accounts, Permission::Admin))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))

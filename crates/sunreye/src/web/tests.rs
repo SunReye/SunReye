@@ -11,6 +11,10 @@ use tower::ServiceExt;
 use super::*;
 use crate::store::{NewAccount, Store};
 
+#[path = "../../tests/support/mod.rs"]
+mod support;
+use support::{Ca, Site, official_files, serve_site, site};
+
 const PROFILE: &str = "deye-sg05lp3";
 
 fn dir(name: &str) -> PathBuf {
@@ -47,7 +51,16 @@ async fn open(dir: &Path) -> (Arc<Core>, Api) {
 }
 
 async fn open_with(dir: &Path, config: &Config) -> (Arc<Core>, Api) {
-    let core = Core::open(dir).await.expect("core");
+    signed_in(Core::open(dir).await.expect("core"), config).await
+}
+
+/// A core that also trusts `ca`, as its profile sources are served by a local HTTPS server.
+async fn open_trusting(dir: &Path, ca: &Ca) -> (Arc<Core>, Api) {
+    let core = Core::open_trusting(dir, vec![ca.root()]).await.expect("core");
+    signed_in(core, &Config::default()).await
+}
+
+async fn signed_in(core: Arc<Core>, config: &Config) -> (Arc<Core>, Api) {
     let api = Api { router: router(Arc::clone(&core), config), cookie: None };
     let mut answer = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await;
     if answer.status == StatusCode::FORBIDDEN {
@@ -412,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 12] = [
+const SERVED: [(&str, &str); 14] = [
     ("delete", "/api/auth/session"),
     ("get", "/api/auth/session"),
     ("post", "/api/auth/login"),
@@ -421,8 +434,10 @@ const SERVED: [(&str, &str); 12] = [
     ("get", "/api/profile-status"),
     ("get", "/api/profiles"),
     ("get", "/api/settings/inverter"),
+    ("get", "/api/settings/profile-sources"),
     ("get", "/api/setup-status"),
     ("post", "/api/settings/inverter/test"),
+    ("post", "/api/settings/profile-sources"),
     ("put", "/api/settings/active-profile"),
     ("put", "/api/settings/inverter"),
 ];
@@ -477,7 +492,9 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 5] = [
+const ADMIN_ROUTES: [(&str, &str); 7] = [
+    ("GET", "/api/settings/profile-sources"),
+    ("POST", "/api/settings/profile-sources"),
     ("GET", "/api/profiles"),
     ("PUT", "/api/settings/active-profile"),
     ("GET", "/api/settings/inverter"),
@@ -750,5 +767,159 @@ async fn the_session_cookie_is_secure_when_configured() {
     let header = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await.set_cookie.expect("cookie");
     assert!(header.contains("Secure"), "{header}");
     drop(api);
+    core.stop().await;
+}
+
+/// An official profile under another id, as a third-party source would publish it.
+fn third_party(id: &str, official: &str) -> (String, Value) {
+    let mut profile = official_files().into_iter().find(|(name, _)| name == official).expect("official").1;
+    profile["id"] = json!(id);
+    profile["name"] = json!("Acme Hybrid");
+    (id.to_owned(), profile)
+}
+
+fn source_body(port: u16) -> Value {
+    json!({"baseUrl": format!("https://localhost:{port}/repo/"), "indexPath": "index.json"})
+}
+
+async fn serve_repo(ca: &Ca, files: &[(String, Value)]) -> u16 {
+    serve_site(ca, site(files)).await
+}
+
+#[tokio::test]
+async fn a_profile_source_is_added_listed_and_its_profiles_appear_beside_the_compiled_in_set() {
+    let ca = Ca::new("test root");
+    let port = serve_repo(&ca, &[third_party("acme-hybrid", PROFILE)]).await;
+    let (core, app) = open_trusting(&dir("source-add"), &ca).await;
+    assert_eq!(get(&app, "/api/settings/profile-sources").await.json(), json!([]));
+
+    let added = post(&app, "/api/settings/profile-sources", &source_body(port)).await;
+    assert_eq!(added.status, StatusCode::OK, "{:?}", added.json());
+    let source = source_body(port);
+    let report = json!({
+        "baseUrl": source["baseUrl"], "indexPath": "index.json", "profileIds": ["acme-hybrid"], "skipped": []
+    });
+    assert_eq!(added.json(), report);
+    let listed = get(&app, "/api/settings/profile-sources").await.json();
+    assert_eq!(
+        listed,
+        json!([{"baseUrl": source["baseUrl"], "indexPath": "index.json", "profileIds": ["acme-hybrid"]}])
+    );
+
+    let profiles = get(&app, "/api/profiles").await.json();
+    let profiles = profiles.as_array().expect("array");
+    assert_eq!(profiles.len(), core.bundle.profiles.len() + 1);
+    let fetched = profiles.iter().find(|p| p["id"] == "acme-hybrid").expect("listed");
+    assert_eq!(
+        fetched,
+        &json!({
+            "id": "acme-hybrid", "name": "Acme Hybrid", "manufacturer": "Deye", "active": false,
+            "installed": true, "builtin": false
+        })
+    );
+    assert_eq!(profiles.iter().filter(|p| p["builtin"] == true).count(), core.bundle.profiles.len());
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn added_sources_and_their_profiles_survive_a_restart_and_adding_again_replaces() {
+    let ca = Ca::new("test root");
+    let port = serve_repo(&ca, &[third_party("acme-hybrid", PROFILE)]).await;
+    let dir = dir("source-restart");
+    let (core, app) = open_trusting(&dir, &ca).await;
+    for _ in 0..2 {
+        assert_eq!(
+            post(&app, "/api/settings/profile-sources", &source_body(port)).await.status,
+            StatusCode::OK
+        );
+    }
+    drop(app);
+    core.stop().await;
+
+    let (core, app) = open_trusting(&dir, &ca).await;
+    let listed = get(&app, "/api/settings/profile-sources").await.json();
+    assert_eq!(listed.as_array().map(Vec::len), Some(1), "one source, fetched twice");
+    let chosen = put(&app, "/api/settings/active-profile", &json!({"id": "acme-hybrid"})).await;
+    assert_eq!(chosen.status, StatusCode::OK, "a profile from a source can be chosen");
+    drop(app);
+    core.stop().await;
+    drop(std::fs::remove_dir_all(&dir));
+}
+
+#[tokio::test]
+async fn a_device_is_polled_with_a_profile_from_a_source() {
+    let (sim, case) = simulator().await;
+    let ca = Ca::new("test root");
+    let port = serve_repo(&ca, &[third_party("acme-hybrid", PROFILE)]).await;
+    let (core, app) = open_trusting(&dir("source-polls"), &ca).await;
+    post(&app, "/api/settings/profile-sources", &source_body(port)).await;
+    let mut body = connection(sim.addr.port());
+    body["profileId"] = json!("acme-hybrid");
+    let tested = post(&app, "/api/settings/inverter/test", &body).await.json();
+    assert_eq!(
+        (tested["ok"].clone(), tested["metricCount"].clone()),
+        (json!(true), json!(case.readings.len()))
+    );
+    put(&app, "/api/settings/active-profile", &json!({"id": "acme-hybrid"})).await;
+    put(&app, "/api/settings/inverter", &connection(sim.addr.port())).await;
+    wait_until_polled(&sim).await;
+    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "a source only supplies reads");
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_source_profile_with_a_compiled_in_id_or_a_broken_file_is_reported_and_skipped() {
+    let ca = Ca::new("test root");
+    let kept = third_party("acme-hybrid", PROFILE);
+    let clash = official_files().into_iter().find(|(id, _)| id == PROFILE).expect("official");
+    let mut served: Site = site(&[kept.clone(), clash]);
+    served.insert("/repo/profiles/acme-hybrid.json".into(), kept.1.to_string().into_bytes());
+    let port = serve_site(&ca, served).await;
+    let (core, app) = open_trusting(&dir("source-skips"), &ca).await;
+    let added = post(&app, "/api/settings/profile-sources", &source_body(port)).await.json();
+    assert_eq!(added["profileIds"], json!(["acme-hybrid"]));
+    assert_eq!(
+        added["skipped"],
+        json!([{"path": format!("profiles/{PROFILE}.json"), "reason": "the id belongs to a compiled-in profile"}])
+    );
+    let profiles = get(&app, "/api/profiles").await.json();
+    assert_eq!(profiles.as_array().expect("array").iter().filter(|p| p["id"] == PROFILE).count(), 1);
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_source_that_cannot_be_used_is_a_400_naming_why_and_stores_nothing() {
+    let ca = Ca::new("test root");
+    let mut served = site(&[]);
+    served.remove("/repo/index.json");
+    let port = serve_site(&ca, served).await;
+    let (core, app) = open_trusting(&dir("source-refused"), &ca).await;
+    let cases = [
+        (source_body(port), "cannot fetch the index: status 404"),
+        (
+            json!({"baseUrl": "http://example.org/", "indexPath": "index.json"}),
+            "The base URL must start with https://",
+        ),
+        (
+            json!({"baseUrl": "https://u:p@example.org/", "indexPath": "index.json"}),
+            "The base URL needs a host and no credentials, query or fragment",
+        ),
+        (
+            json!({"baseUrl": "https://example.org/a/", "indexPath": "../index.json"}),
+            "The index path must stay under the base URL",
+        ),
+    ];
+    for (body, error) in cases {
+        let answer = post(&app, "/api/settings/profile-sources", &body).await;
+        assert_eq!(answer.status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(answer.json(), json!({"error": error}), "{body}");
+    }
+    let malformed = send(&app, Method::POST, "/api/settings/profile-sources", Some("{}")).await;
+    assert_eq!(malformed.status, StatusCode::BAD_REQUEST);
+    assert_eq!(get(&app, "/api/settings/profile-sources").await.json(), json!([]));
+    drop(app);
     core.stop().await;
 }
