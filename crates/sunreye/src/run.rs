@@ -17,7 +17,7 @@ use crate::modbus::Client;
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::retention::retain;
-use crate::samples::{ClosedMinute, MinuteBuffer, Sample};
+use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, poll_interval, poll_timeout};
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
@@ -41,6 +41,8 @@ pub struct Core {
     pub roots: Vec<CertificateDer<'static>>,
     /// Every decoded reading, as the `/ws` frames.
     pub live: Arc<Live>,
+    /// Each device's polled readings not yet in the store.
+    pub unstored: Arc<Unstored>,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
     polling: Polling,
@@ -74,9 +76,10 @@ impl Core {
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let live = Arc::default();
+        let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
-        let core = Arc::new(Self { store, bundle, roots, live, now, polling: Polling::default(), retention });
+        let polling = Polling::default();
+        let core = Arc::new(Self { store, bundle, roots, live, unstored, now, polling, retention });
         core.apply().await?;
         Ok(core)
     }
@@ -93,7 +96,7 @@ impl Core {
 
     /// Polls the devices the store describes now; called after every settings change.
     pub async fn apply(&self) -> Result<(), StoreError> {
-        self.polling.restart(&self.store, &self.bundle, &self.live).await
+        self.polling.restart(&self.store, &self.bundle, &self.live, &self.unstored).await
     }
 
     /// Stops the device tasks, each storing its open minute, and the retention pass, and closes the store.
@@ -174,10 +177,11 @@ impl Polling {
         store: &Arc<Store>,
         bundle: &Bundle,
         live: &Arc<Live>,
+        unstored: &Arc<Unstored>,
     ) -> Result<(), StoreError> {
         let mut running = self.running.lock().await;
         stop(running.take()).await;
-        *running = Some(spawn_devices(store, bundle, live).await?);
+        *running = Some(spawn_devices(store, bundle, live, unstored).await?);
         Ok(())
     }
 
@@ -193,7 +197,12 @@ async fn stop(running: Option<Running>) {
     while tasks.join_next().await.is_some() {}
 }
 
-async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle, live: &Arc<Live>) -> Result<Running, StoreError> {
+async fn spawn_devices(
+    store: &Arc<Store>,
+    bundle: &Bundle,
+    live: &Arc<Live>,
+    unstored: &Arc<Unstored>,
+) -> Result<Running, StoreError> {
     let interval = poll_interval(store.setting(INTERVAL_KEY).await?.as_deref());
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
     let (stop, stopped) = watch::channel(false);
@@ -204,7 +213,15 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle, live: &Arc<Live>) ->
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
                 polled.push(device.id);
-                let task = DeviceTask::new(Arc::clone(store), Arc::clone(live), device, profile, timeout);
+                let task = DeviceTask {
+                    store: Arc::clone(store),
+                    live: Arc::clone(live),
+                    unstored: Arc::clone(unstored),
+                    poller: DevicePoller::new(profile, device.unit_id),
+                    device,
+                    client: None,
+                    timeout,
+                };
                 tasks.spawn(task.run(interval, stopped.clone()));
             }
             None => log_unknown_profile(&device),
@@ -247,29 +264,18 @@ fn log_unknown_profile(device: &DeviceRow) {
     tracing::error!(device = device.id, profile = %device.profile_id, "unknown profile, device not polled");
 }
 
-/// One device's polling state: its connection, its plan and the minute in progress.
+/// One device's polling state: its connection and its plan; its open minute is in [`Unstored`].
 struct DeviceTask {
     store: Arc<Store>,
     live: Arc<Live>,
     device: DeviceRow,
     poller: DevicePoller,
-    buffer: MinuteBuffer,
+    unstored: Arc<Unstored>,
     client: Option<Client>,
     timeout: Duration,
 }
 
 impl DeviceTask {
-    fn new(
-        store: Arc<Store>,
-        live: Arc<Live>,
-        device: DeviceRow,
-        profile: Arc<Profile>,
-        timeout: Duration,
-    ) -> Self {
-        let poller = DevicePoller::new(profile, device.unit_id);
-        Self { store, live, device, poller, buffer: MinuteBuffer::default(), client: None, timeout }
-    }
-
     /// Polls every `interval` until `stopped` changes, then stores the minute in progress.
     async fn run(mut self, interval: Duration, mut stopped: watch::Receiver<bool>) {
         let mut ticker = tokio::time::interval(interval);
@@ -281,8 +287,8 @@ impl DeviceTask {
                 _ = ticker.tick() => self.tick().await,
             }
         }
-        if let Some(closed) = self.buffer.take() {
-            save(&self.store, self.device.id, &closed).await;
+        if let Some(closed) = self.unstored.newest(self.device.id) {
+            self.save(&closed).await;
         }
     }
 
@@ -296,9 +302,18 @@ impl DeviceTask {
 
     async fn record(&mut self, sample: Sample) {
         self.live.publish(self.device.id, &sample);
-        if let Some(closed) = self.buffer.push(sample) {
-            save(&self.store, self.device.id, &closed).await;
+        if let Some(closed) = self.unstored.push(self.device.id, sample) {
+            self.save(&closed).await;
         }
+    }
+
+    /// Writes `closed`, then lets it go: a failed write loses the minute rather than holding it.
+    async fn save(&self, closed: &ClosedMinute) {
+        let device = self.device.id;
+        if let Err(error) = self.store.append_minute(device, closed).await {
+            tracing::error!(device, minute = closed.minute, %error, "minute not stored");
+        }
+        self.unstored.release(device, closed.minute);
     }
 
     /// The connection is dropped: the next tick dials again.
@@ -322,12 +337,6 @@ impl DeviceTask {
             ),
         };
         self.poller.poll(client).await
-    }
-}
-
-async fn save(store: &Store, device_id: i64, closed: &ClosedMinute) {
-    if let Err(error) = store.append_minute(device_id, closed).await {
-        tracing::error!(device = device_id, minute = closed.minute, %error, "minute not stored");
     }
 }
 
@@ -392,6 +401,15 @@ mod tests {
         }
     }
 
+    /// Yields until `done`, failing after 20 s.
+    async fn until(done: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !done() {
+            assert!(Instant::now() < deadline, "condition not reached");
+            tokio::task::yield_now().await;
+        }
+    }
+
     async fn wait(signal: oneshot::Receiver<()>) {
         signal.await.ok();
     }
@@ -424,6 +442,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_restart_mid_minute_stores_the_held_minute_once_and_holds_only_what_follows() {
+        let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+        let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
+        let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
+        let dir = dir("restart-held");
+        let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "20").await;
+        let core = Core::open(&dir).await.expect("core");
+        wait_for_requests(&sim, 20).await;
+        let held = core.unstored.held(device);
+        assert!(!held.is_empty(), "the poll loop holds what it has not stored");
+
+        core.apply().await.expect("restart");
+
+        let stored_ms: Vec<i64> = core
+            .store
+            .readings(device, 0, i64::MAX)
+            .await
+            .expect("readings")
+            .iter()
+            .map(|s| s.at_ms)
+            .collect();
+        assert!(stored_ms.windows(2).all(|w| w[0] < w[1]), "no sample stored twice: {stored_ms:?}");
+        assert!(
+            held.iter().all(|s| stored_ms.contains(&s.at_ms)),
+            "the held minute is stored at the restart"
+        );
+        let after = core.unstored.held(device);
+        assert!(after.iter().all(|s| !stored_ms.contains(&s.at_ms)), "nothing stored stays held");
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
     async fn an_unreachable_device_stores_nothing_and_does_not_stop_the_core() {
         let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let port = free.local_addr().expect("addr").port();
@@ -434,6 +485,44 @@ mod tests {
             .await
             .expect("run");
         assert_eq!(stored(&dir, device).await, []);
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn a_minute_stays_held_while_its_write_waits_on_the_database() {
+        let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = free.local_addr().expect("addr").port();
+        drop(free);
+        let dir = dir("held-while-writing");
+        let device = seed(&dir, port, "deye-sg05lp3", "20").await;
+        let core = Core::open(&dir).await.expect("core");
+        // Now, so the retention pass started by `open` keeps it.
+        let at_ms = core.now_ms();
+        core.unstored.push(device, Sample { at_ms, values: vec![("pv".into(), 1.0)] });
+        // The pool's one connection, taken: the stopping task's write waits for it.
+        let connection = core.store.hold().await;
+
+        let before = core.unstored.lock_requests();
+        let restarting = Arc::clone(&core);
+        let restart = tokio::spawn(async move { restarting.apply().await });
+        // The stopping task takes its minute, then first yields inside the write.
+        until(|| core.unstored.lock_requests() > before).await;
+        let held: Vec<i64> = core.unstored.held(device).iter().map(|s| s.at_ms).collect();
+        assert_eq!(held, [at_ms], "a minute not yet written stays readable");
+
+        drop(connection);
+        restart.await.expect("join").expect("restart");
+        let stored: Vec<i64> = core
+            .store
+            .readings(device, 0, i64::MAX)
+            .await
+            .expect("readings")
+            .iter()
+            .map(|s| s.at_ms)
+            .collect();
+        assert_eq!(stored, [at_ms]);
+        assert_eq!(core.unstored.held(device), []);
+        core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 
