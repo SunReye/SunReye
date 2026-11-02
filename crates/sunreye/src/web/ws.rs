@@ -28,11 +28,13 @@ pub struct Limits {
     pub idle: Duration,
     /// Open connections at most; an upgrade past it is a 503.
     pub connections: usize,
+    /// Of those, at most this many without a session, so strangers cannot lock out the admin.
+    pub strangers: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { ping: Duration::from_secs(30), idle: Duration::from_secs(120), connections: 64 }
+        Self { ping: Duration::from_secs(30), idle: Duration::from_secs(120), connections: 64, strangers: 48 }
     }
 }
 
@@ -49,8 +51,8 @@ pub async fn upgrade(
 ) -> Response {
     let subscription = core.live.subscribe();
     let kiosk = auth.user.is_none().then(|| core.watch_kiosk());
-    if core.live.connections() > limits.connections {
-        tracing::warn!(cap = limits.connections, "live connection refused at the cap");
+    if core.live.connections() > limits.connections || core.strangers() > limits.strangers {
+        tracing::warn!(stranger = kiosk.is_some(), "live connection refused at the cap");
         return ApiError::unavailable("Too many live connections").into_response();
     }
     upgrade

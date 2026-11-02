@@ -97,6 +97,11 @@ impl Core {
         self.kiosk.subscribe()
     }
 
+    /// Open `/ws` connections without a session: each holds a [`Core::watch_kiosk`].
+    pub fn strangers(&self) -> usize {
+        self.kiosk.receiver_count()
+    }
+
     pub fn now_ms(&self) -> i64 {
         (self.now)()
     }

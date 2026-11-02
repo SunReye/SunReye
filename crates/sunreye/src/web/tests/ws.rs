@@ -186,14 +186,22 @@ async fn switching_the_kiosk_view_off_closes_a_strangers_open_socket_and_keeps_a
 
 /// Pings every 100 ms and closes a connection silent for 300 ms.
 fn quick() -> Config {
-    let live =
-        LiveLimits { ping: Duration::from_millis(100), idle: Duration::from_millis(300), connections: 4 };
+    let live = LiveLimits {
+        ping: Duration::from_millis(100),
+        idle: Duration::from_millis(300),
+        ..LiveLimits::default()
+    };
     Config { live, ..Config::default() }
 }
 
 #[test]
-fn a_connection_is_pinged_every_30_s_closed_after_120_s_silent_and_64_are_served() {
-    let want = LiveLimits { ping: Duration::from_secs(30), idle: Duration::from_secs(120), connections: 64 };
+fn a_connection_is_pinged_every_30_s_closed_after_120_s_silent_and_64_are_served_48_to_strangers() {
+    let want = LiveLimits {
+        ping: Duration::from_secs(30),
+        idle: Duration::from_secs(120),
+        connections: 64,
+        strangers: 48,
+    };
     assert_eq!(Config::default().live, want);
 }
 
@@ -273,6 +281,24 @@ async fn an_upgrade_past_the_connection_cap_is_refused_until_one_closes() {
     let mut third = connect(addr, &admin).await;
     assert_eq!(subscribe(&mut third, r#"["metrics"]"#).await["topic"], "__ack");
     drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn strangers_past_their_cap_are_refused_and_the_rest_stays_for_sessions() {
+    let (core, admin) = open(&dir("ws-strangers")).await;
+    let live = LiveLimits { connections: 3, strangers: 1, ..LiveLimits::default() };
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let stranger = admin.anonymous();
+    let first = connect(addr, &stranger).await;
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    let sessions = [connect(addr, &admin).await, connect(addr, &admin).await];
+    connections(&core, 3).await;
+    drop((first, sessions));
+    connections(&core, 0).await;
+    drop(connect(addr, &stranger).await);
+    drop((stranger, admin));
     core.stop().await;
 }
 
