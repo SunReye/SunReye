@@ -24,7 +24,7 @@
 	let { status }: { status: PeakShavingStatus | null } = $props();
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	type NumKey = keyof typeof nums;
 	type GfNumKey = keyof typeof gfNums;

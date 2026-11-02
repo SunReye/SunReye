@@ -50,11 +50,11 @@ export default defineConfig({
     fs: { allow: ["e2e"] },
     //
     // `changeOrigin: false` (Vite defaults it to true) keeps the browser's own
-    // `Host` on the proxied request. Better Auth trusts a request whose Origin
-    // equals its Host (packages/auth/src/trusted-origins.ts), which is what
+    // `Host` on the proxied request. The core accepts a state change whose Origin
+    // equals its Host (crates/sunreye/src/web/origin.rs), which is what
     // lets `vite dev --host` be opened from a phone on the LAN and still sign
     // in — with the default, Host became `localhost:3000` and every LAN origin
-    // was rejected as "Invalid origin".
+    // was refused.
     //
     // `127.0.0.1`, never `localhost`: the core server binds IPv4 only
     // (`0.0.0.0:3000`), while `localhost` resolves to `::1` first on any host

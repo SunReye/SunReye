@@ -23,7 +23,7 @@
 	} = $props();
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	// Load saved charts once (idempotent).
 	customCharts.start();

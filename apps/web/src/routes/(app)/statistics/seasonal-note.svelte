@@ -10,7 +10,7 @@
 	let { weighting, gaps }: { weighting: 'solar' | 'calendar'; gaps: SeasonalGap[] } = $props();
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	const GAPS: Record<SeasonalGap, { label: () => string; href: '/settings/weather' | '/settings/devices' }> = {
 		weather: { label: m.amortisation_gap_weather, href: '/settings/weather' },

@@ -61,7 +61,7 @@ test.describe("journey: session expiry", () => {
     await expect(page).toHaveURL(/#\/$/);
     await expect(heading(page)).toHaveText("Overview");
     expect(
-      backend.writes.filter((w) => w.path === "/api/auth/sign-in/email").map((w) => w.body),
+      backend.writes.filter((w) => w.path === "/api/auth/login").map((w) => w.body),
     ).toContainEqual(expect.objectContaining({ email: "e2e@example.com" }));
 
     // ── 6. …and back to History, which loads, and stays put this time ───────

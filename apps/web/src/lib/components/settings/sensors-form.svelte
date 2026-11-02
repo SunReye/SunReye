@@ -11,7 +11,7 @@
 	import { useAppSession } from '$lib/session';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	// Translated names for the well-known subsystem groups; anything else falls
 	// back to a title-cased version of the raw group id from the profile.

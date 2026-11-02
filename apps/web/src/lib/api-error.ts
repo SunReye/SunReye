@@ -2,7 +2,7 @@
  * WHAT A FAILED REQUEST SAYS — the one reader for an Eden failure body.
  *
  * The settings forms all report failures the same way: Elysia sends
- * `status(4xx, { error })` and better-auth sends `{ message }`, so the readable
+ * `status(4xx, { error })` and the core sends `{ error }`, so the readable
  * text always sits one level inside `error.value`. `error.value` itself must
  * NEVER be shown — it is an object, and `String(…)` renders it "[object
  * Object]". Measured: a Solarman connection test against a unit id nothing
@@ -23,7 +23,7 @@ function stringField(value: unknown, key: string): string | undefined {
 /**
  * The fields a failure body names its reason in, in the order they are trusted:
  * our own routes' `{ error }` first, then Elysia's validation `summary`, then a
- * serialised Error's `message` (which better-auth also sends).
+ * serialised Error's `message` (which a thrown route error sends).
  */
 const REASON_FIELDS = ["error", "summary", "message"];
 
@@ -55,9 +55,4 @@ export function apiErrorText(value: unknown, fallback: string): string {
   // Covers a plain-text body, which is already its own reason.
   if (typeof value !== "object") return String(value) || fallback;
   return reasonOf(value) ?? serialised(value) ?? fallback;
-}
-
-/** Text of a better-auth `{ message }` payload, else `fallback`. */
-export function apiMessageText(value: unknown, fallback: string): string {
-  return stringField(value, "message") ?? fallback;
 }
