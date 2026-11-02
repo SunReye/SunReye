@@ -28,18 +28,15 @@ const PARAMS: Params = params(COST);
 /// allocator holds one check's blocks however many logins run.
 type Blocks = Vec<Block>;
 
-/// Fills `out` with Argon2id of `password`, sizing `blocks` to `params`.
+/// Fills `out` with `argon2` of `password`, sizing `blocks` to its parameters.
 fn fill(
     blocks: &mut Blocks,
-    params: &Params,
-    algorithm: Algorithm,
-    version: Version,
+    argon2: &Argon2<'_>,
     password: &str,
     salt: &[u8],
     out: &mut [u8],
 ) -> password_hash::Result<()> {
-    blocks.resize(params.block_count(), Block::default());
-    let argon2 = Argon2::new(algorithm, version, params.clone());
+    blocks.resize(argon2.params().block_count(), Block::default());
     Ok(argon2.hash_password_into_with_memory(password.as_bytes(), salt, out, blocks.as_mut_slice())?)
 }
 
@@ -48,10 +45,10 @@ fn hash_with(blocks: &mut Blocks, params: &Params, password: &str) -> Option<Str
     let mut raw = [0; 64];
     let salt_bytes = salt.decode_b64(&mut raw).ok()?;
     let (algorithm, version) = (Algorithm::Argon2id, Version::V0x13);
-    let output = Output::init_with(Params::DEFAULT_OUTPUT_LEN, |out| {
-        fill(blocks, params, algorithm, version, password, salt_bytes, out)
-    })
-    .ok()?;
+    let argon2 = Argon2::new(algorithm, version, params.clone());
+    let output =
+        Output::init_with(Params::DEFAULT_OUTPUT_LEN, |out| fill(blocks, &argon2, password, salt_bytes, out))
+            .ok()?;
     let hash = PasswordHash {
         algorithm: algorithm.ident(),
         version: Some(version.into()),
@@ -72,9 +69,8 @@ fn verify_with(blocks: &mut Blocks, password: &str, hash: &str) -> bool {
     let Ok(version) = hash.version.map_or(Ok(Version::default()), Version::try_from) else { return false };
     let mut raw = [0; 64];
     let Ok(salt) = salt.decode_b64(&mut raw) else { return false };
-    let output = Output::init_with(expected.len(), |out| {
-        fill(blocks, &params, algorithm, version, password, salt, out)
-    });
+    let argon2 = Argon2::new(algorithm, version, params);
+    let output = Output::init_with(expected.len(), |out| fill(blocks, &argon2, password, salt, out));
     // `Output` compares in constant time.
     output.is_ok_and(|output| output == expected)
 }
@@ -202,17 +198,12 @@ mod tests {
         let passwords = Passwords::new();
         let (started, running) = std::sync::mpsc::channel::<()>();
         let (finish, finished) = std::sync::mpsc::channel::<()>();
-        let dropped = {
-            let passwords = passwords.clone();
-            tokio::spawn(async move {
-                passwords
-                    .capped(move |_| {
-                        started.send(()).expect("test waits");
-                        finished.recv().expect("test releases");
-                    })
-                    .await
-            })
+        let hash_until_released = move |_: &mut Blocks| {
+            started.send(()).expect("test waits");
+            finished.recv().expect("test releases");
         };
+        let caller = passwords.clone();
+        let dropped = tokio::spawn(async move { caller.capped(hash_until_released).await });
         tokio::task::spawn_blocking(move || running.recv()).await.expect("join").expect("hash started");
         dropped.abort();
         assert!(dropped.await.expect_err("aborted").is_cancelled());
