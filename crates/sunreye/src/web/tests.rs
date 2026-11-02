@@ -1119,3 +1119,4 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 mod api_keys;
 mod reads;
 mod users;
+mod ws;
