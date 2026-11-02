@@ -11,6 +11,7 @@ mod profile_sources;
 mod setup;
 mod users;
 mod v1;
+mod ws;
 
 use std::sync::Arc;
 
@@ -65,12 +66,14 @@ fn api() -> (Router<Arc<Core>>, Document) {
         .split_for_parts()
 }
 
+/// Any session, user or admin. `/ws` is gated here too, outside the `OpenAPI` document.
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
         .routes(routes!(auth::current, auth::logout))
+        .route("/ws", get(ws::upgrade))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
@@ -91,6 +94,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(profile_sources::list, profile_sources::add))
+        .routes(routes!(profile_sources::import))
 }
 
 fn accounts() -> OpenApiRouter<Arc<Core>> {
@@ -153,6 +157,10 @@ impl ApiError {
 
     pub fn not_found(message: impl Into<String>) -> Self {
         Self { status: StatusCode::NOT_FOUND, message: message.into() }
+    }
+
+    pub fn payload_too_large(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {

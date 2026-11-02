@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 24] = [
+const SERVED: [(&str, &str); 25] = [
     ("get", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys/revoke"),
@@ -448,6 +448,7 @@ const SERVED: [(&str, &str); 24] = [
     ("get", "/api/v1/entities"),
     ("post", "/api/settings/inverter/test"),
     ("post", "/api/settings/profile-sources"),
+    ("post", "/api/settings/profiles/import"),
     ("put", "/api/settings/active-profile"),
     ("put", "/api/settings/inverter"),
 ];
@@ -502,7 +503,8 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 14] = [
+const ADMIN_ROUTES: [(&str, &str); 15] = [
+    ("POST", "/api/settings/profiles/import"),
     ("GET", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profile-sources"),
     ("GET", "/api/profiles"),
@@ -891,6 +893,42 @@ async fn a_device_is_polled_with_a_profile_from_a_source() {
     core.stop().await;
 }
 
+/// A profile that reads nothing, so a device polled with it sends no request.
+fn idle(id: &str) -> crate::sources::Installed {
+    let profile =
+        json!({"id": id, "name": "Idle", "manufacturer": "Acme", "version": "1.0.0", "metrics": []});
+    crate::sources::Installed::validate(profile.to_string()).expect("valid")
+}
+
+/// Polls `sim` with the profile `id`, which must already be stored.
+async fn poll_with(app: &Api, sim: &Simulator, id: &str) {
+    put(app, "/api/settings/active-profile", &json!({"id": id})).await;
+    let saved = put(app, "/api/settings/inverter", &connection(sim.addr.port())).await;
+    assert_eq!(saved.status, StatusCode::OK);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(sim.requests().is_empty(), "the stored definition reads nothing");
+}
+
+#[tokio::test]
+async fn a_re_added_source_replaces_the_definition_the_running_poll_uses() {
+    let (sim, _) = simulator().await;
+    let ca = Ca::new("test root");
+    let port = serve_repo(&ca, &[third_party("acme-hybrid", PROFILE)]).await;
+    let (core, app) = open_trusting(&dir("source-replace"), &ca).await;
+    let source = crate::sources::Source {
+        base_url: format!("https://localhost:{port}/repo/"),
+        index_path: "index.json".into(),
+    };
+    crate::sources::save_source(&core.store, &source, &[idle("acme-hybrid")]).await.expect("save");
+    poll_with(&app, &sim, "acme-hybrid").await;
+
+    let added = post(&app, "/api/settings/profile-sources", &source_body(port)).await;
+    assert_eq!(added.status, StatusCode::OK, "{:?}", added.json());
+    wait_until_polled(&sim).await;
+    drop(app);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn a_source_profile_with_a_compiled_in_id_or_a_broken_file_is_reported_and_skipped() {
     let ca = Ca::new("test root");
@@ -946,6 +984,120 @@ async fn a_source_that_cannot_be_used_is_a_400_naming_why_and_stores_nothing() {
     core.stop().await;
 }
 
+async fn import(app: &Api, profile: &Value) -> Answer {
+    send(app, Method::POST, "/api/settings/profiles/import", Some(&profile.to_string())).await
+}
+
+#[tokio::test]
+async fn an_imported_profile_is_listed_beside_the_compiled_in_set_and_survives_a_restart() {
+    let dir = dir("import-restart");
+    let (core, app) = open(&dir).await;
+    let (_, profile) = third_party("acme-hybrid", PROFILE);
+    let imported = import(&app, &profile).await;
+    assert_eq!(imported.status, StatusCode::OK, "{:?}", imported.json());
+    assert_eq!(imported.json(), json!({"id": "acme-hybrid"}));
+    let builtin = core.bundle.profiles.len();
+    drop(app);
+    core.stop().await;
+
+    let (core, app) = open(&dir).await;
+    let profiles = get(&app, "/api/profiles").await.json();
+    let profiles = profiles.as_array().expect("array");
+    assert_eq!(profiles.len(), builtin + 1);
+    let listed = profiles.iter().find(|p| p["id"] == "acme-hybrid").expect("listed");
+    assert_eq!((listed["installed"].clone(), listed["builtin"].clone()), (json!(true), json!(false)));
+    assert_eq!(get(&app, "/api/settings/profile-sources").await.json(), json!([]), "an import is no source");
+    drop(app);
+    core.stop().await;
+    drop(std::fs::remove_dir_all(&dir));
+}
+
+#[tokio::test]
+async fn importing_again_replaces_the_definition_the_running_poll_uses() {
+    let (sim, _) = simulator().await;
+    let (core, app) = open(&dir("import-replace")).await;
+    crate::sources::import_profile(&core.store, &idle("acme-hybrid")).await.expect("import");
+    poll_with(&app, &sim, "acme-hybrid").await;
+
+    let (_, profile) = third_party("acme-hybrid", PROFILE);
+    assert_eq!(import(&app, &profile).await.status, StatusCode::OK);
+    wait_until_polled(&sim).await;
+    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "an import only supplies reads");
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_invalid_import_is_a_400_naming_the_field_and_stores_nothing() {
+    let (core, app) = open(&dir("import-invalid")).await;
+    let (_, mut profile) = third_party("acme-hybrid", PROFILE);
+    profile["metrics"][1]["scale"] = json!("SECRET-VALUE");
+    let answer = import(&app, &profile).await;
+    assert_eq!(answer.status, StatusCode::BAD_REQUEST);
+    let error = answer.json()["error"].as_str().expect("message").to_owned();
+    assert!(error.starts_with("metrics[1].scale: "), "{error}");
+    assert!(!error.contains("SECRET-VALUE"), "{error}");
+
+    let (_, mut profile) = third_party("acme-hybrid", PROFILE);
+    profile.as_object_mut().expect("object").remove("manufacturer");
+    let answer = import(&app, &profile).await;
+    assert_eq!(answer.status, StatusCode::BAD_REQUEST);
+    assert!(answer.json()["error"].as_str().expect("message").contains("manufacturer"));
+
+    let not_json = send(&app, Method::POST, "/api/settings/profiles/import", Some("<html>")).await;
+    assert_eq!(not_json.status, StatusCode::BAD_REQUEST);
+    assert!(not_json.json()["error"].as_str().expect("message").starts_with("not JSON: "));
+
+    let profiles = get(&app, "/api/profiles").await.json();
+    assert_eq!(profiles.as_array().map(Vec::len), Some(core.bundle.profiles.len()));
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_import_with_a_compiled_in_id_is_refused() {
+    let (core, app) = open(&dir("import-clash")).await;
+    let mut profile = official_files().into_iter().find(|(id, _)| id == PROFILE).expect("official").1;
+    profile["name"] = json!("impostor");
+    let answer = import(&app, &profile).await;
+    assert_eq!(answer.status, StatusCode::BAD_REQUEST);
+    assert_eq!(answer.json(), json!({"error": "the id belongs to a compiled-in profile"}));
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_oversized_import_is_a_413_and_stores_nothing() {
+    let (core, app) = open(&dir("import-large")).await;
+    let (_, mut profile) = third_party("acme-hybrid", PROFILE);
+    let limit = crate::sources::REQUEST_LIMITS.max_bytes;
+    profile["padding"] = json!("x".repeat(limit));
+    let answer = import(&app, &profile).await;
+    assert_eq!(answer.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(answer.json(), json!({"error": format!("a profile file is at most {limit} bytes")}));
+    let profiles = get(&app, "/api/profiles").await.json();
+    assert_eq!(profiles.as_array().map(Vec::len), Some(core.bundle.profiles.len()));
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_profile_file_of_exactly_the_limit_is_stored_and_one_byte_more_is_a_413() {
+    let (core, app) = open(&dir("import-boundary")).await;
+    let limit = crate::sources::REQUEST_LIMITS.max_bytes;
+    let (_, mut profile) = third_party("acme-hybrid", PROFILE);
+    profile["padding"] = json!("");
+    let bare = profile.to_string().len();
+    profile["padding"] = json!("x".repeat(limit - bare));
+    let at_limit = import(&app, &profile).await;
+    assert_eq!(at_limit.status, StatusCode::OK, "{:?}", at_limit.json());
+    profile["padding"] = json!("x".repeat(limit - bare + 1));
+    assert_eq!(profile.to_string().len(), limit + 1);
+    assert_eq!(import(&app, &profile).await.status, StatusCode::PAYLOAD_TOO_LARGE);
+    drop(app);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
     let (core, app) = open(&dir("source-clash")).await;
@@ -967,3 +1119,4 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 mod api_keys;
 mod reads;
 mod users;
+mod ws;
