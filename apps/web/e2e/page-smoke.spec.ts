@@ -13,8 +13,7 @@
  * error, and the suite stayed green.
  *
  * So this is a census in a browser: checked against a disk scan, one boot, every
- * route walked by hash, and four assertions each. Each route is named in its own
- * failure, and the walk reports every broken route rather than the first.
+ * route walked by hash, and four assertions each.
  *
  *  1. the shell `<h1>` reads what the route's `setPageHeader` says it should
  *  2. a KEY SURFACE — one locator that only exists once the route's own
@@ -28,9 +27,8 @@
  *
  * ## Adding a page
  *
- * A new `+page.svelte` fails the sweep before it opens a browser page (uncovered
- * by smoke), which forces someone to name a mock state and a surface worth
- * asserting.
+ * A new `+page.svelte` fails the sweep (uncovered by smoke), which forces someone
+ * to name a mock state and a surface worth asserting.
  *
  * ## First run, before the mock was extended (recorded on purpose)
  *
@@ -122,11 +120,7 @@ import {
   powerFlowReadouts,
 } from "./support/open-page";
 
-/**
- * Point the router at a hash URL without reloading. Assigning `location.hash`
- * makes SvelteKit's hash router reload the whole document; a clicked link goes
- * through its own navigation.
- */
+// A clicked link navigates in-app; assigning `location.hash` reloads the document.
 const goToHash = (page: Page, url: string) =>
   page.evaluate(
     (href) => {
@@ -166,11 +160,7 @@ type SmokeRoute = {
    * Runs after the h1 assertion and before the console/unhandled pair.
    */
   surface: (page: Page, opened: OpenedPage) => Promise<void>;
-  /**
-   * Leave the route by something other than a link, when the document cannot
-   * be pointed at the next route directly. Runs after the NEXT route's `open`
-   * deltas are in place, so the app reads the state that route needs.
-   */
+  /** Leave by the app's own way out when a hash change cannot (one-way routes). */
   exit?: (page: Page, opened: OpenedPage) => Promise<void>;
 };
 
@@ -218,11 +208,8 @@ const picker = (page: Page, label: string) =>
 
 const ROUTES: readonly SmokeRoute[] = [
   {
-    // Migration onboarding. Reachable ONLY on an instance with an unconfirmed 1.x
-    // migration — its own gate bounces it to /#/ otherwise, which is why the
-    // status has to be overridden here rather than defaulted. FIRST in the table:
-    // the shell reads the migration status once per session, so this route has to
-    // be the one the document boots on, and confirming is the only way out of it.
+    // Reachable ONLY with an unconfirmed 1.x migration, so the status is overridden.
+    // FIRST: the shell reads migration status once per boot, and confirming is the only way out.
     file: "migration/+page.svelte",
     open: {
       live: false,
@@ -246,8 +233,6 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(page.getByText("my-plant/inverter")).toBeVisible();
       await expect(page.getByRole("button", { name: "Confirm and continue" })).toBeVisible();
     },
-    // The app's own way out: the names are confirmed against a status that no
-    // longer asks for it, and the shell lands on `/`.
     exit: async (page, opened) => {
       await page.getByRole("button", { name: "Confirm and continue" }).click();
       await expect(page).toHaveURL(/\/#\/$/);
@@ -614,9 +599,7 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(page.getByRole("button", { name: "Select", exact: true }).first()).toBeVisible();
     },
   },
-  // The logged-out routes go LAST: the shell keeps the session it first read
-  // across in-app navigation, so a signed-out route ahead of an admin one makes
-  // that one render as the visitor.
+  // Logged-out routes LAST: the shell keeps the session it first read, so they would turn later routes into the visitor.
   {
     file: "login/+page.svelte",
     // Outside `(app)`: its own AuthShell h1, no shell, no gate, no socket.
@@ -644,14 +627,8 @@ const ROUTES: readonly SmokeRoute[] = [
   },
 ];
 
-// One document, one boot, every route by hash. A route's `open` deltas that
-// change what the SHELL is told (`role`, `needsSetup`, `needsProfile`,
-// `migration`, `publicDashboard`) are applied to the live backend before the
-// hash changes, so the gates see the state this route needs. Every failure is
-// prefixed with its URL: the sweep reports each broken route, not the first.
+// One boot, every route by hash; each failure is prefixed with its URL so every broken route is named.
 test("every route renders its key surface", async ({ page }) => {
-  test.setTimeout(240_000);
-
   // The point of scanning disk instead of listing files: a route added without
   // a smoke case lands here, not in an incident.
   expect(discoverPageFiles(), "src/routes pages without a smoke case").toEqual(

@@ -226,6 +226,8 @@ export interface RecordedWrite {
   body: unknown;
 }
 
+type GateKey = "role" | "publicDashboard" | "needsSetup" | "needsProfile" | "migration";
+
 export interface MockBackend {
   /** The manifest this instance serves. */
   readonly manifest: FixtureManifest;
@@ -294,16 +296,9 @@ export interface MockBackend {
    * does on the real server.
    */
   expireSession(): void;
-  /**
-   * Swap the answers the shell's gates read — session, first-run, profile,
-   * migration, public dashboard — without reloading, so one document can walk
-   * routes that need different states. Replaces all five: a key left out goes
-   * back to its default, not to the previous route's value.
-   */
+  /** Replace the five gate answers without reloading; omitted keys revert to default. */
   setGate(gate: Pick<BackendOptions, GateKey>): void;
 }
-
-type GateKey = "role" | "publicDashboard" | "needsSetup" | "needsProfile" | "migration";
 
 /** Deterministic PRNG — a perf number that moves because of the fixture is noise. */
 function lcg(seed: number): () => number {
