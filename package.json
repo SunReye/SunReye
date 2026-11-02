@@ -63,6 +63,7 @@
     "e2e": "bun run --cwd apps/web e2e",
     "e2e:install": "bun run --cwd apps/web e2e:install",
     "e2e:types": "bun run --cwd apps/web e2e:types",
+    "e2e:core": "bun run --cwd apps/web e2e:core",
     "coverage:badge": "bun run scripts/coverage-badge.mjs coverage/lcov.info coverage/coverage.svg",
     "check": "oxlint && oxfmt --write",
     "sync:beta-addon": "node scripts/sync-beta-addon.mjs",
