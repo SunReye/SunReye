@@ -85,7 +85,8 @@ async fn warn_if_sign_up_is_exposed(core: &Core, listener: &TcpListener) {
     }
     tracing::warn!(
         %listen,
-        "listen address is not loopback and sign-up is open: anyone who reaches it first becomes the admin"
+        "listen address is not loopback and sign-up is open: anyone who reaches it first becomes the admin; \
+         sign up the admin now, or restart with --listen 127.0.0.1:<port>"
     );
 }
 
