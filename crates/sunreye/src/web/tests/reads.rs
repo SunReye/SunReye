@@ -1,6 +1,7 @@
 //! The two reads the live dashboard makes on first paint: the profile manifest and the recent window.
 
 use super::*;
+use crate::samples::{MINUTE_MS, Sample, minute_of};
 use crate::store::{NewConnection, NewDevice};
 
 /// 2026-03-01T00:02:30Z: the window of 300 s opens at 23:57:30 the day before.
@@ -27,7 +28,7 @@ fn fixed_clock() -> i64 {
 }
 
 /// A core whose clock stands at [`NOW`], with one stored device and its readings.
-async fn clocked(name: &str, minutes: &[(i64, Vec<crate::samples::Sample>)]) -> (Arc<Core>, Api) {
+async fn clocked(name: &str, minutes: &[(i64, Vec<Sample>)]) -> (Arc<Core>, Api) {
     let core = Core::open_at(&dir(name), fixed_clock).await.expect("core");
     let connection = NewConnection {
         transport: crate::modbus::Transport::Tcp,
@@ -45,9 +46,13 @@ async fn clocked(name: &str, minutes: &[(i64, Vec<crate::samples::Sample>)]) -> 
     signed_in(core, &Config::default()).await
 }
 
-fn reading(at_ms: i64, key: &str, value: f64) -> (i64, Vec<crate::samples::Sample>) {
-    let sample = crate::samples::Sample { at_ms, values: vec![(key.to_owned(), value)] };
-    (crate::samples::minute_of(at_ms), vec![sample])
+fn pv(at_ms: i64, value: f64) -> Sample {
+    Sample { at_ms, values: vec![("pv".to_owned(), value)] }
+}
+
+fn reading(at_ms: i64, key: &str, value: f64) -> (i64, Vec<Sample>) {
+    let sample = Sample { at_ms, values: vec![(key.to_owned(), value)] };
+    (minute_of(at_ms), vec![sample])
 }
 
 #[tokio::test]
@@ -201,7 +206,7 @@ async fn a_window_across_midnight_answers_one_run_of_offsets() {
         reading(NOW, "pv", -50.0),
         reading(NOW - 90_000, "load", 0.0),
     ];
-    let mut minutes: Vec<(i64, Vec<crate::samples::Sample>)> = Vec::new();
+    let mut minutes: Vec<(i64, Vec<Sample>)> = Vec::new();
     for (minute, samples) in readings {
         match minutes.iter_mut().find(|(m, _)| *m == minute) {
             Some((_, held)) => held.extend(samples),
@@ -231,6 +236,62 @@ async fn a_window_across_midnight_answers_one_run_of_offsets() {
         "each metric opens the window with the newest reading before it"
     );
     drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn the_open_minute_is_served_before_it_is_stored() {
+    let minute_start = minute_of(NOW) * MINUTE_MS;
+    let (core, admin) = clocked("recent-open", &[reading(minute_start - 5_000, "pv", 1.0)]).await;
+    let device = core.store.devices().await.expect("devices")[0].id;
+    for (at_ms, value) in [(minute_start + 2_000, 2.0), (NOW - 1_000, 3.0)] {
+        assert!(core.unstored.push(device, pv(at_ms, value)).is_none());
+    }
+    let answer = get(&admin, "/api/history/recent?seconds=60&stepSeconds=1").await;
+    assert_eq!(
+        answer.json(),
+        json!({
+            "t0": NOW - 35_000, "step": 1,
+            "metrics": {"pv": {"o": [0, 7, 34], "v": [1.0, 2.0, 3.0]}}
+        }),
+        "the minute the poll loop holds answers beside the stored one"
+    );
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+#[expect(clippy::await_holding_lock, reason = "the held lock stops the read between its two steps")]
+async fn a_minute_written_and_released_while_the_window_is_read_is_served() {
+    let minute_start = minute_of(NOW) * MINUTE_MS;
+    let (core, admin) = clocked("recent-race", &[]).await;
+    let device = core.store.devices().await.expect("devices")[0].id;
+    assert!(core.unstored.push(device, pv(minute_start - 5_000, 1.0)).is_none());
+    let closed = core.unstored.push(device, pv(NOW - 1_000, 3.0)).expect("a closed minute");
+
+    let mut held = core.unstored.locked();
+    let before = core.unstored.lock_requests();
+    // Its own thread blocks on the held lock while the test writes; worker threads hand back the store's
+    // connection the read let go of.
+    let request = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime");
+        runtime.block_on(get(&admin, "/api/history/recent?seconds=60&stepSeconds=1"))
+    });
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while core.unstored.lock_requests() == before {
+        assert!(Instant::now() < deadline, "the request never asked for the held readings");
+        tokio::task::yield_now().await;
+    }
+    core.store.append_minute(device, &closed).await.expect("append");
+    held.get_mut(&device).expect("held").retain(|s| minute_of(s.at_ms) != closed.minute);
+    drop(held);
+
+    // Joined off this thread, so it can hand the store's connection back meanwhile.
+    assert_eq!(
+        tokio::task::spawn_blocking(|| request.join()).await.expect("join").expect("request").json(),
+        json!({"t0": NOW - 35_000, "step": 1, "metrics": {"pv": {"o": [0, 34], "v": [1.0, 3.0]}}}),
+        "the closed minute is in the store or the held readings, never neither"
+    );
     core.stop().await;
 }
 
