@@ -4,6 +4,7 @@ import { navItemIds } from "./nav-items";
 describe("navItemIds", () => {
   const base = {
     isAdmin: false,
+    offers: () => true,
     controlCount: 0,
     automationsEnabled: false,
   } as const;
@@ -37,12 +38,24 @@ describe("navItemIds", () => {
   });
 
   test("order is stable: automations last, after controls", () => {
-    expect(navItemIds({ isAdmin: true, controlCount: 2, automationsEnabled: true })).toEqual([
-      "overview",
-      "history",
-      "statistics",
-      "controls",
-      "automations",
-    ]);
+    expect(
+      navItemIds({ ...base, isAdmin: true, controlCount: 2, automationsEnabled: true }),
+    ).toEqual(["overview", "history", "statistics", "controls", "automations"]);
+  });
+
+  test("an area the engine does not serve is offered to nobody", () => {
+    const everything = { isAdmin: true, controlCount: 2, automationsEnabled: true };
+    const without = (area: string) => navItemIds({ ...everything, offers: (a) => a !== area });
+    expect(without("history")).not.toContain("history");
+    expect(without("statistics")).not.toContain("statistics");
+    expect(without("controls")).not.toContain("controls");
+    expect(without("automations")).not.toContain("automations");
+    expect(without("history")).toContain("statistics");
+  });
+
+  test("an engine serving no area still leaves the overview", () => {
+    expect(
+      navItemIds({ isAdmin: true, offers: () => false, controlCount: 2, automationsEnabled: true }),
+    ).toEqual(["overview"]);
   });
 });

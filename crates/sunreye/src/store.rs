@@ -46,10 +46,19 @@ pub struct NewDevice {
     pub unit_id: u8,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionRow {
+    pub id: i64,
+    pub transport: String,
+    pub host: String,
+    pub port: u16,
+}
+
 /// A device with the connection it is reached through.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceRow {
     pub id: i64,
+    pub connection_id: i64,
     pub profile_id: String,
     pub unit_id: u8,
     pub transport: Transport,
@@ -58,12 +67,12 @@ pub struct DeviceRow {
 }
 
 /// Applies `migrator` with foreign keys off. A migration runs in a transaction, where the pragma cannot
-/// change, and rebuilding a parent table with keys on cascades its delete into the children.
+/// change, and rebuilding a parent table with keys on cascades its delete into the children. `pool`
+/// holds one connection, so the pragma set here is the one the migration runs on.
 async fn migrate(pool: &SqlitePool, migrator: &Migrator) -> Result<(), StoreError> {
-    let mut conn = pool.acquire().await?;
-    conn.execute("PRAGMA foreign_keys = OFF").await?;
-    let migrated = migrator.run(&mut *conn).await;
-    conn.execute("PRAGMA foreign_keys = ON").await?;
+    sqlx::query("PRAGMA foreign_keys = OFF").execute(pool).await?;
+    let migrated = migrator.run(pool).await;
+    sqlx::query("PRAGMA foreign_keys = ON").execute(pool).await?;
     Ok(migrated?)
 }
 
@@ -85,7 +94,7 @@ impl Store {
     }
 
     #[cfg(test)]
-    async fn in_memory() -> Result<Self, StoreError> {
+    pub(crate) async fn in_memory() -> Result<Self, StoreError> {
         Self::connect(SqliteConnectOptions::new().in_memory(true)).await
     }
 
@@ -136,6 +145,59 @@ impl Store {
         Ok(row.id)
     }
 
+    /// The one connection of this core: the oldest row.
+    pub async fn connection(&self) -> Result<Option<ConnectionRow>, StoreError> {
+        let row =
+            sqlx::query!(r#"SELECT id AS "id!", transport, host, port FROM connection ORDER BY id LIMIT 1"#)
+                .fetch_optional(&self.pool)
+                .await?;
+        row.map(|row| {
+            Ok(ConnectionRow {
+                id: row.id,
+                transport: row.transport,
+                host: row.host,
+                port: u16::try_from(row.port).map_err(|_| StoreError::Corrupt("port"))?,
+            })
+        })
+        .transpose()
+    }
+
+    /// Edits the core's connection in place, so its device stays attached; adds it when there is none.
+    pub async fn save_connection(&self, connection: &NewConnection) -> Result<i64, StoreError> {
+        let Some(existing) = self.connection().await? else {
+            return self.add_connection(connection).await;
+        };
+        let transport = connection.transport.as_str();
+        sqlx::query!(
+            "UPDATE connection SET transport = ?, host = ?, port = ? WHERE id = ?",
+            transport,
+            connection.host,
+            connection.port,
+            existing.id
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(existing.id)
+    }
+
+    /// Edits the device on the connection in place, so its stored readings stay its own; adds it when
+    /// the connection has none.
+    pub async fn save_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
+        let devices = self.devices().await?;
+        let Some(existing) = devices.iter().find(|d| d.connection_id == device.connection_id) else {
+            return self.add_device(device).await;
+        };
+        sqlx::query!(
+            "UPDATE device SET profile_id = ?, unit_id = ? WHERE id = ?",
+            device.profile_id,
+            device.unit_id,
+            existing.id
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(existing.id)
+    }
+
     pub async fn add_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
         let row = sqlx::query!(
             r#"INSERT INTO device (connection_id, profile_id, unit_id) VALUES (?, ?, ?) RETURNING id AS "id!""#,
@@ -150,8 +212,8 @@ impl Store {
 
     pub async fn devices(&self) -> Result<Vec<DeviceRow>, StoreError> {
         let rows = sqlx::query!(
-            r#"SELECT device.id AS "id!", device.profile_id, device.unit_id, connection.transport, connection.host,
-                      connection.port
+            r#"SELECT device.id AS "id!", device.connection_id, device.profile_id, device.unit_id,
+                      connection.transport, connection.host, connection.port
                FROM device JOIN connection ON connection.id = device.connection_id
                ORDER BY device.id"#
         )
@@ -161,6 +223,7 @@ impl Store {
             .map(|row| {
                 Ok(DeviceRow {
                     id: row.id,
+                    connection_id: row.connection_id,
                     profile_id: row.profile_id,
                     unit_id: u8::try_from(row.unit_id).map_err(|_| StoreError::Corrupt("unit id"))?,
                     transport: row.transport.parse()?,
@@ -322,6 +385,58 @@ mod tests {
         store.set_setting("poll.interval_ms", "1000").await.expect("set");
         assert_eq!(store.setting("poll.interval_ms").await.expect("get").as_deref(), Some("1000"));
         assert_eq!(store.setting("other").await.expect("get"), None);
+    }
+
+    #[tokio::test]
+    async fn no_connection_reads_as_none_and_a_saved_one_reads_back() {
+        let store = Store::in_memory().await.expect("store");
+        assert_eq!(store.connection().await.expect("connection"), None);
+        let id = store
+            .save_connection(&NewConnection { transport: Transport::Tcp, host: "10.0.0.5".into(), port: 502 })
+            .await
+            .expect("save");
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!(
+            (row.id, row.transport.as_str(), row.host.as_str(), row.port),
+            (id, "tcp", "10.0.0.5", 502)
+        );
+    }
+
+    #[tokio::test]
+    async fn saving_a_connection_again_edits_it_in_place() {
+        let (store, device) = with_device().await;
+        let first = store.connection().await.expect("connection").expect("a row").id;
+        let second = NewConnection { transport: Transport::Tcp, host: "gateway".into(), port: 1502 };
+        assert_eq!(store.save_connection(&second).await.expect("save"), first);
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!((row.host.as_str(), row.port), ("gateway", 1502));
+        let devices = store.devices().await.expect("devices");
+        assert_eq!(devices.len(), 1, "the device stays on the same connection");
+        assert_eq!((devices[0].id, devices[0].host.as_str()), (device, "gateway"));
+    }
+
+    #[tokio::test]
+    async fn a_connection_the_schema_refuses_is_an_error() {
+        let store = Store::in_memory().await.expect("store");
+        let bad = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 0 };
+        assert!(store.save_connection(&bad).await.is_err());
+        assert_eq!(store.connection().await.expect("connection"), None);
+    }
+
+    #[tokio::test]
+    async fn saving_a_device_edits_the_connections_device_or_adds_the_first() {
+        let store = Store::in_memory().await.expect("store");
+        let connection = store
+            .save_connection(&NewConnection { transport: Transport::Tcp, host: "h".into(), port: 502 })
+            .await
+            .expect("connection");
+        let first = NewDevice { connection_id: connection, profile_id: "deye-sg01hp3".into(), unit_id: 1 };
+        let id = store.save_device(&first).await.expect("device");
+        let second = NewDevice { connection_id: connection, profile_id: "deye-sg05lp3".into(), unit_id: 7 };
+        assert_eq!(store.save_device(&second).await.expect("device"), id);
+        let devices = store.devices().await.expect("devices");
+        let seen: Vec<_> = devices.iter().map(|d| (d.id, d.profile_id.as_str(), d.unit_id)).collect();
+        assert_eq!(seen, [(id, "deye-sg05lp3", 7)]);
     }
 
     #[tokio::test]

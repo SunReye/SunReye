@@ -3,6 +3,7 @@
 	import Plus from 'phosphor-svelte/lib/Plus';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { scale } from 'svelte/transition';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import Section from '$lib/components/layout/section.svelte';
@@ -61,24 +62,25 @@
 <Section title={m.setup_select_profile()}>
 	<GroupedProfileList {profiles} row={profileRow} emptyLabel={m.setup_no_profiles()} />
 
-	<Collapsible.Root bind:open={showSources}>
-		<div class="flex flex-col gap-3 border border-dashed border-border p-4">
-			<div class="flex flex-col gap-1">
-				<p class="text-sm font-medium">{m.setup_no_inverter_q()}</p>
-				<p class="text-xs text-muted-foreground">{m.setup_download_more()}</p>
+	{#if coreCapabilities.has('profileSources')}
+		<Collapsible.Root bind:open={showSources}>
+			<div class="flex flex-col gap-3 border border-dashed border-border p-4">
+				<div class="flex flex-col gap-1">
+					<p class="text-sm font-medium">{m.setup_no_inverter_q()}</p>
+					<p class="text-xs text-muted-foreground">{m.setup_download_more()}</p>
+				</div>
+				<Collapsible.Trigger>
+					{#snippet child({ props })}
+						<Button variant="outline" size="sm" class="w-full sm:w-auto" {...props}>
+							<Plus class="size-4" />
+							{sourcesLabel}
+						</Button>
+					{/snippet}
+				</Collapsible.Trigger>
 			</div>
-			<Collapsible.Trigger>
-				{#snippet child({ props })}
-					<Button variant="outline" size="sm" class="w-full sm:w-auto" {...props}>
-						<Plus class="size-4" />
-						{sourcesLabel}
-					</Button>
-				{/snippet}
-			</Collapsible.Trigger>
-		</div>
-		<Collapsible.Content class="mt-4">
-			<ExternalProfilesManager onInstalled={onExternalInstalled} />
-		</Collapsible.Content>
-	</Collapsible.Root>
-
+			<Collapsible.Content class="mt-4">
+				<ExternalProfilesManager onInstalled={onExternalInstalled} />
+			</Collapsible.Content>
+		</Collapsible.Root>
+	{/if}
 </Section>

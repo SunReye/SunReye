@@ -26,6 +26,7 @@ fn data_dir(name: &str) -> PathBuf {
 
 fn start(dir: &Path) -> Child {
     Command::new(BIN)
+        .args(["--listen", "127.0.0.1:0"])
         .arg("--data-dir")
         .arg(dir)
         .args(["--log-level", "warn"])

@@ -48,7 +48,7 @@ impl FromStr for Transport {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown transport {0:?}")]
-pub struct UnknownTransport(String);
+pub struct UnknownTransport(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {

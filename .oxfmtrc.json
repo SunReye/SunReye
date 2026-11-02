@@ -5,6 +5,7 @@
     "**/*.json",
     "**/*.jsonc",
     "bunfig.toml",
+    "**/*.gen.ts",
     ".agents/skills/**"
   ]
 }

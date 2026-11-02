@@ -4,6 +4,7 @@
     "apps/server/db-tests/**",
     "apps/web/e2e/**",
     "apps/web/playwright.config.ts",
+    "apps/web/src/lib/core-api.gen.ts",
     "apps/web/src/lib/components/ui/**",
     "apps/web/src/lib/hooks/**",
     "apps/web/src/lib/utils.ts",
@@ -94,6 +95,12 @@
     },
     {
       "file": "packages/profile-sdk/tsdown.config.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "apps/web/scripts/gen-core-api.ts",
       "exports": [
         "*"
       ]
