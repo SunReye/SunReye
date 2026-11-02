@@ -16,21 +16,19 @@
  */
 
 import { readFileSync } from "node:fs";
+import { isSourceFile } from "./require-tests";
 
 /**
  * The ratchet, read from lcov — the same LF/LH the coverage badge reports, which
  * runs a little below bun's own summary column because the two count executable
- * lines differently. Measured 100.00 % lines / 99.59 % functions when the suite
- * was taken to full coverage. The floor sits about a point under that — enough
- * that a bun version counting executable lines slightly differently cannot turn
- * a good change red, not enough to absorb a dropped test suite. Raise it as
- * coverage climbs.
+ * lines differently. Measured 99.1705 % lines / 98.3340 % functions once every
+ * tracked source either appears in the report or is named in {@link COVERAGE_EXEMPT};
+ * the floor is that, truncated to two decimals. Raise it as coverage climbs.
  *
- * At this height the ratchet's job changes: it is no longer chasing a number,
- * it is keeping new code from landing unproven. A file that arrives without its
- * test now moves the needle enough to fail here.
+ * Before that, the report left out any source no test loaded, so deleting a
+ * source's only test raised the percentage instead of lowering it.
  */
-export const FLOOR = { line: 0.99, function: 0.98 } as const;
+export const FLOOR = { line: 0.9917, function: 0.9833 } as const;
 
 /**
  * The Rust ratchet. Measured 95.6 % lines / 100 % functions on the first crate; the one
@@ -47,9 +45,149 @@ export type Totals = {
 
 export type Floor = { line: number; function: number };
 
+/**
+ * Sources `test:coverage` measures: the src trees of apps and packages, and scripts; `.ts` only.
+ * The lcov report lists only files some test LOADS, so a source whose last test is deleted drops out
+ * of the total and the percentage rises. This is the other half of the ratchet.
+ */
+const MEASURED = [/^apps\/[^/]+\/src\//, /^packages\/[^/]+\/src\//, /^scripts\//];
+
+/**
+ * Sources that no `bun test` run can load, or that hold no behaviour of their own. Layered on the
+ * TDD gate's `isSourceFile` (type modules, barrels, declarations), which stays the one list for what
+ * "cannot hold a branch" means. Each entry names the layer that proves the file instead; extend it
+ * only with a reason, never to get a change through. An exempt file that IS loaded still counts.
+ */
+export const COVERAGE_EXEMPT: ReadonlyArray<
+  { reason: string } & ({ pattern: RegExp } | { paths: readonly string[] })
+> = [
+  {
+    pattern: /\.svelte\.ts$/,
+    reason: "rune module: runes compile only under the Svelte compiler, so bun test cannot load it",
+  },
+  { pattern: /\.gen\.ts$/, reason: "generated code" },
+  {
+    pattern: /^apps\/server\/src\/routes\/[^/]+\.ts$/,
+    reason: "route handler: only test:routes executes one",
+  },
+  {
+    reason:
+      "types, constant tables and context keys: no branch to prove, and the cachedSetting bindings delegate to the accessor app-settings.test.ts covers",
+    paths: [
+      "apps/server/src/settings/chart-palette-settings.ts",
+      "apps/server/src/settings/evcc-settings.ts",
+      "apps/server/src/settings/investment-settings.ts",
+      "apps/server/src/settings/migration-notice-settings.ts",
+      "apps/server/src/settings/statistics-prefs-settings.ts",
+      "apps/server/src/settings/ui-prefs-settings.ts",
+      "apps/web/src/lib/automations.ts",
+      "apps/web/src/lib/charts/fullscreen-context.ts",
+      "apps/web/src/lib/components/automations/price-regime.ts",
+      "apps/web/src/lib/components/automations/run-state.ts",
+      "apps/web/src/lib/components/settings/inverter-types.ts",
+      "apps/web/src/lib/components/settings/log-levels.ts",
+      "apps/web/src/lib/components/settings/profile-types.ts",
+      "apps/web/src/lib/components/ui/chart/chart-house-style.ts",
+      "apps/web/src/lib/components/ui/sidebar/constants.ts",
+      "apps/web/src/lib/statistics/sections.ts",
+      "apps/web/src/lib/tariff/draft.ts",
+      "apps/web/src/routes/(app)/settings/status-context.ts",
+      "packages/env/src/web.ts",
+    ],
+  },
+  {
+    reason:
+      "imports $app, $env, the Eden client, the Astro or Vitest runtime, or a vendored UI helper: none resolves under bun test; the component and e2e layers load it",
+    paths: [
+      "apps/docs/src/content.config.ts",
+      "apps/web/src/component-test-setup.ts",
+      "apps/web/src/lib/api.ts",
+      "apps/web/src/lib/auth-client.ts",
+      "apps/web/src/lib/components/automations/decision-fetch.ts",
+      "apps/web/src/lib/components/settings/devices/roster-transport.ts",
+      "apps/web/src/lib/components/ui/chart/chart-utils.ts",
+      "apps/web/src/lib/core-api.ts",
+      "apps/web/src/lib/engine-admin.ts",
+      "apps/web/src/lib/history/device-series.ts",
+      "apps/web/src/lib/history/plant-day.ts",
+      "apps/web/src/lib/inverter/chart-format.ts",
+      "apps/web/src/lib/resolve.ts",
+      "apps/web/src/lib/server-url.ts",
+      "apps/web/src/lib/session.ts",
+      "apps/web/src/lib/setup.ts",
+    ],
+  },
+  {
+    reason:
+      "queries Postgres through the shared client: test:db and test:routes prove it, never bun test",
+    paths: [
+      "apps/server/src/admin/api-keys.ts",
+      "apps/server/src/charts/custom-charts.ts",
+      "apps/server/src/migration/onboarding-apply.ts",
+      "apps/server/src/settings/logging-settings.ts",
+      "apps/server/src/statistics/spot-stats.ts",
+      "apps/server/src/statistics/statistics.ts",
+    ],
+  },
+  {
+    reason:
+      "boot wiring or route plugin: importing it starts the runtime or mounts the app; test:routes boots it",
+    paths: [
+      "apps/server/src/devices/connection-runtime.ts",
+      "apps/server/src/evcc/evcc-storage.ts",
+      "apps/server/src/index.ts",
+      "apps/server/src/inverter/entities.ts",
+      "apps/server/src/main.ts",
+      "apps/server/src/plant/plant-wiring.ts",
+    ],
+  },
+  {
+    reason:
+      "process entry, compile-time check or CI harness: it runs as a program, so importing it runs it; scripts/ci executes it",
+    paths: [
+      "packages/db/src/setup-timescale.ts",
+      "packages/inverter-core/src/sdk.type-test.ts",
+      "packages/profile-sdk/src/cli.ts",
+      "scripts/compiled-binary.ts",
+      "scripts/route-smoke-run.ts",
+      "scripts/upgrade-phases.ts",
+      "scripts/upgrade-rehearsal.ts",
+    ],
+  },
+];
+
+function isExempt(path: string): boolean {
+  return COVERAGE_EXEMPT.some((entry) =>
+    "paths" in entry ? entry.paths.includes(path) : entry.pattern.test(path),
+  );
+}
+
+/**
+ * Tracked sources under the measured globs that the report never mentions, sorted. A record with
+ * zero hits is still a record: the floor charges for it, this check only catches silent absence.
+ */
+export function unloadedSources(lcov: string, tracked: string[]): string[] {
+  const loaded = new Set<string>();
+  for (const line of lcov.split("\n")) {
+    if (line.startsWith("SF:")) loaded.add(line.slice(3).trim());
+  }
+  return tracked
+    .filter((path) => path.endsWith(".ts") && !path.includes("/dist/"))
+    .filter((path) => MEASURED.some((glob) => glob.test(path)))
+    .filter(isSourceFile)
+    .filter((path) => !isExempt(path))
+    .filter((path) => !loaded.has(path))
+    .sort();
+}
+
 /** Sum an lcov report's per-record line and function counters. */
 export function totalsFromLcov(lcov: string): Totals {
-  const totals: Totals = { linesFound: 0, linesHit: 0, functionsFound: 0, functionsHit: 0 };
+  const totals: Totals = {
+    linesFound: 0,
+    linesHit: 0,
+    functionsFound: 0,
+    functionsHit: 0,
+  };
   for (const line of lcov.split("\n")) {
     if (line.startsWith("LF:")) totals.linesFound += Number(line.slice(3));
     else if (line.startsWith("LH:")) totals.linesHit += Number(line.slice(3));
@@ -121,6 +259,8 @@ export function checkFloor(totals: Totals, floor: Floor): FloorResult {
 export interface FloorIo {
   /** Read the report, or throw the way `readFileSync` does when it is absent. */
   readReport(path: string): string;
+  /** Every path git tracks, relative to the repo root. */
+  trackedSources(): string[];
   log(message: string): void;
   error(message: string): void;
 }
@@ -128,35 +268,16 @@ export interface FloorIo {
 /** The real wiring: the filesystem, stdout for the pass line, stderr for a breach. */
 export const productionIo: FloorIo = {
   readReport: (path) => readFileSync(path, "utf8"),
+  trackedSources: () => {
+    const proc = Bun.spawnSync(["git", "ls-files"]);
+    if (proc.exitCode !== 0) throw new Error("git ls-files failed");
+    return new TextDecoder().decode(proc.stdout).split("\n").filter(Boolean);
+  },
   log: (message) => console.log(message),
   error: (message) => console.error(message),
 };
 
-/**
- * The gate itself: read the report named by `argv` (default `coverage/lcov.info`, or
- * `coverage/rust-lcov.info` with `--rust`), compare it against `floor` (default: that suite's own),
- * explain the outcome and return the process exit code.
- */
-export function main(argv: string[] = [], io: FloorIo = productionIo, floor?: Floor): number {
-  const rust = argv.includes("--rust");
-  const path =
-    argv.find((a) => !a.startsWith("--")) ??
-    (rust ? "coverage/rust-lcov.info" : "coverage/lcov.info");
-  let report: string;
-  try {
-    report = io.readReport(path);
-  } catch {
-    const command = rust ? "test:coverage:rust" : "test:coverage";
-    io.error(`✖ Coverage floor: cannot read ${path} — run \`bun run ${command}\` first.`);
-    return 1;
-  }
-  const result = checkFloor(totalsFromLcov(report), floor ?? (rust ? RUST_FLOOR : FLOOR));
-  if (result.ok) {
-    io.log(
-      `✓ Coverage floor: ${result.lines.toFixed(2)} % lines, ${result.functions.toFixed(2)} % functions.`,
-    );
-    return 0;
-  }
+function explainBreach(io: FloorIo, result: FloorResult): void {
   io.error("");
   io.error(
     `✖ Coverage floor breached (measured ${result.lines.toFixed(2)} % lines, ${result.functions.toFixed(2)} % functions):`,
@@ -165,6 +286,65 @@ export function main(argv: string[] = [], io: FloorIo = productionIo, floor?: Fl
   io.error("");
   io.error("  Cover the new behaviour rather than lowering FLOOR in");
   io.error("  scripts/coverage-floor.ts — the ratchet only turns one way.");
+}
+
+function explainUnloaded(io: FloorIo, unloaded: string[]): void {
+  io.error("");
+  io.error("✖ Coverage floor: sources no test loads (absent from the report, so uncounted):");
+  for (const path of unloaded) io.error(`  • ${path}`);
+  io.error("");
+  io.error("  Test each, delete it if dead, or add it to COVERAGE_EXEMPT in");
+  io.error("  scripts/coverage-floor.ts with the reason it cannot be loaded.");
+}
+
+/** The unloaded sources, or null when git cannot list the tree (reported on `io`). */
+function findUnloaded(report: string, io: FloorIo): string[] | null {
+  try {
+    return unloadedSources(report, io.trackedSources());
+  } catch {
+    io.error("✖ Coverage floor: cannot list tracked sources — run inside the git checkout.");
+    return null;
+  }
+}
+
+/** The report `argv` names, else the one the matching coverage run writes. */
+function reportPath(argv: string[], rust: boolean): string {
+  const named = argv.find((a) => !a.startsWith("--"));
+  return named ?? (rust ? "coverage/rust-lcov.info" : "coverage/lcov.info");
+}
+
+/** The report text, or null when it cannot be read (reported on `io`). */
+function readReport(io: FloorIo, path: string, rust: boolean): string | null {
+  try {
+    return io.readReport(path);
+  } catch {
+    const command = rust ? "test:coverage:rust" : "test:coverage";
+    io.error(`✖ Coverage floor: cannot read ${path} — run \`bun run ${command}\` first.`);
+    return null;
+  }
+}
+
+/**
+ * The gate itself: read the report named by `argv` (default `coverage/lcov.info`, or
+ * `coverage/rust-lcov.info` with `--rust`), compare it against `floor` (default: that suite's own),
+ * explain the outcome and return the process exit code. The TypeScript report is also checked for
+ * tracked sources it never mentions; the Rust one is not.
+ */
+export function main(argv: string[] = [], io: FloorIo = productionIo, floor?: Floor): number {
+  const rust = argv.includes("--rust");
+  const report = readReport(io, reportPath(argv, rust), rust);
+  if (report === null) return 1;
+  const result = checkFloor(totalsFromLcov(report), floor ?? (rust ? RUST_FLOOR : FLOOR));
+  const unloaded = rust ? [] : findUnloaded(report, io);
+  if (unloaded === null) return 1;
+  if (result.ok && unloaded.length === 0) {
+    io.log(
+      `✓ Coverage floor: ${result.lines.toFixed(2)} % lines, ${result.functions.toFixed(2)} % functions.`,
+    );
+    return 0;
+  }
+  if (!result.ok) explainBreach(io, result);
+  if (unloaded.length > 0) explainUnloaded(io, unloaded);
   io.error("");
   return 1;
 }

@@ -2,14 +2,17 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { isSourceFile } from "./require-tests";
 import {
   type FloorIo,
   FLOOR,
   RUST_FLOOR,
+  COVERAGE_EXEMPT,
   checkFloor,
   main,
   productionIo,
   totalsFromLcov,
+  unloadedSources,
 } from "./coverage-floor";
 
 /** Capture the two console streams for the duration of `body`, then restore them. */
@@ -74,7 +77,12 @@ describe("totalsFromLcov", () => {
 });
 
 describe("checkFloor", () => {
-  const totals = { linesFound: 100, linesHit: 90, functionsFound: 100, functionsHit: 90 };
+  const totals = {
+    linesFound: 100,
+    linesHit: 90,
+    functionsFound: 100,
+    functionsHit: 90,
+  };
 
   test("above the floor passes and reports the percentages", () => {
     const r = checkFloor(totals, { line: 0.8, function: 0.8 });
@@ -118,8 +126,8 @@ describe("checkFloor", () => {
   // raising these too — which is the point, because then lowering it is an edit
   // to a test that says so, in the diff, rather than one digit in a constant.
   test("the shipped floor never falls below where the ratchet has reached", () => {
-    expect(FLOOR.line).toBeGreaterThanOrEqual(0.99);
-    expect(FLOOR.function).toBeGreaterThanOrEqual(0.98);
+    expect(FLOOR.line).toBeGreaterThanOrEqual(0.9917);
+    expect(FLOOR.function).toBeGreaterThanOrEqual(0.9833);
   });
 
   // A counter that is not a number parses to NaN, and every comparison against
@@ -158,7 +166,12 @@ describe("checkFloor", () => {
 
   test("a malformed report reports no percentage rather than a NaN one", () => {
     const r = checkFloor(
-      { linesFound: Number.NaN, linesHit: 0, functionsFound: 4, functionsHit: 4 },
+      {
+        linesFound: Number.NaN,
+        linesHit: 0,
+        functionsFound: 4,
+        functionsHit: 4,
+      },
       { line: 0.8, function: 0.8 },
     );
     expect(r.lines).toBe(0);
@@ -189,7 +202,7 @@ describe("checkFloor", () => {
 });
 
 /** An in-memory console + filesystem: `reports` is the only readable path map. */
-function fakeIo(reports: Record<string, string>) {
+function fakeIo(reports: Record<string, string>, tracked: string[] = []) {
   const out: string[] = [];
   const err: string[] = [];
   const asked: string[] = [];
@@ -200,10 +213,18 @@ function fakeIo(reports: Record<string, string>) {
       if (report === undefined) throw new Error(`ENOENT: ${path}`);
       return report;
     },
+    trackedSources: () => tracked,
     log: (m) => out.push(m),
     error: (m) => err.push(m),
   };
-  return { io, out, err, asked, stdout: () => out.join("\n"), stderr: () => err.join("\n") };
+  return {
+    io,
+    out,
+    err,
+    asked,
+    stdout: () => out.join("\n"),
+    stderr: () => err.join("\n"),
+  };
 }
 
 describe("main", () => {
@@ -335,6 +356,202 @@ describe("main --rust", () => {
   });
 });
 
+describe("unloadedSources", () => {
+  const loaded = lcov; // apps/server/src/cost.ts, apps/web/src/lib/api-payload.ts
+
+  test("a tracked source no record names is unloaded", () => {
+    expect(
+      unloadedSources(loaded, ["apps/server/src/cost.ts", "apps/server/src/orphan.ts"]),
+    ).toEqual(["apps/server/src/orphan.ts"]);
+  });
+
+  test("every loaded source passes, and an empty tree has nothing to miss", () => {
+    expect(unloadedSources(loaded, ["apps/server/src/cost.ts"])).toEqual([]);
+    expect(unloadedSources(loaded, [])).toEqual([]);
+  });
+
+  test("a loaded file with zero hits is loaded: the floor, not this check, charges for it", () => {
+    const zero = "SF:apps/server/src/cold.ts\nLF:4\nLH:0\nFNF:1\nFNH:0\nend_of_record";
+    expect(unloadedSources(zero, ["apps/server/src/cold.ts"])).toEqual([]);
+  });
+
+  test("files outside the measured globs are not charged", () => {
+    expect(
+      unloadedSources(loaded, [
+        "apps/web/e2e/journey.ts",
+        "apps/web/vite.config.ts",
+        "packages/db/drizzle.config.ts",
+        "docs/example.ts",
+        "crates/core/src/lib.rs",
+      ]),
+    ).toEqual([]);
+  });
+
+  test("only .ts is measured: svelte, mjs and sql are not", () => {
+    expect(
+      unloadedSources(loaded, [
+        "apps/web/src/lib/Card.svelte",
+        "scripts/sync-brand.mjs",
+        "packages/db/src/schema.sql",
+      ]),
+    ).toEqual([]);
+  });
+
+  test("tests, declarations, generated i18n and dist output are not sources", () => {
+    expect(
+      unloadedSources(loaded, [
+        "apps/server/src/cost.test.ts",
+        "apps/web/src/lib/card.svelte.test.ts",
+        "apps/web/src/env.d.ts",
+        "apps/web/src/lib/paraglide/messages.ts",
+        "packages/db/src/dist/out.ts",
+      ]),
+    ).toEqual([]);
+  });
+
+  // Same exemptions the TDD gate honours: a type module and a barrel hold no branch.
+  test("a type module and a barrel are exempt through the TDD gate's own list", () => {
+    expect(
+      unloadedSources(loaded, ["apps/server/src/types.ts", "packages/db/src/index.ts"]),
+    ).toEqual([]);
+  });
+
+  // The TDD gate's NEVER_EXEMPT override carries over: an app entry point holds the boot wiring.
+  test("an app entry point is not a barrel", () => {
+    expect(unloadedSources(loaded, ["apps/example/src/index.ts"])).toEqual([
+      "apps/example/src/index.ts",
+    ]);
+  });
+
+  test("scripts under the measured glob are charged, nested ones too", () => {
+    expect(unloadedSources(loaded, ["scripts/ci-surfaces.ts", "scripts/lib/nested.ts"])).toEqual([
+      "scripts/ci-surfaces.ts",
+      "scripts/lib/nested.ts",
+    ]);
+  });
+
+  test("names come back sorted so the failure list is stable", () => {
+    expect(unloadedSources(loaded, ["scripts/b.ts", "scripts/a.ts"])).toEqual([
+      "scripts/a.ts",
+      "scripts/b.ts",
+    ]);
+  });
+});
+
+describe("COVERAGE_EXEMPT", () => {
+  test("every entry states a reason", () => {
+    for (const { reason } of COVERAGE_EXEMPT) expect(reason.length).toBeGreaterThan(10);
+  });
+
+  // A renamed or deleted file must leave the list, or the entry would exempt whatever
+  // is later created at that path.
+  test("every named path is a tracked source, and not one a barrel rule already covers", () => {
+    const tracked = new Set(productionIo.trackedSources());
+    for (const entry of COVERAGE_EXEMPT) {
+      if (!("paths" in entry)) continue;
+      for (const path of entry.paths) {
+        expect({ path, tracked: tracked.has(path) }).toEqual({
+          path,
+          tracked: true,
+        });
+        expect({ path, structural: !isSourceFile(path) }).toEqual({
+          path,
+          structural: false,
+        });
+      }
+    }
+  });
+
+  test("a path is exempt under one reason only", () => {
+    const seen = new Set<string>();
+    for (const entry of COVERAGE_EXEMPT) {
+      if (!("paths" in entry)) continue;
+      for (const path of entry.paths) {
+        expect({ path, dup: seen.has(path) }).toEqual({ path, dup: false });
+        seen.add(path);
+      }
+    }
+  });
+
+  test("a named path is exempt and its neighbour is not", () => {
+    expect(unloadedSources(lcov, ["apps/web/src/lib/resolve.ts"])).toEqual([]);
+    expect(unloadedSources(lcov, ["apps/web/src/lib/resolve2.ts"])).toEqual([
+      "apps/web/src/lib/resolve2.ts",
+    ]);
+  });
+
+  test("a rune module is exempt: bun test cannot compile runes", () => {
+    expect(unloadedSources(lcov, ["apps/web/src/lib/plant.svelte.ts"])).toEqual([]);
+  });
+
+  test("generated code is exempt", () => {
+    expect(unloadedSources(lcov, ["apps/web/src/lib/core-api.gen.ts"])).toEqual([]);
+  });
+
+  test("a server route is exempt: test:routes executes it", () => {
+    expect(unloadedSources(lcov, ["apps/server/src/routes/history.ts"])).toEqual([]);
+  });
+
+  // The exemption is by name, not by directory: a sibling of an exempt file is still charged.
+  test("exempting a route does not exempt the code beside it", () => {
+    expect(unloadedSources(lcov, ["apps/server/src/statistics/history.ts"])).toEqual([
+      "apps/server/src/statistics/history.ts",
+    ]);
+  });
+
+  test("an exempt file that IS loaded stays in the totals", () => {
+    const loadedRoute = "SF:apps/server/src/routes/history.ts\nLF:10\nLH:0\nFNF:1\nFNH:0";
+    expect(totalsFromLcov(loadedRoute).linesFound).toBe(10);
+  });
+});
+
+describe("main — unloaded sources", () => {
+  const ok = { line: 0.5, function: 0.5 };
+  const tracked = ["apps/server/src/cost.ts", "apps/server/src/orphan.ts", "scripts/dead.ts"];
+
+  test("fails naming each unloaded file even when the floor is met", () => {
+    const f = fakeIo({ "coverage/lcov.info": lcov }, tracked);
+    expect(main([], f.io, ok)).toBe(1);
+    expect(f.stderr()).toContain("apps/server/src/orphan.ts");
+    expect(f.stderr()).toContain("scripts/dead.ts");
+    expect(f.stderr()).not.toContain("apps/server/src/cost.ts");
+    expect(f.out).toEqual([]);
+  });
+
+  test("the advice is to test, exempt with a reason or delete — never to skip", () => {
+    const f = fakeIo({ "coverage/lcov.info": lcov }, tracked);
+    main([], f.io, ok);
+    expect(f.stderr()).toContain("no test loads");
+    expect(f.stderr()).toContain("COVERAGE_EXEMPT");
+  });
+
+  test("a floor breach and an unloaded source are both reported", () => {
+    const f = fakeIo({ "coverage/lcov.info": lcov }, tracked);
+    expect(main([], f.io, { line: 0.9, function: 0.5 })).toBe(1);
+    expect(f.stderr()).toContain("is below the floor");
+    expect(f.stderr()).toContain("apps/server/src/orphan.ts");
+  });
+
+  test("every tracked source loaded passes", () => {
+    const f = fakeIo({ "coverage/lcov.info": lcov }, ["apps/server/src/cost.ts"]);
+    expect(main([], f.io, ok)).toBe(0);
+  });
+
+  test("a tree git cannot list fails rather than passing unchecked", () => {
+    const f = fakeIo({ "coverage/lcov.info": lcov });
+    f.io.trackedSources = () => {
+      throw new Error("not a git repository");
+    };
+    expect(main([], f.io, ok)).toBe(1);
+    expect(f.stderr()).toContain("cannot list tracked sources");
+  });
+
+  test("the Rust report is not judged against TypeScript sources", () => {
+    const f = fakeIo({ "coverage/rust-lcov.info": "LF:10\nLH:10\nFNF:1\nFNH:1" }, tracked);
+    expect(main(["--rust"], f.io)).toBe(0);
+  });
+});
+
 describe("productionIo", () => {
   test("reads the report off disk, and throws when the coverage run left none", async () => {
     const dir = await mkdtemp(join(tmpdir(), "coverage-floor-"));
@@ -356,6 +573,12 @@ describe("productionIo", () => {
     });
     expect(out).toEqual(["✓ passed"]);
     expect(err).toEqual(["✖ breached"]);
+  });
+
+  test("lists the tracked tree through git, relative to the repo root", () => {
+    const tracked = productionIo.trackedSources();
+    expect(tracked).toContain("scripts/coverage-floor.ts");
+    expect(tracked.every((p) => !p.startsWith("/"))).toBe(true);
   });
 
   test("called with no wiring at all, a missing report still fails on stderr", () => {
