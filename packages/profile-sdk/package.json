@@ -31,7 +31,7 @@
     "prepublishOnly": "bun run build",
     "test": "bun test ./src",
     "profile": "bun run src/cli.ts",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsrs -p . --noEmit"
   },
   "dependencies": {
     "zod": "catalog:"

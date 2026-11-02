@@ -211,7 +211,7 @@ Run what is relevant to the area you changed — this is what CI runs:
 
 ```bash
 bun run check          # oxlint + oxfmt --write
-bun run check-types    # tsc across the monorepo
+bun run check-types    # tsrs across the monorepo (tsc stays installed for tsdown, svelte-check, fallow)
 bun run test           # bun test, all workspaces
 bun run test:coverage && bun run test:floor              # the coverage ratchet CI enforces
 bun run test:required  # source changed ⇒ a test changed (diffs against origin/dev)
