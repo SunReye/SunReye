@@ -230,6 +230,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn parallel_checks_leave_one_checks_blocks_held() {
+        let passwords = Passwords::new();
+        let stored = passwords.hash("correct horse battery".into()).await.expect("hash");
+        let checks: Vec<_> = (0..4)
+            .map(|_| spawn_verify(&passwords, "correct horse battery", Some(stored.clone())))
+            .collect();
+        for check in checks {
+            assert!(check.await.expect("join"));
+        }
+        assert_eq!(passwords.gate.lock().await.len(), PARAMS.block_count());
+    }
+
+    #[tokio::test]
     async fn every_check_waits_for_the_cap_including_an_unknown_account() {
         let passwords = Passwords::new();
         let stored = passwords.hash("correct horse battery".into()).await.expect("hash");
