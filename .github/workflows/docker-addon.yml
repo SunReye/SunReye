@@ -150,6 +150,8 @@ jobs:
         run: |
           sed -i -E "s/^version: .*/version: ${{ steps.v.outputs.version }}/" sunreye/config.yaml
 
+      # Rebases before pushing: a release also fires the appliance pin and may
+      # race a beta publish, so master can move between checkout and push.
       - name: Commit to master
         run: |
           git config user.name 'github-actions[bot]'
@@ -160,7 +162,19 @@ jobs:
           fi
           git add sunreye/config.yaml sunreye/CHANGELOG.md
           git commit -m "chore(addon): publish ${{ steps.v.outputs.version }} [skip ci]"
-          git push origin HEAD:master
+
+          for attempt in 1 2 3; do
+            git pull --rebase --quiet origin master || {
+              echo "rebase onto master failed"
+              exit 1
+            }
+            if git push origin HEAD:master; then
+              exit 0
+            fi
+            echo "push rejected (master moved) — retrying ($attempt/3)"
+          done
+          echo "could not publish after 3 attempts"
+          exit 1
 
       - name: Sync GitHub release notes
         run: gh release edit "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/addon-notes.md"

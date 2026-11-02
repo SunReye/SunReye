@@ -67,14 +67,17 @@ describe("the box's own flake", () => {
     );
   });
 
-  // The image workflow force-pushes `stable` only after the container images
-  // for that version are in GHCR. A box tracking any other ref can pull a
+  // The image workflow advances `stable` only after the container images for
+  // that version are in GHCR. A box tracking any other ref can pull a
   // configuration whose image tag does not exist yet.
   test("it follows the branch the image workflow advances", () => {
-    const ref = read(".github/workflows/nixos-image.yml").match(
-      /push --force origin HEAD:(\w+)/,
-    )?.[1];
-    expect(ref).toBe("stable");
+    const advanced = [
+      ...read(".github/workflows/nixos-image.yml").matchAll(/push(?: --force)? origin HEAD:(\w+)/g),
+    ]
+      .map((match) => match[1])
+      .filter((branch) => branch !== "master");
+    expect(advanced).toEqual(["stable"]);
+    const [ref] = advanced;
 
     expect(read(TEMPLATE)).toContain(`/${ref}?dir=nixos`);
   });
