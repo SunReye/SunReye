@@ -31,7 +31,7 @@ test.describe("journey: kiosk view", () => {
     // ── 1. The admin switches the kiosk view on in Settings → Access ────────
     const admin = await mockBackend(page, { kiosk: false });
     await page.goto("/#/settings/access");
-    const toggle = page.getByRole("switch", { name: "Public read-only dashboard" });
+    const toggle = page.getByRole("switch", { name: "Kiosk view" });
     await expect(toggle).not.toBeChecked();
     await toggle.click();
     await expect(toggle).toBeChecked();
@@ -69,7 +69,7 @@ test.describe("journey: kiosk view", () => {
     await visitor.page.goto("/#/");
     await expect(visitor.page).toHaveURL(/#\/login$/);
     await expect(visitor.page.getByRole("button", { name: "Sign in" })).toBeVisible();
-    await expect(visitor.page.getByRole("link", { name: "View public dashboard" })).toHaveCount(0);
+    await expect(visitor.page.getByRole("link", { name: "Open kiosk view" })).toHaveCount(0);
     expect(visitor.backend.socketOpens).toBe(0);
     expect(visitor.backend.unhandled).toEqual([]);
     await visitor.close();

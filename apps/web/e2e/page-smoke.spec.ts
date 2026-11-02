@@ -519,7 +519,7 @@ const ROUTES: readonly SmokeRoute[] = [
     // `access-form.svelte` shows `Loading…` until the kiosk switch is read,
     // so the switch is the payload proof.
     surface: async (page) => {
-      await switchNamed(page, /Public read-only dashboard/);
+      await switchNamed(page, /Kiosk view/);
     },
   },
   {
@@ -608,7 +608,7 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
       await expect(page.getByLabel("Email")).toBeVisible();
       // kiosk:true — the way into the kiosk view is offered.
-      await expect(page.getByRole("link", { name: "View public dashboard" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Open kiosk view" })).toBeVisible();
     },
   },
   {
