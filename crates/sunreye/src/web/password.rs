@@ -12,10 +12,7 @@ const LINUX_COST: (u32, u32) = (19 * 1024, 2);
 /// OWASP's equivalent 12 MiB, t=3 profile.
 const ANDROID_COST: (u32, u32) = (12 * 1024, 3);
 
-#[cfg(not(target_os = "android"))]
-const COST: (u32, u32) = LINUX_COST;
-#[cfg(target_os = "android")]
-const COST: (u32, u32) = ANDROID_COST;
+const COST: (u32, u32) = if cfg!(target_os = "android") { ANDROID_COST } else { LINUX_COST };
 
 #[allow(clippy::panic, reason = "evaluated at compile time")]
 const fn params((m_cost, t_cost): (u32, u32)) -> Params {
