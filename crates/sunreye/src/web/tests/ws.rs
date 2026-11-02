@@ -192,23 +192,31 @@ async fn a_client_that_stops_answering_is_closed_after_the_idle_timeout() {
     core.stop().await;
 }
 
+/// A session socket whose receive buffer is a few KiB, so a large frame stalls the server's send.
+async fn connect_narrow(addr: std::net::SocketAddr, api: &Api) -> Socket {
+    let mut request = format!("ws://{HOST}/ws").into_client_request().expect("request");
+    request.headers_mut().insert(header::ORIGIN, SAME_ORIGIN.parse().expect("origin"));
+    let cookie = api.cookie.as_deref().expect("session");
+    request.headers_mut().insert(header::COOKIE, cookie.parse().expect("cookie"));
+    let tcp = tokio::net::TcpSocket::new_v4().expect("socket");
+    tcp.set_recv_buffer_size(4 * 1024).expect("receive buffer");
+    let stream = tcp.connect(addr).await.expect("connect");
+    client_async(request, stream).await.expect("upgraded").0
+}
+
 #[tokio::test]
 async fn a_client_that_stops_reading_mid_send_is_closed_after_the_idle_timeout() {
     let (core, admin) = open(&dir("ws-stalled")).await;
-    let addr = serve(&core, &quick()).await;
+    let live = LiveLimits { idle: Duration::from_secs(1), ..LiveLimits::default() };
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
     core.live.roster(&[7]);
-    let mut socket = connect(addr, &admin).await;
+    let mut socket = connect_narrow(addr, &admin).await;
     subscribe(&mut socket, r#"["metrics"]"#).await;
-    // About 600 KB a frame: the socket buffers fill long before the timeout and the send blocks.
-    let wide: Vec<(String, f64)> = (0..30_000).map(|i| (format!("metric_{i:05}"), f64::from(i))).collect();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut at_ms = 0;
-    while core.live.connections() > 0 {
-        assert!(Instant::now() < deadline, "a stalled send held the connection open");
-        core.live.publish(7, &Sample { at_ms, values: wide.clone() });
-        at_ms += 1;
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
+    // About 6 MB, past any send buffer (4 MiB at most on Linux): the send blocks with the select loop
+    // unpolled, so only a bounded send reaches the deadline.
+    let wide: Vec<(String, f64)> = (0..250_000).map(|i| (format!("metric_{i:06}"), f64::from(i))).collect();
+    core.live.publish(7, &Sample { at_ms: 0, values: wide });
+    connections(&core, 0).await;
     drop((socket, admin));
     core.stop().await;
 }
