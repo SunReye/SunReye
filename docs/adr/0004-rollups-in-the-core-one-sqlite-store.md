@@ -1,7 +1,8 @@
 # 4. Rollups in the core, one SQLite store
 
 Status: accepted (2026-11-01); amended the same day: store from a custom append-only format to SQLite,
-ESP32 parts removed (ADR 0006)
+ESP32 parts removed (ADR 0006); amended 2026-11-02: rollup buckets are UTC and counters
+keep high and low, reopening "bucketed in the plant time zone" and "counter deltas" (2.x evidence below)
 
 ## Context
 
@@ -22,9 +23,13 @@ One SQLite database file per install (`sqlx` with its SQLite driver), in WAL mod
 - Settings, connections, devices, users, sessions and API keys are ordinary tables.
 - Readings are stored one row per device per minute, holding that minute's samples in a compact encoding
   the core defines; rollups are rows per tier. Never one row per sample.
-- The core computes raw → minute → hourly → daily rollups as readings arrive: time-weighted averages and
-  counter deltas with restart, midnight and DST handling, bucketed in the plant time zone. SQLite stores
-  and reads; it computes no rollup.
+- The core computes raw → minute → hourly → daily rollups as readings arrive: each bucket keeps its
+  time-weighted average, max and min, counters included. SQLite stores and reads; it computes no rollup.
+- Rollup buckets are UTC: a day bucket sits at `00:00Z` on both DST days, as 2.x's `daily_rollups`, which
+  carry no zone (`fixtures/oracle/README.md` §3).
+- The plant time zone enters only when statistics cut days, months and years from hourly rollups. Counter
+  deltas, with restart and midnight handling, are computed there, when statistics are read (#316).
+- Plant days cut from UTC hours are exact only for whole-hour offsets; 2.x has the same limit.
 - Plain SQL through `sqlx`, no ORM. Queries use `query!` / `query_as!`, checked against the schema at
   compile time from the committed `.sqlx` cache; `scripts/ci` runs `cargo sqlx prepare --check`.
   Migrations use `sqlx::migrate!`; sessions use `tower-sessions-sqlx-store`.
@@ -44,5 +49,5 @@ same C library, synchronous API); targets do not split.
 - Postgres leaves every edition, including the add-on's bundled server and its dump-based backups.
 - Backups leave the device automatically, in the archive format every target imports; the device's own
   storage is treated as disposable.
-- Time zones come from `jiff` with the IANA database compiled in, never the system's, so buckets agree
-  across targets.
+- Time zones come from `jiff` with the IANA database compiled in, never the system's, so statistics days
+  agree across targets.
