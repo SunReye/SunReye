@@ -258,8 +258,16 @@ export interface MockBackend {
   requestCount(pattern: string | RegExp): number;
   /** Forget the request log — call before a `countRequests` window. */
   resetRequests(): void;
-  /** Resolve once the socket is open and has subscribed to `metrics`. */
-  waitForLive(timeoutMs?: number): Promise<void>;
+  /**
+   * Resolve once the socket is open and has subscribed to `metrics`.
+   *
+   * Waits for the boot to FINISH, not for a clock: a dev-server boot is tens of
+   * seconds on a contended host and seconds on an idle one. It throws only when
+   * the page has gone `stallMs` without a request or a socket frame, which is a
+   * boot that stopped rather than one that is slow. The test's own timeout
+   * bounds everything else.
+   */
+  waitForLive(stallMs?: number): Promise<void>;
   /** Send exactly one `metrics` frame, optionally forcing some values. */
   pushMetrics(overrides?: Record<string, number>): Promise<void>;
   /**
@@ -443,6 +451,14 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
   let socketOpens = 0;
   /** Set by {@link MockBackend.expireSession}: every non-auth read 401s after it. */
   let sessionExpired = false;
+  /** Last time the page asked for anything or the socket carried a client frame. */
+  let lastActivity = Date.now();
+  const touch = () => {
+    lastActivity = Date.now();
+  };
+  page.on("request", touch);
+  page.on("requestfinished", touch);
+  page.on("requestfailed", touch);
   const subscribed = new Set<string>();
   const denied: string[] = [];
   const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
@@ -550,6 +566,7 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       return;
     }
     clientFrames.push(frame);
+    touch();
     const topics = frame.topics ?? [];
     if (frame.t === "sub") {
       const granted = topics.filter(allows);
@@ -1100,9 +1117,9 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     resetRequests() {
       requests.length = 0;
     },
-    async waitForLive(timeoutMs = 20_000) {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
+    async waitForLive(stallMs = 20_000) {
+      touch();
+      while (Date.now() - lastActivity < stallMs) {
         if (sockets.length > 0 && subscribed.has("metrics")) return;
         await page.waitForTimeout(50);
       }
