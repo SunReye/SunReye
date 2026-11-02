@@ -108,11 +108,7 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
   {
     reason:
       "debt: builds a client or URL once at import from `$env`, `browser` and `location`; each branch needs a fresh module instance, which makes serial coverage order-dependent",
-    paths: [
-      "apps/web/src/lib/auth-client.ts",
-      "apps/web/src/lib/core-api.ts",
-      "apps/web/src/lib/server-url.ts",
-    ],
+    paths: ["apps/web/src/lib/core-api.ts", "apps/web/src/lib/server-url.ts"],
   },
   {
     reason:
