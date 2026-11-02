@@ -66,7 +66,7 @@ test.describe("journey: add a device", () => {
     await page.getByLabel("Name", { exact: true }).fill("Cellar meter");
     await expect(next(page)).toBeDisabled();
     // Options read "<profile name> · <version or origin>"; the user picks by name.
-    const profile = page.getByLabel("Profile");
+    const profile = page.getByLabel("Profile", { exact: true });
     const sungrow = profile.locator("option", { hasText: "Sungrow SH10RT" });
     await profile.selectOption({ label: (await sungrow.innerText()).trim() });
     await expect(next(page)).toBeEnabled();

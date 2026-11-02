@@ -99,7 +99,7 @@ test.describe("the roster", () => {
     await expect(panel.getByRole("heading", { name: "Edit device" })).toBeVisible();
     await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Meter");
     await expect(panel.getByLabel("Unit ID")).toHaveValue("2");
-    await expect(panel.getByLabel("Profile")).toHaveValue("sungrow-sh10rt");
+    await expect(panel.getByLabel("Profile", { exact: true })).toHaveValue("sungrow-sh10rt");
     // No "new connection" arm on an edit — a gateway is made from its own dialog.
     await expect(
       panel.getByLabel("Connection", { exact: true }).locator("option[value='new']"),

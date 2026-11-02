@@ -4,9 +4,6 @@ import { render } from "vitest-browser-svelte";
 import * as m from "$lib/paraglide/messages";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-// The sources manager below the list reads its configured sources when it mounts.
-const sources = { get: async () => ({ data: { sources: [] } }) };
-vi.mock("$lib/api", () => ({ api: { api: { settings: { "profile-sources": sources } } } }));
 const get = vi.fn();
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
 
@@ -24,17 +21,22 @@ const PROFILE = {
 
 const props = { profiles: [PROFILE], selectedId: null, onExternalInstalled: () => {} };
 
+// The sources manager below the list reads its stored sources when it mounts.
+const answer = (data: unknown) => async (path: string) => ({
+  data: path === "/api/settings/profile-sources" ? [] : data,
+});
+
 afterEach(() => get.mockReset());
 
 test("profile sources are offered while the core serves them", async () => {
-  get.mockResolvedValue({ data: { profileSources: true } });
+  get.mockImplementation(answer({ profileSources: true }));
   await coreCapabilities.load();
   render(ProfileStep, props);
   await expect.element(page.getByRole("button", { name: m.setup_add_source() })).toBeVisible();
 });
 
 test("the sources disclosure is gone when the core reports them absent, the profiles stay", async () => {
-  get.mockResolvedValue({ data: { profileSources: false } });
+  get.mockImplementation(answer({ profileSources: false }));
   await coreCapabilities.load();
   render(ProfileStep, props);
   await expect.element(page.getByText(m.setup_select_profile())).toBeVisible();
