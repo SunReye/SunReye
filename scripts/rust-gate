@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The Rust steps of the merge gate. Any failing step fails the gate.
+# The static Rust steps of the merge gate. Any failing step fails the gate. The tests run once, under
+# `bun run test:coverage:rust` in scripts/ci; `bun run test` runs them locally.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -21,5 +22,3 @@ trap 'rm -rf "$scratch"' EXIT
 )
 echo "== cargo clippy"
 cargo clippy --workspace --all-targets -- -D warnings
-echo "== cargo test"
-cargo test --workspace
