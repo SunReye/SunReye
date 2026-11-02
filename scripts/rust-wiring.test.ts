@@ -50,6 +50,19 @@ describe("scripts/ci", () => {
     expect(at("bun run test:coverage:rust")).toBeLessThan(at("bun run test:floor:rust"));
   });
 
+  // The coverage run executes every Rust test and fails when one fails, so a second run is waste.
+  test("runs each Rust test once, under Rust coverage", () => {
+    const runsRustTests = (l: string) =>
+      /\bcargo (llvm-cov|test|nextest)\b/.test(l) ||
+      /\bbun run (test|test:coverage:rust)(\s|$)/.test(l);
+    expect(ciCommands.filter(runsRustTests)).toEqual([
+      expect.stringContaining("bun run test:coverage:rust"),
+    ]);
+    expect(readFileSync("scripts/rust-gate", "utf8")).not.toMatch(
+      /\bcargo (llvm-cov|test|nextest)\b/,
+    );
+  });
+
   test("builds for Android after the Rust gate, unforgiven", () => {
     const at = (command: string) => ciCommands.findIndex((l) => l.includes(command));
     const line = ciCommands[at("scripts/target-gate")];
