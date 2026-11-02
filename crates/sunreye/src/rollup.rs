@@ -213,6 +213,22 @@ mod tests {
     }
 
     #[test]
+    fn a_day_keeps_a_small_hold_between_cancelling_readings() {
+        // (1e9·30 − 2e9·15 + 1e-8·60 + 0·1335) / 1440 min = 1e-8 / 24. Summed hour by hour, the totals ±1.8e18
+        // cancel first; summed reading by reading, the 1e-8 hold (36) vanishes under 1.8e18's 256 ulp.
+        let readings = [
+            (at("2026-06-01T00:00:00Z"), 1e9),
+            (at("2026-06-01T00:30:00Z"), 1e-8),
+            (at("2026-06-01T01:30:00Z"), -2e9),
+            (at("2026-06-01T01:45:00Z"), 0.0),
+        ];
+        let day = rollup(Tier::Day, &readings);
+        assert_eq!(day.len(), 1);
+        let expected = 1e-8 / 24.0;
+        assert!((day[0].avg - expected).abs() <= 1e-12 * expected, "{}", day[0].avg);
+    }
+
+    #[test]
     fn readings_out_of_order_roll_up_as_if_sorted() {
         let sorted = [(at("2026-05-10T08:00:00Z"), 1.0), (at("2026-05-10T08:20:00Z"), 4.0)];
         let shuffled = [sorted[1], sorted[0]];
