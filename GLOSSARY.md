@@ -100,6 +100,10 @@ _Avoid_: feature flag
 A person who signs in to the core. Only an admin account changes settings; the first account is one.
 _Avoid_: user role (a role is a reading's meaning)
 
+**API key**:
+A secret starting `sunreye_` that an admin issues to an account for an integration; it opens `/api/v1` and nothing else.
+_Avoid_: token, access key
+
 **Kiosk view**:
 The public read-only dashboard for wall displays.
 _Avoid_: public dashboard, wall mode
