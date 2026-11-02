@@ -133,6 +133,54 @@ async fn a_refused_atomic_group_is_read_split_and_stays_split() {
     assert_eq!(case("tcp/exception-2-split").result["degraded"], true);
 }
 
+/// The first exchange of the recorded `exception-2-split` case, its reply rewritten by `rewrite`.
+async fn refused_with(
+    name: &str,
+    rewrite: impl FnOnce(Vec<u8>) -> Vec<u8>,
+) -> (Result<Vec<(String, f64)>, Error>, Vec<(u16, u16)>, Result<(), String>) {
+    let (request, reply) = match case(name).exchanges.as_slice() {
+        [request, Exchange::Send(chunks), ..] => (request.clone(), rewrite(chunks.concat())),
+        other => {
+            let missing = format!("expected a request and a reply, got {other:?}");
+            return (Err(Error::Io(missing.clone())), vec![], Err(missing));
+        }
+    };
+    play_exchanges(name, vec![request, Exchange::Send(vec![reply])]).await
+}
+
+#[tokio::test]
+async fn an_exception_other_than_2_ends_a_tcp_poll_with_no_split_and_no_second_read() {
+    let (result, plan, wire) = refused_with("tcp/exception-2-split", |mut reply| {
+        *reply.last_mut().expect("reply") = 4;
+        reply
+    })
+    .await;
+    assert_eq!(wire, Ok(()), "the spanning read only");
+    assert_eq!(result, Err(Error::Exception(4)));
+    assert_eq!(plan, [(500, 21)], "not split");
+}
+
+fn crc16(bytes: &[u8]) -> u16 {
+    bytes.iter().fold(0xFFFF, |crc, byte| {
+        (0..8)
+            .fold(crc ^ u16::from(*byte), |crc, _| if crc & 1 == 1 { (crc >> 1) ^ 0xA001 } else { crc >> 1 })
+    })
+}
+
+#[tokio::test]
+async fn an_exception_other_than_2_ends_an_rtu_poll_with_no_split_and_no_second_read() {
+    let (result, plan, wire) = refused_with("rtu-over-tcp/exception-2-split", |mut reply| {
+        reply.truncate(2);
+        reply.push(10);
+        reply.extend_from_slice(&crc16(&reply).to_le_bytes());
+        reply
+    })
+    .await;
+    assert_eq!(wire, Ok(()), "the spanning read only");
+    assert_eq!(result, Err(Error::Exception(10)));
+    assert_eq!(plan, [(500, 21)], "not split");
+}
+
 #[tokio::test]
 async fn an_rtu_read_of_unit_1_sends_the_recorded_pdu_framed_as_rtu_and_decodes_the_reply() {
     let (result, _, wire) = play("rtu-over-tcp/read-unit-1").await;

@@ -191,7 +191,6 @@ async fn a_connection_outside_the_accepted_ranges_is_refused_and_nothing_is_save
         (json!({"pollIntervalMs": 500}), "Poll interval must be 1000–3600000 ms"),
         (json!({"host": ""}), "Host is required"),
         (json!({"simulate": true}), "Simulation is not available in this core"),
-        (json!({"loggerSerial": 7}), "Logger serial is for the solarman-v5 transport"),
         (json!({"transport": "solarman-v5", "loggerSerial": 0}), "Logger serial must be 1–4294967295"),
     ];
     for (change, message) in cases {

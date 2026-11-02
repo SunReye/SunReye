@@ -20,7 +20,6 @@ const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
 const INTERVAL_RANGE_MS: std::ops::RangeInclusive<i64> = 1_000..=3_600_000;
 const LOGGER_SERIAL_RANGE: &str = "Logger serial must be 1–4294967295";
-const LOGGER_SERIAL_TRANSPORT: &str = "Logger serial is for the solarman-v5 transport";
 const TIMEOUT_RANGE_MS: std::ops::RangeInclusive<i64> = 100..=60_000;
 
 /// How the connection is framed on the wire.
@@ -84,12 +83,9 @@ impl InverterConfig {
             (!INTERVAL_RANGE_MS.contains(&self.poll_interval_ms), "Poll interval must be 1000–3600000 ms"),
             (self.simulate, "Simulation is not available in this core"),
             (
-                self.logger_serial.is_some_and(|serial| u32::try_from(serial).is_err() || serial == 0),
+                self.transport == Transport::SolarmanV5
+                    && self.logger_serial.is_some_and(|serial| u32::try_from(serial).is_err() || serial == 0),
                 LOGGER_SERIAL_RANGE,
-            ),
-            (
-                self.logger_serial.is_some() && self.transport != Transport::SolarmanV5,
-                LOGGER_SERIAL_TRANSPORT,
             ),
         ];
         match checks.into_iter().find(|(failed, _)| *failed) {
@@ -111,8 +107,11 @@ impl InverterConfig {
         self.host.as_deref().unwrap_or_default().trim()
     }
 
-    /// The validated logger serial; a value `validate` refused reads as none.
+    /// The validated logger serial; none for another transport, whose form cannot clear it.
     pub fn logger_serial(&self) -> Option<u32> {
+        if self.transport != Transport::SolarmanV5 {
+            return None;
+        }
         self.logger_serial.and_then(|serial| u32::try_from(serial).ok())
     }
 
@@ -284,14 +283,18 @@ mod tests {
         }
         let range = "Logger serial must be 1–4294967295";
         for serial in [0, -1, 4_294_967_296] {
-            let mut config = solarman(Some(serial));
-            assert_eq!(config.validate(), Err(range.to_owned()), "{serial}");
-            config.transport = Transport::Tcp;
-            assert_eq!(config.validate(), Err(range.to_owned()), "{serial}: the range comes first");
+            assert_eq!(solarman(Some(serial)).validate(), Err(range.to_owned()), "{serial}");
         }
-        let only = "Logger serial is for the solarman-v5 transport";
-        assert_eq!(refusal(|c| c.logger_serial = Some(7)), only);
-        assert_eq!(refusal(|c| (c.transport, c.logger_serial) = (Transport::RtuOverTcp, Some(7))), only);
+    }
+
+    #[test]
+    fn a_logger_serial_on_another_transport_is_ignored_not_refused() {
+        for transport in [Transport::Tcp, Transport::RtuOverTcp] {
+            let config = InverterConfig { transport, logger_serial: Some(7), ..config() };
+            assert_eq!(config.validate(), Ok(()), "{transport:?}");
+            assert_eq!(config.logger_serial(), None, "{transport:?}");
+        }
+        assert_eq!(solarman(Some(7)).logger_serial(), Some(7));
     }
 
     #[test]
@@ -346,6 +349,19 @@ mod tests {
         for saved in [solarman(Some(3_168_930_341)), rtu, solarman(None), config()] {
             save_inverter(&store, &saved).await.expect("save");
             assert_eq!(read_inverter(&store).await.expect("read"), saved);
+        }
+    }
+
+    #[tokio::test]
+    async fn switching_a_solarman_connection_to_another_transport_saves_no_serial() {
+        for transport in [Transport::Tcp, Transport::RtuOverTcp] {
+            let store = Store::in_memory().await.expect("store");
+            save_inverter(&store, &solarman(Some(3_168_930_341))).await.expect("save");
+            let switched = InverterConfig { transport, logger_serial: Some(3_168_930_341), ..config() };
+            switched.validate().expect("valid");
+            save_inverter(&store, &switched).await.expect("save");
+            let read = read_inverter(&store).await.expect("read");
+            assert_eq!((read.transport, read.logger_serial), (transport, None), "{transport:?}");
         }
     }
 

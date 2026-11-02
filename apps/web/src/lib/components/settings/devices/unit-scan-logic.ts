@@ -117,7 +117,7 @@ export function configScanTarget(
       pollIntervalMs: cfg.pollIntervalMs,
       // Absent rather than undefined: the route parses a body, and a stated
       // `loggerSerial: undefined` is not the same thing as an unstated one.
-      ...(cfg.loggerSerial === undefined ? {} : { loggerSerial: cfg.loggerSerial }),
+      ...(typeof cfg.loggerSerial === "number" ? { loggerSerial: cfg.loggerSerial } : {}),
     },
     profileId,
   };

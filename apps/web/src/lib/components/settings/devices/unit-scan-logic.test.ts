@@ -116,6 +116,9 @@ describe("configScanTarget", () => {
       loggerSerial: 3168930341,
     });
     expect(configScanTarget(cfg, "deye")?.params).not.toHaveProperty("loggerSerial");
+    expect(configScanTarget({ ...cfg, loggerSerial: null }, "deye")?.params).not.toHaveProperty(
+      "loggerSerial",
+    );
   });
 
   test("cannot scan without an address or without a profile", () => {
