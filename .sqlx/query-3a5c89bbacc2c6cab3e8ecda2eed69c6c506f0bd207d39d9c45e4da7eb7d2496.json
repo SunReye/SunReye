@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)\n             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n             ON CONFLICT (tier, start_us, device_id, metric_id) DO UPDATE SET\n               avg = excluded.avg, max = excluded.max, min = excluded.min, first_us = excluded.first_us,\n               first = excluded.first, last_us = excluded.last_us, last = excluded.last, weighted = excluded.weighted",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "3a5c89bbacc2c6cab3e8ecda2eed69c6c506f0bd207d39d9c45e4da7eb7d2496"
+}

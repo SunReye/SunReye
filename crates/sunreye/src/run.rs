@@ -1,4 +1,5 @@
-//! The running core: the store, one polling task per stored device and the HTTP server over them.
+//! The running core: the store, one polling task per stored device, the retention pass and the HTTP
+//! server over them.
 
 use std::future::{Future, IntoFuture};
 use std::path::Path;
@@ -14,6 +15,7 @@ use tokio::time::MissedTickBehavior;
 use crate::modbus::Client;
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
+use crate::retention::retain;
 use crate::samples::{ClosedMinute, MinuteBuffer, Sample};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, poll_interval, poll_timeout};
 use crate::sources::{find_profile, installed};
@@ -164,6 +166,7 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
+    tasks.spawn(retention(Arc::clone(store), stopped.clone()));
     let installed = installed(store).await?;
     for device in store.devices().await? {
         match find_profile(bundle, &installed, &device.profile_id) {
@@ -175,6 +178,27 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
         }
     }
     Ok(Running { stop, tasks })
+}
+
+const RETENTION_EVERY: Duration = Duration::from_hours(1);
+
+/// Runs the retention pass at start and hourly until `stopped` changes.
+async fn retention(store: Arc<Store>, mut stopped: watch::Receiver<bool>) {
+    let mut ticker = tokio::time::interval(RETENTION_EVERY);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => break,
+            _ = ticker.tick() => retain_now(&store).await,
+        }
+    }
+}
+
+async fn retain_now(store: &Store) {
+    if let Err(error) = retain(store, jiff::Timestamp::now()).await {
+        tracing::error!(%error, "retention pass failed");
+    }
 }
 
 fn log_unknown_profile(device: &DeviceRow) {
@@ -270,9 +294,12 @@ mod tests {
     use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    use jiff::Timestamp;
+
     use super::*;
     use crate::modbus::Transport;
-    use crate::samples::Sample;
+    use crate::rollup::Tier;
+    use crate::samples::{MINUTE_MS, Sample, minute_of};
     use crate::settings::INTERVAL_KEY;
     use crate::store::{NewConnection, NewDevice};
     use crate::web::Config;
@@ -357,6 +384,32 @@ mod tests {
             .await
             .expect("run");
         assert_eq!(stored(&dir, device).await, []);
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn the_running_core_drops_buckets_past_retention_and_keeps_the_rest() {
+        let dir = dir("retention");
+        let device = seed(&dir, 1, "no-such-profile", "20").await;
+        let store = Store::open(&dir).await.expect("store");
+        let now = now_ms();
+        for at_ms in [now - 91 * 24 * 60 * MINUTE_MS, now - 89 * 24 * 60 * MINUTE_MS] {
+            let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
+            let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
+            store.append_minute(device, &minute).await.expect("append");
+        }
+        store.close().await;
+
+        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
+            .await
+            .expect("run");
+
+        let store = Store::open(&dir).await.expect("store");
+        let minutes = store.buckets(Tier::Minute, device, "power").await.expect("buckets");
+        let kept = Timestamp::from_millisecond(minute_of(now - 89 * 24 * 60 * MINUTE_MS) * MINUTE_MS);
+        assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
+        assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 1);
+        store.close().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 
