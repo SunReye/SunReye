@@ -65,6 +65,11 @@
 		await loadRegistered();
 	}
 
+	async function onExternalRemoved() {
+		await loadRegistered();
+		if (!registered.some((p) => p.id === selectedId)) selectedId = null;
+	}
+
 	async function activate() {
 		if (!selectedId) return;
 		activating = true;
@@ -87,7 +92,7 @@
 
 <SetupShell title={m.setup_title()} subtitle={m.setup_subtitle()} {step}>
 	{#if step === 'profile'}
-		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} />
+		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} {onExternalRemoved} />
 	{:else if step === 'connect'}
 		<InverterForm bind:this={connectForm} profileId={testProfileId} wizard />
 	{:else}

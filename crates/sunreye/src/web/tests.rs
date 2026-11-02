@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 25] = [
+const SERVED: [(&str, &str); 27] = [
     ("get", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys/revoke"),
@@ -434,6 +434,8 @@ const SERVED: [(&str, &str); 25] = [
     ("delete", "/api/admin/users/{id}"),
     ("put", "/api/admin/users/{id}/role"),
     ("delete", "/api/auth/session"),
+    ("delete", "/api/settings/profile-sources"),
+    ("delete", "/api/settings/profiles/{id}"),
     ("get", "/api/auth/session"),
     ("post", "/api/auth/login"),
     ("post", "/api/auth/sign-up"),
@@ -503,7 +505,9 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 15] = [
+const ADMIN_ROUTES: [(&str, &str); 17] = [
+    ("DELETE", "/api/settings/profiles/acme"),
+    ("DELETE", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profiles/import"),
     ("GET", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profile-sources"),

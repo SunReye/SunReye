@@ -4,16 +4,19 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as m from '$lib/paraglide/messages';
+	import RowRemoveButton from './row-remove-button.svelte';
 	import type { Source, StoredSource } from './profile-types';
 
 	let {
 		sources,
 		busy,
-		onAdd
+		onAdd,
+		onRemove
 	}: {
 		sources: StoredSource[];
 		busy: boolean;
 		onAdd: (source: Source) => void;
+		onRemove: (source: Source) => void;
 	} = $props();
 
 	let baseUrl = $state('');
@@ -43,11 +46,18 @@
 <Section title={m.sources_title()}>
 	<ul class="flex flex-col divide-y divide-border">
 		{#each sources as s (`${s.baseUrl}${s.indexPath}`)}
-			<li class="flex flex-col gap-0.5 py-2.5">
-				<span class="text-sm break-all">{s.baseUrl}</span>
-				<span class="text-xs break-all text-muted-foreground">
-					{s.indexPath} · {m.sources_profile_count({ count: s.profileIds.length })}
-				</span>
+			<li class="flex items-center justify-between gap-3 py-2.5">
+				<div class="flex min-w-0 flex-col gap-0.5">
+					<span class="text-sm break-all">{s.baseUrl}</span>
+					<span class="text-xs break-all text-muted-foreground">
+						{s.indexPath} · {m.sources_profile_count({ count: s.profileIds.length })}
+					</span>
+				</div>
+				<RowRemoveButton
+					label={m.sources_remove_aria({ url: s.baseUrl })}
+					disabled={busy}
+					onclick={() => onRemove({ baseUrl: s.baseUrl, indexPath: s.indexPath })}
+				/>
 			</li>
 		{/each}
 		{#if sources.length === 0}

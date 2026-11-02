@@ -11,7 +11,7 @@ import { openPage } from "./support/open-page";
 const deletes = (page: Page) => {
   const seen: string[] = [];
   page.on("request", (r) => {
-    if (r.method() === "DELETE" && r.url().includes("/api/profiles/")) seen.push(r.url());
+    if (r.method() === "DELETE" && r.url().includes("/api/settings/profiles/")) seen.push(r.url());
   });
   return seen;
 };
@@ -28,7 +28,7 @@ test("the trash icon opens a confirm, and only the confirm deletes", async ({ pa
   await panel.getByRole("button", { name: "Remove" }).click();
   await expect(panel).toHaveCount(0);
   await expect.poll(() => seen.length).toBe(1);
-  expect(seen[0]).toContain("/api/profiles/");
+  expect(seen[0]).toMatch(/\/api\/settings\/profiles\/[^/]+$/);
   expect(opened.consoleErrors).toEqual([]);
 });
 

@@ -1139,5 +1139,8 @@
   "sources_added": "Source ajoutée, profils : {count}",
   "sources_add_failed": "Impossible d'ajouter la source : {error}",
   "sources_skipped_item": "{path} : {reason}",
-  "sources_skipped_title": "Fichiers ignorés"
+  "sources_skipped_title": "Fichiers ignorés",
+  "sources_remove_aria": "Supprimer la source {url}",
+  "sources_removed": "Source supprimée",
+  "sources_remove_failed": "Impossible de supprimer la source : {error}"
 }

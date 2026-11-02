@@ -615,6 +615,13 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     return profile;
   };
 
+  const removeAdded = (ids: string[]) => {
+    for (const gone of ids) {
+      const at = addedProfiles.findIndex((profile) => profile.id === gone);
+      if (at !== -1) addedProfiles.splice(at, 1);
+    }
+  };
+
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -917,7 +924,20 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         storedSources.push({ ...source, profileIds: [profile.id] });
         return json(route, { ...source, profileIds: [profile.id], skipped: [] });
       }
+      if (method === "DELETE") {
+        const index = storedSources.findIndex(
+          (stored) => stored.baseUrl === query.baseUrl && stored.indexPath === query.indexPath,
+        );
+        if (index === -1) return json(route, { error: "Nothing stored under that name" }, 404);
+        const [gone] = storedSources.splice(index, 1);
+        removeAdded(gone.profileIds);
+        return route.fulfill({ status: 204 });
+      }
       return json(route, storedSources);
+    }
+    if (under("settings/profiles") && method === "DELETE") {
+      removeAdded([id]);
+      return route.fulfill({ status: 204 });
     }
     if (at("settings/profiles/import")) {
       const file = JSON.parse(request.postData() ?? "{}") as { id: string; name: string };
@@ -1058,7 +1078,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
 
     // ── Profiles ────────────────────────────────────────────────────────────
     if (at("profiles")) return json(route, [...fixture.profiles(MANIFEST), ...addedProfiles]);
-    if (under("profiles") && method === "DELETE") return json(route, { ok: true, id });
 
     // ── Commands ────────────────────────────────────────────────────────────
     if (at("commands/setting")) {

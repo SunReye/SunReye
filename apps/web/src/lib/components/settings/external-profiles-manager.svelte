@@ -12,7 +12,8 @@
 	// Shared by the settings profiles form, the device dialogs and the first-run setup wizard.
 	// `onInstalled` fires with one stored id (the first a source supplied, or the imported one) so the
 	// parent can refresh its registered list and offer that profile.
-	let { onInstalled }: { onInstalled?: (id: string) => void } = $props();
+	// `onRemoved` fires after a source and the profiles only it supplied are gone.
+	let { onInstalled, onRemoved }: { onInstalled?: (id: string) => void; onRemoved?: () => void } = $props();
 
 	let sources = $state<StoredSource[]>([]);
 	let skipped = $state<Skipped[]>([]);
@@ -58,10 +59,35 @@
 			busy = false;
 		}
 	}
+
+	/** The core's refusal of the removal, if any. A dead connection throws. */
+	async function refusal(source: Source) {
+		const { error } = await core.DELETE('/api/settings/profile-sources', { params: { query: source } });
+		return error === undefined ? null : apiErrorText(error, m.conn_request_failed());
+	}
+
+	async function remove(source: Source) {
+		failure = null;
+		busy = true;
+		try {
+			const refused = await refusal(source);
+			if (refused !== null) {
+				failure = m.sources_remove_failed({ error: refused });
+				return;
+			}
+			await loadSources();
+			toast.success(m.sources_removed());
+			onRemoved?.();
+		} catch {
+			failure = m.sources_remove_failed({ error: m.conn_request_failed() });
+		} finally {
+			busy = false;
+		}
+	}
 </script>
 
 <div class="flex flex-col gap-4">
-	<ProfileSourcesEditor {sources} {busy} onAdd={add} />
+	<ProfileSourcesEditor {sources} {busy} onAdd={add} onRemove={remove} />
 	{#if failure}
 		<p role="alert" class="text-sm text-destructive">{failure}</p>
 	{/if}
