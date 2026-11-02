@@ -2,47 +2,18 @@
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose};
 use sunreye::https::{GetError, Limits, get, get_with_roots};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use tokio_rustls::rustls::{ServerConfig, crypto::ring::default_provider};
 
-struct Ca {
-    params: CertificateParams,
-    cert: rcgen::Certificate,
-    key: KeyPair,
-}
-
-impl Ca {
-    fn new(name: &str) -> Self {
-        let mut params = CertificateParams::new(Vec::new()).expect("params");
-        params.distinguished_name.push(DnType::CommonName, name);
-        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        params.key_usages = vec![KeyUsagePurpose::KeyCertSign];
-        let key = KeyPair::generate().expect("key");
-        let cert = params.self_signed(&key).expect("self-signed");
-        Self { params, cert, key }
-    }
-
-    fn root(&self) -> CertificateDer<'static> {
-        self.cert.der().clone()
-    }
-
-    /// A leaf for `host`, signed by this CA.
-    fn leaf(&self, host: &str) -> (CertificateDer<'static>, PrivateKeyDer<'static>) {
-        let params = CertificateParams::new(vec![host.to_owned()]).expect("params");
-        let key = KeyPair::generate().expect("key");
-        let issuer = Issuer::from_params(&self.params, &self.key);
-        let cert = params.signed_by(&key, &issuer).expect("leaf");
-        (cert.der().clone(), PrivateKeyDer::try_from(key.serialize_der()).expect("pkcs8"))
-    }
-}
+mod support;
+use support::{Ca, Instead, Site, read_request, serve_site_with};
 
 enum Reply {
     /// 200 with a `Content-Length` matching the body.
@@ -58,13 +29,7 @@ enum Reply {
 
 /// Serves one `reply` per connection on a free port; returns the port.
 async fn serve(chain: (CertificateDer<'static>, PrivateKeyDer<'static>), reply: Reply) -> u16 {
-    let config = ServerConfig::builder_with_provider(Arc::new(default_provider()))
-        .with_safe_default_protocol_versions()
-        .expect("versions")
-        .with_no_client_auth()
-        .with_single_cert(vec![chain.0], chain.1)
-        .expect("server config");
-    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let acceptor = support::acceptor(chain);
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
     tokio::spawn(accept_loop(listener, acceptor, Arc::new(reply)));
@@ -82,17 +47,6 @@ async fn connection(acceptor: TlsAcceptor, tcp: TcpStream, reply: Arc<Reply>) {
     if read_request(&mut tls).await.is_some() {
         let _ = respond(&mut tls, &reply).await;
     }
-}
-
-/// Reads up to the blank line ending the request head.
-async fn read_request<R: AsyncReadExt + Unpin>(input: &mut R) -> Option<Vec<u8>> {
-    let mut request = Vec::new();
-    let mut buf = [0u8; 1024];
-    while !request.ends_with(b"\r\n\r\n") {
-        let n = input.read(&mut buf).await.ok().filter(|n| *n > 0)?;
-        request.extend_from_slice(&buf[..n]);
-    }
-    Some(request)
 }
 
 /// What goes on the wire for a reply, and whether the connection then stalls instead of closing.
@@ -276,4 +230,16 @@ async fn live_raw_github_file_is_served() {
         .await
         .expect("raw.githubusercontent.com");
     assert!(String::from_utf8_lossy(&body).contains("Permission is hereby granted"));
+}
+
+#[tokio::test]
+async fn a_redirect_is_not_followed_even_within_the_same_origin() {
+    let ca = Ca::new("test root");
+    let mut files = Site::new();
+    files.insert("/final.json".into(), b"reached".to_vec());
+    let instead = BTreeMap::from([("/start.json".to_owned(), Instead::Redirect("/final.json".into()))]);
+    let port = serve_site_with(&ca, files, instead).await;
+    let url = format!("https://localhost:{port}/start.json");
+    let err = get_with_roots(&url, limits(1024), &[ca.root()]).await.expect_err("redirect");
+    assert!(matches!(err, GetError::Status(302)), "{err:?}");
 }

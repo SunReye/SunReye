@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{active_profile, set_active_profile};
+use crate::sources::installed;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -117,23 +119,18 @@ pub struct ActiveProfile {
 )]
 pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<ProfileEntry>>, ApiError> {
     let active = active_profile(&core.store).await?;
-    let entries = core
-        .bundle
-        .profiles
-        .iter()
-        .map(|pinned| {
-            let profile = &pinned.profile;
-            ProfileEntry {
-                id: profile.id.clone(),
-                name: profile.name.clone(),
-                manufacturer: profile.manufacturer.clone(),
-                active: active.as_deref() == Some(profile.id.as_str()),
-                installed: false,
-                builtin: true,
-            }
-        })
-        .collect();
-    Ok(Json(entries))
+    let entry = |profile: &Profile, builtin: bool| ProfileEntry {
+        id: profile.id.clone(),
+        name: profile.name.clone(),
+        manufacturer: profile.manufacturer.clone(),
+        active: active.as_deref() == Some(profile.id.as_str()),
+        installed: !builtin,
+        builtin,
+    };
+    let compiled_in = core.bundle.profiles.iter().map(|pinned| entry(&pinned.profile, true));
+    let sourced = installed(&core.store).await?;
+    let sourced = sourced.iter().filter(|p| core.bundle.profile(&p.profile.id).is_none());
+    Ok(Json(compiled_in.chain(sourced.map(|p| entry(&p.profile, false))).collect()))
 }
 
 #[utoipa::path(
@@ -153,7 +150,7 @@ pub async fn choose_profile(
     State(core): State<Arc<Core>>,
     ApiJson(request): ApiJson<ActiveProfileRequest>,
 ) -> Result<Json<ActiveProfile>, ApiError> {
-    if core.bundle.profile(&request.id).is_none() {
+    if core.profile(&request.id).await?.is_none() {
         return Err(ApiError::bad_request(format!("Unknown profile \"{}\"", request.id)));
     }
     set_active_profile(&core.store, &request.id).await?;
