@@ -118,7 +118,7 @@ mod tests {
         assert!(!passwords.verify("no such account".into(), None).await, "the dummy matches nothing");
     }
 
-    /// Openwall crypt_blowfish's published vectors, so the hash is bcrypt and not only self-consistent.
+    /// Openwall `crypt_blowfish`'s published vectors, so the hash is bcrypt and not only self-consistent.
     #[tokio::test]
     async fn a_reference_bcrypt_hash_verifies() {
         let passwords = Passwords::new();
