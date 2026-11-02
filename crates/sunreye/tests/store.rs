@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use sunreye::modbus::Transport;
 use sunreye::samples::{ClosedMinute, MINUTE_MS, Sample};
 use sunreye::store::{NewConnection, NewDevice, Store};
 
@@ -19,7 +20,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 async fn device(store: &Store) -> i64 {
-    let connection = NewConnection { transport: "tcp".into(), host: "10.0.0.5".into(), port: 502 };
+    let connection = NewConnection { transport: Transport::Tcp, host: "10.0.0.5".into(), port: 502 };
     let connection = store.add_connection(&connection).await.expect("connection");
     let device = NewDevice { connection_id: connection, profile_id: "deye-sg01hp3".into(), unit_id: 1 };
     store.add_device(&device).await.expect("device")
