@@ -161,6 +161,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/rollup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored buckets of one metric, oldest first: the minute tier. */
+        get: operations["rollupHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile": {
         parameters: {
             query?: never;
@@ -545,6 +562,16 @@ export interface components {
         };
         RoleRequest: {
             admin: boolean;
+        };
+        RollupPoint: {
+            /** Format: double */
+            avg: number;
+            /** Format: double */
+            max: number;
+            /** Format: double */
+            min: number;
+            /** @description UTC start of the bucket. */
+            time: string;
         };
         /** @description One metric's points: `o[i]` steps after `t0`, holding `v[i]`. */
         Series: {
@@ -1230,6 +1257,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Recent"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rollupHistory: {
+        parameters: {
+            query: {
+                metric: string;
+                /** @description `plant`, or a device's decimal id. Without it, the first device. */
+                source?: string;
+                /** @description As `source`, which wins when both are set. */
+                inverterId?: string;
+                /** @description Bucket width. Default `hour`; only `minute` is served. */
+                bucket?: "minute" | "hour" | "day";
+                /** @description How far back from now. Default 168. Ignored when `from` and `to` are both set. */
+                hours?: number;
+                /** @description Start of the window, RFC 3339, inclusive. */
+                from?: string;
+                /** @description End of the window, RFC 3339, exclusive. */
+                to?: string;
+                /** @description Most buckets, oldest first. Default 5000. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollupPoint"][];
                 };
             };
             400: {

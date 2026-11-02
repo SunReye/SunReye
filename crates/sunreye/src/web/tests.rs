@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 25] = [
+const SERVED: [(&str, &str); 26] = [
     ("get", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys/revoke"),
@@ -439,6 +439,7 @@ const SERVED: [(&str, &str); 25] = [
     ("post", "/api/auth/sign-up"),
     ("get", "/api/capabilities"),
     ("get", "/api/history/recent"),
+    ("get", "/api/history/rollup"),
     ("get", "/api/profile"),
     ("get", "/api/profile-status"),
     ("get", "/api/profiles"),
@@ -521,10 +522,11 @@ const ADMIN_ROUTES: [(&str, &str); 15] = [
     ("POST", "/api/admin/api-keys/revoke"),
 ];
 
-const SESSION_ROUTES: [(&str, &str); 5] = [
+const SESSION_ROUTES: [(&str, &str); 6] = [
     ("GET", "/api/capabilities"),
     ("GET", "/api/profile"),
     ("GET", "/api/history/recent"),
+    ("GET", "/api/history/rollup"),
     ("GET", "/api/auth/session"),
     ("DELETE", "/api/auth/session"),
 ];
@@ -1155,5 +1157,6 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 
 mod api_keys;
 mod reads;
+mod rollup;
 mod users;
 mod ws;

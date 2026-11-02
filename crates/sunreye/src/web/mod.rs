@@ -8,6 +8,7 @@ mod inverter;
 mod origin;
 mod password;
 mod profile_sources;
+mod rollup;
 mod setup;
 mod users;
 mod v1;
@@ -72,6 +73,7 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
+        .routes(routes!(rollup::minute_buckets))
         .routes(routes!(auth::current, auth::logout))
         .route("/ws", get(ws::upgrade))
         .route_layer(login_required!(Accounts))

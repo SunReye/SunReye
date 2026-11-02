@@ -644,13 +644,14 @@ describe("planning carries both bodies", () => {
 // ---------------------------------------------------------------------------
 
 describe("the session surface is a closed list", () => {
-  test("a plain signed-in user reaches the session, capabilities and the two dashboard reads, nothing else", () => {
+  test("a plain signed-in user reaches the session, capabilities and the three dashboard reads, nothing else", () => {
     expect([...SESSION_LABELS].sort()).toEqual(
       [
         "DELETE /api/auth/session",
         "GET /api/auth/session",
         "GET /api/capabilities",
         "GET /api/history/recent",
+        "GET /api/history/rollup",
         "GET /api/profile",
       ].sort(),
     );
