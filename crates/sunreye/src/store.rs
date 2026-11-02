@@ -16,6 +16,7 @@ mod accounts;
 mod tiers;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
+pub use self::tiers::BucketWindow;
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
@@ -134,6 +135,12 @@ impl Store {
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal);
         Self::connect(options).await
+    }
+
+    /// Takes the one connection, so every other use of the store waits until it is dropped.
+    #[cfg(test)]
+    pub(crate) async fn hold(&self) -> sqlx::pool::PoolConnection<Sqlite> {
+        self.pool.acquire().await.expect("connection")
     }
 
     #[cfg(test)]

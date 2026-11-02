@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id\n               WHERE tier = ? AND device_id = ? AND metric.key = ? AND start_us >= ? AND start_us < ?\n               ORDER BY start_us LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "start_us",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "avg",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "max",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "min",
+        "ordinal": 3,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "88de319b757cd48aad87fc436a2c6caae6b1da956b30cb2837233799c9dd574f"
+}

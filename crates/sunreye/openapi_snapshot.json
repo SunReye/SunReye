@@ -718,6 +718,136 @@
         }
       }
     },
+    "/api/history/rollup": {
+      "get": {
+        "summary": "Stored buckets of one metric, oldest first: the minute tier.",
+        "operationId": "rollupHistory",
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "`plant`, or a device's decimal id. Without it, the first device.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inverterId",
+            "in": "query",
+            "description": "As `source`, which wins when both are set.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Bucket width. Default `hour`; only `minute` is served.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day"
+              ]
+            }
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "description": "How far back from now. Default 168. Ignored when `from` and `to` are both set.",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "format": "double",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start of the window, RFC 3339, inclusive.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End of the window, RFC 3339, exclusive.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most buckets, oldest first. Default 5000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 50000,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RollupPoint"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/profile": {
       "get": {
         "summary": "The active profile as the dashboard builds itself from it.",
@@ -2179,6 +2309,33 @@
         "properties": {
           "admin": {
             "type": "boolean"
+          }
+        }
+      },
+      "RollupPoint": {
+        "type": "object",
+        "required": [
+          "time",
+          "avg",
+          "max",
+          "min"
+        ],
+        "properties": {
+          "avg": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "time": {
+            "type": "string",
+            "description": "UTC start of the bucket."
           }
         }
       },

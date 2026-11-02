@@ -26,6 +26,19 @@ const fn code(tier: Tier) -> i64 {
     }
 }
 
+/// The buckets a read takes: those starting in `[from, to)`, the first `limit` of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BucketWindow {
+    pub from: Timestamp,
+    pub to: Timestamp,
+    pub limit: u32,
+}
+
+fn bucket(start_us: i64, avg: f64, max: f64, min: f64) -> Result<Bucket, StoreError> {
+    let start = Timestamp::from_microsecond(start_us).map_err(|_| StoreError::Corrupt("bucket start"))?;
+    Ok(Bucket { start, avg, max, min })
+}
+
 impl Store {
     /// The `tier` buckets of `metric` on the device, oldest first. The history endpoints (#385) read through it.
     pub async fn buckets(&self, tier: Tier, device_id: i64, metric: &str) -> Result<Vec<Bucket>, StoreError> {
@@ -39,13 +52,35 @@ impl Store {
         )
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter()
-            .map(|row| {
-                let start = Timestamp::from_microsecond(row.start_us)
-                    .map_err(|_| StoreError::Corrupt("bucket start"))?;
-                Ok(Bucket { start, avg: row.avg, max: row.max, min: row.min })
-            })
-            .collect()
+        rows.into_iter().map(|row| bucket(row.start_us, row.avg, row.max, row.min)).collect()
+    }
+
+    /// The first `window.limit` `tier` buckets of `metric` on the device that start in `[window.from, window.to)`,
+    /// oldest first.
+    pub async fn buckets_between(
+        &self,
+        tier: Tier,
+        device_id: i64,
+        metric: &str,
+        window: BucketWindow,
+    ) -> Result<Vec<Bucket>, StoreError> {
+        let tier = code(tier);
+        let (from, to, limit) =
+            (window.from.as_microsecond(), window.to.as_microsecond(), i64::from(window.limit));
+        let rows = sqlx::query!(
+            r#"SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
+               WHERE tier = ? AND device_id = ? AND metric.key = ? AND start_us >= ? AND start_us < ?
+               ORDER BY start_us LIMIT ?"#,
+            tier,
+            device_id,
+            metric,
+            from,
+            to,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(|row| bucket(row.start_us, row.avg, row.max, row.min)).collect()
     }
 
     /// Drops every `tier` bucket that ended at or before `ended_by`, for every device; returns how many.
@@ -408,6 +443,12 @@ mod tests {
                 device_metric,
             ),
             (
+                "SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
+                 WHERE tier = ? AND device_id = ? AND metric.key = ? AND start_us >= ? AND start_us < ?
+                 ORDER BY start_us LIMIT ?",
+                device_metric,
+            ),
+            (
                 "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
                  WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
                 device_metric,
@@ -645,6 +686,37 @@ mod tests {
             store.append_minute(device, minute).await.expect("append");
             tokio::task::yield_now().await;
         }
+    }
+
+    async fn between(store: &Store, device: i64, metric: &str, window: BucketWindow) -> Vec<Bucket> {
+        store.buckets_between(Tier::Minute, device, metric, window).await.expect("buckets")
+    }
+
+    fn window(from: &str, to: &str, limit: u32) -> BucketWindow {
+        BucketWindow { from: at(from), to: at(to), limit }
+    }
+
+    #[tokio::test]
+    async fn a_range_of_buckets_runs_from_inclusive_to_exclusive_and_stops_at_the_limit() {
+        let (store, device) = with_device().await;
+        for (m, value) in [0.0, 1.0, 2.0, 3.0, 4.0].into_iter().enumerate() {
+            append(&store, device, &[(&format!("2026-05-10T00:0{m}:00Z"), value)]).await;
+        }
+        let power = |window| between(&store, device, "power", window);
+        let two = bucket("2026-05-10T00:02:00Z", 2.0, 2.0, 2.0);
+        let three = bucket("2026-05-10T00:03:00Z", 3.0, 3.0, 3.0);
+        assert_eq!(power(window("2026-05-10T00:02:00Z", "2026-05-10T00:04:00Z", 10)).await, [two, three]);
+        assert_eq!(power(window("2026-05-10T00:02:00Z", "2026-05-10T00:04:00Z", 1)).await, [two]);
+        assert_eq!(power(window("2026-05-10T00:02:01Z", "2026-05-10T00:03:00Z", 10)).await, []);
+        assert_eq!(power(window("2026-05-10T00:00:00Z", "2026-05-10T00:00:00Z", 10)).await, []);
+        assert_eq!(power(window("2026-05-10T00:04:00Z", "2026-05-10T00:00:00Z", 10)).await, [], "inverted");
+        let every = BucketWindow { from: Timestamp::MIN, to: Timestamp::MAX, limit: u32::MAX };
+        let all = power(every).await;
+        assert_eq!(all, self::power(&store, Tier::Minute, device).await);
+        assert_eq!(all.len(), 5);
+        let hours = store.buckets_between(Tier::Hour, device, "power", every).await;
+        assert_eq!(hours.expect("buckets"), [], "no hour has closed");
+        assert_eq!(between(&store, device, "nothing", every).await, []);
     }
 
     async fn drop_repeatedly(store: &Store, cutoff: Timestamp, times: usize) {
