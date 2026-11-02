@@ -166,7 +166,7 @@ mod tests {
     use super::*;
 
     fn account(email: &str) -> NewAccount {
-        NewAccount { email: email.into(), name: "Name".into(), password_hash: "$argon2id$hash".into() }
+        NewAccount { email: email.into(), name: "Name".into(), password_hash: "$2b$12$hash".into() }
     }
 
     fn key(account_id: i64, hash: u8) -> NewApiKey {
