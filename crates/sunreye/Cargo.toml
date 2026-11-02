@@ -42,7 +42,13 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "ansi",
 ] }
 webpki-roots = "1"
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "ws"] }
+axum = { version = "0.8", default-features = false, features = [
+  "http1",
+  "json",
+  "query",
+  "tokio",
+  "ws",
+] }
 utoipa = "6"
 utoipa-axum = "0.3"
 rust-embed = { version = "8", features = ["interpolate-folder-path", "mime-guess"] }
