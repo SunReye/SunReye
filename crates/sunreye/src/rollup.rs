@@ -39,7 +39,7 @@ pub struct Bucket {
 
 /// One bucket's readings before its neighbours are known; times in microseconds.
 #[derive(Debug, Clone, Copy)]
-struct Summary {
+struct Partial {
     start: i64,
     first: (i64, f64),
     last: (i64, f64),
@@ -49,7 +49,7 @@ struct Summary {
     min: f64,
 }
 
-impl Summary {
+impl Partial {
     fn new(start: i64, at: i64, value: f64) -> Self {
         Self { start, first: (at, value), last: (at, value), weighted: 0.0, max: value, min: value }
     }
@@ -70,57 +70,57 @@ fn held(reading: (i64, f64), until: i64) -> f64 {
 
 /// The buckets of `tier` that hold at least one of `readings`, oldest first. Readings may come in any order.
 pub fn rollup(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Bucket> {
-    let mut points: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (at.as_microsecond(), *v)).collect();
-    points.sort_by_key(|p| p.0);
-    let summaries = match tier {
-        Tier::Day => fold(Tier::Day, &fold(Tier::Hour, &raw(&points))),
-        _ => fold(tier, &raw(&points)),
+    let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (at.as_microsecond(), *v)).collect();
+    sorted.sort_by_key(|p| p.0);
+    let partials = match tier {
+        Tier::Day => fold(Tier::Day, &fold(Tier::Hour, &raw(&sorted))),
+        _ => fold(tier, &raw(&sorted)),
     };
     let width = tier.width_us();
-    let mut previous: Option<&Summary> = None;
-    let mut out = Vec::with_capacity(summaries.len());
-    for summary in &summaries {
-        out.push(close(summary, previous, width));
-        previous = Some(summary);
+    let mut previous: Option<&Partial> = None;
+    let mut out = Vec::with_capacity(partials.len());
+    for partial in &partials {
+        out.push(close(partial, previous, width));
+        previous = Some(partial);
     }
     out
 }
 
-fn raw(points: &[(i64, f64)]) -> Vec<Summary> {
-    points.iter().map(|&(at, value)| Summary::new(at, at, value)).collect()
+fn raw(sorted: &[(i64, f64)]) -> Vec<Partial> {
+    sorted.iter().map(|&(at, value)| Partial::new(at, at, value)).collect()
 }
 
-/// Summaries merged into the `tier` buckets they start in.
-fn fold(tier: Tier, parts: &[Summary]) -> Vec<Summary> {
+/// Partials merged into the `tier` buckets they start in.
+fn fold(tier: Tier, parts: &[Partial]) -> Vec<Partial> {
     let width = tier.width_us();
-    let mut out: Vec<Summary> = Vec::new();
+    let mut out: Vec<Partial> = Vec::new();
     for part in parts {
         let start = part.start.div_euclid(width) * width;
         match out.last_mut() {
             Some(open) if open.start == start => open.append(part),
-            _ => out.push(Summary { start, ..*part }),
+            _ => out.push(Partial { start, ..*part }),
         }
     }
     out
 }
 
 #[expect(clippy::cast_precision_loss, reason = "microsecond spans stay far below 2^53")]
-fn close(summary: &Summary, previous: Option<&Summary>, width: i64) -> Bucket {
-    let end = summary.start + width;
-    let mut weighted = summary.weighted;
-    let mut from = summary.first.0;
+fn close(partial: &Partial, previous: Option<&Partial>, width: i64) -> Bucket {
+    let end = partial.start + width;
+    let mut weighted = partial.weighted;
+    let mut from = partial.first.0;
     if let Some(previous) = previous
-        && summary.start < from
+        && partial.start < from
     {
-        weighted += held((summary.start, previous.last.1), from);
-        from = summary.start;
+        weighted += held((partial.start, previous.last.1), from);
+        from = partial.start;
     }
-    weighted += held(summary.last, end);
+    weighted += held(partial.last, end);
     Bucket {
-        start: Timestamp::from_microsecond(summary.start).unwrap_or(Timestamp::MIN),
+        start: Timestamp::from_microsecond(partial.start).unwrap_or(Timestamp::MIN),
         avg: weighted / (end - from) as f64,
-        max: summary.max,
-        min: summary.min,
+        max: partial.max,
+        min: partial.min,
     }
 }
 
