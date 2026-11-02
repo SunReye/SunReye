@@ -1,16 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  DEFAULT_DB_PORT,
-  DEV_DB_PORT,
+  CREDENTIAL_LABELS,
   MAX_UNPROVEN_GATES,
   MIN_ROUTES,
   PUBLIC_LABELS,
   SESSION_LABELS,
   SKIP_LABELS,
-  SmokeTargetError,
   UPGRADE_LABEL,
-  assertSmokeTarget,
   classify,
   classifyAuth,
   classifyUpgrade,
@@ -20,8 +17,6 @@ import {
   parseArgs,
   planProbes,
   sampleBody,
-  generatedSurface,
-  generatedSurfaceProblem,
   probeLabel,
   sampleQuery,
   summarize,
@@ -38,55 +33,15 @@ const doc = (paths: OpenApiDoc["paths"]): OpenApiDoc => ({ paths });
 const plan = (paths: OpenApiDoc["paths"], samples: Record<string, string> = {}) =>
   planProbes(doc(paths), { samples, nowMs: NOW });
 
-describe("target pinning", () => {
-  test("refuses the dev database port, which is shared with a live inverter", () => {
-    // 5432 on a developer's host is the database a real grid-tied inverter
-    // writes into. This harness DROPs and seeds its target.
-    expect(() => assertSmokeTarget(DEV_DB_PORT)).toThrow(SmokeTargetError);
-  });
-
-  test("accepts the throwaway port", () => {
-    expect(() => assertSmokeTarget(DEFAULT_DB_PORT)).not.toThrow();
-    expect(DEFAULT_DB_PORT).toBe(5433);
-  });
-
-  test("refuses a port that is not a usable TCP port", () => {
-    expect(() => assertSmokeTarget(0)).toThrow(SmokeTargetError);
-    expect(() => assertSmokeTarget(-1)).toThrow(SmokeTargetError);
-    expect(() => assertSmokeTarget(70_000)).toThrow(SmokeTargetError);
-    expect(() => assertSmokeTarget(5433.5)).toThrow(SmokeTargetError);
-  });
-});
-
 describe("argument parsing", () => {
-  test("defaults are the throwaway database and a warmup long enough to record", () => {
-    const options = parseArgs([]);
-    expect(options.dbPort).toBe(DEFAULT_DB_PORT);
-    expect(options.warmupMs).toBeGreaterThanOrEqual(10_000);
-    expect(options.help).toBe(false);
-    expect(options.keep).toBe(false);
-  });
-
-  test("reads the flags it documents", () => {
-    const options = parseArgs(["--db-port=5434", "--port=3999", "--warmup=2000", "--keep"]);
-    expect(options).toMatchObject({ dbPort: 5434, port: 3999, warmupMs: 2000, keep: true });
-  });
-
-  test("--help short-circuits without validating a target", () => {
+  test("--help is the only flag", () => {
     expect(parseArgs(["--help"]).help).toBe(true);
+    expect(parseArgs([]).help).toBe(false);
   });
 
-  test("rejects the dev database port at the argument boundary, not later", () => {
-    expect(() => parseArgs([`--db-port=${DEV_DB_PORT}`])).toThrow(SmokeTargetError);
-  });
-
-  test("rejects an unparseable number rather than silently defaulting", () => {
-    expect(() => parseArgs(["--warmup=soon"])).toThrow();
-    expect(() => parseArgs(["--db-port=abc"])).toThrow();
-  });
-
-  test("rejects an unknown flag", () => {
+  test("rejects an unknown flag, including the database flags of the 3.x harness", () => {
     expect(() => parseArgs(["--nope"])).toThrow();
+    expect(() => parseArgs(["--db-port=5433"])).toThrow();
   });
 });
 
@@ -130,7 +85,12 @@ describe("sampling query parameters", () => {
     expect(
       sample([
         { name: "id", in: "path", required: true, schema: { type: "string" } },
-        { name: "x-key", in: "header", required: true, schema: { type: "string" } },
+        {
+          name: "x-key",
+          in: "header",
+          required: true,
+          schema: { type: "string" },
+        },
       ]),
     ).toEqual({});
   });
@@ -138,7 +98,12 @@ describe("sampling query parameters", () => {
   test("a required enum takes its first member, so the value is one the route accepts", () => {
     expect(
       sample([
-        { name: "bucket", in: "query", required: true, schema: { enum: ["hour", "day", "month"] } },
+        {
+          name: "bucket",
+          in: "query",
+          required: true,
+          schema: { enum: ["hour", "day", "month"] },
+        },
       ]),
     ).toEqual({ bucket: "hour" });
   });
@@ -159,7 +124,12 @@ describe("sampling query parameters", () => {
   test("a declared default is preferred over an invented value", () => {
     expect(
       sample([
-        { name: "hours", in: "query", required: true, schema: { type: "number", default: 24 } },
+        {
+          name: "hours",
+          in: "query",
+          required: true,
+          schema: { type: "number", default: 24 },
+        },
       ]),
     ).toEqual({ hours: "24" });
   });
@@ -167,7 +137,12 @@ describe("sampling query parameters", () => {
   test("zero is a default, not a missing one", () => {
     expect(
       sample([
-        { name: "offset", in: "query", required: true, schema: { type: "number", default: 0 } },
+        {
+          name: "offset",
+          in: "query",
+          required: true,
+          schema: { type: "number", default: 0 },
+        },
       ]),
     ).toEqual({ offset: "0" });
   });
@@ -175,7 +150,12 @@ describe("sampling query parameters", () => {
   test("false is a default, not a missing one", () => {
     expect(
       sample([
-        { name: "raw", in: "query", required: true, schema: { type: "boolean", default: false } },
+        {
+          name: "raw",
+          in: "query",
+          required: true,
+          schema: { type: "boolean", default: false },
+        },
       ]),
     ).toEqual({ raw: "false" });
   });
@@ -192,7 +172,12 @@ describe("sampling query parameters", () => {
   test("a number with only a minimum takes the minimum, never a value the route rejects", () => {
     expect(
       sample([
-        { name: "limit", in: "query", required: true, schema: { type: "integer", minimum: 5 } },
+        {
+          name: "limit",
+          in: "query",
+          required: true,
+          schema: { type: "integer", minimum: 5 },
+        },
       ]),
     ).toEqual({ limit: "5" });
   });
@@ -236,12 +221,24 @@ describe("planning the probes", () => {
 
   test("skips the docs UI and the websocket upgrade, which are not JSON handlers", () => {
     expect(
-      plan({ "/openapi": { get: {} }, "/openapi/json": { get: {} }, "/ws": { get: {} } }),
+      plan({
+        "/openapi": { get: {} },
+        "/openapi/json": { get: {} },
+        "/ws": { get: {} },
+      }),
     ).toEqual([]);
   });
 
-  test("skips Better Auth's mounted handler, which owns its own contract", () => {
-    expect(plan({ "/api/auth/*": { get: {}, post: {} } })).toEqual([]);
+  test("probes the core's auth routes like any other, ending the session last", () => {
+    const probes = plan({
+      "/api/auth/session": { get: {}, delete: {} },
+      "/api/auth/login": { post: {} },
+    });
+    expect(probes.map(probeLabel)).toEqual([
+      "GET /api/auth/session",
+      "POST /api/auth/login",
+      "DELETE /api/auth/session",
+    ]);
   });
 
   test("skips the routes that would end the run they are part of", () => {
@@ -272,7 +269,12 @@ describe("planning the probes", () => {
       "/api/history/rollup": {
         get: {
           parameters: [
-            { name: "bucket", in: "query", required: true, schema: { enum: ["hour", "day"] } },
+            {
+              name: "bucket",
+              in: "query",
+              required: true,
+              schema: { enum: ["hour", "day"] },
+            },
           ],
         },
       },
@@ -286,7 +288,9 @@ describe("planning the probes", () => {
   });
 
   test("a write carries a JSON body — an empty one, since a 4xx is a pass here", () => {
-    const [probe] = plan({ "/api/settings/tariff": { put: { requestBody: {} } } });
+    const [probe] = plan({
+      "/api/settings/tariff": { put: { requestBody: {} } },
+    });
     expect(probe?.body).toBe("{}");
     expect(probe?.method).toBe("PUT");
   });
@@ -321,7 +325,10 @@ describe("classifying one response", () => {
   });
 
   test("the failure carries the status and body excerpt a reader needs", () => {
-    const verdict = classify(probe, { status: 500, body: "TypeError: x is not a function" });
+    const verdict = classify(probe, {
+      status: 500,
+      body: "TypeError: x is not a function",
+    });
     expect(verdict.detail).toContain("500");
     expect(verdict.detail).toContain("TypeError");
   });
@@ -332,86 +339,6 @@ describe("classifying one response", () => {
     expect(classify({ ...probe, label: "GET /b" }, { status: 503 }, allow).ok).toBe(false);
     // The exemption is per-status: a 500 on the same route is still a failure.
     expect(classify(probe, { status: 500 }, allow).ok).toBe(false);
-  });
-});
-
-describe("the generated surface guard", () => {
-  /** What the document looks like with no active profile: hand-written only. */
-  const handWrittenOnly = (): OpenApiDoc["paths"] => {
-    const paths: NonNullable<OpenApiDoc["paths"]> = {
-      "/healthz": { get: {} },
-      "/api/status": { get: {} },
-      "/api/history": { get: {} },
-      "/api/settings": { get: {}, put: {} },
-      "/api/command": { post: {} },
-      "/api/statistics/today": { get: {} },
-    };
-    // The hand-written surface is ~88 operations and is mounted whether or not a
-    // profile is active, so it alone must never satisfy the guard.
-    for (let i = 0; i < 100; i++) paths[`/api/filler/${i}`] = { get: {} };
-    return paths;
-  };
-
-  /** The routes `entitiesApi()` mounts only when a profile is active. */
-  const generated = (): NonNullable<OpenApiDoc["paths"]> => ({
-    "/api/v1/entities": { get: {} },
-    "/api/v1/state": { get: {} },
-    "/api/v1/entities/{key}": { get: {} },
-    "/api/v1/entities/{key}/history": { get: {} },
-    "/api/v1/entities/settings.workmode": { put: {} },
-    "/api/v1/entities/settings.battery.grid_charge": { put: {} },
-  });
-
-  test("a document of ONLY hand-written routes is rejected", () => {
-    // The failure this guard exists for: seedProfile silently did nothing, so
-    // the entity catalog and every generated command route are absent — while
-    // the hand-written routes (mounted unconditionally, answering 503
-    // ONBOARDING_REQUIRED at worst) still probe well past any raw total floor.
-    const problem = generatedSurfaceProblem(doc(handWrittenOnly()));
-    expect(problem).toBeDefined();
-    expect(problem).toMatch(/profile/i);
-  });
-
-  test("the catalog and at least one generated command route satisfy it", () => {
-    const paths = { ...handWrittenOnly(), ...generated() };
-    expect(generatedSurfaceProblem(doc(paths))).toBeUndefined();
-  });
-
-  test("the entity catalog without a single generated command route is rejected", () => {
-    // A profile that activated but generated no writes is still a broken seed:
-    // the committed sample profile has 39 writable metrics, so zero means the
-    // catalog came from somewhere other than a properly installed profile.
-    const paths = { ...handWrittenOnly(), ...generated() };
-    delete paths["/api/v1/entities/settings.workmode"];
-    delete paths["/api/v1/entities/settings.battery.grid_charge"];
-    expect(generatedSurfaceProblem(doc(paths))).toMatch(/command/i);
-  });
-
-  test("generated command routes without the catalog are rejected", () => {
-    const paths = { ...handWrittenOnly(), ...generated() };
-    delete paths["/api/v1/entities"];
-    expect(generatedSurfaceProblem(doc(paths))).toMatch(/catalog|\/api\/v1\/entities/i);
-  });
-
-  test("a templated path is never counted as a generated command route", () => {
-    // `PUT /api/v1/entities/{key}` would be a hand-written route; the generated
-    // ones spell the entity key out, one route per writable metric.
-    const paths = { ...handWrittenOnly(), ...generated() };
-    delete paths["/api/v1/entities/settings.workmode"];
-    delete paths["/api/v1/entities/settings.battery.grid_charge"];
-    paths["/api/v1/entities/{key}"] = { get: {}, put: {} };
-    expect(generatedSurfaceProblem(doc(paths))).toBeDefined();
-  });
-
-  test("the surface it reports is the generated routes, not the hand-written ones", () => {
-    const surface = generatedSurface(doc({ ...handWrittenOnly(), ...generated() }));
-    expect(surface.catalog).toContain("GET /api/v1/entities");
-    expect(surface.commands).toContain("PUT /api/v1/entities/settings.workmode");
-    expect(surface.commands.some((label) => label.includes("/api/filler/"))).toBe(false);
-  });
-
-  test("an empty document is rejected too", () => {
-    expect(generatedSurfaceProblem(doc({}))).toBeDefined();
   });
 });
 
@@ -442,22 +369,10 @@ describe("summarising the sweep", () => {
     expect(summarize([]).text).toMatch(/no routes/i);
   });
 
-  test("a listing far below the measured size fails the floor", () => {
-    // A secondary sanity check only: it catches a listing that shrank wholesale
-    // (a truncated document, a group that failed to mount). A profile seeding
-    // slip is NOT its job — the hand-written surface alone clears this floor,
-    // which is what `generatedSurfaceProblem` is for.
+  test("a listing below the measured size fails the floor", () => {
     const few = Array.from({ length: MIN_ROUTES - 1 }, (_, i) => result(`GET /${i}`, true));
     expect(summarize(few).ok).toBe(false);
     expect(summarize(few).text).toMatch(/at least/i);
-  });
-
-  test("the floor sits below the measured total and above the hand-written surface", () => {
-    // Measured 2026-08-30 against the committed sample profile: 131 routes
-    // probed, of which 43 are generated (4 catalog + 39 commands). The floor is
-    // headroom under 131, not a derivation of the generated count.
-    expect(MIN_ROUTES).toBeLessThan(131);
-    expect(MIN_ROUTES).toBeGreaterThan(43);
   });
 
   test("the report counts what it probed", () => {
@@ -467,7 +382,7 @@ describe("summarising the sweep", () => {
 });
 
 describe("the command line", () => {
-  test("--help prints the usage and succeeds without reaching for Docker", async () => {
+  test("--help prints the usage and succeeds without building the core", async () => {
     const printed: string[] = [];
     const real = console.log;
     console.log = (line: string) => printed.push(line);
@@ -476,19 +391,19 @@ describe("the command line", () => {
     } finally {
       console.log = real;
     }
-    expect(printed.join("\n")).toContain("--db-port");
+    expect(printed.join("\n")).toContain("Rust core");
   });
 
-  test("a refused target exits non-zero with the reason, before anything boots", async () => {
+  test("an unknown argument exits non-zero naming it, before anything boots", async () => {
     const printed: string[] = [];
     const real = console.error;
     console.error = (line: string) => printed.push(line);
     try {
-      expect(await main([`--db-port=${DEV_DB_PORT}`])).toBe(1);
+      expect(await main(["--port=3999"])).toBe(1);
     } finally {
       console.error = real;
     }
-    expect(printed.join("\n")).toContain(String(DEV_DB_PORT));
+    expect(printed.join("\n")).toContain("--port=3999");
   });
 });
 
@@ -502,8 +417,8 @@ describe("the command line", () => {
 describe("the public surface is a closed list", () => {
   test("only the pre-auth routes are declared public", () => {
     // Anything not on this list must refuse a request with no credentials.
-    // `/openapi`, `/api/auth/*` and `/ws` never reach the classifier — the plan
-    // skips them (see SKIP) — so they are deliberately absent here.
+    // `/openapi` and `/ws` never reach the classifier — the plan skips them
+    // (see SKIP) — and sign-up and login are CREDENTIAL_LABELS.
     expect([...PUBLIC_LABELS].sort()).toEqual(
       [
         "GET /api/access-status",
@@ -696,8 +611,16 @@ describe("the live socket's upgrade", () => {
 });
 
 describe("summarising the auth sweep", () => {
-  const green = (label: string): ProbeResult => ({ label, ok: true, detail: "401" });
-  const red = (label: string): ProbeResult => ({ label, ok: false, detail: "200 (public)" });
+  const green = (label: string): ProbeResult => ({
+    label,
+    ok: true,
+    detail: "401",
+  });
+  const red = (label: string): ProbeResult => ({
+    label,
+    ok: false,
+    detail: "200 (public)",
+  });
 
   test("all gates holding passes", () => {
     const verdict = summarizeAuth(
@@ -796,7 +719,11 @@ describe("synthesising a schema-valid body", () => {
 
   test("a required string property gets a value", () => {
     expect(
-      parsed({ type: "object", properties: { id: { type: "string" } }, required: ["id"] }).id,
+      parsed({
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      }).id,
     ).toBeTruthy();
   });
 
@@ -845,7 +772,11 @@ describe("synthesising a schema-valid body", () => {
           },
           required: ["loadpoint", "action", "value"],
         },
-        { type: "object", properties: { other: { type: "string" } }, required: ["other"] },
+        {
+          type: "object",
+          properties: { other: { type: "string" } },
+          required: ["other"],
+        },
       ],
     });
     expect(built.loadpoint).toBe(1);
@@ -866,7 +797,11 @@ describe("synthesising a schema-valid body", () => {
     const built = parsed({
       type: "object",
       properties: {
-        window: { type: "object", properties: { hour: { type: "integer" } }, required: ["hour"] },
+        window: {
+          type: "object",
+          properties: { hour: { type: "integer" } },
+          required: ["hour"],
+        },
       },
       required: ["window"],
     });
@@ -885,7 +820,11 @@ describe("synthesising a schema-valid body", () => {
   test("a nullable union takes the branch that is not null", () => {
     const built = parsed({
       type: "object",
-      properties: { expiresIn: { anyOf: [{ type: "number", minimum: 1 }, { type: "null" }] } },
+      properties: {
+        expiresIn: {
+          anyOf: [{ type: "number", minimum: 1 }, { type: "null" }],
+        },
+      },
       required: ["expiresIn"],
     });
     expect(built.expiresIn).toBe(1);
@@ -896,7 +835,11 @@ describe("synthesising a schema-valid body", () => {
     // UNPROVEN, and the run fails rather than claiming a gate held.
     expect(
       sampleBody(
-        { requestBody: { content: { "application/json": { schema: { type: "string" } } } } },
+        {
+          requestBody: {
+            content: { "application/json": { schema: { type: "string" } } },
+          },
+        },
         NOW,
       ),
     ).toBeUndefined();
@@ -905,7 +848,11 @@ describe("synthesising a schema-valid body", () => {
   test("a body that is not JSON is not synthesised", () => {
     expect(
       sampleBody(
-        { requestBody: { content: { "multipart/form-data": { schema: { type: "object" } } } } },
+        {
+          requestBody: {
+            content: { "multipart/form-data": { schema: { type: "object" } } },
+          },
+        },
         NOW,
       ),
     ).toBeUndefined();
@@ -922,7 +869,10 @@ describe("planning carries both bodies", () => {
               "application/json": {
                 schema: {
                   type: "object",
-                  properties: { key: { type: "string" }, value: { type: "number" } },
+                  properties: {
+                    key: { type: "string" },
+                    value: { type: "number" },
+                  },
                   required: ["key", "value"],
                 },
               },
@@ -941,7 +891,11 @@ describe("planning carries both bodies", () => {
   test("a write whose schema cannot be synthesised has no gate body", () => {
     const [probe] = plan({
       "/api/x": {
-        post: { requestBody: { content: { "application/json": { schema: { type: "string" } } } } },
+        post: {
+          requestBody: {
+            content: { "application/json": { schema: { type: "string" } } },
+          },
+        },
       },
     });
     expect(probe?.body).toBe("{}");
@@ -990,12 +944,53 @@ describe("the session surface is a closed list", () => {
     }
   });
 
-  test("no write is on it: every mutation in this app is admin-only", () => {
-    for (const label of SESSION_LABELS) expect(label.startsWith("GET ")).toBe(true);
+  test("the core's own session and capabilities are on it", () => {
+    for (const label of ["GET /api/auth/session", "GET /api/capabilities"]) {
+      expect(isSessionLabel(label)).toBe(true);
+    }
+  });
+
+  test("the one write on it is ending your own session; every other mutation is admin-only", () => {
+    const writes = SESSION_LABELS.filter((label) => !label.startsWith("GET "));
+    expect(writes).toEqual(["DELETE /api/auth/session"]);
   });
 
   test("a public route is not a session route — it needs no credentials at all", () => {
     for (const label of PUBLIC_LABELS) expect(isSessionLabel(label)).toBe(false);
+  });
+});
+
+describe("the credential routes answer anyone", () => {
+  const verdict = (label: string, status: number, mode: "anonymous" | "member" | "authenticated") =>
+    classifyAuth({ label, body: "{}" }, { status, body: "" }, mode);
+
+  test("they are sign-up and login, and nothing else", () => {
+    expect([...CREDENTIAL_LABELS].sort()).toEqual(
+      ["POST /api/auth/login", "POST /api/auth/sign-up"].sort(),
+    );
+  });
+
+  test("their refusal is the credential check answering, not a gate, in every pass", () => {
+    // A bad password is a 401 and a closed sign-up a 403 for everyone; the
+    // core's own tests hold what each answers.
+    for (const mode of ["anonymous", "member", "authenticated"] as const) {
+      for (const status of [200, 400, 401, 403]) {
+        expect(verdict("POST /api/auth/login", status, mode).ok).toBe(true);
+        expect(verdict("POST /api/auth/sign-up", status, mode).ok).toBe(true);
+      }
+    }
+  });
+
+  test("they are neither public nor session routes", () => {
+    for (const label of CREDENTIAL_LABELS) {
+      expect(isPublicLabel(label)).toBe(false);
+      expect(isSessionLabel(label)).toBe(false);
+    }
+  });
+
+  test("a credential route that never answered still fails", () => {
+    const silent = classifyAuth({ label: "POST /api/auth/login" }, { error: "reset" }, "anonymous");
+    expect(silent.ok).toBe(false);
   });
 });
 
