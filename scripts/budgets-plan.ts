@@ -10,8 +10,14 @@
 const MIB = 1024 * 1024;
 const KIB = 1024;
 
-/** Logins before readings count: the first one allocates the Argon2 buffer. */
-export const WARMUP_LOGINS = 10;
+/**
+ * Logins read and thrown away before the fit. Most of a login's growth is early: allocator arenas
+ * and bcrypt's one-time costs, 20 to 50 KiB per login over the first 60 and 2.5 KiB over 400. The
+ * login count is the clock, as it is for polls; the fit starts past the warm-up.
+ */
+export const WARMUP_LOGINS = 100;
+/** Resident readings, one per login, fitted after the warm-up: a window long enough that one step is a small slope. */
+export const LOGIN_READINGS = 300;
 /**
  * Poll cycles read and thrown away before the fit: the core keeps growing for the first minutes
  * after boot (allocator arenas, SQLite pages, lazily built tables), in steps of 0.3 to 1 MiB.
@@ -30,7 +36,7 @@ export const POLL_READINGS = 32;
 /** Readings the poll phase takes in all. */
 export const POLL_SAMPLES = POLL_WARMUP + POLL_READINGS;
 /** The soak `scripts/ci` runs; a long soak passes `--logins`. */
-const DEFAULT_LOGINS = 60;
+const DEFAULT_LOGINS = WARMUP_LOGINS + LOGIN_READINGS;
 
 export const HELP = `usage: bun scripts/budget-gate.ts [--logins <n>]
 

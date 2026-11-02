@@ -5,6 +5,7 @@ import { main } from "./budget-gate";
 
 import {
   CycleCounter,
+  LOGIN_READINGS,
   POLL_READINGS,
   POLL_SAMPLES,
   POLL_WARMUP,
@@ -303,9 +304,13 @@ describe("the report", () => {
 
 describe("command line", () => {
   test("runs the short soak by default and a longer one on request", () => {
-    expect(parseArgs([])).toEqual({ help: false, logins: 60 });
+    expect(parseArgs([])).toEqual({ help: false, logins: 400 });
     expect(parseArgs(["--logins", "100000"])).toEqual({ help: false, logins: 100_000 });
     expect(parseArgs(["--help"]).help).toBe(true);
+  });
+
+  test("the default soak leaves a full window of logins to fit after the warm-up", () => {
+    expect(parseArgs([]).logins - WARMUP_LOGINS).toBeGreaterThanOrEqual(LOGIN_READINGS);
   });
 
   test("a login count that leaves no reading after the warm-up is refused", () => {

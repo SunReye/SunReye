@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { boot, signIn } from "./core-boot";
+import { boot, requireOk, signIn } from "./core-boot";
 import {
   type AuthMode,
   type OpenApiDoc,
@@ -83,8 +83,7 @@ async function asAdmin(base: string, cookie: string, path: string, body: object,
     headers: { cookie, origin: base, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+  await requireOk(response, what);
   return (await response.json()) as Record<string, unknown>;
 }
 

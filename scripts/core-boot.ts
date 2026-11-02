@@ -35,6 +35,12 @@ function sessionCookie(response: Response, what: string): string {
   return cookie.join("; ");
 }
 
+/** Throws with the answer's body unless it is 2xx. */
+export async function requireOk(response: Response, what: string): Promise<void> {
+  if (!response.ok)
+    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+}
+
 export async function signIn(
   base: string,
   path: string,
@@ -46,7 +52,6 @@ export async function signIn(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+  await requireOk(response, what);
   return sessionCookie(response, what);
 }

@@ -10,8 +10,9 @@
  *  2. `cargo build --release` of the core and the simulator, then the binary's size.
  *  3. the simulator replaying an oracle case, the core on a scratch data directory, the admin, a
  *     saved connection to the simulator.
- *  4. `logins` sign-ins, one at a time, each followed by a read of `/proc/<pid>/status`.
- *  5. a hold until the simulator has answered `POLL_SAMPLES` more poll cycles, one read of
+ *  4. `logins` rounds of a sign-in and the dashboard's history read, one at a time, each followed
+ *     by a read of `/proc/<pid>/status`; the first `WARMUP_LOGINS` are not fitted.
+ *  5. a hold, with a `/ws` client subscribed, until the simulator has answered `POLL_SAMPLES` more poll cycles, one read of
  *     `/proc/<pid>/status` as each begins; the first `POLL_WARMUP` are not fitted. The hold ends
  *     on the simulator's request count, never on a clock, so the poll path is exercised however
  *     fast the logins ran.
@@ -23,6 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CycleCounter,
+  LOGIN_READINGS,
   POLL_READINGS,
   POLL_SAMPLES,
   POLL_WARMUP,
@@ -106,7 +108,7 @@ async function startSim() {
   return { proc, sim };
 }
 
-/** An admin session that polls the simulator through the profile. */
+/** An admin session that polls the simulator through the profile; its cookie. */
 async function setUp(base: string, simPort: number) {
   const cookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");
   const put = async (path: string, body: object) => {
@@ -128,9 +130,12 @@ async function setUp(base: string, simPort: number) {
     simulate: false,
   });
   await put("/api/settings/active-profile", { id: PROFILE });
+  return cookie;
 }
 
-async function login(base: string) {
+type Session = { base: string; cookie: string };
+
+async function login({ base }: Session) {
   const response = await fetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -140,15 +145,36 @@ async function login(base: string) {
   if (!response.ok) throw new Error(`login failed (${response.status})`);
 }
 
+/** The dashboard's seed read: an hour of every metric. */
+async function recentHistory({ base, cookie }: Session) {
+  const response = await fetch(`${base}/api/history/recent?seconds=3600`, { headers: { cookie } });
+  await response.arrayBuffer();
+  if (!response.ok) throw new Error(`GET /api/history/recent failed (${response.status})`);
+}
+
 /** What each soak step sends. Add a request here and every step sends it, in order. */
-const SOAK_REQUESTS: ((base: string) => Promise<void>)[] = [login];
+const SOAK_REQUESTS: ((session: Session) => Promise<void>)[] = [login, recentHistory];
+
+/** A dashboard's live socket, held open and drained for the poll phase. */
+async function openFeed({ base, cookie }: Session) {
+  const socket = new WebSocket(`${base.replace("http", "ws")}/ws`, {
+    headers: { cookie, origin: base },
+  } as unknown as string[]);
+  const opened = Promise.withResolvers<void>();
+  socket.onopen = () => opened.resolve();
+  socket.onerror = () => opened.reject(new Error("the /ws socket failed to open"));
+  socket.onmessage = () => {};
+  await opened.promise;
+  socket.send(JSON.stringify({ t: "sub", topics: ["metrics", "plant"] }));
+  return socket;
+}
 
 const readStatus = (pid: number) => parseProcStatus(readFileSync(`/proc/${pid}/status`, "utf8"));
 
-async function soakLogins(base: string, pid: number, logins: number) {
+async function soakLogins(session: Session, pid: number, logins: number) {
   const readings: number[] = [];
   for (let i = 0; i < logins; i++) {
-    for (const request of SOAK_REQUESTS) await request(base);
+    for (const request of SOAK_REQUESTS) await request(session);
     readings.push(readStatus(pid).rssBytes);
   }
   return readings;
@@ -191,13 +217,14 @@ export async function run(logins: number): Promise<number> {
     children.push(sim.proc);
     const { core, base } = await boot(CORE, dataDir);
     children.push(core);
-    await setUp(base, sim.sim.port);
-    log(`signing in ${logins} times`);
-    const loginTrend = trendOf(await soakLogins(base, core.pid, logins), WARMUP_LOGINS);
+    const session = { base, cookie: await setUp(base, sim.sim.port) };
+    log(`signing in ${logins} times, fitting the last ${LOGIN_READINGS} after ${WARMUP_LOGINS}`);
+    const loginTrend = trendOf(await soakLogins(session, core.pid, logins), WARMUP_LOGINS);
     log(
       `holding for ${POLL_SAMPLES} poll cycles, fitting the last ${POLL_READINGS} after ${POLL_WARMUP}`,
     );
-    const pollReadings = await soakPolls(sim.sim, core.pid);
+    const feed = await openFeed(session);
+    const pollReadings = await soakPolls(sim.sim, core.pid).finally(() => feed.close());
     const pollTrend = pollPhase(pollReadings);
     const measured = {
       binaryBytes: statSync(CORE).size,
