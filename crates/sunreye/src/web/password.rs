@@ -233,9 +233,8 @@ mod tests {
     async fn parallel_checks_leave_one_checks_blocks_held() {
         let passwords = Passwords::new();
         let stored = passwords.hash("correct horse battery".into()).await.expect("hash");
-        let checks: Vec<_> = (0..4)
-            .map(|_| spawn_verify(&passwords, "correct horse battery", Some(stored.clone())))
-            .collect();
+        let checks: Vec<_> =
+            (0..4).map(|_| spawn_verify(&passwords, "correct horse battery", Some(stored.clone()))).collect();
         for check in checks {
             assert!(check.await.expect("join"));
         }
