@@ -1,7 +1,8 @@
+import createClient from "openapi-fetch";
 import { afterEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import type { components } from "$lib/core-api.gen";
+import type { components, paths } from "$lib/core-api.gen";
 import * as m from "$lib/paraglide/messages";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
@@ -25,10 +26,22 @@ const ada: Account = { id: 1, name: "Ada Lovelace", email: "ada@example.com", ad
 const bob: Account = { id: 2, name: "Bob Babbage", email: "bob@example.com", admin: false };
 
 afterEach(async () => {
-  del.mockResolvedValue({ response: { status: 204 } });
+  del.mockImplementation(() => deleteAnswer(204));
   await signOut();
   for (const fn of [get, del, goto, toast.error]) fn.mockReset();
 });
+
+/** What `DELETE /api/auth/session` answers after the real openapi-fetch client has read a response. */
+function deleteAnswer(status: number, body?: unknown) {
+  return createClient<paths>({
+    baseUrl: "http://core.test",
+    fetch: async () =>
+      new Response(body === undefined ? null : JSON.stringify(body), {
+        status,
+        headers: body === undefined ? undefined : { "content-type": "application/json" },
+      }),
+  }).DELETE("/api/auth/session");
+}
 
 /** Mount the sidebar for whoever the core says is signed in; `null` is a 401. */
 async function mountAs(account: Account | null) {
@@ -53,7 +66,7 @@ test("a plain user gets no Settings entry", async () => {
 });
 
 test("signing out ends the session at the core and returns to login", async () => {
-  del.mockResolvedValue({ response: { status: 204 } });
+  del.mockImplementation(() => deleteAnswer(204));
   await mountAs(ada);
 
   await page.getByRole("button", { name: m.nav_sign_out() }).click();
@@ -67,7 +80,7 @@ test("signing out ends the session at the core and returns to login", async () =
 });
 
 test("a refused sign-out keeps the account, stays put and says why", async () => {
-  del.mockResolvedValue({ error: { error: "Origin not allowed" } });
+  del.mockImplementation(() => deleteAnswer(403, { error: "Origin not allowed" }));
   await mountAs(ada);
 
   await page.getByRole("button", { name: m.nav_sign_out() }).click();
@@ -75,6 +88,19 @@ test("a refused sign-out keeps the account, stays put and says why", async () =>
   await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith("Origin not allowed"));
   expect(goto).not.toHaveBeenCalled();
   await expect.element(page.getByText("Ada Lovelace")).toBeVisible();
+});
+
+test("signing out of an expired session still signs out and returns to login", async () => {
+  del.mockImplementation(() => deleteAnswer(401, { error: "Not signed in" }));
+  await mountAs(ada);
+
+  await page.getByRole("button", { name: m.nav_sign_out() }).click();
+
+  await vi.waitFor(() =>
+    expect(goto).toHaveBeenCalledWith(`${location.pathname}${location.search}#/login`),
+  );
+  expect(toast.error).not.toHaveBeenCalled();
+  await expect.element(page.getByText("Ada Lovelace")).not.toBeInTheDocument();
 });
 
 test("a visitor with no session is offered the way in", async () => {

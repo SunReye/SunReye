@@ -59,11 +59,13 @@ export function signUp(body: components["schemas"]["SignUpRequest"]): Promise<Au
   return start(core.POST("/api/auth/sign-up", { body }));
 }
 
-/** A core that refuses leaves the account signed in, since its session is still live. */
+/** A 401 means no session is left to end; any other refusal leaves the session live, so the account stays. */
 export async function signOut(): Promise<AuthResult> {
   try {
-    const { error } = await core.DELETE("/api/auth/session");
-    if (error !== undefined) return { ok: false, message: apiErrorText(error, "") };
+    const { response, error } = await core.DELETE("/api/auth/session");
+    if (!response.ok && response.status !== 401) {
+      return { ok: false, message: apiErrorText(error, "") };
+    }
   } catch {
     // Unreachable core: the cookie expires on its own.
   }

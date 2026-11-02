@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { components } from "$lib/core-api.gen";
 import * as m from "$lib/paraglide/messages";
@@ -94,6 +94,28 @@ test("Done discards the secret: the dialog closes and the key is gone", async ()
 
   await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
   expect(document.body.textContent).not.toContain("sunreye_secretvalue");
+});
+
+test("Escape discards the secret, so the next key opens its own dialog", async () => {
+  post
+    .mockResolvedValueOnce({ data: { ...grafana, id: 4, name: "First", key: "sunreye_first" } })
+    .mockResolvedValueOnce({ data: { ...grafana, id: 5, name: "Second", key: "sunreye_second" } });
+  render(ApiKeysForm);
+  await expect.element(row("Grafana")).toBeVisible();
+  await issue("First");
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("sunreye_first");
+
+  // The owner stays selected; only the name was cleared.
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Second");
+  await page.getByRole("button", { name: m.apikeys_create() }).click();
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+  expect((page.getByRole("dialog").getByRole("textbox").element() as HTMLInputElement).value).toBe(
+    "sunreye_second",
+  );
 });
 
 test("issuing without an owner is refused before anything is sent", async () => {

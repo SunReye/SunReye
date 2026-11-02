@@ -19,7 +19,7 @@ type Account = components["schemas"]["Account"];
 const ada: Account = { id: 1, name: "Ada Lovelace", email: "ada@example.com", admin: true };
 
 afterEach(async () => {
-  del.mockResolvedValue({ response: { status: 204 } });
+  del.mockResolvedValue({ response: new Response(null, { status: 204 }) });
   await signOut();
   post.mockReset();
   goto.mockReset();
