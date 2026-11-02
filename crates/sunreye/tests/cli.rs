@@ -171,7 +171,6 @@ fn request(port: u16, head: &str, body: &str) -> String {
     answer.lines().next().unwrap_or_default().to_owned()
 }
 
-/// Everything logged by a run on `listen` and `data_dir` across one setup-status probe and `then`.
 fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16, u32)) -> String {
     let mut child = Command::new(BIN)
         .args(["--listen", listen, "--data-dir"])
