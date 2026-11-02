@@ -44,32 +44,45 @@ const sentinel = (page: import("@playwright/test").Page) =>
     () => (window as unknown as { __sunreyeDocument?: string }).__sunreyeDocument ?? null,
   );
 
+const heading = (page: import("@playwright/test").Page) => page.getByRole("heading", { level: 1 });
+
+async function navigateTo(page: import("@playwright/test").Page, label: string): Promise<void> {
+  await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+  await page.getByRole("link", { name: label, exact: true }).click();
+}
+
 const hash = (page: import("@playwright/test").Page) => new URL(page.url()).hash;
 
 test("a 401 mid-session bounces to login, in the same document", async ({ page }) => {
   const backend = await mockBackend(page);
-  // Warm /#/history BEFORE the sentinel is planted. The dev server reloads the
-  // document the first time a route pulls in a dependency it has not
-  // pre-bundled (`[vite] optimized dependencies changed`), and that reload is
-  // the harness, not the app — planting the sentinel after it is what keeps
-  // this spec about the redirect.
-  await page.goto("/#/history");
+  // Visit /history once BEFORE the sentinel is planted, by clicking through the
+  // shell. The dev server reloads the document the first time a route pulls in
+  // a dependency it has not pre-bundled (`[vite] optimized dependencies
+  // changed`), and that reload is the harness, not the app. A `location.hash`
+  // write is not a substitute: the hash router answers it with a full document
+  // load whenever the host is slow, which also kills the sentinel. Every step
+  // waits for the page to draw rather than for a clock.
+  await page.goto("/#/");
   await backend.waitForLive();
-  await page.evaluate(() => {
-    location.hash = "#/";
-  });
-  await page.waitForTimeout(500);
+  await expect(heading(page)).toHaveText("Overview");
+  await navigateTo(page, "History");
+  await expect(heading(page)).toHaveText("History");
+  await navigateTo(page, "Overview");
+  await expect(heading(page)).toHaveText("Overview");
   await plantSentinel(page);
 
   // The session is gone server-side; the client does not know yet.
   backend.expireSession();
+  const refused = page.waitForResponse((response) => response.status() === 401);
   // Provoke a read. Any route change does — this one is a page whose data all
   // comes from the endpoints that just started refusing.
-  await page.evaluate(() => {
-    location.hash = "#/history";
-  });
+  await navigateTo(page, "History");
 
-  await expect.poll(() => hash(page), { timeout: 15_000 }).toBe("#/login");
+  // The bounce is the answer to a refused read, so wait for the read to be
+  // refused: loading the route's code is as slow as the host is, the redirect
+  // that follows a 401 is not.
+  await refused;
+  await expect.poll(() => hash(page)).toBe("#/login");
   expect(await sentinel(page)).toBe("same-document");
 });
 

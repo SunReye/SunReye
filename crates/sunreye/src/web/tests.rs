@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 23] = [
+const SERVED: [(&str, &str); 25] = [
     ("get", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys/revoke"),
@@ -438,6 +438,8 @@ const SERVED: [(&str, &str); 23] = [
     ("post", "/api/auth/login"),
     ("post", "/api/auth/sign-up"),
     ("get", "/api/capabilities"),
+    ("get", "/api/history/recent"),
+    ("get", "/api/profile"),
     ("get", "/api/profile-status"),
     ("get", "/api/profiles"),
     ("get", "/api/settings/inverter"),
@@ -519,8 +521,13 @@ const ADMIN_ROUTES: [(&str, &str); 15] = [
     ("POST", "/api/admin/api-keys/revoke"),
 ];
 
-const SESSION_ROUTES: [(&str, &str); 3] =
-    [("GET", "/api/capabilities"), ("GET", "/api/auth/session"), ("DELETE", "/api/auth/session")];
+const SESSION_ROUTES: [(&str, &str); 5] = [
+    ("GET", "/api/capabilities"),
+    ("GET", "/api/profile"),
+    ("GET", "/api/history/recent"),
+    ("GET", "/api/auth/session"),
+    ("DELETE", "/api/auth/session"),
+];
 
 async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
     call_for_answer(api, route).await.status
@@ -1110,4 +1117,5 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 }
 
 mod api_keys;
+mod reads;
 mod users;

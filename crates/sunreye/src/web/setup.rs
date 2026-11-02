@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::manifest::{InverterManifest, manifest as manifest_of};
 use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{active_profile, set_active_profile};
@@ -79,6 +80,27 @@ pub async fn profile_status(State(core): State<Arc<Core>>) -> Result<Json<Profil
     operation_id = "capabilities", responses((status = 200, body = Capabilities), (status = 401, body = ErrorBody)))]
 pub async fn capabilities() -> Json<Capabilities> {
     Json(Capabilities::SERVED)
+}
+
+/// The active profile as the dashboard builds itself from it.
+#[utoipa::path(
+    get,
+    path = "/api/profile",
+    operation_id = "profileManifest",
+    responses(
+        (status = 200, body = InverterManifest),
+        (status = 401, body = ErrorBody),
+        (status = 404, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn manifest(State(core): State<Arc<Core>>) -> Result<Json<InverterManifest>, ApiError> {
+    let profile = match active_profile(&core.store).await? {
+        Some(id) => core.profile(&id).await?,
+        None => None,
+    };
+    let Some(profile) = profile else { return Err(ApiError::not_found("No active profile")) };
+    Ok(Json(manifest_of(&profile)))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
