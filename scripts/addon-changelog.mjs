@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Rebuild the addon's changelog entry for a given version by merging the
-// server and web sections for that same version (versions are linked, so the
-// entry exists in all three files). The addon ships server (+migrate/db) and
-// web as one Home Assistant image, so its changelog should be their union —
+// Rebuild the addon's changelog entry for a given version from the server
+// section for that same version (versions are linked, so the entry exists in
+// both files). The server component covers the whole repo root, web included —
 // release-please's linked-versions plugin only syncs version numbers and
 // leaves the addon with a "Synchronize sunreye-stack versions" placeholder.
 //
@@ -19,7 +18,6 @@ import { categoryRank } from "./lib/changelog-categories.mjs";
 
 const ROOT = process.cwd();
 const SERVER_CHANGELOG = join(ROOT, "CHANGELOG.md");
-const WEB_CHANGELOG = join(ROOT, "apps/web/CHANGELOG.md");
 const ADDON_CHANGELOG = join(ROOT, "sunreye/CHANGELOG.md");
 
 // The linked-versions placeholder carries no information — never surface it.
@@ -116,7 +114,6 @@ function bodyLines(merged) {
 
 function rewriteVersion(version) {
   const server = parseSection(readFileSync(SERVER_CHANGELOG, "utf8"), version).categories;
-  const web = parseSection(readFileSync(WEB_CHANGELOG, "utf8"), version).categories;
 
   const addonText = readFileSync(ADDON_CHANGELOG, "utf8");
   const addon = parseSection(addonText, version);
@@ -124,8 +121,8 @@ function rewriteVersion(version) {
     throw new Error(`sunreye/CHANGELOG.md has no "## [${version}]" entry to rewrite`);
   }
 
-  // Keep any real addon-scoped bullets (e.g. a Dockerfile fix) alongside server+web.
-  const body = bodyLines(mergeCategories([server, web, addon.categories]));
+  // Keep any real addon-scoped bullets (e.g. a Dockerfile fix) alongside server.
+  const body = bodyLines(mergeCategories([server, addon.categories]));
 
   // Nothing meaningful to say (all placeholders): leave the entry untouched.
   if (body.length === 0) return null;

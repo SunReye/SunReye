@@ -94,7 +94,11 @@ Branch naming follows the commit types: `feat/…`, `fix/…`, `refactor/…`, `
    `oxfmt --write`, the Fallow code-health gate, and the i18n lint on staged files, then the
    **whole test suite** — a red suite blocks the commit. It warns (never blocks) when code
    changed but no documentation did, and when staged source carries no staged test.
-5. Open a PR into `dev`.
+5. Open a PR into `dev`. It is **squash-merged**: the repository squashes with the PR title as
+   the subject and a blank body, so give the PR a conventional title. The body stays blank
+   because release-please counts a conventional line in a merge-commit body as a second
+   changelog entry. The `dev` → `master` PR is the exception: a merge commit
+   ([§10](#10-cutting-a-release)).
 
 ### Commit style
 
