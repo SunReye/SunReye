@@ -776,7 +776,7 @@ async fn from_origin(
 
 #[tokio::test]
 async fn a_state_changing_request_from_an_untrusted_origin_is_refused() {
-    let config = Config { trusted_origins: vec!["https://ha.example".into()], secure_cookies: false };
+    let config = Config { trusted_origins: vec!["https://ha.example".into()], ..Config::default() };
     let (core, admin) = open_with(&dir("origin"), &config).await;
     let choose = json!({"id": PROFILE});
     let write = |origin| from_origin(&admin, origin, Method::PUT, "/api/settings/active-profile", &choose);
@@ -802,7 +802,7 @@ async fn a_state_changing_request_from_an_untrusted_origin_is_refused() {
 
 #[tokio::test]
 async fn the_session_cookie_is_secure_when_configured() {
-    let config = Config { trusted_origins: Vec::new(), secure_cookies: true };
+    let config = Config { secure_cookies: true, ..Config::default() };
     let core = Core::open(&dir("secure")).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &config), cookie: None };
     let header = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await.set_cookie.expect("cookie");

@@ -22,7 +22,7 @@ use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{Json, Router, middleware};
+use axum::{Extension, Json, Router, middleware};
 use axum_login::{AuthManagerLayerBuilder, login_required, permission_required};
 use serde::Serialize;
 use tower_sessions::cookie::SameSite;
@@ -34,6 +34,7 @@ use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
 pub use self::origin::origin_authority;
+pub use self::ws::Limits as LiveLimits;
 use crate::run::Core;
 use crate::store::StoreError;
 
@@ -51,6 +52,8 @@ pub struct Config {
     pub trusted_origins: Vec<String>,
     /// Session cookie only over HTTPS.
     pub secure_cookies: bool,
+    /// Fixed in the binary; tests shorten them.
+    pub live: LiveLimits,
 }
 
 /// The API routes with their `OpenAPI` document. Anonymous callers reach only the setup gates and the
@@ -126,6 +129,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
     routes
         .route("/openapi/json", get(move || std::future::ready(Json(Arc::clone(&document)))))
         .fallback(get(assets::serve))
+        .layer(Extension(config.live))
         .layer(accounts)
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))
         .with_state(core)
@@ -163,6 +167,10 @@ impl ApiError {
 
     pub fn payload_too_large(message: impl Into<String>) -> Self {
         Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
+    }
+
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::SERVICE_UNAVAILABLE, message: message.into() }
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {
