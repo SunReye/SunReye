@@ -523,6 +523,7 @@ export interface components {
         RoleRequest: {
             admin: boolean;
         };
+        /** @description One metric's points: `o[i]` steps after `t0`, holding `v[i]`. */
         Series: {
             o: number[];
             v: number[];

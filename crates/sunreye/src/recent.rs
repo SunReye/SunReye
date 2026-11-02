@@ -5,6 +5,9 @@
 //! since before the window opened still draws from the window's left edge: the newest reading in the
 //! five minutes before it opens the first bucket, unless a reading of its own is already there. An
 //! older reading is not carried in, so a device that stopped answering is not shown as steady.
+//!
+//! Ported from 3.x `queryRecentBuckets` (`apps/server/src/shared/history.ts`). No oracle fixture holds a
+//! window: the expected values in these tests are worked by hand against that function.
 
 use std::collections::BTreeMap;
 
@@ -26,7 +29,6 @@ pub struct Window {
     pub step: u32,
 }
 
-/// One metric's points: `o[i]` steps after `t0`, holding `v[i]`.
 impl Window {
     /// Unix milliseconds the window opens at.
     pub fn since_ms(self) -> i64 {
@@ -39,6 +41,7 @@ impl Window {
     }
 }
 
+/// One metric's points: `o[i]` steps after `t0`, holding `v[i]`.
 #[derive(Debug, PartialEq, Serialize, ToSchema)]
 pub struct Series {
     pub o: Vec<u32>,

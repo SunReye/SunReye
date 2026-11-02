@@ -1946,6 +1946,7 @@
       },
       "Series": {
         "type": "object",
+        "description": "One metric's points: `o[i]` steps after `t0`, holding `v[i]`.",
         "required": [
           "o",
           "v"

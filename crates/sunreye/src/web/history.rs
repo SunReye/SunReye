@@ -80,3 +80,41 @@ pub async fn recent(
     };
     Ok(Json(fold(window, minutes.samples(from, to))?))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    use serde_json::{Value, json};
+
+    use super::*;
+    use crate::samples::SampleError;
+
+    async fn answer(error: RecentError) -> (StatusCode, Value) {
+        let response = ApiError::from(error).into_response();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+        (status, serde_json::from_slice(&bytes).expect("json"))
+    }
+
+    #[tokio::test]
+    async fn a_window_with_too_many_readings_is_the_callers_400() {
+        assert_eq!(
+            answer(RecentError::TooDense).await,
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": "The window holds too many readings: ask for fewer seconds"})
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_damaged_minute_is_a_500_that_names_nothing() {
+        let damaged = RecentError::Sample(SampleError::Corrupt("truncated"));
+        assert_eq!(
+            answer(damaged).await,
+            (StatusCode::INTERNAL_SERVER_ERROR, json!({"error": "internal error"}))
+        );
+    }
+}

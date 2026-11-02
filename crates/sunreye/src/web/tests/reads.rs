@@ -233,3 +233,26 @@ async fn a_window_across_midnight_answers_one_run_of_offsets() {
     drop(admin);
     core.stop().await;
 }
+
+#[tokio::test]
+async fn a_window_with_no_query_reaches_back_300_seconds() {
+    let readings = [
+        reading(NOW - 301_000, "pv", 1.0),
+        reading(NOW - 299_000, "pv", 2.0),
+        reading(NOW - 10_000, "pv", 3.0),
+    ];
+    let minutes: Vec<_> = readings.into_iter().collect();
+    let (core, admin) = clocked("recent-default", &minutes).await;
+    let answer = get(&admin, "/api/history/recent").await;
+    assert_eq!(answer.status, StatusCode::OK);
+    assert_eq!(
+        answer.json(),
+        json!({
+            "t0": NOW - 300_000, "step": 1,
+            "metrics": {"pv": {"o": [0, 1, 290], "v": [1.0, 2.0, 3.0]}}
+        }),
+        "the window opens at 300 s: the reading 301 s back seeds it, the one 299 s back is in it"
+    );
+    drop(admin);
+    core.stop().await;
+}
