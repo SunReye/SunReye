@@ -39,6 +39,7 @@ pub struct Core {
     /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
     pub roots: Vec<CertificateDer<'static>>,
     polling: Polling,
+    retention: Mutex<Option<Running>>,
 }
 
 impl Core {
@@ -54,7 +55,8 @@ impl Core {
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default() });
+        let retention = Mutex::new(Some(spawn_retention(&store)));
+        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default(), retention });
         core.apply().await?;
         Ok(core)
     }
@@ -70,9 +72,10 @@ impl Core {
         self.polling.restart(&self.store, &self.bundle).await
     }
 
-    /// Stops the device tasks, each storing its open minute, and closes the store.
+    /// Stops the device tasks, each storing its open minute, and the retention pass, and closes the store.
     pub async fn stop(self: Arc<Self>) {
         self.polling.stop().await;
+        stop(self.retention.lock().await.take()).await;
         if let Some(core) = Arc::into_inner(self)
             && let Some(store) = Arc::into_inner(core.store)
         {
@@ -166,7 +169,6 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(retention(Arc::clone(store), stopped.clone()));
     let installed = installed(store).await?;
     for device in store.devices().await? {
         match find_profile(bundle, &installed, &device.profile_id) {
@@ -178,6 +180,13 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
         }
     }
     Ok(Running { stop, tasks })
+}
+
+fn spawn_retention(store: &Arc<Store>) -> Running {
+    let (stop, stopped) = watch::channel(false);
+    let mut tasks = JoinSet::new();
+    tasks.spawn(retention(Arc::clone(store), stopped));
+    Running { stop, tasks }
 }
 
 const RETENTION_EVERY: Duration = Duration::from_hours(1);
@@ -410,6 +419,26 @@ mod tests {
         assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
         assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 2);
         store.close().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn a_settings_change_runs_no_retention_pass() {
+        let dir = dir("apply-retention");
+        let device = seed(&dir, 1, "no-such-profile", "20").await;
+        let core = Core::open(&dir).await.expect("open");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let at_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
+        let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
+        let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
+        core.store.append_minute(device, &minute).await.expect("append");
+
+        core.apply().await.expect("apply");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let minutes = core.store.buckets(Tier::Minute, device, "power").await.expect("buckets");
+        assert_eq!(minutes.len(), 1, "the next pass is an hour after start");
+        core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 
