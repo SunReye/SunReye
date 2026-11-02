@@ -5,7 +5,7 @@
 #
 # Usage: scripts/sqlx-cache [--check]
 #   (none)   regenerate .sqlx
-#   --check  fail when .sqlx is stale (the gate)
+#   --check  fail when .sqlx is stale (scripts/rust-gate runs the same check)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

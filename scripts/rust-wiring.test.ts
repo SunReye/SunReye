@@ -57,12 +57,4 @@ describe("scripts/ci", () => {
     expect(line).not.toContain("||");
     expect(at("scripts/target-gate")).toBeGreaterThan(at("scripts/rust-gate"));
   });
-
-  test("checks the sqlx query cache after the Rust gate, unforgiven", () => {
-    const at = (command: string) => ciCommands.findIndex((l) => l.includes(command));
-    const line = ciCommands[at("scripts/sqlx-cache --check")];
-    expect(line, "scripts/sqlx-cache --check").toBeDefined();
-    expect(line).not.toContain("||");
-    expect(at("scripts/sqlx-cache --check")).toBeGreaterThan(at("scripts/rust-gate"));
-  });
 });
