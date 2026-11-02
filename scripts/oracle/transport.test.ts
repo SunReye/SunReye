@@ -42,17 +42,15 @@ describe("the transport corpus", () => {
   }, 120_000);
 
   // A reply later than every client timer stands in for a stalled event loop under load.
-  test.each(["tcp", "rtu-over-tcp", "solarman-v5"])(
-    "%s/probe-unit records the same exchanges when every reply is late",
-    async (framing) => {
-      const scenario = SCENARIOS.find((s) => `${s.framing}/${s.name}` === `${framing}/probe-unit`)!;
-      const baseline = await runScenario(scenario);
-      const late = await runScenario(scenario, { replyDelayMs: 400 });
-      expect(late).toEqual(baseline);
-      expect(late.result).toEqual({ probe: { "0": false, "1": true } });
-    },
-    120_000,
-  );
+  // Concurrent on purpose: more load, and the suite pays the slowest scenario, not their sum.
+  // Cloned on return: a recording that still changes after it is handed over is not one.
+  test("every scenario records the same case when every reply is late", async () => {
+    const late = await Promise.all(
+      SCENARIOS.map(async (s) => structuredClone(await runScenario(s, { replyDelayMs: 400 }))),
+    );
+    expect(late).toEqual(late.map((c) => cases.get(c.case)));
+    expect(late.map((c) => c.case)).toEqual([...cases.keys()]);
+  }, 120_000);
 
   test("covers all three framings at unit id 0 and unit id 1", async () => {
     const cases = [...(await corpus()).values()];

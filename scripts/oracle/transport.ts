@@ -62,8 +62,8 @@ interface Scenario {
   operation: Operation;
   configuredSerial?: number;
   tweak?: Tweak;
-  /** Transport deadline; default 300. */
-  timeoutMs?: number;
+  /** A transaction deadline whose expiry is the behaviour under test; set once connected. */
+  expiryMs?: number;
 }
 
 type DecodedFrame =
@@ -304,11 +304,14 @@ function decodeOne(frame: Uint8Array): DecodedFrame {
 async function listen(wire: Wire, framing: InverterTransport, replyDelayMs: number) {
   const events: WireEvent[] = [];
   const sockets = new Set<Socket>();
+  const replies = new Set<Promise<void>>();
   let nth = 0;
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("data", (data: Buffer) => {
-      void respond(socket, new Uint8Array(data));
+      const reply = respond(socket, new Uint8Array(data));
+      replies.add(reply);
+      void reply.finally(() => replies.delete(reply));
     });
     socket.on("error", () => {});
   });
@@ -332,6 +335,8 @@ async function listen(wire: Wire, framing: InverterTransport, replyDelayMs: numb
   return {
     port,
     events,
+    /** Every reply already asked for is on the wire, however late the client gave up on it. */
+    replied: () => Promise.all(replies),
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -350,8 +355,8 @@ function describeError(error: unknown): Record<string, unknown> {
 }
 
 /**
- * Deadline for a request the device answers. A deadline that can fire before a reply makes the
- * recording depend on how late the machine runs; only a silent unit's expiry is what is under test.
+ * Deadline for every request the scenario expects answered. A deadline that can fire before a reply
+ * makes the recording depend on how late the machine runs.
  */
 const ANSWERED_MS = 30_000;
 
@@ -373,7 +378,7 @@ async function perform(
   return { probe };
 }
 
-export interface RunOptions {
+interface RunOptions {
   /** Hold every reply back this long: the stand-in for a stalled event loop, which test code injects. */
   replyDelayMs?: number;
 }
@@ -389,16 +394,22 @@ export async function runScenario(
     host: "127.0.0.1",
     port: server.port,
     unitId: scenario.unitId,
-    timeoutMs: scenario.timeoutMs ?? 300,
+    timeoutMs: ANSWERED_MS,
     transport: scenario.framing,
     ...(scenario.configuredSerial === undefined ? {} : { loggerSerial: scenario.configuredSerial }),
   });
   let result: unknown;
   try {
+    if (scenario.expiryMs !== undefined) {
+      // After the connect, so only the transaction expires: a Solarman discovery probe is answered.
+      await transport.connect();
+      transport["client"]?.setTimeout(scenario.expiryMs);
+    }
     result = await perform(transport, scenario);
   } catch (error) {
     result = { error: describeError(error) };
   }
+  await server.replied();
   await sleep(50);
   const loggerSerial = transport.loggerSerial;
   await transport.close();
@@ -459,7 +470,6 @@ function common(f: InverterTransport): Scenario[] {
     }),
     scenario(f, "probe-unit", "unit-id scan: unit 0 is silent (timeout), unit 1 answers", {
       operation: { op: "probe-unit", units: [0, 1], timeoutMs: 250 },
-      timeoutMs: ANSWERED_MS,
     }),
     scenario(f, "fragmented-reply", "the reply arrives in two TCP reads, split inside the header", {
       tweak: (frame) => [frame.slice(0, 5), frame.slice(5)],
@@ -468,7 +478,11 @@ function common(f: InverterTransport): Scenario[] {
       f,
       "leading-junk",
       "three stray bytes precede the reply in one TCP read; a buffered reader resynchronises",
-      { tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])] },
+      {
+        tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])],
+        // Only the buffered reader answers; the others time out on the junk.
+        ...(f === "rtu-over-tcp" ? {} : { expiryMs: 300 }),
+      },
     ),
     scenario(
       f,
