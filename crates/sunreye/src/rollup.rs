@@ -69,7 +69,7 @@ fn held(reading: (i64, f64), until: i64) -> f64 {
 /// The buckets of `tier` that hold at least one of `readings`, oldest first. Readings may come in any order.
 /// Holds about 80 bytes per reading while it runs; callers bound the input to keep ADR 0006's memory budget.
 pub fn rollup(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Bucket> {
-    let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (at.as_microsecond(), *v)).collect();
+    let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (floor_us(*at), *v)).collect();
     sorted.sort_by_key(|p| p.0);
     let partials = match tier {
         Tier::Day => fold(Tier::Day, &fold(Tier::Hour, &raw(&sorted))),
@@ -83,6 +83,11 @@ pub fn rollup(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Bucket> {
         previous = Some(partial);
     }
     out
+}
+
+/// `as_microsecond` truncates toward zero, which moves a pre-1970 instant forward.
+fn floor_us(at: Timestamp) -> i64 {
+    at.as_microsecond() - i64::from(at.subsec_nanosecond() % 1000 < 0)
 }
 
 fn raw(sorted: &[(i64, f64)]) -> Vec<Partial> {
@@ -217,6 +222,18 @@ mod tests {
     #[test]
     fn readings_before_1970_floor_to_their_own_bucket() {
         let readings = [(at("1969-12-31T23:59:30Z"), 7.0)];
+        assert_eq!(rollup(Tier::Minute, &readings), [bucket("1969-12-31T23:59:00Z", 7.0, 7.0, 7.0)]);
+    }
+
+    #[test]
+    fn a_reading_on_a_minute_before_1970_opens_that_minute() {
+        let readings = [(at("1969-12-31T23:59:00Z"), 7.0)];
+        assert_eq!(rollup(Tier::Minute, &readings), [bucket("1969-12-31T23:59:00Z", 7.0, 7.0, 7.0)]);
+    }
+
+    #[test]
+    fn a_reading_half_a_microsecond_before_1970_stays_in_the_earlier_minute() {
+        let readings = [(at("1969-12-31T23:59:59.9999995Z"), 7.0)];
         assert_eq!(rollup(Tier::Minute, &readings), [bucket("1969-12-31T23:59:00Z", 7.0, 7.0, 7.0)]);
     }
 }
