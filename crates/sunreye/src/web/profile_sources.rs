@@ -66,7 +66,7 @@ pub async fn add(
         .map_err(refused)?;
     save_source(&core.store, &source, &fetched.profiles).await?;
     core.apply().await?;
-    let profile_ids = fetched.profiles.iter().map(|p| p.profile.id.clone()).collect();
+    let profile_ids = fetched.profiles.iter().map(|p| p.id.clone()).collect();
     Ok(Json(AddedSource { source, profile_ids, skipped: fetched.skipped }))
 }
 
@@ -98,7 +98,7 @@ pub async fn import(State(core): State<Arc<Core>>, body: Body) -> Result<Json<Im
         .map_err(|_| ApiError::payload_too_large(format!("a profile file is at most {limit} bytes")))?;
     let text = std::str::from_utf8(&bytes).map_err(|_| ApiError::bad_request("not JSON: not UTF-8"))?;
     let profile = Installed::validate(text).map_err(ApiError::bad_request)?;
-    if core.bundle.profile(&profile.profile.id).is_some() {
+    if core.bundle.profile(&profile.id).is_some() {
         return Err(ApiError::bad_request(RESERVED_ID));
     }
     import_profile(&core.store, &profile).await.map_err(|error| match error {
@@ -106,5 +106,5 @@ pub async fn import(State(core): State<Arc<Core>>, body: Body) -> Result<Json<Im
         ImportError::Store(error) => error.into(),
     })?;
     core.apply().await?;
-    Ok(Json(ImportedProfile { id: profile.profile.id.clone() }))
+    Ok(Json(ImportedProfile { id: profile.id }))
 }

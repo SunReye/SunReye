@@ -68,6 +68,26 @@ test("an unreachable core reads as a failed request, not a crash", async () => {
     .toHaveTextContent(m.profile_import_failed({ error: m.conn_request_failed() }));
 });
 
+test("the picker is disabled while the file is posted and enabled again after", async () => {
+  let settle: (answer: unknown) => void = () => {};
+  post.mockReturnValue(new Promise((resolve) => (settle = resolve)));
+  render(ProfileImport, {});
+  await picker().upload(file());
+  await expect.element(picker()).toBeDisabled();
+  settle({ data: { id: "acme-hybrid" } });
+  await expect.element(picker()).toBeEnabled();
+});
+
+test("the picker is emptied after a pick so the same file fires change again", async () => {
+  post.mockResolvedValue({ error: { error: "name: missing" } });
+  render(ProfileImport, {});
+  await picker().upload(file());
+  await expect.element(page.getByRole("alert")).toBeVisible();
+  const input = (await picker().element()) as HTMLInputElement;
+  await vi.waitFor(() => expect(input.files?.length).toBe(0));
+  expect(input.value).toBe("");
+});
+
 test("the picker fits a phone and its target is tappable", async () => {
   await page.viewport(390, 844);
   render(ProfileImport, {});

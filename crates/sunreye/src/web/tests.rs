@@ -1075,6 +1075,23 @@ async fn an_oversized_import_is_a_413_and_stores_nothing() {
 }
 
 #[tokio::test]
+async fn a_profile_file_of_exactly_the_limit_is_stored_and_one_byte_more_is_a_413() {
+    let (core, app) = open(&dir("import-boundary")).await;
+    let limit = crate::sources::REQUEST_LIMITS.max_bytes;
+    let (_, mut profile) = third_party("acme-hybrid", PROFILE);
+    profile["padding"] = json!("");
+    let bare = profile.to_string().len();
+    profile["padding"] = json!("x".repeat(limit - bare));
+    let at_limit = import(&app, &profile).await;
+    assert_eq!(at_limit.status, StatusCode::OK, "{:?}", at_limit.json());
+    profile["padding"] = json!("x".repeat(limit - bare + 1));
+    assert_eq!(profile.to_string().len(), limit + 1);
+    assert_eq!(import(&app, &profile).await.status, StatusCode::PAYLOAD_TOO_LARGE);
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
     let (core, app) = open(&dir("source-clash")).await;
     let mut clash = official_files().into_iter().find(|(id, _)| id == PROFILE).expect("official").1;

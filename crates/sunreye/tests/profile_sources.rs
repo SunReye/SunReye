@@ -65,7 +65,8 @@ fn assert_decodes_the_oracle(fetched: &sunreye::sources::Fetched) {
     let mut cases = 0;
     for row in corpus() {
         let id = row["profile"]["id"].as_str().expect("id");
-        let copy = fetched.profiles.iter().find(|p| p.profile.id == id).expect("fetched profile");
+        let copy = fetched.profiles.iter().find(|p| p.id == id).expect("fetched profile");
+        let copy = copy.profile().expect("parses");
         let builtin = bundle.profile(id).expect("compiled-in profile");
         let blocks: Vec<(u64, u64)> = row["blocks"]
             .as_array()
@@ -74,7 +75,7 @@ fn assert_decodes_the_oracle(fetched: &sunreye::sources::Fetched) {
             .map(|b| (b["start"].as_u64().expect("start"), b["count"].as_u64().expect("count")))
             .collect();
         let planned: Vec<(u64, u64)> =
-            plan_reads(&copy.profile).iter().map(|b| (u64::from(b.start), u64::from(b.count))).collect();
+            plan_reads(&copy).iter().map(|b| (u64::from(b.start), u64::from(b.count))).collect();
         assert_eq!(planned, blocks, "{id} blocks");
         for case in row["cases"].as_array().expect("cases") {
             let words = answered(case);
@@ -84,9 +85,9 @@ fn assert_decodes_the_oracle(fetched: &sunreye::sources::Fetched) {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.as_f64().expect("number")))
                 .collect();
-            let got: BTreeMap<String, f64> = decode(&copy.profile, &words).into_iter().collect();
+            let got: BTreeMap<String, f64> = decode(&copy, &words).into_iter().collect();
             assert_eq!(got, want, "{id} {}", case["name"]);
-            assert_eq!(decode(&copy.profile, &words), decode(builtin, &words), "{id} {}", case["name"]);
+            assert_eq!(decode(&copy, &words), decode(builtin, &words), "{id} {}", case["name"]);
             cases += 1;
         }
     }
@@ -94,7 +95,7 @@ fn assert_decodes_the_oracle(fetched: &sunreye::sources::Fetched) {
 }
 
 fn ids(fetched: &sunreye::sources::Fetched) -> Vec<&str> {
-    fetched.profiles.iter().map(|p| p.profile.id.as_str()).collect()
+    fetched.profiles.iter().map(|p| p.id.as_str()).collect()
 }
 
 fn first_two() -> Vec<(String, Value)> {
