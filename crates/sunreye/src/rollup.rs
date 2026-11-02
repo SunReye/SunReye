@@ -16,7 +16,8 @@ pub enum Tier {
 }
 
 impl Tier {
-    fn width_us(self) -> i64 {
+    /// The bucket width in microseconds.
+    pub const fn width_us(self) -> i64 {
         const MINUTE_US: i64 = 60_000_000;
         match self {
             Self::Minute => MINUTE_US,
@@ -35,16 +36,17 @@ pub struct Bucket {
     pub min: f64,
 }
 
-/// One bucket's readings before its neighbours are known; times in microseconds.
-#[derive(Debug, Clone, Copy)]
-struct Partial {
-    start: i64,
-    first: (i64, f64),
-    last: (i64, f64),
+/// One bucket's readings before its neighbours are known; times in microseconds. Kept beside an hourly
+/// bucket so its day folds from stored hours as [`rollup`] folds it from readings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Partial {
+    pub start: i64,
+    pub first: (i64, f64),
+    pub last: (i64, f64),
     /// Sum of each reading times how long it held, up to the bucket's last reading.
-    weighted: f64,
-    max: f64,
-    min: f64,
+    pub weighted: f64,
+    pub max: f64,
+    pub min: f64,
 }
 
 impl Partial {
@@ -69,20 +71,29 @@ fn held(reading: (i64, f64), until: i64) -> f64 {
 /// The buckets of `tier` that hold at least one of `readings`, oldest first. Readings may come in any order.
 /// Holds about 80 bytes per reading while it runs; callers bound the input to keep ADR 0006's memory budget.
 pub fn rollup(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Bucket> {
-    let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (floor_us(*at), *v)).collect();
-    sorted.sort_by_key(|p| p.0);
-    let partials = match tier {
-        Tier::Day => fold(Tier::Day, &fold(Tier::Hour, &raw(&sorted))),
-        _ => fold(tier, &raw(&sorted)),
-    };
-    let width = tier.width_us();
-    let mut previous: Option<&Partial> = None;
+    let partials = partials(tier, readings);
+    let mut carried = None;
     let mut out = Vec::with_capacity(partials.len());
     for partial in &partials {
-        out.push(close(partial, previous, width));
-        previous = Some(partial);
+        out.push(close(tier, partial, carried));
+        carried = Some(partial.last.1);
     }
     out
+}
+
+/// The unclosed buckets of `tier` that hold at least one of `readings`, oldest first.
+pub fn partials(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Partial> {
+    let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (floor_us(*at), *v)).collect();
+    sorted.sort_by_key(|p| p.0);
+    match tier {
+        Tier::Day => days(&fold(Tier::Hour, &raw(&sorted))),
+        _ => fold(tier, &raw(&sorted)),
+    }
+}
+
+/// Hourly partials, oldest first, folded into the days they start in.
+pub fn days(hours: &[Partial]) -> Vec<Partial> {
+    fold(Tier::Day, hours)
 }
 
 /// `as_microsecond` truncates toward zero, which moves a pre-1970 instant forward.
@@ -108,16 +119,17 @@ fn fold(tier: Tier, parts: &[Partial]) -> Vec<Partial> {
     out
 }
 
+/// The bucket of `tier` that `partial` makes, given the last reading of the previous bucket holding data.
 /// Extremes are the bucket's own readings; a value carried in counts only toward the average.
 #[expect(clippy::cast_precision_loss, reason = "microsecond spans stay far below 2^53")]
-fn close(partial: &Partial, previous: Option<&Partial>, width: i64) -> Bucket {
-    let end = partial.start + width;
+pub fn close(tier: Tier, partial: &Partial, carried: Option<f64>) -> Bucket {
+    let end = partial.start + tier.width_us();
     let mut weighted = partial.weighted;
     let mut from = partial.first.0;
-    if let Some(previous) = previous
+    if let Some(carried) = carried
         && partial.start < from
     {
-        weighted += held((partial.start, previous.last.1), from);
+        weighted += held((partial.start, carried), from);
         from = partial.start;
     }
     weighted += held(partial.last, end);
@@ -210,6 +222,17 @@ mod tests {
             rollup(Tier::Day, &readings),
             [bucket("2026-03-28T00:00:00Z", 4.0, 4.0, 4.0), bucket("2026-03-29T00:00:00Z", 6.0, 8.0, 8.0)]
         );
+    }
+
+    #[test]
+    fn a_day_closes_from_its_hours_and_the_carried_last_reading_of_the_day_before() {
+        // As the spring-forward case above, with the 28th known only by its last reading.
+        let readings = [(at("2026-03-28T23:30:00Z"), 4.0), (at("2026-03-29T12:00:00Z"), 8.0)];
+        let hours = partials(Tier::Hour, &readings);
+        let day = days(&hours[1..]);
+        assert_eq!(day.len(), 1);
+        assert_eq!(close(Tier::Day, &day[0], Some(4.0)), bucket("2026-03-29T00:00:00Z", 6.0, 8.0, 8.0));
+        assert_eq!(close(Tier::Day, &day[0], None), bucket("2026-03-29T00:00:00Z", 8.0, 8.0, 8.0));
     }
 
     #[test]
