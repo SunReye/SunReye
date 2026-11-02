@@ -26,7 +26,7 @@
   "require_ci": false,
   "golden_paths": [
     "golden",
-    "/fixtures/",
+    "fixtures/",
     "/oracle/cases/"
   ],
   "vitest_workers_per_slot": 2,

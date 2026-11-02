@@ -14,12 +14,14 @@ import { join, resolve } from "node:path";
 
 import {
   applyComputed,
+  buildManifest,
   clampReports,
   compileComputeExpr,
   decode,
   hydrateProfile,
   parseProfileData,
   planReads,
+  ROLE_CATALOG,
   resetClampReports,
   type ComputeExpr,
   type MetricDef,
@@ -231,7 +233,23 @@ function caseOf(loaded: LoadedProfile): ProfileDecodeCase {
   };
 }
 
-/** Build `profile-decode.ndjson` from a profile repository checkout. */
+/** The `/api/profile` body 2.x answers for a profile, tied to the file it came from. */
+function manifestOf(loaded: LoadedProfile) {
+  const { id } = loaded.entry;
+  return {
+    profile: { id, sha256: loaded.sha256 },
+    manifest: buildManifest(hydrateProfile(loaded.data)),
+  };
+}
+
+/** Build `profile-decode.ndjson`, `profile-manifest.ndjson` and `role-kinds.ndjson` from a profile repository checkout. */
 export async function buildProfileDecodeCorpus(dir: string): Promise<CorpusFiles> {
-  return { "profile-decode.ndjson": ndjson((await loadProfiles(dir)).map(caseOf)) };
+  const loaded = await loadProfiles(dir);
+  return {
+    "profile-decode.ndjson": ndjson(loaded.map(caseOf)),
+    "profile-manifest.ndjson": ndjson(loaded.map(manifestOf)),
+    "role-kinds.ndjson": ndjson([
+      Object.fromEntries(Object.entries(ROLE_CATALOG).map(([role, spec]) => [role, spec.kind])),
+    ]),
+  };
 }

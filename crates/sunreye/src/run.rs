@@ -36,6 +36,8 @@ pub struct Core {
     pub bundle: Bundle,
     /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
     pub roots: Vec<CertificateDer<'static>>,
+    /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
+    now: fn() -> i64,
     polling: Polling,
 }
 
@@ -50,11 +52,29 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, roots, now_ms).await
+    }
+
+    /// [`Core::open`] with the clock standing where `now` says.
+    #[cfg(test)]
+    pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, Vec::new(), now).await
+    }
+
+    async fn open_clocked(
+        data_dir: &Path,
+        roots: Vec<CertificateDer<'static>>,
+        now: fn() -> i64,
+    ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default() });
+        let core = Arc::new(Self { store, bundle, roots, now, polling: Polling::default() });
         core.apply().await?;
         Ok(core)
+    }
+
+    pub fn now_ms(&self) -> i64 {
+        (self.now)()
     }
 
     /// The compiled-in profile `id`, else the one a profile source supplied.

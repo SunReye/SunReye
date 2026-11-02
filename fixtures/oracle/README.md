@@ -71,6 +71,12 @@ Profiles: `deye-sg01hp3` `deye-sg01hp3-10k` `deye-sg01hp3-12k` `deye-sg01hp3-15k
 `deye-sun12k-sg05lp3` `deye-sun14k-sg05lp3` `deye-sun15k-sg05lp3` `deye-sun16k-sg05lp3` `deye-sun18k-sg05lp3`
 `deye-sun20k-sg05lp3` `deye-sun5k-sg05lp3` `deye-sun6k-sg05lp3` `deye-sun8k-sg05lp3`.
 
+`profile-manifest.ndjson` has the same profiles in the same order. Each line is `{profile:{id,sha256},manifest}`,
+`manifest` being the `/api/profile` body 2.x answers: identity, derived `capabilities` and one render-ready entry per
+metric (`kind` and `storage` resolved, absent fields omitted). Producer: `buildManifest`
+(`packages/inverter-core/src/capabilities.ts`). `role-kinds.ndjson` is one line: every canonical role to the
+metric kind it prescribes (`ROLE_CATALOG`, `roles.ts`), for a metric that states no kind.
+
 ## 3. `rollups.ndjson`: rollups
 
 One line per case, plant zone `Europe/Berlin`. `readings` is the input: metric key to `[instant, value]`; `counters`
