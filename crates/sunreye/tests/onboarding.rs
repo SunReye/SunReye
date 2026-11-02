@@ -23,20 +23,32 @@ fn listening_port(line: &str) -> u16 {
     digits.parse().expect("a port")
 }
 
-/// One request with `connection: close`: the status and the body.
-fn http(addr: SocketAddr, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
+struct Reply {
+    status: u16,
+    /// `name=value` of a cookie the reply set.
+    cookie: Option<String>,
+    body: String,
+}
+
+/// One request with `connection: close`, sent as the SPA on the core's own origin sends it.
+fn http(addr: SocketAddr, method: &str, path: &str, body: Option<&str>, cookie: &str) -> Reply {
     let mut stream = TcpStream::connect(addr).expect("connect");
     let body = body.unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nhost: sunreye\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nhost: sunreye\r\norigin: http://sunreye\r\ncookie: {cookie}\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
         body.len()
     );
     stream.write_all(request.as_bytes()).expect("send");
     let mut reply = String::new();
     stream.read_to_string(&mut reply).expect("reply");
     let status = reply.split_whitespace().nth(1).and_then(|code| code.parse().ok()).expect("a status");
-    let body = reply.split_once("\r\n\r\n").map(|(_, body)| body.to_owned()).unwrap_or_default();
-    (status, body)
+    let (head, body) = reply.split_once("\r\n\r\n").unwrap_or((&reply, ""));
+    let cookie = head
+        .lines()
+        .find_map(|line| line.strip_prefix("set-cookie: "))
+        .and_then(|value| value.split(';').next())
+        .map(str::to_owned);
+    Reply { status, cookie, body: body.to_owned() }
 }
 
 struct Running {
@@ -79,15 +91,37 @@ fn data_dir() -> PathBuf {
 /// The request runs off the runtime thread: the simulator it talks to lives on it.
 async fn call(
     addr: SocketAddr,
+    cookie: &str,
     method: &'static str,
     path: &'static str,
     body: Option<&Value>,
 ) -> (u16, Value) {
+    let reply = send(addr, cookie, method, path, body).await;
+    (reply.status, serde_json::from_str(&reply.body).expect("a json body"))
+}
+
+async fn send(
+    addr: SocketAddr,
+    cookie: &str,
+    method: &'static str,
+    path: &'static str,
+    body: Option<&Value>,
+) -> Reply {
     let body = body.map(Value::to_string);
-    let (status, text) = tokio::task::spawn_blocking(move || http(addr, method, path, body.as_deref()))
+    let cookie = cookie.to_owned();
+    tokio::task::spawn_blocking(move || http(addr, method, path, body.as_deref(), &cookie))
         .await
-        .expect("request task");
-    (status, serde_json::from_str(&text).expect("a json body"))
+        .expect("request task")
+}
+
+/// Refused before the admin exists, which the first sign-up creates.
+async fn sign_up_admin(addr: SocketAddr, test_body: &Value) -> String {
+    let refused = send(addr, "", "POST", "/api/settings/inverter/test", Some(test_body)).await;
+    assert_eq!(refused.status, 401, "onboarding needs the admin");
+    let admin = json!({"email": "admin@example.org", "name": "Admin", "password": "correct horse battery"});
+    let signed_up = send(addr, "", "POST", "/api/auth/sign-up", Some(&admin)).await;
+    assert_eq!(signed_up.status, 200, "{}", signed_up.body);
+    signed_up.cookie.expect("a session cookie")
 }
 
 #[tokio::test]
@@ -106,14 +140,16 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
 
     let running = start(&dir);
     let addr = running.addr;
-    let (status, tested) = call(addr, "POST", "/api/settings/inverter/test", Some(&test_body)).await;
+    let cookie = sign_up_admin(addr, &test_body).await;
+    let cookie = cookie.as_str();
+    let (status, tested) = call(addr, cookie, "POST", "/api/settings/inverter/test", Some(&test_body)).await;
     assert_eq!((status, &tested["ok"]), (200, &json!(true)), "{tested}");
     let one_read = sim.requests().len();
     assert!(one_read > 0, "the test read the simulator");
-    let (status, saved) = call(addr, "PUT", "/api/settings/inverter", Some(&connection)).await;
+    let (status, saved) = call(addr, cookie, "PUT", "/api/settings/inverter", Some(&connection)).await;
     assert_eq!((status, &saved), (200, &connection));
     let chosen = json!({"id": PROFILE});
-    let (status, _) = call(addr, "PUT", "/api/settings/active-profile", Some(&chosen)).await;
+    let (status, _) = call(addr, cookie, "PUT", "/api/settings/active-profile", Some(&chosen)).await;
     assert_eq!(status, 200);
 
     let deadline = Instant::now() + Duration::from_secs(20);
@@ -124,9 +160,9 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
     stop(running);
 
     let second = start(&dir);
-    let (_, inverter) = call(second.addr, "GET", "/api/settings/inverter", None).await;
-    assert_eq!(inverter, connection, "the saved connection is read back");
-    let (_, profile) = call(second.addr, "GET", "/api/profile-status", None).await;
+    let (_, inverter) = call(second.addr, cookie, "GET", "/api/settings/inverter", None).await;
+    assert_eq!(inverter, connection, "the saved connection and the session are read back");
+    let (_, profile) = call(second.addr, "", "GET", "/api/profile-status", None).await;
     assert_eq!(profile, json!({"needsProfile": false, "activeProfileId": PROFILE}));
     stop(second);
 

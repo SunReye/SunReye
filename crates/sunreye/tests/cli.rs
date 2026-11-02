@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -45,7 +45,7 @@ fn signal(child: &Child, name: &str) -> ExitStatus {
 }
 
 #[test]
-fn help_lists_exactly_the_three_flags() {
+fn help_lists_exactly_the_startup_flags() {
     let out = Command::new(BIN).arg("--help").output().expect("run");
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).expect("utf8");
@@ -54,7 +54,10 @@ fn help_lists_exactly_the_three_flags() {
         .filter_map(|l| l.split_whitespace().find(|w| w.starts_with("--")))
         .map(|w| w.trim_end_matches(','))
         .collect();
-    assert_eq!(flags, ["--listen", "--data-dir", "--log-level", "--help"]);
+    assert_eq!(
+        flags,
+        ["--listen", "--data-dir", "--log-level", "--trusted-origin", "--secure-cookies", "--help"]
+    );
 }
 
 #[test]
@@ -149,42 +152,109 @@ fn an_unusable_data_dir_exits_non_zero_and_says_why() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
 }
 
-/// Startup lines up to and including "sunreye listening".
-fn startup_lines(listen: &str) -> Vec<String> {
+/// The bound port at the end of the "sunreye listening" line.
+fn port(listening: &str) -> u16 {
+    let digits: String = listening.trim_end().chars().rev().take_while(char::is_ascii_digit).collect();
+    digits.chars().rev().collect::<String>().parse().expect("a port")
+}
+
+/// One HTTP/1.1 request over loopback; the answer's status line.
+fn request(port: u16, head: &str, body: &str) -> String {
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    let request = format!(
+        "{head} HTTP/1.1\r\nhost: sunreye\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).expect("send");
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).expect("answer");
+    answer.lines().next().unwrap_or_default().to_owned()
+}
+
+fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16, u32)) -> String {
     let mut child = Command::new(BIN)
         .args(["--listen", listen, "--data-dir"])
-        .arg(fresh_data_dir())
+        .arg(data_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn sunreye");
     let mut reader = BufReader::new(child.stderr.take().expect("piped stderr"));
-    let mut lines = Vec::new();
-    loop {
+    let mut log = String::new();
+    let listening = loop {
         let mut line = String::new();
-        assert!(reader.read_line(&mut line).expect("a startup line") > 0, "exited early: {lines:?}");
-        let listening = line.contains("sunreye listening");
-        lines.push(line);
-        if listening {
-            break;
+        assert!(reader.read_line(&mut line).expect("a startup line") > 0, "exited early: {log}");
+        log.push_str(&line);
+        if line.contains("sunreye listening") {
+            break line;
         }
-    }
+    };
+    let port = port(&listening);
+    // Answered only once the store is open, so every startup warning is logged by then.
+    assert!(request(port, "GET /api/setup-status", "").contains("200"));
+    then(port, child.id());
     assert!(signal(&child, "TERM").success());
     assert!(child.wait().expect("wait").success());
-    lines
+    reader.read_to_string(&mut log).expect("the rest of the log");
+    log
+}
+
+fn warnings(log: &str) -> Vec<&str> {
+    log.lines().filter(|l| l.contains("WARN")).collect()
 }
 
 #[test]
-fn a_non_loopback_listen_address_logs_a_warning_naming_it() {
-    let lines = startup_lines("0.0.0.0:0");
-    let warning =
-        lines.iter().find(|l| l.contains("WARN")).unwrap_or_else(|| panic!("no warning: {lines:?}"));
-    assert!(warning.contains("0.0.0.0:0"), "{warning}");
-    assert!(warning.contains("not loopback"), "{warning}");
+fn a_non_loopback_listen_address_warns_while_sign_up_is_open() {
+    let log = log_of_a_run("0.0.0.0:0", &fresh_data_dir(), |_, _| {});
+    let warnings = warnings(&log);
+    assert_eq!(warnings.len(), 1, "{log}");
+    assert!(warnings[0].contains("0.0.0.0:"), "{log}");
+    assert!(warnings[0].contains("sign-up"), "{log}");
+    assert!(warnings[0].contains("--listen 127.0.0.1"), "names the fix: {log}");
 }
 
 #[test]
 fn a_loopback_listen_address_logs_no_warning() {
-    let lines = startup_lines("127.0.0.1:0");
-    assert!(lines.iter().all(|l| !l.contains("WARN")), "{lines:?}");
+    let log = log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |_, _| {});
+    assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
+}
+
+#[test]
+fn a_non_loopback_listen_address_logs_no_warning_once_the_admin_exists() {
+    let dir = fresh_data_dir();
+    log_of_a_run("127.0.0.1:0", &dir, |port, _| {
+        let body = r#"{"email":"admin@example.org","name":"Admin","password":"correct horse battery"}"#;
+        assert!(request(port, "POST /api/auth/sign-up", body).contains("200"));
+    });
+    let log = log_of_a_run("0.0.0.0:0", &dir, |_, _| {});
+    assert_eq!(warnings(&log), Vec::<&str>::new(), "{log}");
+}
+
+/// `VmRSS` of process `pid`, in KiB.
+#[cfg(target_os = "linux")]
+fn resident_kib(pid: u32) -> u64 {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).expect("proc status");
+    let line = status.lines().find(|l| l.starts_with("VmRSS:")).expect("a VmRSS line");
+    line.split_whitespace().nth(1).and_then(|kib| kib.parse().ok()).expect("a KiB count")
+}
+
+/// ADR 0006: no growth, because every login reuses one check's buffer.
+#[cfg(target_os = "linux")]
+#[test]
+fn sequential_logins_hold_resident_memory_level() {
+    log_of_a_run("127.0.0.1:0", &fresh_data_dir(), |port, pid| {
+        let account = r#""email":"admin@example.org","password":"correct horse battery""#;
+        let sign_up = format!(r#"{{{account},"name":"Admin"}}"#);
+        assert!(request(port, "POST /api/auth/sign-up", &sign_up).contains("200"));
+        let login = |n: usize| {
+            for _ in 0..n {
+                assert!(request(port, "POST /api/auth/login", &format!("{{{account}}}")).contains("200"));
+            }
+        };
+        login(2);
+        let settled = resident_kib(pid);
+        login(20);
+        let grown = resident_kib(pid).saturating_sub(settled);
+        assert!(grown < 4 * 1024, "resident memory grew {grown} KiB over 20 logins");
+    });
 }

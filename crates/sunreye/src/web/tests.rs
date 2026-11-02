@@ -9,7 +9,7 @@ use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
 use tower::ServiceExt;
 
 use super::*;
-use crate::store::Store;
+use crate::store::{NewAccount, Store};
 
 const PROFILE: &str = "deye-sg05lp3";
 
@@ -19,15 +19,58 @@ fn dir(name: &str) -> PathBuf {
     dir
 }
 
-async fn open(dir: &Path) -> (Arc<Core>, Router) {
+const ADMIN_EMAIL: &str = "admin@example.org";
+const ADMIN_PASSWORD: &str = "correct horse battery";
+const HOST: &str = "sunreye.lan";
+const SAME_ORIGIN: &str = "http://sunreye.lan";
+
+/// The router as one browser sees it: the session cookie it holds, sent with the page's own Origin.
+#[derive(Clone)]
+struct Api {
+    router: Router,
+    cookie: Option<String>,
+}
+
+impl Api {
+    fn anonymous(&self) -> Self {
+        Self { router: self.router.clone(), cookie: None }
+    }
+
+    fn with_cookie(&self, cookie: &str) -> Self {
+        Self { router: self.router.clone(), cookie: Some(cookie.to_owned()) }
+    }
+}
+
+/// A core whose admin is signed in: created on a fresh store, logged in on a reopened one.
+async fn open(dir: &Path) -> (Arc<Core>, Api) {
+    open_with(dir, &Config::default()).await
+}
+
+async fn open_with(dir: &Path, config: &Config) -> (Arc<Core>, Api) {
     let core = Core::open(dir).await.expect("core");
-    let app = router(Arc::clone(&core));
-    (core, app)
+    let api = Api { router: router(Arc::clone(&core), config), cookie: None };
+    let mut answer = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await;
+    if answer.status == StatusCode::FORBIDDEN {
+        answer = login(&api, ADMIN_EMAIL, ADMIN_PASSWORD, false).await;
+    }
+    assert_eq!(answer.status, StatusCode::OK, "admin session");
+    let cookie = answer.session_cookie();
+    (core, api.with_cookie(&cookie))
+}
+
+async fn sign_up(api: &Api, email: &str, password: &str) -> Answer {
+    post(api, "/api/auth/sign-up", &json!({"email": email, "name": "Admin", "password": password})).await
+}
+
+async fn login(api: &Api, email: &str, password: &str, remember_me: bool) -> Answer {
+    let body = json!({"email": email, "password": password, "rememberMe": remember_me});
+    post(api, "/api/auth/login", &body).await
 }
 
 struct Answer {
     status: StatusCode,
     content_type: String,
+    set_cookie: Option<String>,
     body: Vec<u8>,
 }
 
@@ -35,37 +78,53 @@ impl Answer {
     fn json(&self) -> Value {
         serde_json::from_slice(&self.body).unwrap_or_else(|e| panic!("json body: {e}: {:?}", self.body))
     }
+
+    /// `name=value` of the cookie this answer set.
+    fn session_cookie(&self) -> String {
+        let header = self.set_cookie.as_deref().expect("a set-cookie header");
+        header.split(';').next().expect("name=value").to_owned()
+    }
 }
 
-async fn send(app: &Router, method: Method, path: &str, body: Option<&str>) -> Answer {
-    let request = Request::builder()
+async fn send(api: &Api, method: Method, path: &str, body: Option<&str>) -> Answer {
+    let mut request = Request::builder()
         .method(method)
         .uri(path)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(body.map_or_else(Body::empty, |text| Body::from(text.to_owned())))
-        .expect("request");
-    let response = app.clone().oneshot(request).await.expect("response");
-    let content_type = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_owned();
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, SAME_ORIGIN)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = &api.cookie {
+        request = request.header(header::COOKIE, cookie);
+    }
+    let request =
+        request.body(body.map_or_else(Body::empty, |text| Body::from(text.to_owned()))).expect("request");
+    answer(api.router.clone().oneshot(request).await.expect("response")).await
+}
+
+async fn answer(response: Response) -> Answer {
+    let header_text =
+        |name| response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_owned);
+    let content_type = header_text(header::CONTENT_TYPE).unwrap_or_default();
+    let set_cookie = header_text(header::SET_COOKIE);
     let status = response.status();
     let body = to_bytes(response.into_body(), usize::MAX).await.expect("body").to_vec();
-    Answer { status, content_type, body }
+    Answer { status, content_type, set_cookie, body }
 }
 
-async fn get(app: &Router, path: &str) -> Answer {
-    send(app, Method::GET, path, None).await
+async fn get(api: &Api, path: &str) -> Answer {
+    send(api, Method::GET, path, None).await
 }
 
-async fn put(app: &Router, path: &str, body: &Value) -> Answer {
-    send(app, Method::PUT, path, Some(&body.to_string())).await
+async fn put(api: &Api, path: &str, body: &Value) -> Answer {
+    send(api, Method::PUT, path, Some(&body.to_string())).await
 }
 
-async fn post(app: &Router, path: &str, body: &Value) -> Answer {
-    send(app, Method::POST, path, Some(&body.to_string())).await
+async fn post(api: &Api, path: &str, body: &Value) -> Answer {
+    send(api, Method::POST, path, Some(&body.to_string())).await
+}
+
+async fn delete(api: &Api, path: &str) -> Answer {
+    send(api, Method::DELETE, path, None).await
 }
 
 fn connection(port: u16) -> Value {
@@ -97,9 +156,8 @@ async fn unused_port() -> u16 {
 }
 
 #[tokio::test]
-async fn a_fresh_core_needs_a_profile_and_no_account() {
+async fn a_fresh_core_needs_a_profile() {
     let (core, app) = open(&dir("fresh")).await;
-    assert_eq!(get(&app, "/api/setup-status").await.json(), json!({"needsSetup": false}));
     assert_eq!(
         get(&app, "/api/profile-status").await.json(),
         json!({"needsProfile": true, "activeProfileId": null})
@@ -354,7 +412,11 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 8] = [
+const SERVED: [(&str, &str); 12] = [
+    ("delete", "/api/auth/session"),
+    ("get", "/api/auth/session"),
+    ("post", "/api/auth/login"),
+    ("post", "/api/auth/sign-up"),
     ("get", "/api/capabilities"),
     ("get", "/api/profile-status"),
     ("get", "/api/profiles"),
@@ -413,4 +475,280 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
         committed == current,
         "openapi_snapshot.json is stale: UPDATE_OPENAPI=1 cargo test -p sunreye openapi, then bun run --cwd apps/web gen:core-api"
     );
+}
+
+const ADMIN_ROUTES: [(&str, &str); 5] = [
+    ("GET", "/api/profiles"),
+    ("PUT", "/api/settings/active-profile"),
+    ("GET", "/api/settings/inverter"),
+    ("PUT", "/api/settings/inverter"),
+    ("POST", "/api/settings/inverter/test"),
+];
+
+const SESSION_ROUTES: [(&str, &str); 3] =
+    [("GET", "/api/capabilities"), ("GET", "/api/auth/session"), ("DELETE", "/api/auth/session")];
+
+async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
+    call_for_answer(api, route).await.status
+}
+
+async fn call_for_answer(api: &Api, (method, path): (&str, &str)) -> Answer {
+    let method = Method::from_bytes(method.as_bytes()).expect("method");
+    send(api, method, path, Some(&connection(502).to_string())).await
+}
+
+#[tokio::test]
+async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
+    let core = Core::open(&dir("sign-up")).await.expect("core");
+    let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
+    assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": true}));
+
+    let created = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await;
+    assert_eq!(created.status, StatusCode::OK);
+    let account = created.json();
+    assert_eq!(
+        (&account["email"], &account["name"], &account["admin"]),
+        (&json!(ADMIN_EMAIL), &json!("Admin"), &json!(true))
+    );
+    let header = created.set_cookie.clone().expect("a session cookie");
+    assert!(header.contains("HttpOnly") && header.contains("SameSite=Lax"), "{header}");
+    assert!(!header.contains("Secure"), "Secure only when configured: {header}");
+    let admin = api.with_cookie(&created.session_cookie());
+    assert_eq!(get(&admin, "/api/auth/session").await.json(), account);
+    assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": false}));
+
+    let second = sign_up(&api, "eve@example.org", "another long password").await;
+    assert_eq!(second.status, StatusCode::FORBIDDEN);
+    assert_eq!(second.set_cookie, None);
+    assert_eq!(
+        login(&api, "eve@example.org", "another long password", false).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    let stored = core.store.account_by_email(ADMIN_EMAIL).await.expect("store").expect("account");
+    assert!(stored.password_hash.starts_with("$argon2id$"), "Argon2id, never the password");
+    drop((api, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
+    let core = Core::open(&dir("sign-up-invalid")).await.expect("core");
+    let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
+    for body in [
+        json!({"email": "", "name": "A", "password": ADMIN_PASSWORD}),
+        json!({"email": "no-at-sign", "name": "A", "password": ADMIN_PASSWORD}),
+        json!({"email": ADMIN_EMAIL, "name": " ", "password": ADMIN_PASSWORD}),
+        json!({"email": ADMIN_EMAIL}),
+    ] {
+        let answer = post(&api, "/api/auth/sign-up", &body).await;
+        assert_eq!(answer.status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(answer.json()["error"].as_str().is_some_and(|e| !e.is_empty()), "{body}");
+    }
+    assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": true}));
+    drop(api);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_password_of_8_to_128_characters_signs_up_and_one_outside_is_a_400() {
+    let cases = [
+        ("7", "x".repeat(7), StatusCode::BAD_REQUEST),
+        ("8", "x".repeat(8), StatusCode::OK),
+        ("128", "x".repeat(128), StatusCode::OK),
+        ("128 two-byte", "é".repeat(128), StatusCode::OK),
+        ("129", "x".repeat(129), StatusCode::BAD_REQUEST),
+    ];
+    for (name, password, want) in cases {
+        let core = Core::open(&dir(&format!("password-length-{name}"))).await.expect("core");
+        let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
+        assert_eq!(sign_up(&api, ADMIN_EMAIL, &password).await.status, want, "{name}");
+        if want == StatusCode::OK {
+            assert_eq!(login(&api, ADMIN_EMAIL, &password, false).await.status, StatusCode::OK, "{name}");
+        }
+        drop(api);
+        core.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn a_wrong_password_or_an_unknown_email_is_refused_without_a_session() {
+    let (core, admin) = open(&dir("wrong-password")).await;
+    let api = admin.anonymous();
+    for (email, password) in
+        [(ADMIN_EMAIL, "wrong horse battery"), ("nobody@example.org", ADMIN_PASSWORD), (ADMIN_EMAIL, "")]
+    {
+        let answer = login(&api, email, password, false).await;
+        assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{email}");
+        assert_eq!(answer.json(), json!({"error": "Invalid email or password"}));
+        assert_eq!(answer.set_cookie, None, "{email}");
+    }
+    let differently_cased = login(&api, "ADMIN@example.org", ADMIN_PASSWORD, false).await;
+    assert_eq!(differently_cased.status, StatusCode::OK, "emails compare without case");
+    drop((api, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn remember_me_keeps_the_session_for_a_year_and_otherwise_it_ends_with_the_browser() {
+    let (core, admin) = open(&dir("remember")).await;
+    let api = admin.anonymous();
+    let remembered = login(&api, ADMIN_EMAIL, ADMIN_PASSWORD, true).await;
+    let header = remembered.set_cookie.clone().expect("cookie");
+    assert!(header.contains("Max-Age=31536000"), "{header}");
+    let browser_session = login(&api, ADMIN_EMAIL, ADMIN_PASSWORD, false).await;
+    let header = browser_session.set_cookie.clone().expect("cookie");
+    assert!(!header.contains("Max-Age") && !header.contains("Expires"), "{header}");
+    assert_eq!(
+        get(&api.with_cookie(&remembered.session_cookie()), "/api/auth/session").await.status,
+        StatusCode::OK
+    );
+    drop((api, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn logging_in_again_rotates_the_session_id_and_the_old_one_stops_working() {
+    let (core, admin) = open(&dir("rotate")).await;
+    let old = admin.cookie.clone().expect("cookie");
+    let again = login(&admin, ADMIN_EMAIL, ADMIN_PASSWORD, false).await;
+    assert_eq!(again.status, StatusCode::OK);
+    let new = again.session_cookie();
+    assert_ne!(new, old);
+    assert_eq!(get(&admin, "/api/auth/session").await.status, StatusCode::UNAUTHORIZED, "the old id");
+    assert_eq!(get(&admin.with_cookie(&new), "/api/auth/session").await.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn logging_out_ends_the_session() {
+    let (core, admin) = open(&dir("logout")).await;
+    let out = delete(&admin, "/api/auth/session").await;
+    assert_eq!(out.status, StatusCode::NO_CONTENT);
+    assert_eq!(get(&admin, "/api/auth/session").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(get(&admin, "/api/profiles").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(delete(&admin.anonymous(), "/api/auth/session").await.status, StatusCode::UNAUTHORIZED);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_expired_session_is_refused() {
+    use tower_sessions::SessionStore;
+    use tower_sessions::cookie::time::{Duration as Span, OffsetDateTime};
+    use tower_sessions::session::Id;
+
+    let (core, admin) = open(&dir("expired")).await;
+    let cookie = admin.cookie.clone().expect("cookie");
+    let id: Id = cookie.split_once('=').expect("name=value").1.parse().expect("session id");
+    let sessions = core.store.sessions();
+    let mut record = sessions.load(&id).await.expect("load").expect("a stored session");
+    record.expiry_date = OffsetDateTime::now_utc() - Span::seconds(1);
+    sessions.save(&record).await.expect("save");
+
+    assert_eq!(get(&admin, "/api/auth/session").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(get(&admin, "/api/profiles").await.status, StatusCode::UNAUTHORIZED);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn without_a_session_every_gated_route_is_refused() {
+    let (core, admin) = open(&dir("anonymous")).await;
+    let api = admin.anonymous();
+    for route in ADMIN_ROUTES.into_iter().chain(SESSION_ROUTES) {
+        let answer = call_for_answer(&api, route).await;
+        assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{route:?}");
+        assert_eq!(answer.json(), json!({"error": "Not signed in"}), "{route:?}");
+    }
+    for path in ["/api/setup-status", "/api/profile-status"] {
+        assert_eq!(get(&api, path).await.status, StatusCode::OK, "{path} is public");
+    }
+    drop((api, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_plain_user_reaches_the_session_routes_and_is_refused_on_admin_routes() {
+    let (core, admin) = open(&dir("plain-user")).await;
+    let account = NewAccount {
+        email: "user@example.org".into(),
+        name: "User".into(),
+        password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
+    };
+    core.store.add_plain_account(&account).await.expect("plain account");
+    let signed_in = login(&admin.anonymous(), "user@example.org", ADMIN_PASSWORD, false).await;
+    assert_eq!(signed_in.json()["admin"], false);
+    let user = admin.with_cookie(&signed_in.session_cookie());
+    for route in ADMIN_ROUTES {
+        let answer = call_for_answer(&user, route).await;
+        assert_eq!(answer.status, StatusCode::FORBIDDEN, "{route:?}");
+        assert_eq!(answer.json(), json!({"error": "Admin only"}), "{route:?}");
+    }
+    assert_eq!(get(&user, "/api/capabilities").await.status, StatusCode::OK);
+    assert_eq!(get(&user, "/api/auth/session").await.json()["email"], "user@example.org");
+    for route in ADMIN_ROUTES {
+        assert_ne!(call(&admin, route).await, StatusCode::FORBIDDEN, "the admin passes {route:?}");
+    }
+    drop((user, admin));
+    core.stop().await;
+}
+
+async fn from_origin(
+    api: &Api,
+    origin: Option<&str>,
+    method: Method,
+    path: &str,
+    body: &Value,
+) -> StatusCode {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(origin) = origin {
+        request = request.header(header::ORIGIN, origin);
+    }
+    if let Some(cookie) = &api.cookie {
+        request = request.header(header::COOKIE, cookie);
+    }
+    let request = request.body(Body::from(body.to_string())).expect("request");
+    api.router.clone().oneshot(request).await.expect("response").status()
+}
+
+#[tokio::test]
+async fn a_state_changing_request_from_an_untrusted_origin_is_refused() {
+    let config = Config { trusted_origins: vec!["https://ha.example".into()], secure_cookies: false };
+    let (core, admin) = open_with(&dir("origin"), &config).await;
+    let choose = json!({"id": PROFILE});
+    let write = |origin| from_origin(&admin, origin, Method::PUT, "/api/settings/active-profile", &choose);
+    assert_eq!(write(Some("https://evil.example")).await, StatusCode::FORBIDDEN);
+    assert_eq!(write(Some("null")).await, StatusCode::FORBIDDEN);
+    assert_eq!(write(Some("http://sunreye.lan.evil.example")).await, StatusCode::FORBIDDEN);
+    assert_eq!(write(None).await, StatusCode::FORBIDDEN, "a cookie without an Origin");
+    assert_eq!(get(&admin, "/api/profile-status").await.json()["needsProfile"], true, "nothing was chosen");
+    assert_eq!(write(Some(SAME_ORIGIN)).await, StatusCode::OK);
+    assert_eq!(write(Some("https://ha.example")).await, StatusCode::OK, "a configured origin");
+
+    let anonymous = admin.anonymous();
+    let credentials = json!({"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD});
+    let login_from = |origin| from_origin(&anonymous, origin, Method::POST, "/api/auth/login", &credentials);
+    assert_eq!(login_from(Some("https://evil.example")).await, StatusCode::FORBIDDEN);
+    assert_eq!(login_from(None).await, StatusCode::OK, "no cookie, no Origin: not a browser");
+    let read =
+        from_origin(&admin, Some("https://evil.example"), Method::GET, "/api/profiles", &json!({})).await;
+    assert_eq!(read, StatusCode::OK, "a read changes nothing");
+    drop((anonymous, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn the_session_cookie_is_secure_when_configured() {
+    let config = Config { trusted_origins: Vec::new(), secure_cookies: true };
+    let core = Core::open(&dir("secure")).await.expect("core");
+    let api = Api { router: router(Arc::clone(&core), &config), cookie: None };
+    let header = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await.set_cookie.expect("cookie");
+    assert!(header.contains("Secure"), "{header}");
+    drop(api);
+    core.stop().await;
 }

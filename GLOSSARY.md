@@ -96,6 +96,10 @@ _Avoid_: flavour, distribution, variant
 A feature the running core reports it provides; the web app hides what is absent.
 _Avoid_: feature flag
 
+**Account**:
+A person who signs in to the core. Only an admin account changes settings; the first account is one.
+_Avoid_: user role (a role is a reading's meaning)
+
 **Kiosk view**:
 The public read-only dashboard for wall displays.
 _Avoid_: public dashboard, wall mode

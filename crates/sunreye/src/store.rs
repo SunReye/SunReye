@@ -9,6 +9,9 @@ use sqlx::migrate::{MigrateError, Migrator};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Executor, Sqlite, SqlitePool};
 
+use tower_sessions::session_store::ExpiredDeletion;
+use tower_sessions_sqlx_store::SqliteStore;
+
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
@@ -30,6 +33,8 @@ pub enum StoreError {
     Corrupt(&'static str),
     #[error(transparent)]
     Transport(#[from] UnknownTransport),
+    #[error("session store: {0}")]
+    Sessions(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +73,36 @@ pub struct DeviceRow {
     pub host: String,
     pub port: u16,
     pub logger_serial: Option<u32>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct NewAccount {
+    pub email: String,
+    pub name: String,
+    pub password_hash: String,
+}
+
+/// Leaves the hash out of logs.
+impl std::fmt::Debug for NewAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NewAccount").field("email", &self.email).finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct AccountRow {
+    pub id: i64,
+    pub email: String,
+    pub name: String,
+    pub password_hash: String,
+    pub admin: bool,
+}
+
+/// Leaves the hash out of logs.
+impl std::fmt::Debug for AccountRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AccountRow").field("id", &self.id).field("email", &self.email).finish_non_exhaustive()
+    }
 }
 
 /// Applies `migrator` with foreign keys off. A migration runs in a transaction, where the pragma cannot
@@ -111,7 +146,15 @@ impl Store {
             .connect_with(options.foreign_keys(true))
             .await?;
         migrate(&pool, &sqlx::migrate!("./migrations")).await?;
-        Ok(Self { pool })
+        let store = Self { pool };
+        store.sessions().migrate().await?;
+        store.sessions().delete_expired().await.map_err(|e| StoreError::Sessions(e.to_string()))?;
+        Ok(store)
+    }
+
+    /// Login sessions, in this file's `tower_sessions` table.
+    pub fn sessions(&self) -> SqliteStore {
+        SqliteStore::new(self.pool.clone())
     }
 
     /// Closes the file; the last connection checkpoints the WAL.
@@ -134,6 +177,63 @@ impl Store {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn has_accounts(&self) -> Result<bool, StoreError> {
+        let row = sqlx::query!(r#"SELECT EXISTS (SELECT 1 FROM account) AS "any!: bool""#)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.any)
+    }
+
+    /// Creates the admin while no account exists; `None` once one does. One statement, so two
+    /// concurrent sign-ups cannot both become the first.
+    pub async fn create_first_account(&self, account: &NewAccount) -> Result<Option<i64>, StoreError> {
+        let row = sqlx::query!(
+            r#"INSERT INTO account (email, name, password_hash, admin)
+               SELECT ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM account) RETURNING id AS "id!""#,
+            account.email,
+            account.name,
+            account.password_hash
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|row| row.id))
+    }
+
+    /// A non-admin account, for tests until accounts are administered over HTTP.
+    #[cfg(test)]
+    pub(crate) async fn add_plain_account(&self, account: &NewAccount) -> Result<i64, StoreError> {
+        let query = sqlx::query_scalar(
+            "INSERT INTO account (email, name, password_hash, admin) VALUES (?, ?, ?, 0) RETURNING id",
+        )
+        .bind(&account.email)
+        .bind(&account.name)
+        .bind(&account.password_hash);
+        Ok(query.fetch_one(&self.pool).await?)
+    }
+
+    pub async fn account(&self, id: i64) -> Result<Option<AccountRow>, StoreError> {
+        let row = sqlx::query_as!(
+            AccountRow,
+            r#"SELECT id AS "id!", email, name, password_hash, admin AS "admin: bool" FROM account WHERE id = ?"#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Emails compare without case.
+    pub async fn account_by_email(&self, email: &str) -> Result<Option<AccountRow>, StoreError> {
+        let row = sqlx::query_as!(
+            AccountRow,
+            r#"SELECT id AS "id!", email, name, password_hash, admin AS "admin: bool" FROM account WHERE email = ?"#,
+            email
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
     }
 
     pub async fn add_connection(&self, connection: &NewConnection) -> Result<i64, StoreError> {
@@ -946,6 +1046,55 @@ mod tests {
         assert_eq!(store.readings(device, 0, i64::MAX).await.expect("r").len(), 1);
         store.close().await;
         drop(std::fs::remove_dir_all(&dir));
+    }
+
+    fn account(email: &str) -> NewAccount {
+        NewAccount { email: email.into(), name: "Ada".into(), password_hash: "$argon2id$hash".into() }
+    }
+
+    #[test]
+    fn an_account_prints_without_its_password_hash() {
+        let new = account("ada@example.org");
+        let row = AccountRow {
+            id: 1,
+            email: new.email.clone(),
+            name: new.name.clone(),
+            password_hash: new.password_hash.clone(),
+            admin: true,
+        };
+        for printed in [format!("{new:?}"), format!("{row:?}"), format!("{new:#?}")] {
+            assert!(printed.contains("ada@example.org"), "{printed}");
+            assert!(!printed.contains("argon2"), "{printed}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_first_account_is_an_admin_and_no_second_one_is_created_that_way() {
+        let store = Store::in_memory().await.expect("store");
+        assert!(!store.has_accounts().await.expect("any"));
+        let id = store.create_first_account(&account("ada@example.org")).await.expect("create");
+        let id = id.expect("the first account is created");
+        assert!(store.has_accounts().await.expect("any"));
+        let want = AccountRow {
+            id,
+            email: "ada@example.org".into(),
+            name: "Ada".into(),
+            password_hash: "$argon2id$hash".into(),
+            admin: true,
+        };
+        assert_eq!(store.account(id).await.expect("by id"), Some(want));
+        assert_eq!(store.create_first_account(&account("eve@example.org")).await.expect("second"), None);
+        assert_eq!(store.account_by_email("eve@example.org").await.expect("by email"), None);
+    }
+
+    #[tokio::test]
+    async fn an_account_is_found_by_email_in_any_case_and_an_unknown_one_is_none() {
+        let store = Store::in_memory().await.expect("store");
+        let id = store.create_first_account(&account("Ada@Example.org")).await.expect("c").expect("id");
+        let found = store.account_by_email("ada@example.ORG").await.expect("by email").expect("found");
+        assert_eq!(found.id, id);
+        assert_eq!(store.account_by_email("bob@example.org").await.expect("by email"), None);
+        assert_eq!(store.account(id + 1).await.expect("by id"), None);
     }
 
     #[tokio::test]
