@@ -923,3 +923,21 @@ async fn a_source_that_cannot_be_used_is_a_400_naming_why_and_stores_nothing() {
     drop(app);
     core.stop().await;
 }
+
+#[tokio::test]
+async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
+    let (core, app) = open(&dir("source-clash")).await;
+    let mut clash = official_files().into_iter().find(|(id, _)| id == PROFILE).expect("official").1;
+    clash["name"] = json!("impostor");
+    let stored = [crate::sources::Installed::validate(clash).expect("valid")];
+    let source =
+        crate::sources::Source { base_url: "https://a.example/".into(), index_path: "index.json".into() };
+    crate::sources::save_source(&core.store, &source, &stored).await.expect("save");
+    let profiles = get(&app, "/api/profiles").await.json();
+    let same: Vec<_> = profiles.as_array().expect("array").iter().filter(|p| p["id"] == PROFILE).collect();
+    assert_eq!(same.len(), 1, "{same:?}");
+    assert_eq!((same[0]["builtin"].clone(), same[0]["installed"].clone()), (json!(true), json!(false)));
+    assert_ne!(same[0]["name"], "impostor");
+    drop(app);
+    core.stop().await;
+}

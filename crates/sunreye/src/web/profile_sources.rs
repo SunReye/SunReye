@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::run::Core;
-use crate::sources::{Listed, REQUEST_LIMITS, Skipped, Source, fetch, list_sources, save_source};
+use crate::sources::{BUDGET, Listed, REQUEST_LIMITS, Skipped, Source, fetch, list_sources, save_source};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +57,7 @@ pub async fn add(
 ) -> Result<Json<AddedSource>, ApiError> {
     let refused = |error: crate::sources::SourceError| ApiError::bad_request(error.to_string());
     let source = request.normalised().map_err(refused)?;
-    let fetched = fetch(&source, REQUEST_LIMITS, &core.roots, |id| core.bundle.profile(id).is_some())
+    let fetched = fetch(&source, REQUEST_LIMITS, BUDGET, &core.roots, |id| core.bundle.profile(id).is_some())
         .await
         .map_err(refused)?;
     save_source(&core.store, &source, &fetched.profiles).await?;

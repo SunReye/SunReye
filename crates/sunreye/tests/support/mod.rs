@@ -106,11 +106,25 @@ pub fn site(files: &[(String, Value)]) -> Site {
     site
 }
 
+/// What a path answers instead of its file.
+#[derive(Clone)]
+pub enum Instead {
+    /// 302 to this absolute URL.
+    Redirect(String),
+    /// Reads the request and never answers.
+    Stall,
+}
+
 pub async fn serve_site(ca: &Ca, site: Site) -> u16 {
+    serve_site_with(ca, site, BTreeMap::new()).await
+}
+
+/// [`serve_site`] where the paths in `instead` answer as told.
+pub async fn serve_site_with(ca: &Ca, site: Site, instead: BTreeMap<String, Instead>) -> u16 {
     let acceptor = acceptor(ca.leaf("localhost"));
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let site = Arc::new(site);
+    let site = Arc::new((site, instead));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             tokio::spawn(answer(acceptor.clone(), tcp, Arc::clone(&site)));
@@ -119,21 +133,31 @@ pub async fn serve_site(ca: &Ca, site: Site) -> u16 {
     port
 }
 
-async fn answer(acceptor: TlsAcceptor, tcp: TcpStream, site: Arc<Site>) {
+async fn answer(acceptor: TlsAcceptor, tcp: TcpStream, site: Arc<(Site, BTreeMap<String, Instead>)>) {
     let Ok(mut tls) = acceptor.accept(tcp).await else { return };
     let Some(request) = read_request(&mut tls).await else { return };
     let head = String::from_utf8_lossy(&request);
     let path = head.split_whitespace().nth(1).unwrap_or_default();
-    let wire = match site.get(path) {
-        Some(body) => {
+    let (files, instead) = &*site;
+    let wire = match (instead.get(path), files.get(path)) {
+        (Some(Instead::Stall), _) => return stall().await,
+        (Some(Instead::Redirect(to)), _) => {
+            format!("HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .into_bytes()
+        }
+        (None, Some(body)) => {
             let mut wire =
                 format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len())
                     .into_bytes();
             wire.extend_from_slice(body);
             wire
         }
-        None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),
+        (None, None) => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),
     };
     let _ = tls.write_all(&wire).await;
     let _ = tls.shutdown().await;
+}
+
+async fn stall() {
+    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 }

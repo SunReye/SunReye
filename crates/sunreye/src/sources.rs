@@ -4,12 +4,13 @@
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::Url;
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_json::error::Category;
 use utoipa::ToSchema;
 
 use crate::https::{GetError, Limits, get_with_roots};
@@ -17,9 +18,6 @@ use crate::profile::{Bundle, Profile};
 use crate::store::{Store, StoreError};
 
 pub const SOURCES_KEY: &str = "profile.sources";
-
-/// Bytes of profile files one fetch accepts in all; the rest of the index is skipped.
-const FETCH_BUDGET: usize = 16 << 20;
 
 /// Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is
 /// refused, so nothing secret is stored or logged.
@@ -93,8 +91,24 @@ pub struct Installed {
 impl Installed {
     /// Validates `json` against the profile schema.
     pub fn validate(json: Value) -> Result<Self, String> {
-        let profile: Profile = serde_json::from_value(json.clone()).map_err(|e| e.to_string())?;
+        let profile: Profile = serde_json::from_value(json.clone()).map_err(|e| describe(&e))?;
         Ok(Self { profile: Arc::new(profile), json })
+    }
+}
+
+/// serde's message without the values it quotes: the source is untrusted and its text must not come back
+/// in an error or a log.
+fn describe(error: &serde_json::Error) -> String {
+    let text = error.to_string();
+    if error.classify() != Category::Data || text.starts_with("missing field `") {
+        return text;
+    }
+    match text.rsplit_once(", expected ") {
+        Some((found, expected)) => {
+            let kind = found.split([':', '`']).next().unwrap_or_default().trim();
+            format!("{kind}, expected {expected}")
+        }
+        None => "does not match the profile schema".into(),
     }
 }
 
@@ -125,11 +139,27 @@ struct Entry {
 /// Bounds on each request to a source: a profile file is tens of kilobytes.
 pub const REQUEST_LIMITS: Limits = Limits { timeout: Duration::from_secs(15), max_bytes: 256 * 1024 };
 
-/// Fetches the index and every profile it lists. `limits` bounds each request; `roots` are trusted besides
-/// the built-in store; a profile whose id `is_reserved` is skipped.
+/// What one fetch spends on profile files before it skips the rest of the index. The sizes are a few
+/// times the official set (632 KB, 20 files) so a parsed source stays well inside ADR 0006's resident
+/// budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Budget {
+    /// Bytes of every body read, a rejected one included.
+    pub bytes: usize,
+    /// Files the index may list.
+    pub entries: usize,
+    /// All the profile files together.
+    pub time: Duration,
+}
+
+pub const BUDGET: Budget = Budget { bytes: 2 << 20, entries: 128, time: Duration::from_secs(60) };
+
+/// Fetches the index and every profile it lists. `limits` bounds each request and `budget` all of them;
+/// `roots` are trusted besides the built-in store; a profile whose id `is_reserved` is skipped.
 pub async fn fetch(
     source: &Source,
     limits: Limits,
+    budget: Budget,
     roots: &[CertificateDer<'_>],
     is_reserved: impl Fn(&str) -> bool,
 ) -> Result<Fetched, SourceError> {
@@ -138,21 +168,25 @@ pub async fn fetch(
         .ok_or_else(|| SourceError::Url("The index path must stay under the base URL".into()))?;
     let body = get_with_roots(index_url.as_str(), limits, roots).await.map_err(SourceError::Index)?;
     let index: Index =
-        serde_json::from_slice(&body).map_err(|e| SourceError::MalformedIndex(e.to_string()))?;
+        serde_json::from_slice(&body).map_err(|e| SourceError::MalformedIndex(describe(&e)))?;
     let mut fetched = Fetched::default();
-    let (mut seen, mut spent) = (BTreeSet::new(), 0);
-    for entry in index.profiles {
-        let loaded = if spent > FETCH_BUDGET {
-            Err(format!("the source holds more than {} MiB", FETCH_BUDGET >> 20))
+    let (mut seen, mut spent, started) = (BTreeSet::new(), 0, Instant::now());
+    for (position, entry) in index.profiles.into_iter().enumerate() {
+        let left = budget.time.saturating_sub(started.elapsed());
+        let loaded = if let Some(reason) = over_budget(budget, position, spent, left) {
+            Err(reason)
         } else if is_reserved(&entry.id) {
             Err("the id belongs to a compiled-in profile".into())
         } else if seen.contains(&entry.id) {
-            Err(format!("the index lists \"{}\" twice", entry.id))
+            Err("the index lists this id twice".into())
         } else {
-            load(&root, &entry, limits, roots).await.inspect(|(_, size)| spent += size)
+            let bounded = Limits { timeout: limits.timeout.min(left), ..limits };
+            let loaded = load(&root, &entry, bounded, roots).await;
+            spent += loaded.spent;
+            loaded.outcome
         };
         match loaded {
-            Ok((profile, _)) => {
+            Ok(profile) => {
                 seen.insert(entry.id);
                 fetched.profiles.push(profile);
             }
@@ -162,21 +196,45 @@ pub async fn fetch(
     Ok(fetched)
 }
 
-/// One listed file, validated, with its size in bytes.
-async fn load(
-    root: &Url,
-    entry: &Entry,
-    limits: Limits,
-    roots: &[CertificateDer<'_>],
-) -> Result<(Installed, usize), String> {
-    let url = resolve(root, &entry.path).ok_or("the path leaves the source")?;
-    let body = get_with_roots(url.as_str(), limits, roots).await.map_err(|e| e.to_string())?;
-    let json = serde_json::from_slice(&body).map_err(|e| format!("not JSON: {e}"))?;
+/// Why the entry at `position` is not fetched, when `spent` bytes and the time `left` say so.
+fn over_budget(budget: Budget, position: usize, spent: usize, left: Duration) -> Option<String> {
+    if position >= budget.entries {
+        Some(format!("the index lists more than {} files", budget.entries))
+    } else if spent >= budget.bytes {
+        Some(format!("the source holds more than {} bytes", budget.bytes))
+    } else if left.is_zero() {
+        Some(format!("the source took longer than {:?}", budget.time))
+    } else {
+        None
+    }
+}
+
+/// One listed file, validated, and the body bytes it cost whether or not it passed.
+struct Loaded {
+    outcome: Result<Installed, String>,
+    spent: usize,
+}
+
+async fn load(root: &Url, entry: &Entry, limits: Limits, roots: &[CertificateDer<'_>]) -> Loaded {
+    let Some(url) = resolve(root, &entry.path) else {
+        return Loaded { outcome: Err("the path leaves the source".into()), spent: 0 };
+    };
+    match get_with_roots(url.as_str(), limits, roots).await {
+        Ok(body) => Loaded { spent: body.len(), outcome: validated(&body, entry) },
+        Err(error) => {
+            let spent = if matches!(error, GetError::TooLarge { .. }) { limits.max_bytes } else { 0 };
+            Loaded { outcome: Err(error.to_string()), spent }
+        }
+    }
+}
+
+fn validated(body: &[u8], entry: &Entry) -> Result<Installed, String> {
+    let json = serde_json::from_slice(body).map_err(|e| format!("not JSON: {}", describe(&e)))?;
     let installed = Installed::validate(json)?;
     if installed.profile.id != entry.id {
-        return Err(format!("the file holds \"{}\", the index lists \"{}\"", installed.profile.id, entry.id));
+        return Err("the file holds another id than the index lists".into());
     }
-    Ok((installed, body.len()))
+    Ok(installed)
 }
 
 /// A source with the profiles it supplied, as stored.
@@ -194,8 +252,12 @@ async fn read_saved(store: &Store) -> Result<Vec<Saved>, StoreError> {
     }
 }
 
+/// Held across `save_source`'s read and write, so two saves never lose one another.
+static SAVING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Stores `profiles` as what `source` supplies, replacing an earlier fetch of the same source.
 pub async fn save_source(store: &Store, source: &Source, profiles: &[Installed]) -> Result<(), StoreError> {
+    let _one_writer = SAVING.lock().await;
     let mut saved = read_saved(store).await?;
     saved.retain(|s| s.source != *source);
     saved.push(Saved { source: source.clone(), profiles: profiles.iter().map(|p| p.json.clone()).collect() });
@@ -354,12 +416,30 @@ mod tests {
     fn a_compiled_in_id_is_never_shadowed_by_an_installed_profile() {
         let bundle = Bundle::official().expect("bundle");
         let builtin = bundle.profiles[0].profile.id.clone();
-        let mut clash = profile(&builtin);
-        clash.json["name"] = json!("impostor");
-        let all = [clash, profile("acme")];
+        let mut clash = profile(&builtin).json;
+        clash["name"] = json!("impostor");
+        let all = [Installed::validate(clash).expect("valid"), profile("acme")];
+        assert_eq!(all[0].profile.name, "impostor");
         let found = find_profile(&bundle, &all, &builtin).expect("found");
-        assert_ne!(found.name, "impostor");
+        assert_eq!(found.name, bundle.profiles[0].profile.name);
         assert_eq!(find_profile(&bundle, &all, "acme").expect("found").id, "acme");
         assert!(find_profile(&bundle, &all, "nobody").is_none());
+    }
+
+    async fn save_numbered(store: Arc<Store>, n: usize) -> Result<(), StoreError> {
+        save_source(&store, &source(&format!("https://s{n}.example/")), &[profile("p")]).await
+    }
+
+    #[tokio::test]
+    async fn concurrent_saves_of_different_sources_all_survive() {
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let mut saves = tokio::task::JoinSet::new();
+        for n in 0..8 {
+            saves.spawn(save_numbered(Arc::clone(&store), n));
+        }
+        while let Some(saved) = saves.join_next().await {
+            saved.expect("task").expect("save");
+        }
+        assert_eq!(list_sources(&store).await.expect("list").len(), 8);
     }
 }

@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,7 +13,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 mod support;
-use support::{Ca, read_request};
+use support::{Ca, Instead, Site, read_request, serve_site_with};
 
 enum Reply {
     /// 200 with a `Content-Length` matching the body.
@@ -229,4 +230,16 @@ async fn live_raw_github_file_is_served() {
         .await
         .expect("raw.githubusercontent.com");
     assert!(String::from_utf8_lossy(&body).contains("Permission is hereby granted"));
+}
+
+#[tokio::test]
+async fn a_redirect_is_not_followed_even_within_the_same_origin() {
+    let ca = Ca::new("test root");
+    let mut files = Site::new();
+    files.insert("/final.json".into(), b"reached".to_vec());
+    let instead = BTreeMap::from([("/start.json".to_owned(), Instead::Redirect("/final.json".into()))]);
+    let port = serve_site_with(&ca, files, instead).await;
+    let url = format!("https://localhost:{port}/start.json");
+    let err = get_with_roots(&url, limits(1024), &[ca.root()]).await.expect_err("redirect");
+    assert!(matches!(err, GetError::Status(302)), "{err:?}");
 }
