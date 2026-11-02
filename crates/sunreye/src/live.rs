@@ -30,11 +30,12 @@ pub struct Live {
     members: Mutex<Members>,
 }
 
-/// The polled devices and each one's last sample, for the plant fold.
+/// The polled devices and when each last answered, for the plant fold. Values are not kept: only a
+/// plant of one member carries any, and that member's are the sample being published.
 #[derive(Debug, Default)]
 struct Members {
     ids: Vec<i64>,
-    last: BTreeMap<i64, Sample>,
+    last_ms: BTreeMap<i64, i64>,
 }
 
 impl Default for Live {
@@ -48,7 +49,7 @@ impl Live {
     pub fn roster(&self, ids: &[i64]) {
         let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         members.ids = ids.to_vec();
-        members.last.retain(|id, _| ids.contains(id));
+        members.last_ms.retain(|id, _| ids.contains(id));
     }
 
     /// Sends `sample` on `metrics` and the plant's new fold on `plant`. Never waits.
@@ -56,10 +57,20 @@ impl Live {
         let plant = {
             let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if members.ids.contains(&device_id) {
-                members.last.insert(device_id, sample.clone());
+                members.last_ms.insert(device_id, sample.at_ms);
             }
-            let folded: Vec<(i64, Option<&Sample>)> =
-                members.ids.iter().map(|id| (*id, members.last.get(id))).collect();
+            let others: Vec<(i64, Option<Sample>)> = members
+                .ids
+                .iter()
+                .map(|id| {
+                    let last = (*id != device_id).then(|| members.last_ms.get(id)).flatten();
+                    (*id, last.map(|at_ms| Sample { at_ms: *at_ms, values: Vec::new() }))
+                })
+                .collect();
+            let folded: Vec<(i64, Option<&Sample>)> = others
+                .iter()
+                .map(|(id, last)| if *id == device_id { (*id, Some(sample)) } else { (*id, last.as_ref()) })
+                .collect();
             Utf8Bytes::from(plant_frame(&folded, sample.at_ms))
         };
         self.send(Topic::Metrics, metrics_frame(device_id, sample).into());
