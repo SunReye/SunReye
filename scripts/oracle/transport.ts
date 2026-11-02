@@ -62,6 +62,8 @@ interface Scenario {
   operation: Operation;
   configuredSerial?: number;
   tweak?: Tweak;
+  /** A transaction deadline whose expiry is the behaviour under test; set once connected. */
+  expiryMs?: number;
 }
 
 type DecodedFrame =
@@ -299,14 +301,17 @@ function decodeOne(frame: Uint8Array): DecodedFrame {
   }
 }
 
-async function listen(wire: Wire, framing: InverterTransport) {
+async function listen(wire: Wire, framing: InverterTransport, replyDelayMs: number) {
   const events: WireEvent[] = [];
   const sockets = new Set<Socket>();
+  const replies = new Set<Promise<void>>();
   let nth = 0;
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("data", (data: Buffer) => {
-      void respond(socket, new Uint8Array(data));
+      const reply = respond(socket, new Uint8Array(data));
+      replies.add(reply);
+      void reply.finally(() => replies.delete(reply));
     });
     socket.on("error", () => {});
   });
@@ -314,6 +319,7 @@ async function listen(wire: Wire, framing: InverterTransport) {
     events.push({ dir: "tx", hex: hex(request) });
     const chunks = wire(request, nth++);
     if (chunks === null) return;
+    if (replyDelayMs > 0) await sleep(replyDelayMs);
     events.push({
       dir: "rx",
       chunks: chunks.map(hex),
@@ -329,6 +335,8 @@ async function listen(wire: Wire, framing: InverterTransport) {
   return {
     port,
     events,
+    /** Every reply already asked for is on the wire, however late the client gave up on it. */
+    replied: () => Promise.all(replies),
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -346,7 +354,16 @@ function describeError(error: unknown): Record<string, unknown> {
   };
 }
 
-async function perform(transport: ModbusTransport, operation: Operation): Promise<unknown> {
+/**
+ * Deadline for every request the scenario expects answered. A deadline that can fire before a reply
+ * makes the recording depend on how late the machine runs.
+ */
+const ANSWERED_MS = 30_000;
+
+async function perform(
+  transport: ModbusTransport,
+  { operation, device }: Scenario,
+): Promise<unknown> {
   if (operation.op === "read") return transport.read();
   if (operation.op === "write") {
     await transport.write(operation.key, operation.value);
@@ -354,27 +371,45 @@ async function perform(transport: ModbusTransport, operation: Operation): Promis
   }
   const probe: Record<string, boolean> = {};
   for (const unit of operation.units)
-    probe[unit] = await transport.probeUnit(unit, operation.timeoutMs);
+    probe[unit] = await transport.probeUnit(
+      unit,
+      device.units.includes(unit) ? ANSWERED_MS : operation.timeoutMs,
+    );
   return { probe };
 }
 
-async function run(scenario: Scenario): Promise<TransportCase> {
+interface RunOptions {
+  /** Hold every reply back this long: the stand-in for a stalled event loop, which test code injects. */
+  replyDelayMs?: number;
+}
+
+/** Run one scenario against a fresh loopback device and record the wire. */
+export async function runScenario(
+  scenario: Scenario,
+  { replyDelayMs = 0 }: RunOptions = {},
+): Promise<TransportCase> {
   const specs = scenario.metrics === "plain" ? PLAIN : GROUPED;
-  const server = await listen(wireFor(scenario), scenario.framing);
+  const server = await listen(wireFor(scenario), scenario.framing, replyDelayMs);
   const transport = new ModbusTransport(profileOf(specs), {
     host: "127.0.0.1",
     port: server.port,
     unitId: scenario.unitId,
-    timeoutMs: 300,
+    timeoutMs: ANSWERED_MS,
     transport: scenario.framing,
     ...(scenario.configuredSerial === undefined ? {} : { loggerSerial: scenario.configuredSerial }),
   });
   let result: unknown;
   try {
-    result = await perform(transport, scenario.operation);
+    if (scenario.expiryMs !== undefined) {
+      // After the connect, so only the transaction expires: a Solarman discovery probe is answered.
+      await transport.connect();
+      transport["client"]?.setTimeout(scenario.expiryMs);
+    }
+    result = await perform(transport, scenario);
   } catch (error) {
     result = { error: describeError(error) };
   }
+  await server.replied();
   await sleep(50);
   const loggerSerial = transport.loggerSerial;
   await transport.close();
@@ -443,7 +478,11 @@ function common(f: InverterTransport): Scenario[] {
       f,
       "leading-junk",
       "three stray bytes precede the reply in one TCP read; a buffered reader resynchronises",
-      { tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])] },
+      {
+        tweak: (frame) => [concat([Uint8Array.from([0xde, 0xad, 0xbe]), frame])],
+        // Only the buffered reader answers; the others time out on the junk.
+        ...(f === "rtu-over-tcp" ? {} : { expiryMs: 300 }),
+      },
     ),
     scenario(
       f,
@@ -515,6 +554,6 @@ export const SCENARIOS: Scenario[] = [...FRAMINGS.flatMap(common), ...solarmanOn
 /** Build `transport.ndjson`. */
 export async function buildTransportCorpus(): Promise<CorpusFiles> {
   const cases: TransportCase[] = [];
-  for (const scenario of SCENARIOS) cases.push(await run(scenario));
+  for (const scenario of SCENARIOS) cases.push(await runScenario(scenario));
   return { "transport.ndjson": ndjson(cases) };
 }
