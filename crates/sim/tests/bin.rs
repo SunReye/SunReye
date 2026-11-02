@@ -18,7 +18,7 @@ fn spawn(args: &[&str]) -> Child {
 }
 
 #[test]
-fn it_serves_the_registers_of_the_named_case_and_counts_the_requests() {
+fn it_serves_the_registers_of_the_named_case_and_names_each_request() {
     let mut sim = spawn(&[&oracle(), "deye-sg05lp3", "ramp"]);
     let mut lines = BufReader::new(sim.stdout.take().expect("piped stdout")).lines();
     let first = lines.next().expect("a line").expect("utf8");
@@ -31,7 +31,12 @@ fn it_serves_the_registers_of_the_named_case_and_counts_the_requests() {
     stream.read_exact(&mut reply).expect("reply");
     assert_eq!(reply, [0, 7, 0, 0, 0, 5, 1, 3, 2, 0x02, 0xbb]);
 
-    assert_eq!(lines.next().expect("a line").expect("utf8"), "requests 1");
+    stream.write_all(&[0, 8, 0, 0, 0, 6, 1, 3, 0, 100, 0, 2]).expect("write");
+    stream.read_exact(&mut [0_u8; 9]).expect("an exception reply: register 100 is not in the case");
+
+    // One line per request, in arrival order, whatever the harness's read interval.
+    assert_eq!(lines.next().expect("a line").expect("utf8"), "request 98 1");
+    assert_eq!(lines.next().expect("a line").expect("utf8"), "request 100 2");
     sim.kill().expect("kill");
     sim.wait().expect("wait");
 }

@@ -25,9 +25,9 @@ network bring-up and the Android Kotlin/JNI shell.
 - HTTPS: `reqwest` + `rustls` + `ring` + `webpki-roots` everywhere.
 - `scripts/ci`, the local merge gate, builds every crate for Linux and `aarch64-linux-android` from the
   first commit.
-- Budgets live in `scripts/budgets.json`: resident memory on Linux and Android with no growth over 72 h, and
-  binary size including the SPA. `scripts/ci` enforces them on Linux. Re-set once after the first real
-  build, then held.
+- Budgets live in `scripts/budgets.json`: resident memory and its growth per login and per poll cycle, and
+  binary size including the SPA. `scripts/ci` fails a Linux build over any of them. "No growth over 72 h" is
+  proved by the 72 h soak (#323), not by `scripts/ci`. Re-set once after the first real build, then held.
 
 ## Consequences
 

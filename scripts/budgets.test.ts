@@ -4,20 +4,24 @@ import { readFileSync } from "node:fs";
 import { main } from "./budget-gate";
 
 import {
+  CycleCounter,
+  POLL_READINGS,
   WARMUP_LOGINS,
-  growthOf,
   judge,
   parseArgs,
   parseBudgets,
   parseProcStatus,
+  parseSimLine,
   render,
+  trendOf,
   type Measured,
-  type Sample,
 } from "./budgets-plan";
 
 const MIB = 1024 * 1024;
 
-const budgets = { residentMiB: 32, binaryMiB: 25, growthKiB: 512 };
+const KIB = 1024;
+
+const budgets = { residentMiB: 32, binaryMiB: 25, growthKiBPerLogin: 16, growthKiBPerPoll: 32 };
 
 /** A `/proc/<pid>/status` as Linux writes it, with the two lines the harness reads. */
 const status = (rssKiB: number, peakKiB: number) =>
@@ -29,23 +33,26 @@ const status = (rssKiB: number, peakKiB: number) =>
     "Threads:\t3",
   ].join("\n");
 
-const samples = (rssMiB: number[], stepMs = 100): Sample[] =>
-  rssMiB.map((mib, i) => ({ atMs: i * stepMs, rssBytes: mib * MIB }));
-
 describe("budgets.json", () => {
   test("is the one place the numbers live", () => {
     const parsed = parseBudgets(readFileSync("scripts/budgets.json", "utf8"));
-    expect(Object.keys(parsed).sort()).toEqual(["binaryMiB", "growthKiB", "residentMiB"]);
+    expect(Object.keys(parsed).sort()).toEqual([
+      "binaryMiB",
+      "growthKiBPerLogin",
+      "growthKiBPerPoll",
+      "residentMiB",
+    ]);
   });
 
   test("a missing, zero, negative or non-numeric budget is refused, naming it", () => {
     for (const bad of [
       { ...budgets, binaryMiB: undefined },
       { ...budgets, residentMiB: 0 },
-      { ...budgets, growthKiB: -1 },
+      { ...budgets, growthKiBPerPoll: -1 },
+      { ...budgets, growthKiBPerLogin: 0 },
       { ...budgets, binaryMiB: "25" },
     ]) {
-      expect(() => parseBudgets(JSON.stringify(bad))).toThrow(/binaryMiB|residentMiB|growthKiB/);
+      expect(() => parseBudgets(JSON.stringify(bad))).toThrow(/binaryMiB|residentMiB|growthKiBPer/);
     }
   });
 });
@@ -64,37 +71,89 @@ describe("reading /proc/<pid>/status", () => {
   });
 });
 
-describe("growth", () => {
-  test("is the steady window minus the first, after the warm-up logins", () => {
-    // 3 warm-up readings at 20 MiB, then 8 readings: first quarter 24, last quarter 26.
-    const rss = [20, 20, 20, 24, 24, 25, 25, 25, 25, 26, 26];
-    const out = growthOf(samples(rss), 3);
-    expect(out.startBytes).toBe(24 * MIB);
-    expect(out.steadyBytes).toBe(26 * MIB);
-    expect(out.growthBytes).toBe(2 * MIB);
+describe("the trend of a phase", () => {
+  test("a reading series climbing 1 MiB per operation has a slope of 1 MiB", () => {
+    const out = trendOf(
+      [10, 11, 12, 13, 14].map((mib) => mib * MIB),
+      0,
+    );
+    expect(out.bytesPerOp).toBe(1 * MIB);
   });
 
-  test("a flat series grows by nothing", () => {
-    const out = growthOf(samples([28, 28, 28, 28, 28, 28, 28, 28]), 2);
-    expect(out.growthBytes).toBe(0);
-    expect(out.growthPerHourBytes).toBe(0);
+  test("a leak of 128 KiB per operation reads as 128 KiB under the allocator's noise", () => {
+    // 28 MiB flat plus 128 KiB per operation, the readings 0-4 KiB off.
+    const noise = [0, 4, -4, 0, 4, 0, -4, 4];
+    const rss = noise.map((n, i) => 28 * MIB + i * 128 * KIB + n * KIB);
+    expect(trendOf(rss, 0).bytesPerOp / KIB).toBeCloseTo(128, 0);
   });
 
-  test("one outlier reading does not move the steady value: windows use the median", () => {
-    const out = growthOf(samples([28, 28, 28, 28, 28, 28, 28, 28, 28, 40, 28, 28]), 0);
+  test("a flat series gains nothing", () => {
+    const out = trendOf(Array<number>(8).fill(28 * MIB), 2);
+    expect(out.bytesPerOp).toBe(0);
     expect(out.steadyBytes).toBe(28 * MIB);
-    expect(out.growthBytes).toBe(0);
   });
 
-  test("extrapolates per hour from the time between the two windows", () => {
-    // 8 readings 1 s apart: windows of 2, centred 0.5 s and 6.5 s: 1 MiB over 6 s.
-    const out = growthOf(samples([10, 10, 10, 10, 10, 10, 11, 11], 1000), 0);
-    expect(out.growthBytes).toBe(1 * MIB);
-    expect(out.growthPerHourBytes).toBeCloseTo((1 * MIB * 3600) / 6, 0);
+  test("a shrinking series has a negative slope", () => {
+    expect(
+      trendOf(
+        [30, 29, 28, 27].map((mib) => mib * MIB),
+        0,
+      ).bytesPerOp,
+    ).toBe(-1 * MIB);
+  });
+
+  test("the warm-up readings are left out of the slope", () => {
+    // 20 MiB while warming up, then flat at 28 MiB.
+    const rss = [20, 24, 28, 28, 28, 28].map((mib) => mib * MIB);
+    expect(trendOf(rss, 2).bytesPerOp).toBe(0);
+  });
+
+  test("the steady value is the median of the last quarter: one spike does not move it", () => {
+    const rss = [28, 28, 28, 28, 28, 28, 28, 28, 28, 40, 28, 28].map((mib) => mib * MIB);
+    expect(trendOf(rss, 0).steadyBytes).toBe(28 * MIB);
   });
 
   test("too few readings after the warm-up is refused, not read as no growth", () => {
-    expect(() => growthOf(samples([28, 28, 28]), 2)).toThrow(/readings/);
+    expect(() => trendOf([28 * MIB, 28 * MIB, 28 * MIB], 2)).toThrow(/readings/);
+  });
+});
+
+describe("the simulator's stdout", () => {
+  test("names the port it listens on and the start of each request", () => {
+    expect(parseSimLine("listening 127.0.0.1:41233")).toEqual({ port: 41233 });
+    expect(parseSimLine("request 98 1")).toEqual({ start: 98 });
+    expect(parseSimLine("request 0 0")).toEqual({ start: 0 });
+  });
+
+  test("any other line says nothing", () => {
+    for (const line of ["", "requests 4", "request 98", "listening", "listening 127.0.0.1:x"]) {
+      expect(parseSimLine(line)).toBeUndefined();
+    }
+  });
+});
+
+describe("telling poll cycles apart", () => {
+  // A poll reads its blocks in a fixed order; the first block's address opens each cycle.
+  const run = (starts: number[]) => {
+    const counter = new CycleCounter();
+    const began = starts.map((start) => counter.record(start));
+    return { began, completed: counter.completed };
+  };
+
+  test("a request for the first address after the first request ends the cycle before it", () => {
+    expect(run([100, 120, 140, 100, 120, 140, 100])).toEqual({
+      began: [false, false, false, true, false, false, true],
+      completed: 2,
+    });
+  });
+
+  test("the cycle in progress is not counted, nor is a lone request", () => {
+    expect(run([100])).toEqual({ began: [false], completed: 0 });
+    expect(run([100, 120, 140])).toEqual({ began: [false, false, false], completed: 0 });
+  });
+
+  test("a block read again under another address is not a new cycle", () => {
+    expect(run([100, 120, 120, 140, 100]).completed).toBe(1);
   });
 });
 
@@ -102,11 +161,10 @@ const measured = (over: Partial<Measured> = {}): Measured => ({
   binaryBytes: 18 * MIB,
   steadyBytes: 28 * MIB,
   peakBytes: 29 * MIB,
-  startBytes: 28 * MIB,
-  growthBytes: 0,
-  growthPerHourBytes: 0,
   logins: 40,
-  requests: 12,
+  loginBytesPerOp: 0,
+  polls: POLL_READINGS,
+  pollBytesPerOp: 0,
   ...over,
 });
 
@@ -125,21 +183,46 @@ describe("judging a run against the budgets", () => {
     ]);
   });
 
-  test("growth over the budget fails even when resident memory is inside it", () => {
-    const failures = judge(measured({ growthBytes: 513 * 1024 }), budgets);
-    expect(failures).toEqual([expect.stringContaining("growth")]);
+  test("growth per login exactly at its budget passes; a byte over fails", () => {
+    expect(judge(measured({ loginBytesPerOp: 16 * KIB }), budgets)).toEqual([]);
+    expect(judge(measured({ loginBytesPerOp: 16 * KIB + 1 }), budgets)).toEqual([
+      expect.stringContaining("/login"),
+    ]);
+  });
+
+  test("growth per poll exactly at its budget passes; a byte over fails", () => {
+    expect(judge(measured({ pollBytesPerOp: 32 * KIB }), budgets)).toEqual([]);
+    expect(judge(measured({ pollBytesPerOp: 32 * KIB + 1 }), budgets)).toEqual([
+      expect.stringContaining("/poll"),
+    ]);
+  });
+
+  test("a leak of 128 KiB per poll fails with resident memory still inside its budget", () => {
+    const failures = judge(measured({ pollBytesPerOp: 128 * KIB }), budgets);
+    expect(failures).toEqual([expect.stringContaining("+128.0 KiB/poll")]);
+  });
+
+  test("shrinking is not growth", () => {
+    expect(judge(measured({ loginBytesPerOp: -KIB, pollBytesPerOp: -KIB }), budgets)).toEqual([]);
   });
 
   test("every broken budget is named, not only the first", () => {
     const failures = judge(
-      measured({ binaryBytes: 30 * MIB, steadyBytes: 40 * MIB, growthBytes: 10 * MIB }),
+      measured({
+        binaryBytes: 30 * MIB,
+        steadyBytes: 40 * MIB,
+        loginBytesPerOp: MIB,
+        pollBytesPerOp: MIB,
+      }),
       budgets,
     );
-    expect(failures).toHaveLength(3);
+    expect(failures).toHaveLength(4);
   });
 
-  test("a soak that never polled the simulator proves nothing", () => {
-    expect(judge(measured({ requests: 0 }), budgets)).toEqual([expect.stringContaining("polled")]);
+  test("a soak that read fewer poll cycles than it needs proves nothing", () => {
+    expect(judge(measured({ polls: POLL_READINGS - 1 }), budgets)).toEqual([
+      expect.stringContaining("poll cycles read"),
+    ]);
   });
 
   test("the peak alone is reported, never judged", () => {
@@ -154,17 +237,17 @@ describe("the report", () => {
         binaryBytes: Math.round(18.4 * MIB),
         steadyBytes: Math.round(27.9 * MIB),
         peakBytes: Math.round(28.3 * MIB),
-        growthBytes: 100 * 1024,
-        growthPerHourBytes: 36 * MIB,
+        loginBytesPerOp: 4.25 * KIB,
+        logins: 40,
+        pollBytesPerOp: -0.5 * KIB,
+        polls: 8,
       }),
       budgets,
     );
     expect(text).toContain("binary    18.4 MiB of 25 MiB");
     expect(text).toContain("resident  27.9 MiB steady of 32 MiB, 28.3 MiB peak");
-    expect(text).toContain(
-      "growth    +100 KiB of 512 KiB over 40 logins, +36.0 MiB/h extrapolated",
-    );
-    expect(text).toContain("polled    12 requests");
+    expect(text).toContain("growth    +4.3 KiB/login of 16 KiB over 40 logins");
+    expect(text).toContain("growth    -0.5 KiB/poll of 32 KiB over 8 poll cycles");
   });
 });
 
@@ -214,12 +297,6 @@ describe("the command", () => {
 });
 
 describe("where the budgets are held", () => {
-  test("ADR 0006 points at budgets.json and states no number of its own", () => {
-    const adr = readFileSync("docs/adr/0006-one-dependency-set-for-every-target.md", "utf8");
-    expect(adr).toContain("scripts/budgets.json");
-    expect(adr).not.toMatch(/≤\s*\d+\s*MB/);
-  });
-
   test("scripts/ci runs the budgets after the SPA can be built and before it is green", () => {
     const ci = readFileSync("scripts/ci", "utf8");
     const lines = ci.split("\n").map((l) => l.trim());

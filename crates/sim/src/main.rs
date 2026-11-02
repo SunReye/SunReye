@@ -1,7 +1,7 @@
 //! Replays one oracle case over Modbus TCP until killed, for a harness that polls it from another
-//! process. Stdout: `listening <addr>`, then `requests <n>` each time the count changes.
+//! process. Stdout: `listening <addr>`, then `request <start> <count>` for each request answered.
 
-#![allow(clippy::print_stdout, reason = "the harness reads the address and the request count from stdout")]
+#![allow(clippy::print_stdout, reason = "the harness reads the address and the requests from stdout")]
 #![allow(clippy::print_stderr, reason = "a refusal is reported on stderr")]
 
 use std::path::Path;
@@ -38,10 +38,10 @@ async fn main() -> ExitCode {
     let mut seen = 0;
     loop {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let now = sim.requests().len();
-        if now != seen {
-            seen = now;
-            println!("requests {now}");
+        let log = sim.requests();
+        for request in &log[seen..] {
+            println!("request {} {}", request.start, request.count);
         }
+        seen = log.len();
     }
 }

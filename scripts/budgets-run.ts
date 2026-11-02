@@ -11,6 +11,9 @@
  *  3. the simulator replaying an oracle case, the core on a scratch data directory, the admin, a
  *     saved connection to the simulator.
  *  4. `logins` sign-ins, one at a time, each followed by a read of `/proc/<pid>/status`.
+ *  5. a hold until the simulator has answered `POLL_READINGS` more poll cycles, one read of
+ *     `/proc/<pid>/status` as each begins. The hold ends on the simulator's request count, never
+ *     on a clock, so the poll path is exercised however fast the logins ran.
  */
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,14 +21,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CycleCounter,
+  POLL_READINGS,
   WARMUP_LOGINS,
-  growthOf,
   judge,
   parseBudgets,
   parseProcStatus,
+  parseSimLine,
   render,
+  trendOf,
 } from "./budgets-plan";
-import type { Sample } from "./budgets-plan";
 import { boot, signIn } from "./core-boot";
 import { mirrorDir } from "./mirror-dir";
 
@@ -37,6 +42,9 @@ const SPA = join(TARGET, "budgets-spa");
 
 const ADMIN = { name: "Budgets", email: "budgets@soak.invalid", password: "budgets-soak-pw-1" };
 const PROFILE = "deye-sg05lp3";
+
+/** Fails a hold whose simulator stopped being polled; never part of a verdict. */
+const STALL_MS = 60_000;
 
 const log = (message: string) => console.log(`[budgets] ${message}`);
 
@@ -62,35 +70,36 @@ async function build() {
   });
 }
 
-/** The simulator on a free port, counting the requests it answers. */
+async function eachLine(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) {
+  const decoder = new TextDecoder();
+  let pending = "";
+  for await (const chunk of stream) {
+    pending += decoder.decode(chunk);
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+    lines.forEach(onLine);
+  }
+}
+
+/** The simulator on a free port, telling the poll cycles apart in the requests it answers. */
 async function startSim() {
   const oracle = join(ROOT, "fixtures/oracle");
   const proc = Bun.spawn([SIM, oracle, PROFILE, "ramp"], { stdout: "pipe", stderr: "inherit" });
-  const counter = { requests: 0, port: 0 };
+  const counter = new CycleCounter();
+  const sim = { port: 0, onCycle: undefined as (() => void) | undefined };
   const ready = Promise.withResolvers<void>();
-  void (async () => {
-    const decoder = new TextDecoder();
-    let pending = "";
-    for await (const chunk of proc.stdout) {
-      pending += decoder.decode(chunk);
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      for (const line of lines) {
-        const port = /^listening .*:(\d+)$/.exec(line)?.[1];
-        const requests = /^requests (\d+)$/.exec(line)?.[1];
-        if (port) {
-          counter.port = Number(port);
-          ready.resolve();
-        }
-        if (requests) counter.requests = Number(requests);
-      }
-    }
-  })();
+  void eachLine(proc.stdout, (line) => {
+    const event = parseSimLine(line);
+    if (event && "port" in event) {
+      sim.port = event.port;
+      ready.resolve();
+    } else if (event && counter.record(event.start)) sim.onCycle?.();
+  });
   await Promise.race([
     ready.promise,
     proc.exited.then(() => Promise.reject(new Error("the simulator exited"))),
   ]);
-  return { proc, counter };
+  return { proc, sim };
 }
 
 /** An admin session that polls the simulator through the profile. */
@@ -129,14 +138,35 @@ async function login(base: string) {
 
 const readStatus = (pid: number) => parseProcStatus(readFileSync(`/proc/${pid}/status`, "utf8"));
 
-async function soak(base: string, pid: number, logins: number) {
-  const samples: Sample[] = [];
-  const began = performance.now();
+async function soakLogins(base: string, pid: number, logins: number) {
+  const readings: number[] = [];
   for (let i = 0; i < logins; i++) {
     await login(base);
-    samples.push({ atMs: performance.now() - began, rssBytes: readStatus(pid).rssBytes });
+    readings.push(readStatus(pid).rssBytes);
   }
-  return { samples, peakBytes: readStatus(pid).peakBytes };
+  return readings;
+}
+
+/** One reading as each of the next `POLL_READINGS` poll cycles begins. */
+function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
+  return new Promise<number[]>((resolve, reject) => {
+    const readings: number[] = [];
+    const stalled = setTimeout(() => {
+      sim.onCycle = undefined;
+      reject(
+        new Error(
+          `${readings.length} of ${POLL_READINGS} poll cycles ended in ${STALL_MS} ms: the core is not polling the simulator`,
+        ),
+      );
+    }, STALL_MS);
+    sim.onCycle = () => {
+      readings.push(readStatus(pid).rssBytes);
+      if (readings.length < POLL_READINGS) return;
+      clearTimeout(stalled);
+      sim.onCycle = undefined;
+      resolve(readings);
+    };
+  });
 }
 
 export async function run(logins: number): Promise<number> {
@@ -149,15 +179,20 @@ export async function run(logins: number): Promise<number> {
     children.push(sim.proc);
     const { core, base } = await boot(CORE, dataDir);
     children.push(core);
-    await setUp(base, sim.counter.port);
+    await setUp(base, sim.sim.port);
     log(`signing in ${logins} times`);
-    const { samples, peakBytes } = await soak(base, core.pid, logins);
+    const loginTrend = trendOf(await soakLogins(base, core.pid, logins), WARMUP_LOGINS);
+    log(`holding for ${POLL_READINGS} poll cycles`);
+    const pollReadings = await soakPolls(sim.sim, core.pid);
+    const pollTrend = trendOf(pollReadings, 0);
     const measured = {
-      ...growthOf(samples, WARMUP_LOGINS),
       binaryBytes: statSync(CORE).size,
-      peakBytes,
+      steadyBytes: Math.max(loginTrend.steadyBytes, pollTrend.steadyBytes),
+      peakBytes: readStatus(core.pid).peakBytes,
       logins,
-      requests: sim.counter.requests,
+      loginBytesPerOp: loginTrend.bytesPerOp,
+      polls: pollReadings.length,
+      pollBytesPerOp: pollTrend.bytesPerOp,
     };
     console.log(render(measured, budgets));
     const failures = judge(measured, budgets);

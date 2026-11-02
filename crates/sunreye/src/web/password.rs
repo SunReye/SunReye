@@ -80,7 +80,7 @@ static UNKNOWN_ACCOUNT: OnceLock<Option<String>> = OnceLock::new();
 /// Hashes and checks passwords; clones share one cap on concurrent checks and its memory.
 #[derive(Clone)]
 pub struct Passwords {
-    /// One check at a time, so parallel logins stay inside the 32 MB resident budget (ADR 0006).
+    /// One check at a time, so parallel logins stay inside the resident budget in `scripts/budgets.json`.
     gate: Arc<Mutex<Blocks>>,
 }
 

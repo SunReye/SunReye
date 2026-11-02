@@ -1,5 +1,6 @@
 {
   "residentMiB": 32,
   "binaryMiB": 25,
-  "growthKiB": 512
+  "growthKiBPerLogin": 16,
+  "growthKiBPerPoll": 32
 }
