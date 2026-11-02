@@ -10,6 +10,7 @@ mod profile_sources;
 mod setup;
 mod users;
 mod v1;
+mod ws;
 
 use std::sync::Arc;
 
@@ -64,10 +65,12 @@ fn api() -> (Router<Arc<Core>>, Document) {
         .split_for_parts()
 }
 
+/// Any session, user or admin. `/ws` is gated here too, outside the `OpenAPI` document.
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
         .routes(routes!(auth::current, auth::logout))
+        .route("/ws", get(ws::upgrade))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
