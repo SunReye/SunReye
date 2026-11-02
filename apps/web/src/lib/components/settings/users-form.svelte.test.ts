@@ -167,11 +167,15 @@ test("the last admin cannot be removed: the core's reason is shown", async () =>
   expect(toast.success).not.toHaveBeenCalled();
 });
 
-// bcrypt reads 72 UTF-8 bytes; the core refuses more in English, so the form refuses first.
+// The core counts characters for the minimum, UTF-8 bytes for the maximum (bcrypt reads 72)
+// and refuses NUL, all in English: the form refuses first.
 test.each([
-  ["73 bytes", "x".repeat(73)],
-  ["37 two-byte characters (74 bytes)", "é".repeat(37)],
-])("a password of %s is refused before anything is sent", async (_, password) => {
+  ["7 characters", "x".repeat(7), () => m.auth_password_min()],
+  ["four emoji (8 UTF-16 units)", "😀".repeat(4), () => m.auth_password_min()],
+  ["73 bytes", "x".repeat(73), () => m.auth_password_max()],
+  ["37 two-byte characters (74 bytes)", "é".repeat(37), () => m.auth_password_max()],
+  ["a NUL inside", "abcdefgh\0abcdefgh", () => m.auth_password_nul()],
+])("a password of %s is refused before anything is sent", async (_, password, message) => {
   render(UsersForm);
   await expect.element(row("bob@example.com")).toBeVisible();
 
@@ -180,7 +184,7 @@ test.each([
   await page.getByLabelText(m.auth_field_password(), { exact: true }).fill(password);
   await page.getByRole("button", { name: m.action_add() }).click();
 
-  await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(m.auth_password_max()));
+  await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(message()));
   expect(post).not.toHaveBeenCalled();
 });
 

@@ -2,7 +2,7 @@
 	import { z } from 'zod';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$lib/resolve';
-	import { passwordTooLong } from '$lib/password';
+	import { passwordRefusal } from '$lib/password';
 	import { signIn, signUp } from '$lib/session';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -19,10 +19,10 @@
 			? z.object({
 					name: z.string().min(2, m.auth_name_min()),
 					email: z.email(m.auth_email_invalid()),
-					password: z
-						.string()
-						.refine((p) => [...p].length >= 8, m.auth_password_min())
-						.refine((p) => !passwordTooLong(p), m.auth_password_max())
+					password: z.string().check((ctx) => {
+						const message = passwordRefusal(ctx.value);
+						if (message) ctx.issues.push({ code: 'custom', message, input: ctx.value });
+					})
 				})
 			: z.object({
 					email: z.email(m.auth_email_invalid()),

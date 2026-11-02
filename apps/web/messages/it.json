@@ -102,6 +102,7 @@
   "auth_email_invalid": "Indirizzo e-mail non valido",
   "auth_password_min": "La password deve contenere almeno 8 caratteri",
   "auth_password_max": "La password deve essere al massimo di 72 byte (lettere accentate ed emoji ne occupano più di uno)",
+  "auth_password_nul": "La password non deve contenere un carattere NUL",
   "auth_password_required": "La password è obbligatoria",
   "auth_error_generic": "Qualcosa è andato storto. Riprova.",
   "auth_create_account": "Crea account",

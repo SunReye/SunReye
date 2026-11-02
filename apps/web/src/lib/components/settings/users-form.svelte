@@ -3,7 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { apiErrorText } from '$lib/api-error';
 	import { core } from '$lib/core-api';
-	import { passwordTooLong } from '$lib/password';
+	import { passwordRefusal } from '$lib/password';
 	import type { components } from '$lib/core-api.gen';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -54,8 +54,9 @@
 
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
-		if (passwordTooLong(password)) {
-			toast.error(m.auth_password_max());
+		const refusal = passwordRefusal(password);
+		if (refusal) {
+			toast.error(refusal);
 			return;
 		}
 		creating = true;
@@ -117,7 +118,6 @@
 			id="u-password"
 			type="password"
 			autocomplete="new-password"
-			minlength={8}
 			bind:value={password}
 			required
 		/>
