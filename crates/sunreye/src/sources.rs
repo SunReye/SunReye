@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use reqwest::Url;
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use serde_json::error::Category;
 use utoipa::ToSchema;
 
@@ -81,18 +80,23 @@ fn resolve(root: &Url, path: &str) -> Option<Url> {
     (url.origin() == root.origin() && url.path().starts_with(root.path()) && !has_extras(&url)).then_some(url)
 }
 
-/// A profile that passed the schema, with the JSON it came from.
+/// A profile that passed the schema, with the text it came from. The text is kept, not a parsed tree: an
+/// unknown field costs its bytes once, whatever it holds.
 #[derive(Debug, Clone)]
 pub struct Installed {
     pub profile: Arc<Profile>,
-    pub json: Value,
+    pub text: Arc<str>,
 }
 
 impl Installed {
-    /// Validates `json` against the profile schema.
-    pub fn validate(json: Value) -> Result<Self, String> {
-        let profile: Profile = serde_json::from_value(json.clone()).map_err(|e| describe(&e))?;
-        Ok(Self { profile: Arc::new(profile), json })
+    /// Validates `text` against the profile schema.
+    pub fn validate(text: impl Into<Arc<str>>) -> Result<Self, String> {
+        let text = text.into();
+        let profile: Profile = serde_json::from_str(&text).map_err(|e| match e.classify() {
+            Category::Data => describe(&e),
+            _ => format!("not JSON: {}", describe(&e)),
+        })?;
+        Ok(Self { profile: Arc::new(profile), text })
     }
 }
 
@@ -140,8 +144,7 @@ struct Entry {
 pub const REQUEST_LIMITS: Limits = Limits { timeout: Duration::from_secs(15), max_bytes: 256 * 1024 };
 
 /// What one fetch spends on profile files before it skips the rest of the index. The sizes are a few
-/// times the official set (632 KB, 20 files) so a parsed source stays well inside ADR 0006's resident
-/// budget.
+/// times the official set (632 KB, 20 files). A source is held as its text, so its memory is its bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Budget {
     /// Bytes of every body read, a rejected one included.
@@ -229,8 +232,8 @@ async fn load(root: &Url, entry: &Entry, limits: Limits, roots: &[CertificateDer
 }
 
 fn validated(body: &[u8], entry: &Entry) -> Result<Installed, String> {
-    let json = serde_json::from_slice(body).map_err(|e| format!("not JSON: {}", describe(&e)))?;
-    let installed = Installed::validate(json)?;
+    let text = std::str::from_utf8(body).map_err(|_| "not JSON: not UTF-8".to_owned())?;
+    let installed = Installed::validate(text)?;
     if installed.profile.id != entry.id {
         return Err("the file holds another id than the index lists".into());
     }
@@ -242,7 +245,8 @@ fn validated(body: &[u8], entry: &Entry) -> Result<Installed, String> {
 struct Saved {
     #[serde(flatten)]
     source: Source,
-    profiles: Vec<Value>,
+    /// Each profile's text, as fetched.
+    profiles: Vec<Arc<str>>,
 }
 
 async fn read_saved(store: &Store) -> Result<Vec<Saved>, StoreError> {
@@ -260,7 +264,10 @@ pub async fn save_source(store: &Store, source: &Source, profiles: &[Installed])
     let _one_writer = SAVING.lock().await;
     let mut saved = read_saved(store).await?;
     saved.retain(|s| s.source != *source);
-    saved.push(Saved { source: source.clone(), profiles: profiles.iter().map(|p| p.json.clone()).collect() });
+    saved.push(Saved {
+        source: source.clone(),
+        profiles: profiles.iter().map(|p| Arc::clone(&p.text)).collect(),
+    });
     let text = serde_json::to_string(&saved).map_err(|_| StoreError::Corrupt("profile sources"))?;
     store.set_setting(SOURCES_KEY, &text).await
 }
@@ -293,10 +300,10 @@ pub async fn installed(store: &Store) -> Result<Vec<Installed>, StoreError> {
     Ok(all.filter(|p| seen.insert(p.profile.id.clone())).collect())
 }
 
-fn valid(stored: &[Value]) -> Vec<Installed> {
+fn valid(stored: &[Arc<str>]) -> Vec<Installed> {
     stored
         .iter()
-        .filter_map(|json| match Installed::validate(json.clone()) {
+        .filter_map(|text| match Installed::validate(Arc::clone(text)) {
             Ok(installed) => Some(installed),
             Err(reason) => {
                 tracing::warn!(%reason, "a stored profile no longer passes the schema, skipped");
@@ -313,13 +320,20 @@ pub fn find_profile(bundle: &Bundle, installed: &[Installed], id: &str) -> Optio
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
 
+    fn json_of(id: &str, name: &str) -> Value {
+        json!({"id": id, "name": name, "manufacturer": "Acme", "version": "1.0.0", "metrics": []})
+    }
+
+    fn named(id: &str, name: &str) -> Installed {
+        Installed::validate(json_of(id, name).to_string()).expect("valid")
+    }
+
     fn profile(id: &str) -> Installed {
-        let json = json!({"id": id, "name": id, "manufacturer": "Acme", "version": "1.0.0", "metrics": []});
-        Installed::validate(json).expect("valid")
+        named(id, id)
     }
 
     fn source(base: &str) -> Source {
@@ -333,15 +347,15 @@ mod tests {
     #[test]
     fn a_profile_needs_every_field_of_the_schema() {
         let valid = json!({"id": "a", "name": "A", "manufacturer": "M", "version": "1", "metrics": []});
-        assert!(Installed::validate(valid.clone()).is_ok());
+        assert!(Installed::validate(valid.to_string()).is_ok());
         for field in ["id", "name", "manufacturer", "version", "metrics"] {
             let mut broken = valid.clone();
             broken.as_object_mut().expect("object").remove(field);
-            let reason = Installed::validate(broken).expect_err(field);
+            let reason = Installed::validate(broken.to_string()).expect_err(field);
             assert!(reason.contains(field), "{field}: {reason}");
         }
-        assert!(Installed::validate(json!([])).is_err());
-        assert!(Installed::validate(json!({"metrics": [{"key": "k"}]})).is_err());
+        assert!(Installed::validate("[]").is_err());
+        assert!(Installed::validate(r#"{"metrics": [{"key": "k"}]}"#).is_err());
     }
 
     #[tokio::test]
@@ -371,19 +385,39 @@ mod tests {
         assert_eq!(ids(&installed(&store).await.expect("installed")), ["three", "one"]);
     }
 
+    #[test]
+    fn the_production_budget_is_pinned() {
+        assert_eq!(BUDGET, Budget { bytes: 2 << 20, entries: 128, time: Duration::from_secs(60) });
+        assert_eq!(REQUEST_LIMITS, Limits { timeout: Duration::from_secs(15), max_bytes: 256 * 1024 });
+    }
+
+    /// A profile whose unknown field holds `pad` numbers: tiny parsed, large as text.
+    fn padded(id: &str, pad: usize) -> String {
+        let padding = "0,".repeat(pad);
+        format!(
+            r#"{{"id":"{id}","name":"{id}","manufacturer":"M","version":"1","metrics":[],"unknown":[{padding}0]}}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn a_padded_profile_is_kept_as_its_text_once_and_nothing_larger() {
+        let store = Store::in_memory().await.expect("store");
+        let texts: Vec<String> = (0..4).map(|n| padded(&format!("p{n}"), 50_000)).collect();
+        let total: usize = texts.iter().map(String::len).sum();
+        let profiles: Vec<Installed> =
+            texts.iter().map(|t| Installed::validate(t.as_str()).expect("valid")).collect();
+        save_source(&store, &source("https://a.example/"), &profiles).await.expect("save");
+        let stored = store.setting(SOURCES_KEY).await.expect("read").expect("stored");
+        assert!(stored.len() < total + 1024, "stored {} bytes for {total} of text", stored.len());
+        let read = installed(&store).await.expect("installed");
+        assert_eq!(read.iter().map(|p| &*p.text).collect::<Vec<_>>(), texts.iter().collect::<Vec<_>>());
+    }
+
     #[tokio::test]
     async fn an_id_supplied_by_two_sources_keeps_the_earlier_one() {
         let store = Store::in_memory().await.expect("store");
-        let mut later = profile("shared");
-        later.json["name"] = json!("later");
         save_source(&store, &source("https://a.example/"), &[profile("shared")]).await.expect("save");
-        save_source(
-            &store,
-            &source("https://b.example/"),
-            &[Installed::validate(later.json).expect("valid")],
-        )
-        .await
-        .expect("save");
+        save_source(&store, &source("https://b.example/"), &[named("shared", "later")]).await.expect("save");
         let all = installed(&store).await.expect("installed");
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].profile.name, "shared");
@@ -394,7 +428,7 @@ mod tests {
         let store = Store::in_memory().await.expect("store");
         let text = json!([{
             "baseUrl": "https://a.example/", "indexPath": "index.json",
-            "profiles": [{"id": "stale"}, profile("kept").json]
+            "profiles": [r#"{"id": "stale"}"#, &*profile("kept").text]
         }]);
         store.set_setting(SOURCES_KEY, &text.to_string()).await.expect("set");
         assert_eq!(ids(&installed(&store).await.expect("installed")), ["kept"]);
@@ -416,9 +450,7 @@ mod tests {
     fn a_compiled_in_id_is_never_shadowed_by_an_installed_profile() {
         let bundle = Bundle::official().expect("bundle");
         let builtin = bundle.profiles[0].profile.id.clone();
-        let mut clash = profile(&builtin).json;
-        clash["name"] = json!("impostor");
-        let all = [Installed::validate(clash).expect("valid"), profile("acme")];
+        let all = [named(&builtin, "impostor"), profile("acme")];
         assert_eq!(all[0].profile.name, "impostor");
         let found = find_profile(&bundle, &all, &builtin).expect("found");
         assert_eq!(found.name, bundle.profiles[0].profile.name);
