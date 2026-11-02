@@ -35,7 +35,7 @@ impl AuthUser for AccountRow {
         self.id
     }
 
-    /// Nothing changes a password yet, so no session is bound to one.
+    /// Nothing changes a password, so no session is bound to one (#375 records the change it needs).
     fn session_auth_hash(&self) -> &[u8] {
         &[]
     }
