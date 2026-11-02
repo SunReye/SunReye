@@ -1,91 +1,37 @@
-# Frontend Agent Instructions
+# Frontend
 
 **This project uses [bun](https://bun.sh/) as its JavaScript runtime and package manager.**
 
-Use this file for work in `apps/web`.
+Work in `apps/web`. Route by task:
 
-If adding, reading, validating, or renaming env vars, also follow `packages/env/AGENTS.md`. Env schemas live there only; import shared env exports instead of making app-local duplicates.
+- Any `.svelte` file (page, card, grid, chart box, live reading) → load the `layout-system` skill
+  first. Measure, gutter, rhythm, columns, chart heights and value ownership are decided in
+  `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`.
+- UI/UX → `apps/web/DESIGN.md`. Anything that animates, especially in the power-flow hero, answers the
+  motion tier (`$lib/motion/tier`): see DESIGN.md, "…and the device has to be able to afford it".
+- Tests, and any new or changed page or user-visible component → `apps/web/TESTING.md`, from "Three
+  layers". The e2e layer fakes the whole backend. A test never regexes over a source file: assert
+  rendered behaviour.
+- Env vars → `packages/env/AGENTS.md`. Import the shared env exports; no app-local schemas.
+- Svelte or SvelteKit questions → the `svelte` MCP: `list-sections` first, `svelte-autofixer` on
+  Svelte code until it returns nothing.
+- shadcn-svelte questions → the `shadcn-svelte-components` MCP.
 
-Before editing any `.svelte` file here — a page, a card, a grid, a chart box, a live reading — load
-the `layout-system` skill. Measure, gutter, rhythm, columns, chart heights and value ownership are
-decided in `src/lib/layout/tokens.ts` and `src/lib/live/ownership.ts`, and the `layout-system` skill is
-the short version.
+## UI components
 
-For frontend UI/UX work, also read `apps/web/DESIGN.md`.
-Anything that animates — especially in the power-flow hero — answers the motion tier
-(`$lib/motion/tier`, read as `motion.tier`): the dashboard runs on wall tablets that cannot afford
-the full picture, and `auto` measures the device and steps it down. See DESIGN.md, "…and the device
-has to be able to afford it", before adding an animation, a transition or a filter there.
-For frontend testing work, and after adding/changing pages or user-visible components, also read `apps/web/TESTING.md` — start at "Three layers", which picks between a unit test (`*.test.ts`, logic), a component test (`*.svelte.test.ts`, one component mounted in Chromium via Vitest browser mode, `bun run test:components`) and a browser spec (`e2e/*.spec.ts`, routes, socket, user journeys, `bun run e2e`). The e2e layer fakes the whole backend, so it needs no server, database or inverter. `scripts/require-tests.ts` counts all three as a test changing.
-Never write a test that regexes over a `.svelte`/`.ts` source file: it passes for broken code and fails for a rename. Those were deleted; assert the rendered behaviour instead.
-
-<!-- ShadCN-Svelte:BEGIN -->
-
-For ANY question regarding **Shadcn Svelte UI components**, use the `shadcn-svelte-components` (mcpdoc) server to provide accurate, up-to-date answers.
-
-To install components, use:
-
-```bash
-bun x shadcn-svelte@latest add -y -o ${ComponentName}
-```
-
-**Default UI policy for this repo:**
-
-- Always prefer composing UI from existing shadcn-svelte components in `apps/web/src/lib/components/ui/`.
-- Before building custom UI, check whether an existing shadcn component or subcomponent already covers the need.
-- If a matching shadcn component does not exist yet, install/add the canonical shadcn component first when one exists upstream.
-- If no upstream shadcn component exists for the pattern, build a local reusable component instead of duplicating ad-hoc styled markup across routes.
-- When a shadcn component supports `child`/render snippet composition, prefer that over replacing it with raw custom elements.
-- Raw HTML should be limited to semantic structure and content inside composed shadcn components, not used as a replacement for available shadcn surfaces, controls, dialogs, navigation, or form primitives.
-
-1. **Discover Sources**: Call the `list_doc_sources` tool to identify available documentation sets.
-2. **Retrieve Index**: Call the `fetch_docs` tool on the primary `llms.txt` file for the relevant technology.
-3. **Analyze Content**:
-   - Reflect on the structure and URLs provided within the `llms.txt` file.
-   - Reflect on the specific user request.
-4. **Targeted Retrieval**: Call `fetch_docs` on the specific sub-URLs or sections identified in the index that are directly relevant to the question.
-5. **Synthesize**: Use the retrieved documentation context to generate a code-accurate and idiomatic response.
-
-<!-- ShadCN-Svelte:END -->
-
-<!-- Svelte-MCP:BEGIN -->
-
-You can use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation.
-
-## Available MCP Tools
-
-### 1. `list-sections`
-
-Use this FIRST to discover all available documentation sections. Returns a structured list with titles, use_cases, and paths.
-When asked about Svelte or SvelteKit topics, ALWAYS use this tool at the start of the chat to find relevant sections.
-
-### 2. `get-documentation`
-
-Retrieves full documentation content for specific sections. Accepts single or multiple sections.
-After calling `list-sections`, you MUST analyze the returned documentation sections, especially the `use_cases` field, and then use `get-documentation` to fetch ALL documentation sections that are relevant for the user's task.
-
-### 3. `svelte-autofixer`
-
-Analyzes Svelte code and returns issues and suggestions.
-You MUST use this tool whenever writing Svelte code before sending it to the user. Keep calling it until no issues or suggestions are returned.
-
-### 4. `playground-link`
-
-Generates a Svelte Playground link with the provided code.
-After completing the code, ask the user if they want a playground link. Only call this tool after user confirmation and NEVER if code was written to files in their project.
-
-<!-- Svelte-MCP:END -->
+- Compose from `src/lib/components/ui/` first.
+- No match there: add the upstream shadcn component (`bun x shadcn-svelte@latest add -y -o <Name>`).
+  No upstream component: build one local reusable component, not duplicated styled markup per route.
+- Prefer a component's `child` / render snippet over replacing it with raw elements. Raw HTML is for
+  structure and content inside composed components, not for surfaces, controls, dialogs, navigation
+  or form primitives.
 
 ## Hash router constraint
 
-This app uses SvelteKit's hash router (`router.type: 'hash'` in
-svelte.config.js) so one build works behind path-prefixed reverse proxies
-(Home Assistant ingress). Consequences:
+`router.type: 'hash'` (svelte.config.js) lets one build run behind path-prefixed reverse proxies
+(Home Assistant ingress).
 
-- **Internal navigation must go through `resolve()` from `$app/paths`**:
-  `goto(resolve('/login'))`, `<a href={resolve('/history')}>`. A raw
-  `goto('/login')` or `href="/login"` triggers a full-page navigation that
-  escapes the ingress prefix and 404s.
-- No `+page.server.ts` / `+layout.server.ts` / per-page options — SSR is off.
-- Reading `page.url.pathname` still yields the route path ('/history') and
-  needs no changes.
+- Internal navigation goes through `resolve()` from `$app/paths`: `goto(resolve('/login'))`,
+  `<a href={resolve('/history')}>`. A raw `goto('/login')` or `href="/login"` does a full-page
+  navigation that escapes the ingress prefix and 404s.
+- No `+page.server.ts` / `+layout.server.ts` / per-page options: SSR is off.

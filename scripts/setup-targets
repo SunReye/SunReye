@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Installs what scripts/target-gate needs for the Android build (ADR 0006). Idempotent: only what is
+# Installs what scripts/target-gate needs for the Android build (ADR 0006) and the sqlx-cli that
+# scripts/sqlx-cache needs (ADR 0004). Idempotent: only what is
 # missing is fetched. Needs about 2 GB under $SUNREYE_TARGETS_HOME (default ~/.cache/sunreye-targets)
 # plus the Android rustup target and cargo-ndk.
 set -euo pipefail
@@ -25,4 +26,8 @@ for piece in $(missing_pieces); do
     ndk) install_ndk ;;
   esac
 done
+if ! command -v cargo-sqlx >/dev/null; then
+  echo "== sqlx-cli"
+  cargo install sqlx-cli --locked --no-default-features --features sqlite
+fi
 echo "targets ready: scripts/target-gate"

@@ -19,73 +19,41 @@ green.
 - Never mark work done on an unrun suite: `bun run test` (whole repo, seconds).
 - A commit is blocked by a red suite; a merge is blocked when source changed and no test did
   (`scripts/ci` step "tests required") or when coverage falls (`scripts/coverage-floor.ts`).
+  Exemptions live in `scripts/require-tests.ts` and are themselves tested. There is no skip flag.
 - Cover boundaries, not just the happy path: zero and negative values, absent and empty
   payloads, stale readings across midnight, partial windows, counter restarts.
 - If logic is hard to test because it lives inside a component, extract it. That extraction
   is part of the change, not a follow-up.
-- When the behaviour is what ONE component renders or how it reacts (a fold, a 44px target, a
-  390px row, a tween settling), the test is a component test: `apps/web/src/**/*.svelte.test.ts`,
-  Vitest browser mode in Chromium, `bun run test:components`. Runes run there; they do not under
-  `bun test`, which skips the suffix.
-- When the behaviour only exists in a running app (a reactive loop, a request storm, a user
-  journey across pages), the test is a browser spec: `apps/web/e2e/*.spec.ts`, `bun run e2e`. Those count
-  as "a test changed" for the gate. Never stand a source-text regex over the fix's own text in
-  for one — see `apps/web/TESTING.md`, "Three layers".
-- When the behaviour is whether **Postgres accepts the statement**, the test is a database
-  spec: `apps/server/db-tests/*.test.ts`, `bun run test:db`. That script passes
-  `--timeout 60000`: bun's default is 5s, which is not a budget anyone chose for
-  work that waits on a Postgres container seconds old — measured, a spec file
-  takes 734ms warm and 2.0s straight after initdb, and CI is slower and busier.
-  Do not add per-test budgets to chase a flake; the layer owns this one. A SQL-text assertion cannot
-  prove a query runs — two 500s shipped behind a fully green suite that way (an ambiguous
-  `time_bucket` overload, an `ORDER BY` that bound to a UNION instead of its arm). Anything
-  touching a Timescale hyperfunction, a continuous aggregate, a UNION, `DISTINCT ON`, or a
-  cast belongs here as well as in the unit suite. The layer creates and drops its own
-  `sunreye_dbtest` database and refuses any other name — your `DATABASE_URL` may point at a
-  database shared with a live inverter. It skips when no Postgres is reachable and fails hard
-  when `CI` is set, so it can never be silently absent. Lives outside `src/` so
-  `bun run test` stays database-free.
-- When the behaviour is whether **a route still answers at all**, the test is the route smoke:
-  `bun run test:routes`. It starts its own throwaway TimescaleDB on 5433 (never 5432), migrates
-  it, seeds the sample profile, boots the server with `INVERTER_SIMULATE=true` until real rows
-  exist, and hits every route in the OpenAPI listing — a 5xx or a dead connection fails, a 4xx
-  passes. It then sweeps the same listing **with no credentials**, where everything outside the
-  declared public list (`PUBLIC_LABELS` in `scripts/route-smoke-plan.ts`) must refuse, and again as
-  a plain **non-admin** session, where every `requireSession` route (`SESSION_LABELS`) must be
-  reachable and everything else must still refuse; the `/ws` upgrade is probed all three ways. A
-  route left ungated is invisible to every other gate we have — it answers 200 to a stranger and
-  passes — and so is the mirror defect, a dashboard read raised to admin, which works for the only
-  person who tests it. Both credentialled passes send a body synthesised from the route's own
-  OpenAPI schema, because Elysia validates a declared body *before* the guard: a write answered 422
-  proves nothing about its gate, so the run reports it UNPROVEN and fails. Nothing else executes a route handler: the unit suite stops below
-  `apps/server/src/routes/*` and the browser suite fakes the backend. Run it for route-layer
-  work; `scripts/ci` runs it before every merge.
-- Exemptions to the "a test changed with it" rule live in `scripts/require-tests.ts` and are
-  themselves tested. There is no skip flag.
-- `bun run test` passes `--parallel`, which gives every test file a fresh global
-  and module registry. That contains the `mock.module` leak below **at runtime**:
-  a missing restore no longer turns a later suite red. Measured on a two-file
-  fixture — serial fails, `--isolate` and `--parallel` pass; `--no-isolate` fails
-  again, so never reach for it. **The discipline below therefore still stands, and
-  `bun run test:mocks` is now the only thing that catches a missing restore.** A
-  leak that no run reveals is still a leak: it breaks anyone on `bun test` without
-  the flag, on an older bun, or running one file at a time.
-- `bun run test:coverage` stays **serial on purpose**. Bun's parallel coverage
-  merge is lossy: identical passing tests report 88.91 % lines under `--parallel`
-  against 99.31 % serial, reproducibly. Do not add `--parallel` there — it will
-  fail `test:floor` for a reason that has nothing to do with the code.
-- `mock.module` is process-global and permanent. ALWAYS spread the real module
-  (`const real = await import("./x"); mock.module("./x", () => ({ ...real, stubbed }))`) —
-  a partial mock deletes the other exports for every test file that runs afterwards and
-  breaks them at import, order-dependently. Enforced by `bun run test:mocks`.
-- ALWAYS restore a first-party mock too: a spread mock is still permanent, so the stub stays
-  installed for every later file — and the suite that unit-tests that module then asserts
-  against the double (red in the full run, green alone). Snapshot the exports BY VALUE at load
-  time and hand them back: `const realX = await import("./x"); const realXExports = { ...realX };`
-  … `afterAll(() => mock.module("./x", () => ({ ...realXExports })));`. A namespace is live, so
-  `() => realX` restores the stub. Also enforced by `bun run test:mocks`.
 
-Full rationale: `CONTRIBUTING.md` §6. Frontend specifics: `apps/web/TESTING.md`.
+### Pick the layer
+
+| Behaviour | Test | Run |
+| --- | --- | --- |
+| Logic, one module | `*.test.ts` beside the source | `bun run test` |
+| What ONE component renders or how it reacts | `apps/web/src/**/*.svelte.test.ts` (Vitest browser mode, Chromium; runes run only here) | `bun run test:components` |
+| Only exists in a running app: reactive loop, request storm, journey across pages | `apps/web/e2e/*.spec.ts`; counts as "a test changed" | `bun run e2e` (named specs) |
+| Postgres accepts the statement: Timescale hyperfunction, continuous aggregate, `UNION`, `DISTINCT ON`, cast | `apps/server/db-tests/*.test.ts`; a SQL-text assertion proves nothing | `bun run test:db` |
+| A route answers, and refuses who it should | route smoke | `bun run test:routes` |
+
+- A source-text regex over the fix's own text is never a test (`apps/web/TESTING.md`, "Three layers").
+- `test:db` passes `--timeout 60000`: add no per-test budgets to chase a flake. It creates and drops
+  its own `sunreye_dbtest` database and refuses any other name, because `DATABASE_URL` may point
+  at a database shared with a live inverter. It skips without Postgres and fails hard when `CI` is set.
+- `test:routes` starts a throwaway TimescaleDB on 5433 (never 5432), boots the server with
+  `INVERTER_SIMULATE=true`, and hits every route in the OpenAPI listing: a 5xx or dead connection
+  fails, a 4xx passes. A no-credentials sweep requires everything outside `PUBLIC_LABELS`
+  (`scripts/route-smoke-plan.ts`) to refuse; a non-admin sweep requires every `SESSION_LABELS`
+  route reachable and the rest refused; `/ws` is probed all three ways. A write answered 422 is
+  reported UNPROVEN and fails: validation runs before the guard. Run it for route-layer work.
+- `mock.module` is process-global and permanent. Spread the real module, and restore a first-party
+  mock in `afterAll` from a by-value snapshot of its exports (a namespace is live, so
+  `() => real` restores the stub). `bun run test:mocks` enforces both and is the only catch for a
+  missing restore, because `bun run test` passes `--parallel` (fresh module registry per file).
+  Never `--no-isolate`.
+- `bun run test:coverage` stays serial: bun's parallel coverage merge is lossy and fails
+  `test:floor` for reasons unrelated to the code. Never add `--parallel` there.
+
+Rationale and examples: `CONTRIBUTING.md` §6 and §7. Frontend: `apps/web/TESTING.md`.
 
 Load `caveman` skill at start of every session.
 
@@ -101,7 +69,6 @@ Load the relevant one when matching work:
 - Any `.svelte` file in `apps/web` (page, card, grid, chart box, live reading) → load
   `layout-system`. The skill holds the layout vocabulary; component tests hold what it renders.
 - AI SDK work → load `ai-sdk`.
-- Starter repo initialization / post-clone customization → load `project-init`.
 - Similar domain-specific work → load matching skill when available.
 
 ## YAGNI
@@ -125,27 +92,19 @@ Load the relevant one when matching work:
 
 ## Fallow
 
-- Use Fallow for dead code, duplication, and code health checks.
-- Start with `bunx fallow` from repo root.
-- Common focused commands:
-  - `bunx fallow dead-code`
-  - `bunx fallow dupes`
-  - `bunx fallow health`
-  - `bunx fallow fix --dry-run`
-- For agent workflows, prefer structured output with `--format json`.
-- Before digging through Fallow docs, fetch `https://docs.fallow.tools/llms.txt` and use it as page index.
+Dead code, duplication and code health: `bunx fallow` from repo root (`--format json` for agents).
+Docs index: `https://docs.fallow.tools/llms.txt`.
 
-- Agent factory work (`/loop /factory`, `scripts/factory`, `.claude/agents/factory-*`) → follow `docs/factory.md`.
-- Frontend work in `apps/web` → follow `apps/web/AGENTS.md`.
-- NixOS appliance work in `nixos/` → read `nixos/README.md` first. `bun run test` does not cover
-  it: the gate is `nix flake check ./nixos` (evaluation plus `tests/assertions.nix`, which proves
-  the refusals still refuse) and the boot test in CI. The `sunreye-setup` CLI is NOT in `nixos/` —
+## Area routing
+
+- Agent factory (`/loop /factory`, `scripts/factory`, `.claude/agents/factory-*`) → `docs/factory.md`.
+- `apps/web` → `apps/web/AGENTS.md`.
+- `nixos/` → `nixos/README.md` first. `bun run test` does not cover it: the gate is
+  `nix flake check ./nixos` and the boot test in CI. The `sunreye-setup` CLI is NOT in `nixos/`:
   its source is `apps/appliance-cli/src`, so the TDD rule above applies to it in full.
-- Env var work anywhere → follow `packages/env/AGENTS.md` first.
-- Env schemas live only in `packages/env`. Do not duplicate env parsing/validation inside apps or feature packages.
-- Env package work in `packages/env` → follow `packages/env/AGENTS.md`.
-- Shared config work in `packages/config` → follow `packages/config/AGENTS.md`.
-- Task spans multiple areas → read + apply each relevant file. More specific package-level instructions win.
+- Env vars, anywhere → `packages/env/AGENTS.md` first. Env schemas live only in `packages/env`.
+- `packages/config` → `packages/config/AGENTS.md`.
+- Task spans several areas → read and apply each. The more specific file wins.
 
 ## Branching & CI
 
@@ -155,16 +114,7 @@ Load the relevant one when matching work:
 
 ## Commit style
 
-- Use conventional commits: `type(scope): summary`
-- Keep subject imperative and specific
-- Prefer lowercase types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
-- Scope when useful: `feat(web): add onboarding empty state`
-- Keep subject tight. Explain why in body when not obvious
-- One commit = one logical change. Do not mix refactor + feature + formatting noise
-- Before commit, run checks relevant to changed area
-
-Examples:
-
-- `feat(web): add onboarding empty state`
-- `fix(backend): prevent duplicate task creation`
-- `docs: clarify post-clone setup`
+- Conventional commits, lowercase types: `type(scope): summary` (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`).
+- Subject imperative and specific; explain why in the body when not obvious.
+- One commit = one logical change: no refactor + feature + formatting mix.
+- Run the checks for the changed area before committing.

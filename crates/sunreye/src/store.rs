@@ -882,6 +882,71 @@ mod tests {
         );
     }
 
+    async fn applied_migrations(store: &Store) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&store.pool)
+            .await
+            .expect("count")
+    }
+
+    #[tokio::test]
+    async fn migrations_apply_from_empty_and_running_them_again_changes_nothing() {
+        let (store, device) = with_device().await;
+        store.set_setting("k", "v").await.expect("set");
+        let applied = applied_migrations(&store).await;
+        assert!(applied >= 1);
+        sqlx::migrate!("./migrations").run(&store.pool).await.expect("second run");
+        assert_eq!(applied_migrations(&store).await, applied);
+        assert_eq!(store.setting("k").await.expect("get").as_deref(), Some("v"));
+        assert_eq!(store.devices().await.expect("devices")[0].id, device);
+    }
+
+    #[tokio::test]
+    async fn reopening_a_file_store_applies_no_migration_twice() {
+        let dir = std::env::temp_dir().join(format!("sunreye-store-migrate-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        let store = Store::open(&dir).await.expect("open");
+        let applied = applied_migrations(&store).await;
+        store.close().await;
+        let store = Store::open(&dir).await.expect("reopen");
+        assert_eq!(applied_migrations(&store).await, applied);
+        store.close().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn a_connection_lost_mid_transaction_leaves_no_minute_row() {
+        let dir = std::env::temp_dir().join(format!("sunreye-store-crash-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        let store = Store::open(&dir).await.expect("open");
+        let connection = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 502 };
+        let connection = store.add_connection(&connection).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 1 };
+        let device = store.add_device(&device).await.expect("device");
+        store
+            .append_minute(device, &closed(MINUTE, vec![sample(0, &[("a", 1.0)])]))
+            .await
+            .expect("committed");
+
+        let mut conn = store.pool.acquire().await.expect("connection").detach();
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await.expect("begin");
+        sqlx::query("INSERT INTO reading_minute (device_id, minute, samples) VALUES (?, ?, x'00')")
+            .bind(device)
+            .bind(MINUTE + 1)
+            .execute(&mut conn)
+            .await
+            .expect("insert");
+        // Dropped with no COMMIT or ROLLBACK issued: what a killed process leaves.
+        drop(conn);
+        store.close().await;
+
+        let store = Store::open(&dir).await.expect("reopen");
+        assert_eq!(minute_rows(&store, device).await, 1);
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("r").len(), 1);
+        store.close().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
     #[tokio::test]
     async fn a_file_store_keeps_its_data_across_close_and_open_and_runs_in_wal_mode() {
         let dir = std::env::temp_dir().join(format!("sunreye-store-{}", std::process::id()));
