@@ -1,6 +1,6 @@
 //! The simulator against the recorded wire bytes of the transport corpus, with no core client involved.
 
-#![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
+#![allow(clippy::expect_used, clippy::panic, reason = "helpers outside #[test] fns may panic like the tests")]
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -149,4 +149,132 @@ async fn an_rtu_unit_that_does_not_answer_stays_silent() {
     let read = tokio::time::timeout(Duration::from_millis(150), stream.read(&mut byte)).await;
     assert!(read.is_err(), "no reply");
     assert_eq!(sim.requests(), []);
+}
+
+const STICK: u32 = 3_168_930_341;
+
+async fn solarman_sim(registers: Registers, units: &[u8]) -> Simulator {
+    Simulator::start_with(Framing::SolarmanV5(STICK), registers, units).await.expect("sim")
+}
+
+/// The recorded `solarman-v5` exchange of `name`: every request the client sent and the reply to each.
+fn recorded(name: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
+    let cases = transport_cases(&oracle(), "solarman-v5").expect("corpus");
+    let case = cases.iter().find(|c| c.name == name).expect("case");
+    case.exchanges
+        .chunks(2)
+        .map(|pair| match pair {
+            [Exchange::Expect(request), Exchange::Send(chunks)] => (request.clone(), chunks.concat()),
+            other => panic!("{name}: a request and its reply, got {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn the_solarman_cases_carry_the_serials_the_recording_used() {
+    let cases = transport_cases(&oracle(), "solarman-v5").expect("corpus");
+    let serials = |name: &str| {
+        let case = cases.iter().find(|c| c.name == name).expect("case");
+        (case.logger_serial, case.configured_serial)
+    };
+    assert_eq!(serials("solarman-v5/read-unit-1"), (Some(STICK), None));
+    assert_eq!(serials("solarman-v5/logger-serial-discovery"), (Some(STICK), Some(0x1122_3344)));
+    let tcp = transport_cases(&oracle(), "tcp").expect("corpus");
+    assert_eq!((tcp[0].logger_serial, tcp[0].configured_serial), (None, None));
+}
+
+#[tokio::test]
+async fn a_request_naming_serial_0_is_rejected_with_status_06_and_the_sticks_serial() {
+    let sim = solarman_sim(Registers::from_runs([(500, vec![1])]), &[1]).await;
+    let [(probe, rejected), _] = recorded("solarman-v5/read-unit-1").try_into().expect("probe and read");
+    let reply = exchange(sim.addr, &[&probe], rejected.len()).await;
+    assert_eq!(reply, rejected);
+    assert_eq!(sim.requests(), [], "a rejected frame is not a request");
+}
+
+#[tokio::test]
+async fn a_solarman_read_gets_the_recorded_reply_bytes_for_unit_1_and_unit_0() {
+    for (name, unit) in [("solarman-v5/read-unit-1", 1), ("solarman-v5/read-unit-0", 0)] {
+        let sim = solarman_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[unit]).await;
+        let [_, (request, reply)] = recorded(name).try_into().expect("probe and read");
+        assert_eq!(exchange(sim.addr, &[&request], reply.len()).await, reply, "{name}");
+        assert_eq!(
+            sim.requests(),
+            [sunreye_sim::Request { unit, function: 3, start: 500, count: 5 }],
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_solarman_reply_echoes_the_request_sequence_in_its_low_byte() {
+    let sim = solarman_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[1]).await;
+    let [_, (request, reply)] = recorded("solarman-v5/read-unit-1").try_into().expect("probe and read");
+    let mut later = request.clone();
+    later[5] = 0x2a;
+    let last = later.len() - 2;
+    later[last] = later[1..last].iter().fold(0_u8, |sum, byte| sum.wrapping_add(*byte));
+    let echoed = exchange(sim.addr, &[&later], reply.len()).await;
+    assert_eq!(echoed[5..7], [0x2a, 0x0d]);
+}
+
+#[tokio::test]
+async fn a_solarman_unmapped_register_is_the_recorded_exception_2_reply() {
+    let sim = solarman_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[1]).await;
+    let pairs = recorded("solarman-v5/exception-2-split");
+    let (request, reply) = &pairs[1];
+    assert_eq!(exchange(sim.addr, &[request], reply.len()).await, *reply);
+}
+
+#[tokio::test]
+async fn a_solarman_write_is_refused_with_exception_1_and_recorded() {
+    let sim = solarman_sim(Registers::from_runs([(504, vec![7])]), &[1]).await;
+    let [_, (write, _)] = recorded("solarman-v5/write-register").try_into().expect("probe and write");
+    let reply = exchange(sim.addr, &[&write], 11 + 14 + 5 + 2).await;
+    assert_eq!(reply[25..30], hex("0190018dc0"), "the RTU exception 1 reply of unit 1, as for RTU over TCP");
+    let seen = sim.requests();
+    assert_eq!((seen.len(), seen[0].function), (1, 16));
+}
+
+#[tokio::test]
+async fn a_solarman_frame_with_a_bad_checksum_is_dropped_and_the_next_one_answered() {
+    let sim = solarman_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[1]).await;
+    let [_, (request, reply)] = recorded("solarman-v5/read-unit-1").try_into().expect("probe and read");
+    let mut corrupt = request.clone();
+    let checksum = corrupt.len() - 2;
+    corrupt[checksum] = corrupt[checksum].wrapping_add(1);
+    assert_eq!(exchange(sim.addr, &[&corrupt, &request], reply.len()).await, reply);
+    assert_eq!(sim.requests().len(), 1, "only the frame with a good checksum is a request");
+}
+
+#[tokio::test]
+async fn a_solarman_unit_that_does_not_answer_stays_silent() {
+    let sim = solarman_sim(Registers::from_runs([(500, vec![1])]), &[1]).await;
+    let [_, (request, _)] = recorded("solarman-v5/read-unit-0").try_into().expect("probe and read");
+    let mut stream = TcpStream::connect(sim.addr).await.expect("connect");
+    stream.write_all(&request).await.ok();
+    let mut byte = [0_u8; 1];
+    let read = tokio::time::timeout(Duration::from_millis(150), stream.read(&mut byte)).await;
+    assert!(read.is_err(), "no reply");
+    assert_eq!(sim.requests(), []);
+}
+
+#[tokio::test]
+async fn a_replay_fails_when_the_client_sends_past_the_recording_and_not_when_it_hangs_up() {
+    let steps = || vec![Exchange::Expect(vec![1, 2, 3]), Exchange::Send(vec![vec![9]])];
+    let clean = sunreye_sim::replay(steps()).await.expect("replay");
+    let mut stream = TcpStream::connect(clean.addr).await.expect("connect");
+    stream.write_all(&[1, 2, 3]).await.expect("write");
+    let mut reply = [0_u8; 1];
+    stream.read_exact(&mut reply).await.expect("reply");
+    drop(stream);
+    assert_eq!(clean.finish().await, Ok(()));
+
+    let extra = sunreye_sim::replay(steps()).await.expect("replay");
+    let mut stream = TcpStream::connect(extra.addr).await.expect("connect");
+    stream.write_all(&[1, 2, 3]).await.expect("write");
+    stream.read_exact(&mut reply).await.expect("reply");
+    stream.write_all(&[4]).await.expect("write");
+    let error = extra.finish().await.expect_err("a request past the recording");
+    assert!(error.contains("after the recording"), "{error}");
 }

@@ -71,7 +71,8 @@ async fn post(app: &Router, path: &str, body: &Value) -> Answer {
 fn connection(port: u16) -> Value {
     json!({
         "host": "127.0.0.1", "port": port, "transport": "tcp", "unitId": 1,
-        "timeoutMs": 500, "pollIntervalMs": 1000, "simulate": false
+        "timeoutMs": 500, "pollIntervalMs": 1000, "simulate": false,
+        "loggerSerial": null
     })
 }
 
@@ -172,7 +173,8 @@ async fn an_unconfigured_connection_reads_as_the_defaults() {
         answer.json(),
         json!({
             "host": null, "port": 502, "transport": "tcp", "unitId": 0,
-            "timeoutMs": 3000, "pollIntervalMs": 5000, "simulate": false
+            "timeoutMs": 3000, "pollIntervalMs": 5000, "simulate": false,
+            "loggerSerial": null
         })
     );
     drop(app);
@@ -189,7 +191,8 @@ async fn a_connection_outside_the_accepted_ranges_is_refused_and_nothing_is_save
         (json!({"pollIntervalMs": 500}), "Poll interval must be 1000–3600000 ms"),
         (json!({"host": ""}), "Host is required"),
         (json!({"simulate": true}), "Simulation is not available in this core"),
-        (json!({"transport": "solarman-v5"}), "Only the tcp transport is supported"),
+        (json!({"loggerSerial": 7}), "Logger serial is for the solarman-v5 transport"),
+        (json!({"transport": "solarman-v5", "loggerSerial": 0}), "Logger serial must be 1–4294967295"),
     ];
     for (change, message) in cases {
         let mut body = connection(502);
@@ -201,6 +204,26 @@ async fn a_connection_outside_the_accepted_ranges_is_refused_and_nothing_is_save
     let missing = put(&app, "/api/settings/inverter", &json!({"host": "h"})).await;
     assert_eq!(missing.status, StatusCode::BAD_REQUEST, "a body without the other fields");
     assert_eq!(get(&app, "/api/settings/inverter").await.json()["host"], Value::Null);
+    drop(app);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn each_transport_is_saved_with_its_logger_serial_and_read_back() {
+    let (core, app) = open(&dir("transports")).await;
+    for change in [
+        json!({"transport": "solarman-v5", "port": 8899, "loggerSerial": 3_168_930_341_u32}),
+        json!({"transport": "solarman-v5", "port": 8899}),
+        json!({"transport": "rtu-over-tcp"}),
+        json!({"transport": "tcp"}),
+    ] {
+        let mut body = connection(502);
+        body.as_object_mut().expect("object").extend(change.as_object().expect("object").clone());
+        let saved = put(&app, "/api/settings/inverter", &body).await;
+        assert_eq!(saved.status, StatusCode::OK, "{change}");
+        assert_eq!(saved.json(), body, "{change}");
+        assert_eq!(get(&app, "/api/settings/inverter").await.json(), body, "{change}");
+    }
     drop(app);
     core.stop().await;
 }

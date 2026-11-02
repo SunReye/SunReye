@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection SET transport = ?, host = ?, port = ?, logger_serial = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "40b1e788c167de4dfa8be951a59f12d81e602bb678dfdde37f39d1924264f48b"
+}

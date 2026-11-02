@@ -37,6 +37,8 @@ pub struct NewConnection {
     pub transport: Transport,
     pub host: String,
     pub port: u16,
+    /// The stick's serial, for `solarman_v5` only; none means it is discovered on connect.
+    pub logger_serial: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,9 +51,10 @@ pub struct NewDevice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionRow {
     pub id: i64,
-    pub transport: String,
+    pub transport: Transport,
     pub host: String,
     pub port: u16,
+    pub logger_serial: Option<u32>,
 }
 
 /// A device with the connection it is reached through.
@@ -64,6 +67,7 @@ pub struct DeviceRow {
     pub transport: Transport,
     pub host: String,
     pub port: u16,
+    pub logger_serial: Option<u32>,
 }
 
 /// Applies `migrator` with foreign keys off. A migration runs in a transaction, where the pragma cannot
@@ -135,10 +139,11 @@ impl Store {
     pub async fn add_connection(&self, connection: &NewConnection) -> Result<i64, StoreError> {
         let transport = connection.transport.as_str();
         let row = sqlx::query!(
-            r#"INSERT INTO connection (transport, host, port) VALUES (?, ?, ?) RETURNING id AS "id!""#,
+            r#"INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
             transport,
             connection.host,
-            connection.port
+            connection.port,
+            connection.logger_serial
         )
         .fetch_one(&self.pool)
         .await?;
@@ -147,16 +152,18 @@ impl Store {
 
     /// The one connection of this core: the oldest row.
     pub async fn connection(&self) -> Result<Option<ConnectionRow>, StoreError> {
-        let row =
-            sqlx::query!(r#"SELECT id AS "id!", transport, host, port FROM connection ORDER BY id LIMIT 1"#)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row = sqlx::query!(
+            r#"SELECT id AS "id!", transport, host, port, logger_serial FROM connection ORDER BY id LIMIT 1"#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
         row.map(|row| {
             Ok(ConnectionRow {
                 id: row.id,
-                transport: row.transport,
+                transport: row.transport.parse()?,
                 host: row.host,
                 port: u16::try_from(row.port).map_err(|_| StoreError::Corrupt("port"))?,
+                logger_serial: serial(row.logger_serial)?,
             })
         })
         .transpose()
@@ -169,10 +176,11 @@ impl Store {
         };
         let transport = connection.transport.as_str();
         sqlx::query!(
-            "UPDATE connection SET transport = ?, host = ?, port = ? WHERE id = ?",
+            "UPDATE connection SET transport = ?, host = ?, port = ?, logger_serial = ? WHERE id = ?",
             transport,
             connection.host,
             connection.port,
+            connection.logger_serial,
             existing.id
         )
         .execute(&self.pool)
@@ -213,7 +221,7 @@ impl Store {
     pub async fn devices(&self) -> Result<Vec<DeviceRow>, StoreError> {
         let rows = sqlx::query!(
             r#"SELECT device.id AS "id!", device.connection_id, device.profile_id, device.unit_id,
-                      connection.transport, connection.host, connection.port
+                      connection.transport, connection.host, connection.port, connection.logger_serial
                FROM device JOIN connection ON connection.id = device.connection_id
                ORDER BY device.id"#
         )
@@ -229,6 +237,7 @@ impl Store {
                     transport: row.transport.parse()?,
                     host: row.host,
                     port: u16::try_from(row.port).map_err(|_| StoreError::Corrupt("port"))?,
+                    logger_serial: serial(row.logger_serial)?,
                 })
             })
             .collect()
@@ -304,6 +313,10 @@ impl Store {
     }
 }
 
+fn serial(stored: Option<i64>) -> Result<Option<u32>, StoreError> {
+    stored.map(|value| u32::try_from(value).map_err(|_| StoreError::Corrupt("logger serial"))).transpose()
+}
+
 async fn metric_ids<'e, E: Executor<'e, Database = Sqlite>>(
     executor: E,
 ) -> Result<BTreeMap<String, u32>, StoreError> {
@@ -332,6 +345,8 @@ mod tests {
     use crate::samples::MINUTE_MS;
 
     const MINUTE: i64 = 29_000_000;
+
+    type ConnectionRowTuple = (i64, String, String, i64, Option<i64>);
 
     fn sample(offset_ms: i64, values: &[(&str, f64)]) -> Sample {
         Sample {
@@ -362,7 +377,12 @@ mod tests {
     async fn with_device() -> (Store, i64) {
         let store = Store::in_memory().await.expect("store");
         let connection = store
-            .add_connection(&NewConnection { transport: Transport::Tcp, host: "10.0.0.5".into(), port: 502 })
+            .add_connection(&NewConnection {
+                transport: Transport::Tcp,
+                host: "10.0.0.5".into(),
+                port: 502,
+                logger_serial: None,
+            })
             .await
             .expect("connection");
         let device = store
@@ -392,13 +412,18 @@ mod tests {
         let store = Store::in_memory().await.expect("store");
         assert_eq!(store.connection().await.expect("connection"), None);
         let id = store
-            .save_connection(&NewConnection { transport: Transport::Tcp, host: "10.0.0.5".into(), port: 502 })
+            .save_connection(&NewConnection {
+                transport: Transport::Tcp,
+                host: "10.0.0.5".into(),
+                port: 502,
+                logger_serial: None,
+            })
             .await
             .expect("save");
         let row = store.connection().await.expect("connection").expect("a row");
         assert_eq!(
-            (row.id, row.transport.as_str(), row.host.as_str(), row.port),
-            (id, "tcp", "10.0.0.5", 502)
+            (row.id, row.transport, row.host.as_str(), row.port),
+            (id, Transport::Tcp, "10.0.0.5", 502)
         );
     }
 
@@ -406,7 +431,12 @@ mod tests {
     async fn saving_a_connection_again_edits_it_in_place() {
         let (store, device) = with_device().await;
         let first = store.connection().await.expect("connection").expect("a row").id;
-        let second = NewConnection { transport: Transport::Tcp, host: "gateway".into(), port: 1502 };
+        let second = NewConnection {
+            transport: Transport::Tcp,
+            host: "gateway".into(),
+            port: 1502,
+            logger_serial: None,
+        };
         assert_eq!(store.save_connection(&second).await.expect("save"), first);
         let row = store.connection().await.expect("connection").expect("a row");
         assert_eq!((row.host.as_str(), row.port), ("gateway", 1502));
@@ -418,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn a_connection_the_schema_refuses_is_an_error() {
         let store = Store::in_memory().await.expect("store");
-        let bad = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 0 };
+        let bad = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 0, logger_serial: None };
         assert!(store.save_connection(&bad).await.is_err());
         assert_eq!(store.connection().await.expect("connection"), None);
     }
@@ -427,7 +457,12 @@ mod tests {
     async fn saving_a_device_edits_the_connections_device_or_adds_the_first() {
         let store = Store::in_memory().await.expect("store");
         let connection = store
-            .save_connection(&NewConnection { transport: Transport::Tcp, host: "h".into(), port: 502 })
+            .save_connection(&NewConnection {
+                transport: Transport::Tcp,
+                host: "h".into(),
+                port: 502,
+                logger_serial: None,
+            })
             .await
             .expect("connection");
         let first = NewDevice { connection_id: connection, profile_id: "deye-sg01hp3".into(), unit_id: 1 };
@@ -442,7 +477,12 @@ mod tests {
     #[tokio::test]
     async fn devices_list_with_their_connection_in_insertion_order() {
         let (store, first) = with_device().await;
-        let connection = NewConnection { transport: Transport::Tcp, host: "gateway".into(), port: 1502 };
+        let connection = NewConnection {
+            transport: Transport::Tcp,
+            host: "gateway".into(),
+            port: 1502,
+            logger_serial: None,
+        };
         let connection = store.add_connection(&connection).await.expect("connection");
         let second = NewDevice { connection_id: connection, profile_id: "deye-sg05lp3".into(), unit_id: 0 };
         let second = store.add_device(&second).await.expect("device");
@@ -461,30 +501,40 @@ mod tests {
     #[tokio::test]
     async fn the_schema_refuses_what_it_cannot_hold() {
         let (store, _) = with_device().await;
-        let bad_port = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 0 };
+        let bad_port =
+            NewConnection { transport: Transport::Tcp, host: "h".into(), port: 0, logger_serial: None };
         assert!(store.add_connection(&bad_port).await.is_err());
         let orphan = NewDevice { connection_id: 999, profile_id: "p".into(), unit_id: 1 };
         assert!(store.add_device(&orphan).await.is_err(), "a device needs its connection");
     }
 
-    /// A database at the schema the first migration made, holding two connections, three devices and
-    /// readings for two of them.
-    async fn populated_at_the_first_schema() -> SqlitePool {
+    /// A database migrated up to `version`, holding two connections, three devices and readings for two
+    /// of them; from the second schema on, also a connection of the new transport with a device.
+    async fn populated_at(version: i64) -> SqlitePool {
         let options = SqliteConnectOptions::new().in_memory(true).foreign_keys(true);
         let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options).await.expect("pool");
-        let mut first = sqlx::migrate!("./migrations");
-        first.migrations = first.migrations.iter().filter(|m| m.version == 1).cloned().collect();
-        migrate(&pool, &first).await.expect("first migration");
-        let rows = [
+        let mut until = sqlx::migrate!("./migrations");
+        until.migrations = until.migrations.iter().filter(|m| m.version <= version).cloned().collect();
+        migrate(&pool, &until).await.expect("migrations");
+        let mut rows = vec![
             "INSERT INTO connection (id, transport, host, port) VALUES (1, 'tcp', '10.0.0.5', 502), (2, 'tcp', 'gateway', 1502)",
             "INSERT INTO device (id, connection_id, profile_id, unit_id) VALUES (1, 1, 'deye-sg01hp3', 1), (2, 1, 'deye-sg05lp3', 2), (3, 2, 'deye-sg05lp3', 0)",
             "INSERT INTO metric (id, key) VALUES (1, 'battery.soc')",
             "INSERT INTO reading_minute (device_id, minute, samples) VALUES (1, 100, x'0a'), (3, 100, x'0b')",
         ];
+        if version >= 2 {
+            rows.push("INSERT INTO connection (id, transport, host, port) VALUES (3, 'rtu_over_tcp', 'serial-gw', 503)");
+            rows.push("INSERT INTO device (id, connection_id, profile_id, unit_id) VALUES (4, 3, 'deye-sg05lp3', 1)");
+            rows.push("INSERT INTO reading_minute (device_id, minute, samples) VALUES (4, 100, x'0c')");
+        }
         for row in rows {
             sqlx::query(row).execute(&pool).await.expect("row");
         }
         pool
+    }
+
+    async fn populated_at_the_first_schema() -> SqlitePool {
+        populated_at(1).await
     }
 
     async fn count(pool: &SqlitePool, table: &str) -> i64 {
@@ -562,12 +612,163 @@ mod tests {
         assert_eq!(count(&pool, "connection").await, 2, "nothing of the failed migration is kept");
     }
 
+    async fn migrated_from_the_second_schema() -> SqlitePool {
+        let pool = populated_at(2).await;
+        migrate(&pool, &sqlx::migrate!("./migrations")).await.expect("migrate");
+        pool
+    }
+
+    #[tokio::test]
+    async fn the_solarman_migration_keeps_every_row_of_a_populated_database() {
+        let pool = migrated_from_the_second_schema().await;
+
+        let connections: Vec<ConnectionRowTuple> =
+            sqlx::query_as("SELECT id, transport, host, port, logger_serial FROM connection ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .expect("connections");
+        assert_eq!(
+            connections,
+            [
+                (1, "tcp".into(), "10.0.0.5".into(), 502, None),
+                (2, "tcp".into(), "gateway".into(), 1502, None),
+                (3, "rtu_over_tcp".into(), "serial-gw".into(), 503, None),
+            ]
+        );
+        let devices: Vec<(i64, i64)> = sqlx::query_as("SELECT id, connection_id FROM device ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .expect("devices");
+        assert_eq!(devices, [(1, 1), (2, 1), (3, 2), (4, 3)]);
+        assert_eq!((count(&pool, "reading_minute").await, count(&pool, "metric").await), (3, 1));
+    }
+
+    #[tokio::test]
+    async fn after_the_solarman_migration_solarman_v5_is_accepted_with_a_logger_serial_or_without_one() {
+        let pool = migrated_from_the_second_schema().await;
+        let insert = |transport: &'static str, serial: Option<i64>| {
+            let query = sqlx::query(
+                "INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, 'h', 1, ?)",
+            );
+            query.bind(transport).bind(serial).execute(&pool)
+        };
+        assert!(insert("solarman_v5", Some(3_168_930_341)).await.is_ok(), "a serial above i32::MAX");
+        assert!(insert("solarman_v5", None).await.is_ok(), "the stick's reply names the serial");
+        assert!(insert("solarman_v5", Some(1)).await.is_ok());
+        assert!(insert("solarman_v5", Some(4_294_967_295)).await.is_ok());
+        assert!(insert("tcp", None).await.is_ok());
+        assert!(insert("rtu_over_tcp", None).await.is_ok());
+        for refused in ["solarman-v5", "solarman", "", "SOLARMAN_V5"] {
+            assert!(insert(refused, None).await.is_err(), "{refused:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_logger_serial_is_a_nonzero_u32_and_belongs_to_solarman_v5_only() {
+        let pool = migrated_from_the_second_schema().await;
+        let insert = |transport: &'static str, serial: i64| {
+            let query = sqlx::query(
+                "INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, 'h', 1, ?)",
+            );
+            query.bind(transport).bind(serial).execute(&pool)
+        };
+        assert!(insert("solarman_v5", 3_168_930_341).await.is_ok(), "a valid serial is the control");
+        for serial in [0, -1, 4_294_967_296] {
+            assert!(insert("solarman_v5", serial).await.is_err(), "{serial}");
+        }
+        for transport in ["tcp", "rtu_over_tcp"] {
+            assert!(insert(transport, 3_168_930_341).await.is_err(), "{transport} has no logger");
+        }
+    }
+
+    #[tokio::test]
+    async fn after_the_solarman_migration_the_keys_still_hold_and_cascade() {
+        let pool = migrated_from_the_second_schema().await;
+
+        let enforced: i64 = sqlx::query_scalar("PRAGMA foreign_keys").fetch_one(&pool).await.expect("pragma");
+        assert_eq!(enforced, 1, "keys are back on after the migrations");
+        let broken: Vec<(String,)> = sqlx::query_as("SELECT \"table\" FROM pragma_foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .expect("check");
+        assert_eq!(broken, []);
+        let orphan = "INSERT INTO device (connection_id, profile_id, unit_id) VALUES (99, 'p', 1)";
+        assert!(sqlx::query(orphan).execute(&pool).await.is_err(), "a device needs its connection");
+
+        sqlx::query("DELETE FROM connection WHERE id = 3").execute(&pool).await.expect("delete");
+        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (3, 2));
+        sqlx::query("DELETE FROM connection WHERE id = 1").execute(&pool).await.expect("delete");
+        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn a_failing_solarman_migration_is_an_error_keeps_every_row_and_puts_the_keys_back_on() {
+        let pool = populated_at(2).await;
+        let mut broken = sqlx::migrate!("./migrations");
+        let third = broken.migrations.iter().position(|m| m.version == 3).expect("migration 3");
+        broken.migrations.to_mut()[third].sql = "NOT SQL".into();
+        assert!(matches!(migrate(&pool, &broken).await, Err(StoreError::Migrate(_))));
+
+        let enforced: i64 = sqlx::query_scalar("PRAGMA foreign_keys").fetch_one(&pool).await.expect("pragma");
+        assert_eq!(enforced, 1, "keys are back on after a failed migration");
+        assert_eq!(count(&pool, "connection").await, 3, "nothing of the failed migration is kept");
+        assert_eq!(count(&pool, "device").await, 4);
+    }
+
+    #[tokio::test]
+    async fn a_solarman_connection_reads_back_with_its_logger_serial_and_a_later_save_replaces_it() {
+        let store = Store::in_memory().await.expect("store");
+        let solarman = NewConnection {
+            transport: Transport::SolarmanV5,
+            host: "stick".into(),
+            port: 8899,
+            logger_serial: Some(3_168_930_341),
+        };
+        let id = store.save_connection(&solarman).await.expect("save");
+        let device = NewDevice { connection_id: id, profile_id: "p".into(), unit_id: 1 };
+        store.add_device(&device).await.expect("device");
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!((row.transport, row.logger_serial), (Transport::SolarmanV5, Some(3_168_930_341)));
+        let devices = store.devices().await.expect("devices");
+        assert_eq!(
+            (devices[0].transport, devices[0].logger_serial),
+            (Transport::SolarmanV5, Some(3_168_930_341))
+        );
+
+        let discovered = NewConnection { logger_serial: None, ..solarman.clone() };
+        store.save_connection(&discovered).await.expect("save");
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!((row.transport, row.logger_serial), (Transport::SolarmanV5, None));
+
+        let tcp = NewConnection { transport: Transport::Tcp, logger_serial: None, ..solarman };
+        store.save_connection(&tcp).await.expect("save");
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!((row.transport, row.logger_serial), (Transport::Tcp, None));
+    }
+
+    #[tokio::test]
+    async fn a_logger_serial_the_schema_refuses_is_an_error_and_changes_nothing() {
+        let store = Store::in_memory().await.expect("store");
+        let stick = |transport, logger_serial| NewConnection {
+            transport,
+            host: "stick".into(),
+            port: 8899,
+            logger_serial,
+        };
+        store.save_connection(&stick(Transport::SolarmanV5, Some(7))).await.expect("save");
+        for refused in [stick(Transport::SolarmanV5, Some(0)), stick(Transport::Tcp, Some(7))] {
+            assert!(store.save_connection(&refused).await.is_err(), "{refused:?}");
+        }
+        let row = store.connection().await.expect("connection").expect("a row");
+        assert_eq!((row.transport, row.logger_serial), (Transport::SolarmanV5, Some(7)));
+    }
+
     #[tokio::test]
     async fn a_stored_transport_reads_back_as_itself() {
         let store = Store::in_memory().await.expect("store");
-        for transport in [Transport::Tcp, Transport::RtuOverTcp] {
+        for transport in [Transport::Tcp, Transport::RtuOverTcp, Transport::SolarmanV5] {
             let connection = store
-                .add_connection(&NewConnection { transport, host: "h".into(), port: 1 })
+                .add_connection(&NewConnection { transport, host: "h".into(), port: 1, logger_serial: None })
                 .await
                 .expect("connection");
             let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 1 };
@@ -575,7 +776,7 @@ mod tests {
         }
         let devices = store.devices().await.expect("devices");
         let seen: Vec<_> = devices.iter().map(|d| d.transport).collect();
-        assert_eq!(seen, [Transport::Tcp, Transport::RtuOverTcp]);
+        assert_eq!(seen, [Transport::Tcp, Transport::RtuOverTcp, Transport::SolarmanV5]);
     }
 
     #[tokio::test]

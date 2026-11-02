@@ -7,7 +7,6 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::modbus::UnknownTransport;
 use crate::store::{NewConnection, NewDevice, Store, StoreError};
 
 pub const INTERVAL_KEY: &str = "poll.interval_ms";
@@ -20,9 +19,11 @@ const DEFAULT_UNIT: u8 = 0;
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
 const INTERVAL_RANGE_MS: std::ops::RangeInclusive<i64> = 1_000..=3_600_000;
+const LOGGER_SERIAL_RANGE: &str = "Logger serial must be 1–4294967295";
+const LOGGER_SERIAL_TRANSPORT: &str = "Logger serial is for the solarman-v5 transport";
 const TIMEOUT_RANGE_MS: std::ops::RangeInclusive<i64> = 100..=60_000;
 
-/// How the connection is framed on the wire. Only `tcp` is polled so far.
+/// How the connection is framed on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Transport {
@@ -32,20 +33,22 @@ pub enum Transport {
 }
 
 impl Transport {
-    const fn name(self) -> &'static str {
+    /// The core's framing for this transport.
+    pub const fn wire(self) -> crate::modbus::Transport {
         match self {
-            Self::Tcp => "tcp",
-            Self::RtuOverTcp => "rtu-over-tcp",
-            Self::SolarmanV5 => "solarman-v5",
+            Self::Tcp => crate::modbus::Transport::Tcp,
+            Self::RtuOverTcp => crate::modbus::Transport::RtuOverTcp,
+            Self::SolarmanV5 => crate::modbus::Transport::SolarmanV5,
         }
     }
+}
 
-    /// The core's framing for this transport; none for one it cannot poll.
-    pub const fn wire(self) -> Option<crate::modbus::Transport> {
-        match self {
-            Self::Tcp => Some(crate::modbus::Transport::Tcp),
-            Self::RtuOverTcp => Some(crate::modbus::Transport::RtuOverTcp),
-            Self::SolarmanV5 => None,
+impl From<crate::modbus::Transport> for Transport {
+    fn from(wire: crate::modbus::Transport) -> Self {
+        match wire {
+            crate::modbus::Transport::Tcp => Self::Tcp,
+            crate::modbus::Transport::RtuOverTcp => Self::RtuOverTcp,
+            crate::modbus::Transport::SolarmanV5 => Self::SolarmanV5,
         }
     }
 }
@@ -65,6 +68,8 @@ pub struct InverterConfig {
     pub poll_interval_ms: i64,
     /// Always false: the core has no fake device.
     pub simulate: bool,
+    /// The stick's serial, for `solarman-v5`; without one it is learned from the stick on connect.
+    pub logger_serial: Option<i64>,
 }
 
 impl InverterConfig {
@@ -78,7 +83,14 @@ impl InverterConfig {
             (!TIMEOUT_RANGE_MS.contains(&self.timeout_ms), "Timeout must be 100–60000 ms"),
             (!INTERVAL_RANGE_MS.contains(&self.poll_interval_ms), "Poll interval must be 1000–3600000 ms"),
             (self.simulate, "Simulation is not available in this core"),
-            (self.transport != Transport::Tcp, "Only the tcp transport is supported"),
+            (
+                self.logger_serial.is_some_and(|serial| u32::try_from(serial).is_err() || serial == 0),
+                LOGGER_SERIAL_RANGE,
+            ),
+            (
+                self.logger_serial.is_some() && self.transport != Transport::SolarmanV5,
+                LOGGER_SERIAL_TRANSPORT,
+            ),
         ];
         match checks.into_iter().find(|(failed, _)| *failed) {
             Some((_, message)) => Err(message.to_owned()),
@@ -99,6 +111,11 @@ impl InverterConfig {
         self.host.as_deref().unwrap_or_default().trim()
     }
 
+    /// The validated logger serial; a value `validate` refused reads as none.
+    pub fn logger_serial(&self) -> Option<u32> {
+        self.logger_serial.and_then(|serial| u32::try_from(serial).ok())
+    }
+
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(u64::try_from(self.timeout_ms).unwrap_or(0))
     }
@@ -107,14 +124,15 @@ impl InverterConfig {
 /// The saved connection, or the defaults while none is saved.
 pub async fn read_inverter(store: &Store) -> Result<InverterConfig, StoreError> {
     let connection = store.connection().await?;
-    let (host, port) = match connection {
-        Some(row) => (Some(row.host), row.port),
-        None => (None, DEFAULT_PORT),
+    let (host, port, transport, logger_serial) = match connection {
+        Some(row) => (Some(row.host), row.port, row.transport.into(), row.logger_serial),
+        None => (None, DEFAULT_PORT, Transport::Tcp, None),
     };
     Ok(InverterConfig {
         host,
         port: i64::from(port),
-        transport: Transport::Tcp,
+        transport,
+        logger_serial: logger_serial.map(i64::from),
         unit_id: i64::from(unit_id(store.setting(UNIT_KEY).await?.as_deref())),
         timeout_ms: millis(poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref())),
         poll_interval_ms: millis(poll_interval(store.setting(INTERVAL_KEY).await?.as_deref())),
@@ -124,10 +142,12 @@ pub async fn read_inverter(store: &Store) -> Result<InverterConfig, StoreError> 
 
 /// Persists a validated config and brings the device row in line with it.
 pub async fn save_inverter(store: &Store, config: &InverterConfig) -> Result<(), StoreError> {
-    let Some(transport) = config.transport.wire() else {
-        return Err(UnknownTransport(config.transport.name().to_owned()).into());
+    let connection = NewConnection {
+        transport: config.transport.wire(),
+        host: config.host().to_owned(),
+        port: config.port(),
+        logger_serial: config.logger_serial(),
     };
-    let connection = NewConnection { transport, host: config.host().to_owned(), port: config.port() };
     store.save_connection(&connection).await?;
     store.set_setting(UNIT_KEY, &config.unit().to_string()).await?;
     store.set_setting(TIMEOUT_KEY, &config.timeout_ms.to_string()).await?;
@@ -198,7 +218,12 @@ mod tests {
             timeout_ms: 2_000,
             poll_interval_ms: 1_000,
             simulate: false,
+            logger_serial: None,
         }
+    }
+
+    fn solarman(serial: Option<i64>) -> InverterConfig {
+        InverterConfig { transport: Transport::SolarmanV5, port: 8899, logger_serial: serial, ..config() }
     }
 
     fn refusal(change: impl FnOnce(&mut InverterConfig)) -> String {
@@ -241,10 +266,32 @@ mod tests {
     }
 
     #[test]
-    fn simulation_and_unpolled_transports_are_refused() {
+    fn simulation_is_refused() {
         assert_eq!(refusal(|c| c.simulate = true), "Simulation is not available in this core");
-        assert_eq!(refusal(|c| c.transport = Transport::RtuOverTcp), "Only the tcp transport is supported");
-        assert_eq!(refusal(|c| c.transport = Transport::SolarmanV5), "Only the tcp transport is supported");
+    }
+
+    #[test]
+    fn every_transport_is_accepted() {
+        for transport in [Transport::Tcp, Transport::RtuOverTcp, Transport::SolarmanV5] {
+            assert_eq!(InverterConfig { transport, ..config() }.validate(), Ok(()), "{transport:?}");
+        }
+    }
+
+    #[test]
+    fn a_logger_serial_is_a_nonzero_u32_of_a_solarman_v5_connection() {
+        for serial in [None, Some(1), Some(3_168_930_341), Some(4_294_967_295)] {
+            assert_eq!(solarman(serial).validate(), Ok(()), "{serial:?}");
+        }
+        let range = "Logger serial must be 1–4294967295";
+        for serial in [0, -1, 4_294_967_296] {
+            let mut config = solarman(Some(serial));
+            assert_eq!(config.validate(), Err(range.to_owned()), "{serial}");
+            config.transport = Transport::Tcp;
+            assert_eq!(config.validate(), Err(range.to_owned()), "{serial}: the range comes first");
+        }
+        let only = "Logger serial is for the solarman-v5 transport";
+        assert_eq!(refusal(|c| c.logger_serial = Some(7)), only);
+        assert_eq!(refusal(|c| (c.transport, c.logger_serial) = (Transport::RtuOverTcp, Some(7))), only);
     }
 
     #[test]
@@ -278,6 +325,7 @@ mod tests {
             timeout_ms: 3_000,
             poll_interval_ms: 5_000,
             simulate: false,
+            logger_serial: None,
         };
         assert_eq!(read, defaults);
         assert_eq!(active_profile(&store).await.expect("profile"), None);
@@ -289,6 +337,16 @@ mod tests {
         save_inverter(&store, &config()).await.expect("save");
         assert_eq!(read_inverter(&store).await.expect("read"), config());
         assert_eq!(store.devices().await.expect("devices"), []);
+    }
+
+    #[tokio::test]
+    async fn each_transport_and_a_logger_serial_read_back_and_a_later_save_replaces_them() {
+        let store = Store::in_memory().await.expect("store");
+        let rtu = InverterConfig { transport: Transport::RtuOverTcp, ..config() };
+        for saved in [solarman(Some(3_168_930_341)), rtu, solarman(None), config()] {
+            save_inverter(&store, &saved).await.expect("save");
+            assert_eq!(read_inverter(&store).await.expect("read"), saved);
+        }
     }
 
     #[tokio::test]
