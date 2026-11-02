@@ -899,6 +899,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_last_hour_and_day_read_once_and_the_same_before_and_after_retention_closes_them() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
+        append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
+        let every = BucketWindow { from: Timestamp::MIN, to: Timestamp::MAX, limit: u32::MAX };
+        let read = |tier| store.buckets_between(tier, device, "power", every);
+        let hour = [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)];
+        let day = [bucket("2026-05-10T00:00:00Z", 7.0, 10.0, 4.0)];
+        assert_eq!(drop_readings(&store, "2026-05-10T23:30:00Z").await, 0, "the open hour is kept whole");
+        assert_eq!(read(Tier::Hour).await.expect("hours"), hour, "open: from the readings");
+        assert_eq!(read(Tier::Day).await.expect("days"), day);
+        assert_eq!(drop_readings(&store, "2026-05-11T00:00:00Z").await, 2);
+        assert_eq!(read(Tier::Hour).await.expect("hours"), hour, "closed: stored");
+        assert_eq!(read(Tier::Day).await.expect("days"), day);
+    }
+
+    #[tokio::test]
     async fn a_range_of_buckets_runs_from_inclusive_to_exclusive_and_stops_at_the_limit() {
         let (store, device) = with_device().await;
         for (m, value) in [0.0, 1.0, 2.0, 3.0, 4.0].into_iter().enumerate() {
