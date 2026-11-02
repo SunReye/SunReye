@@ -9,7 +9,7 @@
 	// The amortisation section before a price is entered: say what is missing,
 	// and offer the way to the field — to the people who can edit it.
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 </script>
 
 <EmptyState message={m.amortisation_empty()} icon={Coins}>

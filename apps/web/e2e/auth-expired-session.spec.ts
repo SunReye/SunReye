@@ -12,7 +12,7 @@
  *
  *  1. The bounce happens at all, driven by the RESPONSE rather than by the
  *     shell's session gate. The mock keeps serving the cached session from
- *     `/api/auth/get-session` precisely so the gate stays satisfied; if the
+ *     `/api/auth/session` precisely so the gate stays satisfied; if the
  *     hook were removed, the page would sit on a dashboard of empty states with
  *     no indication that anything is wrong. That is the failure this replaces.
  *

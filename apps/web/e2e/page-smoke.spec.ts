@@ -54,9 +54,9 @@
  *     and `/#/settings/danger` reached their surface (neither needs a payload
  *     the fixture lacked) and failed on the console/`unhandled` pair instead —
  *     which is the pair doing the work for those two.
- *   - `/#/settings/users`, `/#/settings/api-keys` — better-auth admin calls were
- *     swallowed as `null` by the `/api/auth/` catch-all, so both rendered a
- *     load-error toast over an empty table.
+ *   - `/#/settings/users`, `/#/settings/api-keys` — the admin calls were
+ *     swallowed as `null` by a catch-all, so both rendered a load-error toast
+ *     over an empty table.
  *   - `/#/automations/peak-shaving` — `/api/settings/automations` 404'd, so the
  *     form never got a draft and its switches never rendered.
  *   - `/#/onboarding` — redirected to `/#/login`: `/api/setup-status` was
@@ -549,9 +549,8 @@ const ROUTES: readonly SmokeRoute[] = [
   {
     file: "(app)/settings/users/+page.svelte",
     h1: "Users",
-    // The one panel that goes through `authClient.admin.*` rather than
-    // `api.api` — swallowing those as `null` used to leave a load-error toast
-    // and an empty table, which no heading assertion would have caught.
+    // Swallowing the admin calls as `null` used to leave a load-error toast and
+    // an empty table, which no heading assertion would have caught.
     surface: async (page) => {
       await expect(page.getByRole("row").filter({ hasText: "e2e@example.com" })).toBeVisible();
     },

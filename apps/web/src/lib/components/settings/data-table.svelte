@@ -1,4 +1,4 @@
-<script lang="ts" generics="Row extends { id: string }">
+<script lang="ts" generics="Row extends { id: string | number }">
 	import type { Snippet } from 'svelte';
 	import * as Table from '$lib/components/ui/table';
 

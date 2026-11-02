@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { authClient } from '$lib/auth-client';
+	import { apiErrorText } from '$lib/api-error';
+	import { core } from '$lib/core-api';
+	import type { components } from '$lib/core-api.gen';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Table from '$lib/components/ui/table';
@@ -13,7 +15,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	type Role = 'user' | 'admin';
-	type Row = { id: string; name: string; email: string; role?: string | null };
+	type Row = components['schemas']['Account'];
 
 	const ROLES: { value: Role; label: string }[] = [
 		{ value: 'user', label: m.users_role_user() },
@@ -25,7 +27,7 @@
 		{ label: m.users_role(), class: 'w-32' },
 		{ label: '', class: 'w-12' }
 	];
-	const roleOf = (u: Row) => u.role ?? 'user';
+	const roleOf = (u: Row): Role => (u.admin ? 'admin' : 'user');
 
 	let users = $state<Row[]>([]);
 	let loading = $state(true);
@@ -41,9 +43,9 @@
 
 	async function load() {
 		loading = true;
-		const { data, error } = await authClient.admin.listUsers({ query: { limit: 100 } });
+		const { data, error } = await core.GET('/api/admin/users');
 		if (error) toast.error(m.users_toast_load_error());
-		else users = (data?.users ?? []) as Row[];
+		else users = data ?? [];
 		loading = false;
 	}
 
@@ -52,10 +54,12 @@
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
 		creating = true;
-		const { error } = await authClient.admin.createUser({ name, email, password, role });
+		const { error } = await core.POST('/api/admin/users', {
+			body: { name, email, password, admin: role === 'admin' }
+		});
 		creating = false;
 		if (error) {
-			toast.error(error.message ?? m.users_toast_create_error());
+			toast.error(apiErrorText(error, m.users_toast_create_error()));
 			return;
 		}
 		toast.success(m.users_toast_created({ email }));
@@ -64,19 +68,22 @@
 		await load();
 	}
 
-	async function setRole(userId: string, next: Role) {
-		const { error } = await authClient.admin.setRole({ userId, role: next });
-		if (error) toast.error(m.users_toast_role_error());
+	async function setRole(id: number, next: Role) {
+		const { error } = await core.PUT('/api/admin/users/{id}/role', {
+			params: { path: { id } },
+			body: { admin: next === 'admin' }
+		});
+		if (error) toast.error(apiErrorText(error, m.users_toast_role_error()));
 		else {
 			toast.success(m.users_toast_role_updated());
 			await load();
 		}
 	}
 
-	async function remove(userId: string, label: string) {
+	async function remove(id: number, label: string) {
 		if (!confirm(m.users_remove_confirm({ label }))) return;
-		const { error } = await authClient.admin.removeUser({ userId });
-		if (error) toast.error(m.users_toast_remove_error());
+		const { error } = await core.DELETE('/api/admin/users/{id}', { params: { path: { id } } });
+		if (error) toast.error(apiErrorText(error, m.users_toast_remove_error()));
 		else {
 			toast.success(m.users_toast_removed());
 			await load();

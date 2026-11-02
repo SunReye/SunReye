@@ -59,7 +59,8 @@ One resolution of stored history: raw, minute, hourly or daily.
 _Avoid_: level, granularity
 
 **Rollup**:
-A bucket of one tier computed from the tier below: a time-weighted average for gauges, a delta for counters.
+A UTC bucket of one tier computed from the tier below: its time-weighted average, max and min, for gauges
+and counters alike. A counter's delta is computed when statistics are read.
 _Avoid_: aggregate, continuous aggregate, summary
 
 **Retention**:
@@ -67,7 +68,8 @@ How long a tier is kept before its oldest buckets are dropped.
 _Avoid_: TTL, expiry
 
 **Plant time zone**:
-The time zone rollups are cut in, so a day is the plant's day.
+The time zone statistics days, months and years are cut in, from hourly rollups; it labels rollup buckets,
+which are UTC.
 _Avoid_: local time, server time
 
 **Display time zone**:

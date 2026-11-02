@@ -6,9 +6,11 @@ pub mod modbus;
 pub mod poll;
 pub mod probe;
 pub mod profile;
+pub mod rollup;
 pub mod run;
 pub mod samples;
 pub mod settings;
+pub mod sources;
 pub mod store;
 pub mod web;
 

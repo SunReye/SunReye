@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { apiErrorText, apiMessageText } from "./api-error";
+import { apiErrorText } from "./api-error";
 
 describe("apiErrorText", () => {
   it("reads the `error` field every failing route answers with", () => {
@@ -19,7 +19,7 @@ describe("apiErrorText", () => {
     ).toBe("Expected number");
   });
 
-  it("reads a serialised Error, which is what better-auth sends", () => {
+  it("reads a serialised Error, which a thrown route error sends", () => {
     expect(apiErrorText({ message: "socket hang up" }, "fallback")).toBe("socket hang up");
   });
 
@@ -37,12 +37,5 @@ describe("apiErrorText", () => {
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
     expect(apiErrorText(cyclic, "request failed")).toBe("request failed");
-  });
-});
-
-describe("apiMessageText", () => {
-  it("reads better-auth's `message`, and nothing else", () => {
-    expect(apiMessageText({ message: "Invalid password" }, "fallback")).toBe("Invalid password");
-    expect(apiMessageText({ error: "Invalid password" }, "fallback")).toBe("fallback");
   });
 });

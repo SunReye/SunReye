@@ -22,7 +22,7 @@
 	let { metrics, onClear }: { metrics: string[]; onClear: () => void } = $props();
 
 	const session = useAppSession();
-	const canSave = $derived($session.data?.user.role === 'admin');
+	const canSave = $derived($session.data?.user.admin === true);
 
 	const save = () => customCharts.seedEditor(metrics);
 </script>
