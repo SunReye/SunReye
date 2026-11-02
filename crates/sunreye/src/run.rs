@@ -38,6 +38,8 @@ pub struct Core {
     pub bundle: Bundle,
     /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
     pub roots: Vec<CertificateDer<'static>>,
+    /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
+    now: fn() -> i64,
     polling: Polling,
     retention: Mutex<Option<Running>>,
 }
@@ -53,12 +55,30 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, roots, now_ms).await
+    }
+
+    /// [`Core::open`] with the clock standing where `now` says.
+    #[cfg(test)]
+    pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, Vec::new(), now).await
+    }
+
+    async fn open_clocked(
+        data_dir: &Path,
+        roots: Vec<CertificateDer<'static>>,
+        now: fn() -> i64,
+    ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let retention = Mutex::new(Some(spawn_retention(&store)));
-        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default(), retention });
+        let retention = Mutex::new(Some(spawn_retention(&store, now)));
+        let core = Arc::new(Self { store, bundle, roots, now, polling: Polling::default(), retention });
         core.apply().await?;
         Ok(core)
+    }
+
+    pub fn now_ms(&self) -> i64 {
+        (self.now)()
     }
 
     /// The compiled-in profile `id`, else the one a profile source supplied.
@@ -182,30 +202,31 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
     Ok(Running { stop, tasks })
 }
 
-fn spawn_retention(store: &Arc<Store>) -> Running {
+fn spawn_retention(store: &Arc<Store>, now: fn() -> i64) -> Running {
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(retention(Arc::clone(store), stopped));
+    tasks.spawn(retention(Arc::clone(store), now, stopped));
     Running { stop, tasks }
 }
 
 const RETENTION_EVERY: Duration = Duration::from_hours(1);
 
 /// Runs the retention pass at start and hourly until `stopped` changes.
-async fn retention(store: Arc<Store>, mut stopped: watch::Receiver<bool>) {
+async fn retention(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Receiver<bool>) {
     let mut ticker = tokio::time::interval(RETENTION_EVERY);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             biased;
             _ = stopped.changed() => break,
-            _ = ticker.tick() => retain_now(&store).await,
+            _ = ticker.tick() => retain_now(&store, now()).await,
         }
     }
 }
 
-async fn retain_now(store: &Store) {
-    if let Err(error) = retain(store, jiff::Timestamp::now()).await {
+async fn retain_now(store: &Store, now_ms: i64) {
+    let now = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::MAX);
+    if let Err(error) = retain(store, now).await {
         tracing::error!(%error, "retention pass failed");
     }
 }
