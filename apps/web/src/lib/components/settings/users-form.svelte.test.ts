@@ -166,3 +166,37 @@ test("the last admin cannot be removed: the core's reason is shown", async () =>
   );
   expect(toast.success).not.toHaveBeenCalled();
 });
+
+// bcrypt reads 72 UTF-8 bytes; the core refuses more in English, so the form refuses first.
+test.each([
+  ["73 bytes", "x".repeat(73)],
+  ["37 two-byte characters (74 bytes)", "é".repeat(37)],
+])("a password of %s is refused before anything is sent", async (_, password) => {
+  render(UsersForm);
+  await expect.element(row("bob@example.com")).toBeVisible();
+
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Cy Turing");
+  await page.getByLabelText(m.auth_field_email(), { exact: true }).fill("cy@example.com");
+  await page.getByLabelText(m.auth_field_password(), { exact: true }).fill(password);
+  await page.getByRole("button", { name: m.action_add() }).click();
+
+  await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(m.auth_password_max()));
+  expect(post).not.toHaveBeenCalled();
+});
+
+test("a password of exactly 72 bytes is sent", async () => {
+  post.mockResolvedValue({ data: bob });
+  render(UsersForm);
+  await expect.element(row("bob@example.com")).toBeVisible();
+
+  await page.getByLabelText(m.auth_field_name(), { exact: true }).fill("Cy Turing");
+  await page.getByLabelText(m.auth_field_email(), { exact: true }).fill("cy@example.com");
+  await page.getByLabelText(m.auth_field_password(), { exact: true }).fill("é".repeat(36));
+  await page.getByRole("button", { name: m.action_add() }).click();
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith("/api/admin/users", {
+      body: { name: "Cy Turing", email: "cy@example.com", password: "é".repeat(36), admin: false },
+    }),
+  );
+});
