@@ -129,6 +129,10 @@ bun run test:factory
 step build
 heavy env SKIP_ENV_VALIDATION=1 bun run build
 
+step budgets
+# Release binary with the real SPA, then repeated logins against the simulator (docs/adr/0006).
+heavy bun run test:budgets
+
 step "component tests"
 bun run e2e:install
 heavy bun run test:components

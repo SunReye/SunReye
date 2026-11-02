@@ -27,6 +27,7 @@ One SQLite database file per install (`sqlx` with its SQLite driver), in WAL mod
   the core defines; rollups are rows per tier. Never one row per sample.
 - The core computes raw → minute → hourly → daily rollups as readings arrive: each bucket keeps its
   time-weighted average, max and min, counters included. SQLite stores and reads; it computes no rollup.
+  A read rolls up the open hour and day, not stored yet, from the readings.
 - Rollup buckets are UTC: a day bucket sits at `00:00Z` on both DST days, as 2.x's `daily_rollups`, which
   carry no zone (`fixtures/oracle/README.md` §3).
 - The plant time zone enters only when statistics cut days, months and years from hourly rollups. Counter

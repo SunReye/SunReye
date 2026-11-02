@@ -21,6 +21,8 @@
   "dynamicallyLoaded": [
     "apps/docs/src/styles/theme.css",
     "scripts/archive-round-trip.ts",
+    "scripts/budget-gate.ts",
+    "scripts/budgets-run.ts",
     "scripts/ci-already-proven.ts",
     "scripts/ci-surfaces.ts",
     "scripts/db-parity.ts",
@@ -169,6 +171,12 @@
     },
     {
       "file": "scripts/replay-rehearsal.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/budget-gate.ts",
       "exports": [
         "*"
       ]

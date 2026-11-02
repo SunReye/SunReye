@@ -1,4 +1,4 @@
-//! `GET /api/history/rollup`: one metric's stored buckets, for the history charts.
+//! `GET /api/history/rollup`: one metric's buckets, for the history charts.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,7 +35,7 @@ pub struct RollupQuery {
     source: Option<String>,
     /// As `source`, which wins when both are set.
     inverter_id: Option<String>,
-    /// Bucket width. Default `hour`; only `minute` is served.
+    /// Bucket width. Default `hour`.
     #[param(inline)]
     bucket: Option<Width>,
     /// How far back from now. Default 168. Ignored when `from` and `to` are both set.
@@ -52,9 +52,6 @@ pub struct RollupQuery {
 
 impl RollupQuery {
     fn window(&self, now_ms: i64) -> Result<BucketWindow, ApiError> {
-        if !matches!(self.bucket.unwrap_or(Width::Hour), Width::Minute) {
-            return Err(ApiError::bad_request("bucket must be minute"));
-        }
         let limit = self.limit.unwrap_or(DEFAULT_LIMIT);
         if !(1..=MAX_LIMIT).contains(&limit) {
             return Err(ApiError::bad_request(format!("limit must be 1–{MAX_LIMIT}")));
@@ -68,6 +65,14 @@ impl RollupQuery {
             _ => (since(Timestamp::from_millisecond(now_ms).unwrap_or_default(), hours), Timestamp::MAX),
         };
         Ok(BucketWindow { from, to, limit })
+    }
+
+    fn tier(&self) -> Tier {
+        match self.bucket.unwrap_or(Width::Hour) {
+            Width::Minute => Tier::Minute,
+            Width::Hour => Tier::Hour,
+            Width::Day => Tier::Day,
+        }
     }
 
     /// The device the read is from: `source` before `inverterId`, `plant` or neither meaning the first.
@@ -117,7 +122,7 @@ impl From<Bucket> for RollupPoint {
     }
 }
 
-/// Stored buckets of one metric, oldest first: the minute tier.
+/// Minute, hour or day buckets of one metric, UTC, oldest first; the newest hour and day are open.
 #[utoipa::path(
     get,
     path = "/api/history/rollup",
@@ -130,12 +135,12 @@ impl From<Bucket> for RollupPoint {
         (status = 500, body = ErrorBody)
     )
 )]
-pub async fn minute_buckets(
+pub async fn buckets(
     State(core): State<Arc<Core>>,
     ApiQuery(query): ApiQuery<RollupQuery>,
 ) -> Result<Json<Vec<RollupPoint>>, ApiError> {
     let window = query.window(core.now_ms())?;
     let Some(device) = query.device(&core.store).await? else { return Ok(Json(Vec::new())) };
-    let buckets = core.store.buckets_between(Tier::Minute, device, &query.metric, window).await?;
+    let buckets = core.store.buckets_between(query.tier(), device, &query.metric, window).await?;
     Ok(Json(buckets.into_iter().map(RollupPoint::from).collect()))
 }

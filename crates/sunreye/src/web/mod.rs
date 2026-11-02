@@ -73,7 +73,7 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
-        .routes(routes!(rollup::minute_buckets))
+        .routes(routes!(rollup::buckets))
         .routes(routes!(auth::current, auth::logout))
         .route("/ws", get(ws::upgrade))
         .route_layer(login_required!(Accounts))
