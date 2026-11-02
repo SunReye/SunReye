@@ -4,9 +4,11 @@
 //! `source.commit`. Each entry carries the `sha256` of its source file; a test holds the pin against
 //! the oracle corpus, which records the same digests.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 const BUNDLE: &str = include_str!("../profiles/official.json");
 
@@ -30,26 +32,80 @@ pub struct Pinned {
 
 #[derive(Debug, Deserialize)]
 pub struct Profile {
+    /// Absent reads as the current schema.
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: Option<u32>,
     pub id: String,
     pub name: String,
     pub manufacturer: String,
     pub version: String,
+    pub declares: Option<Declares>,
     pub metrics: Vec<Metric>,
+}
+
+/// What the profile states about hardware no metric implies.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Declares {
+    #[serde(rename = "backupOutput")]
+    pub backup_output: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Metric {
     pub key: String,
+    pub topic: Option<String>,
     pub label: Option<String>,
     pub unit: Option<String>,
     pub group: Option<String>,
     pub scale: f64,
     pub offset: Option<f64>,
+    pub access: Option<Access>,
+    pub role: Option<String>,
+    pub index: Option<u32>,
+    pub kind: Option<MetricKind>,
+    pub storage: Option<Storage>,
     pub range: Option<Range>,
+    #[serde(rename = "enumLabels")]
+    pub enum_labels: Option<BTreeMap<i32, String>>,
+    pub flow: Option<Flow>,
     pub binding: Binding,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Access {
+    #[serde(rename = "r")]
+    Read,
+    #[serde(rename = "rw")]
+    ReadWrite,
+}
+
+/// How a widget treats the metric.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MetricKind {
+    Measurement,
+    Cumulative,
+    Status,
+    Setting,
+}
+
+/// Where a metric's values are kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Storage {
+    Series,
+    Config,
+    None,
+}
+
+/// What the sign of a signed metric means.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct Flow {
+    pub positive: String,
+    pub negative: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 pub struct Range {
     pub min: f64,
     pub max: f64,

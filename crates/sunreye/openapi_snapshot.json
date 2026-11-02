@@ -648,6 +648,120 @@
         }
       }
     },
+    "/api/history/recent": {
+      "get": {
+        "summary": "The last readings of every metric, bucketed, to seed the live sparklines.",
+        "operationId": "recentHistory",
+        "parameters": [
+          {
+            "name": "seconds",
+            "in": "query",
+            "description": "How far back the window reaches. Default 300.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 3600,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "stepSeconds",
+            "in": "query",
+            "description": "Width of one bucket. Default 1.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 60,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recent"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "summary": "The active profile as the dashboard builds itself from it.",
+        "operationId": "profileManifest",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InverterManifest"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/profile-status": {
       "get": {
         "operationId": "profileStatus",
@@ -1368,6 +1482,83 @@
           }
         }
       },
+      "Feature": {
+        "type": "string",
+        "description": "An optional subsystem the roles of a profile show.",
+        "enum": [
+          "solar_sell",
+          "grid_charge",
+          "time_of_use"
+        ]
+      },
+      "Flow": {
+        "type": "object",
+        "description": "What the sign of a signed metric means.",
+        "required": [
+          "positive",
+          "negative"
+        ],
+        "properties": {
+          "negative": {
+            "type": "string"
+          },
+          "positive": {
+            "type": "string"
+          }
+        }
+      },
+      "InverterCapabilities": {
+        "type": "object",
+        "required": [
+          "battery",
+          "pvStrings",
+          "phases",
+          "grid",
+          "generator",
+          "backupLoad",
+          "features",
+          "controls"
+        ],
+        "properties": {
+          "backupLoad": {
+            "type": "boolean"
+          },
+          "battery": {
+            "type": "boolean"
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Keys of the metrics the profile marks writable."
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Feature"
+            }
+          },
+          "generator": {
+            "type": "boolean"
+          },
+          "grid": {
+            "type": "boolean"
+          },
+          "phases": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 or 3, from distinct grid phase voltage indices.",
+            "minimum": 0
+          },
+          "pvStrings": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct PV string indices.",
+            "minimum": 0
+          }
+        }
+      },
       "InverterConfig": {
         "type": "object",
         "description": "The inverter connection as the onboarding form edits it.",
@@ -1422,6 +1613,36 @@
           }
         }
       },
+      "InverterManifest": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "manufacturer",
+          "capabilities",
+          "metrics"
+        ],
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/InverterCapabilities"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestMetric"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "Listed": {
         "allOf": [
           {
@@ -1462,6 +1683,106 @@
             "description": "Keep the session for a year instead of until the browser closes."
           }
         }
+      },
+      "ManifestMetric": {
+        "type": "object",
+        "required": [
+          "key",
+          "topic",
+          "label",
+          "unit",
+          "group",
+          "kind",
+          "storage",
+          "writable"
+        ],
+        "properties": {
+          "enumLabels": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "flow": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Flow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group": {
+            "type": "string"
+          },
+          "index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MetricKind"
+          },
+          "label": {
+            "type": "string"
+          },
+          "range": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Range"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage": {
+            "$ref": "#/components/schemas/Storage"
+          },
+          "topic": {
+            "type": "string",
+            "description": "MQTT topic suffix."
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "writable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MetricKind": {
+        "type": "string",
+        "description": "How a widget treats the metric.",
+        "enum": [
+          "measurement",
+          "cumulative",
+          "status",
+          "setting"
+        ]
       },
       "NewApiKeyRequest": {
         "type": "object",
@@ -1554,6 +1875,52 @@
           }
         }
       },
+      "Range": {
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "properties": {
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "Recent": {
+        "type": "object",
+        "description": "Every point is at `t0 + o[i] * step * 1000` milliseconds, so no timestamp repeats.",
+        "required": [
+          "t0",
+          "step",
+          "metrics"
+        ],
+        "properties": {
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Series"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "step": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "t0": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "RevokeRequest": {
         "type": "object",
         "required": [
@@ -1574,6 +1941,31 @@
         "properties": {
           "admin": {
             "type": "boolean"
+          }
+        }
+      },
+      "Series": {
+        "type": "object",
+        "description": "One metric's points: `o[i]` steps after `t0`, holding `v[i]`.",
+        "required": [
+          "o",
+          "v"
+        ],
+        "properties": {
+          "o": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "v": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
           }
         }
       },
@@ -1673,6 +2065,15 @@
             "description": "Path of the index under the base, e.g. `index.json`."
           }
         }
+      },
+      "Storage": {
+        "type": "string",
+        "description": "Where a metric's values are kept.",
+        "enum": [
+          "series",
+          "config",
+          "none"
+        ]
       },
       "TestRequest": {
         "allOf": [

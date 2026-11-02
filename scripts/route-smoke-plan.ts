@@ -428,6 +428,8 @@ export const SESSION_LABELS: readonly string[] = [
   "DELETE /api/auth/session",
   "GET /api/auth/session",
   "GET /api/capabilities",
+  "GET /api/history/recent",
+  "GET /api/profile",
 ];
 
 const SESSION_SET = new Set(SESSION_LABELS);
