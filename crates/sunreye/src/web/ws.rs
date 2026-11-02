@@ -14,12 +14,16 @@ use crate::run::Core;
 
 /// A client frame is a short topic list; anything longer is refused by the socket.
 const MAX_CLIENT_MESSAGE: usize = 16 * 1024;
+/// tungstenite reserves 128 KiB each way per socket by default; a frame is written as it is sent.
+const READ_BUFFER: usize = 4 * 1024;
 
 pub async fn upgrade(State(core): State<Arc<Core>>, upgrade: WebSocketUpgrade) -> Response {
     let subscription = core.live.subscribe();
     upgrade
         .max_message_size(MAX_CLIENT_MESSAGE)
         .max_frame_size(MAX_CLIENT_MESSAGE)
+        .read_buffer_size(READ_BUFFER)
+        .write_buffer_size(0)
         .on_upgrade(move |socket| serve(socket, subscription))
 }
 
