@@ -15,7 +15,7 @@ use crate::settings::{active_profile, set_active_profile};
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupStatus {
-    /// Always false: the core has no accounts yet, so there is no first account to create.
+    /// No account exists yet: the first sign-up creates the admin.
     pub needs_setup: bool,
 }
 
@@ -52,10 +52,14 @@ impl Capabilities {
     };
 }
 
-#[utoipa::path(get, path = "/api/setup-status",
-    operation_id = "setupStatus", responses((status = 200, body = SetupStatus)))]
-pub async fn setup_status() -> Json<SetupStatus> {
-    Json(SetupStatus { needs_setup: false })
+#[utoipa::path(
+    get,
+    path = "/api/setup-status",
+    operation_id = "setupStatus",
+    responses((status = 200, body = SetupStatus), (status = 500, body = ErrorBody))
+)]
+pub async fn setup_status(State(core): State<Arc<Core>>) -> Result<Json<SetupStatus>, ApiError> {
+    Ok(Json(SetupStatus { needs_setup: !core.store.has_accounts().await? }))
 }
 
 #[utoipa::path(

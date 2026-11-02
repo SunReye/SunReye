@@ -1,7 +1,9 @@
-//! The HTTP surface: the onboarding API, its `OpenAPI` document and the SPA, on one origin.
+//! The HTTP surface: accounts, the onboarding API, its `OpenAPI` document and the SPA, on one origin.
 
 mod assets;
+mod auth;
 mod inverter;
+mod origin;
 mod setup;
 
 use std::sync::Arc;
@@ -11,31 +13,66 @@ use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{Json, Router};
+use axum::{Json, Router, middleware};
+use axum_login::{AuthManagerLayerBuilder, login_required, permission_required};
 use serde::Serialize;
+use tower_sessions::cookie::SameSite;
+use tower_sessions::{Expiry, SessionManagerLayer};
 use utoipa::openapi::OpenApi as Document;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use self::auth::{Accounts, Permission};
+pub use self::origin::origin_authority;
 use crate::run::Core;
 use crate::store::StoreError;
 
 #[derive(OpenApi)]
-#[openapi(info(title = "SunReye Core API", description = "Monitoring core: onboarding and capabilities."))]
+#[openapi(info(
+    title = "SunReye Core API",
+    description = "Monitoring core: accounts, onboarding and capabilities."
+))]
 struct ApiDoc;
 
-/// The API routes with their `OpenAPI` document.
+/// What the startup flags decide about sessions and origins.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Config {
+    /// Origins besides the core's own host that may send state-changing requests, e.g. a TLS proxy.
+    pub trusted_origins: Vec<String>,
+    /// Session cookie only over HTTPS.
+    pub secure_cookies: bool,
+}
+
+/// The API routes with their `OpenAPI` document. Anonymous callers reach only the setup gates and the
+/// sign-in routes.
 fn api() -> (Router<Arc<Core>>, Document) {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(setup::setup_status))
         .routes(routes!(setup::profile_status))
+        .routes(routes!(auth::sign_up))
+        .routes(routes!(auth::login))
+        .merge(signed_in())
+        .merge(admin())
+        .split_for_parts()
+}
+
+fn signed_in() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
+        .routes(routes!(auth::current, auth::logout))
+        .route_layer(login_required!(Accounts))
+}
+
+/// Settings: 401 without a session, 403 for an account that is not an admin.
+fn admin() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
         .routes(routes!(setup::list_profiles))
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
-        .split_for_parts()
+        .route_layer(permission_required!(Accounts, Permission::Admin))
+        .route_layer(login_required!(Accounts))
 }
 
 /// The `OpenAPI` document of every route [`router`] serves under `/api`.
@@ -43,15 +80,21 @@ pub fn openapi() -> Document {
     api().1
 }
 
-/// Protection: none in the router. Every route, including the settings writes and the device probe, is
-/// open to whoever reaches the socket. `--listen` defaults to loopback and warns at startup otherwise;
-/// session gating arrives with #315.
-pub fn router(core: Arc<Core>) -> Router {
+pub fn router(core: Arc<Core>, config: &Config) -> Router {
     let (routes, document) = api();
     let document = Arc::new(document);
+    let sessions = SessionManagerLayer::new(core.store.sessions())
+        .with_secure(config.secure_cookies)
+        .with_same_site(SameSite::Lax)
+        .with_http_only(true)
+        .with_expiry(Expiry::OnSessionEnd);
+    let accounts = AuthManagerLayerBuilder::new(Accounts::new(Arc::clone(&core.store)), sessions).build();
+    let trusted: Arc<[String]> = config.trusted_origins.clone().into();
     routes
         .route("/openapi/json", get(move || std::future::ready(Json(Arc::clone(&document)))))
         .fallback(get(assets::serve))
+        .layer(accounts)
+        .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))
         .with_state(core)
 }
 
@@ -72,6 +115,18 @@ impl ApiError {
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self { status: StatusCode::BAD_REQUEST, message: message.into() }
     }
+
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::UNAUTHORIZED, message: message.into() }
+    }
+
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::FORBIDDEN, message: message.into() }
+    }
+
+    pub fn internal() -> Self {
+        Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: "internal error".into() }
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -84,7 +139,7 @@ impl IntoResponse for ApiError {
 impl From<StoreError> for ApiError {
     fn from(error: StoreError) -> Self {
         tracing::error!(%error, "store failed while answering a request");
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: "internal error".into() }
+        Self::internal()
     }
 }
 

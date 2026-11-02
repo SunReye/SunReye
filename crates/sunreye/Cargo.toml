@@ -45,6 +45,10 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 utoipa = "6"
 utoipa-axum = "0.3"
 rust-embed = { version = "8", features = ["interpolate-folder-path", "mime-guess"] }
+axum-login = "0.18"
+password-auth = "1"
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 
 [lints]
 workspace = true

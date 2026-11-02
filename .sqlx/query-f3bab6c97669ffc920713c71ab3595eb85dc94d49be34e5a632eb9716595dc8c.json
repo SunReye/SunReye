@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM account) AS \"any!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "any!: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f3bab6c97669ffc920713c71ab3595eb85dc94d49be34e5a632eb9716595dc8c"
+}

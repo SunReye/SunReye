@@ -35,12 +35,6 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    if !cli.listen.ip().is_loopback() {
-        tracing::warn!(
-            listen = %cli.listen,
-            "listen address is not loopback: the API has no accounts yet, so anyone who can reach it can change settings"
-        );
-    }
     if let Ok(addr) = listener.local_addr() {
         tracing::info!(%addr, "sunreye listening");
     }
@@ -51,7 +45,7 @@ async fn main() -> ExitCode {
         };
         tracing::info!(signal = received, "sunreye stopping");
     };
-    match sunreye::run(&cli.data_dir, listener, stop).await {
+    match sunreye::run(&cli.data_dir, &cli.web(), listener, stop).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(%error, "sunreye cannot run");

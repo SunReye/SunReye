@@ -37,3 +37,10 @@ debug = "line-tables-only"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Argon2 unoptimised takes seconds per password check; tests sign in many times.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
