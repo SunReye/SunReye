@@ -270,10 +270,30 @@ export interface paths {
         get: operations["listProfileSources"];
         put?: never;
         /**
-         * Fetches the source and replaces what an earlier fetch of it stored. An invalid profile is skipped and
-         *     reported; the rest load.
+         * Fetches the source and replaces what an earlier fetch of it stored, polling devices by the new
+         *     definitions. An invalid profile is skipped and reported; the rest load.
          */
         post: operations["addProfileSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/profiles/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validates the uploaded profile file and stores it, replacing an earlier import of its id; devices are
+         *     polled by the new definition. The rejection names the field, never the value.
+         */
+        post: operations["importProfile"];
         delete?: never;
         options?: never;
         head?: never;
@@ -389,6 +409,9 @@ export interface components {
         Flow: {
             negative: string;
             positive: string;
+        };
+        ImportedProfile: {
+            id: string;
         };
         InverterCapabilities: {
             backupLoad: boolean;
@@ -1637,6 +1660,70 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    importProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The profile JSON file, as text */
+        requestBody: {
+            content: {
+                "text/plain": string;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportedProfile"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

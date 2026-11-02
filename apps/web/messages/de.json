@@ -1151,5 +1151,9 @@
   "setup_step_account": "Konto",
   "action_close": "Schließen",
   "profiles_uninstall_title": "{name} entfernen?",
-  "profiles_uninstall_body": "Das heruntergeladene Profil wird von diesem Server gelöscht. Du kannst es jederzeit erneut aus seinem Repository herunterladen."
+  "profiles_uninstall_body": "Das heruntergeladene Profil wird von diesem Server gelöscht. Du kannst es jederzeit erneut aus seinem Repository herunterladen.",
+  "profile_import_title": "Profildatei importieren",
+  "profile_import_label": "Profildatei (.json)",
+  "profile_import_success": "{id} importiert",
+  "profile_import_failed": "Import fehlgeschlagen: {error}"
 }

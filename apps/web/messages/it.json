@@ -1151,5 +1151,9 @@
   "setup_step_account": "Account",
   "action_close": "Chiudi",
   "profiles_uninstall_title": "Rimuovere {name}?",
-  "profiles_uninstall_body": "Il profilo scaricato viene eliminato da questo server. Puoi riscaricarlo dal suo repository in qualsiasi momento."
+  "profiles_uninstall_body": "Il profilo scaricato viene eliminato da questo server. Puoi riscaricarlo dal suo repository in qualsiasi momento.",
+  "profile_import_title": "Importa un file di profilo",
+  "profile_import_label": "File di profilo (.json)",
+  "profile_import_success": "{id} importato",
+  "profile_import_failed": "Importazione non riuscita: {error}"
 }
