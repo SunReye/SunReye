@@ -5,7 +5,8 @@
  * the only one of the three a unit test can hold still.
  *
  * The harness boots the core binary on a scratch data directory, signs up the
- * admin, adds a plain account, then walks `/openapi/json` and hits everything.
+ * admin, has it create a plain account and an API key, then walks
+ * `/openapi/json` and hits everything.
  *
  * ## What counts as a failure
  *
@@ -42,9 +43,9 @@
 /**
  * A raw sanity floor on the size of the listing: it catches a document that
  * shrank wholesale — a truncated `/openapi/json`, a route group that failed to
- * mount. Measured 2026-11-02 against the core: 12 operations.
+ * mount. Measured 2026-11-02 against the core: 20 operations.
  */
-export const MIN_ROUTES = 12;
+export const MIN_ROUTES = 20;
 
 export interface SmokeOptions {
   help: boolean;

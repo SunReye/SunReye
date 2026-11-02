@@ -1,17 +1,21 @@
 //! The HTTP surface: accounts, the onboarding API, its `OpenAPI` document and the SPA, on one origin.
 
+mod api_keys;
 mod assets;
 mod auth;
 mod inverter;
 mod origin;
 mod password;
 mod setup;
+mod users;
+mod v1;
 
 use std::sync::Arc;
 
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequest, Request};
+use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::{FromRequest, FromRequestParts, Path, Request};
 use axum::http::StatusCode;
+use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router, middleware};
@@ -46,13 +50,14 @@ pub struct Config {
 }
 
 /// The API routes with their `OpenAPI` document. Anonymous callers reach only the setup gates and the
-/// sign-in routes.
+/// sign-in routes; `/api/v1` takes an API key instead of a session.
 fn api() -> (Router<Arc<Core>>, Document) {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(setup::setup_status))
         .routes(routes!(setup::profile_status))
         .routes(routes!(auth::sign_up))
         .routes(routes!(auth::login))
+        .routes(routes!(v1::entities))
         .merge(signed_in())
         .merge(admin())
         .split_for_parts()
@@ -66,16 +71,30 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .route_layer(middleware::map_response(auth::guard_body))
 }
 
-/// Settings: 401 without a session, 403 for an account that is not an admin.
+/// Settings and accounts: 401 without a session, 403 for an account that is not an admin.
 fn admin() -> OpenApiRouter<Arc<Core>> {
+    settings()
+        .merge(accounts())
+        .route_layer(permission_required!(Accounts, Permission::Admin))
+        .route_layer(login_required!(Accounts))
+        .route_layer(middleware::map_response(auth::guard_body))
+}
+
+fn settings() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::list_profiles))
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
-        .route_layer(permission_required!(Accounts, Permission::Admin))
-        .route_layer(login_required!(Accounts))
-        .route_layer(middleware::map_response(auth::guard_body))
+}
+
+fn accounts() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(users::list, users::create))
+        .routes(routes!(users::set_role))
+        .routes(routes!(users::remove))
+        .routes(routes!(api_keys::list, api_keys::create))
+        .routes(routes!(api_keys::revoke))
 }
 
 /// The `OpenAPI` document of every route [`router`] serves under `/api`.
@@ -127,6 +146,14 @@ impl ApiError {
         Self { status: StatusCode::FORBIDDEN, message: message.into() }
     }
 
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::NOT_FOUND, message: message.into() }
+    }
+
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::CONFLICT, message: message.into() }
+    }
+
     pub fn internal() -> Self {
         Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: "internal error".into() }
     }
@@ -160,6 +187,25 @@ where
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
         match Json::<T>::from_request(request, state).await {
             Ok(Json(value)) => Ok(Self(value)),
+            Err(rejection) => Err(ApiError::bad_request(rejection.body_text())),
+        }
+    }
+}
+
+/// `Path` whose rejection is a 400 in the shape above.
+#[derive(Debug)]
+pub struct ApiPath<T>(pub T);
+
+impl<T, S> FromRequestParts<S> for ApiPath<T>
+where
+    Path<T>: FromRequestParts<S, Rejection = PathRejection>,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        match Path::<T>::from_request_parts(parts, state).await {
+            Ok(Path(value)) => Ok(Self(value)),
             Err(rejection) => Err(ApiError::bad_request(rejection.body_text())),
         }
     }

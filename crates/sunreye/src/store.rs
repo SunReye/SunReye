@@ -12,6 +12,9 @@ use sqlx::{Executor, Sqlite, SqlitePool};
 use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
+mod accounts;
+
+pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
@@ -199,18 +202,6 @@ impl Store {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|row| row.id))
-    }
-
-    /// A non-admin account, for tests until accounts are administered over HTTP.
-    #[cfg(test)]
-    pub(crate) async fn add_plain_account(&self, account: &NewAccount) -> Result<i64, StoreError> {
-        let query = sqlx::query_scalar(
-            "INSERT INTO account (email, name, password_hash, admin) VALUES (?, ?, ?, 0) RETURNING id",
-        )
-        .bind(&account.email)
-        .bind(&account.name)
-        .bind(&account.password_hash);
-        Ok(query.fetch_one(&self.pool).await?)
     }
 
     pub async fn account(&self, id: i64) -> Result<Option<AccountRow>, StoreError> {
