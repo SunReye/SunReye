@@ -915,15 +915,6 @@ export function automations() {
 
 // ─── Profiles ───────────────────────────────────────────────────────────────
 
-const OFFICIAL_SOURCE = "https://github.com/SunReye/SunReye-Official-Profiles";
-
-/** `GET /api/settings/profile-sources` — sources plus the server's `official` flag. */
-export const PROFILE_SOURCES = {
-  sources: [
-    { url: OFFICIAL_SOURCE, label: "SunReye Official Profiles", enabled: true, official: true },
-  ],
-};
-
 /** `GET /api/profiles` — the registered profiles, aligned with the fixture manifest. */
 export function profiles(manifest: FixtureManifest) {
   // `version` is `undefined` for built-ins on the real server: the key is
@@ -1182,57 +1173,6 @@ export function devices(manifest: FixtureManifest): DeviceRoster {
     ],
   };
 }
-
-/** `GET /api/profiles/updates` — `UpdateCheckResult`, the "checked, nothing new" state. */
-export function profileUpdates() {
-  return { checkedAt: ago(600_000), updates: [], errors: [] };
-}
-
-/**
- * `GET /api/profiles/available` — the Browse action's catalogue.
- *
- * Three entries across two manufacturers and two Deye families, because
- * `available-profile-group.svelte` groups manufacturer → family → SKU: a
- * one-entry catalogue renders one row and never runs the grouping at all.
- */
-export const AVAILABLE_PROFILES = {
-  profiles: [
-    {
-      id: "deye-sunsynk-sg04lp3",
-      name: "Deye SUN-12K-SG04LP3",
-      manufacturer: "Deye",
-      version: "1.2.0",
-      path: "profiles/deye-sg04lp3.json",
-      description: "Three-phase hybrid",
-      source: OFFICIAL_SOURCE,
-      installed: false,
-      updateAvailable: false,
-    },
-    {
-      id: "deye-sunsynk-sg04lp3-8k",
-      name: "Deye SUN-8K-SG04LP3",
-      manufacturer: "Deye",
-      version: "1.2.0",
-      path: "profiles/deye-sg04lp3-8k.json",
-      description: "Three-phase hybrid",
-      source: OFFICIAL_SOURCE,
-      installed: false,
-      updateAvailable: false,
-    },
-    {
-      id: "sungrow-sh10rt",
-      name: "Sungrow SH10RT",
-      manufacturer: "Sungrow",
-      version: "1.4.2",
-      path: "profiles/sungrow-sh10rt.json",
-      description: "Three-phase hybrid",
-      source: OFFICIAL_SOURCE,
-      installed: true,
-      updateAvailable: true,
-    },
-  ],
-  errors: [],
-};
 
 // ─── Admin ──────────────────────────────────────────────────────────────────
 

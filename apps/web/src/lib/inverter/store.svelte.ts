@@ -1,9 +1,10 @@
 import { untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
-import { api } from "$lib/api";
+import { core } from "$lib/core-api";
 import { source } from "$lib/source.svelte";
 import { uiPrefs } from "$lib/ui-prefs.svelte";
 import { bus } from "$lib/ws/bus.svelte";
+import { fetchManifest, fetchRecent } from "./live-api";
 import { backfillSeconds, isFullBackfill, LiveSeries, MetricsFeed } from "./live-metrics";
 import type {
   CanonicalRole,
@@ -152,8 +153,8 @@ class InverterStore {
   }
 
   async #loadManifest(): Promise<void> {
-    const { data } = await api.api.profile.get();
-    if (data) this.manifest = data as unknown as InverterManifest;
+    const manifest = await fetchManifest(core);
+    if (manifest) this.manifest = manifest;
   }
 
   /**
@@ -187,9 +188,7 @@ class InverterStore {
       untrack(() => this.#live.newestHeldMs()),
       Date.now(),
     );
-    const { data } = await api.api.history.recent.get({
-      query: { seconds, stepSeconds: 1, ...source.query },
-    });
+    const data = await fetchRecent(core, seconds);
     if (!data) return;
     // A full-width request is authoritative about the window and replaces the
     // buffers; a gap request only describes the gap and merges. The predicate is
