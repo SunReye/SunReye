@@ -8,6 +8,7 @@ import {
   SESSION_LABELS,
   classify,
   classifyAuth,
+  classifyUpgrade,
   isPublicLabel,
   isSessionLabel,
   parseArgs,
@@ -727,5 +728,33 @@ describe("classifying a NON-ADMIN probe", () => {
   test("a public route must not refuse a signed-in user either", () => {
     expect(member("GET /api/setup-status", 401).ok).toBe(false);
     expect(member("GET /api/setup-status", 200).ok).toBe(true);
+  });
+});
+
+describe("classifying the /ws upgrade", () => {
+  const upgrade = (status: number, mode: "anonymous" | "member" | "authenticated") =>
+    classifyUpgrade({ status, body: "" }, mode);
+
+  test("a stranger's upgrade must be refused", () => {
+    expect(upgrade(401, "anonymous").ok).toBe(true);
+    expect(upgrade(403, "anonymous").ok).toBe(true);
+    const leaked = upgrade(101, "anonymous");
+    expect(leaked.ok).toBe(false);
+    expect(leaked.label).toBe("GET /ws");
+    expect(leaked.detail).toMatch(/no credentials/i);
+  });
+
+  test("any session must be upgraded, a plain user as much as the admin", () => {
+    for (const mode of ["member", "authenticated"] as const) {
+      expect(upgrade(101, mode).ok).toBe(true);
+      expect(upgrade(401, mode).ok).toBe(false);
+      expect(upgrade(400, mode).ok).toBe(false);
+    }
+  });
+
+  test("an upgrade that never answered fails in every mode", () => {
+    for (const mode of ["anonymous", "member", "authenticated"] as const) {
+      expect(classifyUpgrade({ error: "reset" }, mode).ok).toBe(false);
+    }
   });
 });
