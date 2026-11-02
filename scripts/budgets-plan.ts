@@ -10,28 +10,13 @@
 const MIB = 1024 * 1024;
 const KIB = 1024;
 
-/**
- * Logins read and thrown away before the fit. Most of a login's growth is early: allocator arenas
- * and bcrypt's one-time costs, 20 to 50 KiB per login over the first 60 and 2.5 KiB over 400. The
- * login count is the clock, as it is for polls; the fit starts past the warm-up.
- */
+/** Logins not fitted: early ones grow 20 to 50 KiB each over the first 60, later ones about 2.5 KiB. */
 export const WARMUP_LOGINS = 100;
 /** Resident readings, one per login, fitted after the warm-up: a window long enough that one step is a small slope. */
 export const LOGIN_READINGS = 300;
-/**
- * Poll cycles read and thrown away before the fit: the core keeps growing for the first minutes
- * after boot (allocator arenas, SQLite pages, lazily built tables), in steps of 0.3 to 1 MiB.
- * Over 8 runs of 130 to 300 cycles the last step came at cycle 105 and none after 117, so 120
- * puts the fit past all of them. The cycle is about a second: this count is most of the soak.
- */
+/** Poll cycles not fitted: boot steps of 0.3 to 1 MiB were measured up to cycle 117. */
 export const POLL_WARMUP = 120;
-/**
- * Resident readings, one per poll cycle, fitted after the warm-up. A step of S bytes inside n
- * readings reads as at most 3S/(2n) per poll, so a late 350 KiB step reads as 16 KiB over 32
- * readings and as 66 KiB over 8, which is how the budget flipped. A 128 KiB leak climbs 4 MiB
- * across 32 readings against a 32 KiB/poll budget, 4 times over it, and a leak that began in
- * the warm-up is still a slope.
- */
+/** Poll readings fitted: a one-time step of S reads as at most 3S/(2n) per poll over n readings. */
 export const POLL_READINGS = 32;
 /** Readings the poll phase takes in all. */
 export const POLL_SAMPLES = POLL_WARMUP + POLL_READINGS;
@@ -103,8 +88,14 @@ const kibLine = (text: string, key: string): number => {
 };
 
 /** Resident set and its high-water mark, in bytes. */
-export function parseProcStatus(text: string): { rssBytes: number; peakBytes: number } {
-  return { rssBytes: kibLine(text, "VmRSS"), peakBytes: kibLine(text, "VmHWM") };
+export function parseProcStatus(text: string): {
+  rssBytes: number;
+  peakBytes: number;
+} {
+  return {
+    rssBytes: kibLine(text, "VmRSS"),
+    peakBytes: kibLine(text, "VmHWM"),
+  };
 }
 
 function median(values: number[]): number {
@@ -125,7 +116,7 @@ export type Trend = {
  * last quarter keeps one allocator spike from reading as a high steady value; the slope uses
  * every reading, so a leak of any size per operation shows however the run is paced.
  */
-export function trendOf(readings: number[], warmup: number): Trend {
+function trendOf(readings: number[], warmup: number): Trend {
   const after = readings.slice(warmup);
   if (after.length < 2) throw new Error(`${after.length} readings after warm-up, need at least 2`);
   const meanIndex = (after.length - 1) / 2;
@@ -137,12 +128,23 @@ export function trendOf(readings: number[], warmup: number): Trend {
     variance += (i - meanIndex) ** 2;
   });
   const size = Math.max(1, after.length >> 2);
-  return { steadyBytes: median(after.slice(-size)), bytesPerOp: covariance / variance };
+  return {
+    steadyBytes: median(after.slice(-size)),
+    bytesPerOp: covariance / variance,
+  };
+}
+
+/** The login phase: the fit over the readings after `WARMUP_LOGINS`. */
+export function loginPhase(readings: number[]): Trend {
+  return trendOf(readings, WARMUP_LOGINS);
 }
 
 /** The poll phase: the fit over the readings after `POLL_WARMUP`, and how many it covered. */
 export function pollPhase(readings: number[]): Trend & { polls: number } {
-  return { ...trendOf(readings, POLL_WARMUP), polls: readings.length - POLL_WARMUP };
+  return {
+    ...trendOf(readings, POLL_WARMUP),
+    polls: readings.length - POLL_WARMUP,
+  };
 }
 
 /** A line of `sunreye-sim` stdout: the port it listens on, or the start address of a request. */

@@ -30,12 +30,12 @@ import {
   POLL_WARMUP,
   WARMUP_LOGINS,
   judge,
+  loginPhase,
   parseBudgets,
   parseProcStatus,
   parseSimLine,
   pollPhase,
   render,
-  trendOf,
 } from "./budgets-plan";
 import { boot, signIn } from "./core-boot";
 import { mirrorDir } from "./mirror-dir";
@@ -46,7 +46,11 @@ const CORE = join(TARGET, "release", "sunreye");
 const SIM = join(TARGET, "release", "sunreye-sim");
 const SPA = join(TARGET, "budgets-spa");
 
-const ADMIN = { name: "Budgets", email: "budgets@soak.invalid", password: "budgets-soak-pw-1" };
+const ADMIN = {
+  name: "Budgets",
+  email: "budgets@soak.invalid",
+  password: "budgets-soak-pw-1",
+};
 const PROFILE = "deye-sg05lp3";
 
 /** Fails a hold in which no poll cycle ended for this long; never part of a verdict. */
@@ -90,7 +94,10 @@ async function eachLine(stream: ReadableStream<Uint8Array>, onLine: (line: strin
 /** The simulator on a free port, telling the poll cycles apart in the requests it answers. */
 async function startSim() {
   const oracle = join(ROOT, "fixtures/oracle");
-  const proc = Bun.spawn([SIM, oracle, PROFILE, "ramp"], { stdout: "pipe", stderr: "inherit" });
+  const proc = Bun.spawn([SIM, oracle, PROFILE, "ramp"], {
+    stdout: "pipe",
+    stderr: "inherit",
+  });
   const counter = new CycleCounter();
   const sim = { port: 0, onCycle: undefined as (() => void) | undefined };
   const ready = Promise.withResolvers<void>();
@@ -147,7 +154,9 @@ async function login({ base }: Session) {
 
 /** The dashboard's seed read: an hour of every metric. */
 async function recentHistory({ base, cookie }: Session) {
-  const response = await fetch(`${base}/api/history/recent?seconds=3600`, { headers: { cookie } });
+  const response = await fetch(`${base}/api/history/recent?seconds=3600`, {
+    headers: { cookie },
+  });
   await response.arrayBuffer();
   if (!response.ok) throw new Error(`GET /api/history/recent failed (${response.status})`);
 }
@@ -219,7 +228,7 @@ export async function run(logins: number): Promise<number> {
     children.push(core);
     const session = { base, cookie: await setUp(base, sim.sim.port) };
     log(`signing in ${logins} times, fitting the last ${LOGIN_READINGS} after ${WARMUP_LOGINS}`);
-    const loginTrend = trendOf(await soakLogins(session, core.pid, logins), WARMUP_LOGINS);
+    const loginTrend = loginPhase(await soakLogins(session, core.pid, logins));
     log(
       `holding for ${POLL_SAMPLES} poll cycles, fitting the last ${POLL_READINGS} after ${POLL_WARMUP}`,
     );
