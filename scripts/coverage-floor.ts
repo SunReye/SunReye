@@ -21,14 +21,14 @@ import { isSourceFile } from "./require-tests";
 /**
  * The ratchet, read from lcov — the same LF/LH the coverage badge reports, which
  * runs a little below bun's own summary column because the two count executable
- * lines differently. Measured 99.1705 % lines / 98.3340 % functions once every
+ * lines differently. Measured 99.1538 % lines / 98.1286 % functions once every
  * tracked source either appears in the report or is named in {@link COVERAGE_EXEMPT};
  * the floor is that, truncated to two decimals. Raise it as coverage climbs.
  *
  * Before that, the report left out any source no test loaded, so deleting a
  * source's only test raised the percentage instead of lowering it.
  */
-export const FLOOR = { line: 0.9917, function: 0.9833 } as const;
+export const FLOOR = { line: 0.9915, function: 0.9812 } as const;
 
 /**
  * The Rust ratchet. Measured 95.6 % lines / 100 % functions on the first crate; the one
@@ -53,26 +53,25 @@ export type Floor = { line: number; function: number };
 const MEASURED = [/^apps\/[^/]+\/src\//, /^packages\/[^/]+\/src\//, /^scripts\//];
 
 /**
- * Sources that no `bun test` run can load, or that hold no behaviour of their own. Layered on the
- * TDD gate's `isSourceFile` (type modules, barrels, declarations), which stays the one list for what
- * "cannot hold a branch" means. Each entry names the layer that proves the file instead; extend it
- * only with a reason, never to get a change through. An exempt file that IS loaded still counts.
+ * Sources no unit test charges, each with a reason that was checked by importing the file under
+ * `bun test`. Layered on the TDD gate's `isSourceFile` (type modules, barrels, declarations).
+ * "Debt" entries load fine and hold branches nobody has tested yet: burn them down, never extend
+ * the list to get a change through. An exempt file that IS loaded still counts.
  */
 export const COVERAGE_EXEMPT: ReadonlyArray<
   { reason: string } & ({ pattern: RegExp } | { paths: readonly string[] })
 > = [
   {
     pattern: /\.svelte\.ts$/,
-    reason: "rune module: runes compile only under the Svelte compiler, so bun test cannot load it",
+    reason: "rune module: `$state` is undefined outside the Svelte compiler, so import throws",
   },
   { pattern: /\.gen\.ts$/, reason: "generated code" },
   {
     pattern: /^apps\/server\/src\/routes\/[^/]+\.ts$/,
-    reason: "route handler: only test:routes executes one",
+    reason: "debt: route handler; loads, but only test:routes executes one",
   },
   {
-    reason:
-      "types, constant tables and context keys: no branch to prove, and the cachedSetting bindings delegate to the accessor app-settings.test.ts covers",
+    reason: "no logic: types, constant tables and cachedSetting bindings",
     paths: [
       "apps/server/src/settings/chart-palette-settings.ts",
       "apps/server/src/settings/evcc-settings.ts",
@@ -81,7 +80,6 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
       "apps/server/src/settings/statistics-prefs-settings.ts",
       "apps/server/src/settings/ui-prefs-settings.ts",
       "apps/web/src/lib/automations.ts",
-      "apps/web/src/lib/charts/fullscreen-context.ts",
       "apps/web/src/lib/components/automations/price-regime.ts",
       "apps/web/src/lib/components/automations/run-state.ts",
       "apps/web/src/lib/components/settings/inverter-types.ts",
@@ -91,38 +89,38 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
       "apps/web/src/lib/components/ui/sidebar/constants.ts",
       "apps/web/src/lib/statistics/sections.ts",
       "apps/web/src/lib/tariff/draft.ts",
-      "apps/web/src/routes/(app)/settings/status-context.ts",
       "packages/env/src/web.ts",
     ],
   },
   {
     reason:
-      "imports $app, $env, the Eden client, the Astro or Vitest runtime, or a vendored UI helper: none resolves under bun test; the component and e2e layers load it",
+      "Svelte context accessors: get/setContext throw outside component init, so only the component layer calls them",
     paths: [
-      "apps/docs/src/content.config.ts",
-      "apps/web/src/component-test-setup.ts",
-      "apps/web/src/lib/api.ts",
-      "apps/web/src/lib/auth-client.ts",
-      "apps/web/src/lib/components/automations/decision-fetch.ts",
-      "apps/web/src/lib/components/settings/devices/roster-transport.ts",
-      "apps/web/src/lib/components/ui/chart/chart-utils.ts",
-      "apps/web/src/lib/core-api.ts",
-      "apps/web/src/lib/engine-admin.ts",
-      "apps/web/src/lib/history/device-series.ts",
-      "apps/web/src/lib/history/plant-day.ts",
-      "apps/web/src/lib/inverter/chart-format.ts",
-      "apps/web/src/lib/resolve.ts",
-      "apps/web/src/lib/server-url.ts",
-      "apps/web/src/lib/session.ts",
-      "apps/web/src/lib/setup.ts",
+      "apps/web/src/lib/charts/fullscreen-context.ts",
+      "apps/web/src/routes/(app)/settings/status-context.ts",
     ],
   },
   {
     reason:
-      "queries Postgres through the shared client: test:db and test:routes prove it, never bun test",
+      "tooling hook: Astro's content loader (`astro:content` does not resolve) and Vitest's component setup; no logic",
+    paths: ["apps/docs/src/content.config.ts", "apps/web/src/component-test-setup.ts"],
+  },
+  {
+    reason:
+      "debt: builds a client or URL once at import from `$env`, `browser` and `location`; each branch needs a fresh module instance, which makes serial coverage order-dependent",
+    paths: [
+      "apps/web/src/lib/auth-client.ts",
+      "apps/web/src/lib/core-api.ts",
+      "apps/web/src/lib/server-url.ts",
+    ],
+  },
+  {
+    reason:
+      "debt: loads under bun test, but every branch sits behind a Postgres query or the plant client; testing it needs a pg stand-in like settings/config.test.ts",
     paths: [
       "apps/server/src/admin/api-keys.ts",
       "apps/server/src/charts/custom-charts.ts",
+      "apps/server/src/devices/connection-runtime.ts",
       "apps/server/src/migration/onboarding-apply.ts",
       "apps/server/src/settings/logging-settings.ts",
       "apps/server/src/statistics/spot-stats.ts",
@@ -130,25 +128,23 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
     ],
   },
   {
-    reason:
-      "boot wiring or route plugin: importing it starts the runtime or mounts the app; test:routes boots it",
-    paths: [
-      "apps/server/src/devices/connection-runtime.ts",
-      "apps/server/src/evcc/evcc-storage.ts",
-      "apps/server/src/index.ts",
-      "apps/server/src/inverter/entities.ts",
-      "apps/server/src/main.ts",
-      "apps/server/src/plant/plant-wiring.ts",
-    ],
+    reason: "server boot: importing it reads Postgres and starts the runtime; test:routes boots it",
+    paths: ["apps/server/src/index.ts", "apps/server/src/main.ts"],
   },
   {
     reason:
-      "process entry, compile-time check or CI harness: it runs as a program, so importing it runs it; scripts/ci executes it",
+      "process entry or compile-time check: importing it runs it (DB connect, binary build, CLI exit, or a throw)",
     paths: [
       "packages/db/src/setup-timescale.ts",
       "packages/inverter-core/src/sdk.type-test.ts",
       "packages/profile-sdk/src/cli.ts",
       "scripts/compiled-binary.ts",
+    ],
+  },
+  {
+    reason:
+      "harness for test:routes and the upgrade rehearsal: drives Docker, a throwaway TimescaleDB and the 1.2.0 fixture",
+    paths: [
       "scripts/route-smoke-run.ts",
       "scripts/upgrade-phases.ts",
       "scripts/upgrade-rehearsal.ts",
@@ -182,12 +178,7 @@ export function unloadedSources(lcov: string, tracked: string[]): string[] {
 
 /** Sum an lcov report's per-record line and function counters. */
 export function totalsFromLcov(lcov: string): Totals {
-  const totals: Totals = {
-    linesFound: 0,
-    linesHit: 0,
-    functionsFound: 0,
-    functionsHit: 0,
-  };
+  const totals: Totals = { linesFound: 0, linesHit: 0, functionsFound: 0, functionsHit: 0 };
   for (const line of lcov.split("\n")) {
     if (line.startsWith("LF:")) totals.linesFound += Number(line.slice(3));
     else if (line.startsWith("LH:")) totals.linesHit += Number(line.slice(3));
@@ -237,7 +228,7 @@ export function checkFloor(totals: Totals, floor: Floor): FloorResult {
   }
   const lines = (totals.linesHit / totals.linesFound) * 100;
   const functions = (totals.functionsHit / totals.functionsFound) * 100;
-  const pct = (v: number) => `${v.toFixed(2)} %`;
+  const pct = (v: number) => `${v.toFixed(4)} %`;
   if (lines < floor.line * 100) {
     failures.push(`line coverage ${pct(lines)} is below the floor of ${pct(floor.line * 100)}`);
   }

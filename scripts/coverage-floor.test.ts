@@ -77,12 +77,7 @@ describe("totalsFromLcov", () => {
 });
 
 describe("checkFloor", () => {
-  const totals = {
-    linesFound: 100,
-    linesHit: 90,
-    functionsFound: 100,
-    functionsHit: 90,
-  };
+  const totals = { linesFound: 100, linesHit: 90, functionsFound: 100, functionsHit: 90 };
 
   test("above the floor passes and reports the percentages", () => {
     const r = checkFloor(totals, { line: 0.8, function: 0.8 });
@@ -103,6 +98,15 @@ describe("checkFloor", () => {
     expect(r.ok).toBe(false);
     expect(r.failures).toHaveLength(1);
     expect(r.failures[0]).toContain("line");
+  });
+
+  // 99.17 against a 99.175 floor must not read "99.17 % is below the floor of 99.17 %".
+  test("a breach prints enough decimals to tell measured from floor", () => {
+    const r = checkFloor(
+      { linesFound: 10_000, linesHit: 9_917, functionsFound: 10_000, functionsHit: 9_999 },
+      { line: 0.99175, function: 0.5 },
+    );
+    expect(r.failures).toEqual(["line coverage 99.1700 % is below the floor of 99.1750 %"]);
   });
 
   test("both metrics can fail at once", () => {
@@ -126,8 +130,8 @@ describe("checkFloor", () => {
   // raising these too — which is the point, because then lowering it is an edit
   // to a test that says so, in the diff, rather than one digit in a constant.
   test("the shipped floor never falls below where the ratchet has reached", () => {
-    expect(FLOOR.line).toBeGreaterThanOrEqual(0.9917);
-    expect(FLOOR.function).toBeGreaterThanOrEqual(0.9833);
+    expect(FLOOR.line).toBeGreaterThanOrEqual(0.9915);
+    expect(FLOOR.function).toBeGreaterThanOrEqual(0.9812);
   });
 
   // A counter that is not a number parses to NaN, and every comparison against
@@ -166,12 +170,7 @@ describe("checkFloor", () => {
 
   test("a malformed report reports no percentage rather than a NaN one", () => {
     const r = checkFloor(
-      {
-        linesFound: Number.NaN,
-        linesHit: 0,
-        functionsFound: 4,
-        functionsHit: 4,
-      },
+      { linesFound: Number.NaN, linesHit: 0, functionsFound: 4, functionsHit: 4 },
       { line: 0.8, function: 0.8 },
     );
     expect(r.lines).toBe(0);
@@ -187,7 +186,7 @@ describe("checkFloor", () => {
     );
     expect(r.ok).toBe(false);
     expect(r.lines).toBe(0);
-    expect(r.failures.join("\n")).toContain("0.00 %");
+    expect(r.failures.join("\n")).toContain("0.0000 %");
     expect(r.failures.join("\n")).not.toContain("malformed");
   });
 
@@ -217,14 +216,7 @@ function fakeIo(reports: Record<string, string>, tracked: string[] = []) {
     log: (m) => out.push(m),
     error: (m) => err.push(m),
   };
-  return {
-    io,
-    out,
-    err,
-    asked,
-    stdout: () => out.join("\n"),
-    stderr: () => err.join("\n"),
-  };
+  return { io, out, err, asked, stdout: () => out.join("\n"), stderr: () => err.join("\n") };
 }
 
 describe("main", () => {
@@ -253,7 +245,7 @@ describe("main", () => {
   test("a report below the floor fails, naming the breached metric", () => {
     const f = fakeIo({ "coverage/lcov.info": lcov });
     expect(main([], f.io, { line: 0.9, function: 0.5 })).toBe(1);
-    expect(f.stderr()).toContain("line coverage 80.00 % is below the floor of 90.00 %");
+    expect(f.stderr()).toContain("line coverage 80.0000 % is below the floor of 90.0000 %");
     expect(f.stderr()).not.toContain("function coverage");
     expect(f.out).toEqual([]);
   });
@@ -474,9 +466,9 @@ describe("COVERAGE_EXEMPT", () => {
   });
 
   test("a named path is exempt and its neighbour is not", () => {
-    expect(unloadedSources(lcov, ["apps/web/src/lib/resolve.ts"])).toEqual([]);
-    expect(unloadedSources(lcov, ["apps/web/src/lib/resolve2.ts"])).toEqual([
-      "apps/web/src/lib/resolve2.ts",
+    expect(unloadedSources(lcov, ["apps/docs/src/content.config.ts"])).toEqual([]);
+    expect(unloadedSources(lcov, ["apps/docs/src/content.config2.ts"])).toEqual([
+      "apps/docs/src/content.config2.ts",
     ]);
   });
 
