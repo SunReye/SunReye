@@ -226,6 +226,8 @@ export interface RecordedWrite {
   body: unknown;
 }
 
+type GateKey = "role" | "publicDashboard" | "needsSetup" | "needsProfile" | "migration";
+
 export interface MockBackend {
   /** The manifest this instance serves. */
   readonly manifest: FixtureManifest;
@@ -294,6 +296,8 @@ export interface MockBackend {
    * does on the real server.
    */
   expireSession(): void;
+  /** Replace the five gate answers without reloading; omitted keys revert to default. */
+  setGate(gate: Pick<BackendOptions, GateKey>): void;
 }
 
 /** Deterministic PRNG — a perf number that moves because of the fixture is noise. */
@@ -426,11 +430,12 @@ const SESSION_USER = {
  * Install the fake backend on `page`. Call it BEFORE `page.goto` — the routes
  * have to be in place for the very first request the shell makes.
  */
-export async function mockBackend(page: Page, options: BackendOptions = {}): Promise<MockBackend> {
+export async function mockBackend(page: Page, initial: BackendOptions = {}): Promise<MockBackend> {
+  let options = initial;
   const feedIntervalMs = options.feedIntervalMs ?? 1000;
   const rows = options.rollupRows ?? 1876;
   const stride = options.backfillStrideSeconds ?? 10;
-  const role = options.role === undefined ? "admin" : options.role;
+  const roleNow = () => (options.role === undefined ? "admin" : options.role);
 
   const requests: string[] = [];
   const unhandled: string[] = [];
@@ -542,7 +547,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
   function allows(topic: string): boolean {
     const policy = TOPIC_POLICY[topic];
     if (policy === undefined) return false;
-    return policy === "admin" ? role === "admin" : true;
+    return policy === "admin" ? roleNow() === "admin" : true;
   }
 
   function handleClientFrame(raw: string): void {
@@ -592,6 +597,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     const path = url.pathname;
     const query = Object.fromEntries(url.searchParams);
     requests.push(path + url.search);
+    const role = roleNow();
     if (method !== "GET") {
       let sent: unknown = null;
       try {
@@ -1153,6 +1159,17 @@ export async function mockBackend(page: Page, options: BackendOptions = {}): Pro
     },
     expireSession() {
       sessionExpired = true;
+    },
+    setGate(gate) {
+      options = {
+        ...options,
+        role: undefined,
+        publicDashboard: undefined,
+        needsSetup: undefined,
+        needsProfile: undefined,
+        migration: undefined,
+        ...gate,
+      };
     },
   };
   return backend;

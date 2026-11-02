@@ -12,8 +12,8 @@
  * sit on "Loading…" forever, or a page could boot straight into a console
  * error, and the suite stayed green.
  *
- * So this is a census in a browser: discovered from a disk scan, one case
- * per page, and four assertions each.
+ * So this is a census in a browser: checked against a disk scan, one boot, every
+ * route walked by hash, and four assertions each.
  *
  *  1. the shell `<h1>` reads what the route's `setPageHeader` says it should
  *  2. a KEY SURFACE — one locator that only exists once the route's own
@@ -27,8 +27,8 @@
  *
  * ## Adding a page
  *
- * A new `+page.svelte` fails the first case here (uncovered by smoke), which
- * forces someone to name a mock state and a surface worth asserting.
+ * A new `+page.svelte` fails the sweep (uncovered by smoke), which forces someone
+ * to name a mock state and a surface worth asserting.
  *
  * ## First run, before the mock was extended (recorded on purpose)
  *
@@ -120,6 +120,21 @@ import {
   powerFlowReadouts,
 } from "./support/open-page";
 
+// A clicked link navigates in-app; assigning `location.hash` reloads the document.
+const goToHash = (page: Page, url: string) =>
+  page.evaluate(
+    (href) => {
+      const link = document.createElement("a");
+      link.href = href;
+      document.body.append(link);
+      link.click();
+      link.remove();
+    },
+    url.replace(/^\//, ""),
+  );
+
+const urlOf = (route: SmokeRoute): string => route.url ?? hashUrlFor(route.file);
+
 type SmokeRoute = {
   /**
    * The page file, relative to `src/routes` — the same key
@@ -145,6 +160,8 @@ type SmokeRoute = {
    * Runs after the h1 assertion and before the console/unhandled pair.
    */
   surface: (page: Page, opened: OpenedPage) => Promise<void>;
+  /** Leave by the app's own way out when a hash change cannot (one-way routes). */
+  exit?: (page: Page, opened: OpenedPage) => Promise<void>;
 };
 
 /**
@@ -190,6 +207,38 @@ const picker = (page: Page, label: string) =>
   expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
 
 const ROUTES: readonly SmokeRoute[] = [
+  {
+    // Reachable ONLY with an unconfirmed 1.x migration, so the status is overridden.
+    // FIRST: the shell reads migration status once per boot, and confirming is the only way out.
+    file: "migration/+page.svelte",
+    open: {
+      live: false,
+      role: "admin",
+      migration: {
+        onboardingRequired: true,
+        backfillOutstanding: true,
+        slugEditable: true,
+        plantName: "My plant",
+        deviceName: "SG05LP3",
+        plantSlug: "my-plant",
+        deviceSlug: "inverter",
+      },
+    },
+    h1: "Name your plant and inverter",
+    surface: async (page) => {
+      await expect(page.getByLabel("Plant name")).toHaveValue("My plant");
+      await expect(page.getByLabel("Device name")).toHaveValue("SG05LP3");
+      // The live-derived identifier, which is the whole point of the screen: it is
+      // about to be frozen into every MQTT topic and every entity unique_id.
+      await expect(page.getByText("my-plant/inverter")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Confirm and continue" })).toBeVisible();
+    },
+    exit: async (page, opened) => {
+      await page.getByRole("button", { name: "Confirm and continue" }).click();
+      await expect(page).toHaveURL(/\/#\/$/);
+      await opened.backend.waitForLive();
+    },
+  },
   {
     file: "(app)/+page.svelte",
     h1: "Overview",
@@ -539,6 +588,19 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    file: "setup/+page.svelte",
+    // Admin exists, no active profile. `needsSetup` must stay false or the
+    // page's own `firstRunGate()` bounces it to /#/onboarding.
+    open: { live: false, needsProfile: true },
+    h1: "Set up your inverter",
+    surface: async (page) => {
+      await heading(page, "Select a profile");
+      await expect(page.getByText(MANIFEST.name).first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "Select", exact: true }).first()).toBeVisible();
+    },
+  },
+  // Logged-out routes LAST: the shell keeps the session it first read, so they would turn later routes into the visitor.
+  {
     file: "login/+page.svelte",
     // Outside `(app)`: its own AuthShell h1, no shell, no gate, no socket.
     open: { live: false, role: null, publicDashboard: true },
@@ -563,70 +625,51 @@ const ROUTES: readonly SmokeRoute[] = [
       await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
     },
   },
-  {
-    // Migration onboarding. Reachable ONLY on an instance with an unconfirmed 1.x
-    // migration — its own gate bounces it to /#/ otherwise, which is why the
-    // status has to be overridden here rather than defaulted.
-    file: "migration/+page.svelte",
-    open: {
-      live: false,
-      role: "admin",
-      migration: {
-        onboardingRequired: true,
-        backfillOutstanding: true,
-        slugEditable: true,
-        plantName: "My plant",
-        deviceName: "SG05LP3",
-        plantSlug: "my-plant",
-        deviceSlug: "inverter",
-      },
-    },
-    h1: "Name your plant and inverter",
-    surface: async (page) => {
-      await expect(page.getByLabel("Plant name")).toHaveValue("My plant");
-      await expect(page.getByLabel("Device name")).toHaveValue("SG05LP3");
-      // The live-derived identifier, which is the whole point of the screen: it is
-      // about to be frozen into every MQTT topic and every entity unique_id.
-      await expect(page.getByText("my-plant/inverter")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Confirm and continue" })).toBeVisible();
-    },
-  },
-  {
-    file: "setup/+page.svelte",
-    // Admin exists, no active profile. `needsSetup` must stay false or the
-    // page's own `firstRunGate()` bounces it to /#/onboarding.
-    open: { live: false, needsProfile: true },
-    h1: "Set up your inverter",
-    surface: async (page) => {
-      await heading(page, "Select a profile");
-      await expect(page.getByText(MANIFEST.name).first()).toBeVisible();
-      await expect(page.getByRole("button", { name: "Select", exact: true }).first()).toBeVisible();
-    },
-  },
 ];
 
-// The point of scanning disk instead of listing files: a route added without a
-// smoke case lands here, not in an incident. Not a browser test — it runs
-// first, in milliseconds, and names the missing entry.
-test("every page in src/routes has a smoke case", () => {
-  expect(discoverPageFiles()).toEqual(ROUTES.map((r) => r.file).sort());
+// One boot, every route by hash; each failure is prefixed with its URL so every broken route is named.
+test("every route renders its key surface", async ({ page }) => {
+  // The point of scanning disk instead of listing files: a route added without
+  // a smoke case lands here, not in an incident.
+  expect(discoverPageFiles(), "src/routes pages without a smoke case").toEqual(
+    ROUTES.map((r) => r.file).sort(),
+  );
+
+  const first = ROUTES[0];
+  const opened = await openPage(page, urlOf(first), first.open);
+  const failures: string[] = [];
+  const visited: string[] = [];
+
+  for (const [index, route] of ROUTES.entries()) {
+    const url = urlOf(route);
+    visited.push(url);
+    const errorsBefore = opened.consoleErrors.length;
+    const unhandledBefore = opened.backend.unhandled.length;
+    try {
+      if (index > 0) {
+        opened.backend.setGate(route.open ?? {});
+        const previous = ROUTES[index - 1];
+        if (previous.exit) await previous.exit(page, opened);
+        else await goToHash(page, url);
+      }
+      if (route.landsOn)
+        await expect(page).toHaveURL(new RegExp(`${route.landsOn.replace(/[/#]/g, "\\$&")}$`));
+      await expectHeading(opened, route.h1);
+      await route.surface(page, opened);
+
+      // Both AFTER the surface assertion, on purpose (TESTING.md, "Don't wait for
+      // a thing your assertion is about"): a missing stub then reads as a named
+      // path rather than as a page stuck behind its first-run gate.
+      expect(opened.consoleErrors.slice(errorsBefore), "console errors").toEqual([]);
+      expect(opened.backend.unhandled.slice(unhandledBefore), "unmocked /api calls").toEqual([]);
+    } catch (error) {
+      failures.push(`${url}\n${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  test.info().annotations.push({ type: "routes", description: visited.join(" ") });
+  if (failures.length > 0)
+    throw new Error(
+      `${failures.length} of ${ROUTES.length} routes failed\n\n${failures.join("\n\n")}`,
+    );
 });
-
-// Playwright has no `test.each`; a `for` over the table is the idiom.
-for (const route of ROUTES) {
-  const url = route.url ?? hashUrlFor(route.file);
-  test(`${url} renders`, async ({ page }) => {
-    const opened = await openPage(page, url, route.open);
-
-    if (route.landsOn)
-      await expect(page).toHaveURL(new RegExp(`${route.landsOn.replace(/[/#]/g, "\\$&")}$`));
-    await expectHeading(opened, route.h1);
-    await route.surface(page, opened);
-
-    // Both AFTER the surface assertion, on purpose (TESTING.md, "Don't wait for
-    // a thing your assertion is about"): a missing stub then reads as a named
-    // path rather than as a page stuck behind its first-run gate.
-    expect(opened.consoleErrors).toEqual([]);
-    expect(opened.backend.unhandled).toEqual([]);
-  });
-}
