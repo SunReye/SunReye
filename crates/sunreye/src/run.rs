@@ -200,7 +200,10 @@ impl DeviceTask {
     async fn poll_once(&mut self) -> Result<Vec<(String, f64)>, crate::modbus::Error> {
         let client = match &mut self.client {
             Some(client) => client,
-            none => none.insert(Client::connect(&self.device.host, self.device.port, self.timeout).await?),
+            none => none.insert(
+                Client::connect(self.device.transport, &self.device.host, self.device.port, self.timeout)
+                    .await?,
+            ),
         };
         self.poller.poll(client).await
     }
@@ -226,6 +229,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
+    use crate::modbus::Transport;
     use crate::samples::Sample;
     use crate::settings::INTERVAL_KEY;
     use crate::store::{NewConnection, NewDevice};
@@ -237,10 +241,14 @@ mod tests {
     }
 
     async fn seed(dir: &Path, port: u16, profile: &str, interval: &str) -> i64 {
+        seed_over(Transport::Tcp, dir, port, profile, interval).await
+    }
+
+    async fn seed_over(transport: Transport, dir: &Path, port: u16, profile: &str, interval: &str) -> i64 {
         let store = Store::open(dir).await.expect("store");
         store.set_setting(INTERVAL_KEY, interval).await.expect("interval");
         let connection = store
-            .add_connection(&NewConnection { transport: "tcp".into(), host: "127.0.0.1".into(), port })
+            .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port })
             .await
             .expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: profile.into(), unit_id: 1 };

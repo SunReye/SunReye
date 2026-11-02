@@ -12,6 +12,8 @@ pub mod settings;
 pub mod store;
 pub mod web;
 
+pub mod https;
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 

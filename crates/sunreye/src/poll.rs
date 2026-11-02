@@ -79,6 +79,7 @@ mod tests {
     use sunreye_sim::{Simulator, profile_case};
 
     use super::*;
+    use crate::modbus::Transport;
     use crate::profile::Bundle;
 
     const PROFILES: [&str; 3] = ["deye-sg01hp3", "deye-sg05lp3", "deye-sun20k-sg05lp3"];
@@ -88,7 +89,9 @@ mod tests {
         let fixture = profile_case(&oracle, profile_id, case).expect("fixture");
         let sim = Simulator::start(fixture.registers, &[1]).await.expect("sim");
         let mut client =
-            Client::connect("127.0.0.1", sim.addr.port(), Duration::from_secs(5)).await.expect("connect");
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+                .await
+                .expect("connect");
         let profile = Bundle::official().expect("bundle").profile(profile_id).expect("profile").clone();
         let got = DevicePoller::new(profile, 1).poll(&mut client).await.expect("poll");
         (got.into_iter().collect(), fixture.readings)
@@ -112,7 +115,9 @@ mod tests {
     async fn a_silent_device_ends_the_poll_with_a_timeout() {
         let sim = Simulator::start(sunreye_sim::Registers::default(), &[]).await.expect("sim");
         let mut client =
-            Client::connect("127.0.0.1", sim.addr.port(), Duration::from_millis(100)).await.expect("connect");
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_millis(100))
+                .await
+                .expect("connect");
         let profile = Bundle::official().expect("bundle").profile("deye-sg05lp3").expect("profile").clone();
         assert_eq!(DevicePoller::new(profile, 1).poll(&mut client).await, Err(Error::Timeout));
     }
