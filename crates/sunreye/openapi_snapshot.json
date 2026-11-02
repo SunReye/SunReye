@@ -1108,7 +1108,7 @@
         }
       },
       "post": {
-        "summary": "Fetches the source and replaces what an earlier fetch of it stored. An invalid profile is skipped and\nreported; the rest load.",
+        "summary": "Fetches the source and replaces what an earlier fetch of it stored, polling devices by the new\ndefinitions. An invalid profile is skipped and reported; the rest load.",
         "operationId": "addProfileSource",
         "requestBody": {
           "content": {
@@ -1149,6 +1149,79 @@
             }
           },
           "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/profiles/import": {
+      "post": {
+        "summary": "Validates the uploaded profile file and stores it, replacing an earlier import of its id; devices are\npolled by the new definition. The rejection names the field, never the value.",
+        "operationId": "importProfile",
+        "requestBody": {
+          "description": "The profile JSON file, as text",
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportedProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1503,6 +1576,17 @@
             "type": "string"
           },
           "positive": {
+            "type": "string"
+          }
+        }
+      },
+      "ImportedProfile": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
             "type": "string"
           }
         }

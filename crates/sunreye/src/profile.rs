@@ -126,6 +126,31 @@ pub enum Binding {
     Control,
 }
 
+/// Where inside a binding the schema fails. An internally tagged enum buffers its content, so the path of
+/// a bad `addr`, `type` or `expr` stops at the binding; this reads the same map flat.
+pub(crate) fn binding_fault(
+    node: &serde_json::Value,
+) -> Option<serde_path_to_error::Error<serde_json::Error>> {
+    #[derive(Deserialize)]
+    #[allow(dead_code, reason = "read only to check the schema")]
+    struct Flat {
+        via: Via,
+        addr: Option<Vec<u16>>,
+        #[serde(rename = "type")]
+        kind: Option<RegisterType>,
+        expr: Option<Expr>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    #[allow(dead_code, reason = "read only to check the schema")]
+    enum Via {
+        Modbus,
+        Compute,
+        Control,
+    }
+    serde_path_to_error::deserialize::<_, Flat>(node).err()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum RegisterType {
     #[serde(rename = "U_WORD")]

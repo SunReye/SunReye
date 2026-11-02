@@ -13,7 +13,7 @@ use crate::manifest::{InverterManifest, manifest as manifest_of};
 use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{active_profile, set_active_profile};
-use crate::sources::installed;
+use crate::sources::{Installed, installed};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -151,8 +151,9 @@ pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<Pro
     };
     let compiled_in = core.bundle.profiles.iter().map(|pinned| entry(&pinned.profile, true));
     let sourced = installed(&core.store).await?;
-    let sourced = sourced.iter().filter(|p| core.bundle.profile(&p.profile.id).is_none());
-    Ok(Json(compiled_in.chain(sourced.map(|p| entry(&p.profile, false))).collect()))
+    let sourced = sourced.iter().filter(|p| core.bundle.profile(&p.id).is_none());
+    let sourced = sourced.filter_map(Installed::profile).map(|profile| entry(&profile, false));
+    Ok(Json(compiled_in.chain(sourced).collect()))
 }
 
 #[utoipa::path(
