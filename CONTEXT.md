@@ -11,7 +11,7 @@ The one installation SunReye watches and controls — its site, tariff, time zon
 _Avoid_: site, system, installation
 
 **Device**:
-One physical or logical machine in the plant that has readings of its own, named by a stable slug. Controllers and gateways are devices too.
+One physical or logical machine in the plant that has readings of its own, named by a stable slug. The 4.0 core's slug is the device id as a decimal string. Controllers and gateways are devices too.
 _Avoid_: inverter (for the general case), unit, node
 
 **Role**:
