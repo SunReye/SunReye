@@ -187,6 +187,8 @@ export type Measured = {
   polls: number;
   /** Bytes gained per poll cycle over the poll phase. */
   pollBytesPerOp: number;
+  /** Messages the `/ws` client received during the poll phase. */
+  feedMessages: number;
 };
 
 /** One line per broken budget; empty when the run is inside all of them. The peak is only reported. */
@@ -212,6 +214,7 @@ export function judge(m: Measured, budgets: Budgets): string[] {
       m.polls < POLL_READINGS,
       `${m.polls} poll cycles read, need ${POLL_READINGS}: the soak ran without a device`,
     ],
+    [m.feedMessages === 0, "/ws sent no message during the poll phase: the live feed is down"],
   ];
   return checks.filter(([broken]) => broken).map(([, message]) => message);
 }

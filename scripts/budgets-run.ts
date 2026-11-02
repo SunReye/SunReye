@@ -37,7 +37,7 @@ import {
   pollPhase,
   render,
 } from "./budgets-plan";
-import { boot, signIn } from "./core-boot";
+import { boot, requireOk, signIn } from "./core-boot";
 import { mirrorDir } from "./mirror-dir";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -124,8 +124,7 @@ async function setUp(base: string, simPort: number) {
       headers: { "content-type": "application/json", cookie, origin: base },
       body: JSON.stringify(body),
     });
-    if (!response.ok)
-      throw new Error(`PUT ${path} failed (${response.status}): ${await response.text()}`);
+    await requireOk(response, `PUT ${path}`);
   };
   await put("/api/settings/inverter", {
     host: "127.0.0.1",
@@ -148,8 +147,8 @@ async function login({ base }: Session) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password }),
   });
+  await requireOk(response, "login");
   await response.arrayBuffer();
-  if (!response.ok) throw new Error(`login failed (${response.status})`);
 }
 
 /** The dashboard's seed read: an hour of every metric. */
@@ -157,14 +156,14 @@ async function recentHistory({ base, cookie }: Session) {
   const response = await fetch(`${base}/api/history/recent?seconds=3600`, {
     headers: { cookie },
   });
+  await requireOk(response, "GET /api/history/recent");
   await response.arrayBuffer();
-  if (!response.ok) throw new Error(`GET /api/history/recent failed (${response.status})`);
 }
 
 /** What each soak step sends. Add a request here and every step sends it, in order. */
 const SOAK_REQUESTS: ((session: Session) => Promise<void>)[] = [login, recentHistory];
 
-/** A dashboard's live socket, held open and drained for the poll phase. */
+/** A dashboard's live socket, held open for the poll phase, counting what it receives. */
 async function openFeed({ base, cookie }: Session) {
   const socket = new WebSocket(`${base.replace("http", "ws")}/ws`, {
     headers: { cookie, origin: base },
@@ -172,10 +171,11 @@ async function openFeed({ base, cookie }: Session) {
   const opened = Promise.withResolvers<void>();
   socket.onopen = () => opened.resolve();
   socket.onerror = () => opened.reject(new Error("the /ws socket failed to open"));
-  socket.onmessage = () => {};
+  let messages = 0;
+  socket.onmessage = () => messages++;
   await opened.promise;
   socket.send(JSON.stringify({ t: "sub", topics: ["metrics", "plant"] }));
-  return socket;
+  return { socket, messages: () => messages };
 }
 
 const readStatus = (pid: number) => parseProcStatus(readFileSync(`/proc/${pid}/status`, "utf8"));
@@ -233,7 +233,7 @@ export async function run(logins: number): Promise<number> {
       `holding for ${POLL_SAMPLES} poll cycles, fitting the last ${POLL_READINGS} after ${POLL_WARMUP}`,
     );
     const feed = await openFeed(session);
-    const pollReadings = await soakPolls(sim.sim, core.pid).finally(() => feed.close());
+    const pollReadings = await soakPolls(sim.sim, core.pid).finally(() => feed.socket.close());
     const pollTrend = pollPhase(pollReadings);
     const measured = {
       binaryBytes: statSync(CORE).size,
@@ -243,6 +243,7 @@ export async function run(logins: number): Promise<number> {
       loginBytesPerOp: loginTrend.bytesPerOp,
       polls: pollTrend.polls,
       pollBytesPerOp: pollTrend.bytesPerOp,
+      feedMessages: feed.messages(),
     };
     console.log(render(measured, budgets));
     const failures = judge(measured, budgets);

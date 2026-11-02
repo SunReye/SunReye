@@ -160,6 +160,7 @@ const measured = (over: Partial<Measured> = {}): Measured => ({
   loginBytesPerOp: 0,
   polls: POLL_READINGS,
   pollBytesPerOp: 0,
+  feedMessages: 300,
   ...over,
 });
 
@@ -218,6 +219,13 @@ describe("judging a run against the budgets", () => {
     expect(judge(measured({ polls: POLL_READINGS - 1 }), budgets)).toEqual([
       expect.stringContaining("poll cycles read"),
     ]);
+  });
+
+  test("a /ws feed that sent nothing during the poll phase fails", () => {
+    expect(judge(measured({ feedMessages: 0 }), budgets)).toEqual([
+      expect.stringContaining("/ws sent no message"),
+    ]);
+    expect(judge(measured({ feedMessages: 1 }), budgets)).toEqual([]);
   });
 
   test("the peak alone is reported, never judged", () => {
