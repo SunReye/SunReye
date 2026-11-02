@@ -8,8 +8,7 @@
 	// things (this and the collapse caret), so the cell is `section-header`'s to
 	// draw; a box here as well would nest a second flex row, with a second copy of
 	// the cluster gap, inside the first — and it would break the one measurement
-	// that proves this whole change, `e2e/statistics-mobile-density.spec.ts`, which
-	// compares the cluster's right edge against its PARENT's. With a wrapper in
+	// that proves this whole change: the cluster's right edge against its PARENT's. With a wrapper in
 	// between, that parent is the cluster's own cell and the comparison is
 	// trivially true whatever the layout does.
 	//

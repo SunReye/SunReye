@@ -55,8 +55,8 @@
 	     would be auto-placed onto a second row. So the cell is drawn here and its
 	     occupants — the caller's chrome and the caret — render into it without
 	     boxes of their own. `data-slot` is on the cell for the same reason: it is
-	     what `e2e/statistics-mobile-density.spec.ts` measures against the header
-	     row, and a nested wrapper would make it measure against itself.
+	     what a layout measurement compares against the header row, and a nested
+	     wrapper would make it measure against itself.
 
 	     DOM order is now the reading order at every width (title … controls,
 	     caret). The `order` pair the caret used to carry is gone with the

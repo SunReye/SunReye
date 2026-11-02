@@ -24,8 +24,7 @@ export type Point = { x: number; y: number };
  * Not exported: nothing outside needs the number, only the answer, and an
  * exported constant with no consumer is the kind of API that grows callers who
  * re-implement the comparison. Its own test restates the 8 rather than importing
- * it — an independent measurement of the very value it claims, the way
- * `e2e/statistics-mobile-density.spec.ts` restates the tile floor.
+ * it — an independent measurement of the very value it claims.
  *
  * Fingers are not still, and neither is a hand on a mouse. 8px is roughly the
  * jitter of a thumb resting on glass and is the same slop Chromium uses before
