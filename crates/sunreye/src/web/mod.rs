@@ -6,6 +6,7 @@ mod auth;
 mod inverter;
 mod origin;
 mod password;
+mod profile_sources;
 mod setup;
 mod users;
 mod v1;
@@ -86,6 +87,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
+        .routes(routes!(profile_sources::list, profile_sources::add))
 }
 
 fn accounts() -> OpenApiRouter<Arc<Core>> {

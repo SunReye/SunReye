@@ -948,6 +948,113 @@
         }
       }
     },
+    "/api/settings/profile-sources": {
+      "get": {
+        "operationId": "listProfileSources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Listed"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Fetches the source and replaces what an earlier fetch of it stored. An invalid profile is skipped and\nreported; the rest load.",
+        "operationId": "addProfileSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Source"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/setup-status": {
       "get": {
         "operationId": "setupStatus",
@@ -1070,6 +1177,35 @@
             "type": "string"
           }
         }
+      },
+      "AddedSource": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Source"
+          },
+          {
+            "type": "object",
+            "required": [
+              "profileIds",
+              "skipped"
+            ],
+            "properties": {
+              "profileIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Skipped"
+                },
+                "description": "Files the index listed that did not load, with why."
+              }
+            }
+          }
+        ]
       },
       "ApiKeyView": {
         "type": "object",
@@ -1286,6 +1422,28 @@
           }
         }
       },
+      "Listed": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Source"
+          },
+          {
+            "type": "object",
+            "required": [
+              "profileIds"
+            ],
+            "properties": {
+              "profileIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "description": "A stored source with the ids of the profiles it supplied."
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -1450,6 +1608,22 @@
           }
         }
       },
+      "Skipped": {
+        "type": "object",
+        "description": "A file the index listed that did not load.",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "SnapshotMetric": {
         "type": "object",
         "description": "One decoded value of a test read.",
@@ -1479,6 +1653,24 @@
           "value": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "description": "Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is\nrefused, so nothing secret is stored or logged.",
+        "required": [
+          "baseUrl",
+          "indexPath"
+        ],
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "`https://` base the index and every profile path resolve against."
+          },
+          "indexPath": {
+            "type": "string",
+            "description": "Path of the index under the base, e.g. `index.json`."
           }
         }
       },

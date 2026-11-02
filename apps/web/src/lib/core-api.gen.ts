@@ -226,6 +226,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/profile-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listProfileSources"];
+        put?: never;
+        /**
+         * Fetches the source and replaces what an earlier fetch of it stored. An invalid profile is skipped and
+         *     reported; the rest load.
+         */
+        post: operations["addProfileSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup-status": {
         parameters: {
             query?: never;
@@ -277,6 +297,11 @@ export interface components {
         };
         ActiveProfileRequest: {
             id: string;
+        };
+        AddedSource: components["schemas"]["Source"] & {
+            profileIds: string[];
+            /** @description Files the index listed that did not load, with why. */
+            skipped: components["schemas"]["Skipped"][];
         };
         /** @description A key as listed: never the key itself. */
         ApiKeyView: {
@@ -345,6 +370,10 @@ export interface components {
             /** Format: int64 */
             unitId: number;
         };
+        /** @description A stored source with the ids of the profiles it supplied. */
+        Listed: components["schemas"]["Source"] & {
+            profileIds: string[];
+        };
         LoginRequest: {
             email: string;
             password: string;
@@ -393,6 +422,11 @@ export interface components {
             name: string;
             password: string;
         };
+        /** @description A file the index listed that did not load. */
+        Skipped: {
+            path: string;
+            reason: string;
+        };
         /** @description One decoded value of a test read. */
         SnapshotMetric: {
             group: string;
@@ -401,6 +435,16 @@ export interface components {
             unit: string | null;
             /** Format: double */
             value: number;
+        };
+        /**
+         * @description Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is
+         *     refused, so nothing secret is stored or logged.
+         */
+        Source: {
+            /** @description `https://` base the index and every profile path resolve against. */
+            baseUrl: string;
+            /** @description Path of the index under the base, e.g. `index.json`. */
+            indexPath: string;
         };
         /** @description A connection to test, with the profile to read it with. Without one the active profile is used. */
         TestRequest: components["schemas"]["InverterConfig"] & {
@@ -1265,6 +1309,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    listProfileSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Listed"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    addProfileSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Source"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedSource"];
                 };
             };
             400: {

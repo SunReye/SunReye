@@ -9,6 +9,7 @@ pub mod profile;
 pub mod run;
 pub mod samples;
 pub mod settings;
+pub mod sources;
 pub mod store;
 pub mod web;
 

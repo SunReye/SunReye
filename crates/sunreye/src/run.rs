@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rustls::pki_types::CertificateDer;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, oneshot, watch};
 use tokio::task::JoinSet;
@@ -15,6 +16,7 @@ use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::samples::{ClosedMinute, MinuteBuffer, Sample};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, poll_interval, poll_timeout};
+use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
 #[derive(Debug, thiserror::Error)]
@@ -32,17 +34,33 @@ pub enum RunError {
 pub struct Core {
     pub store: Arc<Store>,
     pub bundle: Bundle,
+    /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
+    pub roots: Vec<CertificateDer<'static>>,
     polling: Polling,
 }
 
 impl Core {
     /// Opens the store under `data_dir` and polls every device in it.
     pub async fn open(data_dir: &Path) -> Result<Arc<Self>, RunError> {
+        Self::open_trusting(data_dir, Vec::new()).await
+    }
+
+    /// [`Core::open`] that also trusts `roots` for profile sources, for a private certificate authority.
+    pub async fn open_trusting(
+        data_dir: &Path,
+        roots: Vec<CertificateDer<'static>>,
+    ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let core = Arc::new(Self { store, bundle, polling: Polling::default() });
+        let core = Arc::new(Self { store, bundle, roots, polling: Polling::default() });
         core.apply().await?;
         Ok(core)
+    }
+
+    /// The compiled-in profile `id`, else the one a profile source supplied.
+    pub async fn profile(&self, id: &str) -> Result<Option<Arc<Profile>>, StoreError> {
+        let installed = installed(&self.store).await?;
+        Ok(find_profile(&self.bundle, &installed, id))
     }
 
     /// Polls the devices the store describes now; called after every settings change.
@@ -146,10 +164,11 @@ async fn spawn_devices(store: &Arc<Store>, bundle: &Bundle) -> Result<Running, S
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
+    let installed = installed(store).await?;
     for device in store.devices().await? {
-        match bundle.profile(&device.profile_id) {
+        match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
-                let task = DeviceTask::new(Arc::clone(store), device, Arc::clone(profile), timeout);
+                let task = DeviceTask::new(Arc::clone(store), device, profile, timeout);
                 tasks.spawn(task.run(interval, stopped.clone()));
             }
             None => log_unknown_profile(&device),

@@ -5,6 +5,7 @@ use std::error::Error as _;
 use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::redirect::Policy;
 use reqwest::{Client, Response, StatusCode};
 use rustls::crypto::ring::default_provider;
 use rustls::pki_types::CertificateDer;
@@ -36,7 +37,7 @@ pub enum GetError {
     Transfer(String),
 }
 
-/// GETs `url` and returns the body.
+/// GETs `url` and returns the body. A redirect is an error: the caller vetted this URL, not its target.
 pub async fn get(url: &str, limits: Limits) -> Result<Vec<u8>, GetError> {
     get_with_roots(url, limits, &[]).await
 }
@@ -66,6 +67,7 @@ fn client(timeout: Duration, extra_roots: &[CertificateDer<'_>]) -> Result<Clien
     Client::builder()
         .use_preconfigured_tls(tls)
         .https_only(true)
+        .redirect(Policy::none())
         .timeout(timeout)
         .build()
         .map_err(|e| GetError::Connect(e.to_string()))
