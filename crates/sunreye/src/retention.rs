@@ -1,12 +1,12 @@
-//! Retention: how long each rollup tier is kept, from core settings, and the pass that drops what is older.
+//! How long each tier is kept, from core settings, and the pass that drops what is older (ADR 0004).
 
 use jiff::Timestamp;
 
 use crate::rollup::Tier;
+use crate::settings::positive;
 use crate::store::{Store, StoreError};
 
 const TIERS: [Tier; 3] = [Tier::Minute, Tier::Hour, Tier::Day];
-const DAY_US: i64 = 86_400_000_000;
 
 fn key(tier: Tier) -> &'static str {
     match tier {
@@ -16,8 +16,7 @@ fn key(tier: Tier) -> &'static str {
     }
 }
 
-/// 3.x's retention (`packages/db/src/timescale/policies.sql`).
-const fn default_days(tier: Tier) -> Option<i64> {
+const fn default_days(tier: Tier) -> Option<u64> {
     match tier {
         Tier::Minute => Some(90),
         Tier::Hour => Some(3650),
@@ -26,15 +25,8 @@ const fn default_days(tier: Tier) -> Option<i64> {
 }
 
 /// Days `tier` is kept; none keeps it forever. A missing, malformed or non-positive setting is the default.
-pub fn retention_days(tier: Tier, setting: Option<&str>) -> Option<i64> {
-    match setting.map(str::parse::<i64>) {
-        Some(Ok(days @ 1..)) => Some(days),
-        Some(_) => {
-            tracing::warn!(setting = key(tier), "not a positive number of days, using the default");
-            default_days(tier)
-        }
-        None => default_days(tier),
-    }
+pub fn retention_days(tier: Tier, setting: Option<&str>) -> Option<u64> {
+    positive(key(tier), setting, "days").or(default_days(tier))
 }
 
 /// Drops each tier's buckets that ended before its retention reaches back from `now`.
@@ -46,9 +38,9 @@ pub async fn retain(store: &Store, now: Timestamp) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn days_before(now: Timestamp, days: i64) -> Timestamp {
-    let cutoff = now.as_microsecond().saturating_sub(days.saturating_mul(DAY_US));
-    Timestamp::from_microsecond(cutoff).unwrap_or(Timestamp::MIN)
+fn days_before(now: Timestamp, days: u64) -> Timestamp {
+    let back = i64::try_from(days).unwrap_or(i64::MAX).saturating_mul(Tier::Day.width_us());
+    Timestamp::from_microsecond(now.as_microsecond().saturating_sub(back)).unwrap_or(Timestamp::MIN)
 }
 
 #[cfg(test)]
@@ -127,7 +119,7 @@ mod tests {
     #[tokio::test]
     async fn a_retention_reaching_before_any_instant_keeps_everything() {
         let (store, device) = with_readings(&["2026-05-07T22:00:00Z", "2026-05-08T06:00:00Z"]).await;
-        store.set_setting(key(Tier::Minute), &i64::MAX.to_string()).await.expect("setting");
+        store.set_setting(key(Tier::Minute), &u64::MAX.to_string()).await.expect("setting");
         retain(&store, at("2026-05-10T00:00:00Z")).await.expect("retain");
         assert_eq!(starts(&store, Tier::Minute, device).await.len(), 2);
     }
