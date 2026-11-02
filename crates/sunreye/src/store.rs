@@ -919,7 +919,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sunreye-store-crash-{}", std::process::id()));
         drop(std::fs::remove_dir_all(&dir));
         let store = Store::open(&dir).await.expect("open");
-        let connection = NewConnection { transport: Transport::Tcp, host: "h".into(), port: 502, logger_serial: None };
+        let connection =
+            NewConnection { transport: Transport::Tcp, host: "h".into(), port: 502, logger_serial: None };
         let connection = store.add_connection(&connection).await.expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 1 };
         let device = store.add_device(&device).await.expect("device");
