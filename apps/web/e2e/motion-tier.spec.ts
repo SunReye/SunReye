@@ -44,19 +44,37 @@ async function withMotion(page: import("@playwright/test").Page, value: string):
  * red on a heuristic doing its job.
  */
 async function withSteadyFrames(page: import("@playwright/test").Page): Promise<void> {
-  await page.addInitScript(() => {
+  await framesAt(page, 1000 / 60);
+}
+
+/**
+ * Make the page a device that drops every other frame, BY CONSTRUCTION.
+ *
+ * The mirror of {@link withSteadyFrames}, 50 ms between frames. The watch is
+ * bounded (three windows, then it stops), so it only downgrades a device that
+ * is slow while it watches. CPU throttling applied after boot raced that
+ * window: on a contended runner the throttle landed after the watch had judged
+ * three healthy windows and given up, and nothing was left to downgrade it.
+ */
+async function withSlowFrames(page: import("@playwright/test").Page): Promise<void> {
+  await framesAt(page, 50);
+}
+
+/** Every real frame advances the rAF timestamp by `stepMs`, and nothing else does. */
+async function framesAt(page: import("@playwright/test").Page, stepMs: number): Promise<void> {
+  await page.addInitScript((step) => {
     const real = window.requestAnimationFrame.bind(window);
     let lastReal: number | null = null;
-    let steady = 0;
+    let faked = 0;
     window.requestAnimationFrame = (callback) =>
       real((ts) => {
         if (ts !== lastReal) {
-          steady = lastReal === null ? ts : steady + 1000 / 60;
+          faked = lastReal === null ? ts : faked + step;
           lastReal = ts;
         }
-        callback(steady);
+        callback(faked);
       });
-  });
+  }, stepMs);
 }
 
 const comets = (page: import("@playwright/test").Page) => page.locator("animateMotion");
@@ -134,18 +152,14 @@ test("auto steps a device that cannot hold its frames down a tier, and remembers
   // The mechanism the whole fix rests on, and the one no static signal could
   // deliver: a Fire HD 10 reports eight cores and no `deviceMemory`, so the only
   // thing that identifies it is that it drops frames. Here the device is made
-  // slow with CPU throttling and has to be caught by measurement alone.
+  // slow from before the first frame and has to be caught by measurement alone.
   await withMotion(page, "auto");
+  await withSlowFrames(page);
   await openPage(page, "/");
-  await expect(comets(page).first()).toBeAttached();
-
-  const restore = await throttleCpu(page, 20);
-  // The watch settles for 4 s, then judges windows of 120 frames. On a device
-  // this slow that is a few seconds per window; the wait is generous because
-  // the assertion is the downgrade, not how fast it arrives.
+  // The watch settles for 4 s, then judges windows of 120 frames.
   await expect(dashes(page).first()).toBeAttached({ timeout: 60_000 });
-  expect(await comets(page).count()).toBe(0);
-  await restore();
+  // The tier swap is not one commit: the dashes can be in before the last comet is out.
+  await expect(comets(page)).toHaveCount(0);
 
   // …and it is remembered, so the next visit starts lean instead of stuttering
   // through another window first.

@@ -56,6 +56,8 @@ describe("the corpus as a whole", () => {
     for (const path of [
       "transport.ndjson",
       "profile-decode.ndjson",
+      "profile-manifest.ndjson",
+      "role-kinds.ndjson",
       "rollups.ndjson",
       "statistics.ndjson",
       "archives/current-2.x/archive.tar.gz",
@@ -64,6 +66,15 @@ describe("the corpus as a whole", () => {
     ]) {
       expect(files.has(path), path).toBe(true);
     }
+  });
+
+  test("every profile has a manifest line, in the decode file's order", async () => {
+    const decoded = (await lines("profile-decode.ndjson")).map((p) => p.profile.id);
+    const manifests = await lines("profile-manifest.ndjson");
+    expect(manifests.map((m) => m.profile.id)).toEqual(decoded);
+    expect(manifests.map((m) => m.profile.sha256)).toEqual(
+      (await lines("profile-decode.ndjson")).map((p) => p.profile.sha256),
+    );
   });
 
   test("the README lists every case", async () => {
