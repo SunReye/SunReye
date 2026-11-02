@@ -720,7 +720,7 @@
     },
     "/api/history/rollup": {
       "get": {
-        "summary": "Stored buckets of one metric, oldest first: the minute tier.",
+        "summary": "Minute, hour or day buckets of one metric, UTC, oldest first; the newest hour and day are open.",
         "operationId": "rollupHistory",
         "parameters": [
           {
@@ -752,7 +752,7 @@
           {
             "name": "bucket",
             "in": "query",
-            "description": "Bucket width. Default `hour`; only `minute` is served.",
+            "description": "Bucket width. Default `hour`.",
             "required": false,
             "schema": {
               "type": "string",
