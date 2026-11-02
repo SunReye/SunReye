@@ -19,6 +19,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_path_to_error = "0.1"
 sqlx = { version = "0.8", default-features = false, features = [
   "macros",
   "migrate",

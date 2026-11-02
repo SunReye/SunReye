@@ -1149,5 +1149,9 @@
   "setup_step_account": "Cuenta",
   "action_close": "Cerrar",
   "profiles_uninstall_title": "¿Quitar {name}?",
-  "profiles_uninstall_body": "El perfil descargado se elimina de este servidor. Puedes volver a descargarlo de su repositorio cuando quieras."
+  "profiles_uninstall_body": "El perfil descargado se elimina de este servidor. Puedes volver a descargarlo de su repositorio cuando quieras.",
+  "profile_import_title": "Importar un archivo de perfil",
+  "profile_import_label": "Archivo de perfil (.json)",
+  "profile_import_success": "{id} importado",
+  "profile_import_failed": "Error al importar: {error}"
 }

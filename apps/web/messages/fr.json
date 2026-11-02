@@ -1149,5 +1149,9 @@
   "setup_step_account": "Compte",
   "action_close": "Fermer",
   "profiles_uninstall_title": "Retirer {name} ?",
-  "profiles_uninstall_body": "Le profil téléchargé est supprimé de ce serveur. Vous pouvez le retélécharger depuis son dépôt à tout moment."
+  "profiles_uninstall_body": "Le profil téléchargé est supprimé de ce serveur. Vous pouvez le retélécharger depuis son dépôt à tout moment.",
+  "profile_import_title": "Importer un fichier de profil",
+  "profile_import_label": "Fichier de profil (.json)",
+  "profile_import_success": "{id} importé",
+  "profile_import_failed": "Échec de l'import : {error}"
 }
