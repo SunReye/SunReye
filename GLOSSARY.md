@@ -42,6 +42,10 @@ _Avoid_: channel, signal
 One decoded value from one device at one instant.
 _Avoid_: sample, data point, measurement
 
+**Open minute**:
+The current minute of one device's readings: polled, not yet stored, already served by recent history.
+_Avoid_: buffer, pending minute
+
 **Metric**:
 The named quantity a reading measures.
 _Avoid_: key, field, sensor

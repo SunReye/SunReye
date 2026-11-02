@@ -47,17 +47,17 @@ step() { finish; current=$*; started=$SECONDS; printf '\n== %s\n' "$*"; }
 # db_tests: TimescaleDB on $db_port (host network: bridged containers fail on the LXC host), then the
 # database suite with CI=1 so an unreachable database fails instead of skipping.
 db_tests() {
-  docker rm -f "$db_container" >/dev/null 2>&1 || true
+  bun scripts/lib/docker-teardown.ts "$db_container" >/dev/null 2>&1 || true
   docker run -d --name "$db_container" --network host -e POSTGRES_PASSWORD=db-test "$image" \
     postgres -c "port=$db_port" -c fsync=off -c synchronous_commit=off >/dev/null
   local tries=0
   until docker exec "$db_container" pg_isready -U postgres -p "$db_port" >/dev/null 2>&1; do
-    ((++tries < 180)) || { docker logs --tail 15 "$db_container" >&2; return 1; }
+    ((++tries < 180)) || { docker logs --tail 15 "$db_container" >&2; bun scripts/lib/docker-teardown.ts "$db_container"; return 1; }
     sleep 0.5
   done
   local code=0
   CI=1 DB_TEST_URL="postgresql://postgres:db-test@localhost:$db_port/postgres" bun run test:db || code=$?
-  docker rm -f "$db_container" >/dev/null
+  bun scripts/lib/docker-teardown.ts "$db_container"
   return "$code"
 }
 

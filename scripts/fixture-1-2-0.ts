@@ -61,6 +61,7 @@ import {
   energyOf,
 } from "../packages/db/src/counter-energy";
 import { type Snapshot, buildSnapshotSql, compareSnapshots } from "./db-parity";
+import { removeContainerArgs } from "./lib/docker-teardown";
 
 /**
  * Re-exported so the ground-truth vocabulary still comes from one import here.
@@ -888,7 +889,7 @@ export const productionIo: FixtureIo = {
             .nothrow(),
         );
       case "remove":
-        return run($`docker rm -f ${FIXTURE_CONTAINER}`.quiet());
+        return run($`docker ${removeContainerArgs(FIXTURE_CONTAINER)}`.quiet());
       case "create":
         return run(
           $`docker run -d --name ${FIXTURE_CONTAINER} --network host \

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use super::{ApiError, ApiQuery, ErrorBody};
 use crate::recent::{Recent, RecentError, Window, fold};
 use crate::run::Core;
-use crate::store::Minutes;
+use crate::samples::with_unstored;
 
 const DEFAULT_SECONDS: u32 = 300;
 const MAX_SECONDS: u32 = 3600;
@@ -74,11 +74,14 @@ pub async fn recent(
 ) -> Result<Json<Recent>, ApiError> {
     let window = query.window(core.now_ms())?;
     let (from, to) = (window.reach_ms(), window.now_ms + 1);
-    let minutes = match core.store.devices().await?.first() {
-        Some(device) => core.store.minutes(device.id, from, to).await?,
-        None => Minutes::default(),
+    let Some(device) = core.store.devices().await?.first().map(|device| device.id) else {
+        return Ok(Json(fold(window, std::iter::empty())?));
     };
-    Ok(Json(fold(window, minutes.samples(from, to))?))
+    // Held before the store is read: a minute written in between is then in one or both, never neither.
+    // A copy of up to two minutes of readings per request.
+    let held = core.unstored.held(device);
+    let minutes = core.store.minutes(device, from, to).await?;
+    Ok(Json(fold(window, with_unstored(minutes.samples(from, to), held))?))
 }
 
 #[cfg(test)]
