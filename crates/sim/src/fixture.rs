@@ -129,6 +129,8 @@ struct TransportRow {
     metrics: Vec<FixtureMetric>,
     exchanges: Vec<ExchangeRow>,
     result: serde_json::Value,
+    logger_serial: Option<u32>,
+    configured_serial: Option<u32>,
 }
 
 /// One case of the transport corpus.
@@ -140,6 +142,10 @@ pub struct TransportCase {
     pub exchanges: Vec<Exchange>,
     /// What 2.x returned: `{values}`, `{error}`, `{written}` or `{probe}`.
     pub result: serde_json::Value,
+    /// The stick's own serial; `solarman-v5` cases only.
+    pub logger_serial: Option<u32>,
+    /// The serial the client was configured with, when the case configures one.
+    pub configured_serial: Option<u32>,
 }
 
 /// Every case of `framing` (`tcp`, `rtu-over-tcp`, `solarman-v5`).
@@ -158,6 +164,8 @@ pub fn transport_cases(dir: &Path, framing: &str) -> Result<Vec<TransportCase>, 
             metrics: row.metrics,
             exchanges,
             result: row.result,
+            logger_serial: row.logger_serial,
+            configured_serial: row.configured_serial,
         });
     }
     Ok(cases)

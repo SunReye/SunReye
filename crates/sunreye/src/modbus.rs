@@ -1,7 +1,8 @@
-//! Modbus client over a TCP stream, read path only: the one request either framing can encode is
+//! Modbus client over a TCP stream, read path only: the one request any framing can encode is
 //! function 3, read holding registers. 4.0 never writes (ADR 0005), so there is no write function to call.
 
 mod rtu;
+mod solarman;
 
 use std::str::FromStr;
 use std::time::Duration;
@@ -11,6 +12,8 @@ use tokio::net::TcpStream;
 
 const FC_READ_HOLDING: u8 = 3;
 const EXCEPTION_FLAG: u8 = 0x80;
+/// Modbus exception 2: the device does not serve the address range. The only refusal that splits a read.
+pub const ILLEGAL_DATA_ADDRESS: u8 = 2;
 /// Most words one read may ask for; the PDU limit.
 const MAX_WORDS: u16 = 125;
 /// Header bytes: transaction (2), protocol (2), length (2), unit (1).
@@ -23,6 +26,8 @@ pub enum Transport {
     Tcp,
     /// Modbus RTU over TCP: the RTU frame, unit id in front and CRC behind, on a TCP stream.
     RtuOverTcp,
+    /// Solarman V5: a logging stick's envelope around an RTU frame.
+    SolarmanV5,
 }
 
 impl Transport {
@@ -31,6 +36,7 @@ impl Transport {
         match self {
             Self::Tcp => "tcp",
             Self::RtuOverTcp => "rtu_over_tcp",
+            Self::SolarmanV5 => "solarman_v5",
         }
     }
 }
@@ -39,7 +45,7 @@ impl FromStr for Transport {
     type Err = UnknownTransport;
 
     fn from_str(name: &str) -> Result<Self, Self::Err> {
-        [Self::Tcp, Self::RtuOverTcp]
+        [Self::Tcp, Self::RtuOverTcp, Self::SolarmanV5]
             .into_iter()
             .find(|transport| transport.as_str() == name)
             .ok_or_else(|| UnknownTransport(name.to_owned()))
@@ -69,27 +75,44 @@ impl From<std::io::Error> for Error {
     }
 }
 
+/// A connection's framing and what the framing keeps between reads.
+#[derive(Debug)]
+enum Framing {
+    Tcp { transaction: u16 },
+    RtuOverTcp,
+    SolarmanV5(solarman::Session),
+}
+
 #[derive(Debug)]
 pub struct Client {
-    transport: Transport,
     stream: TcpStream,
-    transaction: u16,
+    framing: Framing,
     timeout: Duration,
 }
 
 impl Client {
-    /// `timeout` bounds the connect and every later read.
+    /// `timeout` bounds the connect and every later read; over Solarman V5 it also bounds the probe that
+    /// learns the stick's serial. `logger_serial` is that serial as configured, used only when the stick
+    /// does not answer the probe, and ignored by the other transports.
     pub async fn connect(
         transport: Transport,
         host: &str,
         port: u16,
+        logger_serial: Option<u32>,
         timeout: Duration,
     ) -> Result<Self, Error> {
-        let stream = tokio::time::timeout(timeout, TcpStream::connect((host, port)))
+        let mut stream = tokio::time::timeout(timeout, TcpStream::connect((host, port)))
             .await
             .map_err(|_| Error::Timeout)??;
         stream.set_nodelay(true)?;
-        Ok(Self { transport, stream, transaction: 0, timeout })
+        let framing = match transport {
+            Transport::Tcp => Framing::Tcp { transaction: 0 },
+            Transport::RtuOverTcp => Framing::RtuOverTcp,
+            Transport::SolarmanV5 => {
+                Framing::SolarmanV5(solarman::Session::open(&mut stream, logger_serial, timeout).await?)
+            }
+        };
+        Ok(Self { stream, framing, timeout })
     }
 
     /// Reads `count` holding registers from `start` of `unit`. After any error but
@@ -99,30 +122,38 @@ impl Client {
             return Err(Error::Protocol("count out of range"));
         }
         let timeout = self.timeout;
+        let stream = &mut self.stream;
         let exchange = async {
-            match self.transport {
-                Transport::Tcp => self.exchange_tcp(unit, start, count).await,
-                Transport::RtuOverTcp => self.exchange_rtu(unit, start, count).await,
+            match &mut self.framing {
+                Framing::Tcp { transaction } => exchange_tcp(stream, transaction, unit, start, count).await,
+                Framing::RtuOverTcp => exchange_rtu(stream, unit, start, count).await,
+                Framing::SolarmanV5(session) => session.read_holding(stream, unit, start, count).await,
             }
         };
         tokio::time::timeout(timeout, exchange).await.map_err(|_| Error::Timeout)?
     }
+}
 
-    async fn exchange_rtu(&mut self, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
-        self.stream.write_all(&rtu::read_request(unit, start, count)).await?;
-        rtu::read_reply(&mut self.stream, unit, count).await
-    }
+async fn exchange_rtu(stream: &mut TcpStream, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
+    stream.write_all(&rtu::read_request(unit, start, count)).await?;
+    rtu::read_reply(stream, unit, count).await
+}
 
-    async fn exchange_tcp(&mut self, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
-        self.transaction = self.transaction.wrapping_add(1);
-        let transaction = self.transaction;
-        self.stream.write_all(&read_request(transaction, unit, start, count)).await?;
-        let mut header = [0_u8; HEADER_LEN];
-        self.stream.read_exact(&mut header).await?;
-        let mut pdu = vec![0_u8; check_header(header, transaction, unit)?];
-        self.stream.read_exact(&mut pdu).await?;
-        parse_pdu(&pdu, count)
-    }
+async fn exchange_tcp(
+    stream: &mut TcpStream,
+    transaction: &mut u16,
+    unit: u8,
+    start: u16,
+    count: u16,
+) -> Result<Vec<u16>, Error> {
+    *transaction = transaction.wrapping_add(1);
+    let transaction = *transaction;
+    stream.write_all(&read_request(transaction, unit, start, count)).await?;
+    let mut header = [0_u8; HEADER_LEN];
+    stream.read_exact(&mut header).await?;
+    let mut pdu = vec![0_u8; check_header(header, transaction, unit)?];
+    stream.read_exact(&mut pdu).await?;
+    parse_pdu(&pdu, count)
 }
 
 fn read_request(transaction: u16, unit: u8, start: u16, count: u16) -> [u8; 12] {
@@ -181,10 +212,15 @@ mod tests {
 
     async fn rtu_client(registers: Registers, units: &[u8]) -> (Simulator, Client) {
         let sim = Simulator::start_with(Framing::RtuOverTcp, registers, units).await.expect("sim");
-        let client =
-            Client::connect(Transport::RtuOverTcp, "127.0.0.1", sim.addr.port(), Duration::from_millis(300))
-                .await
-                .expect("connect");
+        let client = Client::connect(
+            Transport::RtuOverTcp,
+            "127.0.0.1",
+            sim.addr.port(),
+            None,
+            Duration::from_millis(300),
+        )
+        .await
+        .expect("connect");
         (sim, client)
     }
 
@@ -240,10 +276,10 @@ mod tests {
         });
         let timeout = Duration::from_millis(200);
         let mut silent =
-            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, timeout).await.expect("connect");
+            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, None, timeout).await.expect("connect");
         assert_eq!(silent.read_holding(1, 0, 1).await, Err(Error::Timeout));
         let mut closed =
-            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, timeout).await.expect("connect");
+            Client::connect(Transport::RtuOverTcp, "127.0.0.1", port, None, timeout).await.expect("connect");
         assert!(matches!(closed.read_holding(1, 0, 1).await, Err(Error::Io(_))));
         device.await.expect("device");
     }
@@ -303,7 +339,7 @@ mod tests {
     async fn a_read_returns_the_words_and_numbers_transactions_from_one() {
         let sim = Simulator::start(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await.expect("sim");
         let mut client =
-            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
                 .expect("connect");
         assert_eq!(client.read_holding(1, 10, 3).await, Ok(vec![1, 2, 3]));
@@ -316,7 +352,7 @@ mod tests {
     async fn a_count_outside_one_to_125_is_refused_before_anything_is_sent() {
         let sim = Simulator::start(Registers::default(), &[1]).await.expect("sim");
         let mut client =
-            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), Duration::from_secs(5))
+            Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
                 .expect("connect");
         for count in [0, 126] {

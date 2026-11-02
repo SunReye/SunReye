@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO connection (transport, host, port) VALUES (?, ?, ?) RETURNING id AS \"id!\"",
+  "query": "INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, ?, ?, ?) RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
       false
     ]
   },
-  "hash": "74060c28e5f7cf19cff3bd9e41748aaedac1eb9da16f0b23c8aa0de6113dddef"
+  "hash": "73eb4749e72ecd3cdd2e452cb32e8ed4ac2f8d56e7e6b534c817759232f8cec4"
 }

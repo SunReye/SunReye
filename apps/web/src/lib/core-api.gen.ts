@@ -142,6 +142,11 @@ export interface components {
         InverterConfig: {
             /** @description Null until a connection is saved. */
             host: string | null;
+            /**
+             * Format: int64
+             * @description The stick's serial, for `solarman-v5`; without one it is learned from the stick on connect.
+             */
+            loggerSerial?: number | null;
             /** Format: int64 */
             pollIntervalMs: number;
             /** Format: int64 */
@@ -198,7 +203,7 @@ export interface components {
             ok: boolean;
         };
         /**
-         * @description How the connection is framed on the wire. Only `tcp` is polled so far.
+         * @description How the connection is framed on the wire.
          * @enum {string}
          */
         Transport: "tcp" | "rtu-over-tcp" | "solarman-v5";

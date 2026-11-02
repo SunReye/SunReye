@@ -346,6 +346,14 @@
             ],
             "description": "Null until a connection is saved."
           },
+          "loggerSerial": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stick's serial, for `solarman-v5`; without one it is learned from the stick on connect."
+          },
           "pollIntervalMs": {
             "type": "integer",
             "format": "int64"
@@ -518,7 +526,7 @@
       },
       "Transport": {
         "type": "string",
-        "description": "How the connection is framed on the wire. Only `tcp` is polled so far.",
+        "description": "How the connection is framed on the wire.",
         "enum": [
           "tcp",
           "rtu-over-tcp",

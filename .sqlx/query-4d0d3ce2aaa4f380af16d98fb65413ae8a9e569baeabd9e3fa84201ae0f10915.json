@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!\", transport, host, port FROM connection ORDER BY id LIMIT 1",
+  "query": "SELECT id AS \"id!\", transport, host, port, logger_serial FROM connection ORDER BY id LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -22,6 +22,11 @@
         "name": "port",
         "ordinal": 3,
         "type_info": "Integer"
+      },
+      {
+        "name": "logger_serial",
+        "ordinal": 4,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
@@ -31,8 +36,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "becdb1df60eddf423b538b03026489466b5e4c60b7001749dfcfdaa630b5c1ab"
+  "hash": "4d0d3ce2aaa4f380af16d98fb65413ae8a9e569baeabd9e3fa84201ae0f10915"
 }

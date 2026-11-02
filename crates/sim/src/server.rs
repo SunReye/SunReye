@@ -1,4 +1,5 @@
-//! The Modbus server, Modbus TCP or RTU over TCP: function code 3 only, every request recorded.
+//! The Modbus server, Modbus TCP, RTU over TCP or Solarman V5: function code 3 only, every request
+//! recorded.
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -8,6 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
 use crate::Registers;
+use crate::v5;
 
 /// Read holding registers: the only function the simulator serves.
 pub const FC_READ_HOLDING: u8 = 3;
@@ -24,6 +26,9 @@ pub enum Framing {
     Tcp,
     /// Unit id, PDU, CRC-16/Modbus (low byte first): a serial frame on a TCP stream.
     RtuOverTcp,
+    /// A logging stick with this serial: the RTU frame inside a Solarman V5 envelope. A request naming
+    /// another serial is rejected with status 6, as a stick does.
+    SolarmanV5(u32),
 }
 
 /// A request as it arrived. `start` and `count` are 0 for a function the simulator does not serve.
@@ -78,6 +83,12 @@ type Shared = Arc<(Registers, Vec<u8>, Arc<Mutex<Vec<Request>>>)>;
 async fn serve(mut stream: TcpStream, framing: Framing, shared: Shared) {
     while let Some(frame) = read_frame(&mut stream, framing).await {
         let (registers, units, log) = &*shared;
+        if let Some(reject) = frame.rejection() {
+            if stream.write_all(&reject).await.is_err() {
+                return;
+            }
+            continue;
+        }
         if !units.contains(&frame.unit) {
             continue;
         }
@@ -93,8 +104,16 @@ async fn serve(mut stream: TcpStream, framing: Framing, shared: Shared) {
 /// What surrounds the PDU on the wire.
 #[derive(Clone, Copy)]
 enum Envelope {
-    Mbap { transaction: [u8; 2] },
+    Mbap {
+        transaction: [u8; 2],
+    },
     Rtu,
+    /// `addressed` is false for a request that named another serial than `stick`.
+    Solarman {
+        stick: u32,
+        seq: u16,
+        addressed: bool,
+    },
 }
 
 struct Frame {
@@ -107,7 +126,19 @@ async fn read_frame(stream: &mut TcpStream, framing: Framing) -> Option<Frame> {
     match framing {
         Framing::Tcp => read_mbap(stream).await,
         Framing::RtuOverTcp => read_rtu(stream).await,
+        Framing::SolarmanV5(stick) => read_solarman(stream, stick).await,
     }
+}
+
+async fn read_solarman(stream: &mut TcpStream, stick: u32) -> Option<Frame> {
+    let incoming = v5::read_request(stream, stick).await?;
+    let envelope = Envelope::Solarman { stick, seq: incoming.seq, addressed: incoming.addressed };
+    let rtu = incoming.rtu;
+    let (unit, pdu) = match rtu.split_first() {
+        Some((unit, rest)) => (*unit, rest[..rest.len() - 2].to_vec()),
+        None => (0, Vec::new()),
+    };
+    Some(Frame { envelope, unit, pdu })
 }
 
 async fn read_mbap(stream: &mut TcpStream) -> Option<Frame> {
@@ -155,6 +186,14 @@ pub(crate) fn crc16(bytes: &[u8]) -> u16 {
 }
 
 impl Frame {
+    /// The reply to a frame that named another logger serial; such a frame is never a request.
+    fn rejection(&self) -> Option<Vec<u8>> {
+        match self.envelope {
+            Envelope::Solarman { stick, seq, addressed: false } => Some(v5::reject(stick, seq)),
+            _ => None,
+        }
+    }
+
     fn request(&self) -> Request {
         let function = self.pdu.first().copied().unwrap_or_default();
         let (start, count) = match self.pdu.as_slice() {
@@ -185,6 +224,15 @@ impl Frame {
         self.wrap(&[function | 0x80, code])
     }
 
+    /// Unit id, PDU, CRC-16/Modbus.
+    fn rtu(&self, pdu: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(pdu.len() + 3);
+        out.push(self.unit);
+        out.extend_from_slice(pdu);
+        out.extend_from_slice(&crc16(&out).to_le_bytes());
+        out
+    }
+
     fn wrap(&self, pdu: &[u8]) -> Vec<u8> {
         match self.envelope {
             Envelope::Mbap { transaction } => {
@@ -197,13 +245,8 @@ impl Frame {
                 out.extend_from_slice(pdu);
                 out
             }
-            Envelope::Rtu => {
-                let mut out = Vec::with_capacity(pdu.len() + 3);
-                out.push(self.unit);
-                out.extend_from_slice(pdu);
-                out.extend_from_slice(&crc16(&out).to_le_bytes());
-                out
-            }
+            Envelope::Rtu => self.rtu(pdu),
+            Envelope::Solarman { stick, seq, .. } => v5::response(stick, seq, &self.rtu(pdu)),
         }
     }
 }

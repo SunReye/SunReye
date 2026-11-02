@@ -6,7 +6,7 @@ use std::time::Instant;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::modbus::{Client, Error};
+use crate::modbus::Client;
 use crate::poll::DevicePoller;
 use crate::profile::Profile;
 use crate::settings::InverterConfig;
@@ -52,8 +52,10 @@ impl TestResult {
 pub async fn test_connection(profile: &Arc<Profile>, config: &InverterConfig) -> TestResult {
     let started = Instant::now();
     let read = async {
-        let transport = config.transport.wire().ok_or(Error::Protocol("transport not supported"))?;
-        let mut client = Client::connect(transport, config.host(), config.port(), config.timeout()).await?;
+        let transport = config.transport.wire();
+        let serial = config.logger_serial();
+        let mut client =
+            Client::connect(transport, config.host(), config.port(), serial, config.timeout()).await?;
         DevicePoller::new(Arc::clone(profile), config.unit()).poll(&mut client).await
     };
     match read.await {
@@ -99,7 +101,7 @@ fn snapshot(profile: &Profile, values: Vec<(String, f64)>, started: Instant) -> 
 mod tests {
     use std::path::Path;
 
-    use sunreye_sim::{Registers, Simulator, profile_case};
+    use sunreye_sim::{Framing, Registers, Simulator, profile_case};
 
     use super::*;
     use crate::profile::Bundle;
@@ -114,6 +116,7 @@ mod tests {
             timeout_ms: 300,
             poll_interval_ms: 1_000,
             simulate: false,
+            logger_serial: None,
         }
     }
 
@@ -140,6 +143,24 @@ mod tests {
         let order: Vec<_> = metrics.iter().map(|m| (m.group.as_str(), m.label.as_str())).collect();
         assert!(order.is_sorted(), "metrics are listed by group then label");
         assert!(result.duration_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_solarman_stick_is_read_under_the_serial_it_names_whatever_serial_is_configured() {
+        let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+        let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
+        let stick = Framing::SolarmanV5(3_168_930_341);
+        let sim = Simulator::start_with(stick, case.registers, &[1]).await.expect("sim");
+        for configured in [None, Some(0x1122_3344)] {
+            let config = InverterConfig {
+                transport: Transport::SolarmanV5,
+                logger_serial: configured,
+                ..config(sim.addr.port(), 1)
+            };
+            let result = test_connection(&profile("deye-sg05lp3"), &config).await;
+            assert!(result.ok, "{configured:?}: {:?}", result.error);
+            assert_eq!(result.metric_count, Some(case.readings.len()));
+        }
     }
 
     #[tokio::test]

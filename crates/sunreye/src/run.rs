@@ -201,8 +201,14 @@ impl DeviceTask {
         let client = match &mut self.client {
             Some(client) => client,
             none => none.insert(
-                Client::connect(self.device.transport, &self.device.host, self.device.port, self.timeout)
-                    .await?,
+                Client::connect(
+                    self.device.transport,
+                    &self.device.host,
+                    self.device.port,
+                    self.device.logger_serial,
+                    self.timeout,
+                )
+                .await?,
             ),
         };
         self.poller.poll(client).await
@@ -248,7 +254,7 @@ mod tests {
         let store = Store::open(dir).await.expect("store");
         store.set_setting(INTERVAL_KEY, interval).await.expect("interval");
         let connection = store
-            .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port })
+            .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port, logger_serial: None })
             .await
             .expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: profile.into(), unit_id: 1 };
