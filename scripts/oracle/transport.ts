@@ -62,6 +62,8 @@ interface Scenario {
   operation: Operation;
   configuredSerial?: number;
   tweak?: Tweak;
+  /** Transport deadline; default 300. */
+  timeoutMs?: number;
 }
 
 type DecodedFrame =
@@ -299,7 +301,7 @@ function decodeOne(frame: Uint8Array): DecodedFrame {
   }
 }
 
-async function listen(wire: Wire, framing: InverterTransport) {
+async function listen(wire: Wire, framing: InverterTransport, replyDelayMs: number) {
   const events: WireEvent[] = [];
   const sockets = new Set<Socket>();
   let nth = 0;
@@ -314,6 +316,7 @@ async function listen(wire: Wire, framing: InverterTransport) {
     events.push({ dir: "tx", hex: hex(request) });
     const chunks = wire(request, nth++);
     if (chunks === null) return;
+    if (replyDelayMs > 0) await sleep(replyDelayMs);
     events.push({
       dir: "rx",
       chunks: chunks.map(hex),
@@ -346,7 +349,16 @@ function describeError(error: unknown): Record<string, unknown> {
   };
 }
 
-async function perform(transport: ModbusTransport, operation: Operation): Promise<unknown> {
+/**
+ * Deadline for a request the device answers. A deadline that can fire before a reply makes the
+ * recording depend on how late the machine runs; only a silent unit's expiry is what is under test.
+ */
+const ANSWERED_MS = 30_000;
+
+async function perform(
+  transport: ModbusTransport,
+  { operation, device }: Scenario,
+): Promise<unknown> {
   if (operation.op === "read") return transport.read();
   if (operation.op === "write") {
     await transport.write(operation.key, operation.value);
@@ -354,24 +366,36 @@ async function perform(transport: ModbusTransport, operation: Operation): Promis
   }
   const probe: Record<string, boolean> = {};
   for (const unit of operation.units)
-    probe[unit] = await transport.probeUnit(unit, operation.timeoutMs);
+    probe[unit] = await transport.probeUnit(
+      unit,
+      device.units.includes(unit) ? ANSWERED_MS : operation.timeoutMs,
+    );
   return { probe };
 }
 
-async function run(scenario: Scenario): Promise<TransportCase> {
+export interface RunOptions {
+  /** Hold every reply back this long: the stand-in for a stalled event loop, which test code injects. */
+  replyDelayMs?: number;
+}
+
+/** Run one scenario against a fresh loopback device and record the wire. */
+export async function runScenario(
+  scenario: Scenario,
+  { replyDelayMs = 0 }: RunOptions = {},
+): Promise<TransportCase> {
   const specs = scenario.metrics === "plain" ? PLAIN : GROUPED;
-  const server = await listen(wireFor(scenario), scenario.framing);
+  const server = await listen(wireFor(scenario), scenario.framing, replyDelayMs);
   const transport = new ModbusTransport(profileOf(specs), {
     host: "127.0.0.1",
     port: server.port,
     unitId: scenario.unitId,
-    timeoutMs: 300,
+    timeoutMs: scenario.timeoutMs ?? 300,
     transport: scenario.framing,
     ...(scenario.configuredSerial === undefined ? {} : { loggerSerial: scenario.configuredSerial }),
   });
   let result: unknown;
   try {
-    result = await perform(transport, scenario.operation);
+    result = await perform(transport, scenario);
   } catch (error) {
     result = { error: describeError(error) };
   }
@@ -435,6 +459,7 @@ function common(f: InverterTransport): Scenario[] {
     }),
     scenario(f, "probe-unit", "unit-id scan: unit 0 is silent (timeout), unit 1 answers", {
       operation: { op: "probe-unit", units: [0, 1], timeoutMs: 250 },
+      timeoutMs: ANSWERED_MS,
     }),
     scenario(f, "fragmented-reply", "the reply arrives in two TCP reads, split inside the header", {
       tweak: (frame) => [frame.slice(0, 5), frame.slice(5)],
@@ -515,6 +540,6 @@ export const SCENARIOS: Scenario[] = [...FRAMINGS.flatMap(common), ...solarmanOn
 /** Build `transport.ndjson`. */
 export async function buildTransportCorpus(): Promise<CorpusFiles> {
   const cases: TransportCase[] = [];
-  for (const scenario of SCENARIOS) cases.push(await run(scenario));
+  for (const scenario of SCENARIOS) cases.push(await runScenario(scenario));
   return { "transport.ndjson": ndjson(cases) };
 }

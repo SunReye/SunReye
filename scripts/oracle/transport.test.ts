@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { buildTransportCorpus, type TransportCase } from "./transport";
+import { buildTransportCorpus, runScenario, SCENARIOS, type TransportCase } from "./transport";
 
 /**
  * Hand-derived frames (Modbus spec layout; CRC16 and V5 checksum computed independently with python).
@@ -40,6 +40,19 @@ describe("the transport corpus", () => {
     const again = await buildTransportCorpus();
     expect(again["transport.ndjson"]).toBe(built["transport.ndjson"]);
   }, 120_000);
+
+  // A reply later than every client timer stands in for a stalled event loop under load.
+  test.each(["tcp", "rtu-over-tcp", "solarman-v5"])(
+    "%s/probe-unit records the same exchanges when every reply is late",
+    async (framing) => {
+      const scenario = SCENARIOS.find((s) => `${s.framing}/${s.name}` === `${framing}/probe-unit`)!;
+      const baseline = await runScenario(scenario);
+      const late = await runScenario(scenario, { replyDelayMs: 400 });
+      expect(late).toEqual(baseline);
+      expect(late.result).toEqual({ probe: { "0": false, "1": true } });
+    },
+    120_000,
+  );
 
   test("covers all three framings at unit id 0 and unit id 1", async () => {
     const cases = [...(await corpus()).values()];
