@@ -144,6 +144,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The last readings of every metric, bucketed, to seed the live sparklines. */
+        get: operations["recentHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The active profile as the dashboard builds itself from it. */
+        get: operations["profileManifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-status": {
         parameters: {
             query?: never;
@@ -346,6 +380,35 @@ export interface components {
         ErrorBody: {
             error: string;
         };
+        /**
+         * @description An optional subsystem the roles of a profile show.
+         * @enum {string}
+         */
+        Feature: "solar_sell" | "grid_charge" | "time_of_use";
+        /** @description What the sign of a signed metric means. */
+        Flow: {
+            negative: string;
+            positive: string;
+        };
+        InverterCapabilities: {
+            backupLoad: boolean;
+            battery: boolean;
+            /** @description Keys of the metrics the profile marks writable. */
+            controls: string[];
+            features: components["schemas"]["Feature"][];
+            generator: boolean;
+            grid: boolean;
+            /**
+             * Format: int32
+             * @description 1 or 3, from distinct grid phase voltage indices.
+             */
+            phases: number;
+            /**
+             * Format: int32
+             * @description Distinct PV string indices.
+             */
+            pvStrings: number;
+        };
         /** @description The inverter connection as the onboarding form edits it. */
         InverterConfig: {
             /** @description Null until a connection is saved. */
@@ -370,6 +433,13 @@ export interface components {
             /** Format: int64 */
             unitId: number;
         };
+        InverterManifest: {
+            capabilities: components["schemas"]["InverterCapabilities"];
+            id: string;
+            manufacturer: string;
+            metrics: components["schemas"]["ManifestMetric"][];
+            name: string;
+        };
         /** @description A stored source with the ids of the profiles it supplied. */
         Listed: components["schemas"]["Source"] & {
             profileIds: string[];
@@ -380,6 +450,30 @@ export interface components {
             /** @description Keep the session for a year instead of until the browser closes. */
             rememberMe?: boolean;
         };
+        ManifestMetric: {
+            enumLabels?: {
+                [key: string]: string;
+            } | null;
+            flow?: components["schemas"]["Flow"] | null;
+            group: string;
+            /** Format: int32 */
+            index?: number | null;
+            key: string;
+            kind: components["schemas"]["MetricKind"];
+            label: string;
+            range?: components["schemas"]["Range"] | null;
+            role?: string | null;
+            storage: components["schemas"]["Storage"];
+            /** @description MQTT topic suffix. */
+            topic: string;
+            unit: string | null;
+            writable: boolean;
+        };
+        /**
+         * @description How a widget treats the metric.
+         * @enum {string}
+         */
+        MetricKind: "measurement" | "cumulative" | "status" | "setting";
         NewApiKeyRequest: {
             name: string;
             /** Format: int64 */
@@ -406,12 +500,32 @@ export interface components {
             activeProfileId: string | null;
             needsProfile: boolean;
         };
+        Range: {
+            /** Format: double */
+            max: number;
+            /** Format: double */
+            min: number;
+        };
+        /** @description Every point is at `t0 + o[i] * step * 1000` milliseconds, so no timestamp repeats. */
+        Recent: {
+            metrics: {
+                [key: string]: components["schemas"]["Series"];
+            };
+            /** Format: int32 */
+            step: number;
+            /** Format: int64 */
+            t0: number;
+        };
         RevokeRequest: {
             /** Format: int64 */
             id: number;
         };
         RoleRequest: {
             admin: boolean;
+        };
+        Series: {
+            o: number[];
+            v: number[];
         };
         SetupStatus: {
             /** @description No account exists yet: the first sign-up creates the admin. */
@@ -446,6 +560,11 @@ export interface components {
             /** @description Path of the index under the base, e.g. `index.json`. */
             indexPath: string;
         };
+        /**
+         * @description Where a metric's values are kept.
+         * @enum {string}
+         */
+        Storage: "series" | "config" | "none";
         /** @description A connection to test, with the profile to read it with. Without one the active profile is used. */
         TestRequest: components["schemas"]["InverterConfig"] & {
             profileId?: string | null;
@@ -1058,6 +1177,97 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    recentHistory: {
+        parameters: {
+            query?: {
+                /** @description How far back the window reaches. Default 300. */
+                seconds?: number;
+                /** @description Width of one bucket. Default 1. */
+                stepSeconds?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recent"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    profileManifest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InverterManifest"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
