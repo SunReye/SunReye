@@ -83,6 +83,7 @@
     "lint-staged": "^17.0.7",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
+    "tsrs": "^0.20.1-ts7.1.0-beta",
     "turbo": "^2.10.2",
     "typescript": "catalog:"
   },

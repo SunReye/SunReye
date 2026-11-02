@@ -1,9 +1,9 @@
-// fallow-ignore-file unused-file -- compile-time-only assertions; nothing imports this by design, tsc is the consumer
-// Type-only assertions, imported by nothing on purpose (checked by tsc).
+// fallow-ignore-file unused-file -- compile-time-only assertions; nothing imports this by design, check-types is the consumer
+// Type-only assertions, imported by nothing on purpose (checked by check-types).
 /**
  * Compile-time assertions for the `metric()` builder's role-shape enforcement.
- * This file has no runtime tests — it exists so `tsc --noEmit` fails if the
- * type-level guarantees regress. Each `@ts-expect-error` MUST error; tsc flags
+ * This file has no runtime tests — it exists so `check-types` fails if the
+ * type-level guarantees regress. Each `@ts-expect-error` MUST error; tsrs flags
  * an unused directive if the guard silently stops working.
  */
 import { defineFamily, metric } from "./define";

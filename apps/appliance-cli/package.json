@@ -17,6 +17,6 @@
     "typescript": "catalog:"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsrs -p . --noEmit"
   }
 }
