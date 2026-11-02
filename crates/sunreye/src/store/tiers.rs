@@ -727,6 +727,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_last_hour_that_ends_on_the_cutoff_is_closed_and_its_readings_dropped() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T22:30:00Z", 4.0)]).await;
+        assert_eq!(drop_readings(&store, "2026-05-10T23:00:00Z").await, 1);
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T22:00:00Z", 4.0, 4.0, 4.0)]);
+    }
+
+    #[tokio::test]
+    async fn a_last_hour_is_kept_until_the_cutoff_reaches_its_end() {
+        // 0 from 23:00 to 23:59:30, then 60 for the last half minute: (0·59.5 + 60·0.5) / 60.
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 0.0)]).await;
+        append(&store, device, &[("2026-05-10T23:59:30Z", 60.0)]).await;
+        assert_eq!(drop_readings(&store, "2026-05-10T23:59:59.999999Z").await, 0);
+        assert_eq!(power(&store, Tier::Hour, device).await, []);
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 2);
+        assert_eq!(drop_readings(&store, "2026-05-11T00:00:00Z").await, 2);
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 0.5, 60.0, 0.0)]);
+        assert_eq!(power(&store, Tier::Day, device).await, [bucket("2026-05-10T00:00:00Z", 0.5, 60.0, 0.0)]);
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings"), []);
+    }
+
+    #[tokio::test]
     async fn an_online_devices_hour_straddling_the_cutoff_closes_from_all_its_readings() {
         let (store, device) = with_device().await;
         append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
