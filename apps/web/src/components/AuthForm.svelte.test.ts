@@ -114,3 +114,38 @@ test("a short password is refused before anything is sent", async () => {
   await expect.element(page.getByText(m.auth_password_min())).toBeVisible();
   expect(post).not.toHaveBeenCalled();
 });
+
+// The core counts characters for the minimum, UTF-8 bytes for the maximum (bcrypt reads 72)
+// and refuses NUL, all in English: the form refuses first.
+test.each([
+  ["four emoji (8 UTF-16 units)", "😀".repeat(4), () => m.auth_password_min()],
+  ["73 bytes", "x".repeat(73), () => m.auth_password_max()],
+  ["37 two-byte characters (74 bytes)", "é".repeat(37), () => m.auth_password_max()],
+  ["a NUL inside", "abcdefgh\0abcdefgh", () => m.auth_password_nul()],
+])("a password of %s is refused before anything is sent", async (_, password, message) => {
+  render(AuthForm, { mode: "signup" });
+
+  await fill(m.auth_field_name(), "Ada Lovelace");
+  await fill(m.auth_field_email(), "ada@example.com");
+  await fill(m.auth_field_password(), password);
+  await page.getByRole("button", { name: m.auth_create_account() }).click();
+
+  await expect.element(page.getByText(message())).toBeVisible();
+  expect(post).not.toHaveBeenCalled();
+});
+
+test("a password of exactly 72 bytes is sent", async () => {
+  post.mockResolvedValue({ data: ada, response: { status: 200 } });
+  render(AuthForm, { mode: "signup" });
+
+  await fill(m.auth_field_name(), "Ada Lovelace");
+  await fill(m.auth_field_email(), "ada@example.com");
+  await fill(m.auth_field_password(), "é".repeat(36));
+  await page.getByRole("button", { name: m.auth_create_account() }).click();
+
+  await vi.waitFor(() =>
+    expect(post).toHaveBeenCalledWith("/api/auth/sign-up", {
+      body: { name: "Ada Lovelace", email: "ada@example.com", password: "é".repeat(36) },
+    }),
+  );
+});

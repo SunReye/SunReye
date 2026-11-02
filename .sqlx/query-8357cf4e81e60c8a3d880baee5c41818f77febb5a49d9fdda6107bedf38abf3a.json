@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last FROM rollup WHERE tier = ? AND device_id = ? AND metric_id = ? AND start_us < ?\n             ORDER BY start_us DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "last",
+        "ordinal": 0,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8357cf4e81e60c8a3d880baee5c41818f77febb5a49d9fdda6107bedf38abf3a"
+}

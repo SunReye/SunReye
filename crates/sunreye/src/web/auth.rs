@@ -15,7 +15,7 @@ use tower_sessions::cookie::time::Duration as Span;
 use utoipa::ToSchema;
 
 use super::origin::client_ip;
-use super::password::Passwords;
+use super::password::{Passwords, unhashable};
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::run::Core;
 use crate::store::{AccountRow, NewAccount, Store, StoreError};
@@ -25,8 +25,7 @@ pub type AuthSession = axum_login::AuthSession<Accounts>;
 /// How long a remember-me session lasts without a request.
 const REMEMBERED: Span = Span::days(365);
 
-/// Bounds the Argon2 input, so a request cannot make one check arbitrarily long.
-const PASSWORD_CHARS: std::ops::RangeInclusive<usize> = 8..=128;
+const MIN_PASSWORD_CHARS: usize = 8;
 
 impl AuthUser for AccountRow {
     type Id = i64;
@@ -166,10 +165,10 @@ pub fn validate_account(email: &str, name: &str, password: &str) -> Result<(), A
     if name.trim().is_empty() {
         return Err(ApiError::bad_request("Name is required"));
     }
-    if !PASSWORD_CHARS.contains(&password.chars().count()) {
-        return Err(ApiError::bad_request("Password must be 8–128 characters"));
+    if password.chars().count() < MIN_PASSWORD_CHARS {
+        return Err(ApiError::bad_request("Password must be at least 8 characters"));
     }
-    Ok(())
+    unhashable(password).map_or(Ok(()), |why| Err(ApiError::bad_request(why)))
 }
 
 /// Always under a fresh session id, whatever id the browser arrived with.
@@ -278,10 +277,10 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn accounts_print_without_the_password_memory_after_a_hash() {
+    async fn accounts_print_without_a_hash_after_hashing() {
         let accounts = Accounts::new(Arc::new(Store::in_memory().await.expect("store")));
         accounts.passwords.hash("correct horse battery".into()).await.expect("hash");
         let printed = format!("{accounts:?}");
-        assert!(printed.len() < 1024 && !printed.contains("Block"), "{} bytes", printed.len());
+        assert!(printed.len() < 1024 && !printed.contains("$2b$"), "{printed}");
     }
 }

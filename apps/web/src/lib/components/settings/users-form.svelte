@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { apiErrorText } from '$lib/api-error';
 	import { core } from '$lib/core-api';
+	import { passwordRefusal } from '$lib/password';
 	import type { components } from '$lib/core-api.gen';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -53,6 +54,11 @@
 
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
+		const refusal = passwordRefusal(password);
+		if (refusal) {
+			toast.error(refusal);
+			return;
+		}
 		creating = true;
 		const { error } = await core.POST('/api/admin/users', {
 			body: { name, email, password, admin: role === 'admin' }
@@ -112,7 +118,6 @@
 			id="u-password"
 			type="password"
 			autocomplete="new-password"
-			minlength={8}
 			bind:value={password}
 			required
 		/>

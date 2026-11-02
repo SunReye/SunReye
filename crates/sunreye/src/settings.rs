@@ -194,13 +194,18 @@ pub fn poll_timeout(setting: Option<&str>) -> Duration {
 }
 
 fn duration(key: &str, setting: Option<&str>, default: Duration) -> Duration {
+    positive(key, setting, "milliseconds").map_or(default, Duration::from_millis)
+}
+
+/// A positive whole number of `unit`; none when the setting is missing, malformed or not positive.
+pub fn positive(key: &str, setting: Option<&str>, unit: &str) -> Option<u64> {
     match setting.map(str::parse::<u64>) {
-        Some(Ok(millis @ 1..)) => Duration::from_millis(millis),
+        Some(Ok(value @ 1..)) => Some(value),
         Some(_) => {
-            tracing::warn!(setting = key, "not a positive number of milliseconds, using the default");
-            default
+            tracing::warn!(setting = key, "not a positive number of {unit}, using the default");
+            None
         }
-        None => default,
+        None => None,
     }
 }
 

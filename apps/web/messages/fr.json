@@ -101,6 +101,8 @@
   "auth_name_min": "Le nom doit comporter au moins 2 caractères",
   "auth_email_invalid": "Adresse e-mail invalide",
   "auth_password_min": "Le mot de passe doit comporter au moins 8 caractères",
+  "auth_password_max": "Le mot de passe doit faire au plus 72 octets (les lettres accentuées et les emoji en occupent plusieurs)",
+  "auth_password_nul": "Le mot de passe ne doit pas contenir de caractère NUL",
   "auth_password_required": "Le mot de passe est requis",
   "auth_error_generic": "Une erreur s'est produite. Veuillez réessayer.",
   "auth_create_account": "Créer un compte",

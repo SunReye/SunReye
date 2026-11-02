@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup\n             WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
+  "describe": {
+    "columns": [
+      {
+        "name": "start_us",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "first_us",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "first",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "last_us",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "weighted",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "max",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "min",
+        "ordinal": 7,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d5cdb324568ad6b26583cf3ac41051ce2aaacb557a5a9bd0021c8938c6288fa5"
+}
