@@ -80,7 +80,9 @@ async fn the_store_holds_the_keys_sha256_and_never_the_key() {
     assert_eq!(core.store.api_key_account(&sha256(&key)).await.expect("find"), Some(me));
     drop(admin);
     core.stop().await;
-    let file = std::fs::read(dir.join("sunreye.db")).expect("the store file");
+    // The row may still sit in the write-ahead log.
+    let mut file = std::fs::read(dir.join("sunreye.db")).expect("the store file");
+    file.extend(std::fs::read(dir.join("sunreye.db-wal")).unwrap_or_default());
     let random = key.strip_prefix("sunreye_").expect("prefix");
     assert!(!file.windows(random.len()).any(|w| w == random.as_bytes()), "the key is in the store file");
     let digest = sha256(&key);

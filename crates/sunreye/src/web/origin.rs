@@ -3,7 +3,8 @@
 //! A state-changing request must come from a trusted origin: the host it was sent to (page script can
 //! set neither `Origin` nor `Host`, so a cross-site page cannot make them agree) or one configured with
 //! `--trusted-origin`. A request without `Origin` is refused only when it carries a cookie: browsers send
-//! `Origin` on every non-GET request, and without a cookie there is no session to ride.
+//! `Origin` on every non-GET request, and without a cookie there is no session to ride. A connection
+//! upgrade is checked like a write: browsers send `Origin` with it and a `/ws` socket reads the session.
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -23,7 +24,7 @@ pub fn origin_authority(origin: &str) -> Option<&str> {
 }
 
 pub fn allowed(method: &Method, headers: &HeaderMap, trusted: &[String]) -> bool {
-    if method.is_safe() {
+    if method.is_safe() && !headers.contains_key(header::UPGRADE) {
         return true;
     }
     let Some(origin) = headers.get(header::ORIGIN) else { return !headers.contains_key(header::COOKIE) };
@@ -118,6 +119,23 @@ mod tests {
             assert!(allowed(&method, &cross, &[]), "{method}");
         }
         assert!(allowed(&Method::POST, &headers(&[("host", "sunreye.lan")]), &[]));
+    }
+
+    #[test]
+    fn a_websocket_upgrade_is_checked_like_a_write() {
+        let upgrade = |origin| {
+            headers(&[
+                ("host", "sunreye.lan"),
+                ("origin", origin),
+                ("cookie", "id=x"),
+                ("upgrade", "WebSocket"),
+            ])
+        };
+        assert!(
+            !allowed(&Method::GET, &upgrade("https://evil.example"), &[]),
+            "a cross-site page rides the cookie"
+        );
+        assert!(allowed(&Method::GET, &upgrade("http://sunreye.lan"), &[]));
     }
 
     #[test]

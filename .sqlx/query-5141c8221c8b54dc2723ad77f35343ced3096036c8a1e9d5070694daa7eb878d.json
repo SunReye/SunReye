@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM reading_minute WHERE device_id = ? AND minute IN\n                       (SELECT minute FROM reading_minute WHERE device_id = ? AND minute < ? LIMIT ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "5141c8221c8b54dc2723ad77f35343ced3096036c8a1e9d5070694daa7eb878d"
+}

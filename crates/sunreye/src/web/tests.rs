@@ -566,7 +566,7 @@ async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
         StatusCode::UNAUTHORIZED
     );
     let stored = core.store.account_by_email(ADMIN_EMAIL).await.expect("store").expect("account");
-    assert!(stored.password_hash.starts_with("$argon2id$"), "Argon2id, never the password");
+    assert!(stored.password_hash.starts_with("$2b$12$"), "bcrypt, never the password");
     drop((api, admin));
     core.stop().await;
 }
@@ -590,20 +590,35 @@ async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
     core.stop().await;
 }
 
+/// The minimum counts characters; the maximum counts UTF-8 bytes, all bcrypt reads.
 #[tokio::test]
-async fn a_password_of_8_to_128_characters_signs_up_and_one_outside_is_a_400() {
+async fn a_password_of_8_characters_to_72_bytes_signs_up_and_one_outside_is_a_400() {
+    let short = Some("Password must be at least 8 characters");
+    let long = Some("Password must be at most 72 bytes");
+    let nul = Some("Password must not contain a NUL character");
     let cases = [
-        ("7", "x".repeat(7), StatusCode::BAD_REQUEST),
-        ("8", "x".repeat(8), StatusCode::OK),
-        ("128", "x".repeat(128), StatusCode::OK),
-        ("128 two-byte", "é".repeat(128), StatusCode::OK),
-        ("129", "x".repeat(129), StatusCode::BAD_REQUEST),
+        ("7", "x".repeat(7), short),
+        ("8", "x".repeat(8), None),
+        ("4 two-byte", "é".repeat(4), short),
+        ("72", "x".repeat(72), None),
+        ("36 two-byte", "é".repeat(36), None),
+        ("73", "x".repeat(73), long),
+        ("37 two-byte", "é".repeat(37), long),
+        ("NUL inside", "abcdefgh\0abcdefgh".to_owned(), nul),
+        ("72 ending in NUL", format!("{}\0", "x".repeat(71)), nul),
     ];
-    for (name, password, want) in cases {
+    for (name, password, refusal) in cases {
         let core = Core::open(&dir(&format!("password-length-{name}"))).await.expect("core");
         let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
-        assert_eq!(sign_up(&api, ADMIN_EMAIL, &password).await.status, want, "{name}");
-        if want == StatusCode::OK {
+        let answer = sign_up(&api, ADMIN_EMAIL, &password).await;
+        if let Some(message) = refusal {
+            assert_eq!(
+                (answer.status, answer.json()),
+                (StatusCode::BAD_REQUEST, json!({"error": message})),
+                "{name}"
+            );
+        } else {
+            assert_eq!(answer.status, StatusCode::OK, "{name}");
             assert_eq!(login(&api, ADMIN_EMAIL, &password, false).await.status, StatusCode::OK, "{name}");
         }
         drop(api);
@@ -1141,3 +1156,4 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 mod api_keys;
 mod reads;
 mod users;
+mod ws;

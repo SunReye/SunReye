@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us IN\n                       (SELECT start_us FROM rollup WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us <= ? LIMIT ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "a324e310f0256c31334a8ec9b4adc1e4ba3b6520cdfee9fc63a45106ea4cc890"
+}

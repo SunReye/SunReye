@@ -101,6 +101,8 @@
   "auth_name_min": "El nombre debe tener al menos 2 caracteres",
   "auth_email_invalid": "Dirección de correo no válida",
   "auth_password_min": "La contraseña debe tener al menos 8 caracteres",
+  "auth_password_max": "La contraseña debe tener como máximo 72 bytes (las letras acentuadas y los emoji ocupan más de uno)",
+  "auth_password_nul": "La contraseña no debe contener un carácter NUL",
   "auth_password_required": "La contraseña es obligatoria",
   "auth_error_generic": "Algo salió mal. Inténtelo de nuevo.",
   "auth_create_account": "Crear cuenta",
