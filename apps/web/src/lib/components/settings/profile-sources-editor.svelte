@@ -1,78 +1,81 @@
 <script lang="ts">
-	import { toast } from "svelte-sonner";
-	import { Button } from "$lib/components/ui/button";
-	import { Input } from "$lib/components/ui/input";
-	import { Label } from "$lib/components/ui/label";
-	import ProfileSourceRow from "./profile-source-row.svelte";
 	import Section from '$lib/components/layout/section.svelte';
-	import type { Source } from "./profile-types";
-	import * as m from "$lib/paraglide/messages";
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import * as m from '$lib/paraglide/messages';
+	import type { Source, StoredSource } from './profile-types';
 
 	let {
 		sources,
-		saving,
-		onAdd,
-		onRemove,
-		onToggle
+		busy,
+		onAdd
 	}: {
-		sources: Source[];
-		saving: boolean;
-		onAdd: (url: string) => void;
-		onRemove: (url: string) => void;
-		onToggle: (url: string, enabled: boolean) => void;
+		sources: StoredSource[];
+		busy: boolean;
+		onAdd: (source: Source) => void;
 	} = $props();
 
-	let newUrl = $state("");
+	let baseUrl = $state('');
+	let indexPath = $state('index.json');
+	let problem = $state<string | null>(null);
 
-	// Mirror the server's `gitUrlSchema` so invalid URLs are caught before we
-	// optimistically add + auto-save them (the server would otherwise reject the
-	// whole set with an opaque 400).
-	function validationError(url: string): string | null {
-		if (!url.startsWith("https://")) return m.sources_url_invalid();
+	// The core refuses the same cases with its own message; catching them here spares a round trip.
+	function refusal(source: Source): string | null {
+		if (!source.baseUrl.startsWith('https://')) return m.sources_url_invalid();
+		if (sources.some((s) => s.baseUrl === source.baseUrl && s.indexPath === source.indexPath)) {
+			return m.sources_already_added();
+		}
 		return null;
 	}
 
-	function add() {
-		const url = newUrl.trim();
-		if (!url) return;
-		if (sources.some((s) => s.url === url)) {
-			toast.error(m.sources_already_added());
-			return;
-		}
-		const error = validationError(url);
-		if (error) {
-			toast.error(error);
-			return;
-		}
-		onAdd(url);
-		newUrl = "";
-	}
-
-	function onKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter") add();
+	function add(event: SubmitEvent) {
+		event.preventDefault();
+		const source = { baseUrl: baseUrl.trim(), indexPath: indexPath.trim() };
+		if (!source.baseUrl || !source.indexPath) return;
+		problem = refusal(source);
+		if (problem) return;
+		onAdd(source);
+		baseUrl = '';
 	}
 </script>
 
 <Section title={m.sources_title()}>
-	<div class="flex flex-col divide-y divide-border">
-		{#each sources as s (s.url)}
-			<ProfileSourceRow source={s} {saving} {onRemove} {onToggle} />
+	<ul class="flex flex-col divide-y divide-border">
+		{#each sources as s (`${s.baseUrl}${s.indexPath}`)}
+			<li class="flex flex-col gap-0.5 py-2.5">
+				<span class="text-sm break-all">{s.baseUrl}</span>
+				<span class="text-xs break-all text-muted-foreground">
+					{s.indexPath} · {m.sources_profile_count({ count: s.profileIds.length })}
+				</span>
+			</li>
 		{/each}
 		{#if sources.length === 0}
-			<p class="py-2.5 text-sm text-muted-foreground">{m.sources_none()}</p>
+			<li class="py-2.5 text-sm text-muted-foreground">{m.sources_none()}</li>
 		{/if}
-	</div>
-	<div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-			<Label for="new-source">{m.sources_add_label()}</Label>
-			<Input
-				id="new-source"
-				bind:value={newUrl}
-				disabled={saving}
-				placeholder="https://github.com/org/inverter-profiles.git"
-				onkeydown={onKeydown}
-			/>
+	</ul>
+	<form class="flex flex-col gap-3" onsubmit={add}>
+		<div class="flex flex-col gap-3 sm:flex-row">
+			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
+				<Label for="source-base">{m.sources_base_label()}</Label>
+				<Input
+					id="source-base"
+					bind:value={baseUrl}
+					disabled={busy}
+					placeholder="https://example.org/profiles/"
+					oninput={() => (problem = null)}
+				/>
+			</div>
+			<div class="flex min-w-0 flex-col gap-1.5 sm:w-48">
+				<Label for="source-index">{m.sources_index_label()}</Label>
+				<Input id="source-index" bind:value={indexPath} disabled={busy} oninput={() => (problem = null)} />
+			</div>
 		</div>
-		<Button variant="outline" class="w-full sm:w-auto" disabled={saving} onclick={add}>{m.action_add()}</Button>
-	</div>
+		{#if problem}
+			<p role="alert" class="text-sm text-destructive">{problem}</p>
+		{/if}
+		<Button type="submit" variant="outline" class="h-9 w-full sm:h-8 sm:w-auto sm:self-start" disabled={busy}>
+			{m.action_add()}
+		</Button>
+	</form>
 </Section>

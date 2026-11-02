@@ -599,6 +599,22 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     });
   });
 
+  const storedSources: { baseUrl: string; indexPath: string; profileIds: string[] }[] = [];
+  const addedProfiles: Record<string, unknown>[] = [];
+  /** A profile a source or an import supplied: listed from now on, never the active one. */
+  const addedProfile = (id: string, name: string) => {
+    const profile = {
+      id,
+      name,
+      manufacturer: "Acme",
+      active: false,
+      installed: true,
+      builtin: false,
+    };
+    addedProfiles.push(profile);
+    return profile;
+  };
+
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
@@ -890,9 +906,22 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       if (method === "PUT") return json(route, saved(fixture.automations(), body()));
       return json(route, fixture.automations());
     }
+    // Profile sources and imports: what they add shows in `GET /api/profiles`, as on the core.
     if (at("settings/profile-sources")) {
-      if (method === "PUT") return json(route, { sources: body().sources });
-      return json(route, fixture.PROFILE_SOURCES);
+      if (method === "POST") {
+        const source = { baseUrl: String(body().baseUrl), indexPath: String(body().indexPath) };
+        if (!source.baseUrl.startsWith("https://")) {
+          return json(route, { error: "The base URL must start with https://" }, 400);
+        }
+        const profile = addedProfile("acme-fetched", "Acme Fetched");
+        storedSources.push({ ...source, profileIds: [profile.id] });
+        return json(route, { ...source, profileIds: [profile.id], skipped: [] });
+      }
+      return json(route, storedSources);
+    }
+    if (at("settings/profiles/import")) {
+      const file = JSON.parse(request.postData() ?? "{}") as { id: string; name: string };
+      return json(route, { id: addedProfile(file.id, file.name).id });
     }
     if (at("settings/active-profile")) {
       return json(route, { id: body().id, restartRequired: false });
@@ -1028,10 +1057,7 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     }
 
     // ── Profiles ────────────────────────────────────────────────────────────
-    if (at("profiles/updates")) return json(route, fixture.profileUpdates());
-    if (at("profiles/available")) return json(route, fixture.AVAILABLE_PROFILES);
-    if (at("profiles/install")) return json(route, { id: body().id, version: "1.1.0" });
-    if (at("profiles")) return json(route, fixture.profiles(MANIFEST));
+    if (at("profiles")) return json(route, [...fixture.profiles(MANIFEST), ...addedProfiles]);
     if (under("profiles") && method === "DELETE") return json(route, { ok: true, id });
 
     // ── Commands ────────────────────────────────────────────────────────────

@@ -180,7 +180,7 @@ async fn a_fresh_core_needs_a_profile() {
 }
 
 #[tokio::test]
-async fn capabilities_report_every_unserved_area_absent() {
+async fn capabilities_report_only_profile_sources_served() {
     let (core, app) = open(&dir("capabilities")).await;
     let answer = get(&app, "/api/capabilities").await;
     assert_eq!(answer.status, StatusCode::OK);
@@ -188,7 +188,7 @@ async fn capabilities_report_every_unserved_area_absent() {
         answer.json(),
         json!({
             "history": false, "statistics": false, "controls": false, "automations": false,
-            "restart": false, "profileSources": false
+            "restart": false, "profileSources": true
         })
     );
     drop(app);
@@ -986,6 +986,28 @@ async fn a_source_that_cannot_be_used_is_a_400_naming_why_and_stores_nothing() {
 
 async fn import(app: &Api, profile: &Value) -> Answer {
     send(app, Method::POST, "/api/settings/profiles/import", Some(&profile.to_string())).await
+}
+
+#[tokio::test]
+async fn a_fetched_source_and_an_imported_file_are_both_listed_and_either_can_be_chosen() {
+    let ca = Ca::new("test root");
+    let port = serve_repo(&ca, &[third_party("fetched-hybrid", PROFILE)]).await;
+    let (core, app) = open_trusting(&dir("source-and-import"), &ca).await;
+    let added = post(&app, "/api/settings/profile-sources", &source_body(port)).await;
+    assert_eq!(added.status, StatusCode::OK, "{:?}", added.json());
+    let (_, profile) = third_party("imported-hybrid", PROFILE);
+    assert_eq!(import(&app, &profile).await.status, StatusCode::OK);
+
+    let listed = get(&app, "/api/profiles").await.json();
+    let ids: Vec<&str> = listed.as_array().expect("array").iter().filter_map(|p| p["id"].as_str()).collect();
+    assert!(ids.contains(&"fetched-hybrid") && ids.contains(&"imported-hybrid"), "{ids:?}");
+    for id in ["fetched-hybrid", "imported-hybrid"] {
+        let chosen = put(&app, "/api/settings/active-profile", &json!({"id": id})).await;
+        assert_eq!(chosen.status, StatusCode::OK, "{id}: {:?}", chosen.json());
+        assert_eq!(get(&app, "/api/profile-status").await.json()["activeProfileId"], id);
+    }
+    drop(app);
+    core.stop().await;
 }
 
 #[tokio::test]
