@@ -143,3 +143,39 @@ async fn a_restart_around_every_minute_and_each_minute_appended_twice_change_no_
         drop(std::fs::remove_dir_all(&dir));
     }
 }
+
+fn at(instant: &str) -> i64 {
+    instant.parse::<Timestamp>().expect("instant").as_millisecond()
+}
+
+fn polled(readings: &[(&str, f64)]) -> ClosedMinute {
+    let samples: Vec<Sample> = readings
+        .iter()
+        .map(|(instant, value)| Sample { at_ms: at(instant), values: vec![("power".into(), *value)] })
+        .collect();
+    ClosedMinute { minute: minute_of(samples[0].at_ms), samples }
+}
+
+#[tokio::test]
+async fn a_minute_split_across_a_restart_rolls_up_as_one() {
+    let dir = scratch("split-minute");
+    let device = seed(&dir).await;
+    append_across_a_restart(&dir, device, &polled(&[("2026-05-10T12:00:00Z", 0.0)])).await;
+    let rest = polled(&[("2026-05-10T12:00:20Z", 30.0), ("2026-05-10T12:00:40Z", 60.0)]);
+    append_across_a_restart(&dir, device, &rest).await;
+    append_across_a_restart(&dir, device, &rest).await;
+    append_across_a_restart(&dir, device, &polled(&[("2026-05-10T13:00:00Z", 30.0)])).await;
+
+    let store = Store::open(&dir).await.expect("open");
+    let bucket =
+        |start: &str, avg, max, min| Bucket { start: start.parse().expect("instant"), avg, max, min };
+    let minutes = store.buckets(Tier::Minute, device, "power").await.expect("buckets");
+    // 0, 30 and 60, 20 s each.
+    assert_eq!(minutes[0], bucket("2026-05-10T12:00:00Z", 30.0, 60.0, 0.0));
+    // 0 and 30 for 20 s each, then 60 to 13:00: (0·20 + 30·20 + 60·3560) / 3600.
+    let hours = store.buckets(Tier::Hour, device, "power").await.expect("buckets");
+    assert_eq!(hours, [bucket("2026-05-10T12:00:00Z", 59.5, 60.0, 0.0)]);
+    assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 4);
+    store.close().await;
+    drop(std::fs::remove_dir_all(&dir));
+}
