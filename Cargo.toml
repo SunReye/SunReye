@@ -38,6 +38,6 @@ debug = "line-tables-only"
 lto = "thin"
 codegen-units = 1
 
-# bcrypt unoptimised takes seconds per password check; tests sign in many times.
+# A dev cost-12 check takes about 1 s with blowfish unoptimised, 0.3 s optimised; tests sign in many times.
 [profile.dev.package.blowfish]
 opt-level = 3

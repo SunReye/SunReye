@@ -31,7 +31,8 @@ NixOS channel.
 - No TypeScript work is needed for the migration; 3.x keeps running until the user switches it off,
   which is the rollback.
 - 4.0 starts with a fresh admin; passwords use bcrypt, cost 12 on every target, 8 characters to 72 UTF-8
-  bytes (bcrypt reads no further; a longer password is refused, never truncated). 3.x scrypt hashes
+  bytes (bcrypt reads no further; a longer password is refused, never truncated), no NUL character
+  (bcrypt stops reading there, so one is refused). 3.x scrypt hashes
   (N=16384, r=16, 32 MiB per check) are never imported.
 - Amendment (#402) reopens "Argon2id with per-target parameters" here and in #315 and #374: Argon2id's
   19 MiB working buffer was the largest part of the core's resident memory against the ADR 0006 budget;
