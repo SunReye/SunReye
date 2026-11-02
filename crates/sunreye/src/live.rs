@@ -154,7 +154,7 @@ fn frame(topic: &str, data: impl Serialize) -> String {
     serde_json::to_string(&Envelope { topic, data }).unwrap_or_default()
 }
 
-/// The device's slug on the wire: its id.
+/// The device's slug on the wire: its id as a decimal string.
 fn slug(device_id: i64) -> String {
     device_id.to_string()
 }

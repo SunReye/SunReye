@@ -40,9 +40,9 @@ export interface PlantSample {
   time: string;
   /** Metric key → folded value; a per-device metric is absent, never zero. */
   metrics: Record<string, number>;
-  /** Every member's slug, roster order. */
+  /** Every member's slug, roster order. The 4.0 core's slug is the device id as a decimal string. */
   members: string[];
-  /** Members left out because their last sample is older than the stale rule. */
+  /** Slugs of members left out because their last sample is older than the stale rule. */
   stale: string[];
 }
 

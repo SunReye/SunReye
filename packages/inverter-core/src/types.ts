@@ -379,6 +379,7 @@ export interface HttpConnection {
  */
 export interface InverterSample {
   time: string;
+  /** The device's slug; on `/ws` the 4.0 core sends its device id as a decimal string. */
   inverterId: string;
   metrics: MetricValues;
   /**
