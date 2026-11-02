@@ -236,9 +236,37 @@ impl Unstored {
     }
 }
 
+#[cfg(test)]
+impl Unstored {
+    /// The held map under its lock, so a test can write and release between a reader's two reads.
+    pub(crate) fn hold(&self) -> MutexGuard<'_, BTreeMap<i64, Vec<Sample>>> {
+        self.lock()
+    }
+}
+
 fn minute_in(samples: &[Sample], minute: i64) -> ClosedMinute {
     let samples = samples.iter().filter(|s| minute_of(s.at_ms) == minute).cloned().collect();
     ClosedMinute { minute, samples }
+}
+
+/// `stored`, oldest first, then the `held` readings newer than all of them, so a minute both written and
+/// still held reads once.
+pub fn with_unstored(
+    stored: impl IntoIterator<Item = Result<Sample, SampleError>>,
+    held: Vec<Sample>,
+) -> impl Iterator<Item = Result<Sample, SampleError>> {
+    let mut newest = i64::MIN;
+    let mut held = held.into_iter();
+    let mut stored = stored.into_iter();
+    std::iter::from_fn(move || {
+        if let Some(next) = stored.next() {
+            if let Ok(sample) = &next {
+                newest = newest.max(sample.at_ms);
+            }
+            return Some(next);
+        }
+        held.find(|sample| sample.at_ms > newest).map(Ok)
+    })
 }
 
 #[cfg(test)]
@@ -398,5 +426,36 @@ mod tests {
         assert_eq!(times(&unstored.held(1)), [0]);
         assert_eq!(times(&unstored.held(2)), [MINUTE_MS]);
         assert_eq!(unstored.held(3), []);
+    }
+
+    fn ok(samples: &[Sample]) -> Vec<Result<Sample, SampleError>> {
+        samples.iter().cloned().map(Ok).collect()
+    }
+
+    #[test]
+    fn readings_held_after_the_stored_ones_read_after_them() {
+        let stored = [at(1_000, &[("a", 1.0)]), at(2_000, &[("a", 2.0)])];
+        let held = vec![at(3_000, &[("a", 3.0)]), at(4_000, &[("a", 4.0)])];
+        let read: Vec<Sample> = with_unstored(ok(&stored), held).collect::<Result<_, _>>().expect("readings");
+        assert_eq!(times(&read), [1_000, 2_000, 3_000, 4_000]);
+    }
+
+    #[test]
+    fn a_closed_minute_written_but_not_yet_released_reads_once() {
+        let stored = [at(1_000, &[("a", 1.0)]), at(2_000, &[("a", 2.0)])];
+        let held = vec![at(1_000, &[("a", 1.0)]), at(2_000, &[("a", 2.0)]), at(MINUTE_MS, &[("a", 3.0)])];
+        let read: Vec<Sample> = with_unstored(ok(&stored), held).collect::<Result<_, _>>().expect("readings");
+        assert_eq!(times(&read), [1_000, 2_000, MINUTE_MS]);
+    }
+
+    #[test]
+    fn nothing_stored_reads_what_is_held_and_a_damaged_minute_stays_an_error() {
+        let held = vec![at(5, &[("a", 1.0)])];
+        let read: Vec<Sample> = with_unstored(ok(&[]), held.clone()).collect::<Result<_, _>>().expect("ok");
+        assert_eq!(times(&read), [5]);
+        let damaged = vec![Err(SampleError::Corrupt("truncated"))];
+        let read: Vec<_> = with_unstored(damaged, held).collect();
+        assert_eq!(read[0], Err(SampleError::Corrupt("truncated")));
+        assert_eq!(read.len(), 2);
     }
 }
