@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 26] = [
+const SERVED: [(&str, &str); 28] = [
     ("get", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys"),
     ("post", "/api/admin/api-keys/revoke"),
@@ -440,6 +440,7 @@ const SERVED: [(&str, &str); 26] = [
     ("get", "/api/capabilities"),
     ("get", "/api/history/recent"),
     ("get", "/api/history/rollup"),
+    ("get", "/api/kiosk"),
     ("get", "/api/profile"),
     ("get", "/api/profile-status"),
     ("get", "/api/profiles"),
@@ -452,6 +453,7 @@ const SERVED: [(&str, &str); 26] = [
     ("post", "/api/settings/profiles/import"),
     ("put", "/api/settings/active-profile"),
     ("put", "/api/settings/inverter"),
+    ("put", "/api/settings/kiosk"),
 ];
 
 fn operations(document: &Value) -> Vec<(String, String)> {
@@ -504,7 +506,7 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 15] = [
+const ADMIN_ROUTES: [(&str, &str); 16] = [
     ("POST", "/api/settings/profiles/import"),
     ("GET", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profile-sources"),
@@ -513,6 +515,7 @@ const ADMIN_ROUTES: [(&str, &str); 15] = [
     ("GET", "/api/settings/inverter"),
     ("PUT", "/api/settings/inverter"),
     ("POST", "/api/settings/inverter/test"),
+    ("PUT", "/api/settings/kiosk"),
     ("GET", "/api/admin/users"),
     ("POST", "/api/admin/users"),
     ("PUT", "/api/admin/users/1/role"),
@@ -719,7 +722,7 @@ async fn without_a_session_every_gated_route_is_refused() {
         assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{route:?}");
         assert_eq!(answer.json(), json!({"error": "Not signed in"}), "{route:?}");
     }
-    for path in ["/api/setup-status", "/api/profile-status"] {
+    for path in ["/api/setup-status", "/api/profile-status", "/api/kiosk"] {
         assert_eq!(get(&api, path).await.status, StatusCode::OK, "{path} is public");
     }
     drop((api, admin));
@@ -1156,6 +1159,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 }
 
 mod api_keys;
+mod kiosk;
 mod reads;
 mod rollup;
 mod users;

@@ -5,6 +5,7 @@ mod assets;
 mod auth;
 mod history;
 mod inverter;
+mod kiosk;
 mod origin;
 mod password;
 mod profile_sources;
@@ -56,29 +57,38 @@ pub struct Config {
     pub live: LiveLimits,
 }
 
-/// The API routes with their `OpenAPI` document. Anonymous callers reach only the setup gates and the
-/// sign-in routes; `/api/v1` takes an API key instead of a session.
+/// The API routes with their `OpenAPI` document. Anonymous callers reach the setup gates, the sign-in
+/// routes and, with the kiosk view on, the dashboard; `/api/v1` takes an API key instead of a session.
 fn api() -> (Router<Arc<Core>>, Document) {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(setup::setup_status))
         .routes(routes!(setup::profile_status))
+        .routes(routes!(kiosk::status))
         .routes(routes!(auth::sign_up))
         .routes(routes!(auth::login))
         .routes(routes!(v1::entities))
+        .merge(dashboard())
         .merge(signed_in())
         .merge(admin())
         .split_for_parts()
 }
 
-/// Any session, user or admin. `/ws` is gated here too, outside the `OpenAPI` document.
-fn signed_in() -> OpenApiRouter<Arc<Core>> {
+/// What the dashboard reads: any session, or anyone while the kiosk view is on. An allow-list: nothing
+/// else may join it. `/ws` is here too, outside the `OpenAPI` document.
+fn dashboard() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
         .routes(routes!(rollup::minute_buckets))
-        .routes(routes!(auth::current, auth::logout))
         .route("/ws", get(ws::upgrade))
+        .route_layer(middleware::from_fn(kiosk::session_or_kiosk))
+}
+
+/// Any session, user or admin.
+fn signed_in() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(auth::current, auth::logout))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
@@ -98,6 +108,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
+        .routes(routes!(kiosk::switch))
         .routes(routes!(profile_sources::list, profile_sources::add))
         .routes(routes!(profile_sources::import))
 }

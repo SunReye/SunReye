@@ -121,6 +121,31 @@ async fn an_anonymous_upgrade_is_refused_and_any_session_is_accepted() {
     core.stop().await;
 }
 
+#[tokio::test]
+async fn with_the_kiosk_view_on_a_stranger_is_upgraded_and_fed_and_with_it_off_refused() {
+    let (core, admin) = open(&dir("ws-kiosk")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7]);
+    let stranger = admin.anonymous();
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::UNAUTHORIZED));
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut socket = connect(addr, &stranger).await;
+    subscribe(&mut socket, r#"["metrics"]"#).await;
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut socket).await["data"]["metrics"]["pv_power"], 42.0);
+    assert_eq!(
+        upgrade(addr, &stranger, "https://evil.example").await.err(),
+        Some(StatusCode::FORBIDDEN),
+        "the origin check holds for a stranger too"
+    );
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": false})).await;
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::UNAUTHORIZED));
+    drop((stranger, admin));
+    core.stop().await;
+}
+
 /// Pings every 100 ms and closes a connection silent for 300 ms.
 fn quick() -> Config {
     let live =

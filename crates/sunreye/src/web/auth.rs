@@ -56,6 +56,10 @@ impl Accounts {
     pub fn passwords(&self) -> &Passwords {
         &self.passwords
     }
+
+    pub async fn kiosk(&self) -> Result<bool, StoreError> {
+        crate::settings::kiosk(&self.store).await
+    }
 }
 
 #[allow(missing_debug_implementations, reason = "holds a password")]
