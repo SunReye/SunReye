@@ -5,6 +5,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::server::crc16;
+
 #[derive(Debug, thiserror::Error)]
 pub enum FixtureError {
     #[error("cannot read fixtures: {0}")]
@@ -13,6 +15,8 @@ pub enum FixtureError {
     Json(#[from] serde_json::Error),
     #[error("no fixture for {0}")]
     Missing(String),
+    #[error("not a Modbus TCP frame: {0}")]
+    BadFrame(String),
 }
 
 /// Holding registers a device answers. A read touching an unmapped register is refused.
@@ -159,6 +163,62 @@ pub fn transport_cases(dir: &Path, framing: &str) -> Result<Vec<TransportCase>, 
     Ok(cases)
 }
 
+/// Every `rtu-over-tcp` case with its wire bytes re-framed as RTU. The corpus recorded 2.x writing MBAP
+/// frames on that transport (`fixtures/oracle/README.md`); PDUs, registers and decoded values carry over,
+/// the bytes around them become unit id, PDU and CRC; stray bytes before a reply stay as recorded.
+pub fn rtu_cases(dir: &Path) -> Result<Vec<TransportCase>, FixtureError> {
+    let mut cases = transport_cases(dir, "rtu-over-tcp")?;
+    for case in &mut cases {
+        case.exchanges = case.exchanges.iter().map(reframe).collect::<Result<_, _>>()?;
+    }
+    Ok(cases)
+}
+
+fn reframe(step: &Exchange) -> Result<Exchange, FixtureError> {
+    Ok(match step {
+        Exchange::Expect(mbap) => Exchange::Expect(mbap_to_rtu(mbap)?),
+        Exchange::Send(chunks) => {
+            let wire = chunks.concat();
+            let framed = (0..wire.len())
+                .find_map(|junk| Some([&wire[..junk], &mbap_to_rtu(&wire[junk..]).ok()?].concat()))
+                .ok_or_else(|| FixtureError::BadFrame(format!("{wire:02x?}")))?;
+            Exchange::Send(resplit(&framed, chunks))
+        }
+    })
+}
+
+/// `bytes` cut at the same lengths as `chunks`, as far as it reaches.
+fn resplit(bytes: &[u8], chunks: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut rest = bytes;
+    let mut out = Vec::new();
+    for chunk in &chunks[..chunks.len() - 1] {
+        let (head, tail) = rest.split_at(chunk.len().min(rest.len()));
+        out.push(head.to_vec());
+        rest = tail;
+    }
+    out.push(rest.to_vec());
+    out.retain(|chunk| !chunk.is_empty());
+    out
+}
+
+/// Each MBAP frame in `bytes` becomes unit id, PDU, CRC-16/Modbus (low byte first).
+fn mbap_to_rtu(bytes: &[u8]) -> Result<Vec<u8>, FixtureError> {
+    let mut out = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let bad = || FixtureError::BadFrame(format!("{rest:02x?}"));
+        if rest.get(2..4) != Some(&[0, 0]) {
+            return Err(bad());
+        }
+        let length = rest.get(4..6).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or_else(bad)?;
+        let frame = rest.get(6..6 + length).ok_or_else(bad)?;
+        out.extend_from_slice(frame);
+        out.extend_from_slice(&crc16(frame).to_le_bytes());
+        rest = &rest[6 + length..];
+    }
+    Ok(out)
+}
+
 fn exchange(row: ExchangeRow) -> Result<Exchange, FixtureError> {
     Ok(match row {
         ExchangeRow::Tx { hex } => Exchange::Expect(unhex(&hex)?),
@@ -210,5 +270,40 @@ mod tests {
         assert_eq!(unhex("").ok(), Some(vec![]));
         assert!(unhex("0g").is_err());
         assert!(unhex("abc").is_err());
+    }
+
+    #[test]
+    fn an_mbap_frame_becomes_unit_pdu_and_crc_and_a_malformed_one_is_refused() {
+        let mbap = [0, 1, 0, 0, 0, 6, 1, 3, 0, 0, 0, 10];
+        assert_eq!(mbap_to_rtu(&mbap).ok(), Some(vec![1, 3, 0, 0, 0, 10, 0xc5, 0xcd]));
+        let two = [mbap.as_slice(), mbap.as_slice()].concat();
+        assert_eq!(mbap_to_rtu(&two).ok().map(|rtu| rtu.len()), Some(16), "frames follow one another");
+        assert_eq!(mbap_to_rtu(&[]).ok(), Some(vec![]));
+        assert!(mbap_to_rtu(&mbap[..11]).is_err(), "a frame shorter than its length field");
+        assert!(mbap_to_rtu(&mbap[..5]).is_err(), "a header cut short");
+    }
+
+    #[test]
+    fn stray_bytes_before_a_recorded_reply_stay_in_front_of_the_reframed_one() {
+        let mbap = [0, 1, 0, 0, 0, 6, 1, 3, 0, 0, 0, 10];
+        let rtu = vec![1, 3, 0, 0, 0, 10, 0xc5, 0xcd];
+        let step = |bytes: Vec<u8>| reframe(&Exchange::Send(vec![bytes])).ok();
+        assert_eq!(step(mbap.to_vec()), Some(Exchange::Send(vec![rtu.clone()])));
+        let junk = [0xde, 0xad, 0xbe];
+        assert_eq!(
+            step([junk.as_slice(), &mbap].concat()),
+            Some(Exchange::Send(vec![[&junk[..], &rtu].concat()]))
+        );
+        assert_eq!(step(junk.to_vec()), None, "stray bytes and no frame");
+        assert_eq!(step([0, 1, 0, 9, 0, 6, 1, 3, 0, 0, 0, 10].to_vec()), None, "not the Modbus protocol id");
+    }
+
+    #[test]
+    fn a_reply_is_cut_at_the_recorded_lengths_as_far_as_the_frame_reaches() {
+        let chunks = [vec![0; 5], vec![0; 20]];
+        let cut = resplit(&[1, 2, 3, 4, 5, 6, 7], &chunks);
+        assert_eq!(cut, [vec![1, 2, 3, 4, 5], vec![6, 7]]);
+        assert_eq!(resplit(&[1, 2, 3], &chunks), [vec![1, 2, 3]], "no empty chunk");
+        assert_eq!(resplit(&[1, 2], &[vec![0]]), [vec![1, 2]]);
     }
 }

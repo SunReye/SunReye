@@ -2,12 +2,14 @@
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use sunreye::modbus::Transport;
 use sunreye::store::{NewConnection, NewDevice, Sample, Store};
-use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
+use sunreye_sim::{FC_READ_HOLDING, Framing, Simulator, profile_case};
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const PROFILE: &str = "deye-sg01hp3";
@@ -57,19 +59,20 @@ async fn stored(dir: &Path) -> Vec<Sample> {
 }
 
 #[tokio::test]
-async fn polled_readings_survive_a_restart() {
-    let case = profile_case(&oracle(), PROFILE, "ramp").expect("fixture case");
-    let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("simulator");
-    let dir = data_dir("restart");
+async fn polled_readings_survive_a_restart_over_modbus_tcp() {
+    survives_a_restart(Transport::Tcp, Framing::Tcp).await;
+}
 
-    let store = Store::open(&dir).await.expect("open store");
+#[tokio::test]
+async fn polled_readings_survive_a_restart_over_rtu_over_tcp() {
+    survives_a_restart(Transport::RtuOverTcp, Framing::RtuOverTcp).await;
+}
+
+async fn seed(dir: &Path, transport: Transport, port: u16) {
+    let store = Store::open(dir).await.expect("open store");
     store.set_setting("poll.interval_ms", "100").await.expect("interval");
     let connection = store
-        .add_connection(&NewConnection {
-            transport: "tcp".into(),
-            host: "127.0.0.1".into(),
-            port: sim.addr.port(),
-        })
+        .add_connection(&NewConnection { transport, host: "127.0.0.1".into(), port })
         .await
         .expect("connection");
     store
@@ -77,27 +80,38 @@ async fn polled_readings_survive_a_restart() {
         .await
         .expect("device");
     store.close().await;
+}
 
-    let child = start(&dir);
-    wait_for_requests(&sim, 60).await;
-    stop(child);
-    let first = stored(&dir).await;
-    assert!(first.len() >= 3, "{} samples after the first run", first.len());
-
-    let seen = sim.requests().len();
-    let child = start(&dir);
-    wait_for_requests(&sim, seen + 60).await;
-    stop(child);
-    let second = stored(&dir).await;
-
-    assert!(second.len() > first.len(), "the second run appends");
-    assert_eq!(second[..first.len()], first[..], "every reading of the first run reads back unchanged");
-    let expected: Vec<(String, f64)> = case.readings.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    for sample in &second {
+fn assert_oracle_readings(samples: &[Sample], readings: &BTreeMap<String, f64>) {
+    let expected: Vec<(String, f64)> = readings.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    for sample in samples {
         let mut got = sample.values.clone();
         got.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(got, expected, "a stored sample is the oracle's decoded readings");
     }
+}
+
+/// Runs the core until the simulator has seen `requests` more requests, stops it and reads the store.
+async fn run_for(dir: &Path, sim: &Simulator, requests: usize) -> Vec<Sample> {
+    let child = start(dir);
+    wait_for_requests(sim, sim.requests().len() + requests).await;
+    stop(child);
+    stored(dir).await
+}
+
+async fn survives_a_restart(transport: Transport, framing: Framing) {
+    let case = profile_case(&oracle(), PROFILE, "ramp").expect("fixture case");
+    let sim = Simulator::start_with(framing, case.registers.clone(), &[1]).await.expect("simulator");
+    let dir = data_dir(transport.as_str());
+    seed(&dir, transport, sim.addr.port()).await;
+
+    let first = run_for(&dir, &sim, 60).await;
+    assert!(first.len() >= 3, "{} samples after the first run", first.len());
+    let second = run_for(&dir, &sim, 60).await;
+
+    assert!(second.len() > first.len(), "the second run appends");
+    assert_eq!(second[..first.len()], first[..], "every reading of the first run reads back unchanged");
+    assert_oracle_readings(&second, &case.readings);
     assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "the core sent nothing but reads");
     drop(std::fs::remove_dir_all(&dir));
 }

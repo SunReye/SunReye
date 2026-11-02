@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::modbus::UnknownTransport;
 use crate::store::{NewConnection, NewDevice, Store, StoreError};
 
 pub const INTERVAL_KEY: &str = "poll.interval_ms";
@@ -36,6 +37,15 @@ impl Transport {
             Self::Tcp => "tcp",
             Self::RtuOverTcp => "rtu-over-tcp",
             Self::SolarmanV5 => "solarman-v5",
+        }
+    }
+
+    /// The core's framing for this transport; none for one it cannot poll.
+    pub const fn wire(self) -> Option<crate::modbus::Transport> {
+        match self {
+            Self::Tcp => Some(crate::modbus::Transport::Tcp),
+            Self::RtuOverTcp => Some(crate::modbus::Transport::RtuOverTcp),
+            Self::SolarmanV5 => None,
         }
     }
 }
@@ -114,11 +124,10 @@ pub async fn read_inverter(store: &Store) -> Result<InverterConfig, StoreError> 
 
 /// Persists a validated config and brings the device row in line with it.
 pub async fn save_inverter(store: &Store, config: &InverterConfig) -> Result<(), StoreError> {
-    let connection = NewConnection {
-        transport: config.transport.name().to_owned(),
-        host: config.host().to_owned(),
-        port: config.port(),
+    let Some(transport) = config.transport.wire() else {
+        return Err(UnknownTransport(config.transport.name().to_owned()).into());
     };
+    let connection = NewConnection { transport, host: config.host().to_owned(), port: config.port() };
     store.save_connection(&connection).await?;
     store.set_setting(UNIT_KEY, &config.unit().to_string()).await?;
     store.set_setting(TIMEOUT_KEY, &config.timeout_ms.to_string()).await?;

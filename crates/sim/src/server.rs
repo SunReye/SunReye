@@ -1,4 +1,4 @@
-//! The Modbus TCP server: function code 3 only, every request recorded.
+//! The Modbus server, Modbus TCP or RTU over TCP: function code 3 only, every request recorded.
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -14,7 +14,17 @@ pub const FC_READ_HOLDING: u8 = 3;
 const EXCEPTION_ILLEGAL_FUNCTION: u8 = 1;
 const EXCEPTION_ILLEGAL_ADDRESS: u8 = 2;
 const EXCEPTION_ILLEGAL_VALUE: u8 = 3;
+const FC_WRITE_MULTIPLE: u8 = 16;
 const MAX_WORDS: u16 = 125;
+
+/// The framing a [`Simulator`] speaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Framing {
+    /// MBAP header, then the PDU.
+    Tcp,
+    /// Unit id, PDU, CRC-16/Modbus (low byte first): a serial frame on a TCP stream.
+    RtuOverTcp,
+}
 
 /// A request as it arrived. `start` and `count` are 0 for a function the simulator does not serve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,13 +45,18 @@ pub struct Simulator {
 impl Simulator {
     /// Listens on a free loopback port and answers the unit ids in `units`; any other unit stays silent.
     pub async fn start(registers: Registers, units: &[u8]) -> std::io::Result<Self> {
+        Self::start_with(Framing::Tcp, registers, units).await
+    }
+
+    /// As [`Simulator::start`], speaking `framing`.
+    pub async fn start_with(framing: Framing, registers: Registers, units: &[u8]) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
         let log = Arc::new(Mutex::new(Vec::new()));
         let shared = Arc::new((registers, units.to_vec(), Arc::clone(&log)));
         let task = tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(serve(stream, Arc::clone(&shared)));
+                tokio::spawn(serve(stream, framing, Arc::clone(&shared)));
             }
         });
         Ok(Self { addr, log, task })
@@ -60,8 +75,8 @@ impl Drop for Simulator {
 
 type Shared = Arc<(Registers, Vec<u8>, Arc<Mutex<Vec<Request>>>)>;
 
-async fn serve(mut stream: TcpStream, shared: Shared) {
-    while let Some(frame) = read_frame(&mut stream).await {
+async fn serve(mut stream: TcpStream, framing: Framing, shared: Shared) {
+    while let Some(frame) = read_frame(&mut stream, framing).await {
         let (registers, units, log) = &*shared;
         if !units.contains(&frame.unit) {
             continue;
@@ -75,19 +90,68 @@ async fn serve(mut stream: TcpStream, shared: Shared) {
     }
 }
 
+/// What surrounds the PDU on the wire.
+#[derive(Clone, Copy)]
+enum Envelope {
+    Mbap { transaction: [u8; 2] },
+    Rtu,
+}
+
 struct Frame {
-    transaction: [u8; 2],
+    envelope: Envelope,
     unit: u8,
     pdu: Vec<u8>,
 }
 
-async fn read_frame(stream: &mut TcpStream) -> Option<Frame> {
+async fn read_frame(stream: &mut TcpStream, framing: Framing) -> Option<Frame> {
+    match framing {
+        Framing::Tcp => read_mbap(stream).await,
+        Framing::RtuOverTcp => read_rtu(stream).await,
+    }
+}
+
+async fn read_mbap(stream: &mut TcpStream) -> Option<Frame> {
     let mut header = [0_u8; 7];
     stream.read_exact(&mut header).await.ok()?;
     let length = usize::from(u16::from_be_bytes([header[4], header[5]])).checked_sub(1)?;
     let mut pdu = vec![0_u8; length];
     stream.read_exact(&mut pdu).await.ok()?;
-    Some(Frame { transaction: [header[0], header[1]], unit: header[6], pdu })
+    Some(Frame { envelope: Envelope::Mbap { transaction: [header[0], header[1]] }, unit: header[6], pdu })
+}
+
+/// The next frame whose CRC holds; a frame that fails it is dropped unanswered, as a serial device does.
+async fn read_rtu(stream: &mut TcpStream) -> Option<Frame> {
+    loop {
+        let mut frame = vec![0_u8; 2];
+        stream.read_exact(&mut frame).await.ok()?;
+        let mut fixed = [0_u8; 4];
+        stream.read_exact(&mut fixed).await.ok()?;
+        frame.extend_from_slice(&fixed);
+        if frame[1] == FC_WRITE_MULTIPLE {
+            let mut head = [0_u8; 1];
+            stream.read_exact(&mut head).await.ok()?;
+            frame.push(head[0]);
+            let mut data = vec![0_u8; usize::from(head[0])];
+            stream.read_exact(&mut data).await.ok()?;
+            frame.extend_from_slice(&data);
+        }
+        let mut crc = [0_u8; 2];
+        stream.read_exact(&mut crc).await.ok()?;
+        if crc16(&frame).to_le_bytes() == crc {
+            return Some(Frame { envelope: Envelope::Rtu, unit: frame[0], pdu: frame[1..].to_vec() });
+        }
+    }
+}
+
+/// CRC-16/Modbus: reflected polynomial 0xA001, seed 0xFFFF.
+pub(crate) fn crc16(bytes: &[u8]) -> u16 {
+    bytes.iter().fold(0xFFFF, |mut crc, byte| {
+        crc ^= u16::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 { (crc >> 1) ^ 0xA001 } else { crc >> 1 };
+        }
+        crc
+    })
 }
 
 impl Frame {
@@ -122,13 +186,36 @@ impl Frame {
     }
 
     fn wrap(&self, pdu: &[u8]) -> Vec<u8> {
-        let length = u16::try_from(pdu.len() + 1).unwrap_or_default();
-        let mut out = Vec::with_capacity(pdu.len() + 7);
-        out.extend_from_slice(&self.transaction);
-        out.extend_from_slice(&[0, 0]);
-        out.extend_from_slice(&length.to_be_bytes());
-        out.push(self.unit);
-        out.extend_from_slice(pdu);
-        out
+        match self.envelope {
+            Envelope::Mbap { transaction } => {
+                let length = u16::try_from(pdu.len() + 1).unwrap_or_default();
+                let mut out = Vec::with_capacity(pdu.len() + 7);
+                out.extend_from_slice(&transaction);
+                out.extend_from_slice(&[0, 0]);
+                out.extend_from_slice(&length.to_be_bytes());
+                out.push(self.unit);
+                out.extend_from_slice(pdu);
+                out
+            }
+            Envelope::Rtu => {
+                let mut out = Vec::with_capacity(pdu.len() + 3);
+                out.push(self.unit);
+                out.extend_from_slice(pdu);
+                out.extend_from_slice(&crc16(&out).to_le_bytes());
+                out
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_crc_is_the_modbus_one() {
+        assert_eq!(crc16(b"123456789"), 0x4b37, "the CRC-16/MODBUS check value");
+        assert_eq!(crc16(&[1, 3, 0, 0, 0, 10]), 0xcdc5);
+        assert_eq!(crc16(&[]), 0xffff);
     }
 }
