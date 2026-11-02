@@ -118,14 +118,15 @@ impl Store {
     }
 
     /// Drops every device's minutes of readings that ended at or before `ended_by`; returns how many.
-    /// Batched as [`Store::drop_buckets`]. A device whose last minute goes gets its open hour and day first.
+    /// Batched as [`Store::drop_buckets`]. A device whose last minute goes gets its open hour and day first;
+    /// a device's open hour keeps every reading until it is stored.
     pub async fn drop_readings(&self, ended_by: Timestamp) -> Result<u64, StoreError> {
-        let first_kept = ended_by.as_millisecond().div_euclid(MINUTE_MS);
+        let cutoff = ended_by.as_millisecond().div_euclid(MINUTE_MS);
         let devices = sqlx::query_scalar!("SELECT id FROM device").fetch_all(&self.pool).await?;
         let pool = &self.pool;
         let mut dropped = 0;
         for device in devices {
-            self.close_last_before(device, first_kept).await?;
+            let first_kept = self.close_last_before(device, cutoff).await?;
             dropped += in_batches(|| async move {
                 sqlx::query!(
                     "DELETE FROM reading_minute WHERE device_id = ? AND minute IN
@@ -143,9 +144,10 @@ impl Store {
         Ok(dropped)
     }
 
-    /// Rolls up the hour and day of the device's last minute when it is before `first_kept`: no later
-    /// minute is left to close them once that minute is dropped.
-    async fn close_last_before(&self, device_id: i64, first_kept: i64) -> Result<(), StoreError> {
+    /// Rolls up the hour and day of the device's last minute when that hour ended by `first_kept`: no later
+    /// minute is left to close them once that minute is dropped. Returns the device's first minute to keep:
+    /// an hour still open at `first_kept` keeps all its readings, since it rolls up from all of them.
+    async fn close_last_before(&self, device_id: i64, first_kept: i64) -> Result<i64, StoreError> {
         let mut tx = self.pool.begin().await?;
         let last = sqlx::query_scalar!(
             r#"SELECT max(minute) AS "minute: i64" FROM reading_minute WHERE device_id = ?"#,
@@ -153,14 +155,16 @@ impl Store {
         )
         .fetch_one(&mut *tx)
         .await?;
-        if let Some(last) = last.filter(|last| *last < first_kept) {
-            let ids = super::metric_ids(&mut *tx).await?;
-            let hour = last.div_euclid(MINUTES_PER_HOUR) * MINUTES_PER_HOUR;
-            roll_up_hour(&mut tx, device_id, hour, &ids).await?;
-            roll_up_day(&mut tx, device_id, last.div_euclid(MINUTES_PER_DAY) * MINUTES_PER_DAY, &ids).await?;
+        let Some(last) = last else { return Ok(first_kept) };
+        let hour = last.div_euclid(MINUTES_PER_HOUR) * MINUTES_PER_HOUR;
+        if hour + MINUTES_PER_HOUR > first_kept {
+            return Ok(first_kept.min(hour));
         }
+        let ids = super::metric_ids(&mut *tx).await?;
+        roll_up_hour(&mut tx, device_id, hour, &ids).await?;
+        roll_up_day(&mut tx, device_id, last.div_euclid(MINUTES_PER_DAY) * MINUTES_PER_DAY, &ids).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(first_kept)
     }
 }
 
@@ -679,6 +683,89 @@ mod tests {
             0
         );
         assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 4);
+    }
+
+    /// A retention pass a week after the device went offline.
+    const WEEK_LATER: &str = "2026-05-18T12:00:00Z";
+
+    async fn drop_readings(store: &Store, ended_by: &str) -> u64 {
+        store.drop_readings(at(ended_by)).await.expect("drop")
+    }
+
+    #[tokio::test]
+    async fn an_offline_devices_last_hour_starting_before_the_cutoff_is_stored_from_all_its_readings() {
+        // 4 from 23:00 to 23:30, then 10 to midnight: (4·30 + 10·30) / 60.
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
+        append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
+        drop_readings(&store, "2026-05-10T23:15:00Z").await;
+        drop_readings(&store, WEEK_LATER).await;
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]);
+        assert_eq!(power(&store, Tier::Day, device).await, [bucket("2026-05-10T00:00:00Z", 7.0, 10.0, 4.0)]);
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings"), []);
+        drop_readings(&store, WEEK_LATER).await;
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]);
+        assert_eq!(power(&store, Tier::Day, device).await, [bucket("2026-05-10T00:00:00Z", 7.0, 10.0, 4.0)]);
+    }
+
+    #[tokio::test]
+    async fn a_cutoff_on_the_hour_drops_the_hour_before_and_keeps_the_last_hour_whole() {
+        // Day: 4 from 22:30 to 23:30, then 10 to midnight: (4·60 + 10·30) / 90.
+        let (store, device) = with_device().await;
+        for (instant, value) in
+            [("2026-05-10T22:30:00Z", 4.0), ("2026-05-10T23:00:00Z", 4.0), ("2026-05-10T23:30:00Z", 10.0)]
+        {
+            append(&store, device, &[(instant, value)]).await;
+        }
+        assert_eq!(drop_readings(&store, "2026-05-10T23:00:00Z").await, 1);
+        drop_readings(&store, WEEK_LATER).await;
+        assert_eq!(
+            power(&store, Tier::Hour, device).await,
+            [bucket("2026-05-10T22:00:00Z", 4.0, 4.0, 4.0), bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]
+        );
+        assert_eq!(power(&store, Tier::Day, device).await, [bucket("2026-05-10T00:00:00Z", 6.0, 10.0, 4.0)]);
+    }
+
+    #[tokio::test]
+    async fn an_online_devices_hour_straddling_the_cutoff_closes_from_all_its_readings() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
+        append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
+        drop_readings(&store, "2026-05-10T23:15:00Z").await;
+        append(&store, device, &[("2026-05-11T00:10:00Z", 1.0)]).await;
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]);
+        assert_eq!(power(&store, Tier::Day, device).await, [bucket("2026-05-10T00:00:00Z", 7.0, 10.0, 4.0)]);
+    }
+
+    #[tokio::test]
+    async fn a_restart_mid_hour_after_a_pass_rolls_the_hour_up_from_all_its_readings() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 4.0)]).await;
+        drop_readings(&store, "2026-05-10T23:15:00Z").await;
+        // Started again in the same hour.
+        append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
+        drop_readings(&store, WEEK_LATER).await;
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 7.0, 10.0, 4.0)]);
+    }
+
+    #[tokio::test]
+    async fn zero_readings_in_a_straddling_hour_count_toward_its_bucket() {
+        // 0 from 23:00 to 23:30, then 10 to midnight.
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T23:00:00Z", 0.0)]).await;
+        append(&store, device, &[("2026-05-10T23:30:00Z", 10.0)]).await;
+        drop_readings(&store, "2026-05-10T23:15:00Z").await;
+        drop_readings(&store, WEEK_LATER).await;
+        assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T23:00:00Z", 5.0, 10.0, 0.0)]);
+    }
+
+    #[tokio::test]
+    async fn a_pass_over_a_device_with_no_readings_drops_and_stores_nothing() {
+        let (store, device) = with_device().await;
+        assert_eq!(drop_readings(&store, WEEK_LATER).await, 0);
+        for tier in [Tier::Minute, Tier::Hour, Tier::Day] {
+            assert_eq!(power(&store, tier, device).await, []);
+        }
     }
 
     async fn append_each(store: &Store, device: i64, minutes: &[ClosedMinute]) {
