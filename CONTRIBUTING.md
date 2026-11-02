@@ -189,6 +189,22 @@ leads the rollups, the restart that leaves a hole in a counter. Prefer pure func
 can be tested directly over logic buried in a component — extracting the guard so it can be
 proven *is* part of the work, and both bugs the gates were built from were exactly that.
 
+### Why the layers are shaped this way
+
+- **Database specs** (`bun run test:db`) pass `--timeout 60000`: bun's default 5 s is not a budget
+  anyone chose for work that waits on a Postgres container seconds old (measured: 0.7 s per spec file
+  warm, 2.0 s straight after initdb, and CI is slower). Do not add per-test budgets to chase a flake.
+  A SQL-text assertion cannot prove a query runs: two 500s shipped behind a green suite that way,
+  an ambiguous `time_bucket` overload and an `ORDER BY` that bound to a `UNION` instead of its arm.
+  The layer lives outside `src/` so `bun run test` stays database-free.
+- **`--parallel`** gives every test file a fresh global and module registry, which contains the
+  `mock.module` leak at runtime. A leak nothing reveals still breaks anyone running without the flag,
+  on an older bun, or one file at a time, so `bun run test:mocks` stays the only catch for a missing
+  restore. `--no-isolate` fails again; never use it.
+- **Coverage runs serial.** Bun's parallel coverage merge is lossy: identical passing tests report
+  88.91 % lines under `--parallel` against 99.31 % serial. `--parallel` there fails `test:floor`
+  for a reason unrelated to the code.
+
 ## 7. Checks before you push
 
 Run what is relevant to the area you changed — this is what CI runs:
@@ -235,6 +251,16 @@ writable metric — so a seeding slip goes red instead of sweeping the hand-writ
 (which mount with or without a profile) and reporting green over a fraction of the surface. It is the only layer that executes a route handler
 at all: the unit suite stops below `apps/server/src/routes/*`, the browser suite fakes the
 backend, and the database suite proves statements without the handlers that compose them.
+
+After the sweep it runs the same listing with **no credentials**, where everything outside the
+declared public list (`PUBLIC_LABELS` in `scripts/route-smoke-plan.ts`) must refuse, and again as a
+plain **non-admin** session, where every `requireSession` route (`SESSION_LABELS`) must be reachable
+and everything else must still refuse; the `/ws` upgrade is probed all three ways. A route left
+ungated answers 200 to a stranger and passes every other gate, and so does the mirror defect, a
+dashboard read raised to admin, which works for the only person who tests it. Both credentialled
+passes send a body synthesised from the route's own OpenAPI schema, because Elysia validates a
+declared body *before* the guard: a write answered 422 proves nothing about its gate, so the run
+reports it UNPROVEN and fails.
 
 CI runs four required jobs on every PR: **Tests required** (source changed ⇒ a test changed),
 **Lint, type-check & build** (Fallow gate, oxlint, oxfmt `--check`, `check-types`, i18n lint,
