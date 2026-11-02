@@ -231,6 +231,19 @@ async fn roll_up_hour(
     first_minute: i64,
     ids: &BTreeMap<String, u32>,
 ) -> Result<(), StoreError> {
+    for (metric, readings) in hour_readings(conn, device_id, first_minute, ids).await? {
+        append(conn, Tier::Hour, device_id, metric, &partials(Tier::Hour, &readings)).await?;
+    }
+    Ok(())
+}
+
+/// The readings of the hour starting at `first_minute`, by metric.
+async fn hour_readings(
+    conn: &mut SqliteConnection,
+    device_id: i64,
+    first_minute: i64,
+    ids: &BTreeMap<String, u32>,
+) -> Result<BTreeMap<u32, Vec<(Timestamp, f64)>>, StoreError> {
     let last_minute = first_minute + MINUTES_PER_HOUR - 1;
     let rows = sqlx::query!(
         "SELECT minute, samples FROM reading_minute WHERE device_id = ? AND minute BETWEEN ? AND ? ORDER BY minute",
@@ -245,10 +258,7 @@ async fn roll_up_hour(
     for row in rows {
         samples.extend(decode(row.minute, &row.samples, &keys)?);
     }
-    for (metric, readings) in by_metric(&samples, ids) {
-        append(conn, Tier::Hour, device_id, metric, &partials(Tier::Hour, &readings)).await?;
-    }
-    Ok(())
+    Ok(by_metric(&samples, ids))
 }
 
 async fn roll_up_day(
@@ -258,20 +268,34 @@ async fn roll_up_day(
     ids: &BTreeMap<String, u32>,
 ) -> Result<(), StoreError> {
     let from = first_minute * MINUTE_MS * US_PER_MS;
-    let to = from + Tier::Day.width_us() - 1;
-    let hour = code(Tier::Hour);
     for &metric in ids.values() {
-        let hours: Vec<Partial> = sqlx::query!(
-            "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
+        let hours = stored_hours(conn, device_id, metric, from, from + Tier::Day.width_us() - 1).await?;
+        append(conn, Tier::Day, device_id, metric, &days(&hours)).await?;
+    }
+    Ok(())
+}
+
+/// The stored hours of `metric` starting from `from_us` through `to_us`, oldest first.
+async fn stored_hours(
+    conn: &mut SqliteConnection,
+    device_id: i64,
+    metric: u32,
+    from_us: i64,
+    to_us: i64,
+) -> Result<Vec<Partial>, StoreError> {
+    let hour = code(Tier::Hour);
+    let rows = sqlx::query!(
+        "SELECT start_us, first_us, first, last_us, last, weighted, max, min FROM rollup
              WHERE device_id = ? AND metric_id = ? AND tier = ? AND start_us BETWEEN ? AND ? ORDER BY start_us",
-            device_id,
-            metric,
-            hour,
-            from,
-            to
-        )
-        .fetch_all(&mut *conn)
-        .await?
+        device_id,
+        metric,
+        hour,
+        from_us,
+        to_us
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
         .into_iter()
         .map(|row| Partial {
             start: row.start_us,
@@ -281,10 +305,29 @@ async fn roll_up_day(
             max: row.max,
             min: row.min,
         })
-        .collect();
-        append(conn, Tier::Day, device_id, metric, &days(&hours)).await?;
-    }
-    Ok(())
+        .collect())
+}
+
+/// The last reading of `metric`'s stored `tier` bucket before the one starting at `start_us`.
+async fn carried_in(
+    conn: &mut SqliteConnection,
+    tier: Tier,
+    device_id: i64,
+    metric: u32,
+    start_us: i64,
+) -> Result<Option<f64>, StoreError> {
+    let code = code(tier);
+    let row = sqlx::query!(
+        "SELECT last FROM rollup WHERE tier = ? AND device_id = ? AND metric_id = ? AND start_us < ?
+             ORDER BY start_us DESC LIMIT 1",
+        code,
+        device_id,
+        metric,
+        start_us
+    )
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(row.map(|row| row.last))
 }
 
 /// Closes each partial with the last reading of the metric's bucket before it, and stores it in place
@@ -298,17 +341,7 @@ async fn append(
 ) -> Result<(), StoreError> {
     let code = code(tier);
     for partial in partials {
-        let carried = sqlx::query!(
-            "SELECT last FROM rollup WHERE tier = ? AND device_id = ? AND metric_id = ? AND start_us < ?
-             ORDER BY start_us DESC LIMIT 1",
-            code,
-            device_id,
-            metric,
-            partial.start
-        )
-        .fetch_optional(&mut *conn)
-        .await?
-        .map(|row| row.last);
+        let carried = carried_in(conn, tier, device_id, metric, partial.start).await?;
         let bucket = close(tier, partial, carried);
         sqlx::query!(
             "INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)
