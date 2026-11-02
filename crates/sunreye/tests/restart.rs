@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use jiff::Timestamp;
 use sunreye::modbus::Transport;
+use sunreye::rollup::{Tier, rollup};
 use sunreye::store::{NewConnection, NewDevice, Sample, Store};
 use sunreye_sim::{FC_READ_HOLDING, Framing, Simulator, profile_case};
 
@@ -103,6 +105,25 @@ fn assert_oracle_readings(samples: &[Sample], readings: &BTreeMap<String, f64>) 
     }
 }
 
+/// Each metric's stored minute buckets are its stored readings rolled up, the restart notwithstanding.
+async fn assert_minutes_rolled_up(dir: &Path, samples: &[Sample]) {
+    let store = Store::open(dir).await.expect("open store");
+    let device = store.devices().await.expect("devices")[0].id;
+    let mut by_metric: BTreeMap<&str, Vec<(Timestamp, f64)>> = BTreeMap::new();
+    for sample in samples {
+        let at = Timestamp::from_millisecond(sample.at_ms).expect("instant");
+        for (metric, value) in &sample.values {
+            by_metric.entry(metric).or_default().push((at, *value));
+        }
+    }
+    assert!(!by_metric.is_empty());
+    for (metric, readings) in by_metric {
+        let stored = store.buckets(Tier::Minute, device, metric).await.expect("buckets");
+        assert_eq!(stored, rollup(Tier::Minute, &readings), "{metric}");
+    }
+    store.close().await;
+}
+
 /// Runs the core until the simulator has seen `requests` more requests, stops it and reads the store.
 async fn run_for(dir: &Path, sim: &Simulator, requests: usize) -> Vec<Sample> {
     let child = start(dir);
@@ -124,6 +145,7 @@ async fn survives_a_restart(transport: Transport, framing: Framing, logger_seria
     assert!(second.len() > first.len(), "the second run appends");
     assert_eq!(second[..first.len()], first[..], "every reading of the first run reads back unchanged");
     assert_oracle_readings(&second, &case.readings);
+    assert_minutes_rolled_up(&dir, &second).await;
     assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "the core sent nothing but reads");
     drop(std::fs::remove_dir_all(&dir));
 }

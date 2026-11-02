@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT max(minute) AS \"minute: i64\" FROM reading_minute WHERE device_id = ? AND minute < ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "minute: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "3e1f7877459f2ad16e4b8664f89fd7e43369fee452c817c3d64fc1406b6ebf53"
+}

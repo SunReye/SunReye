@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device.id AS \"device!\", metric.id AS \"metric!\" FROM device, metric",
+  "describe": {
+    "columns": [
+      {
+        "name": "device!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "metric!",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "23efcf0bb88015338a51cd42a11204c09d7b9cb3f310c8646e606337e67f86bf"
+}
