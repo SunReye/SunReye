@@ -43,6 +43,7 @@ afterEach(() => rm(dir, { recursive: true, force: true }));
 async function setup(present: "all" | "none") {
   if (present === "all") {
     await stub("cargo-ndk", "exit 0");
+    await stub("cargo-sqlx", "exit 0");
     await mkdir(join(home, "android-ndk-r27c"), { recursive: true });
   }
   const log = join(dir, "log");
@@ -69,6 +70,9 @@ describe("scripts/setup-targets", () => {
     expect(code).toBe(0);
     expect(calls).toContain("rustup target add aarch64-linux-android");
     expect(calls).toContain("cargo install cargo-ndk --locked");
+    expect(calls).toContain(
+      "cargo install sqlx-cli --locked --no-default-features --features sqlite",
+    );
     expect(
       calls.some((c) => c.startsWith("curl") && c.includes("android-ndk-r27c-linux.zip")),
     ).toBe(true);
