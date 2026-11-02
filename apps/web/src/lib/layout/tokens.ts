@@ -263,9 +263,7 @@ export const TILE_COLUMNS = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
  *
  * `sm:ml-0 sm:mr-0` rather than `sm:mx-0`: Tailwind sorts `ml`/`mr` after `mx`,
  * so the axis form is not reliably the winner at the breakpoint even though it
- * comes later in the source. Same level on both sides of the breakpoint, and
- * the browser pass in `e2e/statistics-mobile-density.spec.ts` measures that it
- * really did win.
+ * comes later in the source. Same level on both sides of the breakpoint.
  */
 export const TILE_FRAME = "-ml-3 -mr-[13px] border-t border-border sm:ml-0 sm:mr-0 sm:border-l";
 

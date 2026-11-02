@@ -150,6 +150,8 @@ is tested by mounting the component in Chromium (`bun run test:components`,
 | `routes/(app)/statistics/stat-tiles.svelte.test.ts` | 2 tiles per row at 390px, 4 at lg, a long total cannot widen its column, 44px info target |
 | `components/inverter/range-switcher.svelte.test.ts`, `period-navigator.svelte.test.ts` | phone switchers fit one row, select ↔ buttons drive one value |
 
+Every card on a page is a `Section`, never a hand-rolled bordered box. No browser sweep checks this: review does.
+
 A new card, grid or switcher with phone behaviour gets a component test that sets
 `page.viewport(390, 844)` and measures it.
 
