@@ -1,8 +1,6 @@
-//! Rollups (ADR 0004): one metric's readings cut into minute, hourly and daily buckets.
-//!
-//! Buckets start on UTC multiples of their width, so a daily bucket does not move on a DST day; the plant
-//! time zone only labels them (`fixtures/oracle/README.md` §3). Counters roll up like gauges: a bucket keeps
-//! their high and low, from which a delta is read.
+//! Rollups (ADR 0004): one metric's readings cut into UTC minute, hourly and daily buckets.
+//! Counters roll up like gauges; their delta, chained across buckets with restart rules, is computed when
+//! statistics are read (`fixtures/oracle/README.md` §3).
 //!
 //! A reading holds until the next one. A bucket's average is weighted by those holds, carries the previous
 //! bucket's last reading in to its own first, and holds its own last reading out to its end, so a value
@@ -69,6 +67,7 @@ fn held(reading: (i64, f64), until: i64) -> f64 {
 }
 
 /// The buckets of `tier` that hold at least one of `readings`, oldest first. Readings may come in any order.
+/// Holds about 80 bytes per reading while it runs; callers bound the input to keep ADR 0006's memory budget.
 pub fn rollup(tier: Tier, readings: &[(Timestamp, f64)]) -> Vec<Bucket> {
     let mut sorted: Vec<(i64, f64)> = readings.iter().map(|(at, v)| (at.as_microsecond(), *v)).collect();
     sorted.sort_by_key(|p| p.0);
@@ -104,6 +103,7 @@ fn fold(tier: Tier, parts: &[Partial]) -> Vec<Partial> {
     out
 }
 
+/// Extremes are the bucket's own readings; a value carried in counts only toward the average.
 #[expect(clippy::cast_precision_loss, reason = "microsecond spans stay far below 2^53")]
 fn close(partial: &Partial, previous: Option<&Partial>, width: i64) -> Bucket {
     let end = partial.start + width;
@@ -197,7 +197,6 @@ mod tests {
         );
     }
 
-    /// Extremes are the bucket's own readings; a value carried in counts only toward the average.
     #[test]
     fn a_day_is_a_utc_day_even_when_the_plant_springs_forward() {
         // Europe/Berlin's 29 March 2026 runs 28 March 23:00Z to 29 March 22:00Z; the bucket stays at 00:00Z.
