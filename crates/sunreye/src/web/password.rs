@@ -24,8 +24,7 @@ const fn params((m_cost, t_cost): (u32, u32)) -> Params {
 
 const PARAMS: Params = params(COST);
 
-/// Argon2's working memory, filled in place by every check: allocated once, never freed, so the
-/// allocator holds one check's blocks however many logins run.
+/// Argon2's working memory, reused by every check so resident memory holds one check's blocks.
 type Blocks = Vec<Block>;
 
 /// Fills `out` with `argon2` of `password`, sizing `blocks` to its parameters.
@@ -97,8 +96,7 @@ impl Passwords {
         Self { gate: Arc::new(Mutex::new(Vec::new())) }
     }
 
-    /// Runs `work` on a blocking thread once the cap admits it; `None` if the task died. The cap stays
-    /// taken until `work` returns, even when the caller is dropped first.
+    /// The cap stays taken until `work` returns, even when the caller is dropped first.
     async fn capped<T: Send + 'static>(
         &self,
         work: impl FnOnce(&mut Blocks) -> T + Send + 'static,
@@ -231,7 +229,6 @@ mod tests {
         assert!(!next.await.expect("join"));
     }
 
-    /// While the cap is taken, a hash, a check and an unknown-account check all wait for it.
     #[tokio::test]
     async fn every_check_waits_for_the_cap_including_an_unknown_account() {
         let passwords = Passwords::new();
