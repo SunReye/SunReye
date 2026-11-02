@@ -2,11 +2,12 @@
 
 ## [unreleased]
 
-Unreleased work on `dev` since 3.6.1, shipped in `beta.20261029-ee71679`.
+Unreleased work on `dev` since 3.6.1, shipped in `beta.20261102-d98ab83`.
 
 
 ### Bug Fixes
 
+* **release:** rebase publish pushes, fast-forward stable, document changelog doubling (#360) ([d98ab83](https://github.com/SunReye/SunReye/commit/d98ab83bb00daddf2eaaaf4cf154f852df1ca4be))
 * **web:** reserve room for final statistics axis label ([0f06b33](https://github.com/SunReye/SunReye/commit/0f06b337a47deb88247adc2e718a682e52bf3061))
 * **web:** let sign-in finish when a stale session is still cached ([63a0e24](https://github.com/SunReye/SunReye/commit/63a0e244045b34657be216265338b55b0db66787))
 
