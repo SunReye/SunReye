@@ -15,7 +15,7 @@ use tower_sessions::cookie::time::Duration as Span;
 use utoipa::ToSchema;
 
 use super::origin::client_ip;
-use super::password::{MAX_PASSWORD_BYTES, Passwords};
+use super::password::{Passwords, unhashable};
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::run::Core;
 use crate::store::{AccountRow, NewAccount, Store, StoreError};
@@ -168,10 +168,7 @@ pub fn validate_account(email: &str, name: &str, password: &str) -> Result<(), A
     if password.chars().count() < MIN_PASSWORD_CHARS {
         return Err(ApiError::bad_request("Password must be at least 8 characters"));
     }
-    if password.len() > MAX_PASSWORD_BYTES {
-        return Err(ApiError::bad_request("Password must be at most 72 bytes"));
-    }
-    Ok(())
+    unhashable(password).map_or(Ok(()), |why| Err(ApiError::bad_request(why)))
 }
 
 /// Always under a fresh session id, whatever id the browser arrived with.

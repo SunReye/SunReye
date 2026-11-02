@@ -586,6 +586,7 @@ async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
 async fn a_password_of_8_characters_to_72_bytes_signs_up_and_one_outside_is_a_400() {
     let short = Some("Password must be at least 8 characters");
     let long = Some("Password must be at most 72 bytes");
+    let nul = Some("Password must not contain a NUL character");
     let cases = [
         ("7", "x".repeat(7), short),
         ("8", "x".repeat(8), None),
@@ -594,6 +595,8 @@ async fn a_password_of_8_characters_to_72_bytes_signs_up_and_one_outside_is_a_40
         ("36 two-byte", "é".repeat(36), None),
         ("73", "x".repeat(73), long),
         ("37 two-byte", "é".repeat(37), long),
+        ("NUL inside", "abcdefgh\0abcdefgh".to_owned(), nul),
+        ("72 ending in NUL", format!("{}\0", "x".repeat(71)), nul),
     ];
     for (name, password, refusal) in cases {
         let core = Core::open(&dir(&format!("password-length-{name}"))).await.expect("core");

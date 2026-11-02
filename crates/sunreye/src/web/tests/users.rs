@@ -64,6 +64,7 @@ async fn an_invalid_or_taken_account_is_refused_and_nothing_is_created() {
         (json!({"email": USER_EMAIL, "name": " ", "password": USER_PASSWORD, "admin": false}), 400),
         (json!({"email": USER_EMAIL, "name": "U", "password": "x".repeat(7), "admin": false}), 400),
         (json!({"email": USER_EMAIL, "name": "U", "password": "x".repeat(73), "admin": false}), 400),
+        (json!({"email": USER_EMAIL, "name": "U", "password": "abcdefgh\u{0}abcdefgh", "admin": false}), 400),
         (json!({"email": USER_EMAIL}), 400),
         (json!({"email": "ADMIN@example.org", "name": "U", "password": USER_PASSWORD, "admin": false}), 409),
     ];

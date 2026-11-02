@@ -8,13 +8,22 @@ use tokio::sync::Semaphore;
 const COST: u32 = 12;
 
 /// bcrypt reads no further; a longer password is refused, never truncated.
-pub const MAX_PASSWORD_BYTES: usize = 72;
+const MAX_PASSWORD_BYTES: usize = 72;
 
 /// Checks running at once; each holds a blocking thread for about 0.3 s.
 const CHECKS: usize = 1;
 
-fn hash_with(password: &str) -> Option<String> {
+/// Why bcrypt cannot take `password` whole: it reads 72 bytes and stops at a NUL, so either would
+/// let a shorter password match.
+pub fn unhashable(password: &str) -> Option<&'static str> {
     if password.len() > MAX_PASSWORD_BYTES {
+        return Some("Password must be at most 72 bytes");
+    }
+    password.contains('\0').then_some("Password must not contain a NUL character")
+}
+
+fn hash_with(password: &str) -> Option<String> {
+    if unhashable(password).is_some() {
         return None;
     }
     bcrypt::hash(password, COST).inspect_err(|error| tracing::error!(%error, "hashing failed")).ok()
@@ -22,7 +31,7 @@ fn hash_with(password: &str) -> Option<String> {
 
 /// Reads the cost from `hash`, so a hash stored under another cost still verifies.
 fn verify_with(password: &str, hash: &str) -> bool {
-    password.len() <= MAX_PASSWORD_BYTES && bcrypt::verify(password, hash).unwrap_or(false)
+    unhashable(password).is_none() && bcrypt::verify(password, hash).unwrap_or(false)
 }
 
 /// Checked for an unknown account; built on first use, inside a check.
@@ -57,7 +66,7 @@ impl Passwords {
         done.await.inspect_err(|error| tracing::error!(%error, "password task failed")).ok()
     }
 
-    /// `None` when hashing failed or the password is over `MAX_PASSWORD_BYTES`.
+    /// `None` when hashing failed or the password is `unhashable`.
     pub async fn hash(&self, password: String) -> Option<String> {
         self.capped(move || hash_with(&password)).await.flatten()
     }
@@ -109,7 +118,7 @@ mod tests {
         assert!(!passwords.verify("no such account".into(), None).await, "the dummy matches nothing");
     }
 
-    /// OpenBSD's published vectors, so the hash is bcrypt and not only self-consistent.
+    /// Openwall crypt_blowfish's published vectors, so the hash is bcrypt and not only self-consistent.
     #[tokio::test]
     async fn a_reference_bcrypt_hash_verifies() {
         let passwords = Passwords::new();
@@ -133,6 +142,18 @@ mod tests {
         assert!(passwords.verify(longest.clone(), Some(hash.clone())).await);
         assert!(!passwords.verify(format!("{longest}x"), Some(hash)).await, "73 bytes, same first 72");
         assert_eq!(passwords.hash("x".repeat(73)).await, None);
+    }
+
+    /// bcrypt stops at a NUL, so a password holding one would match its prefix.
+    #[tokio::test]
+    async fn a_password_holding_a_nul_never_hashes_or_matches_its_prefix() {
+        let passwords = Passwords::new();
+        assert_eq!(passwords.hash("abcdefgh\0abcdefgh".into()).await, None);
+        let hash = passwords.hash("abcdefgh".into()).await.expect("hash");
+        assert!(!passwords.verify("abcdefgh\0abcdefgh".into(), Some(hash)).await, "NUL inside");
+        let prefix = "x".repeat(71);
+        let hash = passwords.hash(prefix.clone()).await.expect("hash");
+        assert!(!passwords.verify(format!("{prefix}\0"), Some(hash)).await, "72 bytes ending in NUL");
     }
 
     #[tokio::test]

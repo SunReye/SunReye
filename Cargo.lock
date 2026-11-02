@@ -182,6 +182,7 @@ dependencies = [
  "blowfish",
  "getrandom 0.4.3",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
