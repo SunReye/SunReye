@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use axum::extract::ws::Utf8Bytes;
 use serde::Serialize;
+use serde::ser::SerializeMap;
 use serde_json::json;
 use tokio::sync::{broadcast, watch};
 
@@ -73,7 +74,9 @@ impl Live {
                 .collect();
             Utf8Bytes::from(plant_frame(&folded, sample.at_ms))
         };
-        self.send(Topic::Metrics, metrics_frame(device_id, sample).into());
+        if self.frames.receiver_count() > 0 {
+            self.send(Topic::Metrics, metrics_frame(device_id, sample).into());
+        }
         self.plant.send_replace(Some(plant.clone()));
         self.send(Topic::Plant, plant);
     }
@@ -126,13 +129,29 @@ fn iso(at_ms: i64) -> String {
     format!("{at:.3}")
 }
 
-/// JSON has no NaN or infinity; such a value is absent, never `null`.
-fn finite<'a>(values: impl IntoIterator<Item = &'a (String, f64)>) -> BTreeMap<&'a str, f64> {
-    values.into_iter().filter(|(_, v)| v.is_finite()).map(|(k, v)| (k.as_str(), *v)).collect()
+/// A sample's values as a JSON object, written straight from the slice. JSON has no NaN or infinity;
+/// such a value is absent, never `null`.
+struct Metrics<'a>(&'a [(String, f64)]);
+
+impl Serialize for Metrics<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        for (key, value) in self.0.iter().filter(|(_, v)| v.is_finite()) {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
 }
 
-fn frame(topic: &str, data: &impl Serialize) -> String {
-    json!({ "topic": topic, "data": data }).to_string()
+#[derive(Serialize)]
+struct Envelope<'a, T> {
+    topic: &'a str,
+    data: T,
+}
+
+/// Strings, finite numbers and string-keyed maps into a `String`: serialising cannot fail.
+fn frame(topic: &str, data: impl Serialize) -> String {
+    serde_json::to_string(&Envelope { topic, data }).unwrap_or_default()
 }
 
 /// The device's slug on the wire: its id.
@@ -142,12 +161,21 @@ fn slug(device_id: i64) -> String {
 
 /// `{"topic":"metrics","data":InverterSample}`.
 pub fn metrics_frame(device_id: i64, sample: &Sample) -> String {
-    let data = json!({
-        "time": iso(sample.at_ms),
-        "inverterId": slug(device_id),
-        "metrics": finite(&sample.values),
-    });
-    frame("metrics", &data)
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct InverterSample<'a> {
+        time: String,
+        inverter_id: String,
+        metrics: Metrics<'a>,
+    }
+    frame(
+        "metrics",
+        InverterSample {
+            time: iso(sample.at_ms),
+            inverter_id: slug(device_id),
+            metrics: Metrics(&sample.values),
+        },
+    )
 }
 
 /// The topics the core publishes. `evcc`, `statistics`, `logs` and `automations` are 3.x topics it
@@ -240,7 +268,7 @@ pub fn resolve_unsubscribe(topics: &[serde_json::Value]) -> Vec<Topic> {
 /// `{"topic":"__ack","data":{"subscribed":[...],"denied":[...]}}`.
 pub fn ack_frame(decision: &Decision) -> String {
     let subscribed: Vec<&str> = decision.subscribe.iter().map(|topic| topic.name()).collect();
-    frame("__ack", &json!({ "subscribed": subscribed, "denied": decision.denied }))
+    frame("__ack", json!({ "subscribed": subscribed, "denied": decision.denied }))
 }
 
 /// A member whose last sample is older than this is left out of the plant and named in `stale`.
@@ -251,6 +279,13 @@ const STALE_AFTER_MS: i64 = 5 * 60 * 1000;
 /// A plant of one member is that member. With more, a metric folds only by its role's aggregate, and
 /// 4.0 profiles carry no roles yet, so every metric is per-device and the fold has none.
 pub fn plant_frame(members: &[(i64, Option<&Sample>)], now_ms: i64) -> String {
+    #[derive(Serialize)]
+    struct PlantSample<'a> {
+        time: String,
+        metrics: Metrics<'a>,
+        members: Vec<String>,
+        stale: Vec<String>,
+    }
     let fresh: Vec<&Sample> = members
         .iter()
         .filter_map(|(_, sample)| *sample)
@@ -262,17 +297,12 @@ pub fn plant_frame(members: &[(i64, Option<&Sample>)], now_ms: i64) -> String {
         .map(|(id, _)| slug(*id))
         .collect();
     let metrics = match (members.len(), fresh.as_slice()) {
-        (1, [sole]) => finite(&sole.values),
-        _ => BTreeMap::new(),
+        (1, [sole]) => Metrics(&sole.values),
+        _ => Metrics(&[]),
     };
     let newest = fresh.iter().map(|sample| sample.at_ms).max().unwrap_or(now_ms);
-    let data = json!({
-        "time": iso(newest),
-        "metrics": metrics,
-        "members": members.iter().map(|(id, _)| slug(*id)).collect::<Vec<_>>(),
-        "stale": stale,
-    });
-    frame("plant", &data)
+    let members = members.iter().map(|(id, _)| slug(*id)).collect();
+    frame("plant", PlantSample { time: iso(newest), metrics, members, stale })
 }
 
 #[cfg(test)]
