@@ -13,7 +13,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	type SpotPriceConfig = { enabled: boolean; provider: string; zone: string };
 	type Provider = { id: string; zones: readonly string[]; attribution: string };

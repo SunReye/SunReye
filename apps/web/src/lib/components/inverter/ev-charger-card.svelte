@@ -11,7 +11,7 @@
 
 	const session = useAppSession();
 	// Commands are admin-only server-side; everyone else gets the read-only tile.
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	$effect(() => evcc.lease());
 </script>

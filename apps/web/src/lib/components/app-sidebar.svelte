@@ -3,11 +3,11 @@
 	import type { Pathname } from '$app/types';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { resolve, routePath } from '$lib/resolve';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import SourceMenu from '$lib/components/layout/source-menu.svelte';
-	import { authClient } from '$lib/auth-client';
-	import { useAppSession } from '$lib/session';
+	import { signOut as endSession, useAppSession } from '$lib/session';
 	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { automationsGate } from '$lib/automations-gate.svelte';
@@ -33,7 +33,7 @@
 	// Controls (live inverter writes) and Settings (config) are admin-only; the
 	// server enforces this on every mutation, and we hide the nav entries for
 	// non-admins so they never see areas they can't use.
-	const isAdmin = $derived($sessionQuery.data?.user?.role === 'admin');
+	const isAdmin = $derived($sessionQuery.data?.user.admin === true);
 
 	type NavItem = { href: Pathname; label: string; icon: Component };
 
@@ -95,7 +95,12 @@
 	);
 
 	async function signOut() {
-		await authClient.signOut({ fetchOptions: { onSuccess: () => goto(resolve('/login')) } });
+		const result = await endSession();
+		if (!result.ok) {
+			toast.error(result.message || m.error_unknown());
+			return;
+		}
+		goto(resolve('/login'));
 	}
 </script>
 

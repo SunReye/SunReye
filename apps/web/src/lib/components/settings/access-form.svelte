@@ -9,7 +9,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 
 	let publicDashboard = $state<boolean | null>(null);
 	let saving = $state(false);

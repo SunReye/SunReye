@@ -179,7 +179,7 @@
 	// (and the whole draft/save cycle) is admin-only; everyone else just gets
 	// the curated layout.
 	const session = useAppSession();
-	const isAdmin = $derived($session.data?.user.role === 'admin');
+	const isAdmin = $derived($session.data?.user.admin === true);
 	const customize = setCustomizeSession();
 	onMount(() => void statisticsPrefs.load());
 
