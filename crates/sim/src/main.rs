@@ -1,57 +1,47 @@
-//! A simulator process: serves one oracle case over Modbus TCP, unit 1, until killed. Browser journeys
-//! point a device at the address it prints.
+//! Replays one oracle case over Modbus TCP until killed, for a harness that polls it from another
+//! process. Stdout: `listening <addr>`, then `request <start> <count>` for each request answered.
 
-#![allow(clippy::print_stdout, reason = "the listening line is how a caller learns the port")]
-#![allow(clippy::print_stderr, reason = "a refusal is reported on stderr before the process exits")]
+#![allow(clippy::print_stdout, reason = "the harness reads the address and the requests from stdout")]
+#![allow(clippy::print_stderr, reason = "a refusal is reported on stderr")]
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use sunreye_sim::{Simulator, profile_case};
 
-const USAGE: &str = "usage: sunreye-sim --fixtures <dir> --profile <id> --case <name>";
-
-struct Args {
-    fixtures: PathBuf,
-    profile: String,
-    case: String,
-}
-
-fn parse(mut args: impl Iterator<Item = String>) -> Option<Args> {
-    let (mut fixtures, mut profile, mut case) = (None, None, None);
-    while let Some(flag) = args.next() {
-        let value = args.next()?;
-        match flag.as_str() {
-            "--fixtures" => fixtures = Some(PathBuf::from(value)),
-            "--profile" => profile = Some(value),
-            "--case" => case = Some(value),
-            _ => return None,
-        }
-    }
-    Some(Args { fixtures: fixtures?, profile: profile?, case: case? })
-}
+/// The unit id the oracle's cases answer.
+const UNIT: u8 = 1;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    let Some(args) = parse(std::env::args().skip(1)) else {
-        eprintln!("{USAGE}");
-        return ExitCode::FAILURE;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let [oracle, profile, case] = args.as_slice() else {
+        eprintln!("usage: sunreye-sim <oracle-dir> <profile> <case>");
+        return ExitCode::from(2);
     };
-    let case = match profile_case(&args.fixtures, &args.profile, &args.case) {
+    let case = match profile_case(Path::new(oracle), profile, case) {
         Ok(case) => case,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
-    let sim = match Simulator::start(case.registers, &[1]).await {
+    let sim = match Simulator::start(case.registers, &[UNIT]).await {
         Ok(sim) => sim,
         Err(error) => {
             eprintln!("cannot listen: {error}");
             return ExitCode::FAILURE;
         }
     };
-    println!("sunreye-sim listening {}", sim.addr);
-    std::future::pending::<()>().await;
-    ExitCode::SUCCESS
+    println!("listening {}", sim.addr);
+    let mut seen = 0;
+    loop {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let log = sim.requests();
+        for request in &log[seen..] {
+            println!("request {} {}", request.start, request.count);
+        }
+        seen = log.len();
+    }
 }

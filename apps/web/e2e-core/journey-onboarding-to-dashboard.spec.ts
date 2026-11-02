@@ -32,11 +32,9 @@ function oracleReadings(): Record<string, number> {
 
 /** The simulator process and the address it listens on. */
 async function startSimulator(): Promise<{ child: ChildProcess; port: number }> {
-  const child = spawn(
-    join(TARGET, "debug/sunreye-sim"),
-    ["--fixtures", FIXTURES, "--profile", PROFILE, "--case", CASE],
-    { stdio: ["ignore", "pipe", "inherit"] },
-  );
+  const child = spawn(join(TARGET, "debug/sunreye-sim"), [FIXTURES, PROFILE, CASE], {
+    stdio: ["ignore", "pipe", "inherit"],
+  });
   const port = await new Promise<number>((resolve, reject) => {
     let seen = "";
     child.once("error", reject);
@@ -45,7 +43,7 @@ async function startSimulator(): Promise<{ child: ChildProcess; port: number }> 
     );
     child.stdout!.on("data", (chunk: Buffer) => {
       seen += chunk.toString();
-      const match = /sunreye-sim listening 127\.0\.0\.1:(\d+)/.exec(seen);
+      const match = /listening 127\.0\.0\.1:(\d+)/.exec(seen);
       if (match) resolve(Number(match[1]));
     });
   });
