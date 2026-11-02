@@ -207,6 +207,39 @@ async fn a_client_frame_over_16_kib_closes_the_socket_and_one_at_16_kib_is_answe
     core.stop().await;
 }
 
+/// `text` as two frames, a text frame then its final continuation.
+async fn send_split(socket: &mut Socket, text: &str) {
+    use tungstenite::protocol::frame::Frame;
+    use tungstenite::protocol::frame::coding::{Data, OpCode};
+    let (first, rest) = text.as_bytes().split_at(text.len() / 2);
+    socket
+        .feed(Message::Frame(Frame::message(first.to_vec(), OpCode::Data(Data::Text), false)))
+        .await
+        .expect("send");
+    socket
+        .send(Message::Frame(Frame::message(rest.to_vec(), OpCode::Data(Data::Continue), true)))
+        .await
+        .expect("send");
+}
+
+#[tokio::test]
+async fn a_client_message_over_16_kib_split_across_frames_closes_the_socket() {
+    let (core, admin) = open(&dir("ws-inbound-split-cap")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut socket = connect(addr, &admin).await;
+    send_split(&mut socket, &sub_frame_of(16 * 1024)).await;
+    assert_eq!(next_json(&mut socket).await["data"]["subscribed"], json!(["metrics"]));
+
+    send_split(&mut socket, &sub_frame_of(16 * 1024 + 1)).await;
+    let after = tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("closed within 2 s");
+    assert!(
+        matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))),
+        "an oversized message was answered: {after:?}"
+    );
+    drop(admin);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn many_subscribers_each_get_every_frame() {
     let (core, admin) = open(&dir("ws-many")).await;
