@@ -1,6 +1,6 @@
 import adapterNode from "@sveltejs/adapter-node";
 import adapterStatic from "@sveltejs/adapter-static";
-import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import { vitePreprocess } from "@rsvelte/vite-plugin-svelte";
 
 // The app is a pure SPA (hash router, SSR off, no server routes), so it can
 // ship as static files. Default stays adapter-node (the compose web image
