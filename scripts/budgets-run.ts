@@ -12,10 +12,10 @@
  *     saved connection to the simulator.
  *  4. `logins` rounds of a sign-in and the dashboard's history read, one at a time, each followed
  *     by a read of `/proc/<pid>/status`; the first `WARMUP_LOGINS` are not fitted.
- *  5. a hold, with a `/ws` client subscribed, until the simulator has answered `POLL_SAMPLES` more poll cycles, one read of
- *     `/proc/<pid>/status` as each begins; the first `POLL_WARMUP` are not fitted. The hold ends
- *     on the simulator's request count, never on a clock, so the poll path is exercised however
- *     fast the logins ran.
+ *  5. a hold, with a `/ws` client subscribed, one read of `/proc/<pid>/status` as each poll cycle
+ *     begins, until the window `pollWindowStart` picks after the warm-up has been read. The hold
+ *     ends on the simulator's request count, never on a clock, so the poll path is exercised
+ *     however fast the logins ran.
  */
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,6 +35,7 @@ import {
   parseProcStatus,
   parseSimLine,
   pollPhase,
+  pollWindowStart,
   render,
 } from "./budgets-plan";
 import { boot, requireOk, signIn } from "./core-boot";
@@ -189,7 +190,7 @@ async function soakLogins(session: Session, pid: number, logins: number) {
   return readings;
 }
 
-/** One reading as each of the next `POLL_SAMPLES` poll cycles begins. */
+/** One reading as each poll cycle begins, until the poll window has been read. */
 function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
   return new Promise<number[]>((resolve, reject) => {
     const readings: number[] = [];
@@ -200,7 +201,7 @@ function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
         sim.onCycle = undefined;
         reject(
           new Error(
-            `${readings.length} of ${POLL_SAMPLES} poll cycles ended, none in the last ${STALL_MS} ms: the core is not polling the simulator`,
+            `${readings.length} of up to ${POLL_SAMPLES} poll cycles ended, none in the last ${STALL_MS} ms: the core is not polling the simulator`,
           ),
         );
       }, STALL_MS);
@@ -208,7 +209,8 @@ function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
     arm();
     sim.onCycle = () => {
       readings.push(readStatus(pid).rssBytes);
-      if (readings.length < POLL_SAMPLES) return arm();
+      const start = pollWindowStart(readings);
+      if (start === undefined || readings.length < start + POLL_READINGS) return arm();
       clearTimeout(stalled);
       sim.onCycle = undefined;
       resolve(readings);
@@ -230,11 +232,12 @@ export async function run(logins: number): Promise<number> {
     log(`signing in ${logins} times, fitting the last ${LOGIN_READINGS} after ${WARMUP_LOGINS}`);
     const loginTrend = loginPhase(await soakLogins(session, core.pid, logins));
     log(
-      `holding for ${POLL_SAMPLES} poll cycles, fitting the last ${POLL_READINGS} after ${POLL_WARMUP}`,
+      `holding for up to ${POLL_SAMPLES} poll cycles, fitting ${POLL_READINGS} from the first settled cycle after ${POLL_WARMUP}`,
     );
     const feed = await openFeed(session);
     const pollReadings = await soakPolls(sim.sim, core.pid).finally(() => feed.socket.close());
     const pollTrend = pollPhase(pollReadings);
+    log(`poll window from cycle ${pollWindowStart(pollReadings)}`);
     const measured = {
       binaryBytes: statSync(CORE).size,
       steadyBytes: Math.max(loginTrend.steadyBytes, pollTrend.steadyBytes),

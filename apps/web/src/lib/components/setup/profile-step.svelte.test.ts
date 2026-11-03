@@ -19,7 +19,12 @@ const PROFILE = {
   builtin: true,
 };
 
-const props = { profiles: [PROFILE], selectedId: null, onExternalInstalled: () => {} };
+const props = {
+  profiles: [PROFILE],
+  selectedId: null,
+  onExternalInstalled: () => {},
+  onExternalRemoved: () => {},
+};
 
 // The sources manager below the list reads its stored sources when it mounts.
 const answer = (data: unknown) => async (path: string) => ({

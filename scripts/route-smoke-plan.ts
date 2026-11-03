@@ -260,6 +260,9 @@ export function sampleBody(operation: OpenApiOperation, nowMs: number): string |
 /** Methods worth probing. HEAD and OPTIONS mirror routes already covered. */
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
+/** The probe that ends the session; nothing may run after it. */
+const SESSION_END = "DELETE /api/auth/session";
+
 /** Reads first, then writes, then deletes — a DELETE must not empty a read. */
 const METHOD_ORDER: Record<string, number> = {
   get: 0,
@@ -305,7 +308,8 @@ export function planProbes(doc: OpenApiDoc, nowMs: number): Probe[] {
   return probes.sort((a, b) => order(a) - order(b));
 }
 
-const order = (probe: Probe) => METHOD_ORDER[probe.method.toLowerCase()] ?? 1;
+const order = (probe: Probe) =>
+  probe.label === SESSION_END ? 3 : (METHOD_ORDER[probe.method.toLowerCase()] ?? 1);
 
 /** What came back from one probe: a status, or the reason there is none. */
 export interface ProbeResponse {

@@ -4,6 +4,8 @@
  * On first-run setup the profile list holds the compiled-in profiles. The admin adds a source by
  * URL, then imports one profile file; both profiles join the list and either can be chosen.
  *
+ * Removing the source takes the profile it supplied out of the list; the imported one stays.
+ *
  * The sources editor's rules are `profile-sources-editor.svelte.test.ts`'s subject; what only a
  * running app proves is that the requests leave in the shape the core takes and the list the
  * profile step shows is the one the core answers next.
@@ -41,6 +43,15 @@ test("a source by URL and an imported file both join the profile list and can be
   await page.getByRole("button", { name: "Select", exact: true }).first().click();
   await expect(chosen).toContainText("Acme Fetched");
 
+  // ── 4. Removing the source drops what it supplied and what was chosen of it ──
+  await page
+    .getByRole("button", { name: /Remove source https:\/\/profiles\.example\.org\/repo/ })
+    .click();
+  await expect(page.getByText("No sources added.")).toBeVisible();
+  await expect(page.getByText("Acme Fetched")).toHaveCount(0);
+  await expect(page.getByText("Acme Imported").first()).toBeVisible();
+  await expect(chosen).not.toContainText("Acme Fetched");
+
   const posts = opened.backend.writes.filter((w) => w.method === "POST");
   expect(posts.map((w) => [w.path, w.body])).toEqual([
     [
@@ -48,6 +59,10 @@ test("a source by URL and an imported file both join the profile list and can be
       { baseUrl: "https://profiles.example.org/repo", indexPath: "index.json" },
     ],
     [expect.stringMatching(/\/api\/settings\/profiles\/import$/), IMPORTED],
+  ]);
+  const deletes = opened.backend.writes.filter((w) => w.method === "DELETE");
+  expect(deletes.map((w) => w.path)).toEqual([
+    expect.stringMatching(/\/api\/settings\/profile-sources$/),
   ]);
   expect(opened.consoleErrors).toEqual([]);
   expect(opened.backend.unhandled).toEqual([]);

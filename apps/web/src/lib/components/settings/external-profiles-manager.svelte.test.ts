@@ -6,7 +6,8 @@ import * as m from "$lib/paraglide/messages";
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 const get = vi.fn();
 const post = vi.fn();
-vi.mock("$lib/core-api", () => ({ core: { GET: get, POST: post } }));
+const del = vi.fn();
+vi.mock("$lib/core-api", () => ({ core: { GET: get, POST: post, DELETE: del } }));
 const toast = { success: vi.fn(), error: vi.fn() };
 vi.mock("svelte-sonner", () => ({ toast }));
 
@@ -21,7 +22,7 @@ beforeEach(() => {
   get.mockImplementation(async () => ({ data: listed }));
 });
 afterEach(() => {
-  for (const fn of [get, post, toast.success, toast.error]) fn.mockReset();
+  for (const fn of [get, post, del, toast.success, toast.error]) fn.mockReset();
 });
 
 async function addSource(url = BASE) {
@@ -134,4 +135,49 @@ test("an imported file is reported like a fetched profile", async () => {
     .getByLabelText(m.profile_import_label())
     .upload(new File(['{"id":"acme-hybrid"}'], "acme.json", { type: "application/json" }));
   await vi.waitFor(() => expect(onInstalled).toHaveBeenCalledWith("acme-hybrid"));
+});
+
+const removeButton = () => page.getByRole("button", { name: m.sources_remove_aria({ url: BASE }) });
+
+test("a removed source is deleted by its URL and index path, then gone from the list", async () => {
+  listed = [STORED];
+  del.mockImplementation(async () => {
+    listed = [];
+    return { response: { status: 204 } };
+  });
+  const onRemoved = vi.fn();
+  render(ExternalProfilesManager, { onRemoved });
+  await removeButton().click();
+  await expect.element(page.getByText(m.sources_none())).toBeVisible();
+  expect(del).toHaveBeenCalledWith("/api/settings/profile-sources", {
+    params: { query: { baseUrl: BASE, indexPath: "index.json" } },
+  });
+  expect(onRemoved).toHaveBeenCalledOnce();
+  expect(toast.success).toHaveBeenCalledWith(m.sources_removed());
+});
+
+test("a refused removal shows the core's reason and keeps the source", async () => {
+  listed = [STORED];
+  del.mockResolvedValue({ error: { error: "the source supplies the active profile" } });
+  const onRemoved = vi.fn();
+  render(ExternalProfilesManager, { onRemoved });
+  await removeButton().click();
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent(
+      m.sources_remove_failed({ error: "the source supplies the active profile" }),
+    );
+  await expect.element(page.getByText(BASE)).toBeVisible();
+  expect(onRemoved).not.toHaveBeenCalled();
+  expect(toast.success).not.toHaveBeenCalled();
+});
+
+test("an unreachable core reads as a failed removal", async () => {
+  listed = [STORED];
+  del.mockRejectedValue(new TypeError("fetch failed"));
+  render(ExternalProfilesManager, {});
+  await removeButton().click();
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent(m.sources_remove_failed({ error: m.conn_request_failed() }));
 });

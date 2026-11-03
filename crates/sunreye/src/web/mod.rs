@@ -111,8 +111,14 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(kiosk::switch))
-        .routes(routes!(profile_sources::list, profile_sources::add))
+        .merge(profile_settings())
+}
+
+fn profile_settings() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(profile_sources::list, profile_sources::add, profile_sources::remove_source_by_url))
         .routes(routes!(profile_sources::import))
+        .routes(routes!(profile_sources::remove))
 }
 
 fn accounts() -> OpenApiRouter<Arc<Core>> {
