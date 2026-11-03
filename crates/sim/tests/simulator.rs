@@ -60,6 +60,29 @@ async fn a_write_is_refused_with_exception_1_and_recorded() {
     assert_eq!((seen.len(), seen[0].function), (1, 16));
 }
 
+#[tokio::test]
+async fn a_stopped_simulator_closes_its_connections_and_answers_no_new_one() {
+    let sim = Simulator::start(Registers::from_runs([(1, vec![7])]), &[1]).await.expect("sim");
+    let read = [0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0, 1];
+    let mut open = TcpStream::connect(sim.addr).await.expect("connect");
+    open.write_all(&read).await.expect("write");
+    let mut reply = [0_u8; 11];
+    open.read_exact(&mut reply).await.expect("an open connection answers");
+
+    sim.stop();
+    let ended = |mut stream: TcpStream| async move {
+        let mut rest = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut rest))
+            .await
+            .map(|read| (read.ok(), rest))
+    };
+    assert!(matches!(ended(open).await, Ok((None | Some(0), _))), "the open connection ends unanswered");
+    let mut late = TcpStream::connect(sim.addr).await.expect("the port is still bound");
+    late.write_all(&read).await.ok();
+    assert!(matches!(ended(late).await, Ok((None | Some(0), _))), "a new connection ends unanswered");
+    assert_eq!(sim.requests().len(), 1);
+}
+
 async fn rtu_sim(registers: Registers, units: &[u8]) -> Simulator {
     Simulator::start_with(Framing::RtuOverTcp, registers, units).await.expect("sim")
 }
