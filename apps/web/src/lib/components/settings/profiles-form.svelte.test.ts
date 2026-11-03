@@ -10,6 +10,7 @@ vi.mock("$lib/core-api", () => ({ core: { GET: get, DELETE: del } }));
 const toast = { success: vi.fn(), error: vi.fn() };
 vi.mock("svelte-sonner", () => ({ toast }));
 
+const { coreCapabilities } = await import("$lib/capabilities.svelte");
 const { default: ProfilesForm } = await import("./profiles-form.svelte");
 
 const ACME = {
@@ -21,11 +22,13 @@ const ACME = {
   builtin: false,
 };
 let listed: unknown[] = [];
+let capabilities: unknown;
 
 beforeEach(() => {
   listed = [ACME];
+  capabilities = { profileSources: true };
   get.mockImplementation(async (path: string) => ({
-    data: path === "/api/profiles" ? listed : [],
+    data: path === "/api/profiles" ? listed : path === "/api/capabilities" ? capabilities : [],
   }));
 });
 afterEach(() => {
@@ -68,4 +71,22 @@ test("a refused removal toasts the core's reason and keeps the profile", async (
   await expect
     .element(page.getByRole("button", { name: m.profiles_remove_aria({ name: ACME.name }) }))
     .toBeVisible();
+});
+
+test("the sources manager and the file import are offered while the core serves profile sources", async () => {
+  await coreCapabilities.load();
+  render(ProfilesForm, {});
+  await expect.element(page.getByText(m.sources_title())).toBeVisible();
+  await expect.element(page.getByLabelText(m.profile_import_label())).toBeVisible();
+});
+
+test("the whole manager is gone when the core reports profile sources absent, the installed list stays", async () => {
+  capabilities = { profileSources: false };
+  await coreCapabilities.load();
+  render(ProfilesForm, {});
+  await expect
+    .element(page.getByRole("button", { name: m.profiles_remove_aria({ name: ACME.name }) }))
+    .toBeVisible();
+  await expect.element(page.getByText(m.sources_title())).not.toBeInTheDocument();
+  await expect.element(page.getByLabelText(m.profile_import_label())).not.toBeInTheDocument();
 });
