@@ -180,14 +180,14 @@ async fn a_fresh_core_needs_a_profile() {
 }
 
 #[tokio::test]
-async fn capabilities_report_only_profile_sources_served() {
+async fn capabilities_report_only_history_and_profile_sources_served() {
     let (core, app) = open(&dir("capabilities")).await;
     let answer = get(&app, "/api/capabilities").await;
     assert_eq!(answer.status, StatusCode::OK);
     assert_eq!(
         answer.json(),
         json!({
-            "history": false, "statistics": false, "controls": false, "automations": false,
+            "history": true, "statistics": false, "controls": false, "automations": false,
             "restart": false, "profileSources": true
         })
     );

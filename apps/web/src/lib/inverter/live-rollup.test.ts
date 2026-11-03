@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { feedsFor, rollupFeed, type RollupQuery } from "./live-rollup";
+import createClient from "openapi-fetch";
+import type { paths } from "$lib/core-api.gen";
+import { coreRollup, feedsFor, rollupFeed, type RollupQuery } from "./live-rollup";
 import type { LiveWindow, RollupRow } from "./live-tail";
 
 // The whole lifecycle both history charts run — the window fetched once, a
@@ -279,5 +281,59 @@ describe("what a chart draws", () => {
   test("a live window carries each key's frame buffer; a closed one carries none", () => {
     expect(feedsFor(["pv"], {}, () => frames)[0]!.live).toEqual(frames);
     expect(feedsFor(["pv"], {}, null)[0]!.live).toEqual([]);
+  });
+});
+
+describe("the core's rollup route as the feed's API", () => {
+  /** The real openapi-fetch client over a canned transport. */
+  function core(answer: () => Response | Promise<Response>) {
+    const seen: URL[] = [];
+    const client = createClient<paths>({
+      baseUrl: "http://core.test",
+      fetch: async (request) => {
+        seen.push(new URL(request.url));
+        return answer();
+      },
+    });
+    return { client, seen };
+  }
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const QUERY: RollupQuery = {
+    metric: "pv.power",
+    from: "2026-08-02T00:00:00.000Z",
+    to: "2026-08-03T00:00:00.000Z",
+    bucket: "hour",
+    limit: 12000,
+    source: "plant",
+  };
+
+  test("asks /api/history/rollup with the whole query and answers the body", async () => {
+    const body = [{ time: "2026-08-02T00:00:00Z", avg: 1, min: 0, max: 2 }];
+    const { client, seen } = core(() => json(body));
+    expect(await coreRollup(client).rollup(QUERY)).toEqual({ data: body });
+    expect(seen.map((u) => u.pathname)).toEqual(["/api/history/rollup"]);
+    expect(Object.fromEntries(seen[0]!.searchParams)).toEqual({
+      metric: "pv.power",
+      from: "2026-08-02T00:00:00.000Z",
+      to: "2026-08-03T00:00:00.000Z",
+      bucket: "hour",
+      limit: "12000",
+      source: "plant",
+    });
+  });
+
+  test("a scope-less read names no source", async () => {
+    const { client, seen } = core(() => json([]));
+    const { source: _, ...plantWide } = QUERY;
+    await coreRollup(client).rollup(plantWide);
+    expect(seen[0]!.searchParams.has("source")).toBe(false);
+  });
+
+  test("a refusal and an unreachable core answer no rows instead of throwing", async () => {
+    const refused = core(() => json({ error: "unauthorized" }, 401));
+    expect((await coreRollup(refused.client).rollup(QUERY)).data).toBeUndefined();
+    const down = core(() => Promise.reject(new TypeError("fetch failed")));
+    expect((await coreRollup(down.client).rollup(QUERY)).data).toBeUndefined();
   });
 });
