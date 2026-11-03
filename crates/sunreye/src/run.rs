@@ -515,6 +515,16 @@ mod tests {
         stored.len() + held.iter().filter(|s| !stored.iter().any(|t| t.at_ms == s.at_ms)).count()
     }
 
+    /// Waits until `device` has `count` readings, failing after 20 s. Counted in the core, not at a
+    /// simulator: a parallel test's core may still dial a port the simulator reused.
+    async fn until_polled(core: &Core, device: i64, count: usize) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while polled(core, device).await < count {
+            assert!(Instant::now() < deadline, "device {device} not polled {count} times");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     fn sorted(values: &[(String, f64)]) -> Vec<(String, f64)> {
         let mut values = values.to_vec();
         values.sort_by(|a, b| a.0.cmp(&b.0));
@@ -553,14 +563,14 @@ mod tests {
         let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
         let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
         let core = Core::open(&dir).await.expect("core");
-        wait_for_requests(&low_sim, 10).await;
-        wait_for_requests(&high_sim, 10).await;
+        until_polled(&core, first, 2).await;
+        until_polled(&core, second, 2).await;
 
         low_sim.stop();
         // A poll in flight when the simulator stopped may still land; the other's next polls outlast it.
-        wait_for_requests(&high_sim, high_sim.requests().len() + 10).await;
+        until_polled(&core, second, polled(&core, second).await + 3).await;
         let (first_at_stop, second_at_stop) = (polled(&core, first).await, polled(&core, second).await);
-        wait_for_requests(&high_sim, high_sim.requests().len() + 20).await;
+        until_polled(&core, second, second_at_stop + 5).await;
         assert_eq!(polled(&core, first).await, first_at_stop, "the stopped device gains nothing");
         assert!(polled(&core, second).await > second_at_stop, "the other keeps growing");
         core.stop().await;
@@ -588,19 +598,18 @@ mod tests {
             Simulator::start(case.registers.clone(), &[1]).await.expect("sim"),
         );
         let dir = dir("retired");
-        let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "20").await;
+        let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
         let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
         let core = Core::open(&dir).await.expect("core");
-        wait_for_requests(&retired_sim, 5).await;
+        until_polled(&core, retired, 2).await;
 
         let retire =
             DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
         core.store.edit_device(retired, &retire).await.expect("retire");
         core.apply().await.expect("apply");
-        let asked = retired_sim.requests().len();
-        let more = kept_sim.requests().len() + 10;
-        wait_for_requests(&kept_sim, more).await;
-        assert_eq!(retired_sim.requests().len(), asked, "a retired device is not polled");
+        let asked = polled(&core, retired).await;
+        until_polled(&core, kept, polled(&core, kept).await + 5).await;
+        assert_eq!(polled(&core, retired).await, asked, "a retired device is not polled");
         assert_eq!(members(&core), [kept.to_string()]);
         assert!(
             !core.store.readings(retired, 0, i64::MAX).await.expect("readings").is_empty(),
@@ -610,7 +619,7 @@ mod tests {
         let restore = DeviceEdit { retired_at: Some(None), ..DeviceEdit::default() };
         core.store.edit_device(retired, &restore).await.expect("restore");
         core.apply().await.expect("apply");
-        wait_for_requests(&retired_sim, asked + 5).await;
+        until_polled(&core, retired, asked + 2).await;
         core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
