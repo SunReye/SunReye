@@ -26,7 +26,8 @@
 		connections,
 		draft,
 		registered,
-		onInstalled
+		onInstalled,
+		onRemoved
 	}: {
 		form: AddDeviceForm;
 		/** The roster, so the unit-id picker can disable the ids already taken. */
@@ -36,6 +37,7 @@
 		draft: ConnectionDraft | null;
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
+		onRemoved: () => void;
 	} = $props();
 
 	const isInverter = $derived(form.role === 'inverter');
@@ -44,7 +46,7 @@
 <div class="flex flex-col gap-4">
 	<AddressFields bind:form {devices} refusal={null} {connections} {draft} />
 	<NameField bind:form refusal={null} />
-	<ProfileField bind:form {registered} refusal={null} {onInstalled} />
+	<ProfileField bind:form {registered} refusal={null} {onInstalled} {onRemoved} />
 	{#if isInverter}
 		<InverterSection bind:form />
 	{/if}
