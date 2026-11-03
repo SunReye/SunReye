@@ -1,13 +1,15 @@
 //! The kiosk view: while the admin has it on, the dashboard's reads and `/ws` answer without a session.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{Request, State};
+use axum::extract::{FromRequestParts, Request, State};
+use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
-use tokio::sync::SemaphorePermit;
+use tokio::sync::OwnedSemaphorePermit;
 use utoipa::ToSchema;
 
 use super::auth::AuthSession;
@@ -65,12 +67,44 @@ pub async fn session_or_kiosk(auth: AuthSession, request: Request, next: Next) -
     }
 }
 
-/// Held for a history read: nothing for a session, one of [`Core::stranger_read`] without one.
-pub fn history_read<'a>(core: &'a Core, auth: &AuthSession) -> Result<Option<SemaphorePermit<'a>>, ApiError> {
-    if auth.user.is_some() {
-        return Ok(None);
+/// How long a stranger's history read waits for a [`Core::stranger_permit`] before a 503: a page of
+/// history cards drains in well under this, and a client gives up long after it. Waiters are not
+/// counted: each is an open request, which a stranger can hold anyway, and leaves when this runs out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StrangerWait(pub Duration);
+
+impl Default for StrangerWait {
+    fn default() -> Self {
+        Self(Duration::from_secs(5))
     }
-    core.stranger_read()
-        .map(Some)
-        .ok_or_else(|| ApiError::unavailable("Too many history reads without a session"))
+}
+
+/// The SPA's widest read, `LIMIT` in `live-rollup.ts`, on any tier.
+const STRANGER_MAX_LIMIT: u32 = 12_000;
+
+/// A history read's allowance: a session reads at once and as wide as the route allows; a stranger
+/// holds a [`Core::stranger_permit`] for the whole read and asks for at most [`STRANGER_MAX_LIMIT`]
+/// buckets.
+#[derive(Debug)]
+pub struct HistoryRead {
+    _permit: Option<OwnedSemaphorePermit>,
+    /// Most buckets one read may ask for; `None` for a session.
+    pub max_limit: Option<u32>,
+}
+
+impl FromRequestParts<Arc<Core>> for HistoryRead {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, core: &Arc<Core>) -> Result<Self, ApiError> {
+        let signed_in = parts.extensions.get::<AuthSession>().is_some_and(|auth| auth.user.is_some());
+        if signed_in {
+            return Ok(Self { _permit: None, max_limit: None });
+        }
+        let wait = parts.extensions.get::<StrangerWait>().copied().unwrap_or_default();
+        let permit = core
+            .stranger_permit(wait.0)
+            .await
+            .ok_or_else(|| ApiError::unavailable("Too many history reads without a session"))?;
+        Ok(Self { _permit: Some(permit), max_limit: Some(STRANGER_MAX_LIMIT) })
+    }
 }

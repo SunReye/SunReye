@@ -34,6 +34,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
+use self::kiosk::StrangerWait;
 pub use self::origin::origin_authority;
 pub use self::ws::Limits as LiveLimits;
 use crate::run::Core;
@@ -55,6 +56,7 @@ pub struct Config {
     pub secure_cookies: bool,
     /// Fixed in the binary; tests shorten them.
     pub live: LiveLimits,
+    pub stranger_wait: StrangerWait,
 }
 
 /// The API routes with their `OpenAPI` document. Anonymous callers reach the setup gates, the sign-in
@@ -141,6 +143,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
         .route("/openapi/json", get(move || std::future::ready(Json(Arc::clone(&document)))))
         .fallback(get(assets::serve))
         .layer(Extension(config.live))
+        .layer(Extension(config.stranger_wait))
         .layer(accounts)
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))
         .with_state(core)

@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustls::pki_types::CertificateDer;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, Semaphore, SemaphorePermit, oneshot, watch};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
@@ -32,8 +32,8 @@ pub enum RunError {
     Serve(#[from] std::io::Error),
 }
 
-/// A browser's six HTTP/1.1 connections, so one kiosk is never refused; strangers queue no more reads
-/// than this on the store's one connection.
+/// The store serialises reads on one connection: strangers keep no more than this in flight, so a
+/// session's read never queues behind a crowd of them.
 const STRANGER_READS: usize = 6;
 
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
@@ -49,7 +49,7 @@ pub struct Core {
     pub unstored: Arc<Unstored>,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
-    stranger_reads: Semaphore,
+    stranger_reads: Arc<Semaphore>,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
     polling: Polling,
@@ -87,7 +87,7 @@ impl Core {
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         let polling = Polling::default();
         let kiosk = watch::Sender::new(kiosk(&store).await?);
-        let stranger_reads = Semaphore::new(STRANGER_READS);
+        let stranger_reads = Arc::new(Semaphore::new(STRANGER_READS));
         let core = Arc::new(Self {
             store,
             bundle,
@@ -119,9 +119,11 @@ impl Core {
         self.kiosk.receiver_count()
     }
 
-    /// A history read without a session, while held; `None` while [`STRANGER_READS`] are.
-    pub fn stranger_read(&self) -> Option<SemaphorePermit<'_>> {
-        self.stranger_reads.try_acquire().ok()
+    /// One of [`STRANGER_READS`], held for a history read without a session; `None` when none frees
+    /// within `wait`. Waiters are served in turn, and one dropped while waiting leaves the queue.
+    pub async fn stranger_permit(&self, wait: Duration) -> Option<OwnedSemaphorePermit> {
+        let permit = Arc::clone(&self.stranger_reads).acquire_owned();
+        tokio::time::timeout(wait, permit).await.ok()?.ok()
     }
 
     pub fn now_ms(&self) -> i64 {

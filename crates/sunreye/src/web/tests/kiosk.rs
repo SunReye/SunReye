@@ -1,3 +1,7 @@
+use std::pin::Pin;
+
+use tokio::sync::OwnedSemaphorePermit;
+
 use super::*;
 
 /// What the dashboard reads, each as a request that answers 200 to a session.
@@ -136,7 +140,7 @@ fn rollup(query: &str) -> String {
 }
 
 #[tokio::test]
-async fn a_stranger_gets_at_most_12000_buckets_per_read_on_every_tier_and_a_session_keeps_50000() {
+async fn a_strangers_rollup_is_capped_at_12000_buckets_on_every_tier_and_a_sessions_at_50000() {
     let (core, admin) = open(&dir("kiosk-rollup-cap")).await;
     switch(&admin, true).await;
     let stranger = admin.anonymous();
@@ -152,8 +156,10 @@ async fn a_stranger_gets_at_most_12000_buckets_per_read_on_every_tier_and_a_sess
                 "{refused}"
             );
         }
-        let zero = get(&stranger, &rollup(&format!("bucket={bucket}&limit=0"))).await;
-        assert_eq!(zero.status, StatusCode::BAD_REQUEST, "bucket={bucket}&limit=0");
+        for (api, limit) in [(&stranger, "0"), (&stranger, "-1"), (&admin, "0"), (&admin, "-1")] {
+            let query = format!("bucket={bucket}&limit={limit}");
+            assert_eq!(get(api, &rollup(&query)).await.status, StatusCode::BAD_REQUEST, "{query}");
+        }
         for served in ["limit=12001", "limit=50000"] {
             let query = format!("bucket={bucket}&{served}");
             assert_eq!(get(&admin, &rollup(&query)).await.status, StatusCode::OK, "session: {query}");
@@ -165,25 +171,115 @@ async fn a_stranger_gets_at_most_12000_buckets_per_read_on_every_tier_and_a_sess
     core.stop().await;
 }
 
+#[tokio::test]
+async fn a_signed_out_or_unknown_session_cookie_reads_as_a_stranger() {
+    let (core, admin) = open(&dir("kiosk-stale-cookie")).await;
+    let signed_in = login(&admin.anonymous(), ADMIN_EMAIL, ADMIN_PASSWORD, false).await;
+    let ended = admin.with_cookie(&signed_in.session_cookie());
+    assert_eq!(delete(&ended, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    let name = signed_in.session_cookie().split('=').next().expect("name").to_owned();
+    let unknown = admin.with_cookie(&format!("{name}=not-a-session"));
+    for api in [&ended, &unknown] {
+        assert_eq!(get(api, &rollup("limit=12001")).await.status, StatusCode::UNAUTHORIZED, "kiosk off");
+    }
+    switch(&admin, true).await;
+    for api in [&ended, &unknown] {
+        let answer = get(api, &rollup("limit=12001")).await;
+        assert_eq!(answer.json(), json!({"error": "limit must be 1–12000 without a session"}));
+        assert_eq!(get(api, &rollup("limit=12000")).await.status, StatusCode::OK);
+    }
+    drop((ended, unknown, admin));
+    core.stop().await;
+}
+
 const HISTORY_READS: [&str; 2] = ["/api/history/recent", "/api/history/rollup?metric=pv_power"];
 
+/// Takes every stranger permit, as six reads in flight would.
+async fn hold_all(core: &Core) -> Vec<OwnedSemaphorePermit> {
+    let mut held = Vec::new();
+    while let Some(permit) = core.stranger_permit(Duration::ZERO).await {
+        held.push(permit);
+    }
+    assert_eq!(held.len(), 6, "stranger permits");
+    held
+}
+
+/// Every permit is free again: none is held or handed to a waiter.
+async fn all_free(core: &Core) -> bool {
+    let mut held = Vec::new();
+    while let Some(permit) = core.stranger_permit(Duration::ZERO).await {
+        held.push(permit);
+    }
+    held.len() == 6
+}
+
+fn request(path: &str) -> Request<Body> {
+    Request::get(path).header(header::HOST, HOST).body(Body::empty()).expect("request")
+}
+
+/// Polls `read` for a while and asserts it is still waiting.
+async fn still_pending<F: Future + Unpin>(read: &mut F, what: &str) {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    for _ in 0..20 {
+        assert!(Pin::new(&mut *read).poll(&mut context).is_pending(), "{what}: answered while waiting");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
 #[tokio::test]
-async fn six_strangers_read_history_at_once_a_seventh_is_a_503_and_a_session_is_never_refused() {
+async fn fifteen_strangers_reading_history_at_once_are_all_answered() {
     let (core, admin) = open(&dir("kiosk-reads-at-once")).await;
     switch(&admin, true).await;
+    let mut reads = tokio::task::JoinSet::new();
+    for n in 0..15 {
+        let read = admin.anonymous().router.oneshot(request(HISTORY_READS[n % 2]));
+        reads.spawn(async move { (n, read.await.expect("response").status()) });
+    }
+    while let Some(read) = reads.join_next().await {
+        let (n, status) = read.expect("read");
+        assert_eq!(status, StatusCode::OK, "read {n}");
+    }
+    assert!(all_free(&core).await);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_seventh_strangers_read_waits_for_a_permit_and_a_session_never_waits() {
+    let (core, admin) = open(&dir("kiosk-reads-wait")).await;
+    switch(&admin, true).await;
     let stranger = admin.anonymous();
-    let held: Vec<_> = (0..6).map(|n| core.stranger_read().unwrap_or_else(|| panic!("read {n}"))).collect();
-    assert!(core.stranger_read().is_none(), "a seventh");
     for path in HISTORY_READS {
+        let mut held = hold_all(&core).await;
+        let mut read = Box::pin(stranger.router.clone().oneshot(request(path)));
+        still_pending(&mut read, path).await;
         let started = Instant::now();
+        assert_eq!(get(&admin, path).await.status, StatusCode::OK, "session: {path}");
+        assert!(started.elapsed() < Duration::from_secs(2), "{path}: a session waited");
+        held.pop();
+        let answer = answer(read.await.expect("response")).await;
+        assert_eq!(answer.status, StatusCode::OK, "{path}: once a permit freed");
+        drop(held);
+        assert!(all_free(&core).await, "{path}");
+    }
+    drop((stranger, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_strangers_read_that_waits_past_the_limit_is_a_503() {
+    let config = Config { stranger_wait: StrangerWait(Duration::from_millis(50)), ..Config::default() };
+    let (core, admin) = open_with(&dir("kiosk-reads-timeout"), &config).await;
+    switch(&admin, true).await;
+    let stranger = admin.anonymous();
+    let held = hold_all(&core).await;
+    for path in HISTORY_READS {
         let refused = get(&stranger, path).await;
-        assert!(started.elapsed() < Duration::from_secs(1), "{path}: refused without waiting");
         assert_eq!(
             (refused.status, refused.json()),
             (StatusCode::SERVICE_UNAVAILABLE, json!({"error": "Too many history reads without a session"})),
             "{path}"
         );
-        assert_eq!(get(&admin, path).await.status, StatusCode::OK, "session: {path}");
     }
     drop(held);
     for path in HISTORY_READS {
@@ -193,10 +289,25 @@ async fn six_strangers_read_history_at_once_a_seventh_is_a_503_and_a_session_is_
     core.stop().await;
 }
 
-/// Every permit is free again: none of the six is held.
-fn all_free(core: &Core) -> bool {
-    let held: Vec<_> = std::iter::from_fn(|| core.stranger_read()).take(7).collect();
-    held.len() == 6
+#[tokio::test]
+async fn a_waiting_strangers_read_whose_client_leaves_takes_no_permit() {
+    let (core, admin) = open(&dir("kiosk-reads-leave")).await;
+    switch(&admin, true).await;
+    let stranger = admin.anonymous();
+    for path in HISTORY_READS {
+        let mut held = hold_all(&core).await;
+        let mut left = Box::pin(stranger.router.clone().oneshot(request(path)));
+        still_pending(&mut left, path).await;
+        let mut next = Box::pin(stranger.router.clone().oneshot(request(path)));
+        still_pending(&mut next, path).await;
+        drop(left);
+        held.pop();
+        assert_eq!(answer(next.await.expect("response")).await.status, StatusCode::OK, "{path}");
+        drop(held);
+        assert!(all_free(&core).await, "{path}");
+    }
+    drop((stranger, admin));
+    core.stop().await;
 }
 
 #[tokio::test]
@@ -206,16 +317,15 @@ async fn a_strangers_read_frees_its_permit_when_answered_refused_or_abandoned() 
     let stranger = admin.anonymous();
     for path in HISTORY_READS {
         assert_eq!(get(&stranger, path).await.status, StatusCode::OK, "{path}");
-        assert!(all_free(&core), "answered: {path}");
+        assert!(all_free(&core).await, "answered: {path}");
     }
     assert_eq!(get(&stranger, &rollup("limit=12001")).await.status, StatusCode::BAD_REQUEST);
-    assert!(all_free(&core), "refused");
+    assert!(all_free(&core).await, "refused");
     for path in HISTORY_READS {
-        let request = Request::get(path).header(header::HOST, HOST).body(Body::empty()).expect("request");
-        let mut read = Box::pin(stranger.router.clone().oneshot(request));
+        let mut read = Box::pin(stranger.router.clone().oneshot(request(path)));
         let mut context = std::task::Context::from_waker(std::task::Waker::noop());
         let deadline = Instant::now() + Duration::from_secs(10);
-        while all_free(&core) {
+        while all_free(&core).await {
             assert!(
                 read.as_mut().poll(&mut context).is_pending(),
                 "{path}: answered before it was seen in flight"
@@ -224,7 +334,7 @@ async fn a_strangers_read_frees_its_permit_when_answered_refused_or_abandoned() 
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
         drop(read);
-        assert!(all_free(&core), "abandoned: {path}");
+        assert!(all_free(&core).await, "abandoned: {path}");
     }
     drop((stranger, admin));
     core.stop().await;
