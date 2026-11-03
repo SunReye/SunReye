@@ -76,6 +76,8 @@ interface SeriesShape {
   wind: boolean;
   /** Sample indexes left out (a provider gap). */
   skip?: (i: number) => boolean;
+  /** Plane irradiance added to every sample, W/m²: lets night slots carry energy. */
+  baseWm2?: number;
 }
 
 /**
@@ -95,7 +97,7 @@ function series(shape: SeriesShape): IrradianceForecast {
     utcOffsetSeconds: shape.utcOffsetSeconds,
     location: LIMBURG,
     temperature: at.map((ms) => round1(12 + 10 * Math.sin((Math.PI * (utcHour(ms) - 6)) / 18))),
-    gti: shape.planes.map((p) => at.map((ms) => bell(ms, p.peak, p.shiftH))),
+    gti: shape.planes.map((p) => at.map((ms) => bell(ms, p.peak, p.shiftH) + (shape.baseWm2 ?? 0))),
     ...(shape.dni ? { dni: at.map((ms) => bell(ms, 820, 0)) } : {}),
     ...(shape.wind ? { windSpeed: at.map((_ms, k) => round1(0.5 + ((k * 7) % 11) * 0.4)) } : {}),
   };
@@ -220,10 +222,15 @@ const forecast = (
   input: { provider: "open-meteo", timeZone: ZONE, ...input },
 });
 
-/** 2026-03-29 00:00 Berlin, labelled at the +01:00 the provider answered before the switch. */
+/** 2026-03-29 00:00 Berlin, +01:00; the day is 23 hours. */
 const SPRING = Date.UTC(2026, 2, 28, 23);
-/** 2025-10-26 00:00 Berlin, labelled at +02:00. */
+/** 2025-10-26 00:00 Berlin, +02:00; the day is 25 hours. */
 const AUTUMN = Date.UTC(2025, 9, 25, 22);
+/**
+ * `nowMs` at 00:30 plant time falls on the previous UTC date, and night slots carry energy from six
+ * hours before plant midnight, so every plant-day edge moves `todayKwh` or `tomorrowKwh`.
+ */
+const DST_START_H = -6;
 
 const FORECAST: ForecastCase[] = [
   forecast("quarter-hour-grid", { config: config(), data: julyQuarter(), nowMs: julyAt(9, 40) }),
@@ -236,28 +243,36 @@ const FORECAST: ForecastCase[] = [
   forecast("dst-spring-berlin", {
     config: config(),
     data: series({
-      startMs: SPRING,
+      startMs: SPRING + DST_START_H * HOUR_MS,
       stepMinutes: 15,
       count: 192,
       utcOffsetSeconds: 3600,
       planes: [{ peak: 700, shiftH: 0 }],
       dni: true,
       wind: true,
+      baseWm2: 40,
     }),
-    nowMs: SPRING + 13 * HOUR_MS,
+    nowMs: SPRING + HOUR_MS / 2,
   }),
   forecast("dst-autumn-berlin", {
     config: config(),
     data: series({
-      startMs: AUTUMN,
+      startMs: AUTUMN + DST_START_H * HOUR_MS,
       stepMinutes: 60,
-      count: 50,
+      count: 56,
       utcOffsetSeconds: 7200,
       planes: [{ peak: 600, shiftH: 0 }],
       dni: false,
       wind: true,
+      baseWm2: 40,
     }),
-    nowMs: AUTUMN + 20 * HOUR_MS,
+    nowMs: AUTUMN + HOUR_MS / 2,
+  }),
+  forecast("empty-series", {
+    config: config({ maxOutputW: 4000, battery: battery() }),
+    data: julyQuarter({ count: 0 }),
+    nowMs: julyAt(12),
+    sim: { startSocPct: 55, houseLoadW: 450 },
   }),
   forecast("sun-behind-plane", {
     config: config({ arrays: [{ kwp: 6, tilt: 70, azimuth: 180 }] }),
@@ -302,7 +317,7 @@ const FORECAST: ForecastCase[] = [
     config: config({ maxOutputW: 4000, battery: battery() }),
     data: julyQuarter(),
     nowMs: julyAt(11, 20),
-    sim: { startSocPct: 55, houseLoadW: 450, dayStartSocPct: 30 },
+    sim: { startSocPct: 55, houseLoadW: 450, dayStartSocPct: 50 },
   }),
   forecast("battery-unknown-soc", {
     config: config({ maxOutputW: 4000, battery: battery({ maxChargeW: null, minSoc: 20 }) }),

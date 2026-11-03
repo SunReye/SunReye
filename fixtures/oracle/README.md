@@ -161,14 +161,15 @@ bell computed by the generator, recorded in `input`; the second day of a series 
 | `forecast/quarter-hour-grid` | 15-minute grid, DNI and wind |
 | `forecast/hourly-grid` | hourly grid, no DNI or wind |
 | `forecast/gap-over-an-hour` | three hours missing |
-| `forecast/dst-spring-berlin` | 23-hour plant day, series at `+01:00` |
-| `forecast/dst-autumn-berlin` | 25-hour plant day, series at `+02:00` |
+| `forecast/dst-spring-berlin` | 23-hour plant day, series at `+01:00`; `nowMs` 00:30 plant time, the previous UTC date; night irradiance from 18:00 the evening before |
+| `forecast/dst-autumn-berlin` | 25-hour plant day, series at `+02:00`; `nowMs` 00:30 plant time, the previous UTC date; night irradiance from 18:00 the evening before |
+| `forecast/empty-series` | no samples (`times: []`), battery and feed-in cap |
 | `forecast/sun-behind-plane` | north-facing steep array |
 | `forecast/no-arrays` | no arrays |
 | `forecast/per-array-overrides` | per-array `tempCoefficient` / `systemLoss` over the plant default, 0 included |
 | `forecast/feed-in-cap-only` | feed-in cap, no battery |
 | `forecast/battery-live-soc` | battery, live SOC, no `dayStartSocPct`: past slots stay raw |
-| `forecast/battery-day-start-soc` | battery with `dayStartSocPct`: past slots simulated, re-seeded at the current slot |
+| `forecast/battery-day-start-soc` | battery with `dayStartSocPct`: past slots simulated through the night drain and a morning fill, re-seeded at the current slot |
 | `forecast/battery-unknown-soc` | no SOC: starts at the reserve floor; unbounded charge rate |
 | `forecast/battery-without-sim-inputs` | battery, no feed-in cap, no sim inputs |
 | `forecast/learned-correction` | correction factors shrunk and clamped |

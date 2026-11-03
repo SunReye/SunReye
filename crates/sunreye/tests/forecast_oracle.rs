@@ -88,7 +88,9 @@ fn every_geometry_case_places_the_sun_as_recorded() {
         assert!(close(sun.elevation_deg, number(&output["sun"]["elevationDeg"])), "{name}");
         assert!(close(sun.azimuth_deg, number(&output["sun"]["azimuthDeg"])), "{name}");
         let planes = input["planes"].as_array().expect("planes");
-        for (plane, want) in planes.iter().zip(output["cosAoi"].as_array().expect("cosAoi")) {
+        let recorded = output["cosAoi"].as_array().expect("cosAoi");
+        assert_eq!(planes.len(), recorded.len(), "{name}");
+        for (plane, want) in planes.iter().zip(recorded) {
             let got = cos_aoi(sun, number(&plane["tilt"]), number(&plane["azimuth"]));
             assert!(close(got, number(want)), "{name} {plane}: {got} != {want}");
         }
@@ -116,7 +118,7 @@ fn every_power_case_yields_the_recorded_watts() {
 #[test]
 fn every_forecast_case_exports_the_recorded_raw_and_usable_views() {
     let cases = cases("buildSolarForecast");
-    assert_eq!(cases.len(), 16);
+    assert_eq!(cases.len(), 17);
     let mut mismatches = Vec::new();
     for case in &cases {
         let input = &case["input"];
