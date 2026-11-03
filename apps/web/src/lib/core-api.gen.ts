@@ -144,6 +144,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A connection on its own, before any device is on it. */
+        post: operations["addConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Refused while any device, retired included, is on it. */
+        delete: operations["removeConnection"];
+        options?: never;
+        head?: never;
+        /** Every device on the connection follows it. */
+        patch: operations["patchConnection"];
+        trace?: never;
+    };
+    "/api/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every device, retired ones included, with every connection. */
+        get: operations["listDevices"];
+        put?: never;
+        post: operations["addDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Only a device that never stored a reading: one with history is refused with `field: "history"`, so
+         *     the page offers retiring it instead.
+         */
+        delete: operations["removeDevice"];
+        options?: never;
+        head?: never;
+        patch: operations["patchDevice"];
+        trace?: never;
+    };
     "/api/history/recent": {
         parameters: {
             query?: never;
@@ -460,9 +532,81 @@ export interface components {
             manufacturer: string;
             name: string;
         };
+        /** @description An existing connection by id, or one to create with the device. */
+        ConnectionChoice: {
+            /** Format: int64 */
+            id: number;
+        } | {
+            create: components["schemas"]["NewConnectionRequest"];
+        };
+        /** @enum {string} */
+        ConnectionKind: "modbus";
+        ConnectionPatch: {
+            /** @description Accepted when it is the connection's own kind. */
+            kind?: string | null;
+            name?: string | null;
+            params?: components["schemas"]["ModbusParams"] | null;
+        };
+        ConnectionView: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ConnectionKind"];
+            name: string;
+            params: components["schemas"]["ModbusParams"];
+        };
         /** @description The only answer that holds the key. */
         CreatedApiKey: components["schemas"]["ApiKeyView"] & {
             key: string;
+        };
+        /** @enum {string} */
+        DeviceKind: "modbus";
+        DevicePatch: {
+            /** Format: int64 */
+            connectionId?: number | null;
+            name?: string | null;
+            profileId?: string | null;
+            /** @description True retires the device: kept with its history, no longer polled. False restores it. */
+            retired?: boolean | null;
+            role?: string | null;
+            /** Format: int64 */
+            unitId?: number | null;
+        };
+        DeviceRoster: {
+            connections: components["schemas"]["ConnectionView"][];
+            devices: components["schemas"]["DeviceView"][];
+        };
+        /**
+         * @description Why a device is, or is not, polled.
+         * @enum {string}
+         */
+        DeviceState: "polling" | "idle" | "retired";
+        DeviceView: {
+            arrays: Record<string, never>[];
+            battery?: Record<string, never> | null;
+            connection?: components["schemas"]["ConnectionView"] | null;
+            /** Format: int64 */
+            connectionId: number;
+            /** Format: int64 */
+            id: number;
+            integration?: string | null;
+            kind: components["schemas"]["DeviceKind"];
+            name: string;
+            params: Record<string, never>;
+            profileId: string;
+            profileKnown: boolean;
+            profileName?: string | null;
+            /** @description UTC ISO 8601 while retired. */
+            retiredAt?: string | null;
+            role: string;
+            /** @description The device id as a decimal string. */
+            slug: string;
+            state: components["schemas"]["DeviceState"];
+            /** Format: double */
+            systemLoss?: number | null;
+            /** Format: double */
+            tempCoefficient?: number | null;
+            /** Format: int32 */
+            unitId: number;
         };
         Entity: {
             group: string | null;
@@ -473,6 +617,8 @@ export interface components {
         /** @description What a failed request answers: `{"error": "..."}` with the status that names the fault. */
         ErrorBody: {
             error: string;
+            /** @description The request field the refusal concerns, when the client acts on it. */
+            field?: string | null;
         };
         /**
          * @description An optional subsystem the roles of a profile show.
@@ -574,10 +720,46 @@ export interface components {
          * @enum {string}
          */
         MetricKind: "measurement" | "cumulative" | "status" | "setting";
+        /**
+         * @description A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and
+         *     `/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.
+         */
+        ModbusParams: {
+            host: string;
+            /**
+             * Format: int64
+             * @description The stick's serial, `solarman-v5` only.
+             */
+            loggerSerial?: number | null;
+            /** Format: int64 */
+            pollIntervalMs?: number;
+            /** Format: int64 */
+            port?: number;
+            /** Format: int64 */
+            timeoutMs?: number;
+            transport?: components["schemas"]["Transport"];
+        };
         NewApiKeyRequest: {
             name: string;
             /** Format: int64 */
             userId: number;
+        };
+        /** @description A connection as a writer states it. */
+        NewConnectionRequest: {
+            /** @description `modbus`; the core reaches no other kind. */
+            kind: string;
+            name: string;
+            params: components["schemas"]["ModbusParams"];
+        };
+        NewDeviceRequest: {
+            connection: components["schemas"]["ConnectionChoice"];
+            name: string;
+            profileId: string;
+            role: string;
+            /** Format: int64 */
+            unitId: number;
+            /** @description `profile` or absent; the core authors no other tier. */
+            via?: string | null;
         };
         /** @description An account an admin creates; the admin hands the password to its person. */
         NewUserRequest: {
@@ -615,6 +797,11 @@ export interface components {
             step: number;
             /** Format: int64 */
             t0: number;
+        };
+        Removed: {
+            /** Format: int64 */
+            id: number;
+            ok: boolean;
         };
         RevokeRequest: {
             /** Format: int64 */
@@ -1297,6 +1484,451 @@ export interface operations {
             };
         };
     };
+    addConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewConnectionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    removeConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Removed"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    patchConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    listDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceRoster"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    addDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDeviceRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    removeDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Removed"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    patchDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     recentHistory: {
         parameters: {
             query?: {
@@ -1304,6 +1936,8 @@ export interface operations {
                 seconds?: number;
                 /** @description Width of one bucket. Default 1. */
                 stepSeconds?: number;
+                /** @description `plant`, or a device's decimal id. Without it, the first device in service. */
+                source?: string;
             };
             header?: never;
             path?: never;
@@ -1357,7 +1991,7 @@ export interface operations {
         parameters: {
             query: {
                 metric: string;
-                /** @description `plant`, or a device's decimal id. Without it, the first device. */
+                /** @description `plant`, or a device's decimal id. Without it, the first device in service. */
                 source?: string;
                 /** @description As `source`, which wins when both are set. */
                 inverterId?: string;

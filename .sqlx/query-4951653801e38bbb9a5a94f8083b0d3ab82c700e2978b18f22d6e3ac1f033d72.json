@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE connection SET name = COALESCE(?, name), transport = COALESCE(?, transport),\n               host = COALESCE(?, host), port = COALESCE(?, port),\n               logger_serial = CASE WHEN ? THEN ? ELSE logger_serial END\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "4951653801e38bbb9a5a94f8083b0d3ab82c700e2978b18f22d6e3ac1f033d72"
+}

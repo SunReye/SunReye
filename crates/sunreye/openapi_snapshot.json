@@ -648,6 +648,525 @@
         }
       }
     },
+    "/api/connections": {
+      "post": {
+        "summary": "A connection on its own, before any device is on it.",
+        "operationId": "addConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connections/{id}": {
+      "delete": {
+        "summary": "Refused while any device, retired included, is on it.",
+        "operationId": "removeConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Removed"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Every device on the connection follows it.",
+        "operationId": "patchConnection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "summary": "Every device, retired ones included, with every connection.",
+        "operationId": "listDevices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceRoster"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addDevice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{id}": {
+      "delete": {
+        "summary": "Only a device that never stored a reading: one with history is refused with `field: \"history\"`, so\nthe page offers retiring it instead.",
+        "operationId": "removeDevice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Removed"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchDevice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/history/recent": {
       "get": {
         "summary": "The last readings of every metric, bucketed, to seed the live sparklines.",
@@ -675,6 +1194,15 @@
               "format": "int32",
               "maximum": 60,
               "minimum": 1
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "`plant`, or a device's decimal id. Without it, the first device in service.",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -743,7 +1271,7 @@
           {
             "name": "source",
             "in": "query",
-            "description": "`plant`, or a device's decimal id. Without it, the first device.",
+            "description": "`plant`, or a device's decimal id. Without it, the first device in service.",
             "required": false,
             "schema": {
               "type": "string"
@@ -1882,6 +2410,92 @@
           }
         }
       },
+      "ConnectionChoice": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "create"
+            ],
+            "properties": {
+              "create": {
+                "$ref": "#/components/schemas/NewConnectionRequest"
+              }
+            }
+          }
+        ],
+        "description": "An existing connection by id, or one to create with the device."
+      },
+      "ConnectionKind": {
+        "type": "string",
+        "enum": [
+          "modbus"
+        ]
+      },
+      "ConnectionPatch": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Accepted when it is the connection's own kind."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "params": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModbusParams"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ConnectionView": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "params"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConnectionKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ModbusParams"
+          }
+        }
+      },
       "CreatedApiKey": {
         "allOf": [
           {
@@ -1900,6 +2514,198 @@
           }
         ],
         "description": "The only answer that holds the key."
+      },
+      "DeviceKind": {
+        "type": "string",
+        "enum": [
+          "modbus"
+        ]
+      },
+      "DevicePatch": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profileId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retired": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True retires the device: kept with its history, no longer polled. False restores it."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DeviceRoster": {
+        "type": "object",
+        "required": [
+          "devices",
+          "connections"
+        ],
+        "properties": {
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionView"
+            }
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceView"
+            }
+          }
+        }
+      },
+      "DeviceState": {
+        "type": "string",
+        "description": "Why a device is, or is not, polled.",
+        "enum": [
+          "polling",
+          "idle",
+          "retired"
+        ]
+      },
+      "DeviceView": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "profileId",
+          "role",
+          "unitId",
+          "connectionId",
+          "params",
+          "arrays",
+          "profileKnown",
+          "kind",
+          "state"
+        ],
+        "properties": {
+          "arrays": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "battery": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connectionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "integration": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeviceKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "profileKnown": {
+            "type": "boolean"
+          },
+          "profileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retiredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UTC ISO 8601 while retired."
+          },
+          "role": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "description": "The device id as a decimal string."
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeviceState"
+          },
+          "systemLoss": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "tempCoefficient": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "unitId": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "Entity": {
         "type": "object",
@@ -1942,6 +2748,13 @@
         "properties": {
           "error": {
             "type": "string"
+          },
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The request field the refusal concerns, when the client acts on it."
           }
         }
       },
@@ -2269,6 +3082,41 @@
           "setting"
         ]
       },
+      "ModbusParams": {
+        "type": "object",
+        "description": "A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and\n`/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.",
+        "required": [
+          "host"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "loggerSerial": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The stick's serial, `solarman-v5` only."
+          },
+          "pollIntervalMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/Transport"
+          }
+        }
+      },
       "NewApiKeyRequest": {
         "type": "object",
         "required": [
@@ -2282,6 +3130,62 @@
           "userId": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "NewConnectionRequest": {
+        "type": "object",
+        "description": "A connection as a writer states it.",
+        "required": [
+          "name",
+          "kind",
+          "params"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`modbus`; the core reaches no other kind."
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/ModbusParams"
+          }
+        }
+      },
+      "NewDeviceRequest": {
+        "type": "object",
+        "required": [
+          "connection",
+          "role",
+          "name",
+          "profileId",
+          "unitId"
+        ],
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionChoice"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "via": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`profile` or absent; the core authors no other tier."
           }
         }
       },
@@ -2403,6 +3307,22 @@
           "t0": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "Removed": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ok": {
+            "type": "boolean"
           }
         }
       },

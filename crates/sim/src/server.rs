@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinHandle;
+use tokio::sync::watch;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::Registers;
 use crate::v5;
@@ -45,6 +46,7 @@ pub struct Simulator {
     pub addr: SocketAddr,
     log: Arc<Mutex<Vec<Request>>>,
     task: JoinHandle<()>,
+    stopped: watch::Sender<bool>,
 }
 
 impl Simulator {
@@ -59,12 +61,35 @@ impl Simulator {
         let addr = listener.local_addr()?;
         let log = Arc::new(Mutex::new(Vec::new()));
         let shared = Arc::new((registers, units.to_vec(), Arc::clone(&log)));
+        let (stopped, mut stop) = watch::channel(false);
+        // The connections live in the accept task's set, so dropping the simulator closes them too.
         let task = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(serve(stream, framing, Arc::clone(&shared)));
+            let mut connections = JoinSet::new();
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        let Ok((stream, _)) = accepted else { break };
+                        if !*stop.borrow() {
+                            connections.spawn(serve(stream, framing, Arc::clone(&shared)));
+                        }
+                        while connections.try_join_next().is_some() {}
+                    }
+                    changed = stop.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                        connections.abort_all();
+                    }
+                }
             }
         });
-        Ok(Self { addr, log, task })
+        Ok(Self { addr, log, task, stopped })
+    }
+
+    /// Closes every connection and drops each new one unanswered, as a device that went off the network.
+    /// The port stays bound, so no other listener takes it while a client still dials it.
+    pub fn stop(&self) {
+        self.stopped.send_replace(true);
     }
 
     pub fn requests(&self) -> Vec<Request> {
