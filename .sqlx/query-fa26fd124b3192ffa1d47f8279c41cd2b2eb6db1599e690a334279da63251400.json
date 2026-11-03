@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT device.id AS \"id!\", device.connection_id, device.profile_id, device.unit_id,\n                      connection.transport, connection.host, connection.port, connection.logger_serial\n               FROM device JOIN connection ON connection.id = device.connection_id\n               ORDER BY device.id",
+  "query": "SELECT device.id AS \"id!\", device.connection_id, device.profile_id, device.unit_id, device.name,\n                      device.role, device.retired_at, connection.transport, connection.host, connection.port,\n                      connection.logger_serial\n               FROM device JOIN connection ON connection.id = device.connection_id\n               ORDER BY device.id",
   "describe": {
     "columns": [
       {
@@ -24,23 +24,38 @@
         "type_info": "Integer"
       },
       {
-        "name": "transport",
+        "name": "name",
         "ordinal": 4,
         "type_info": "Text"
       },
       {
-        "name": "host",
+        "name": "role",
         "ordinal": 5,
         "type_info": "Text"
       },
       {
-        "name": "port",
+        "name": "retired_at",
         "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "transport",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "host",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "port",
+        "ordinal": 9,
         "type_info": "Integer"
       },
       {
         "name": "logger_serial",
-        "ordinal": 7,
+        "ordinal": 10,
         "type_info": "Integer"
       }
     ],
@@ -52,11 +67,14 @@
       false,
       false,
       false,
+      true,
+      false,
+      true,
       false,
       false,
       false,
       true
     ]
   },
-  "hash": "3375a916b42b4d71f5d0157dd76f0a8ec4b9c38a05cf3691c1a346b69580db42"
+  "hash": "fa26fd124b3192ffa1d47f8279c41cd2b2eb6db1599e690a334279da63251400"
 }

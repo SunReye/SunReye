@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE device SET name = COALESCE(?, name), role = COALESCE(?, role),\n               connection_id = COALESCE(?, connection_id), profile_id = COALESCE(?, profile_id),\n               unit_id = COALESCE(?, unit_id), retired_at = CASE WHEN ? THEN ? ELSE retired_at END\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "7ecf293a7c06d90baefde9d297409fdd6300e303c56b96bf7f84718e3c3a8e7a"
+}

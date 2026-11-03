@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM device WHERE connection_id = ?) AS \"bound!: bool\",\n                      EXISTS (SELECT 1 FROM connection WHERE id = ?) AS \"found!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "bound!: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "found!: bool",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "91230a4d18cd1dae725db52f5b2b4d7b9eaaaac3544b1cad27fd6b3afba45f5f"
+}

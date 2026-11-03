@@ -12,6 +12,10 @@ _Avoid_: site, system, installation
 One inverter, battery, meter or other unit SunReye reads, described by a profile. Named by a slug: in the 4.0 core, the device id as a decimal string.
 _Avoid_: inverter (for any device), unit
 
+**Retired**:
+Of a device: kept with its history, no longer polled, until restored. A device with history is retired, never deleted.
+_Avoid_: archived, disabled, deleted
+
 **Connection**:
 The network path to one or more devices: host, port and transport.
 _Avoid_: endpoint, link

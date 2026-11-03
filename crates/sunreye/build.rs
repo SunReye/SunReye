@@ -14,6 +14,8 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo:rerun-if-env-changed=SUNREYE_SPA_DIR");
     println!("cargo:rerun-if-env-changed=PROFILE");
+    // `sqlx::migrate!` embeds the migrations; without this a new one is not compiled in.
+    println!("cargo:rerun-if-changed=migrations");
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let built =
         env::var_os("SUNREYE_SPA_DIR").map_or_else(|| manifest.join("../../apps/web/build"), PathBuf::from);
