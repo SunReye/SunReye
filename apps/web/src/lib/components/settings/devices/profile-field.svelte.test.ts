@@ -6,7 +6,8 @@ import type { AddDeviceForm } from "./device-types";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 const get = vi.fn();
-vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
+const del = vi.fn();
+vi.mock("$lib/core-api", () => ({ core: { GET: get, DELETE: del } }));
 
 const { coreCapabilities } = await import("$lib/capabilities.svelte");
 const { default: ProfileField } = await import("./profile-field.svelte");
@@ -24,6 +25,7 @@ const props = {
   registered: [PROFILE],
   refusal: null,
   onInstalled: () => {},
+  onRemoved: () => {},
 };
 
 const answer = (data: unknown) => async (path: string) => ({
@@ -31,7 +33,10 @@ const answer = (data: unknown) => async (path: string) => ({
 });
 const download = () => page.getByRole("button", { name: m.devices_profile_download_more() });
 
-afterEach(() => get.mockReset());
+afterEach(() => {
+  get.mockReset();
+  del.mockReset();
+});
 
 test("the download browser opens onto the sources manager while the core serves profile sources", async () => {
   get.mockImplementation(answer({ profileSources: true }));
@@ -47,4 +52,20 @@ test("the download browser is gone when the core reports profile sources absent,
   render(ProfileField, props);
   await expect.element(page.getByLabelText(m.devices_field_profile())).toBeVisible();
   await expect.element(download()).not.toBeInTheDocument();
+});
+
+test("a source removed in the download browser is reported, for the wizard's step and the dialog alike", async () => {
+  const url = "https://example.org/profiles/";
+  get.mockImplementation(async (path: string) =>
+    path === "/api/settings/profile-sources"
+      ? { data: [{ baseUrl: url, indexPath: "index.json", profileIds: ["acme-hybrid"] }] }
+      : { data: { profileSources: true } },
+  );
+  del.mockResolvedValue({ data: {} });
+  await coreCapabilities.load();
+  const onRemoved = vi.fn();
+  render(ProfileField, { ...props, onRemoved });
+  await download().click();
+  await page.getByRole("button", { name: m.sources_remove_aria({ url }) }).click();
+  await vi.waitFor(() => expect(onRemoved).toHaveBeenCalledTimes(1));
 });

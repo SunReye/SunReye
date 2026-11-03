@@ -89,6 +89,10 @@
 		if (wizard.answers.via === 'profile') wizard.answers.form.profileId = id;
 	}
 
+	async function onRemoved() {
+		await roster.loadProfiles();
+	}
+
 	function leave() {
 		void goto(resolve('/settings/devices'));
 	}
@@ -183,6 +187,7 @@
 			{devices}
 			{registered}
 			{onInstalled}
+			{onRemoved}
 		/>
 		<WizardNav
 			first={wizard.step === 'connection'}
