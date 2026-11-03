@@ -50,7 +50,11 @@ pub struct Cli {
 
 impl Cli {
     pub fn web(&self) -> web::Config {
-        web::Config { trusted_origins: self.trusted_origins.clone(), secure_cookies: self.secure_cookies }
+        web::Config {
+            trusted_origins: self.trusted_origins.clone(),
+            secure_cookies: self.secure_cookies,
+            ..web::Config::default()
+        }
     }
 }
 
@@ -112,6 +116,7 @@ mod tests {
         let want = web::Config {
             trusted_origins: vec!["https://ha.example".into(), "http://10.0.0.2:8123".into()],
             secure_cookies: true,
+            ..web::Config::default()
         };
         assert_eq!(cli.web(), want);
     }

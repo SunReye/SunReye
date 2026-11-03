@@ -13,6 +13,7 @@ pub const INTERVAL_KEY: &str = "poll.interval_ms";
 pub const TIMEOUT_KEY: &str = "poll.timeout_ms";
 pub const PROFILE_KEY: &str = "profile.active";
 const UNIT_KEY: &str = "inverter.unit_id";
+const KIOSK_KEY: &str = "kiosk.enabled";
 
 pub const DEFAULT_PORT: u16 = 502;
 const DEFAULT_UNIT: u8 = 0;
@@ -162,6 +163,22 @@ pub async fn active_profile(store: &Store) -> Result<Option<String>, StoreError>
 pub async fn set_active_profile(store: &Store, id: &str) -> Result<(), StoreError> {
     store.set_setting(PROFILE_KEY, id).await?;
     reconcile(store).await
+}
+
+/// Whether the kiosk view is on. Anything but `true` or `false` reads as off, the closed direction.
+pub async fn kiosk(store: &Store) -> Result<bool, StoreError> {
+    Ok(match store.setting(KIOSK_KEY).await?.as_deref() {
+        Some("true") => true,
+        None | Some("false") => false,
+        Some(_) => {
+            tracing::warn!(setting = KIOSK_KEY, "not true or false, the kiosk view stays off");
+            false
+        }
+    })
+}
+
+pub async fn set_kiosk(store: &Store, on: bool) -> Result<(), StoreError> {
+    store.set_setting(KIOSK_KEY, if on { "true" } else { "false" }).await
 }
 
 /// Writes the device row once a connection and a profile are both saved.
@@ -318,6 +335,25 @@ mod tests {
         for bad in ["0", "-5", "soon", "", "1.5"] {
             assert_eq!(poll_interval(Some(bad)), DEFAULT_INTERVAL, "{bad:?}");
             assert_eq!(poll_timeout(Some(bad)), DEFAULT_TIMEOUT, "{bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_kiosk_view_is_off_until_switched_on_and_reads_back_each_way() {
+        let store = Store::in_memory().await.expect("store");
+        assert!(!kiosk(&store).await.expect("read"));
+        set_kiosk(&store, true).await.expect("on");
+        assert!(kiosk(&store).await.expect("read"));
+        set_kiosk(&store, false).await.expect("off");
+        assert!(!kiosk(&store).await.expect("read"));
+    }
+
+    #[tokio::test]
+    async fn a_damaged_kiosk_setting_reads_as_off() {
+        let store = Store::in_memory().await.expect("store");
+        for damaged in ["1", "yes", "TRUE", "", " true"] {
+            store.set_setting(KIOSK_KEY, damaged).await.expect("write");
+            assert!(!kiosk(&store).await.expect("read"), "{damaged:?}");
         }
     }
 

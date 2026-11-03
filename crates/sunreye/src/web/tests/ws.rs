@@ -122,6 +122,187 @@ async fn an_anonymous_upgrade_is_refused_and_any_session_is_accepted() {
 }
 
 #[tokio::test]
+async fn with_the_kiosk_view_on_a_stranger_is_upgraded_and_fed_and_with_it_off_refused() {
+    let (core, admin) = open(&dir("ws-kiosk")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7]);
+    let stranger = admin.anonymous();
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::UNAUTHORIZED));
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut socket = connect(addr, &stranger).await;
+    subscribe(&mut socket, r#"["metrics"]"#).await;
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut socket).await["data"]["metrics"]["pv_power"], 42.0);
+    assert_eq!(
+        upgrade(addr, &stranger, "https://evil.example").await.err(),
+        Some(StatusCode::FORBIDDEN),
+        "the origin check holds for a stranger too"
+    );
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": false})).await;
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::UNAUTHORIZED));
+    drop((stranger, admin));
+    core.stop().await;
+}
+
+/// The server closes `socket` within two seconds.
+async fn closed(socket: &mut Socket) {
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        let next = tokio::time::timeout_at(until.into(), socket.next()).await.expect("closed within 2 s");
+        match next {
+            Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+            Some(Ok(_)) => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn switching_the_kiosk_view_off_closes_a_strangers_open_socket_and_keeps_a_session_open() {
+    let (core, admin) = open(&dir("ws-kiosk-off")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7]);
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    let mut session = connect(addr, &admin).await;
+    for socket in [&mut stranger, &mut session] {
+        subscribe(socket, r#"["metrics"]"#).await;
+    }
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    core.live.publish(7, &reading(1_786_788_000_000, 41.0));
+    for socket in [&mut stranger, &mut session] {
+        assert_eq!(next_json(socket).await["data"]["metrics"]["pv_power"], 41.0, "on again keeps it open");
+    }
+
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": false})).await;
+    closed(&mut stranger).await;
+    connections(&core, 1).await;
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut session).await["data"]["metrics"]["pv_power"], 42.0);
+    drop(admin);
+    core.stop().await;
+}
+
+/// Pings every 100 ms and closes a connection silent for 300 ms.
+fn quick() -> Config {
+    let live = LiveLimits {
+        ping: Duration::from_millis(100),
+        idle: Duration::from_millis(300),
+        ..LiveLimits::default()
+    };
+    Config { live, ..Config::default() }
+}
+
+#[test]
+fn a_connection_is_pinged_every_30_s_closed_after_120_s_silent_and_64_are_served_48_to_strangers() {
+    let want = LiveLimits {
+        ping: Duration::from_secs(30),
+        idle: Duration::from_secs(120),
+        connections: 64,
+        strangers: 48,
+    };
+    assert_eq!(Config::default().live, want);
+}
+
+#[tokio::test]
+async fn the_server_pings_and_a_client_that_answers_stays_open() {
+    let (core, admin) = open(&dir("ws-ping")).await;
+    let addr = serve(&core, &quick()).await;
+    let mut socket = connect(addr, &admin).await;
+    let mut pings = 0;
+    let until = Instant::now() + Duration::from_millis(1_000);
+    while let Ok(next) = tokio::time::timeout_at(until.into(), socket.next()).await {
+        match next.expect("open").expect("frame") {
+            Message::Ping(_) => pings += 1,
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert!((3..=12).contains(&pings), "{pings} pings in 1 s at a 100 ms interval");
+    let ack = subscribe(&mut socket, r#"["metrics"]"#).await;
+    assert_eq!(ack["data"]["subscribed"], json!(["metrics"]), "open past three idle timeouts");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_client_that_stops_answering_is_closed_after_the_idle_timeout() {
+    let (core, admin) = open(&dir("ws-idle")).await;
+    let addr = serve(&core, &quick()).await;
+    let socket = connect(addr, &admin).await;
+    connections(&core, 1).await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(core.live.connections(), 1, "open inside the timeout");
+    connections(&core, 0).await;
+    drop((socket, admin));
+    core.stop().await;
+}
+
+/// A session socket whose receive buffer is a few KiB, so a large frame stalls the server's send.
+async fn connect_narrow(addr: std::net::SocketAddr, api: &Api) -> Socket {
+    let mut request = format!("ws://{HOST}/ws").into_client_request().expect("request");
+    request.headers_mut().insert(header::ORIGIN, SAME_ORIGIN.parse().expect("origin"));
+    let cookie = api.cookie.as_deref().expect("session");
+    request.headers_mut().insert(header::COOKIE, cookie.parse().expect("cookie"));
+    let tcp = tokio::net::TcpSocket::new_v4().expect("socket");
+    tcp.set_recv_buffer_size(4 * 1024).expect("receive buffer");
+    let stream = tcp.connect(addr).await.expect("connect");
+    client_async(request, stream).await.expect("upgraded").0
+}
+
+#[tokio::test]
+async fn a_client_that_stops_reading_mid_send_is_closed_after_the_idle_timeout() {
+    let (core, admin) = open(&dir("ws-stalled")).await;
+    let live = LiveLimits { idle: Duration::from_secs(1), ..LiveLimits::default() };
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
+    core.live.roster(&[7]);
+    let mut socket = connect_narrow(addr, &admin).await;
+    subscribe(&mut socket, r#"["metrics"]"#).await;
+    // About 6 MB, past any send buffer (4 MiB at most on Linux): the send blocks with the select loop
+    // unpolled, so only a bounded send reaches the deadline.
+    let wide: Vec<(String, f64)> = (0..250_000).map(|i| (format!("metric_{i:06}"), f64::from(i))).collect();
+    core.live.publish(7, &Sample { at_ms: 0, values: wide });
+    connections(&core, 0).await;
+    drop((socket, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_upgrade_past_the_connection_cap_is_refused_until_one_closes() {
+    let (core, admin) = open(&dir("ws-cap")).await;
+    let config = Config { live: LiveLimits { connections: 2, ..LiveLimits::default() }, ..Config::default() };
+    let addr = serve(&core, &config).await;
+    let first = connect(addr, &admin).await;
+    let _second = connect(addr, &admin).await;
+    assert_eq!(upgrade(addr, &admin, SAME_ORIGIN).await.err(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    connections(&core, 2).await;
+    drop(first);
+    connections(&core, 1).await;
+    let mut third = connect(addr, &admin).await;
+    assert_eq!(subscribe(&mut third, r#"["metrics"]"#).await["topic"], "__ack");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn strangers_past_their_cap_are_refused_and_the_rest_stays_for_sessions() {
+    let (core, admin) = open(&dir("ws-strangers")).await;
+    let live = LiveLimits { connections: 3, strangers: 1, ..LiveLimits::default() };
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let stranger = admin.anonymous();
+    let first = connect(addr, &stranger).await;
+    assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    let sessions = [connect(addr, &admin).await, connect(addr, &admin).await];
+    connections(&core, 3).await;
+    drop((first, sessions));
+    connections(&core, 0).await;
+    drop(connect(addr, &stranger).await);
+    drop((stranger, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn an_upgrade_from_an_untrusted_origin_is_refused() {
     let (core, admin) = open(&dir("ws-origin")).await;
     let addr = serve(&core, &Config::default()).await;

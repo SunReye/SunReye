@@ -36,7 +36,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium" }],
+  // The onboarding journey creates the admin and the device every other journey starts from.
+  projects: [
+    { name: "onboarding", testMatch: /journey-onboarding-to-dashboard\.spec\.ts/ },
+    {
+      name: "chromium",
+      testIgnore: /journey-onboarding-to-dashboard\.spec\.ts/,
+      dependencies: ["onboarding"],
+    },
+  ],
   webServer: [
     {
       // A fresh data directory per run: the first sign-up must find no admin.
