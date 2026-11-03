@@ -1,6 +1,6 @@
 //! PV production forecast, the pure half: an irradiance series and the plant's arrays become per-slot AC
 //! watts, a usable view clipped by the feed-in cap and battery, plant-local daily sums and the next
-//! 15 minutes. Held to `fixtures/oracle/forecast.ndjson`. A NaN in a power sample yields 0 W, never a panic.
+//! 15 minutes. Held to `fixtures/oracle/forecast.ndjson`.
 
 mod clip;
 mod correction;

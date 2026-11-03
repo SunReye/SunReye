@@ -118,7 +118,7 @@ fn every_power_case_yields_the_recorded_watts() {
 #[test]
 fn every_forecast_case_exports_the_recorded_raw_and_usable_views() {
     let cases = cases("buildSolarForecast");
-    assert_eq!(cases.len(), 17);
+    assert_eq!(cases.len(), 18);
     let mut mismatches = Vec::new();
     for case in &cases {
         let input = &case["input"];

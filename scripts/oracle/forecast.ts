@@ -313,6 +313,12 @@ const FORECAST: ForecastCase[] = [
     nowMs: julyAt(11, 20),
     sim: { startSocPct: 55, houseLoadW: 450 },
   }),
+  forecast("battery-negative-capacity", {
+    config: config({ maxOutputW: 4000, battery: battery({ usableKwh: -5 }) }),
+    data: julyQuarter(),
+    nowMs: julyAt(11, 20),
+    sim: { startSocPct: 55, houseLoadW: 450 },
+  }),
   forecast("battery-day-start-soc", {
     config: config({ maxOutputW: 4000, battery: battery() }),
     data: julyQuarter(),

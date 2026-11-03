@@ -54,7 +54,7 @@ fn cell_temp_c(sample: &PvSample) -> f64 {
     }
 }
 
-/// Expected AC watts of one array of `kwp` for a sample.
+/// Expected AC watts of one array of `kwp` for a sample. A NaN input yields 0 W (3.x gives NaN), never a panic.
 pub fn pv_power_w(sample: &PvSample, kwp: f64, temp_coefficient_pct_per_c: f64, system_loss_pct: f64) -> f64 {
     let effective = effective_irradiance_wm2(sample);
     if effective <= 0.0 {

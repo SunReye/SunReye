@@ -169,6 +169,7 @@ bell computed by the generator, recorded in `input`; the second day of a series 
 | `forecast/per-array-overrides` | per-array `tempCoefficient` / `systemLoss` over the plant default, 0 included |
 | `forecast/feed-in-cap-only` | feed-in cap, no battery |
 | `forecast/battery-live-soc` | battery, live SOC, no `dayStartSocPct`: past slots stay raw |
+| `forecast/battery-negative-capacity` | negative `usableKwh` with a feed-in cap: past slots stay raw |
 | `forecast/battery-day-start-soc` | battery with `dayStartSocPct`: past slots simulated through the night drain and a morning fill, re-seeded at the current slot |
 | `forecast/battery-unknown-soc` | no SOC: starts at the reserve floor; unbounded charge rate |
 | `forecast/battery-without-sim-inputs` | battery, no feed-in cap, no sim inputs |
