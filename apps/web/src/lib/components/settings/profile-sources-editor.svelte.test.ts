@@ -12,7 +12,7 @@ const OFFICIAL = {
   indexPath: "index.json",
   profileIds: ["deye-sg05lp3", "sungrow-sh10rt"],
 };
-const props = { sources: [], busy: false, onAdd: () => {} };
+const props = { sources: [], busy: false, onAdd: () => {}, onRemove: () => {} };
 
 const base = () => page.getByLabelText(m.sources_base_label());
 const index = () => page.getByLabelText(m.sources_index_label());
@@ -112,4 +112,23 @@ test("a long source URL wraps inside a phone and the controls stay tappable", as
   const button = (await add().element()).getBoundingClientRect();
   expect(button.height).toBeGreaterThanOrEqual(36);
   expect(button.right).toBeLessThanOrEqual(390);
+});
+
+test("a source's remove button hands that source over", async () => {
+  const onRemove = vi.fn();
+  render(ProfileSourcesEditor, { ...props, sources: [OFFICIAL], onRemove });
+  await page
+    .getByRole("button", { name: m.sources_remove_aria({ url: OFFICIAL.baseUrl }) })
+    .click();
+  expect(onRemove).toHaveBeenCalledExactlyOnceWith({
+    baseUrl: OFFICIAL.baseUrl,
+    indexPath: OFFICIAL.indexPath,
+  });
+});
+
+test("remove is off while a request is in flight", async () => {
+  render(ProfileSourcesEditor, { ...props, sources: [OFFICIAL], busy: true });
+  await expect
+    .element(page.getByRole("button", { name: m.sources_remove_aria({ url: OFFICIAL.baseUrl }) }))
+    .toBeDisabled();
 });

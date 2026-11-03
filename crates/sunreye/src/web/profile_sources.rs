@@ -5,14 +5,16 @@ use std::sync::Arc;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
-use serde::Serialize;
+use axum::http::StatusCode;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{ApiError, ApiJson, ErrorBody};
+use super::{ApiError, ApiJson, ApiPath, ApiQuery, ErrorBody};
 use crate::run::Core;
+use crate::settings::active_profile;
 use crate::sources::{
-    BUDGET, ImportError, Installed, Listed, REQUEST_LIMITS, RESERVED_ID, Skipped, Source, fetch,
-    import_profile, list_sources, save_source,
+    BUDGET, ImportError, Installed, Listed, REQUEST_LIMITS, RESERVED_ID, RemoveError, Skipped, Source, fetch,
+    import_profile, list_sources, remove_profile, remove_source, save_source,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -107,4 +109,80 @@ pub async fn import(State(core): State<Arc<Core>>, body: Body) -> Result<Json<Im
     })?;
     core.apply().await?;
     Ok(Json(ImportedProfile { id: profile.id }))
+}
+
+impl From<RemoveError> for ApiError {
+    fn from(error: RemoveError) -> Self {
+        match error {
+            RemoveError::Missing => Self::not_found("Nothing stored under that name"),
+            RemoveError::InUse(reason) => Self::conflict(reason),
+            RemoveError::Store(error) => error.into(),
+        }
+    }
+}
+
+/// Removes an imported profile, or one a source supplied. A compiled-in profile and the active one stay;
+/// devices poll only the active one, so polling is untouched.
+#[utoipa::path(
+    delete,
+    path = "/api/settings/profiles/{id}",
+    operation_id = "removeProfile",
+    params(("id" = String, Path)),
+    responses(
+        (status = 204),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn remove(
+    State(core): State<Arc<Core>>,
+    ApiPath(id): ApiPath<String>,
+) -> Result<StatusCode, ApiError> {
+    if core.bundle.profile(&id).is_some() {
+        return Err(ApiError::bad_request("a compiled-in profile cannot be removed"));
+    }
+    remove_profile(&core.store, &id, active_profile(&core.store).await?.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+#[into_params(parameter_in = Query)]
+pub struct SourceQuery {
+    /// The base URL as the source was added.
+    base_url: String,
+    /// The index path as the source was added.
+    index_path: String,
+}
+
+/// Removes a stored source and the profiles only it supplied. The source that supplies the active
+/// profile stays.
+#[utoipa::path(
+    delete,
+    path = "/api/settings/profile-sources",
+    operation_id = "removeProfileSource",
+    params(SourceQuery),
+    responses(
+        (status = 204),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 404, body = ErrorBody),
+        (status = 409, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn remove_source_by_url(
+    State(core): State<Arc<Core>>,
+    ApiQuery(query): ApiQuery<SourceQuery>,
+) -> Result<StatusCode, ApiError> {
+    let source = Source { base_url: query.base_url, index_path: query.index_path }
+        .normalised()
+        .map_err(|error| ApiError::bad_request(error.to_string()))?;
+    remove_source(&core.store, &source, active_profile(&core.store).await?.as_deref()).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

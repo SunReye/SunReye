@@ -358,6 +358,54 @@ pub async fn import_profile(store: &Store, profile: &Installed) -> Result<(), Im
     Ok(write_saved(store, &saved).await?)
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RemoveError {
+    /// Nothing stored under that id or URL.
+    #[error("not found")]
+    Missing,
+    /// The profile is the active one, or the only supplier of it.
+    #[error("{0}")]
+    InUse(&'static str),
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
+/// Removes the profile `id` wherever it is stored: imported, or supplied by a source until that is
+/// fetched again. The `active` profile stays.
+pub async fn remove_profile(store: &Store, id: &str, active: Option<&str>) -> Result<(), RemoveError> {
+    let _one_writer = SAVING.lock().await;
+    let mut saved = read_saved(store).await?;
+    if !saved.profiles().any(|p| p.id == id) {
+        return Err(RemoveError::Missing);
+    }
+    if active == Some(id) {
+        return Err(RemoveError::InUse("the active profile cannot be removed"));
+    }
+    saved.imports.retain(|p| p.id != id);
+    for held in &mut saved.sources {
+        held.profiles.retain(|p| p.id != id);
+    }
+    Ok(write_saved(store, &saved).await?)
+}
+
+/// Removes `source` and the profiles only it supplied. The `active` profile keeps its source.
+pub async fn remove_source(store: &Store, source: &Source, active: Option<&str>) -> Result<(), RemoveError> {
+    let _one_writer = SAVING.lock().await;
+    let mut saved = read_saved(store).await?;
+    let Some(position) = saved.sources.iter().position(|s| &s.source == source) else {
+        return Err(RemoveError::Missing);
+    };
+    let removed = saved.sources.remove(position);
+    let supplied = |id: &str| saved.profiles().any(|p| p.id == id);
+    if let Some(id) = active
+        && removed.profiles.iter().any(|p| p.id == id)
+        && !supplied(id)
+    {
+        return Err(RemoveError::InUse("the source supplies the active profile"));
+    }
+    Ok(write_saved(store, &saved).await?)
+}
+
 /// A stored source with the ids of the profiles it supplied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

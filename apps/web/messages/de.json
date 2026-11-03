@@ -1139,5 +1139,8 @@
   "sources_added": "Quelle hinzugefügt, Profile: {count}",
   "sources_add_failed": "Quelle konnte nicht hinzugefügt werden: {error}",
   "sources_skipped_item": "{path}: {reason}",
-  "sources_skipped_title": "Übersprungene Dateien"
+  "sources_skipped_title": "Übersprungene Dateien",
+  "sources_remove_aria": "Quelle {url} entfernen",
+  "sources_removed": "Quelle entfernt",
+  "sources_remove_failed": "Quelle konnte nicht entfernt werden: {error}"
 }

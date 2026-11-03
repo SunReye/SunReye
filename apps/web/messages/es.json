@@ -1139,5 +1139,8 @@
   "sources_added": "Fuente añadida, perfiles: {count}",
   "sources_add_failed": "No se pudo añadir la fuente: {error}",
   "sources_skipped_item": "{path}: {reason}",
-  "sources_skipped_title": "Archivos omitidos"
+  "sources_skipped_title": "Archivos omitidos",
+  "sources_remove_aria": "Eliminar la fuente {url}",
+  "sources_removed": "Fuente eliminada",
+  "sources_remove_failed": "No se pudo eliminar la fuente: {error}"
 }
