@@ -7,6 +7,7 @@ use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
+use tokio::sync::SemaphorePermit;
 use utoipa::ToSchema;
 
 use super::auth::AuthSession;
@@ -62,4 +63,14 @@ pub async fn session_or_kiosk(auth: AuthSession, request: Request, next: Next) -
         Ok(false) => ApiError::unauthorized("Not signed in").into_response(),
         Err(error) => ApiError::from(error).into_response(),
     }
+}
+
+/// Held for a history read: nothing for a session, one of [`Core::stranger_read`] without one.
+pub fn history_read<'a>(core: &'a Core, auth: &AuthSession) -> Result<Option<SemaphorePermit<'a>>, ApiError> {
+    if auth.user.is_some() {
+        return Ok(None);
+    }
+    core.stranger_read()
+        .map(Some)
+        .ok_or_else(|| ApiError::unavailable("Too many history reads without a session"))
 }

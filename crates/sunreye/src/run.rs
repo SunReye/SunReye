@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustls::pki_types::CertificateDer;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, oneshot, watch};
+use tokio::sync::{Mutex, Semaphore, SemaphorePermit, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
@@ -32,6 +32,10 @@ pub enum RunError {
     Serve(#[from] std::io::Error),
 }
 
+/// A browser's six HTTP/1.1 connections, so one kiosk is never refused; strangers queue no more reads
+/// than this on the store's one connection.
+const STRANGER_READS: usize = 6;
+
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
 #[derive(Debug)]
 pub struct Core {
@@ -45,6 +49,7 @@ pub struct Core {
     pub unstored: Arc<Unstored>,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
+    stranger_reads: Semaphore,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
     polling: Polling,
@@ -82,7 +87,19 @@ impl Core {
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         let polling = Polling::default();
         let kiosk = watch::Sender::new(kiosk(&store).await?);
-        let core = Arc::new(Self { store, bundle, roots, live, unstored, kiosk, now, polling, retention });
+        let stranger_reads = Semaphore::new(STRANGER_READS);
+        let core = Arc::new(Self {
+            store,
+            bundle,
+            roots,
+            live,
+            unstored,
+            kiosk,
+            stranger_reads,
+            now,
+            polling,
+            retention,
+        });
         core.apply().await?;
         Ok(core)
     }
@@ -100,6 +117,11 @@ impl Core {
     /// Open `/ws` connections without a session: each holds a [`Core::watch_kiosk`].
     pub fn strangers(&self) -> usize {
         self.kiosk.receiver_count()
+    }
+
+    /// A history read without a session, while held; `None` while [`STRANGER_READS`] are.
+    pub fn stranger_read(&self) -> Option<SemaphorePermit<'_>> {
+        self.stranger_reads.try_acquire().ok()
     }
 
     pub fn now_ms(&self) -> i64 {

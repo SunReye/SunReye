@@ -9,6 +9,8 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::auth::AuthSession;
+use super::kiosk::history_read;
 use super::{ApiError, ApiQuery, ErrorBody};
 use crate::rollup::{Bucket, Tier};
 use crate::run::Core;
@@ -17,6 +19,8 @@ use crate::store::{BucketWindow, Store, StoreError};
 const DEFAULT_HOURS: f64 = 168.0;
 const DEFAULT_LIMIT: u32 = 5000;
 const MAX_LIMIT: u32 = 50_000;
+/// The SPA's widest read, a week of minutes (`live-rollup.ts`), on any tier.
+const STRANGER_MAX_LIMIT: u32 = 12_000;
 
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -45,16 +49,21 @@ pub struct RollupQuery {
     from: Option<String>,
     /// End of the window, RFC 3339, exclusive.
     to: Option<String>,
-    /// Most buckets, oldest first. Default 5000.
+    /// Most buckets, oldest first. Default 5000; without a session at most 12000.
     #[param(minimum = 1, maximum = 50000)]
     limit: Option<u32>,
 }
 
 impl RollupQuery {
-    fn window(&self, now_ms: i64) -> Result<BucketWindow, ApiError> {
+    fn window(&self, now_ms: i64, signed_in: bool) -> Result<BucketWindow, ApiError> {
         let limit = self.limit.unwrap_or(DEFAULT_LIMIT);
         if !(1..=MAX_LIMIT).contains(&limit) {
             return Err(ApiError::bad_request(format!("limit must be 1–{MAX_LIMIT}")));
+        }
+        if !signed_in && limit > STRANGER_MAX_LIMIT {
+            return Err(ApiError::bad_request(format!(
+                "limit must be 1–{STRANGER_MAX_LIMIT} without a session"
+            )));
         }
         let hours = self.hours.unwrap_or(DEFAULT_HOURS);
         if !(hours.is_finite() && hours >= 1.0) {
@@ -132,14 +141,17 @@ impl From<Bucket> for RollupPoint {
         (status = 200, body = Vec<RollupPoint>),
         (status = 400, body = ErrorBody),
         (status = 401, body = ErrorBody),
-        (status = 500, body = ErrorBody)
+        (status = 500, body = ErrorBody),
+        (status = 503, body = ErrorBody)
     )
 )]
 pub async fn buckets(
     State(core): State<Arc<Core>>,
+    auth: AuthSession,
     ApiQuery(query): ApiQuery<RollupQuery>,
 ) -> Result<Json<Vec<RollupPoint>>, ApiError> {
-    let window = query.window(core.now_ms())?;
+    let _read = history_read(&core, &auth)?;
+    let window = query.window(core.now_ms(), auth.user.is_some())?;
     let Some(device) = query.device(&core.store).await? else { return Ok(Json(Vec::new())) };
     let buckets = core.store.buckets_between(query.tier(), device, &query.metric, window).await?;
     Ok(Json(buckets.into_iter().map(RollupPoint::from).collect()))
