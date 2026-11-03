@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import createClient from "openapi-fetch";
+import type { paths as CorePaths } from "$lib/core-api.gen";
 
 // mock-hygiene-ignore-next-line -- SvelteKit virtual modules: no real module exists under bun test. The server-side values keep `$lib/api` loadable.
 mock.module("$app/environment", () => ({ browser: false }));
@@ -14,30 +16,28 @@ mock.module("$lib/inverter/store.svelte", () => ({
   inverter: { byRole: (role: string) => (roles[role] ? { key: roles[role] } : undefined) },
 }));
 
-const realApi = await import("$lib/api");
-const realApiExports = { ...realApi };
+const realCore = await import("$lib/core-api");
+const realCoreExports = { ...realCore };
 
 type Query = { metric: string; from: string; to: string; bucket: string };
 const queries: Query[] = [];
 let points: Record<string, Array<{ time: string; avg: number }>> = {};
-mock.module("$lib/api", () => ({
-  ...realApi,
-  api: {
-    api: {
-      history: {
-        rollup: {
-          get: async ({ query }: { query: Query }) => {
-            queries.push(query);
-            return { data: points[query.metric] ?? [] };
-          },
-        },
-      },
+mock.module("$lib/core-api", () => ({
+  ...realCore,
+  core: createClient<CorePaths>({
+    baseUrl: "http://core.test",
+    fetch: async (request) => {
+      const query = Object.fromEntries(new URL(request.url).searchParams) as Query;
+      queries.push(query);
+      return new Response(JSON.stringify(points[query.metric] ?? []), {
+        headers: { "content-type": "application/json" },
+      });
     },
-  },
+  }),
 }));
 
 afterAll(() => {
-  mock.module("$lib/api", () => ({ ...realApiExports }));
+  mock.module("$lib/core-api", () => ({ ...realCoreExports }));
 });
 
 const { fetchMeasuredDay } = await import("./plant-day");
