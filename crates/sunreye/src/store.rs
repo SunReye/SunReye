@@ -255,18 +255,9 @@ impl Store {
         Ok(row)
     }
 
+    /// A connection under the name an unnamed one has (migration 0007).
     pub async fn add_connection(&self, connection: &NewConnection) -> Result<i64, StoreError> {
-        let transport = connection.transport.as_str();
-        let row = sqlx::query!(
-            r#"INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
-            transport,
-            connection.host,
-            connection.port,
-            connection.logger_serial
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(row.id)
+        self.create_connection("Inverter", connection).await
     }
 
     /// The inverter settings' connection: the first in-service device's, else the oldest.
@@ -314,16 +305,9 @@ impl Store {
         Ok(existing.id)
     }
 
+    /// An unnamed inverter.
     pub async fn add_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
-        let row = sqlx::query!(
-            r#"INSERT INTO device (connection_id, profile_id, unit_id) VALUES (?, ?, ?) RETURNING id AS "id!""#,
-            device.connection_id,
-            device.profile_id,
-            device.unit_id
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(row.id)
+        self.create_device(device, None, "inverter").await
     }
 
     pub async fn devices(&self) -> Result<Vec<DeviceRow>, StoreError> {

@@ -430,7 +430,7 @@ pub async fn add(
         }
     };
     let device = NewDevice { connection_id, profile_id: request.profile_id, unit_id };
-    let id = core.store.create_device(&device, &name, &role).await?;
+    let id = core.store.create_device(&device, Some(&name), &role).await?;
     core.apply().await?;
     Ok(Json(view_of(&core, id).await?))
 }

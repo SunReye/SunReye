@@ -117,7 +117,13 @@ impl Store {
         Ok(removal)
     }
 
-    pub async fn create_device(&self, device: &NewDevice, name: &str, role: &str) -> Result<i64, StoreError> {
+    /// `name` None: shown by its profile's name.
+    pub async fn create_device(
+        &self,
+        device: &NewDevice,
+        name: Option<&str>,
+        role: &str,
+    ) -> Result<i64, StoreError> {
         let row = sqlx::query!(
             r#"INSERT INTO device (connection_id, profile_id, unit_id, name, role) VALUES (?, ?, ?, ?, ?)
                RETURNING id AS "id!""#,
@@ -259,7 +265,7 @@ mod tests {
     #[tokio::test]
     async fn a_device_is_created_with_its_name_and_role_and_an_added_one_has_neither() {
         let (store, first, second) = two_connections().await;
-        let named = store.create_device(&device(first, 1), "Meter", "meter").await.expect("named");
+        let named = store.create_device(&device(first, 1), Some("Meter"), "meter").await.expect("named");
         let added = store.add_device(&device(second, 0)).await.expect("added");
         let devices = store.devices().await.expect("devices");
         let seen: Vec<_> = devices
@@ -267,13 +273,16 @@ mod tests {
             .map(|d| (d.id, d.name.as_deref(), d.role.as_str(), d.retired_at.as_deref()))
             .collect();
         assert_eq!(seen, [(named, Some("Meter"), "meter", None), (added, None, "inverter", None)]);
-        assert!(store.create_device(&device(first, 2), "Kettle", "kettle").await.is_err(), "an unknown role");
+        assert!(
+            store.create_device(&device(first, 2), Some("Kettle"), "kettle").await.is_err(),
+            "an unknown role"
+        );
     }
 
     #[tokio::test]
     async fn a_device_edit_changes_only_what_it_names_and_retires_and_restores() {
         let (store, first, second) = two_connections().await;
-        let id = store.create_device(&device(first, 1), "Meter", "meter").await.expect("device");
+        let id = store.create_device(&device(first, 1), Some("Meter"), "meter").await.expect("device");
         let moved = DeviceEdit {
             connection_id: Some(second),
             unit_id: Some(7),
@@ -301,8 +310,9 @@ mod tests {
     #[tokio::test]
     async fn a_device_with_a_stored_reading_is_kept_whole_and_one_without_is_removed() {
         let (store, first, _) = two_connections().await;
-        let recorded = store.create_device(&device(first, 1), "Inverter", "inverter").await.expect("device");
-        let fresh = store.create_device(&device(first, 2), "Meter", "meter").await.expect("device");
+        let recorded =
+            store.create_device(&device(first, 1), Some("Inverter"), "inverter").await.expect("device");
+        let fresh = store.create_device(&device(first, 2), Some("Meter"), "meter").await.expect("device");
         store_a_reading(&store, recorded).await;
 
         assert_eq!(store.remove_device(recorded).await.expect("remove"), Removal::Kept);
@@ -316,7 +326,7 @@ mod tests {
     #[tokio::test]
     async fn a_connection_with_a_device_retired_or_not_is_kept_and_an_empty_one_is_removed() {
         let (store, first, second) = two_connections().await;
-        let id = store.create_device(&device(first, 1), "Inverter", "inverter").await.expect("device");
+        let id = store.create_device(&device(first, 1), Some("Inverter"), "inverter").await.expect("device");
         let retired =
             DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
         store.edit_device(id, &retired).await.expect("retire");
