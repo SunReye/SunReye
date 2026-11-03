@@ -9,6 +9,7 @@ import {
   officialProfilesDir,
   type ProfileDecodeCase,
 } from "./profile-decode";
+import { buildForecastCorpus } from "./forecast";
 import { buildTransportCorpus } from "./transport";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
@@ -41,6 +42,10 @@ describe("the committed corpus, database-free groups", () => {
     }
   });
 
+  test("the forecast is what the 3.x forecast model produces now", async () => {
+    expect(await staleFiles(await buildForecastCorpus())).toEqual([]);
+  });
+
   const dir = officialProfilesDir();
   test.skipIf(dir === null)(
     "profile decode is what the profile repository produces now",
@@ -51,7 +56,7 @@ describe("the committed corpus, database-free groups", () => {
 });
 
 describe("the corpus as a whole", () => {
-  test("all five groups exist", async () => {
+  test("every group exists", async () => {
     const files = new Set(await readdir(CORPUS_DIR, { recursive: true }));
     for (const path of [
       "transport.ndjson",
@@ -60,6 +65,7 @@ describe("the corpus as a whole", () => {
       "role-kinds.ndjson",
       "rollups.ndjson",
       "statistics.ndjson",
+      "forecast.ndjson",
       "archives/current-2.x/archive.tar.gz",
       "archives/legacy-1.2.0/archive.tar.gz",
       "README.md",
@@ -80,7 +86,12 @@ describe("the corpus as a whole", () => {
   test("the README lists every case", async () => {
     const readme = await read("README.md");
     const names: string[] = [];
-    for (const file of ["transport.ndjson", "rollups.ndjson", "statistics.ndjson"]) {
+    for (const file of [
+      "transport.ndjson",
+      "rollups.ndjson",
+      "statistics.ndjson",
+      "forecast.ndjson",
+    ]) {
       names.push(...(await lines(file)).map((c) => c.case));
     }
     names.push(...(await lines("profile-decode.ndjson")).map((p) => p.profile.id));
