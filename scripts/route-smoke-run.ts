@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { boot, requireOk, signIn } from "./core-boot";
 import {
   type AuthMode,
   type OpenApiDoc,
@@ -76,49 +77,6 @@ async function build() {
   if ((await proc.exited) !== 0) throw new Error("cargo build -p sunreye failed");
 }
 
-/** The core on a free port; resolves once it logs the address it listens on. */
-async function boot(dataDir: string) {
-  const core = Bun.spawn(
-    [BINARY, "--listen", "127.0.0.1:0", "--log-level", "info", "--data-dir", dataDir],
-    { stdout: "ignore", stderr: "pipe" },
-  );
-  const reader = core.stderr.getReader();
-  const decoder = new TextDecoder();
-  let seen = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) throw new Error(`the core exited before listening:\n${seen}`);
-    seen += decoder.decode(value);
-    // Colour codes sit between the field name and the address.
-    const port = /sunreye listening.*?127\.0\.0\.1:(\d+)/.exec(seen)?.[1];
-    if (port) {
-      // Keep draining, or a full pipe would stall the core's logging.
-      void (async () => {
-        while (!(await reader.read()).done);
-      })();
-      return { core, base: `http://127.0.0.1:${port}` };
-    }
-  }
-}
-
-/** `name=value` of the session cookie a sign-in answer set. */
-function sessionCookie(response: Response, what: string): string {
-  const cookie = response.headers.getSetCookie().map((c) => c.split(";")[0]);
-  if (cookie.length === 0) throw new Error(`${what} returned no session cookie`);
-  return cookie.join("; ");
-}
-
-async function signIn(base: string, path: string, body: object, what: string): Promise<string> {
-  const response = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
-  return sessionCookie(response, what);
-}
-
 /** An admin request on the core's own origin; throws unless it answered 2xx. */
 async function asAdmin(
   base: string,
@@ -133,8 +91,7 @@ async function asAdmin(
     headers: { cookie, origin: base, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+  await requireOk(response, what);
   return (await response.json()) as Record<string, unknown>;
 }
 
@@ -292,7 +249,7 @@ export async function run(): Promise<number> {
   const dataDir = mkdtempSync(join(tmpdir(), "sunreye-route-smoke-"));
   let core: ReturnType<typeof Bun.spawn> | undefined;
   try {
-    const booted = await boot(dataDir);
+    const booted = await boot(BINARY, dataDir);
     core = booted.core;
     const { base } = booted;
     const adminCookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");

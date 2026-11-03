@@ -168,7 +168,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Stored buckets of one metric, oldest first: the minute tier. */
+        /** Minute, hour or day buckets of one metric, UTC, oldest first; the newest hour and day are open. */
         get: operations["rollupHistory"];
         put?: never;
         post?: never;
@@ -1329,7 +1329,7 @@ export interface operations {
                 source?: string;
                 /** @description As `source`, which wins when both are set. */
                 inverterId?: string;
-                /** @description Bucket width. Default `hour`; only `minute` is served. */
+                /** @description Bucket width. Default `hour`. */
                 bucket?: "minute" | "hour" | "day";
                 /** @description How far back from now. Default 168. Ignored when `from` and `to` are both set. */
                 hours?: number;

@@ -80,7 +80,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
-        .routes(routes!(rollup::minute_buckets))
+        .routes(routes!(rollup::buckets))
         .route("/ws", get(ws::upgrade))
         .route_layer(middleware::from_fn(kiosk::session_or_kiosk))
 }
