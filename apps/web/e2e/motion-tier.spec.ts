@@ -18,7 +18,7 @@
 
 import { expect, test } from "@playwright/test";
 import { openPage } from "./support/open-page";
-import { countTextMutations, throttleCpu } from "./support/perf";
+import { countTextMutations } from "./support/perf";
 
 /** Pin the per-device setting before the app boots and reads it. */
 async function withMotion(page: import("@playwright/test").Page, value: string): Promise<void> {
@@ -183,20 +183,83 @@ test("auto leaves a device that IS holding its frames alone", async ({ page }) =
   expect(stored === null || stored === "0").toBe(true);
 });
 
-/** Text-node writes over six seconds of the fixture's 1 Hz feed, at one tier. */
+/** Samples counted per tier. The count is per sample, never per second. */
+const SAMPLES = 3;
+
+/** Quiet that ends a sample: past the glide's last frame, short of the next sample. */
+const QUIET_MS = 800;
+
+/**
+ * Watch for the readouts to go quiet, in the page's own clock.
+ *
+ * Armed BEFORE the sample is pushed, so the write it causes is seen. Resolves at
+ * the first frame that comes {@link QUIET_MS} after the last text write, having
+ * seen at least one: a glide ends when it ends, however many frames the host
+ * managed meanwhile, and a snap is one write and then quiet.
+ */
+async function armQuiet(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate((quietMs) => {
+    const w = window as unknown as { __readoutsQuiet?: Promise<void> };
+    w.__readoutsQuiet = new Promise<void>((resolve) => {
+      let last = 0;
+      let seen = false;
+      const observer = new MutationObserver(() => {
+        seen = true;
+        last = performance.now();
+      });
+      observer.observe(document.documentElement, { subtree: true, characterData: true });
+      const frame = (now: number) => {
+        if (seen && now - last >= quietMs) {
+          observer.disconnect();
+          resolve();
+        } else requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+  }, QUIET_MS);
+}
+
+async function untilQuiet(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(
+    () => (window as unknown as { __readoutsQuiet: Promise<void> }).__readoutsQuiet,
+  );
+}
+
+/** Push one sample and wait until every readout has finished reacting to it. */
+async function pushAndSettle(
+  page: import("@playwright/test").Page,
+  backend: import("./support/api-mock").MockBackend,
+): Promise<void> {
+  await armQuiet(page);
+  await backend.pushMetrics();
+  await untilQuiet(page);
+}
+
+/**
+ * Text-node writes over {@link SAMPLES} samples at one tier.
+ *
+ * The samples are pushed by the spec and each is waited out, so the window is
+ * a number of samples rather than a number of seconds: a host too busy to run
+ * a clock on time still gets the same samples, and a glide still gets to finish.
+ * No CPU throttle either: the counts are of writes, a throttle only takes
+ * the frames the glide needs to be told apart from a snap.
+ */
 async function readoutWrites(
   browserPage: import("@playwright/test").Page,
   tier: string,
 ): Promise<number> {
   await withMotion(browserPage, tier);
-  await openPage(browserPage, "/");
-  const restore = await throttleCpu(browserPage, 6);
-  const writes = await countTextMutations(browserPage, () => browserPage.waitForTimeout(6000));
-  await restore();
-  return writes;
+  const { backend } = await openPage(browserPage, "/", { feedIntervalMs: 0 });
+  // The boot's own writes (em dash to first value) are not the tier's business.
+  await pushAndSettle(browserPage, backend);
+  return countTextMutations(browserPage, async () => {
+    for (let i = 0; i < SAMPLES; i++) await pushAndSettle(browserPage, backend);
+  });
 }
 
 test("every tier below full stops the readout storm the glide runs", async ({ page }) => {
+  // Three pages boot in turn, and a dev-server boot is tens of seconds on a busy host.
+  test.setTimeout(360_000);
   // The glide writes a text node per readout per FRAME while it runs; snapping
   // writes one per readout per SAMPLE. At the fixture's 1 Hz feed that is the
   // difference between a per-frame storm and a handful of writes — and it is the
@@ -214,8 +277,9 @@ test("every tier below full stops the readout storm the glide runs", async ({ pa
   const frozen = await readoutWrites(stillPage, "still");
   await stillPage.close();
 
-  // Ratios, deliberately loose: the absolute counts move with the machine, the
-  // order of magnitude does not (measured here: ~3300 against ~100 per 10 s).
+  // Ratios, deliberately loose: the glide's count moves with the frames the host
+  // manages, a snap's does not (measured at load average 60: ~550-860 gliding
+  // against 30 snapping, one write per readout per sample).
   expect(snapped).toBeLessThan(glided / 4);
   expect(frozen).toBeLessThan(glided / 4);
 });
