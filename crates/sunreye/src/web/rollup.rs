@@ -9,6 +9,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::history::source_device;
 use super::{ApiError, ApiQuery, ErrorBody};
 use crate::rollup::{Bucket, Tier};
 use crate::run::Core;
@@ -31,7 +32,7 @@ enum Width {
 #[into_params(parameter_in = Query)]
 pub struct RollupQuery {
     metric: String,
-    /// `plant`, or a device's decimal id. Without it, the first device.
+    /// `plant`, or a device's decimal id. Without it, the first device in service.
     source: Option<String>,
     /// As `source`, which wins when both are set.
     inverter_id: Option<String>,
@@ -75,14 +76,10 @@ impl RollupQuery {
         }
     }
 
-    /// The device the read is from: `source` before `inverterId`, `plant` or neither meaning the first.
+    /// The device the read is from: `source` before `inverterId`.
     async fn device(&self, store: &Store) -> Result<Option<i64>, StoreError> {
         let wanted = non_empty(self.source.as_deref()).or(non_empty(self.inverter_id.as_deref()));
-        let ids = store.devices().await?.into_iter().map(|device| device.id);
-        Ok(match wanted {
-            None | Some("plant") => ids.min(),
-            Some(id) => ids.into_iter().find(|device| device.to_string() == id),
-        })
+        source_device(store, wanted).await
     }
 }
 

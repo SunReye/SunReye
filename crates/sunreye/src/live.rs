@@ -124,7 +124,7 @@ impl Subscription {
 }
 
 /// `Date.prototype.toISOString`: UTC, always milliseconds.
-fn iso(at_ms: i64) -> String {
+pub fn iso(at_ms: i64) -> String {
     let at = jiff::Timestamp::from_millisecond(at_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
     format!("{at:.3}")
 }

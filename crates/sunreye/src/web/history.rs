@@ -10,6 +10,7 @@ use super::{ApiError, ApiQuery, ErrorBody};
 use crate::recent::{Recent, RecentError, Window, fold};
 use crate::run::Core;
 use crate::samples::with_unstored;
+use crate::store::{Store, StoreError};
 
 const DEFAULT_SECONDS: u32 = 300;
 const MAX_SECONDS: u32 = 3600;
@@ -25,6 +26,8 @@ pub struct RecentQuery {
     /// Width of one bucket. Default 1.
     #[param(minimum = 1, maximum = 60)]
     step_seconds: Option<u32>,
+    /// `plant`, or a device's decimal id. Without it, the first device in service.
+    source: Option<String>,
 }
 
 impl RecentQuery {
@@ -74,7 +77,7 @@ pub async fn recent(
 ) -> Result<Json<Recent>, ApiError> {
     let window = query.window(core.now_ms())?;
     let (from, to) = (window.reach_ms(), window.now_ms + 1);
-    let Some(device) = core.store.devices().await?.first().map(|device| device.id) else {
+    let Some(device) = source_device(&core.store, query.source.as_deref()).await? else {
         return Ok(Json(fold(window, std::iter::empty())?));
     };
     // Held before the store is read: a minute written in between is then in one or both, never neither.
@@ -82,6 +85,18 @@ pub async fn recent(
     let held = core.unstored.held(device);
     let minutes = core.store.minutes(device, from, to).await?;
     Ok(Json(fold(window, with_unstored(minutes.samples(from, to), held))?))
+}
+
+/// The device a history read is from: `source` names one by its decimal id, retired or not; none, empty or
+/// `plant` is the first in service. An id no device has reads nothing, as 3.x reads an unknown slug.
+pub(super) async fn source_device(store: &Store, source: Option<&str>) -> Result<Option<i64>, StoreError> {
+    let devices = store.devices().await?;
+    Ok(match source.filter(|source| !source.is_empty()) {
+        None | Some("plant") => {
+            devices.iter().find(|device| device.retired_at.is_none()).map(|device| device.id)
+        }
+        Some(id) => devices.iter().find(|device| device.id.to_string() == id).map(|device| device.id),
+    })
 }
 
 #[cfg(test)]

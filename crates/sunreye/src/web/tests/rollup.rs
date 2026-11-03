@@ -502,6 +502,29 @@ async fn source_and_inverter_id_name_one_device_by_its_decimal_id() {
 }
 
 #[tokio::test]
+async fn a_retired_device_is_read_by_its_source_and_the_default_is_the_first_in_service() {
+    let (core, admin) = clocked("rollup-retired").await;
+    let first = add_device(&core, "10.0.0.5").await;
+    let second = add_device(&core, "10.0.0.6").await;
+    store(&core, first, &[(BASE - 2 * MINUTE, "pv", 1.0)]).await;
+    store(&core, second, &[(BASE - 3 * MINUTE, "pv", 2.0)]).await;
+    let retire = json!({"retired": true});
+    assert_eq!(
+        send(&admin, Method::PATCH, &format!("/api/devices/{first}"), Some(&retire.to_string())).await.status,
+        StatusCode::OK
+    );
+    let read = |who: &str| answer(&admin, format!("metric=pv&bucket=minute&{who}"));
+    assert_eq!(
+        read(&format!("source={first}")).await,
+        vec![alone(BASE - 2 * MINUTE, 1.0)],
+        "retired, still read"
+    );
+    assert_eq!(read("").await, vec![alone(BASE - 3 * MINUTE, 2.0)], "no source: the first in service");
+    assert_eq!(read("source=plant").await, vec![alone(BASE - 3 * MINUTE, 2.0)]);
+    finish(core, admin).await;
+}
+
+#[tokio::test]
 async fn a_device_that_went_quiet_answers_an_empty_window_not_an_error() {
     let (core, admin) = clocked("rollup-offline").await;
     let device = add_device(&core, "10.0.0.5").await;
