@@ -26,6 +26,8 @@ async function request(status: number, body = "{}") {
   globalThis.fetch = (async () => response) as unknown as typeof fetch;
   // The path is arbitrary: the hook sees every response whatever route asked.
   await (api as unknown as { probe: { get(): Promise<unknown> } }).probe.get();
+  // The bounce loads `$app/navigation` lazily.
+  await Bun.sleep(5);
   return response;
 }
 
