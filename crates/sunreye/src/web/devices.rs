@@ -45,11 +45,10 @@ pub struct ModbusParams {
     port: i64,
     #[serde(default = "default_transport")]
     transport: Transport,
-    /// 0: not stated.
     #[serde(default)]
-    timeout_ms: i64,
+    timeout_ms: Option<i64>,
     #[serde(default)]
-    poll_interval_ms: i64,
+    poll_interval_ms: Option<i64>,
     /// The stick's serial, `solarman-v5` only.
     #[serde(skip_serializing_if = "Option::is_none")]
     logger_serial: Option<i64>,
@@ -276,7 +275,7 @@ impl Context {
             ("timeoutMs", params.timeout_ms, self.timeout_ms),
             ("pollIntervalMs", params.poll_interval_ms, self.interval_ms),
         ];
-        match stated.into_iter().find(|(_, value, core)| *value != 0 && value != core) {
+        match stated.into_iter().find(|(_, value, core)| value.is_some_and(|value| value != *core)) {
             Some((key, _, core)) => Err(refused(
                 "params",
                 &format!("{key} is {core} for every connection; change it in the inverter settings"),
@@ -294,8 +293,8 @@ impl Context {
             host: row.host.clone(),
             port: i64::from(row.port),
             transport: row.transport.into(),
-            timeout_ms: self.timeout_ms,
-            poll_interval_ms: self.interval_ms,
+            timeout_ms: Some(self.timeout_ms),
+            poll_interval_ms: Some(self.interval_ms),
             logger_serial: row.logger_serial.map(i64::from),
         };
         ConnectionView { id: row.id, name: row.name.clone(), kind: ConnectionKind::Modbus, params }

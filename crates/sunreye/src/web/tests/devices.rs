@@ -320,7 +320,8 @@ async fn a_device_with_readings_held_for_the_open_minute_is_refused_deletion() {
 #[tokio::test]
 async fn a_connection_edit_refuses_a_poll_timing_other_than_the_cores_and_accepts_it_unchanged() {
     let (core, admin) = onboarded("roster-timing", unused_port().await).await;
-    for (key, value) in [("timeoutMs", 2000), ("pollIntervalMs", 5000)] {
+    let stated = [2000, 0, -1].map(|v| ("timeoutMs", v)).into_iter();
+    for (key, value) in stated.chain([5000, 0, -1].map(|v| ("pollIntervalMs", v))) {
         let mut params = modbus("gw", 1502);
         params[key] = json!(value);
         let answer = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
@@ -346,7 +347,7 @@ async fn an_empty_core_lists_no_device_and_no_connection() {
 }
 
 #[tokio::test]
-async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_range_ends_are_accepted() {
+async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_unit_ends_are_accepted() {
     let (core, admin) = onboarded("roster-bounds", unused_port().await).await;
     let solarman = |serial: i64| json!({"host": "stick", "port": 8899, "transport": "solarman-v5", "loggerSerial": serial});
     let endpoints = [
@@ -392,6 +393,24 @@ async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_range_ends_are_acce
     for end in [0, 247] {
         let added = post(&admin, "/api/devices", &unit(end)).await;
         assert_eq!((added.status, &added.json()["unitId"]), (StatusCode::OK, &json!(end)));
+    }
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_endpoint_at_its_range_ends_is_accepted() {
+    let (core, admin) = onboarded("roster-ends", unused_port().await).await;
+    let solarman = |serial: i64| json!({"host": "stick", "port": 8899, "transport": "solarman-v5", "loggerSerial": serial});
+    let ends = [
+        json!({"host": "gw", "port": 1}),
+        json!({"host": "gw", "port": 65_535}),
+        solarman(1),
+        solarman(4_294_967_295),
+    ];
+    for params in ends {
+        let edited = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
+        assert_eq!(edited.status, StatusCode::OK, "{params}");
     }
     drop(admin);
     core.stop().await;
