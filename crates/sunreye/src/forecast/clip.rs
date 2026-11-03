@@ -23,8 +23,13 @@ impl Caps {
         }
     }
 
+    /// A capacity of zero or less, or none configured, is no battery.
+    fn has_battery(&self) -> bool {
+        self.battery_kwh > 0.0
+    }
+
     fn clip(&self) -> bool {
-        self.max_output_w < f64::INFINITY || self.battery_kwh > 0.0
+        self.max_output_w < f64::INFINITY || self.has_battery()
     }
 }
 
@@ -64,7 +69,7 @@ struct Sim {
 
 impl Sim {
     fn new(config: &ForecastConfig, caps: Caps, sim: &SimInputs) -> Self {
-        let past = caps.battery_kwh == 0.0 || sim.day_start_soc_pct.is_some();
+        let past = !caps.has_battery() || sim.day_start_soc_pct.is_some();
         // Unknown SOC starts at the reserve floor (full headroom): no curtailment that cannot be justified.
         let live = sim.start_soc_pct.or(config.battery.as_ref().map(|b| b.min_soc)).unwrap_or(0.0);
         let seed = if past { sim.day_start_soc_pct.unwrap_or(live) } else { live };

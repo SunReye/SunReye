@@ -30,17 +30,19 @@ impl CorrectionModel {
 
     /// The multiplier for a plant-local (month, hour).
     pub fn factor(&self, month: i8, hour: i8) -> f64 {
-        let cell = usize::try_from(month - 1)
-            .ok()
-            .zip(usize::try_from(hour).ok())
-            .and_then(|(m, h)| self.cells.get(m)?.get(h).copied().flatten());
+        let cell = index(month, hour).and_then(|(m, h)| self.cells.get(m)?.get(h).copied().flatten());
         let Some(cell) = cell else { return 1.0 };
         let shrunk = 1.0 + (cell.ratio - 1.0) * (cell.weight / (cell.weight + SHRINKAGE_K));
         shrunk.clamp(FACTOR_MIN, FACTOR_MAX)
     }
 
     fn slot(&mut self, month: i8, hour: i8) -> Option<&mut Option<CorrectionCell>> {
-        let (m, h) = (usize::try_from(month - 1).ok()?, usize::try_from(hour).ok()?);
+        let (m, h) = index(month, hour)?;
         self.cells.get_mut(m)?.get_mut(h)
     }
+}
+
+/// Zero-based (month, hour); `None` below the calendar, including `i8::MIN`.
+fn index(month: i8, hour: i8) -> Option<(usize, usize)> {
+    Some((usize::try_from(month.checked_sub(1)?).ok()?, usize::try_from(hour).ok()?))
 }

@@ -1,6 +1,6 @@
 //! PV production forecast, the pure half: an irradiance series and the plant's arrays become per-slot AC
 //! watts, a usable view clipped by the feed-in cap and battery, plant-local daily sums and the next
-//! 15 minutes. Ported from 3.x and held to `fixtures/oracle/forecast.ndjson`.
+//! 15 minutes. Held to `fixtures/oracle/forecast.ndjson`. A NaN in a power sample yields 0 W, never a panic.
 
 mod clip;
 mod correction;
@@ -411,11 +411,12 @@ mod tests {
     fn a_correction_cell_outside_the_calendar_is_ignored_and_unlearned_cells_apply_one() {
         let mut model = CorrectionModel::default();
         let cell = CorrectionCell { ratio: 1.3, weight: 5.0 };
-        for (month, hour) in [(0, 12), (13, 12), (7, 24), (7, -1)] {
+        for (month, hour) in [(0, 12), (13, 12), (i8::MIN, 12), (7, 24), (7, -1)] {
             model.set(month, hour, cell);
         }
         assert_eq!(model, CorrectionModel::default());
         assert!((model.factor(7, 12) - 1.0).abs() < f64::EPSILON);
         assert!((model.factor(0, 0) - 1.0).abs() < f64::EPSILON);
+        assert!((model.factor(i8::MIN, 0) - 1.0).abs() < f64::EPSILON);
     }
 }

@@ -42,7 +42,7 @@ pub fn sun_position(latitude_deg: f64, longitude_deg: f64, at_ms: i64) -> SunPos
             - 0.014_615 * (2.0 * gamma).cos()
             - 0.040_849 * (2.0 * gamma).sin());
 
-    // Whole seconds, as 3.x read them; the fraction enters through `gamma` only.
+    // Whole seconds; the fraction enters through `gamma` only.
     let utc_min = f64::from(at.hour()) * 60.0 + f64::from(at.minute()) + f64::from(at.second()) / 60.0;
     let solar_min = utc_min + 4.0 * longitude_deg + eq_of_time_min;
     let hour_angle = (solar_min / 4.0 - 180.0) * DEG;
