@@ -1242,6 +1242,15 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -1323,7 +1332,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Most buckets, oldest first. Default 5000.",
+            "description": "Most buckets, oldest first. Default 5000; without a session at most 12000.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -1365,6 +1374,15 @@
             }
           },
           "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
             "content": {
               "application/json": {
                 "schema": {

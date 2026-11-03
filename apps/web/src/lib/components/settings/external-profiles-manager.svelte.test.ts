@@ -127,6 +127,18 @@ test("a later add clears the earlier skipped list and failure", async () => {
   await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
 });
 
+test("a refused add drops the skipped files an earlier add listed", async () => {
+  const skipped = { path: "profiles/bad.json", reason: "name: missing" };
+  post.mockResolvedValueOnce({ data: { ...STORED, profileIds: [], skipped: [skipped] } });
+  post.mockResolvedValueOnce({ error: { error: "cannot fetch the index: status 404" } });
+  render(ExternalProfilesManager, {});
+  await addSource();
+  await expect.element(page.getByText(m.sources_skipped_title())).toBeVisible();
+  await addSource("https://example.org/other/");
+  await expect.element(page.getByRole("alert")).toBeVisible();
+  await expect.element(page.getByText(m.sources_skipped_title())).not.toBeInTheDocument();
+});
+
 test("an imported file is reported like a fetched profile", async () => {
   post.mockResolvedValue({ data: { id: "acme-hybrid" } });
   const onInstalled = vi.fn();
