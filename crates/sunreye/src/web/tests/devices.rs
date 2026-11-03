@@ -481,3 +481,68 @@ async fn an_endpoint_at_its_range_ends_is_accepted() {
     drop(admin);
     core.stop().await;
 }
+
+fn probe_body(port: u16) -> Value {
+    json!({"kind": "modbus", "params": modbus("127.0.0.1", port)})
+}
+
+#[tokio::test]
+async fn a_connection_probe_answers_the_3x_shape_and_reads_nothing() {
+    let (sim, _) = simulator().await;
+    let (core, admin) = open(&dir("probe")).await;
+    let answer = post(&admin, "/api/connections/probe", &probe_body(sim.addr.port())).await;
+    assert_eq!(answer.status, StatusCode::OK);
+    let body = answer.json();
+    assert_eq!((&body["ok"], body["ms"].is_u64(), body.get("logger")), (&json!(true), true, None), "{body}");
+    let closed = post(&admin, "/api/connections/probe", &probe_body(unused_port().await)).await.json();
+    assert_eq!(closed["ok"], false);
+    assert!(closed["error"].as_str().is_some_and(|error| error.starts_with("i/o error")), "{closed}");
+    let mqtt = json!({"kind": "mqtt", "params": {"brokerUrl": "mqtt://broker"}});
+    let refused = post(&admin, "/api/connections/probe", &mqtt).await;
+    assert_eq!((refused.status, &refused.json()["field"]), (StatusCode::BAD_REQUEST, &json!("kind")));
+    assert_eq!(sim.requests(), []);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_unit_scan_tries_unit_1_first_and_issues_only_reads() {
+    let (sim, _) = simulator().await;
+    let (core, admin) = open(&dir("scan")).await;
+    let scan = |extra: Value| {
+        let mut body = probe_body(sim.addr.port());
+        body["profileId"] = json!(PROFILE);
+        body.as_object_mut().expect("body").extend(extra.as_object().expect("extra").clone());
+        body
+    };
+    let found = post(&admin, "/api/connections/scan-units", &scan(json!({}))).await;
+    assert_eq!(found.status, StatusCode::OK);
+    let body = found.json();
+    assert_eq!((&body["scanned"], &body["found"]["unitId"]), (&json!([1]), &json!(1)), "{body}");
+    assert!(body["found"]["ms"].is_u64());
+    let requests = sim.requests();
+    assert!(!requests.is_empty() && requests.iter().all(|r| r.function == FC_READ_HOLDING), "{requests:?}");
+    let refusals = [
+        (json!({"profileId": "no-such"}), "profileId"),
+        (json!({"candidates": []}), "candidates"),
+        (json!({"candidates": [1, 1]}), "candidates"),
+        (json!({"candidates": [248]}), "candidates"),
+        (json!({"candidates": (0..17).collect::<Vec<u8>>()}), "candidates"),
+        (json!({"kind": "mqtt"}), "kind"),
+    ];
+    for (extra, field) in refusals {
+        let refused = post(&admin, "/api/connections/scan-units", &scan(extra.clone())).await;
+        assert_eq!(
+            (refused.status, &refused.json()["field"]),
+            (StatusCode::BAD_REQUEST, &json!(field)),
+            "{extra}"
+        );
+    }
+    let mut unreachable = probe_body(unused_port().await);
+    unreachable["profileId"] = json!(PROFILE);
+    let closed = post(&admin, "/api/connections/scan-units", &unreachable).await;
+    assert_eq!(closed.status, StatusCode::BAD_REQUEST);
+    assert!(closed.json()["error"].as_str().is_some_and(|error| error.starts_with("i/o error")));
+    drop(admin);
+    core.stop().await;
+}
