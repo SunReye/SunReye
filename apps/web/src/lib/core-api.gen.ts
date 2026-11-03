@@ -1343,6 +1343,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     rollupHistory: {
@@ -1361,7 +1369,7 @@ export interface operations {
                 from?: string;
                 /** @description End of the window, RFC 3339, exclusive. */
                 to?: string;
-                /** @description Most buckets, oldest first. Default 5000. */
+                /** @description Most buckets, oldest first. Default 5000; without a session at most 12000. */
                 limit?: number;
             };
             header?: never;
@@ -1395,6 +1403,14 @@ export interface operations {
                 };
             };
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
