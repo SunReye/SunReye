@@ -6,7 +6,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import { useAppSession } from '$lib/session';
-	import { publicDashboardEnabled } from '$lib/engine-admin';
+	import { kioskEnabled } from '$lib/kiosk';
 	import { firstRunGate, type FirstRunGate } from '$lib/setup';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import { bus } from '$lib/ws/bus.svelte';
@@ -32,16 +32,16 @@
 	// section's own nav rail — stable instead of re-fading the whole area.
 	const topSegment = $derived('/' + (current.split('/')[1] ?? ''));
 
-	// Access model. A logged-out visitor is not necessarily bounced to login: when
-	// the admin has enabled the public dashboard, the server serves dashboard reads
-	// + the live stream anonymously, so we show a read-only workspace instead.
-	// `anonAllowed` is null until we've probed the public flag, so the shell shows a
-	// loading state rather than flashing a login redirect.
+	// Access model. A logged-out visitor is not necessarily bounced to login: with
+	// the kiosk view on, the core serves the dashboard's reads and the live stream
+	// anonymously, so we show a read-only workspace instead. `anonAllowed` is null
+	// until the kiosk switch is read, so the shell shows a loading state rather
+	// than flashing a login redirect.
 	const isAdmin = $derived($sessionQuery.data?.user.admin === true);
 	let anonAllowed = $state<boolean | null>(null);
 	const isAnon = $derived(!$sessionQuery.isPending && !$sessionQuery.data && anonAllowed === true);
 
-	/** A logged-out visitor the public dashboard does not cover belongs at login. */
+	/** A logged-out visitor the kiosk view does not cover belongs at login. */
 	function applyAnonDecision(allowed: boolean): void {
 		if (!allowed) goto(resolve('/login'));
 	}
@@ -53,7 +53,7 @@
 			applyAnonDecision(anonAllowed);
 			return;
 		}
-		publicDashboardEnabled().then((ok) => {
+		kioskEnabled().then((ok) => {
 			// A session may have arrived mid-probe (e.g. we just signed in) — defer to
 			// the authenticated path rather than treating the visitor as anonymous.
 			if ($sessionQuery.data) return;

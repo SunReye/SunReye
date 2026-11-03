@@ -17,8 +17,9 @@
  *     invisible: every other pass carries an admin session.
  *  4. an API key for the admin, which only the admin pass carries: `/api/v1`
  *     answers a key, never a session.
- *  5. the three sweeps over whatever `/openapi/json` lists, plus the `/ws`
- *     upgrade, which the listing does not carry.
+ *  5. the sweeps over whatever `/openapi/json` lists, plus the `/ws` upgrade,
+ *     which the listing does not carry: no credentials, no credentials with the
+ *     kiosk view switched on, the plain account, the admin.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { connect } from "node:net";
@@ -77,9 +78,16 @@ async function build() {
 }
 
 /** An admin request on the core's own origin; throws unless it answered 2xx. */
-async function asAdmin(base: string, cookie: string, path: string, body: object, what: string) {
+async function asAdmin(
+  base: string,
+  cookie: string,
+  path: string,
+  body: object,
+  what: string,
+  method: "POST" | "PUT" = "POST",
+) {
   const response = await fetch(`${base}${path}`, {
-    method: "POST",
+    method,
     headers: { cookie, origin: base, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -193,8 +201,8 @@ async function accessPass(
 }
 
 /**
- * The anonymous and non-admin passes run first: every one of their write
- * probes is expected to be refused before it reaches a handler, so neither can
+ * The anonymous, kiosk and non-admin passes run first: every one of their write
+ * probes is expected to be refused before it reaches a handler, so none can
  * disturb the state the admin pass then reads. Within a pass, ending the
  * session sorts last (a DELETE), so no probe after it loses its cookie.
  */
@@ -208,6 +216,16 @@ async function sweep(base: string, adminCookie: string, memberCookie: string, ap
     mode: "anonymous",
     results: report(await accessPass(base, probes, "anonymous")),
   });
+  await asAdmin(
+    base,
+    adminCookie,
+    "/api/settings/kiosk",
+    { enabled: true },
+    "kiosk view on",
+    "PUT",
+  );
+  log(`probing ${probes.length} routes and ${UPGRADE_LABEL} with no credentials, kiosk view on`);
+  access.push({ mode: "kiosk", results: report(await accessPass(base, probes, "kiosk")) });
   log(`probing ${probes.length} routes as a plain signed-in NON-ADMIN session`);
   const member = await accessPass(base, probes, "member", memberCookie);
   access.push({ mode: "member", results: report(member) });

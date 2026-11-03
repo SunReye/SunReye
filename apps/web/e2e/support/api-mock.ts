@@ -123,8 +123,8 @@ export interface BackendOptions {
   backfillStrideSeconds?: number;
   /** Signed-in role. `null` serves a logged-out visitor. */
   role?: "admin" | "user" | null;
-  /** Whether the anonymous read-only dashboard is enabled (only read when logged out). */
-  publicDashboard?: boolean;
+  /** Whether the kiosk view is on: a logged-out visitor reads the dashboard. Admins switch it. */
+  kiosk?: boolean;
   /**
    * `/api/setup-status`. `true` is the first-run instance with no admin account
    * yet — the ONLY state in which `/#/onboarding` renders instead of bouncing
@@ -226,7 +226,10 @@ export interface RecordedWrite {
   body: unknown;
 }
 
-type GateKey = "role" | "publicDashboard" | "needsSetup" | "needsProfile" | "migration";
+/** What the core opens to a stranger while the kiosk view is on, beside `/ws`. */
+const KIOSK_READS = ["capabilities", "profile", "history/recent", "history/rollup"];
+
+type GateKey = "role" | "kiosk" | "needsSetup" | "needsProfile" | "migration";
 
 export interface MockBackend {
   /** The manifest this instance serves. */
@@ -584,6 +587,11 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
   }
 
   await page.routeWebSocket("**/ws", (ws) => {
+    // The core refuses a stranger's upgrade unless the kiosk view is on.
+    if (!roleNow() && !(options.kiosk ?? false)) {
+      void ws.close({ code: 1008, reason: "Not signed in" });
+      return;
+    }
     socketOpens += 1;
     sockets.push(ws);
     ws.onMessage((message) => {
@@ -687,6 +695,10 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     if (sessionExpired) {
       return json(route, { error: "Authentication required" }, 401);
     }
+    // A stranger reaches the dashboard's reads only with the kiosk view on.
+    if (!role && !(options.kiosk ?? false) && KIOSK_READS.some(at)) {
+      return json(route, { error: "Not signed in" }, 401);
+    }
 
     // ── Boot gates ──────────────────────────────────────────────────────────
     // These three decide which of the 26 routes is even reachable: `(app)`'s
@@ -710,9 +722,7 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         profileSources: true,
       });
     }
-    if (at("access-status")) {
-      return json(route, { publicDashboard: options.publicDashboard ?? false });
-    }
+    if (at("kiosk")) return json(route, { enabled: options.kiosk ?? false });
     // The 1.2.0 -> 2.0.0 migration status. Read by the app shell on every load
     // (the gate) and by the app-wide notice banner, so it has to answer for every
     // spec, not just the ones about migrations.
@@ -860,9 +870,11 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       if (method === "PUT") return json(route, saved(fixture.PLANT, body()));
       return json(route, fixture.PLANT);
     }
-    if (at("settings/access")) {
-      if (method === "PUT") return json(route, saved(fixture.ACCESS, body()));
-      return json(route, fixture.ACCESS);
+    if (at("settings/kiosk")) {
+      if (role !== "admin")
+        return json(route, { error: role ? "Admin only" : "Not signed in" }, role ? 403 : 401);
+      options = { ...options, kiosk: body().enabled === true };
+      return json(route, { enabled: options.kiosk });
     }
     if (at("settings/tariff")) {
       if (method === "PUT") return json(route, saved(fixture.TARIFF, body()));
@@ -1205,7 +1217,7 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       options = {
         ...options,
         role: undefined,
-        publicDashboard: undefined,
+        kiosk: undefined,
         needsSetup: undefined,
         needsProfile: undefined,
         migration: undefined,

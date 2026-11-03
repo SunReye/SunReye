@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CREDENTIAL_LABELS,
+  KIOSK_LABELS,
   MAX_UNPROVEN_GATES,
   MIN_ROUTES,
   PUBLIC_LABELS,
@@ -211,11 +212,11 @@ describe("the command line", () => {
 // ---------------------------------------------------------------------------
 
 describe("the public surface is a closed list", () => {
-  test("only the pre-auth setup gates are declared public", () => {
+  test("only the pre-auth setup gates and the kiosk switch's state are declared public", () => {
     // Anything not on this list must refuse a request with no credentials;
     // sign-up and login are CREDENTIAL_LABELS.
     expect([...PUBLIC_LABELS].sort()).toEqual(
-      ["GET /api/profile-status", "GET /api/setup-status"].sort(),
+      ["GET /api/kiosk", "GET /api/profile-status", "GET /api/setup-status"].sort(),
     );
   });
 
@@ -763,5 +764,77 @@ describe("classifying the /ws upgrade", () => {
     for (const mode of ["anonymous", "member", "authenticated"] as const) {
       expect(classifyUpgrade({ error: "reset" }, mode).ok).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The KIOSK pass: no credentials, with the kiosk view switched on. The
+// dashboard's reads and `/ws` open to a stranger; nothing else does.
+// ---------------------------------------------------------------------------
+
+describe("the kiosk surface is a closed list", () => {
+  test("it is the dashboard's reads, nothing else", () => {
+    expect([...KIOSK_LABELS].sort()).toEqual(
+      [
+        "GET /api/capabilities",
+        "GET /api/history/recent",
+        "GET /api/history/rollup",
+        "GET /api/profile",
+      ].sort(),
+    );
+  });
+
+  test("no write, account or settings route is on it", () => {
+    for (const label of KIOSK_LABELS) {
+      expect(label.startsWith("GET ")).toBe(true);
+      expect(label).not.toMatch(/settings|admin|auth|v1/);
+    }
+  });
+});
+
+describe("classifying a KIOSK probe", () => {
+  const kiosk = (label: string, status: number) =>
+    classifyAuth({ label }, { status, body: "" }, "kiosk");
+  const kioskWrite = (label: string, status: number) =>
+    classifyAuth({ label, body: "{}" }, { status, body: "" }, "kiosk");
+
+  test("a dashboard read that refuses a stranger FAILS: the kiosk view is broken", () => {
+    const verdict = kiosk("GET /api/history/recent", 401);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toMatch(/kiosk/i);
+    expect(kiosk("GET /api/history/recent", 200).ok).toBe(true);
+  });
+
+  test("everything else must still refuse a stranger", () => {
+    for (const label of [
+      "GET /api/auth/session",
+      "GET /api/settings/inverter",
+      "GET /api/admin/users",
+    ]) {
+      expect(kiosk(label, 401).ok).toBe(true);
+      expect(kiosk(label, 200).ok).toBe(false);
+    }
+    expect(kioskWrite("PUT /api/settings/kiosk", 401).ok).toBe(true);
+    expect(kioskWrite("PUT /api/settings/kiosk", 200).ok).toBe(false);
+  });
+
+  test("a public route answers as in every pass", () => {
+    expect(kiosk("GET /api/kiosk", 200).ok).toBe(true);
+    expect(kiosk("GET /api/kiosk", 401).ok).toBe(false);
+  });
+
+  test("a stranger's upgrade must be answered", () => {
+    expect(classifyUpgrade({ status: 101, body: "" }, "kiosk").ok).toBe(true);
+    const refused = classifyUpgrade({ status: 401, body: "" }, "kiosk");
+    expect(refused.ok).toBe(false);
+    expect(refused.detail).toMatch(/kiosk/i);
+  });
+
+  test("its summary names the kiosk view", () => {
+    const verdict = summarizeAuth(
+      [{ label: "GET /api/profile", ok: true, detail: "200" }],
+      "kiosk",
+    );
+    expect(verdict.text).toMatch(/kiosk view on/i);
   });
 });
