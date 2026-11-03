@@ -26,9 +26,9 @@
  * keeps it unit-testable (`$lib/api` reaches `$app/environment`).
  */
 
-import { api } from "$lib/api";
+import { core } from "$lib/core-api";
+import type { components } from "$lib/core-api.gen";
 import { source } from "$lib/source.svelte";
-import { payloadOrNull } from "$lib/api-payload";
 import type { MetricSeries, SeriesAggregate, SeriesRef, SeriesWindow } from "./series";
 
 /**
@@ -38,7 +38,7 @@ import type { MetricSeries, SeriesAggregate, SeriesRef, SeriesWindow } from "./s
 const SERIES_LIMIT = 1441;
 
 /** One bucket as the rollup answers it: every aggregate, in one row. */
-type RollupPoint = { time: string; avg: number; min: number; max: number };
+type RollupPoint = components["schemas"]["RollupPoint"];
 
 /**
  * Fetch one metric's buckets. An empty list on any failure — a chart draws
@@ -48,19 +48,25 @@ type RollupPoint = { time: string; avg: number; min: number; max: number };
  * for this directly is how a page ends up issuing them in sequence.
  */
 async function fetchRollup(ref: SeriesRef, window: SeriesWindow): Promise<RollupPoint[]> {
-  const { data } = await api.api.history.rollup.get({
-    query: {
-      metric: ref.metric,
-      // A ref that names a device (the optimizer) is read by slug; every other
-      // series follows the selected source — the plant, or the chosen device.
-      ...(ref.inverterId ? { inverterId: ref.inverterId } : source.query),
-      bucket: window.bucket ?? "minute",
-      from: window.from.toISOString(),
-      to: window.to.toISOString(),
-      limit: SERIES_LIMIT,
-    },
-  });
-  return payloadOrNull<RollupPoint[]>(data) ?? [];
+  try {
+    const { data } = await core.GET("/api/history/rollup", {
+      params: {
+        query: {
+          metric: ref.metric,
+          // A ref that names a device (the optimizer) is read by slug; every other
+          // series follows the selected source — the plant, or the chosen device.
+          ...(ref.inverterId ? { inverterId: ref.inverterId } : source.query),
+          bucket: window.bucket ?? "minute",
+          from: window.from.toISOString(),
+          to: window.to.toISOString(),
+          limit: SERIES_LIMIT,
+        },
+      },
+    });
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
 }
 
 /** One aggregate of one metric's buckets, as the series a builder joins on. */

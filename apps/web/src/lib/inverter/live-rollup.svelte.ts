@@ -6,23 +6,19 @@
  */
 
 import { untrack } from "svelte";
-import { api } from "$lib/api";
+import { core } from "$lib/core-api";
 import { liveClock } from "$lib/time/live-clock.svelte";
 import {
+  coreRollup,
   feedsFor,
   rollupFeed,
   type HeldRows,
-  type RollupApi,
   type RollupFeed,
   type ScopeOf,
 } from "./live-rollup";
 import { fetchWindow, type LiveWindow } from "./live-tail";
 import type { HistoryRange } from "./ranges";
 import type { LivePoint } from "./types";
-
-const edenRollup: RollupApi = {
-  rollup: (query) => api.api.history.rollup.get({ query }),
-};
 
 export type LiveRollup = {
   /** Per key, in `keys` order. Re-derived on a new answer and on the minute
@@ -84,7 +80,7 @@ export function liveRollup(
   let rows = $state.raw<HeldRows>({});
   let loading = $state(true);
   const feed = rollupFeed({
-    api: edenRollup,
+    api: coreRollup(core),
     now: () => liveClock.now.getTime(),
     onRows: (next) => (rows = next),
     onLoading: (next) => (loading = next),
