@@ -60,6 +60,10 @@ describe("generate", () => {
       calls.push(`profiles:${dir}`);
       return { "profile-decode.ndjson": "p\n" };
     },
+    forecast: async () => {
+      calls.push("forecast");
+      return { "forecast.ndjson": "f\n" };
+    },
     databaseGroups: async (url) => {
       calls.push(`db:${url}`);
       return 0;
@@ -68,12 +72,13 @@ describe("generate", () => {
     ...over,
   });
 
-  test("writes the two database-free groups, then runs the database groups", async () => {
+  test("writes the three database-free groups, then runs the database groups", async () => {
     const calls: string[] = [];
     expect(await generate([], {}, deps(calls))).toBe(0);
-    expect(calls).toEqual(["transport", "profiles:/profiles", "db:null"]);
+    expect(calls).toEqual(["transport", "profiles:/profiles", "forecast", "db:null"]);
     expect(await readFile(join(out, "transport.ndjson"), "utf8")).toBe("t\n");
     expect(await readFile(join(out, "profile-decode.ndjson"), "utf8")).toBe("p\n");
+    expect(await readFile(join(out, "forecast.ndjson"), "utf8")).toBe("f\n");
   });
 
   test("passes an explicit database URL through to the database groups", async () => {

@@ -123,3 +123,56 @@ profiles, metric keys, raw rows, per-day counter energy and config log, read bac
 | --- | --- |
 | `current-2.x` | battery, Solarman endpoint, automation enabled (`automations`) and its held register value (`automationState`), daily, hourly and raw history, a configuration register |
 | `legacy-1.2.0` | spine synthesised from 1.x settings, device named by its profile id, daily, hourly (one whole day), minute (a partial day, not replayed) and raw history; a lifetime counter loses its total inside the raw day |
+
+## 6. `forecast.ndjson`: PV forecast
+
+One line per case: `{case,producer,input,output}`, database-free, produced by the 3.x code. Irradiance is a synthetic
+bell computed by the generator, recorded in `input`; the second day of a series is dimmer.
+
+- `sunPosition`: `input` `{latitude,longitude,atMs,planes}`, `output` `{sun:{elevationDeg,azimuthDeg},cosAoi}` with one
+  `cosAoi` per plane. Producers: `sunPosition`, `cosAoi` (`apps/server/src/forecast/solar-geometry.ts`).
+- `pvPowerW`: `input` `{sample,kwp,tempCoefficient,systemLoss}`, `output` `{watts}`. Producer: `pvPowerW` (`pv-model.ts`).
+- `buildSolarForecast`: `input` `{config,data,provider,timeZone,nowMs,sim?,correction?}`, `correction` being the learned
+  model as `month:hour` to `{ratio,weight}`; `output` `{raw,usable}`, each `toForecastExport` of that view. Producers:
+  `buildSolarForecast`, `toForecastExport` (`solar-forecast.ts`), the `flowStep` clipping physics
+  (`apps/server/src/energy/energy-flow.ts`) and `correctionFactor` (`forecast-correction.ts`).
+
+| case | boundary |
+| --- | --- |
+| `geometry/summer-noon` | sun near the meridian, plane facing away (`tilt` 90, `azimuth` 180) |
+| `geometry/winter-morning` | low sun in the south-east |
+| `geometry/evening-west` | sun north of west, behind a south plane |
+| `geometry/night` | sun below the horizon |
+| `geometry/southern-hemisphere` | sun in the north |
+| `power/no-dni-no-wind` | raw GTI, NOCT cell temperature |
+| `power/iam-split` | beam/diffuse split with DNI and `cosAoi` |
+| `power/iam-glancing` | beam at a glancing angle |
+| `power/iam-beam-capped-by-gti` | projected DNI above GTI |
+| `power/sun-behind-plane` | negative `cosAoi`: diffuse only |
+| `power/faiman-wind` | Faiman cell temperature |
+| `power/faiman-calm` | Faiman at 0 m/s |
+| `power/iam-and-faiman` | both refinements |
+| `power/dni-without-cos-aoi` | DNI alone falls back to raw GTI |
+| `power/zero-coefficient-zero-loss` | 0 %/°C and 0 % loss |
+| `power/cold-gain` | cell below 25 °C gains |
+| `power/derate-floor` | derate below zero clamps to 0 W |
+| `power/night` | no irradiance |
+| `power/negative-gti` | negative GTI |
+| `forecast/quarter-hour-grid` | 15-minute grid, DNI and wind |
+| `forecast/hourly-grid` | hourly grid, no DNI or wind |
+| `forecast/gap-over-an-hour` | three hours missing |
+| `forecast/dst-spring-berlin` | 23-hour plant day, series at `+01:00`; `nowMs` 00:30 plant time, the previous UTC date; night irradiance from 18:00 the evening before |
+| `forecast/dst-autumn-berlin` | 25-hour plant day, series at `+02:00`; `nowMs` 00:30 plant time, the previous UTC date; night irradiance from 18:00 the evening before |
+| `forecast/empty-series` | no samples (`times: []`), battery and feed-in cap |
+| `forecast/sun-behind-plane` | north-facing steep array |
+| `forecast/no-arrays` | no arrays |
+| `forecast/per-array-overrides` | per-array `tempCoefficient` / `systemLoss` over the plant default, 0 included |
+| `forecast/feed-in-cap-only` | feed-in cap, no battery |
+| `forecast/battery-live-soc` | battery, live SOC, no `dayStartSocPct`: past slots stay raw |
+| `forecast/battery-negative-capacity` | negative `usableKwh` with a feed-in cap: past slots stay raw |
+| `forecast/battery-day-start-soc` | battery with `dayStartSocPct`: past slots simulated through the night drain and a morning fill, re-seeded at the current slot |
+| `forecast/battery-unknown-soc` | no SOC: starts at the reserve floor; unbounded charge rate |
+| `forecast/battery-without-sim-inputs` | battery, no feed-in cap, no sim inputs |
+| `forecast/learned-correction` | correction factors shrunk and clamped |
+| `forecast/next15-across-slot-boundary` | `next15` window spans two slots |
+| `forecast/remaining-today-mid-slot` | `remainingTodayKwh` prorates the running hourly slot |
