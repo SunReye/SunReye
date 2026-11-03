@@ -37,6 +37,7 @@ pub enum ConnectionKind {
 
 /// A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and
 /// `/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.
+// No per-connection timings: an edit refuses a stated value not the core's (null included), an add drops both.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModbusParams {
@@ -56,7 +57,7 @@ pub struct ModbusParams {
     logger_serial: Option<i64>,
 }
 
-/// An absent key is `None`; a stated `null` is refused like any other value that is not the core's.
+/// A cleared field sends `null`; read as absent it would pass an edit as an unchanged save, so it fails to parse.
 fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
     i64::deserialize(d).map(Some)
 }
@@ -231,7 +232,12 @@ fn modbus_params(params: Value) -> Result<ModbusParams, ApiError> {
     serde_json::from_value(params).map_err(|e| refused("params", &e.to_string()))
 }
 
-fn endpoint(params: Value) -> Result<NewConnection, ApiError> {
+/// An added connection's endpoint: the core's poll timing applies whatever the writer states.
+fn added_endpoint(mut params: Value) -> Result<NewConnection, ApiError> {
+    if let Some(params) = params.as_object_mut() {
+        params.remove("timeoutMs");
+        params.remove("pollIntervalMs");
+    }
     checked_endpoint(&modbus_params(params)?)
 }
 
@@ -430,7 +436,7 @@ pub async fn add(
         ConnectionChoice::Create { create } => {
             modbus_only(&create.kind)?;
             let connection_name = checked_name(&create.name)?;
-            let new = endpoint(create.params)?;
+            let new = added_endpoint(create.params)?;
             check_target(&core, None, &request.profile_id, None, (0, unit_id)).await?;
             core.store.create_connection(&connection_name, &new).await?
         }
@@ -559,7 +565,7 @@ pub async fn add_connection(
 ) -> Result<Json<ConnectionView>, ApiError> {
     modbus_only(&request.kind)?;
     let name = checked_name(&request.name)?;
-    let id = core.store.create_connection(&name, &endpoint(request.params)?).await?;
+    let id = core.store.create_connection(&name, &added_endpoint(request.params)?).await?;
     Ok(Json(connection_view(&core, id).await?))
 }
 

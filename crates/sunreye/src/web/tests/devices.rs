@@ -317,24 +317,88 @@ async fn a_device_with_readings_held_for_the_open_minute_is_refused_deletion() {
     core.stop().await;
 }
 
+/// `modbus("gw", 1502)` with `key` set to `value`, or left out when `value` is `None`.
+fn timing(key: &str, value: Option<Value>) -> Value {
+    let mut params = modbus("gw", 1502);
+    match value {
+        Some(value) => params[key] = value,
+        None => _ = params.as_object_mut().expect("object").remove(key),
+    }
+    params
+}
+
+/// An answer's status, and the refused field or the poll timing it reports.
+fn timing_answer(answer: &Answer, params: impl Fn(&Value) -> &Value, key: &str) -> (StatusCode, Value) {
+    let json = answer.json();
+    let reported =
+        if answer.status == StatusCode::OK { params(&json)[key].clone() } else { json["field"].clone() };
+    (answer.status, reported)
+}
+
+const OK: StatusCode = StatusCode::OK;
+const REFUSED: StatusCode = StatusCode::BAD_REQUEST;
+
+// The onboarded core polls with timeoutMs 500 and pollIntervalMs 1000.
 #[tokio::test]
-async fn a_connection_edit_refuses_a_poll_timing_other_than_the_cores_and_accepts_it_unchanged() {
+async fn a_connection_edit_takes_only_the_cores_poll_timing_and_a_connection_add_ignores_it() {
     let (core, admin) = onboarded("roster-timing", unused_port().await).await;
-    let stated = [json!(2000), json!(0), json!(-1), json!(null)].map(|v| ("timeoutMs", v)).into_iter();
-    for (key, value) in
-        stated.chain([json!(5000), json!(0), json!(-1), json!(null)].map(|v| ("pollIntervalMs", v)))
-    {
-        let mut params = modbus("gw", 1502);
-        params[key] = value.clone();
-        let answer = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
+    let cells = [
+        ("timeoutMs", None, OK, OK),
+        ("timeoutMs", Some(json!(null)), REFUSED, OK),
+        ("timeoutMs", Some(json!(0)), REFUSED, OK),
+        ("timeoutMs", Some(json!(-1)), REFUSED, OK),
+        ("timeoutMs", Some(json!(500)), OK, OK),
+        ("timeoutMs", Some(json!(2000)), REFUSED, OK),
+        ("pollIntervalMs", None, OK, OK),
+        ("pollIntervalMs", Some(json!(null)), REFUSED, OK),
+        ("pollIntervalMs", Some(json!(0)), REFUSED, OK),
+        ("pollIntervalMs", Some(json!(-1)), REFUSED, OK),
+        ("pollIntervalMs", Some(json!(1000)), OK, OK),
+        ("pollIntervalMs", Some(json!(5000)), REFUSED, OK),
+    ];
+    for (key, value, edit, add) in cells {
+        let core_value = if key == "timeoutMs" { json!(500) } else { json!(1000) };
+        let expected = |status| (status, if status == OK { core_value.clone() } else { json!("params") });
+        let params = timing(key, value.clone());
+        let edited = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
+        assert_eq!(timing_answer(&edited, |v| &v["params"], key), expected(edit), "edit {key}: {value:?}");
+        let body = json!({"name": "Roof", "kind": "modbus", "params": params});
+        let added = post(&admin, "/api/connections", &body).await;
+        assert_eq!(timing_answer(&added, |v| &v["params"], key), expected(add), "add {key}: {value:?}");
+    }
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_device_created_with_its_connection_ignores_a_stated_poll_timing() {
+    let (core, admin) = onboarded("roster-create-timing", unused_port().await).await;
+    let cells = [
+        ("timeoutMs", None, OK),
+        ("timeoutMs", Some(json!(null)), OK),
+        ("timeoutMs", Some(json!(0)), OK),
+        ("timeoutMs", Some(json!(-1)), OK),
+        ("timeoutMs", Some(json!(500)), OK),
+        ("timeoutMs", Some(json!(2000)), OK),
+        ("pollIntervalMs", None, OK),
+        ("pollIntervalMs", Some(json!(null)), OK),
+        ("pollIntervalMs", Some(json!(0)), OK),
+        ("pollIntervalMs", Some(json!(-1)), OK),
+        ("pollIntervalMs", Some(json!(1000)), OK),
+        ("pollIntervalMs", Some(json!(5000)), OK),
+    ];
+    for (key, value, create) in cells {
+        let core_value = if key == "timeoutMs" { json!(500) } else { json!(1000) };
+        let expected = (create, if create == OK { core_value } else { json!("params") });
+        let choice =
+            json!({"create": {"name": "Garage", "kind": "modbus", "params": timing(key, value.clone())}});
+        let added = post(&admin, "/api/devices", &new_device(&choice, "Meter", 2)).await;
         assert_eq!(
-            (answer.status, &answer.json()["field"]),
-            (StatusCode::BAD_REQUEST, &json!("params")),
-            "{key}: {value}"
+            timing_answer(&added, |v| &v["connection"]["params"], key),
+            expected,
+            "create {key}: {value:?}"
         );
     }
-    let unchanged = patch(&admin, "/api/connections/1", &json!({"params": modbus("gw", 1502)})).await;
-    assert_eq!(unchanged.status, StatusCode::OK);
     drop(admin);
     core.stop().await;
 }
