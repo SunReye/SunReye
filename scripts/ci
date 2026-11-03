@@ -134,7 +134,7 @@ step budgets
 heavy bun run test:budgets
 
 step "component tests"
-bun run e2e:install
+bun scripts/ensure-browser.ts
 heavy bun run test:components
 
 step "database and route smoke"
