@@ -79,6 +79,16 @@ describe("planning the probes", () => {
     ]);
   });
 
+  test("ending the session is the last probe even when a DELETE sorts after its path", () => {
+    const probes = plan({
+      "/api/auth/session": { delete: {} },
+      "/api/settings/profiles/{id}": { delete: {} },
+      "/api/settings/profile-sources": { delete: {} },
+    });
+    expect(probes.map(probeLabel).at(-1)).toBe("DELETE /api/auth/session");
+    expect(probes).toHaveLength(3);
+  });
+
   test("an empty document plans nothing rather than inventing a route", () => {
     expect(planProbes({}, NOW)).toEqual([]);
     expect(plan({})).toEqual([]);

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { toast } from "svelte-sonner";
-	import { api } from "$lib/api";
 	import { apiErrorText } from '$lib/api-error';
 	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Button } from "$lib/components/ui/button";
@@ -33,10 +32,10 @@
 
 	async function uninstall(p: RegisteredProfile) {
 		busyId = p.id;
-		const { error } = await api.api.profiles({ id: p.id }).delete();
+		const { error } = await core.DELETE('/api/settings/profiles/{id}', { params: { path: { id: p.id } } });
 		busyId = null;
 		if (error) {
-			toast.error(m.profiles_toast_uninstall_failed({ error: apiErrorText(error.value, m.conn_request_failed()) }));
+			toast.error(m.profiles_toast_uninstall_failed({ error: apiErrorText(error, m.conn_request_failed()) }));
 			return;
 		}
 		toast.success(m.profiles_toast_uninstalled({ name: p.name }));
@@ -52,7 +51,7 @@
 	/>
 
 	{#if coreCapabilities.has('profileSources')}
-		<ExternalProfilesManager onInstalled={loadRegistered} />
+		<ExternalProfilesManager onInstalled={loadRegistered} onRemoved={loadRegistered} />
 	{/if}
 </div>
 

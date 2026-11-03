@@ -16,11 +16,13 @@
 	let {
 		profiles,
 		selectedId = $bindable(),
-		onExternalInstalled
+		onExternalInstalled,
+		onExternalRemoved
 	}: {
 		profiles: RegisteredProfile[];
 		selectedId: string | null;
 		onExternalInstalled: (id: string) => void;
+		onExternalRemoved: () => void;
 	} = $props();
 
 	let showSources = $state(false);
@@ -79,7 +81,7 @@
 				</Collapsible.Trigger>
 			</div>
 			<Collapsible.Content class="mt-4">
-				<ExternalProfilesManager onInstalled={onExternalInstalled} />
+				<ExternalProfilesManager onInstalled={onExternalInstalled} onRemoved={onExternalRemoved} />
 			</Collapsible.Content>
 		</Collapsible.Root>
 	{/if}
