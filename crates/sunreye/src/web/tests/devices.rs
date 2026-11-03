@@ -335,3 +335,64 @@ async fn a_connection_edit_refuses_a_poll_timing_other_than_the_cores_and_accept
     drop(admin);
     core.stop().await;
 }
+
+#[tokio::test]
+async fn an_empty_core_lists_no_device_and_no_connection() {
+    let (core, admin) = open(&dir("roster-empty")).await;
+    let answer = get(&admin, "/api/devices").await;
+    assert_eq!((answer.status, answer.json()), (StatusCode::OK, json!({"devices": [], "connections": []})));
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_range_ends_are_accepted() {
+    let (core, admin) = onboarded("roster-bounds", unused_port().await).await;
+    let solarman = |serial: i64| json!({"host": "stick", "port": 8899, "transport": "solarman-v5", "loggerSerial": serial});
+    let endpoints = [
+        (json!({"host": "gw", "port": 0}), "params"),
+        (json!({"host": "gw", "port": 65_536}), "params"),
+        (json!({"host": "gw", "port": -1}), "params"),
+        (json!({"host": " ", "port": 502}), "host"),
+        (solarman(0), "params"),
+        (solarman(4_294_967_297), "params"),
+    ];
+    for (params, field) in endpoints {
+        let create = json!({"create": {"name": "Gateway", "kind": "modbus", "params": params}});
+        let added = post(&admin, "/api/devices", &new_device(&create, "Meter", 2)).await;
+        assert_eq!(
+            (added.status, &added.json()["field"]),
+            (StatusCode::BAD_REQUEST, &json!(field)),
+            "{params}"
+        );
+        let edited = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
+        assert_eq!(
+            (edited.status, &edited.json()["field"]),
+            (StatusCode::BAD_REQUEST, &json!(field)),
+            "{params}"
+        );
+    }
+    let unit = |unit: i64| json!({"connection": {"id": 1}, "role": "meter", "name": "Meter", "profileId": PROFILE, "unitId": unit});
+    for negative in [-1, -256] {
+        let added = post(&admin, "/api/devices", &unit(negative)).await;
+        assert_eq!(
+            (added.status, &added.json()["field"]),
+            (StatusCode::BAD_REQUEST, &json!("unitId")),
+            "{negative}"
+        );
+    }
+    let edited = patch(&admin, "/api/devices/1", &json!({"unitId": -1})).await;
+    assert_eq!((edited.status, &edited.json()["field"]), (StatusCode::BAD_REQUEST, &json!("unitId")));
+    let roster = get(&admin, "/api/devices").await.json();
+    assert_eq!(
+        (roster["devices"].as_array().map(Vec::len), roster["connections"].as_array().map(Vec::len)),
+        (Some(1), Some(1))
+    );
+    assert_eq!(roster["connections"][0]["params"]["host"], "127.0.0.1", "no refused edit landed");
+    for end in [0, 247] {
+        let added = post(&admin, "/api/devices", &unit(end)).await;
+        assert_eq!((added.status, &added.json()["unitId"]), (StatusCode::OK, &json!(end)));
+    }
+    drop(admin);
+    core.stop().await;
+}
