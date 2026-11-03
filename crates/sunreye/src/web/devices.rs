@@ -17,7 +17,9 @@ use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, Transport, poll_interval, poll_timeout};
 use crate::sources::{find_profile, installed};
-use crate::store::{ConnectionEdit, ConnectionRow, DeviceEdit, DeviceRow, NewConnection, NewDevice, Removal};
+use crate::store::{
+    ConnectionEdit, ConnectionRow, DeviceEdit, DeviceRow, NewConnection, NewDevice, Removal, first_in_service,
+};
 
 /// The roles an operator may add, as 3.x lists them.
 const ROLES: [&str; 4] = ["inverter", "meter", "charger", "controller"];
@@ -176,6 +178,11 @@ pub struct Removed {
     id: i64,
 }
 
+/// 3.x's refusal to retire or delete the inverter settings' device.
+fn polled() -> ApiError {
+    ApiError::conflict("this device is the one being polled; change the inverter connection first")
+}
+
 fn refused(field: &'static str, message: &str) -> ApiError {
     ApiError::bad_request(format!("{field}: {message}")).on(field)
 }
@@ -274,10 +281,10 @@ impl Context {
 
     fn device(&self, core: &Core, row: DeviceRow, connections: &[ConnectionRow]) -> DeviceView {
         let profile_name = self.profile(core, &row.profile_id).map(|profile| profile.name.clone());
-        let state = match (&row.retired_at, &profile_name) {
-            (Some(_), _) => DeviceState::Retired,
-            (None, Some(_)) => DeviceState::Polling,
-            (None, None) => DeviceState::Idle,
+        let state = match (row.in_service(), &profile_name) {
+            (false, _) => DeviceState::Retired,
+            (true, Some(_)) => DeviceState::Polling,
+            (true, None) => DeviceState::Idle,
         };
         // An unnamed device is its profile's, as 3.x names the device it provisions.
         let name = row.name.or_else(|| profile_name.clone()).unwrap_or_else(|| row.profile_id.clone());
@@ -428,8 +435,12 @@ pub async fn patch(
     ApiJson(patch): ApiJson<DevicePatch>,
 ) -> Result<Json<DeviceView>, ApiError> {
     let id = positive_id(id)?;
-    let current = core.store.devices().await?.into_iter().find(|device| device.id == id);
+    let devices = core.store.devices().await?;
+    let current = devices.iter().find(|device| device.id == id);
     let current = current.ok_or_else(|| ApiError::not_found(format!("device {id} does not exist")))?;
+    if patch.retired == Some(true) && first_in_service(&devices).is_some_and(|first| first.id == id) {
+        return Err(polled());
+    }
     let edit = DeviceEdit {
         name: patch.name.as_deref().map(checked_name).transpose()?,
         role: patch.role.as_deref().map(checked_role).transpose()?,
@@ -475,6 +486,13 @@ pub async fn remove(
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Json<Removed>, ApiError> {
     let id = positive_id(id)?;
+    let devices = core.store.devices().await?;
+    if !devices.iter().any(|device| device.id == id) {
+        return Err(ApiError::not_found(format!("device {id} does not exist")));
+    }
+    if first_in_service(&devices).is_some_and(|first| first.id == id) {
+        return Err(polled());
+    }
     match core.store.remove_device(id).await? {
         Removal::Missing => Err(ApiError::not_found(format!("device {id} does not exist"))),
         Removal::Kept => Err(ApiError::conflict(
@@ -585,7 +603,16 @@ pub async fn remove_connection(
     let id = positive_id(id)?;
     match core.store.remove_connection(id).await? {
         Removal::Missing => Err(ApiError::not_found(format!("connection {id} does not exist"))),
-        Removal::Kept => Err(ApiError::conflict("connection still has devices; remove or move them first")),
+        Removal::Kept => {
+            let devices = core.store.devices().await?;
+            let bound: Vec<String> =
+                devices.iter().filter(|d| d.connection_id == id).map(|d| d.id.to_string()).collect();
+            Err(ApiError::conflict(format!(
+                "connection still has {} device(s): {}",
+                bound.len(),
+                bound.join(", ")
+            )))
+        }
         Removal::Removed => Ok(Json(Removed { ok: true, id })),
     }
 }

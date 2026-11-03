@@ -251,7 +251,7 @@ async fn spawn_devices(
     let mut tasks = JoinSet::new();
     let installed = installed(store).await?;
     let mut polled = Vec::new();
-    for device in store.devices().await?.into_iter().filter(|device| device.retired_at.is_none()) {
+    for device in store.devices().await?.into_iter().filter(DeviceRow::in_service) {
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
                 polled.push(device.id);

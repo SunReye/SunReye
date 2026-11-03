@@ -88,6 +88,18 @@ pub struct DeviceRow {
     pub logger_serial: Option<u32>,
 }
 
+impl DeviceRow {
+    pub fn in_service(&self) -> bool {
+        self.retired_at.is_none()
+    }
+}
+
+/// The device the inverter settings edit and a read without `source` is from. Retiring or deleting it is
+/// refused, so once a device is in service one stays in service.
+pub fn first_in_service(devices: &[DeviceRow]) -> Option<&DeviceRow> {
+    devices.iter().find(|device| device.in_service())
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct NewAccount {
     pub email: String,
@@ -257,24 +269,11 @@ impl Store {
         Ok(row.id)
     }
 
-    /// The one connection of this core: the oldest row.
+    /// The inverter settings' connection: the first in-service device's, else the oldest.
     pub async fn connection(&self) -> Result<Option<ConnectionRow>, StoreError> {
-        let row = sqlx::query!(
-            r#"SELECT id AS "id!", name, transport, host, port, logger_serial FROM connection ORDER BY id LIMIT 1"#
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            Ok(ConnectionRow {
-                id: row.id,
-                name: row.name,
-                transport: row.transport.parse()?,
-                host: row.host,
-                port: port(row.port)?,
-                logger_serial: serial(row.logger_serial)?,
-            })
-        })
-        .transpose()
+        let devices = self.devices().await?;
+        let settings = first_in_service(&devices).map(|device| device.connection_id);
+        Ok(self.connections().await?.into_iter().find(|c| settings.is_none_or(|id| c.id == id)))
     }
 
     /// Edits the core's connection in place, so its device stays attached; adds it when there is none.
@@ -296,11 +295,12 @@ impl Store {
         Ok(existing.id)
     }
 
-    /// Edits the device on the connection in place, so its stored readings stay its own; adds it when
-    /// the connection has none.
+    /// Edits the inverter settings' device in place, so its stored readings stay its own; adds it when
+    /// the connection has none in service.
     pub async fn save_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
         let devices = self.devices().await?;
-        let Some(existing) = devices.iter().find(|d| d.connection_id == device.connection_id) else {
+        let existing = first_in_service(&devices).filter(|d| d.connection_id == device.connection_id);
+        let Some(existing) = existing else {
             return self.add_device(device).await;
         };
         sqlx::query!(

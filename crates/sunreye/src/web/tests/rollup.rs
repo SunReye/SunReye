@@ -508,11 +508,12 @@ async fn a_retired_device_is_read_by_its_source_and_the_default_is_the_first_in_
     let second = add_device(&core, "10.0.0.6").await;
     store(&core, first, &[(BASE - 2 * MINUTE, "pv", 1.0)]).await;
     store(&core, second, &[(BASE - 3 * MINUTE, "pv", 2.0)]).await;
-    let retire = json!({"retired": true});
-    assert_eq!(
-        send(&admin, Method::PATCH, &format!("/api/devices/{first}"), Some(&retire.to_string())).await.status,
-        StatusCode::OK
-    );
+    // The route refuses retiring the first device in service; a store edit reaches the state.
+    let retire = crate::store::DeviceEdit {
+        retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())),
+        ..Default::default()
+    };
+    assert!(core.store.edit_device(first, &retire).await.expect("retire"));
     let read = |who: &str| answer(&admin, format!("metric=pv&bucket=minute&{who}"));
     assert_eq!(
         read(&format!("source={first}")).await,

@@ -306,11 +306,12 @@ async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_read
         .append_minute(second, &crate::samples::ClosedMinute { minute, samples })
         .await
         .expect("append");
-    let retire = json!({"retired": true}).to_string();
-    assert_eq!(
-        send(&admin, Method::PATCH, &format!("/api/devices/{first}"), Some(&retire)).await.status,
-        StatusCode::OK
-    );
+    // The route refuses retiring the first device in service; a store edit reaches the state.
+    let retire = crate::store::DeviceEdit {
+        retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())),
+        ..Default::default()
+    };
+    assert!(core.store.edit_device(first, &retire).await.expect("retire"));
 
     let read = |query: String| {
         let admin = admin.clone();

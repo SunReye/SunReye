@@ -150,18 +150,19 @@ async fn a_device_is_renamed_retired_and_restored_by_id() {
         (StatusCode::OK, &json!("Hybrid"), &json!(7))
     );
 
-    let retired = patch(&admin, "/api/devices/1", &json!({"retired": true})).await.json();
+    post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
+    let retired = patch(&admin, "/api/devices/2", &json!({"retired": true})).await.json();
     assert_eq!(retired["state"], "retired");
     let at: jiff::Timestamp = retired["retiredAt"].as_str().expect("retiredAt").parse().expect("ISO instant");
     let now = jiff::Timestamp::now();
     assert!(at <= now && now.duration_since(at).as_secs() < 60, "{at}");
-    let restored = patch(&admin, "/api/devices/1", &json!({"retired": false})).await.json();
+    let restored = patch(&admin, "/api/devices/2", &json!({"retired": false})).await.json();
     assert_eq!(
         (&restored["state"], &restored["retiredAt"], &restored["name"]),
-        (&json!("polling"), &json!(null), &json!("Hybrid"))
+        (&json!("polling"), &json!(null), &json!("Meter"))
     );
 
-    assert_eq!(patch(&admin, "/api/devices/2", &json!({"name": "x"})).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(patch(&admin, "/api/devices/3", &json!({"name": "x"})).await.status, StatusCode::NOT_FOUND);
     for path in ["/api/devices/abc", "/api/devices/0", "/api/devices/-1"] {
         assert_eq!(
             patch(&admin, path, &json!({"name": "x"})).await.status,
@@ -185,10 +186,11 @@ async fn a_device_is_renamed_retired_and_restored_by_id() {
 #[tokio::test]
 async fn a_device_with_stored_readings_is_refused_deletion_as_3x_refuses_it_and_one_without_is_deleted() {
     let (core, admin) = onboarded("roster-delete", unused_port().await).await;
-    let added = post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await.json();
-    store_a_reading(&core, 1).await;
+    post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
+    let added = post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 3)).await.json();
+    store_a_reading(&core, 2).await;
 
-    let refused = delete(&admin, "/api/devices/1").await;
+    let refused = delete(&admin, "/api/devices/2").await;
     assert_eq!(
         (refused.status, refused.json()),
         (
@@ -196,7 +198,7 @@ async fn a_device_with_stored_readings_is_refused_deletion_as_3x_refuses_it_and_
             json!({"error": "this device has recorded history; retire it instead to keep that history", "field": "history"})
         )
     );
-    assert_eq!(core.store.readings(1, 0, i64::MAX).await.expect("readings").len(), 1);
+    assert_eq!(core.store.readings(2, 0, i64::MAX).await.expect("readings").len(), 1);
     let id = added["id"].as_i64().expect("id");
     let deleted = delete(&admin, &format!("/api/devices/{id}")).await;
     assert_eq!((deleted.status, deleted.json()), (StatusCode::OK, json!({"ok": true, "id": id})));
@@ -207,7 +209,7 @@ async fn a_device_with_stored_readings_is_refused_deletion_as_3x_refuses_it_and_
         .iter()
         .map(|d| d["id"].clone())
         .collect();
-    assert_eq!(ids, [json!(1)]);
+    assert_eq!(ids, [json!(1), json!(2)]);
     drop(admin);
     core.stop().await;
 }
@@ -231,11 +233,13 @@ async fn a_connection_is_edited_in_place_and_removed_only_once_no_device_is_on_i
         StatusCode::NOT_FOUND
     );
 
-    patch(&admin, "/api/devices/1", &json!({"retired": true})).await;
+    post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
+    patch(&admin, "/api/devices/2", &json!({"retired": true})).await;
+    let held = delete(&admin, "/api/connections/1").await;
     assert_eq!(
-        delete(&admin, "/api/connections/1").await.status,
-        StatusCode::CONFLICT,
-        "a retired device holds it"
+        (held.status, held.json()),
+        (StatusCode::CONFLICT, json!({"error": "connection still has 2 device(s): 1, 2"})),
+        "a retired device holds it too"
     );
     let empty = post(
         &admin,
@@ -254,6 +258,49 @@ async fn a_connection_is_edited_in_place_and_removed_only_once_no_device_is_on_i
             .status,
         StatusCode::BAD_REQUEST
     );
+    drop(admin);
+    core.stop().await;
+}
+
+const POLLED: &str = "this device is the one being polled; change the inverter connection first";
+
+#[tokio::test]
+async fn the_device_the_inverter_settings_edit_is_refused_retirement_and_deletion_as_3x_refuses_it() {
+    let (core, admin) = onboarded("roster-polled", unused_port().await).await;
+    for answer in [
+        patch(&admin, "/api/devices/1", &json!({"retired": true})).await,
+        delete(&admin, "/api/devices/1").await,
+    ] {
+        assert_eq!((answer.status, answer.json()), (StatusCode::CONFLICT, json!({"error": POLLED})));
+    }
+    let device = &get(&admin, "/api/devices").await.json()["devices"][0];
+    assert_eq!((&device["id"], &device["state"]), (&json!(1), &json!("polling")));
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn the_inverter_settings_edit_the_device_a_read_without_source_is_from() {
+    let (core, admin) = open(&dir("roster-settings-device")).await;
+    let spare = json!({"name": "Roof", "kind": "modbus", "params": modbus("roof", 502)});
+    assert_eq!(post(&admin, "/api/connections", &spare).await.status, StatusCode::OK);
+    let create = json!({"create": {"name": "Garage", "kind": "modbus", "params": modbus("garage", 502)}});
+    let mut body = new_device(&create, "Hybrid", 1);
+    body["role"] = json!("inverter");
+    assert_eq!(post(&admin, "/api/devices", &body).await.status, StatusCode::OK);
+
+    let port = unused_port().await;
+    put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
+    assert_eq!(put(&admin, "/api/settings/inverter", &connection(port)).await.status, StatusCode::OK);
+    let roster = get(&admin, "/api/devices").await.json();
+    let devices: Vec<(&Value, &Value, &Value)> = roster["devices"]
+        .as_array()
+        .expect("devices")
+        .iter()
+        .map(|d| (&d["id"], &d["connection"]["name"], &d["connection"]["params"]["port"]))
+        .collect();
+    assert_eq!(devices, [(&json!(1), &json!("Garage"), &json!(port))]);
+    assert_eq!(roster["connections"][0]["params"]["host"], "roof", "the spare stays as it was");
     drop(admin);
     core.stop().await;
 }

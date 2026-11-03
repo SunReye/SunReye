@@ -11,7 +11,7 @@ use super::{ApiError, ApiQuery, ErrorBody};
 use crate::recent::{Recent, RecentError, Window, fold};
 use crate::run::Core;
 use crate::samples::with_unstored;
-use crate::store::{Store, StoreError};
+use crate::store::{Store, StoreError, first_in_service};
 
 const DEFAULT_SECONDS: u32 = 300;
 const MAX_SECONDS: u32 = 3600;
@@ -95,9 +95,7 @@ pub async fn recent(
 pub(super) async fn source_device(store: &Store, source: Option<&str>) -> Result<Option<i64>, StoreError> {
     let devices = store.devices().await?;
     Ok(match source.filter(|source| !source.is_empty()) {
-        None | Some("plant") => {
-            devices.iter().find(|device| device.retired_at.is_none()).map(|device| device.id)
-        }
+        None | Some("plant") => first_in_service(&devices).map(|device| device.id),
         Some(id) => devices.iter().find(|device| device.id.to_string() == id).map(|device| device.id),
     })
 }
