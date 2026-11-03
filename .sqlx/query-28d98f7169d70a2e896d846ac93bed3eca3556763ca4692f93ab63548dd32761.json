@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM reading_minute WHERE device_id = ?)\n                      OR EXISTS (SELECT 1 FROM rollup WHERE device_id = ?) AS \"history!: bool\",\n                      EXISTS (SELECT 1 FROM device WHERE id = ?) AS \"found!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "history!: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "found!: bool",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "28d98f7169d70a2e896d846ac93bed3eca3556763ca4692f93ab63548dd32761"
+}

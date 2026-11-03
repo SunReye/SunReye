@@ -13,9 +13,11 @@ use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
 mod accounts;
+mod roster;
 mod tiers;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
+pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
 pub use self::tiers::BucketWindow;
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
@@ -61,6 +63,7 @@ pub struct NewDevice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionRow {
     pub id: i64,
+    pub name: String,
     pub transport: Transport,
     pub host: String,
     pub port: u16,
@@ -74,10 +77,27 @@ pub struct DeviceRow {
     pub connection_id: i64,
     pub profile_id: String,
     pub unit_id: u8,
+    /// None: shown by the profile's name.
+    pub name: Option<String>,
+    pub role: String,
+    /// UTC ISO 8601 while retired: kept with its history, no longer polled.
+    pub retired_at: Option<String>,
     pub transport: Transport,
     pub host: String,
     pub port: u16,
     pub logger_serial: Option<u32>,
+}
+
+impl DeviceRow {
+    pub fn in_service(&self) -> bool {
+        self.retired_at.is_none()
+    }
+}
+
+/// The device the inverter settings edit and a read without `source` is from. Retiring or deleting it is
+/// refused, so once a device is in service one stays in service.
+pub fn first_in_service(devices: &[DeviceRow]) -> Option<&DeviceRow> {
+    devices.iter().find(|device| device.in_service())
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -235,37 +255,16 @@ impl Store {
         Ok(row)
     }
 
+    /// A connection under the name an unnamed one has (migration 0007).
     pub async fn add_connection(&self, connection: &NewConnection) -> Result<i64, StoreError> {
-        let transport = connection.transport.as_str();
-        let row = sqlx::query!(
-            r#"INSERT INTO connection (transport, host, port, logger_serial) VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
-            transport,
-            connection.host,
-            connection.port,
-            connection.logger_serial
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(row.id)
+        self.create_connection("Inverter", connection).await
     }
 
-    /// The one connection of this core: the oldest row.
+    /// The inverter settings' connection: the first in-service device's, else the oldest.
     pub async fn connection(&self) -> Result<Option<ConnectionRow>, StoreError> {
-        let row = sqlx::query!(
-            r#"SELECT id AS "id!", transport, host, port, logger_serial FROM connection ORDER BY id LIMIT 1"#
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            Ok(ConnectionRow {
-                id: row.id,
-                transport: row.transport.parse()?,
-                host: row.host,
-                port: u16::try_from(row.port).map_err(|_| StoreError::Corrupt("port"))?,
-                logger_serial: serial(row.logger_serial)?,
-            })
-        })
-        .transpose()
+        let devices = self.devices().await?;
+        let settings = first_in_service(&devices).map(|device| device.connection_id);
+        Ok(self.connections().await?.into_iter().find(|c| settings.is_none_or(|id| c.id == id)))
     }
 
     /// Edits the core's connection in place, so its device stays attached; adds it when there is none.
@@ -287,11 +286,12 @@ impl Store {
         Ok(existing.id)
     }
 
-    /// Edits the device on the connection in place, so its stored readings stay its own; adds it when
-    /// the connection has none.
+    /// Edits the inverter settings' device in place, so its stored readings stay its own; adds it when
+    /// the connection has none in service.
     pub async fn save_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
         let devices = self.devices().await?;
-        let Some(existing) = devices.iter().find(|d| d.connection_id == device.connection_id) else {
+        let existing = first_in_service(&devices).filter(|d| d.connection_id == device.connection_id);
+        let Some(existing) = existing else {
             return self.add_device(device).await;
         };
         sqlx::query!(
@@ -305,22 +305,16 @@ impl Store {
         Ok(existing.id)
     }
 
+    /// An unnamed inverter.
     pub async fn add_device(&self, device: &NewDevice) -> Result<i64, StoreError> {
-        let row = sqlx::query!(
-            r#"INSERT INTO device (connection_id, profile_id, unit_id) VALUES (?, ?, ?) RETURNING id AS "id!""#,
-            device.connection_id,
-            device.profile_id,
-            device.unit_id
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(row.id)
+        self.create_device(device, None, "inverter").await
     }
 
     pub async fn devices(&self) -> Result<Vec<DeviceRow>, StoreError> {
         let rows = sqlx::query!(
-            r#"SELECT device.id AS "id!", device.connection_id, device.profile_id, device.unit_id,
-                      connection.transport, connection.host, connection.port, connection.logger_serial
+            r#"SELECT device.id AS "id!", device.connection_id, device.profile_id, device.unit_id, device.name,
+                      device.role, device.retired_at, connection.transport, connection.host, connection.port,
+                      connection.logger_serial
                FROM device JOIN connection ON connection.id = device.connection_id
                ORDER BY device.id"#
         )
@@ -333,9 +327,12 @@ impl Store {
                     connection_id: row.connection_id,
                     profile_id: row.profile_id,
                     unit_id: u8::try_from(row.unit_id).map_err(|_| StoreError::Corrupt("unit id"))?,
+                    name: row.name,
+                    role: row.role,
+                    retired_at: row.retired_at,
                     transport: row.transport.parse()?,
                     host: row.host,
-                    port: u16::try_from(row.port).map_err(|_| StoreError::Corrupt("port"))?,
+                    port: port(row.port)?,
                     logger_serial: serial(row.logger_serial)?,
                 })
             })
@@ -436,6 +433,10 @@ impl Minutes {
             Err(error) => vec![Err(error)],
         })
     }
+}
+
+fn port(stored: i64) -> Result<u16, StoreError> {
+    u16::try_from(stored).map_err(|_| StoreError::Corrupt("port"))
 }
 
 fn serial(stored: Option<i64>) -> Result<Option<u32>, StoreError> {
@@ -652,6 +653,12 @@ mod tests {
             rows.push("INSERT INTO device (id, connection_id, profile_id, unit_id) VALUES (4, 3, 'deye-sg05lp3', 1)");
             rows.push("INSERT INTO reading_minute (device_id, minute, samples) VALUES (4, 100, x'0c')");
         }
+        if version >= 6 {
+            rows.push(
+                "INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)
+                 VALUES (0, 6000000000, 1, 1, 50, 60, 40, 6000000000, 40, 6059000000, 60, 2950), (1, 3600000000, 3, 1, 7, 7, 7, 3600000000, 7, 3600000000, 7, 0)",
+            );
+        }
         for row in rows {
             sqlx::query(row).execute(&pool).await.expect("row");
         }
@@ -704,7 +711,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn after_the_transport_migration_the_keys_still_hold_and_cascade() {
+    async fn after_the_transport_migration_the_keys_still_hold() {
         let pool = populated_at_the_first_schema().await;
         migrate(&pool, &sqlx::migrate!("./migrations")).await.expect("migrate");
 
@@ -718,10 +725,11 @@ mod tests {
         let orphan = "INSERT INTO device (connection_id, profile_id, unit_id) VALUES (99, 'p', 1)";
         assert!(sqlx::query(orphan).execute(&pool).await.is_err(), "a device needs its connection");
 
-        sqlx::query("DELETE FROM connection WHERE id = 2").execute(&pool).await.expect("delete");
-        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (2, 1));
-        sqlx::query("DELETE FROM connection WHERE id = 1").execute(&pool).await.expect("delete");
-        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (0, 0));
+        for connection in [1, 2] {
+            let delete = sqlx::query("DELETE FROM connection WHERE id = ?").bind(connection);
+            assert!(delete.execute(&pool).await.is_err(), "connection {connection} has devices");
+        }
+        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (3, 2));
     }
 
     #[tokio::test]
@@ -807,7 +815,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn after_the_solarman_migration_the_keys_still_hold_and_cascade() {
+    async fn after_the_solarman_migration_the_keys_still_hold() {
         let pool = migrated_from_the_second_schema().await;
 
         let enforced: i64 = sqlx::query_scalar("PRAGMA foreign_keys").fetch_one(&pool).await.expect("pragma");
@@ -820,10 +828,11 @@ mod tests {
         let orphan = "INSERT INTO device (connection_id, profile_id, unit_id) VALUES (99, 'p', 1)";
         assert!(sqlx::query(orphan).execute(&pool).await.is_err(), "a device needs its connection");
 
-        sqlx::query("DELETE FROM connection WHERE id = 3").execute(&pool).await.expect("delete");
-        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (3, 2));
-        sqlx::query("DELETE FROM connection WHERE id = 1").execute(&pool).await.expect("delete");
-        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (1, 1));
+        for connection in [1, 3] {
+            let delete = sqlx::query("DELETE FROM connection WHERE id = ?").bind(connection);
+            assert!(delete.execute(&pool).await.is_err(), "connection {connection} has devices");
+        }
+        assert_eq!((count(&pool, "device").await, count(&pool, "reading_minute").await), (4, 3));
     }
 
     #[tokio::test]
@@ -838,6 +847,74 @@ mod tests {
         assert_eq!(enforced, 1, "keys are back on after a failed migration");
         assert_eq!(count(&pool, "connection").await, 3, "nothing of the failed migration is kept");
         assert_eq!(count(&pool, "device").await, 4);
+    }
+
+    type DeviceRowTuple = (i64, i64, String, i64, Option<String>, String, Option<String>);
+
+    #[tokio::test]
+    async fn the_retire_migration_keeps_every_device_reading_and_rollup_of_a_populated_database() {
+        let pool = populated_at(6).await;
+        migrate(&pool, &sqlx::migrate!("./migrations")).await.expect("migrate");
+
+        let devices: Vec<DeviceRowTuple> = sqlx::query_as(
+            "SELECT id, connection_id, profile_id, unit_id, name, role, retired_at FROM device ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("devices");
+        let in_service = |id, connection, profile: &str, unit| {
+            (id, connection, profile.to_owned(), unit, None, "inverter".to_owned(), None)
+        };
+        assert_eq!(
+            devices,
+            [
+                in_service(1, 1, "deye-sg01hp3", 1),
+                in_service(2, 1, "deye-sg05lp3", 2),
+                in_service(3, 2, "deye-sg05lp3", 0),
+                in_service(4, 3, "deye-sg05lp3", 1),
+            ]
+        );
+        let names: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM connection ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .expect("names");
+        assert_eq!(names, [(1, "Inverter".into()), (2, "Inverter".into()), (3, "Inverter".into())]);
+        let rollups: Vec<(i64, i64, i64, f64)> =
+            sqlx::query_as("SELECT tier, start_us, device_id, avg FROM rollup ORDER BY device_id")
+                .fetch_all(&pool)
+                .await
+                .expect("rollups");
+        assert_eq!(rollups, [(0, 6_000_000_000, 1, 50.0), (1, 3_600_000_000, 3, 7.0)]);
+        assert_eq!(count(&pool, "reading_minute").await, 3);
+    }
+
+    #[tokio::test]
+    async fn after_the_retire_migration_a_device_with_history_cannot_be_deleted_and_one_without_can() {
+        let pool = populated_at(6).await;
+        migrate(&pool, &sqlx::migrate!("./migrations")).await.expect("migrate");
+        let broken: Vec<(String,)> = sqlx::query_as("SELECT \"table\" FROM pragma_foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .expect("check");
+        assert_eq!(broken, []);
+
+        sqlx::query("DELETE FROM reading_minute WHERE device_id = 3").execute(&pool).await.expect("delete");
+        for (device, why) in [(1, "readings and a rollup"), (3, "a rollup"), (4, "readings")] {
+            let delete = sqlx::query("DELETE FROM device WHERE id = ?").bind(device);
+            assert!(delete.execute(&pool).await.is_err(), "device {device} has {why}");
+        }
+        sqlx::query("DELETE FROM device WHERE id = 2").execute(&pool).await.expect("no history");
+        assert_eq!(
+            (
+                count(&pool, "device").await,
+                count(&pool, "reading_minute").await,
+                count(&pool, "rollup").await
+            ),
+            (3, 2, 2)
+        );
+        let refused =
+            "INSERT INTO device (connection_id, profile_id, unit_id, role) VALUES (1, 'p', 1, 'kettle')";
+        assert!(sqlx::query(refused).execute(&pool).await.is_err(), "an unknown role");
     }
 
     #[tokio::test]

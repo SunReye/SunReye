@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO device (connection_id, profile_id, unit_id, name, role) VALUES (?, ?, ?, ?, ?)\n               RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "4918381ec9caa7860bc1365ad0f18e0e490c65be70406115dd7a8964bf532cd0"
+}

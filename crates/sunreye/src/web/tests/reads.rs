@@ -296,6 +296,40 @@ async fn a_minute_written_and_released_while_the_window_is_read_is_served() {
 }
 
 #[tokio::test]
+async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_reads_nothing() {
+    let (core, admin) = clocked("recent-source", &[reading(NOW - 10_000, "pv", 1.0)]).await;
+    let first = core.store.devices().await.expect("devices")[0].id;
+    let second = NewDevice { connection_id: 1, profile_id: PROFILE.into(), unit_id: 2 };
+    let second = core.store.add_device(&second).await.expect("device");
+    let (minute, samples) = reading(NOW - 20_000, "pv", 2.0);
+    core.store
+        .append_minute(second, &crate::samples::ClosedMinute { minute, samples })
+        .await
+        .expect("append");
+    // The route refuses retiring the first device in service; a store edit reaches the state.
+    let retire = crate::store::DeviceEdit {
+        retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())),
+        ..Default::default()
+    };
+    assert!(core.store.edit_device(first, &retire).await.expect("retire"));
+
+    let read = |query: String| {
+        let admin = admin.clone();
+        async move { get(&admin, &format!("/api/history/recent?seconds=60&{query}")).await.json() }
+    };
+    let own = |offset: i64, value: f64| json!({"t0": NOW - 60_000 + offset, "step": 1, "metrics": {"pv": {"o": [0], "v": [value]}}});
+    assert_eq!(read(format!("source={first}")).await, own(50_000, 1.0), "retired, still read");
+    assert_eq!(read(format!("source={second}")).await, own(40_000, 2.0));
+    assert_eq!(read(String::new()).await, own(40_000, 2.0), "no source: the first in service");
+    assert_eq!(read("source=plant".into()).await, own(40_000, 2.0));
+    for unknown in ["source=99", "source=x", "source=-1"] {
+        assert_eq!(read(unknown.into()).await, json!({"t0": 0, "step": 1, "metrics": {}}), "{unknown}");
+    }
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn a_window_with_no_query_reaches_back_300_seconds() {
     let readings = [
         reading(NOW - 301_000, "pv", 1.0),

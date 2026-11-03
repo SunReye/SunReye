@@ -136,7 +136,7 @@ impl Core {
         Ok(find_profile(&self.bundle, &installed, id))
     }
 
-    /// Polls the devices the store describes now; called after every settings change.
+    /// Polls the in-service devices the store describes now; called after every settings or roster change.
     pub async fn apply(&self) -> Result<(), StoreError> {
         self.polling.restart(&self.store, &self.bundle, &self.live, &self.unstored).await
     }
@@ -251,7 +251,7 @@ async fn spawn_devices(
     let mut tasks = JoinSet::new();
     let installed = installed(store).await?;
     let mut polled = Vec::new();
-    for device in store.devices().await? {
+    for device in store.devices().await?.into_iter().filter(DeviceRow::in_service) {
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
                 polled.push(device.id);
@@ -410,7 +410,7 @@ mod tests {
     use crate::rollup::Tier;
     use crate::samples::{MINUTE_MS, Sample, minute_of};
     use crate::settings::INTERVAL_KEY;
-    use crate::store::{NewConnection, NewDevice};
+    use crate::store::{DeviceEdit, NewConnection, NewDevice};
     use crate::web::Config;
 
     fn dir(name: &str) -> PathBuf {
@@ -488,6 +488,139 @@ mod tests {
             got.sort_by(|a, b| a.0.cmp(&b.0));
             assert_eq!(got, want);
         }
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    fn oracle_case(profile: &str) -> sunreye_sim::ProfileCase {
+        let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+        profile_case(&oracle, profile, "ramp").expect("case")
+    }
+
+    /// A second device on a connection of its own, in the store `seed` wrote.
+    async fn seed_another(dir: &Path, port: u16, profile: &str) -> i64 {
+        let store = Store::open(dir).await.expect("store");
+        let endpoint =
+            NewConnection { transport: Transport::Tcp, host: "127.0.0.1".into(), port, logger_serial: None };
+        let connection = store.add_connection(&endpoint).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: profile.into(), unit_id: 1 };
+        let id = store.add_device(&device).await.expect("device");
+        store.close().await;
+        id
+    }
+
+    /// Readings of `device` polled so far, stored or held.
+    async fn polled(core: &Core, device: i64) -> usize {
+        let stored = core.store.readings(device, 0, i64::MAX).await.expect("readings");
+        let held = core.unstored.held(device);
+        stored.len() + held.iter().filter(|s| !stored.iter().any(|t| t.at_ms == s.at_ms)).count()
+    }
+
+    /// Waits until `device` has `count` readings, failing after 20 s. Counted in the core, not at a
+    /// simulator: a parallel test's core may still dial a port the simulator reused.
+    async fn until_polled(core: &Core, device: i64, count: usize) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while polled(core, device).await < count {
+            assert!(Instant::now() < deadline, "device {device} not polled {count} times");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    fn sorted(values: &[(String, f64)]) -> Vec<(String, f64)> {
+        let mut values = values.to_vec();
+        values.sort_by(|a, b| a.0.cmp(&b.0));
+        values
+    }
+
+    /// Every stored reading, minute bucket and the open hour of `device` hold the case's decoded value.
+    async fn assert_holds(store: &Store, device: i64, case: &sunreye_sim::ProfileCase) {
+        let want: Vec<(String, f64)> = case.readings.clone().into_iter().collect();
+        let samples = store.readings(device, 0, i64::MAX).await.expect("readings");
+        assert!(!samples.is_empty(), "device {device} stored readings");
+        assert!(samples.iter().all(|sample| sorted(&sample.values) == want), "device {device} readings");
+        for (metric, value) in &want {
+            assert_rolled_up(store, device, metric, *value).await;
+        }
+    }
+
+    async fn assert_rolled_up(store: &Store, device: i64, metric: &str, value: f64) {
+        let all = crate::store::BucketWindow { from: Timestamp::MIN, to: Timestamp::MAX, limit: 50_000 };
+        let minutes = store.buckets(Tier::Minute, device, metric).await.expect("minutes");
+        let hours = store.buckets_between(Tier::Hour, device, metric, all).await.expect("hours");
+        assert!(!minutes.is_empty() && !hours.is_empty(), "device {device} {metric} rolled up");
+        for bucket in minutes.iter().chain(&hours) {
+            assert_eq!((bucket.max, bucket.min), (value, value), "{device} {metric}");
+            // A time-weighted mean of one value is that value to the last few bits.
+            assert!((bucket.avg - value).abs() <= 1e-12 * value.abs(), "{device} {metric}: {}", bucket.avg);
+        }
+    }
+
+    #[tokio::test]
+    async fn two_devices_on_two_connections_poll_store_and_roll_up_independently() {
+        let (low, high) = (oracle_case("deye-sg05lp3"), oracle_case("deye-sg01hp3"));
+        let low_sim = Simulator::start(low.registers.clone(), &[1]).await.expect("sim");
+        let high_sim = Simulator::start(high.registers.clone(), &[1]).await.expect("sim");
+        let dir = dir("two-devices");
+        let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
+        let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
+        let core = Core::open(&dir).await.expect("core");
+        until_polled(&core, first, 2).await;
+        until_polled(&core, second, 2).await;
+
+        low_sim.stop();
+        // A poll in flight when the simulator stopped may still land; the other's next polls outlast it.
+        until_polled(&core, second, polled(&core, second).await + 3).await;
+        let (first_at_stop, second_at_stop) = (polled(&core, first).await, polled(&core, second).await);
+        until_polled(&core, second, second_at_stop + 5).await;
+        assert_eq!(polled(&core, first).await, first_at_stop, "the stopped device gains nothing");
+        assert!(polled(&core, second).await > second_at_stop, "the other keeps growing");
+        core.stop().await;
+
+        let store = Store::open(&dir).await.expect("store");
+        assert_eq!(store.readings(first, 0, i64::MAX).await.expect("readings").len(), first_at_stop);
+        assert_holds(&store, first, &low).await;
+        assert_holds(&store, second, &high).await;
+        store.close().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    fn members(core: &Core) -> Vec<String> {
+        let frame = core.live.subscribe().plant().map(|text| text.to_string()).unwrap_or_default();
+        let frame: serde_json::Value = serde_json::from_str(&frame).unwrap_or_default();
+        let members = frame["data"]["members"].as_array().cloned().unwrap_or_default();
+        members.iter().filter_map(|m| m.as_str().map(str::to_owned)).collect()
+    }
+
+    #[tokio::test]
+    async fn a_retired_device_is_not_polled_and_leaves_the_plant_and_a_restored_one_returns() {
+        let case = oracle_case("deye-sg05lp3");
+        let (kept_sim, retired_sim) = (
+            Simulator::start(case.registers.clone(), &[1]).await.expect("sim"),
+            Simulator::start(case.registers.clone(), &[1]).await.expect("sim"),
+        );
+        let dir = dir("retired");
+        let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
+        let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
+        let core = Core::open(&dir).await.expect("core");
+        until_polled(&core, retired, 2).await;
+
+        let retire =
+            DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
+        core.store.edit_device(retired, &retire).await.expect("retire");
+        core.apply().await.expect("apply");
+        let asked = polled(&core, retired).await;
+        until_polled(&core, kept, polled(&core, kept).await + 5).await;
+        assert_eq!(polled(&core, retired).await, asked, "a retired device is not polled");
+        assert_eq!(members(&core), [kept.to_string()]);
+        assert!(
+            !core.store.readings(retired, 0, i64::MAX).await.expect("readings").is_empty(),
+            "history kept"
+        );
+
+        let restore = DeviceEdit { retired_at: Some(None), ..DeviceEdit::default() };
+        core.store.edit_device(retired, &restore).await.expect("restore");
+        core.apply().await.expect("apply");
+        until_polled(&core, retired, asked + 2).await;
+        core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 

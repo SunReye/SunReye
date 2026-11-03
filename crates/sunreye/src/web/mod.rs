@@ -3,6 +3,7 @@
 mod api_keys;
 mod assets;
 mod auth;
+mod devices;
 mod history;
 mod inverter;
 mod kiosk;
@@ -112,6 +113,15 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::test))
         .routes(routes!(kiosk::switch))
         .merge(profile_settings())
+        .merge(roster())
+}
+
+fn roster() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(devices::list, devices::add))
+        .routes(routes!(devices::patch, devices::remove))
+        .routes(routes!(devices::add_connection))
+        .routes(routes!(devices::patch_connection, devices::remove_connection))
 }
 
 fn profile_settings() -> OpenApiRouter<Arc<Core>> {
@@ -160,51 +170,66 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
     pub error: String,
+    /// The request field the refusal concerns, when the client acts on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<&'static str>,
 }
 
 #[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     message: String,
+    field: Option<&'static str>,
 }
 
 impl ApiError {
+    fn new(status: StatusCode, message: impl Into<String>) -> Self {
+        Self { status, message: message.into(), field: None }
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::BAD_REQUEST, message: message.into() }
+        Self::new(StatusCode::BAD_REQUEST, message)
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::UNAUTHORIZED, message: message.into() }
+        Self::new(StatusCode::UNAUTHORIZED, message)
     }
 
     pub fn forbidden(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::FORBIDDEN, message: message.into() }
+        Self::new(StatusCode::FORBIDDEN, message)
     }
 
     pub fn not_found(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::NOT_FOUND, message: message.into() }
+        Self::new(StatusCode::NOT_FOUND, message)
     }
 
     pub fn payload_too_large(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
+        Self::new(StatusCode::PAYLOAD_TOO_LARGE, message)
     }
 
     pub fn unavailable(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::SERVICE_UNAVAILABLE, message: message.into() }
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, message)
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::CONFLICT, message: message.into() }
+        Self::new(StatusCode::CONFLICT, message)
     }
 
     pub fn internal() -> Self {
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: "internal error".into() }
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+    }
+
+    /// Names the request field the refusal concerns.
+    #[must_use]
+    pub const fn on(mut self, field: &'static str) -> Self {
+        self.field = Some(field);
+        self
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(ErrorBody { error: self.message })).into_response()
+        (self.status, Json(ErrorBody { error: self.message, field: self.field })).into_response()
     }
 }
 
