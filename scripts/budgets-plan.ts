@@ -18,12 +18,14 @@ export const LOGIN_READINGS = 300;
 export const POLL_WARMUP = 120;
 /** Poll readings fitted: a one-time step of S reads as at most 3S/(2n) per poll over n readings. */
 export const POLL_READINGS = 32;
-/** Growth in one cycle that still counts as flat. */
+/** Growth in one cycle above which a reading is a step that moves the window: twice the poll budget, far under the 0.3 MiB smallest boot step. */
 const SETTLE_STEP = 64 * KIB;
-/** Cycles past the warm-up the window may move for a step; a leak steps every time. */
-const SETTLE_LIMIT = 64;
+/** Flat readings a window needs before it counts: a leak stepping every 32 to 40 cycles shows a step inside 64. */
+const SETTLE_RUN = 2 * POLL_READINGS;
+/** Cycles past the warm-up the window may move for a step; the soak stays at 216 readings. */
+const SETTLE_LIMIT = 32;
 /** Readings the longest poll phase takes. */
-export const POLL_SAMPLES = POLL_WARMUP + SETTLE_LIMIT + POLL_READINGS;
+export const POLL_SAMPLES = POLL_WARMUP + SETTLE_LIMIT + SETTLE_RUN;
 /** The soak `scripts/ci` runs; a long soak passes `--logins`. */
 const DEFAULT_LOGINS = WARMUP_LOGINS + LOGIN_READINGS;
 
@@ -145,9 +147,10 @@ export function loginPhase(readings: number[]): Trend {
 
 /**
  * The reading the poll window opens on: the first at or after `POLL_WARMUP` followed by
- * `POLL_READINGS` with no step above `SETTLE_STEP`, so a boot step that comes late under load
- * moves the window rather than reading as growth. Past `POLL_WARMUP + SETTLE_LIMIT` the window
- * opens anyway: it only moves, it still measures. Undefined while the readings cannot tell yet.
+ * `SETTLE_RUN` with no step above `SETTLE_STEP`, so a boot step that comes late under load
+ * moves the window rather than reading as growth. A leak that grows in batches steps again
+ * inside the run, so it never settles; from `POLL_WARMUP + SETTLE_LIMIT` the window opens
+ * anyway, on steps it measures. Undefined while the readings cannot tell yet.
  */
 export function pollWindowStart(readings: number[]): number | undefined {
   let lastStep = 0;
@@ -155,7 +158,7 @@ export function pollWindowStart(readings: number[]): number | undefined {
     if (readings[i]! - readings[i - 1]! > SETTLE_STEP) lastStep = i;
     const start = Math.max(POLL_WARMUP, lastStep);
     if (start >= POLL_WARMUP + SETTLE_LIMIT) return POLL_WARMUP + SETTLE_LIMIT;
-    if (i === start + POLL_READINGS - 1) return start;
+    if (i === start + SETTLE_RUN - 1) return start;
   }
   return undefined;
 }

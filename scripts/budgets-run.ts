@@ -232,7 +232,7 @@ export async function run(logins: number): Promise<number> {
     log(`signing in ${logins} times, fitting the last ${LOGIN_READINGS} after ${WARMUP_LOGINS}`);
     const loginTrend = loginPhase(await soakLogins(session, core.pid, logins));
     log(
-      `holding for up to ${POLL_SAMPLES} poll cycles, fitting ${POLL_READINGS} in a row without a step from cycle ${POLL_WARMUP} on`,
+      `holding for up to ${POLL_SAMPLES} poll cycles, fitting ${POLL_READINGS} from the first settled cycle after ${POLL_WARMUP}`,
     );
     const feed = await openFeed(session);
     const pollReadings = await soakPolls(sim.sim, core.pid).finally(() => feed.socket.close());
