@@ -9,6 +9,7 @@
 	import type { RegisteredProfile } from '$lib/components/settings/profile-types';
 	import ActivateStep from '$lib/components/setup/activate-step.svelte';
 	import ProfileStep from '$lib/components/setup/profile-step.svelte';
+	import { keptSelection } from '$lib/components/setup/profile-selection';
 	import SetupFooter from '$lib/components/setup/setup-footer.svelte';
 	import SetupShell from '$lib/components/setup/setup-shell.svelte';
 	import { firstRunGate } from '$lib/setup';
@@ -65,6 +66,11 @@
 		await loadRegistered();
 	}
 
+	async function onExternalRemoved() {
+		await loadRegistered();
+		selectedId = keptSelection(registered, selectedId);
+	}
+
 	async function activate() {
 		if (!selectedId) return;
 		activating = true;
@@ -87,7 +93,7 @@
 
 <SetupShell title={m.setup_title()} subtitle={m.setup_subtitle()} {step}>
 	{#if step === 'profile'}
-		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} />
+		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} {onExternalRemoved} />
 	{:else if step === 'connect'}
 		<InverterForm bind:this={connectForm} profileId={testProfileId} wizard />
 	{:else}
