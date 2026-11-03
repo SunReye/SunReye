@@ -39,6 +39,5 @@ NixOS channel.
   bcrypt needs about 4 KiB per check. No Argon2id hash shipped, so none is migrated.
 - Imported: daily and hourly tiers in full, minute and raw up to the target's retention.
 - 4.0 is beta (beta channel on every target) once: oracle fixture parity, route smoke and e2e journeys
-  pass against the Rust binary; a production 3.x archive imports with manifest row counts matching; a
-  72-hour read-only soak against a live plant stays within budget with no gaps; and the SPA has no dead
-  controls.
+  pass against the Rust binary; a production 3.x archive imports with manifest row counts matching; and the
+  SPA has no dead controls.
