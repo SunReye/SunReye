@@ -86,6 +86,27 @@ test("a source already listed is refused", async () => {
   expect(onAdd).not.toHaveBeenCalled();
 });
 
+test("the same base URL under another index path is a different source", async () => {
+  const onAdd = vi.fn();
+  render(ProfileSourcesEditor, { ...props, sources: [OFFICIAL], onAdd });
+  await base().fill(OFFICIAL.baseUrl);
+  await index().fill("beta/index.json");
+  await add().click();
+  expect(onAdd).toHaveBeenCalledExactlyOnceWith({
+    baseUrl: OFFICIAL.baseUrl,
+    indexPath: "beta/index.json",
+  });
+  await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+});
+
+test("the same index path on another base URL is a different source", async () => {
+  const onAdd = vi.fn();
+  render(ProfileSourcesEditor, { ...props, sources: [OFFICIAL], onAdd });
+  await base().fill("https://example.org/profiles/");
+  await add().click();
+  expect(onAdd).toHaveBeenCalledOnce();
+});
+
 test("a later edit clears the earlier refusal", async () => {
   render(ProfileSourcesEditor, props);
   await base().fill("http://example.org/");
