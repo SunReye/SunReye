@@ -320,15 +320,17 @@ async fn a_device_with_readings_held_for_the_open_minute_is_refused_deletion() {
 #[tokio::test]
 async fn a_connection_edit_refuses_a_poll_timing_other_than_the_cores_and_accepts_it_unchanged() {
     let (core, admin) = onboarded("roster-timing", unused_port().await).await;
-    let stated = [2000, 0, -1].map(|v| ("timeoutMs", v)).into_iter();
-    for (key, value) in stated.chain([5000, 0, -1].map(|v| ("pollIntervalMs", v))) {
+    let stated = [json!(2000), json!(0), json!(-1), json!(null)].map(|v| ("timeoutMs", v)).into_iter();
+    for (key, value) in
+        stated.chain([json!(5000), json!(0), json!(-1), json!(null)].map(|v| ("pollIntervalMs", v)))
+    {
         let mut params = modbus("gw", 1502);
-        params[key] = json!(value);
+        params[key] = value.clone();
         let answer = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
         assert_eq!(
             (answer.status, &answer.json()["field"]),
             (StatusCode::BAD_REQUEST, &json!("params")),
-            "{key}"
+            "{key}: {value}"
         );
     }
     let unchanged = patch(&admin, "/api/connections/1", &json!({"params": modbus("gw", 1502)})).await;

@@ -732,11 +732,11 @@ export interface components {
              */
             loggerSerial?: number | null;
             /** Format: int64 */
-            pollIntervalMs?: number | null;
+            pollIntervalMs?: number;
             /** Format: int64 */
             port?: number;
             /** Format: int64 */
-            timeoutMs?: number | null;
+            timeoutMs?: number;
             transport?: components["schemas"]["Transport"];
         };
         NewApiKeyRequest: {

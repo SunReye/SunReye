@@ -3101,10 +3101,7 @@
             "description": "The stick's serial, `solarman-v5` only."
           },
           "pollIntervalMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": "integer",
             "format": "int64"
           },
           "port": {
@@ -3112,10 +3109,7 @@
             "format": "int64"
           },
           "timeoutMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": "integer",
             "format": "int64"
           },
           "transport": {

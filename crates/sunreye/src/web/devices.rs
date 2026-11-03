@@ -45,13 +45,20 @@ pub struct ModbusParams {
     port: i64,
     #[serde(default = "default_transport")]
     transport: Transport,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
+    #[schema(value_type = i64, required = false)]
     timeout_ms: Option<i64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
+    #[schema(value_type = i64, required = false)]
     poll_interval_ms: Option<i64>,
     /// The stick's serial, `solarman-v5` only.
     #[serde(skip_serializing_if = "Option::is_none")]
     logger_serial: Option<i64>,
+}
+
+/// An absent key is `None`; a stated `null` is refused like any other value that is not the core's.
+fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+    i64::deserialize(d).map(Some)
 }
 
 const fn default_port() -> i64 {
