@@ -18,7 +18,7 @@ use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::retention::retain;
 use crate::samples::{ClosedMinute, Sample, Unstored};
-use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, poll_interval, poll_timeout};
+use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
@@ -43,6 +43,8 @@ pub struct Core {
     pub live: Arc<Live>,
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
+    /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
+    kiosk: watch::Sender<bool>,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
     polling: Polling,
@@ -79,9 +81,25 @@ impl Core {
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         let polling = Polling::default();
-        let core = Arc::new(Self { store, bundle, roots, live, unstored, now, polling, retention });
+        let kiosk = watch::Sender::new(kiosk(&store).await?);
+        let core = Arc::new(Self { store, bundle, roots, live, unstored, kiosk, now, polling, retention });
         core.apply().await?;
         Ok(core)
+    }
+
+    pub async fn switch_kiosk(&self, on: bool) -> Result<(), StoreError> {
+        set_kiosk(&self.store, on).await?;
+        self.kiosk.send_replace(on);
+        Ok(())
+    }
+
+    pub fn watch_kiosk(&self) -> watch::Receiver<bool> {
+        self.kiosk.subscribe()
+    }
+
+    /// Open `/ws` connections without a session: each holds a [`Core::watch_kiosk`].
+    pub fn strangers(&self) -> usize {
+        self.kiosk.receiver_count()
     }
 
     pub fn now_ms(&self) -> i64 {
@@ -254,10 +272,18 @@ async fn retention(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Rece
 }
 
 async fn retain_now(store: &Store, now_ms: i64) {
-    let now = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::MAX);
+    let Some(now) = instant(now_ms) else { return };
     if let Err(error) = retain(store, now).await {
         tracing::error!(%error, "retention pass failed");
     }
+}
+
+fn instant(now_ms: i64) -> Option<jiff::Timestamp> {
+    let now = jiff::Timestamp::from_millisecond(now_ms);
+    if now.is_err() {
+        tracing::error!(now_ms, "clock out of range, retention pass skipped");
+    }
+    now.ok()
 }
 
 fn log_unknown_profile(device: &DeviceRow) {
@@ -598,5 +624,51 @@ mod tests {
         assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
         stop.send(()).ok();
         core.await.expect("join").expect("run");
+    }
+
+    /// 2026-03-01T00:02:30Z, in the past of the real clock.
+    const PAST_MS: i64 = 1_772_323_350_000;
+    const DAY_MS: i64 = 24 * 60 * MINUTE_MS;
+
+    async fn append_at(store: &Store, device: i64, at_ms: i64) {
+        let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
+        let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
+        store.append_minute(device, &minute).await.expect("append");
+    }
+
+    #[tokio::test]
+    async fn the_first_retention_pass_reads_the_core_clock_not_real_time() {
+        let dir = dir("retention-clock");
+        let device = seed(&dir, 1, "no-such-profile", "20").await;
+        let store = Store::open(&dir).await.expect("store");
+        append_at(&store, device, PAST_MS - 8 * DAY_MS).await;
+        append_at(&store, device, PAST_MS - 6 * DAY_MS).await;
+        store.close().await;
+
+        let core = Core::open_at(&dir, || PAST_MS).await.expect("open");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while core.store.readings(device, 0, i64::MAX).await.expect("readings").len() > 1 {
+            assert!(Instant::now() < deadline, "the first pass did not run");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let kept = core.store.readings(device, 0, i64::MAX).await.expect("readings");
+        assert_eq!(kept.iter().map(|s| s.at_ms).collect::<Vec<_>>(), [PAST_MS - 6 * DAY_MS]);
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn an_out_of_range_clock_skips_the_retention_pass() {
+        let dir = dir("retention-range");
+        let device = seed(&dir, 1, "no-such-profile", "20").await;
+        let store = Store::open(&dir).await.expect("store");
+        append_at(&store, device, PAST_MS).await;
+
+        retain_now(&store, i64::MAX).await;
+
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 1);
+        store.close().await;
+        drop(std::fs::remove_dir_all(&dir));
     }
 }

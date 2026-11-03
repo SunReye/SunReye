@@ -5,6 +5,7 @@ mod assets;
 mod auth;
 mod history;
 mod inverter;
+mod kiosk;
 mod origin;
 mod password;
 mod profile_sources;
@@ -22,7 +23,7 @@ use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{Json, Router, middleware};
+use axum::{Extension, Json, Router, middleware};
 use axum_login::{AuthManagerLayerBuilder, login_required, permission_required};
 use serde::Serialize;
 use tower_sessions::cookie::SameSite;
@@ -34,6 +35,7 @@ use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
 pub use self::origin::origin_authority;
+pub use self::ws::Limits as LiveLimits;
 use crate::run::Core;
 use crate::store::StoreError;
 
@@ -51,31 +53,42 @@ pub struct Config {
     pub trusted_origins: Vec<String>,
     /// Session cookie only over HTTPS.
     pub secure_cookies: bool,
+    /// Fixed in the binary; tests shorten them.
+    pub live: LiveLimits,
 }
 
-/// The API routes with their `OpenAPI` document. Anonymous callers reach only the setup gates and the
-/// sign-in routes; `/api/v1` takes an API key instead of a session.
+/// The API routes with their `OpenAPI` document. Anonymous callers reach the setup gates, the sign-in
+/// routes and, with the kiosk view on, the dashboard; `/api/v1` takes an API key instead of a session.
 fn api() -> (Router<Arc<Core>>, Document) {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(setup::setup_status))
         .routes(routes!(setup::profile_status))
+        .routes(routes!(kiosk::status))
         .routes(routes!(auth::sign_up))
         .routes(routes!(auth::login))
         .routes(routes!(v1::entities))
+        .merge(dashboard())
         .merge(signed_in())
         .merge(admin())
         .split_for_parts()
 }
 
-/// Any session, user or admin. `/ws` is gated here too, outside the `OpenAPI` document.
-fn signed_in() -> OpenApiRouter<Arc<Core>> {
+/// What the dashboard reads: any session, or anyone while the kiosk view is on. An allow-list: nothing
+/// else may join it. `/ws` is here too, outside the `OpenAPI` document.
+fn dashboard() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
         .routes(routes!(history::recent))
-        .routes(routes!(rollup::minute_buckets))
-        .routes(routes!(auth::current, auth::logout))
+        .routes(routes!(rollup::buckets))
         .route("/ws", get(ws::upgrade))
+        .route_layer(middleware::from_fn(kiosk::session_or_kiosk))
+}
+
+/// Any session, user or admin.
+fn signed_in() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(auth::current, auth::logout))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
@@ -95,6 +108,7 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(setup::choose_profile))
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
+        .routes(routes!(kiosk::switch))
         .merge(profile_settings())
 }
 
@@ -132,6 +146,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
     routes
         .route("/openapi/json", get(move || std::future::ready(Json(Arc::clone(&document)))))
         .fallback(get(assets::serve))
+        .layer(Extension(config.live))
         .layer(accounts)
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))
         .with_state(core)
@@ -169,6 +184,10 @@ impl ApiError {
 
     pub fn payload_too_large(message: impl Into<String>) -> Self {
         Self { status: StatusCode::PAYLOAD_TOO_LARGE, message: message.into() }
+    }
+
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self { status: StatusCode::SERVICE_UNAVAILABLE, message: message.into() }
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {

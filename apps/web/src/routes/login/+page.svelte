@@ -3,7 +3,7 @@
 	import { resolve } from '$lib/resolve';
 	import * as Card from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
-	import { publicDashboardEnabled } from '$lib/engine-admin';
+	import { kioskEnabled } from '$lib/kiosk';
 	import { needsSetup } from '$lib/setup';
 	import * as m from '$lib/paraglide/messages';
 	import AuthForm from '../../components/AuthForm.svelte';
@@ -17,11 +17,10 @@
 		});
 	});
 
-	// Offer a way into the read-only dashboard without signing in, but only when
-	// the admin has actually enabled it (otherwise the reads would 401).
-	let publicDashboard = $state(false);
+	// Offer the kiosk view, but only when the admin has it on (otherwise the reads would 401).
+	let kiosk = $state(false);
 	$effect(() => {
-		publicDashboardEnabled().then((ok) => (publicDashboard = ok));
+		kioskEnabled().then((ok) => (kiosk = ok));
 	});
 </script>
 
@@ -33,7 +32,7 @@
 		</Card.Header>
 		<Card.Content>
 			<AuthForm mode="signin" />
-			{#if publicDashboard}
+			{#if kiosk}
 				<div class="mt-4 text-center">
 					<Button variant="link" size="sm" href={resolve('/')}>
 						{m.access_view_dashboard()}

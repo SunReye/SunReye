@@ -19,9 +19,10 @@
  * correctness stays in the core's own tests.
  *
  * **Was the caller allowed to make it execute** ({@link classifyAuth}): the
- * listing is swept twice more, with no credentials and then with a plain
- * non-admin session. Everything outside {@link PUBLIC_LABELS} and
- * {@link CREDENTIAL_LABELS} must refuse the stranger; everything on
+ * listing is swept again with no credentials, with none and the kiosk view on,
+ * and with a plain non-admin session. Everything outside {@link PUBLIC_LABELS}
+ * and {@link CREDENTIAL_LABELS} must refuse the stranger, except
+ * {@link KIOSK_LABELS} once the kiosk view is on; everything on
  * {@link SESSION_LABELS} must ANSWER the ordinary user, and everything else
  * must still refuse them. That half exists because the first one cannot see
  * either defect it is aimed at — a configuration read left ungated answers 200
@@ -56,8 +57,9 @@ export const HELP = `route-smoke.ts — boot the Rust core and smoke every route
   bun scripts/route-smoke.ts [--help]
 
 Builds the core, boots it on a scratch data directory and a free port, signs up
-the admin and adds a plain account, then hits every route three times: with no
-credentials, as the plain account and as the admin. A 5xx (or no response at
+the admin and adds a plain account, then hits every route four times: with no
+credentials, with none and the kiosk view on, as the plain account and as the
+admin. A 5xx (or no response at
 all) fails the run, and so does a route that answers a caller it should refuse
 or refuses one it should answer.
 `;
@@ -368,9 +370,11 @@ export function classify(
 // left ungated answers 200 to a stranger and sweeps green, which is exactly the
 // defect this half exists to make impossible (issue #174).
 //
-// Three passes over the same plan, with different credentials:
+// Four passes over the same plan, with different credentials:
 //
 //   anonymous     — everything must refuse (401/403) EXCEPT {@link PUBLIC_LABELS}.
+//   kiosk         — no credentials, kiosk view on: {@link KIOSK_LABELS} and
+//                   `/ws` must answer too; everything else still refuses.
 //   member        — a plain signed-in NON-ADMIN. {@link SESSION_LABELS} must be
 //                   REACHABLE; everything else gated must still refuse. Without
 //                   it, over-gating is invisible: a dashboard read wrongly
@@ -386,8 +390,11 @@ export function classify(
 // own schema accepts, so a write's guard is reached instead of its validator.
 // ---------------------------------------------------------------------------
 
-/** Which credentials a sweep carried. */
-export type AuthMode = "anonymous" | "member" | "authenticated";
+/**
+ * Which credentials a sweep carried. `kiosk` carries none, like `anonymous`,
+ * with the kiosk view switched on.
+ */
+export type AuthMode = "anonymous" | "kiosk" | "member" | "authenticated";
 
 /**
  * The closed list of routes that must answer WITHOUT credentials: the pre-auth
@@ -395,6 +402,7 @@ export type AuthMode = "anonymous" | "member" | "authenticated";
  *
  *  * `/api/setup-status` — true until the first (admin) account exists.
  *  * `/api/profile-status` — true until a profile is active.
+ *  * `/api/kiosk` — whether the kiosk view is on, so the login page can offer it.
  *
  * Anything added here widens the unauthenticated surface. It is a list, not a
  * prefix rule: a prefix would silently adopt the next route mounted under it.
@@ -402,6 +410,7 @@ export type AuthMode = "anonymous" | "member" | "authenticated";
 export const PUBLIC_LABELS: readonly string[] = [
   "GET /api/setup-status",
   "GET /api/profile-status",
+  "GET /api/kiosk",
 ];
 
 const PUBLIC_SET = new Set(PUBLIC_LABELS);
@@ -441,6 +450,19 @@ const SESSION_SET = new Set(SESSION_LABELS);
 
 /** Whether `METHOD /path` must be reachable by any signed-in user. */
 export const isSessionLabel = (label: string): boolean => SESSION_SET.has(label);
+
+/**
+ * The closed list of routes a stranger reaches while the kiosk view is on: the
+ * dashboard's reads. `/ws` opens with them. Every other route still refuses.
+ */
+export const KIOSK_LABELS: readonly string[] = [
+  "GET /api/capabilities",
+  "GET /api/history/recent",
+  "GET /api/history/rollup",
+  "GET /api/profile",
+];
+
+const KIOSK_SET = new Set(KIOSK_LABELS);
 
 /** What a gate looks like from outside: it refused, without running the handler. */
 const REFUSALS = new Set([401, 403]);
@@ -519,6 +541,14 @@ const anonymousVerdict = (label: string, status: number, sentBody: boolean): Pro
     (answered) => `${answered} — answered a request with NO CREDENTIALS; this route is public`,
   );
 
+/** A route asked WITHOUT credentials while the kiosk view is on. */
+function kioskVerdict(label: string, status: number, sentBody: boolean): ProbeResult {
+  if (!KIOSK_SET.has(label)) return anonymousVerdict(label, status, sentBody);
+  return REFUSALS.has(status)
+    ? fail(label, `${status} — a dashboard read refused a stranger with the kiosk view on`)
+    : pass(label, `${status}`);
+}
+
 /**
  * A route asked with a PLAIN SIGNED-IN NON-ADMIN session.
  *
@@ -588,6 +618,7 @@ export function classifyAuth(
   if (isPublicLabel(label)) return publicVerdict(label, status);
   const sentBody = probe.body !== undefined;
   if (mode === "anonymous") return anonymousVerdict(label, status, sentBody);
+  if (mode === "kiosk") return kioskVerdict(label, status, sentBody);
   if (mode === "member") return memberVerdict(label, status, sentBody);
   return authenticatedVerdict(label, status);
 }
@@ -595,13 +626,15 @@ export function classifyAuth(
 /**
  * `/ws` is not in the OpenAPI listing, so the sweep asks for it by name: a real
  * upgrade request, once per credential set. A stranger must be refused; any
- * session, plain or admin, must get `101 Switching Protocols`.
+ * session, plain or admin, and a stranger with the kiosk view on must get
+ * `101 Switching Protocols`.
  */
 export const UPGRADE_LABEL = "GET /ws";
 
 const SWITCHING_PROTOCOLS = 101;
 
 const MODE_TEXT_SHORT: Record<Exclude<AuthMode, "anonymous">, string> = {
+  kiosk: "a stranger with the kiosk view on",
   member: "a plain signed-in session",
   authenticated: "the admin session",
 };
@@ -618,10 +651,7 @@ export function classifyUpgrade(response: ProbeResponse, mode: AuthMode): ProbeR
   }
   return status === SWITCHING_PROTOCOLS
     ? pass(UPGRADE_LABEL, `${status}`)
-    : fail(
-        UPGRADE_LABEL,
-        `${status} — refused ${MODE_TEXT_SHORT[mode]}; any session must be upgraded`,
-      );
+    : fail(UPGRADE_LABEL, `${status} — refused ${MODE_TEXT_SHORT[mode]}; it must be upgraded`);
 }
 
 export interface SmokeVerdict {
@@ -633,6 +663,7 @@ export interface SmokeVerdict {
 /** How a mode's sweep describes itself in its own verdict. */
 const MODE_TEXT: Record<AuthMode, string> = {
   anonymous: "anonymously (no credentials)",
+  kiosk: "anonymously with the kiosk view on",
   member: "as a plain signed-in NON-ADMIN session",
   authenticated: "as the admin session",
 };

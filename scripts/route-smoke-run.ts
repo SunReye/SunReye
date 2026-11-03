@@ -17,8 +17,9 @@
  *     invisible: every other pass carries an admin session.
  *  4. an API key for the admin, which only the admin pass carries: `/api/v1`
  *     answers a key, never a session.
- *  5. the three sweeps over whatever `/openapi/json` lists, plus the `/ws`
- *     upgrade, which the listing does not carry.
+ *  5. the sweeps over whatever `/openapi/json` lists, plus the `/ws` upgrade,
+ *     which the listing does not carry: no credentials, no credentials with the
+ *     kiosk view switched on, the plain account, the admin.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { connect } from "node:net";
@@ -26,6 +27,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { boot, requireOk, signIn } from "./core-boot";
 import {
   type AuthMode,
   type OpenApiDoc,
@@ -75,58 +77,21 @@ async function build() {
   if ((await proc.exited) !== 0) throw new Error("cargo build -p sunreye failed");
 }
 
-/** The core on a free port; resolves once it logs the address it listens on. */
-async function boot(dataDir: string) {
-  const core = Bun.spawn(
-    [BINARY, "--listen", "127.0.0.1:0", "--log-level", "info", "--data-dir", dataDir],
-    { stdout: "ignore", stderr: "pipe" },
-  );
-  const reader = core.stderr.getReader();
-  const decoder = new TextDecoder();
-  let seen = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) throw new Error(`the core exited before listening:\n${seen}`);
-    seen += decoder.decode(value);
-    // Colour codes sit between the field name and the address.
-    const port = /sunreye listening.*?127\.0\.0\.1:(\d+)/.exec(seen)?.[1];
-    if (port) {
-      // Keep draining, or a full pipe would stall the core's logging.
-      void (async () => {
-        while (!(await reader.read()).done);
-      })();
-      return { core, base: `http://127.0.0.1:${port}` };
-    }
-  }
-}
-
-/** `name=value` of the session cookie a sign-in answer set. */
-function sessionCookie(response: Response, what: string): string {
-  const cookie = response.headers.getSetCookie().map((c) => c.split(";")[0]);
-  if (cookie.length === 0) throw new Error(`${what} returned no session cookie`);
-  return cookie.join("; ");
-}
-
-async function signIn(base: string, path: string, body: object, what: string): Promise<string> {
-  const response = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
-  return sessionCookie(response, what);
-}
-
 /** An admin request on the core's own origin; throws unless it answered 2xx. */
-async function asAdmin(base: string, cookie: string, path: string, body: object, what: string) {
+async function asAdmin(
+  base: string,
+  cookie: string,
+  path: string,
+  body: object,
+  what: string,
+  method: "POST" | "PUT" = "POST",
+) {
   const response = await fetch(`${base}${path}`, {
-    method: "POST",
+    method,
     headers: { cookie, origin: base, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok)
-    throw new Error(`${what} failed (${response.status}): ${await response.text()}`);
+  await requireOk(response, what);
   return (await response.json()) as Record<string, unknown>;
 }
 
@@ -236,8 +201,8 @@ async function accessPass(
 }
 
 /**
- * The anonymous and non-admin passes run first: every one of their write
- * probes is expected to be refused before it reaches a handler, so neither can
+ * The anonymous, kiosk and non-admin passes run first: every one of their write
+ * probes is expected to be refused before it reaches a handler, so none can
  * disturb the state the admin pass then reads. Within a pass, ending the
  * session sorts last (a DELETE), so no probe after it loses its cookie.
  */
@@ -251,6 +216,16 @@ async function sweep(base: string, adminCookie: string, memberCookie: string, ap
     mode: "anonymous",
     results: report(await accessPass(base, probes, "anonymous")),
   });
+  await asAdmin(
+    base,
+    adminCookie,
+    "/api/settings/kiosk",
+    { enabled: true },
+    "kiosk view on",
+    "PUT",
+  );
+  log(`probing ${probes.length} routes and ${UPGRADE_LABEL} with no credentials, kiosk view on`);
+  access.push({ mode: "kiosk", results: report(await accessPass(base, probes, "kiosk")) });
   log(`probing ${probes.length} routes as a plain signed-in NON-ADMIN session`);
   const member = await accessPass(base, probes, "member", memberCookie);
   access.push({ mode: "member", results: report(member) });
@@ -274,7 +249,7 @@ export async function run(): Promise<number> {
   const dataDir = mkdtempSync(join(tmpdir(), "sunreye-route-smoke-"));
   let core: ReturnType<typeof Bun.spawn> | undefined;
   try {
-    const booted = await boot(dataDir);
+    const booted = await boot(BINARY, dataDir);
     core = booted.core;
     const { base } = booted;
     const adminCookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");

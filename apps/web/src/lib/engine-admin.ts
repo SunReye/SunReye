@@ -5,16 +5,6 @@ import { api } from "$lib/api";
  * `restart` absent in its capabilities), so these leave with the engine.
  */
 
-/**
- * Whether the admin has enabled the anonymous read-only dashboard. Public, so a
- * logged-out visitor can be shown the dashboard (true) or the login page (false)
- * without a session. Mirrors the server's `publicDashboard` access toggle.
- */
-export async function publicDashboardEnabled(): Promise<boolean> {
-  const { data } = await api.api["access-status"].get();
-  return data?.publicDashboard ?? false;
-}
-
 /** Whether the server has answered again after a restart. */
 async function serverIsUp(): Promise<boolean> {
   try {
