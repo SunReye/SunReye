@@ -5,20 +5,25 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::history::source_device;
+use super::history::{Source, source};
 use super::kiosk::HistoryRead;
 use super::{ApiError, ApiQuery, ErrorBody};
+use crate::plant::{self, Aggregate};
 use crate::rollup::{Bucket, Tier};
 use crate::run::Core;
-use crate::store::{BucketWindow, Store, StoreError};
+use crate::store::{BucketWindow, StoreError};
 
 const DEFAULT_HOURS: f64 = 168.0;
 const DEFAULT_LIMIT: u32 = 5000;
 const MAX_LIMIT: u32 = 50_000;
+/// 3.x's refusal of a plant read of a per-device role: an empty series would draw as a flat zero.
+const NO_PLANT_VALUE: &str =
+    "This metric is one device's own state and has no plant-level value — read it per device";
 
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -81,10 +86,10 @@ impl RollupQuery {
         }
     }
 
-    /// The device the read is from: `source` before `inverterId`.
-    async fn device(&self, store: &Store) -> Result<Option<i64>, StoreError> {
+    /// What the read is from: `source` before `inverterId`.
+    async fn source(&self, core: &Core) -> Result<Source, StoreError> {
         let wanted = non_empty(self.source.as_deref()).or(non_empty(self.inverter_id.as_deref()));
-        source_device(store, wanted).await
+        source(core, wanted).await
     }
 }
 
@@ -134,6 +139,7 @@ impl From<Bucket> for RollupPoint {
         (status = 200, body = Vec<RollupPoint>),
         (status = 400, body = ErrorBody),
         (status = 401, body = ErrorBody),
+        (status = 422, body = ErrorBody, description = "A per-device metric read for a plant of several members"),
         (status = 500, body = ErrorBody),
         (status = 503, body = ErrorBody)
     )
@@ -144,7 +150,23 @@ pub async fn buckets(
     ApiQuery(query): ApiQuery<RollupQuery>,
 ) -> Result<Json<Vec<RollupPoint>>, ApiError> {
     let window = query.window(core.now_ms(), read.max_limit)?;
-    let Some(device) = query.device(&core.store).await? else { return Ok(Json(Vec::new())) };
-    let buckets = core.store.buckets_between(query.tier(), device, &query.metric, window).await?;
+    let (tier, metric) = (query.tier(), query.metric.as_str());
+    let buckets = match query.source(&core).await? {
+        Source::Nothing => Vec::new(),
+        Source::Device(device) => core.store.buckets_between(tier, device, metric, window).await?,
+        Source::Plant(plant) => {
+            let aggregate = plant.aggregates.of(metric, plant.members.len());
+            if aggregate == Aggregate::PerDevice {
+                return Err(ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, NO_PLANT_VALUE));
+            }
+            let mut members = Vec::with_capacity(plant.members.len());
+            for device in plant.members {
+                members.push(core.store.buckets_between(tier, device, metric, window).await?);
+            }
+            let mut folded = plant::fold_buckets(members, aggregate);
+            folded.truncate(usize::try_from(window.limit).unwrap_or(usize::MAX));
+            folded
+        }
+    };
     Ok(Json(buckets.into_iter().map(RollupPoint::from).collect()))
 }

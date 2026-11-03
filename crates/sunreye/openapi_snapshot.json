@@ -1373,6 +1373,16 @@
               }
             }
           },
+          "422": {
+            "description": "A per-device metric read for a plant of several members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/json": {
@@ -2169,6 +2179,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sources": {
+      "get": {
+        "summary": "The plant and every device a series may be read from.",
+        "operationId": "listSources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -3213,6 +3258,25 @@
           }
         }
       },
+      "PlantSource": {
+        "type": "object",
+        "required": [
+          "members",
+          "timeZone"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `plant` source's history members by slug; empty when nothing can be summed."
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        }
+      },
       "ProfileEntry": {
         "type": "object",
         "required": [
@@ -3495,6 +3559,57 @@
           "indexPath": {
             "type": "string",
             "description": "Path of the index under the base, e.g. `index.json`."
+          }
+        }
+      },
+      "SourceView": {
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "profileId",
+          "role",
+          "retired",
+          "member"
+        ],
+        "properties": {
+          "member": {
+            "type": "boolean",
+            "description": "Whether the plant series is read from this device."
+          },
+          "name": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "SourcesResponse": {
+        "type": "object",
+        "required": [
+          "plant",
+          "devices"
+        ],
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceView"
+            },
+            "description": "Every device in roster order, retired ones included."
+          },
+          "plant": {
+            "$ref": "#/components/schemas/PlantSource"
           }
         }
       },

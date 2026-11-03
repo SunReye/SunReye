@@ -462,6 +462,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The plant and every device a series may be read from. */
+        get: operations["listSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/entities": {
         parameters: {
             query?: never;
@@ -768,6 +785,11 @@ export interface components {
             name: string;
             password: string;
         };
+        PlantSource: {
+            /** @description The `plant` source's history members by slug; empty when nothing can be summed. */
+            members: string[];
+            timeZone: string;
+        };
         ProfileEntry: {
             active: boolean;
             /** @description Compiled into the binary. */
@@ -857,6 +879,20 @@ export interface components {
             baseUrl: string;
             /** @description Path of the index under the base, e.g. `index.json`. */
             indexPath: string;
+        };
+        SourceView: {
+            /** @description Whether the plant series is read from this device. */
+            member: boolean;
+            name: string;
+            profileId: string;
+            retired: boolean;
+            role: string;
+            slug: string;
+        };
+        SourcesResponse: {
+            /** @description Every device in roster order, retired ones included. */
+            devices: components["schemas"]["SourceView"][];
+            plant: components["schemas"]["PlantSource"];
         };
         /**
          * @description Where a metric's values are kept.
@@ -2036,6 +2072,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description A per-device metric read for a plant of several members */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -2771,6 +2816,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    listSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcesResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             500: {

@@ -488,7 +488,6 @@ async fn source_and_inverter_id_name_one_device_by_its_decimal_id() {
     let two = alone(BASE - 3 * MINUTE, 2.0);
     let read = |who: &str| answer(&admin, format!("metric=pv&bucket=minute&{who}"));
     assert_eq!(read("").await, vec![one.clone()], "no source: the first device, as /api/history/recent");
-    assert_eq!(read("source=plant").await, vec![one.clone()]);
     assert_eq!(read(&format!("source={first}")).await, vec![one.clone()]);
     assert_eq!(read(&format!("source={second}")).await, vec![two.clone()]);
     assert_eq!(read(&format!("inverterId={second}")).await, vec![two.clone()]);
@@ -521,7 +520,6 @@ async fn a_retired_device_is_read_by_its_source_and_the_default_is_the_first_in_
         "retired, still read"
     );
     assert_eq!(read("").await, vec![alone(BASE - 3 * MINUTE, 2.0)], "no source: the first in service");
-    assert_eq!(read("source=plant").await, vec![alone(BASE - 3 * MINUTE, 2.0)]);
     finish(core, admin).await;
 }
 

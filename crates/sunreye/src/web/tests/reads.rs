@@ -321,7 +321,11 @@ async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_read
     assert_eq!(read(format!("source={first}")).await, own(50_000, 1.0), "retired, still read");
     assert_eq!(read(format!("source={second}")).await, own(40_000, 2.0));
     assert_eq!(read(String::new()).await, own(40_000, 2.0), "no source: the first in service");
-    assert_eq!(read("source=plant".into()).await, own(40_000, 2.0));
+    assert_eq!(
+        read("source=plant".into()).await["metrics"],
+        json!({}),
+        "two members: a key with no role has no plant value"
+    );
     for unknown in ["source=99", "source=x", "source=-1"] {
         assert_eq!(read(unknown.into()).await, json!({"t0": 0, "step": 1, "metrics": {}}), "{unknown}");
     }

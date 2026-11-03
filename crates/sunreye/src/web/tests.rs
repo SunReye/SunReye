@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 37] = [
+const SERVED: [(&str, &str); 38] = [
     ("post", "/api/connections"),
     ("delete", "/api/connections/{id}"),
     ("patch", "/api/connections/{id}"),
@@ -456,6 +456,7 @@ const SERVED: [(&str, &str); 37] = [
     ("get", "/api/settings/inverter"),
     ("get", "/api/settings/profile-sources"),
     ("get", "/api/setup-status"),
+    ("get", "/api/sources"),
     ("get", "/api/v1/entities"),
     ("post", "/api/settings/inverter/test"),
     ("post", "/api/settings/profile-sources"),
@@ -1179,6 +1180,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 mod api_keys;
 mod devices;
 mod kiosk;
+mod plant;
 mod reads;
 mod rollup;
 mod users;

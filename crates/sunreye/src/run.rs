@@ -14,13 +14,14 @@ use tokio::time::MissedTickBehavior;
 
 use crate::live::Live;
 use crate::modbus::Client;
+use crate::plant::{self, Aggregates};
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::retention::retain;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::sources::{find_profile, installed};
-use crate::store::{DeviceRow, Store, StoreError};
+use crate::store::{DeviceRow, Store, StoreError, first_in_service};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -250,11 +251,14 @@ async fn spawn_devices(
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
     let installed = installed(store).await?;
-    let mut polled = Vec::new();
-    for device in store.devices().await?.into_iter().filter(DeviceRow::in_service) {
+    let devices = store.devices().await?;
+    let members: Vec<i64> = plant::members(&devices, true).iter().map(|device| device.id).collect();
+    let primary =
+        first_in_service(&devices).and_then(|device| find_profile(bundle, &installed, &device.profile_id));
+    live.roster(&members, primary.map(|profile| Aggregates::of_profile(&profile)).unwrap_or_default());
+    for device in devices.into_iter().filter(DeviceRow::in_service) {
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
-                polled.push(device.id);
                 let task = DeviceTask {
                     store: Arc::clone(store),
                     live: Arc::clone(live),
@@ -269,7 +273,6 @@ async fn spawn_devices(
             None => log_unknown_profile(&device),
         }
     }
-    live.roster(&polled);
     Ok(Running { stop, tasks })
 }
 
