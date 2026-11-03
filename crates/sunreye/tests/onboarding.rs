@@ -182,7 +182,7 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
 }
 
 #[tokio::test]
-async fn the_running_core_advertises_profile_sources_and_serves_the_sources_the_spa_then_shows() {
+async fn the_running_core_advertises_history_and_profile_sources_and_serves_the_sources_the_spa_then_shows() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("capabilities");
     drop(std::fs::remove_dir_all(&dir));
     let running = start(&dir);
@@ -191,7 +191,13 @@ async fn the_running_core_advertises_profile_sources_and_serves_the_sources_the_
 
     let (status, capabilities) = call(addr, &cookie, "GET", "/api/capabilities", None).await;
     assert_eq!(status, 200);
-    assert_eq!(capabilities["profileSources"], json!(true), "{capabilities}");
+    assert_eq!(
+        capabilities,
+        json!({
+            "history": true, "statistics": false, "controls": false, "automations": false,
+            "restart": false, "profileSources": true
+        })
+    );
     let (status, sources) = call(addr, &cookie, "GET", "/api/settings/profile-sources", None).await;
     assert_eq!((status, &sources), (200, &json!([])), "an advertised area answers");
     stop(running);
