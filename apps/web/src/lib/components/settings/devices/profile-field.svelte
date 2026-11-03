@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CaretDown from 'phosphor-svelte/lib/CaretDown';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { Label } from '$lib/components/ui/label';
 	import * as NativeSelect from '$lib/components/ui/native-select';
@@ -44,14 +45,16 @@
 	<FieldProblem field="profileId" {refusal} />
 </div>
 
-<Collapsible.Root>
-	<Collapsible.Trigger class="group flex h-9 w-full items-center gap-2 text-left text-sm font-medium sm:h-8">
-		<CaretDown class="size-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
-		{m.devices_profile_download_more()}
-	</Collapsible.Trigger>
-	<Collapsible.Content>
-		<div class="pt-2">
-			<ExternalProfilesManager {onInstalled} />
-		</div>
-	</Collapsible.Content>
-</Collapsible.Root>
+{#if coreCapabilities.has('profileSources')}
+	<Collapsible.Root>
+		<Collapsible.Trigger class="group flex h-9 w-full items-center gap-2 text-left text-sm font-medium sm:h-8">
+			<CaretDown class="size-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
+			{m.devices_profile_download_more()}
+		</Collapsible.Trigger>
+		<Collapsible.Content>
+			<div class="pt-2">
+				<ExternalProfilesManager {onInstalled} />
+			</div>
+		</Collapsible.Content>
+	</Collapsible.Root>
+{/if}
