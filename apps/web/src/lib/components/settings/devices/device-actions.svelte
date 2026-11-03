@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { ACTION_LABEL, type DeviceActionId, actionsFor } from './device-actions-logic';
 	import DeviceActionButton from './device-action-button.svelte';
+	import { polledDevice } from './device-roster.svelte';
 	import type { DeviceHandlers, DeviceView } from './device-types';
 	import RowOverflowMenu, { type OverflowItem } from './row-overflow-menu.svelte';
 
@@ -24,8 +25,9 @@
 	} = $props();
 
 	const run = (id: DeviceActionId) => handlers[id](device);
+	const polledId = polledDevice();
 
-	const actions = $derived(actionsFor(device));
+	const actions = $derived(actionsFor(device, polledId()));
 	const primary = $derived(actions.find((a) => a.placement === 'primary'));
 	const menu = $derived<OverflowItem[]>(
 		actions

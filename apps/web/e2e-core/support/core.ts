@@ -6,7 +6,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 const ROOT = join(import.meta.dirname, "../../../..");
 const FIXTURES = join(ROOT, "fixtures/oracle");
@@ -60,3 +60,12 @@ export const powerFlow = (page: Page) =>
   page
     .locator("section")
     .filter({ has: page.getByRole("heading", { level: 2, name: "Power flow", exact: true }) });
+
+/** Signs the onboarding journey's admin in and waits for the dashboard. */
+export async function signIn(page: Page): Promise<void> {
+  await page.goto("/#/login");
+  await page.getByLabel("Email").fill(ADMIN.email);
+  await page.getByLabel("Password").fill(ADMIN.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(heading(page)).toHaveText("Overview");
+}

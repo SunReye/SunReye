@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
+	import { core } from '$lib/core-api';
 	import * as m from '$lib/paraglide/messages';
 	import { type UnitScanTarget, scanOutcome } from './unit-scan-logic';
 
@@ -39,9 +39,11 @@
 		if (!target) return;
 		scanning = true;
 		outcome = null;
-		const { data, error } = await api.api.connections['scan-units'].post(target);
+		const found = await core
+			.POST('/api/connections/scan-units', { body: target })
+			.then(({ data, error }) => scanOutcome(data, error, WORDS, m.conn_request_failed()))
+			.catch(() => scanOutcome(null, null, WORDS, m.conn_request_failed()));
 		scanning = false;
-		const found = scanOutcome(data, error, WORDS, m.conn_request_failed());
 		if (found.unitId !== undefined) onFound(found.unitId);
 		outcome = found;
 	}

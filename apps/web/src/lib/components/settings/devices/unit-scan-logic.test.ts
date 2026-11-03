@@ -162,12 +162,12 @@ describe("scanOutcome", () => {
 
   // A refused scan — a profile this build cannot resolve, an endpoint that never
   // opened — is a reason the operator can act on, and it arrives in the BODY of
-  // a 400. It must never be rendered as the id was found, and never as
-  // "[object Object]".
+  // a 400 (the core's body as it is). It must never be rendered as the id was
+  // found, and never as "[object Object]".
   test("reports a refusal with the server's own reason, and finds no id", () => {
     const outcome = scanOutcome(
       undefined,
-      { value: { error: "connect to 10.20.0.99:502 timed out" } },
+      { error: "connect to 10.20.0.99:502 timed out" },
       WORDS,
       "request failed",
     );

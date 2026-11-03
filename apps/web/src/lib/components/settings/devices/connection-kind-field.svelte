@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Label } from '$lib/components/ui/label';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as m from '$lib/paraglide/messages';
@@ -23,16 +24,23 @@
 		modbus: m.devices_kind_modbus,
 		mqtt: m.devices_kind_mqtt
 	};
+
+	// A broker carries integrations only; an engine without them offers nothing to add on one.
+	const kinds = $derived(
+		CONNECTION_KINDS.filter((kind) => kind !== 'mqtt' || coreCapabilities.has('integrations'))
+	);
 </script>
 
 <div class="flex flex-col gap-1.5 sm:col-span-2">
 	<Label for="connection-kind">{m.devices_field_kind()}</Label>
-	{#if locked}
+	{#if locked || kinds.length === 1}
 		<p id="connection-kind" class="text-sm">{LABELS[value]()}</p>
-		<span class="text-xs text-muted-foreground">{m.devices_kind_locked()}</span>
+		{#if locked}
+			<span class="text-xs text-muted-foreground">{m.devices_kind_locked()}</span>
+		{/if}
 	{:else}
 		<NativeSelect.Root id="connection-kind" class="w-full" bind:value>
-			{#each CONNECTION_KINDS as option (option)}
+			{#each kinds as option (option)}
 				<NativeSelect.Option value={option}>{LABELS[option]()}</NativeSelect.Option>
 			{/each}
 		</NativeSelect.Root>
