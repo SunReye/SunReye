@@ -18,15 +18,21 @@ export const LOGIN_READINGS = 300;
 export const POLL_WARMUP = 120;
 /** Poll readings fitted: a one-time step of S reads as at most 3S/(2n) per poll over n readings. */
 export const POLL_READINGS = 32;
-/** Readings the poll phase takes in all. */
-export const POLL_SAMPLES = POLL_WARMUP + POLL_READINGS;
+/** Growth in one cycle above which a reading is a step that moves the window: twice the poll budget, far under the 0.3 MiB smallest boot step. */
+const SETTLE_STEP = 64 * KIB;
+/** Flat readings a window needs before it counts: a leak stepping every 32 to 40 cycles shows a step inside 64. */
+const SETTLE_RUN = 2 * POLL_READINGS;
+/** Cycles past the warm-up the window may move for a step; the soak stays at 216 readings. */
+const SETTLE_LIMIT = 32;
+/** Readings the longest poll phase takes. */
+export const POLL_SAMPLES = POLL_WARMUP + SETTLE_LIMIT + SETTLE_RUN;
 /** The soak `scripts/ci` runs; a long soak passes `--logins`. */
 const DEFAULT_LOGINS = WARMUP_LOGINS + LOGIN_READINGS;
 
 export const HELP = `usage: bun scripts/budget-gate.ts [--logins <n>]
 
 Builds the release binary, fails when it is over its size budget, signs in <n> times (default
-${DEFAULT_LOGINS}) and then holds for ${POLL_SAMPLES} poll cycles of the simulator. Fails when resident memory,
+${DEFAULT_LOGINS}) and then holds for up to ${POLL_SAMPLES} poll cycles of the simulator. Fails when resident memory,
 or its growth per login or per poll cycle, is over budget. A long soak: --logins 100000.`;
 
 export type Args = { help: boolean; logins: number };
@@ -139,12 +145,29 @@ export function loginPhase(readings: number[]): Trend {
   return trendOf(readings, WARMUP_LOGINS);
 }
 
-/** The poll phase: the fit over the readings after `POLL_WARMUP`, and how many it covered. */
+/**
+ * The reading the poll window opens on: the first at or after `POLL_WARMUP` followed by
+ * `SETTLE_RUN` with no step above `SETTLE_STEP`, so a boot step that comes late under load
+ * moves the window rather than reading as growth. A leak that grows in batches steps again
+ * inside the run, so it never settles; from `POLL_WARMUP + SETTLE_LIMIT` the window opens
+ * anyway, on steps it measures. Undefined while the readings cannot tell yet.
+ */
+export function pollWindowStart(readings: number[]): number | undefined {
+  let lastStep = 0;
+  for (let i = 1; i < readings.length; i++) {
+    if (readings[i]! - readings[i - 1]! > SETTLE_STEP) lastStep = i;
+    const start = Math.max(POLL_WARMUP, lastStep);
+    if (start >= POLL_WARMUP + SETTLE_LIMIT) return POLL_WARMUP + SETTLE_LIMIT;
+    if (i === start + SETTLE_RUN - 1) return start;
+  }
+  return undefined;
+}
+
+/** The poll phase: the fit over `POLL_READINGS` readings from the window start, and how many it covered. */
 export function pollPhase(readings: number[]): Trend & { polls: number } {
-  return {
-    ...trendOf(readings, POLL_WARMUP),
-    polls: readings.length - POLL_WARMUP,
-  };
+  const start = pollWindowStart(readings) ?? POLL_WARMUP;
+  const window = readings.slice(start, start + POLL_READINGS);
+  return { ...trendOf(window, 0), polls: window.length };
 }
 
 /** A line of `sunreye-sim` stdout: the port it listens on, or the start address of a request. */

@@ -16,6 +16,7 @@ import {
   parseProcStatus,
   parseSimLine,
   pollPhase,
+  pollWindowStart,
   render,
   type Measured,
 } from "./budgets-plan";
@@ -233,7 +234,7 @@ describe("judging a run against the budgets", () => {
   });
 });
 
-/** The soak's poll readings: one per cycle from the end of the logins, `POLL_SAMPLES` of them. */
+/** The soak's poll readings: one per cycle from the end of the logins, as many as the longest soak takes. */
 const pollSoak = (rssAtCycle: (cycle: number) => number) =>
   Array.from({ length: POLL_SAMPLES }, (_, cycle) => rssAtCycle(cycle));
 
@@ -251,6 +252,57 @@ const bootSteps: [cycle: number, kib: number][] = [
 ];
 const bootShape = (cycle: number) =>
   30 * MIB + bootSteps.filter(([at]) => cycle >= at).reduce((sum, [, kib]) => sum + kib * KIB, 0);
+
+/** RSS that steps up by `bytes` every `every` cycles: a leak that grows in batches. */
+const batched = (bytes: number, every: number) => (cycle: number) =>
+  30 * MIB + Math.floor(cycle / every) * bytes;
+
+describe("where the poll window starts", () => {
+  test("a core flat through the warm-up is fitted from cycle 120", () => {
+    expect(pollWindowStart(pollSoak(() => 30 * MIB))).toBe(120);
+  });
+
+  test("growth of 64 KiB a cycle or less counts as flat", () => {
+    const rss = pollSoak((cycle) => 30 * MIB + (cycle % 2) * 64 * KIB);
+    expect(pollWindowStart(rss)).toBe(120);
+  });
+
+  test("a drop is not a step", () => {
+    const rss = pollSoak((cycle) => (cycle >= 130 ? 29 * MIB : 30 * MIB));
+    expect(pollWindowStart(rss)).toBe(120);
+  });
+
+  test("a 2.2 MiB step at cycle 140 under load opens the window on it", () => {
+    const rss = pollSoak((cycle) => 30 * MIB + (cycle >= 140 ? 2253 * KIB : 0));
+    expect(pollWindowStart(rss)).toBe(140);
+  });
+
+  test("a step of 65 KiB is a step", () => {
+    const rss = pollSoak((cycle) => 30 * MIB + (cycle >= 130 ? 65 * KIB : 0));
+    expect(pollWindowStart(rss)).toBe(130);
+  });
+
+  test("a core that never settles is fitted from cycle 152", () => {
+    expect(pollWindowStart(pollSoak((cycle) => 30 * MIB + cycle * 128 * KIB))).toBe(152);
+  });
+
+  test("a step every 32 cycles never leaves 64 flat readings, so the window opens at 152", () => {
+    expect(pollWindowStart(pollSoak(batched(2 * MIB, 32)))).toBe(152);
+  });
+
+  test("a step every 40 cycles never leaves 64 flat readings, so the window opens at 152", () => {
+    expect(pollWindowStart(pollSoak(batched(4 * MIB, 40)))).toBe(152);
+  });
+
+  test("undecided until the window is read in full or the wait is over", () => {
+    const step = pollSoak((cycle) => 30 * MIB + (cycle >= 140 ? 2253 * KIB : 0));
+    expect(pollWindowStart(step.slice(0, 203))).toBeUndefined();
+    expect(pollWindowStart(step.slice(0, 204))).toBe(140);
+    const leak = pollSoak((cycle) => 30 * MIB + cycle * 128 * KIB);
+    expect(pollWindowStart(leak.slice(0, 152))).toBeUndefined();
+    expect(pollWindowStart(leak.slice(0, 153))).toBe(152);
+  });
+});
 
 describe("the poll phase", () => {
   const verdict = (rss: number[]) => {
@@ -281,6 +333,16 @@ describe("the poll phase", () => {
     expect(verdict(rss)).toEqual([expect.stringContaining("+128.0 KiB/poll")]);
   });
 
+  test.each([
+    ["2 MiB every 32 cycles, 64 KiB/poll", batched(2 * MIB, 32), "+72.1"],
+    ["1 MiB every 32 cycles, 32 KiB/poll", batched(1 * MIB, 32), "+36.0"],
+    ["4 MiB every 40 cycles, 102 KiB/poll", batched(4 * MIB, 40), "+144.1"],
+  ])("a leak in batches fails: %s", (_, shape, kib) => {
+    expect(verdict(pollSoak((cycle) => bootShape(cycle) + shape(cycle) - 30 * MIB))).toEqual([
+      expect.stringContaining(`${kib} KiB/poll`),
+    ]);
+  });
+
   test("a leak that runs through the warm-up too still fails", () => {
     const rss = pollSoak((cycle) => 30 * MIB + cycle * 128 * KIB);
     expect(verdict(rss)).toEqual([expect.stringContaining("+128.0 KiB/poll")]);
@@ -292,6 +354,24 @@ describe("the poll phase", () => {
       polls: 32,
       bytesPerOp: 0,
       steadyBytes: 29 * MIB,
+    });
+  });
+
+  test("a 2.2 MiB step at cycle 140, the +104.5 KiB/poll train run, reads as no growth", () => {
+    const rss = pollSoak((cycle) => bootShape(cycle) + (cycle >= 140 ? 2253 * KIB : 0));
+    expect(pollPhase(rss)).toEqual({
+      polls: 32,
+      bytesPerOp: 0,
+      steadyBytes: 30 * MIB + 5377 * KIB,
+    });
+  });
+
+  test("the fit takes 32 readings from the window start, not every reading after it", () => {
+    const rss = pollSoak((cycle) => 30 * MIB + (cycle >= 190 ? 5 * MIB : 0));
+    expect(pollPhase(rss)).toEqual({
+      polls: 32,
+      bytesPerOp: 0,
+      steadyBytes: 30 * MIB,
     });
   });
 
