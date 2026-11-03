@@ -83,6 +83,10 @@
 		form.profileId = id;
 	}
 
+	async function onRemoved() {
+		await roster.loadProfiles();
+	}
+
 	/** A refusal naming a field lands under it; anything else is a toast. */
 	function report(failure: WriteFailure) {
 		if (failure.kind === 'refused') refusal = { field: failure.field, message: failure.reason };
@@ -120,7 +124,7 @@
 	<ConnectionField bind:form {connections} {refusal} allowNew={!editing} />
 	<AddressFields bind:form devices={others} {refusal} {connections} />
 	<NameField bind:form {refusal} />
-	<ProfileField bind:form {registered} {refusal} {onInstalled} />
+	<ProfileField bind:form {registered} {refusal} {onInstalled} {onRemoved} />
 	<ProbeTest target={probe} nothing={m.devices_probe_needs_profile()} />
 	{#if isInverter}
 		<InverterSection bind:form />

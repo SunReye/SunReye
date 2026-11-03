@@ -9,6 +9,8 @@ mock.module("$env/dynamic/public", () => ({ env: {} }));
 
 const realApi = await import("$lib/api");
 const realApiExports = { ...realApi };
+const realCore = await import("$lib/core-api");
+const realCoreExports = { ...realCore };
 
 /** Eden's call shape as a recorder: every path and argument list, ending in an answer. */
 const trail: string[] = [];
@@ -32,14 +34,31 @@ function recorder(path: string[]): unknown {
 }
 mock.module("$lib/api", () => ({ ...realApi, api: recorder(["api"]) }));
 
+/** The core client's `GET`: records the path, answers from `coreAnswer`, or throws like a dead socket. */
+const coreCalls: string[] = [];
+let coreAnswer: { data?: unknown; error?: unknown } | "unreachable" = {};
+mock.module("$lib/core-api", () => ({
+  ...realCore,
+  core: {
+    GET: async (path: string) => {
+      coreCalls.push(path);
+      if (coreAnswer === "unreachable") throw new TypeError("Failed to fetch");
+      return coreAnswer;
+    },
+  },
+}));
+
 afterAll(() => {
   mock.module("$lib/api", () => ({ ...realApiExports }));
+  mock.module("$lib/core-api", () => ({ ...realCoreExports }));
 });
 
 const { edenRosterTransport } = await import("./roster-transport");
 
 beforeEach(() => {
   trail.length = 0;
+  coreCalls.length = 0;
+  coreAnswer = {};
   answer = { data: { id: 1 }, error: null };
 });
 
@@ -56,7 +75,7 @@ describe("edenRosterTransport", () => {
 
   test("no payload and no error is a failure with no reason", async () => {
     answer = { data: null, error: null };
-    expect(await edenRosterTransport.profiles()).toEqual({ ok: false, error: undefined });
+    expect(await edenRosterTransport.catalog()).toEqual({ ok: false, error: undefined });
   });
 
   test("an id reaches the path as a string", async () => {
@@ -89,5 +108,42 @@ describe("edenRosterTransport", () => {
       'api.api.devices.{"id":"5"}.delete(null)',
       'api.api.integrations.{"id":"6"}.delete(null)',
     ]);
+  });
+});
+
+describe("edenRosterTransport profiles", () => {
+  test("reads the list from the core, not the Elysia API", async () => {
+    const list = [
+      {
+        id: "deye-sg05lp3",
+        name: "SG05LP3",
+        manufacturer: "Deye",
+        active: true,
+        installed: false,
+        builtin: true,
+      },
+    ];
+    coreAnswer = { data: list };
+    expect(await edenRosterTransport.profiles()).toEqual({ ok: true, data: list });
+    expect(coreCalls).toEqual(["/api/profiles"]);
+    expect(trail).toEqual([]);
+  });
+
+  test("an empty list is still the core's answer", async () => {
+    coreAnswer = { data: [] };
+    expect(await edenRosterTransport.profiles()).toEqual({ ok: true, data: [] });
+  });
+
+  test("the core's refusal is a failure carrying its body", async () => {
+    coreAnswer = { error: { error: "forbidden" } };
+    expect(await edenRosterTransport.profiles()).toEqual({
+      ok: false,
+      error: { error: "forbidden" },
+    });
+  });
+
+  test("an unreachable core is a failure with no reason, not a throw", async () => {
+    coreAnswer = "unreachable";
+    expect(await edenRosterTransport.profiles()).toEqual({ ok: false, error: undefined });
   });
 });

@@ -14,17 +14,20 @@
 
 	// Step 4: the profile that speaks to the device. The registered ones as an
 	// optgroup select; beneath it the EXISTING browser, never a second picker —
-	// a download lands in the select above through `onInstalled`.
+	// a download lands in the select above through `onInstalled`, and a
+	// removal leaves it through `onRemoved`.
 	let {
 		form = $bindable(),
 		registered,
 		refusal,
-		onInstalled
+		onInstalled,
+		onRemoved
 	}: {
 		form: AddDeviceForm;
 		registered: RegisteredProfile[];
 		refusal: Refusal | null;
 		onInstalled: (id: string) => void;
+		onRemoved: () => void;
 	} = $props();
 
 	const groups = $derived(profileGroups(registered, m.badge_builtin()));
@@ -53,7 +56,7 @@
 		</Collapsible.Trigger>
 		<Collapsible.Content>
 			<div class="pt-2">
-				<ExternalProfilesManager {onInstalled} />
+				<ExternalProfilesManager {onInstalled} {onRemoved} />
 			</div>
 		</Collapsible.Content>
 	</Collapsible.Root>

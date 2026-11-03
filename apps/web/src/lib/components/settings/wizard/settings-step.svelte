@@ -22,7 +22,8 @@
 		connections,
 		draft,
 		registered,
-		onInstalled
+		onInstalled,
+		onRemoved
 	}: {
 		/** Null only if step 2 were skipped, which `blockedAt` prevents — a step
 		    body still cannot assume its predecessor ran. */
@@ -34,11 +35,12 @@
 		draft: ConnectionDraft | null;
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
+		onRemoved: () => void;
 	} = $props();
 </script>
 
 {#if answers.via === 'profile'}
-	<DeviceStep bind:form={answers.form} {devices} {connections} {draft} {registered} {onInstalled} />
+	<DeviceStep bind:form={answers.form} {devices} {connections} {draft} {registered} {onInstalled} {onRemoved} />
 {:else}
 	<CatalogFields {entry} bind:values={answers.values} />
 {/if}

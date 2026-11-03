@@ -29,7 +29,8 @@
 		answers = $bindable(),
 		devices,
 		registered,
-		onInstalled
+		onInstalled,
+		onRemoved
 	}: {
 		step: WizardStep;
 		connections: readonly ConnectionView[];
@@ -46,6 +47,7 @@
 		devices: DeviceView[];
 		registered: RegisteredProfile[];
 		onInstalled: (id: string) => void;
+		onRemoved: () => void;
 	} = $props();
 
 	// The draft only describes the endpoint while step 1 is CREATING one; on the
@@ -59,7 +61,7 @@
 {:else if step === 'attach'}
 	<AttachStep {options} bind:entryId />
 {:else if step === 'settings'}
-	<SettingsStep {entry} bind:answers {devices} {connections} draft={scanDraft} {registered} {onInstalled} />
+	<SettingsStep {entry} bind:answers {devices} {connections} draft={scanDraft} {registered} {onInstalled} {onRemoved} />
 {:else}
 	<ConfirmStep {entry} connection={chosenConnection} {answers} {registered} />
 {/if}
