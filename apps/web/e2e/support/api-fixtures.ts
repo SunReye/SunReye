@@ -625,9 +625,6 @@ export const CHART_PALETTE = { preset: "categorical" };
 /** `packages/db/src/plant.ts` → `defaultPlant`. */
 export const PLANT = { timeZone: "auto" };
 
-/** `packages/db/src/access.ts` → `defaultAccess`. */
-export const ACCESS = { publicDashboard: false };
-
 /** `packages/db/src/statistics-prefs.ts` → `defaultStatisticsPrefs`. */
 /**
  * Measured battery capacity and state of health.

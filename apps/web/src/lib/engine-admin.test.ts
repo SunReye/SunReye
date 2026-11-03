@@ -10,7 +10,6 @@ mock.module("$env/dynamic/public", () => ({ env: {} }));
 const realApi = await import("$lib/api");
 const realApiExports = { ...realApi };
 
-let accessStatus: { data?: { publicDashboard?: boolean } } = {};
 let restartAnswer: { error?: unknown } = {};
 /** One entry per `setup-status` poll: a payload, null (server down) or a throw. */
 let polls: Array<{ data: object | null } | "throw"> = [];
@@ -19,7 +18,6 @@ mock.module("$lib/api", () => ({
   ...realApi,
   api: {
     api: {
-      "access-status": { get: async () => accessStatus },
       "setup-status": {
         get: async () => {
           calls.push("poll");
@@ -44,7 +42,7 @@ afterAll(() => {
   mock.module("$lib/api", () => ({ ...realApiExports }));
 });
 
-const { publicDashboardEnabled, restartServer } = await import("./engine-admin");
+const { restartServer } = await import("./engine-admin");
 
 /** A clock the sleeps advance, so the poll loop runs in no real time. */
 const realSetTimeout = globalThis.setTimeout;
@@ -60,7 +58,6 @@ beforeEach(() => {
   sleeps = [];
   calls.length = 0;
   polls = [];
-  accessStatus = {};
   restartAnswer = {};
   Date.now = () => clock;
   globalThis.setTimeout = ((fn: () => void, ms = 0) => {
@@ -76,19 +73,6 @@ afterEach(() => {
   globalThis.setTimeout = realSetTimeout;
   Date.now = realNow;
   globalThis.location = realLocation;
-});
-
-describe("publicDashboardEnabled", () => {
-  test("is the server's toggle", async () => {
-    accessStatus = { data: { publicDashboard: true } };
-    expect(await publicDashboardEnabled()).toBe(true);
-    accessStatus = { data: { publicDashboard: false } };
-    expect(await publicDashboardEnabled()).toBe(false);
-  });
-
-  test("no answer shows the login page, not the dashboard", async () => {
-    expect(await publicDashboardEnabled()).toBe(false);
-  });
 });
 
 describe("restartServer", () => {

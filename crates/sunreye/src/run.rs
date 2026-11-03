@@ -18,7 +18,7 @@ use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::retention::retain;
 use crate::samples::{ClosedMinute, Sample, Unstored};
-use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, poll_interval, poll_timeout};
+use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
@@ -43,6 +43,8 @@ pub struct Core {
     pub live: Arc<Live>,
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
+    /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
+    kiosk: watch::Sender<bool>,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
     polling: Polling,
@@ -79,9 +81,25 @@ impl Core {
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         let polling = Polling::default();
-        let core = Arc::new(Self { store, bundle, roots, live, unstored, now, polling, retention });
+        let kiosk = watch::Sender::new(kiosk(&store).await?);
+        let core = Arc::new(Self { store, bundle, roots, live, unstored, kiosk, now, polling, retention });
         core.apply().await?;
         Ok(core)
+    }
+
+    pub async fn switch_kiosk(&self, on: bool) -> Result<(), StoreError> {
+        set_kiosk(&self.store, on).await?;
+        self.kiosk.send_replace(on);
+        Ok(())
+    }
+
+    pub fn watch_kiosk(&self) -> watch::Receiver<bool> {
+        self.kiosk.subscribe()
+    }
+
+    /// Open `/ws` connections without a session: each holds a [`Core::watch_kiosk`].
+    pub fn strangers(&self) -> usize {
+        self.kiosk.receiver_count()
     }
 
     pub fn now_ms(&self) -> i64 {

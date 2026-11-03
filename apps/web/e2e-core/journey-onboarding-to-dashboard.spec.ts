@@ -7,50 +7,9 @@
  * and the simulator share a source but the dashboard's formatting stays the spec's independent claim.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import type { ChildProcess } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
-
-const ROOT = join(import.meta.dirname, "../../..");
-const FIXTURES = join(ROOT, "fixtures/oracle");
-const TARGET = process.env.CARGO_TARGET_DIR ?? join(ROOT, "target");
-const PROFILE = "deye-sg01hp3";
-const CASE = "ramp";
-
-/** What the 2.x engine decoded from the case's registers: the metric key → value the dashboard must show. */
-function oracleReadings(): Record<string, number> {
-  const rows = readFileSync(join(FIXTURES, "profile-decode.ndjson"), "utf8").trim().split("\n");
-  for (const row of rows) {
-    const { profile, cases } = JSON.parse(row) as {
-      profile: { id: string };
-      cases: { name: string; readings: Record<string, number> }[];
-    };
-    if (profile.id === PROFILE) return cases.find((c) => c.name === CASE)!.readings;
-  }
-  throw new Error(`no oracle profile ${PROFILE}`);
-}
-
-/** The simulator process and the address it listens on. */
-async function startSimulator(): Promise<{ child: ChildProcess; port: number }> {
-  const child = spawn(join(TARGET, "debug/sunreye-sim"), [FIXTURES, PROFILE, CASE], {
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  const port = await new Promise<number>((resolve, reject) => {
-    let seen = "";
-    child.once("error", reject);
-    child.once("exit", (code) =>
-      reject(new Error(`sunreye-sim exited (${code}) before listening`)),
-    );
-    child.stdout!.on("data", (chunk: Buffer) => {
-      seen += chunk.toString();
-      const match = /listening 127\.0\.0\.1:(\d+)/.exec(seen);
-      if (match) resolve(Number(match[1]));
-    });
-  });
-  child.removeAllListeners("exit");
-  return { child, port };
-}
+import { ADMIN, PROFILE, heading, oracleReadings, powerFlow, startSimulator } from "./support/core";
 
 /** Pick one profile from the setup list, found through its name since the groups may be collapsed. */
 async function selectProfile(page: Page, id: string): Promise<void> {
@@ -67,8 +26,6 @@ async function selectProfile(page: Page, id: string): Promise<void> {
   await row.getByRole("button", { name: "Select", exact: true }).click();
 }
 
-const heading = (page: Page) => page.getByRole("heading", { level: 1 });
-
 let simulator: { child: ChildProcess; port: number };
 
 // The history journey continues the first one's core: its admin account and its polled readings.
@@ -84,9 +41,9 @@ test("first-run admin, onboard a device, then live values on the dashboard", asy
   // ── 1. A fresh core: any address ends on the sign-up form ────────────────
   await page.goto("/#/");
   await expect(page).toHaveURL(/#\/onboarding$/);
-  await page.getByLabel("Name").fill("Ada Lovelace");
-  await page.getByLabel("Email").fill("ada@example.com");
-  await page.getByLabel("Password").fill("analytical-engine");
+  await page.getByLabel("Name").fill(ADMIN.name);
+  await page.getByLabel("Email").fill(ADMIN.email);
+  await page.getByLabel("Password").fill(ADMIN.password);
   await page.getByRole("button", { name: "Create account" }).click();
 
   // ── 2. The admin has no profile yet: setup, step 1 ───────────────────────
@@ -114,9 +71,7 @@ test("first-run admin, onboard a device, then live values on the dashboard", asy
   // ── 5. Live values: the simulator's readings, arriving over /ws ──────────
   const want = oracleReadings();
   const usa = (n: number) => n.toLocaleString("en-US");
-  const diagram = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { level: 2, name: "Power flow", exact: true }) });
+  const diagram = powerFlow(page);
   for (const shown of [
     usa(want["dc.pv1.power"]!),
     `${want["battery.soc"]}%`,

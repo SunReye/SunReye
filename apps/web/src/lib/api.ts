@@ -31,7 +31,7 @@ export const api = treaty<App>(serverUrl, {
   // A 401 means the session expired or was never established (e.g. deleted
   // mid-session). Bounce to login via the ingress-safe resolver so stale-session
   // users aren't left staring at empty states; skip when already on a pre-auth
-  // page. When the public read-only dashboard is enabled, dashboard reads don't
+  // page. When the kiosk view is on, dashboard reads don't
   // 401, so this never fires for anonymous viewers. Returning nothing lets Eden
   // continue its normal response parsing.
   onResponse(response) {
