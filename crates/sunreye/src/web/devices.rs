@@ -35,8 +35,8 @@ pub enum ConnectionKind {
     Modbus,
 }
 
-/// A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection: a write
-/// leaves them as they are (`/api/settings/inverter` sets them).
+/// A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and
+/// `/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModbusParams {
@@ -45,6 +45,7 @@ pub struct ModbusParams {
     port: i64,
     #[serde(default = "default_transport")]
     transport: Transport,
+    /// 0: not stated.
     #[serde(default)]
     timeout_ms: i64,
     #[serde(default)]
@@ -220,9 +221,15 @@ fn modbus_only(kind: &str) -> Result<(), ApiError> {
     if kind == "modbus" { Ok(()) } else { Err(refused("kind", "this core reaches Modbus connections only")) }
 }
 
+fn modbus_params(params: Value) -> Result<ModbusParams, ApiError> {
+    serde_json::from_value(params).map_err(|e| refused("params", &e.to_string()))
+}
+
 fn endpoint(params: Value) -> Result<NewConnection, ApiError> {
-    let params: ModbusParams =
-        serde_json::from_value(params).map_err(|e| refused("params", &e.to_string()))?;
+    checked_endpoint(&modbus_params(params)?)
+}
+
+fn checked_endpoint(params: &ModbusParams) -> Result<NewConnection, ApiError> {
     let host = params.host.trim();
     if host.is_empty() {
         return Err(refused("host", "host is required"));
@@ -261,6 +268,21 @@ impl Context {
             timeout_ms: millis(poll_timeout(core.store.setting(TIMEOUT_KEY).await?.as_deref())),
             interval_ms: millis(poll_interval(core.store.setting(INTERVAL_KEY).await?.as_deref())),
         })
+    }
+
+    /// An edit's stated poll timing must be the core's, so a changed value is not dropped unsaid.
+    fn same_timing(&self, params: &ModbusParams) -> Result<(), ApiError> {
+        let stated = [
+            ("timeoutMs", params.timeout_ms, self.timeout_ms),
+            ("pollIntervalMs", params.poll_interval_ms, self.interval_ms),
+        ];
+        match stated.into_iter().find(|(_, value, core)| *value != 0 && value != core) {
+            Some((key, _, core)) => Err(refused(
+                "params",
+                &format!("{key} is {core} for every connection; change it in the inverter settings"),
+            )),
+            None => Ok(()),
+        }
     }
 
     fn profile(&self, core: &Core, id: &str) -> Option<Arc<Profile>> {
@@ -493,12 +515,17 @@ pub async fn remove(
     if first_in_service(&devices).is_some_and(|first| first.id == id) {
         return Err(polled());
     }
+    let history = || {
+        ApiError::conflict("this device has recorded history; retire it instead to keep that history")
+            .on("history")
+    };
+    // The open minute is history not yet stored.
+    if !core.unstored.held(id).is_empty() {
+        return Err(history());
+    }
     match core.store.remove_device(id).await? {
         Removal::Missing => Err(ApiError::not_found(format!("device {id} does not exist"))),
-        Removal::Kept => Err(ApiError::conflict(
-            "this device has recorded history; retire it instead to keep that history",
-        )
-        .on("history")),
+        Removal::Kept => Err(history()),
         Removal::Removed => {
             core.apply().await?;
             Ok(Json(Removed { ok: true, id }))
@@ -568,10 +595,16 @@ pub async fn patch_connection(
         )
         .on("kind"));
     }
-    let edit = ConnectionEdit {
-        name: patch.name.as_deref().map(checked_name).transpose()?,
-        endpoint: patch.params.map(endpoint).transpose()?,
+    let endpoint = match patch.params {
+        Some(params) => {
+            let params = modbus_params(params)?;
+            let endpoint = checked_endpoint(&params)?;
+            Context::load(&core).await?.same_timing(&params)?;
+            Some(endpoint)
+        }
+        None => None,
     };
+    let edit = ConnectionEdit { name: patch.name.as_deref().map(checked_name).transpose()?, endpoint };
     if edit == ConnectionEdit::default() {
         return Err(ApiError::bad_request("nothing to change"));
     }

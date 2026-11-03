@@ -304,3 +304,34 @@ async fn the_inverter_settings_edit_the_device_a_read_without_source_is_from() {
     drop(admin);
     core.stop().await;
 }
+
+#[tokio::test]
+async fn a_device_with_readings_held_for_the_open_minute_is_refused_deletion() {
+    let (core, admin) = onboarded("roster-held", unused_port().await).await;
+    post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
+    core.unstored.push(2, Sample { at_ms: 6_000_000, values: vec![("pv".into(), 1.0)] });
+    let refused = delete(&admin, "/api/devices/2").await;
+    assert_eq!((refused.status, &refused.json()["field"]), (StatusCode::CONFLICT, &json!("history")));
+    assert_eq!(get(&admin, "/api/devices").await.json()["devices"].as_array().map(Vec::len), Some(2));
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_connection_edit_refuses_a_poll_timing_other_than_the_cores_and_accepts_it_unchanged() {
+    let (core, admin) = onboarded("roster-timing", unused_port().await).await;
+    for (key, value) in [("timeoutMs", 2000), ("pollIntervalMs", 5000)] {
+        let mut params = modbus("gw", 1502);
+        params[key] = json!(value);
+        let answer = patch(&admin, "/api/connections/1", &json!({"params": params})).await;
+        assert_eq!(
+            (answer.status, &answer.json()["field"]),
+            (StatusCode::BAD_REQUEST, &json!("params")),
+            "{key}"
+        );
+    }
+    let unchanged = patch(&admin, "/api/connections/1", &json!({"params": modbus("gw", 1502)})).await;
+    assert_eq!(unchanged.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}

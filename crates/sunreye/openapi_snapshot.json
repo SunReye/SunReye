@@ -3084,7 +3084,7 @@
       },
       "ModbusParams": {
         "type": "object",
-        "description": "A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection: a write\nleaves them as they are (`/api/settings/inverter` sets them).",
+        "description": "A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and\n`/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.",
         "required": [
           "host"
         ],
@@ -3110,7 +3110,8 @@
           },
           "timeoutMs": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "0: not stated."
           },
           "transport": {
             "$ref": "#/components/schemas/Transport"

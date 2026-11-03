@@ -721,8 +721,8 @@ export interface components {
          */
         MetricKind: "measurement" | "cumulative" | "status" | "setting";
         /**
-         * @description A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection: a write
-         *     leaves them as they are (`/api/settings/inverter` sets them).
+         * @description A Modbus endpoint. `timeoutMs` and `pollIntervalMs` are the core's, for every connection, and
+         *     `/api/settings/inverter` sets them: an edit stating other values is refused, an add ignores them.
          */
         ModbusParams: {
             host: string;
@@ -735,7 +735,10 @@ export interface components {
             pollIntervalMs?: number;
             /** Format: int64 */
             port?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description 0: not stated.
+             */
             timeoutMs?: number;
             transport?: components["schemas"]["Transport"];
         };
