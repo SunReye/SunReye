@@ -5,6 +5,8 @@
  * page shipped (PR #60, #216) lived in exactly this bookkeeping.
  */
 
+import type { Client } from "openapi-fetch";
+import type { paths } from "$lib/core-api.gen";
 import type { SourceId } from "$lib/source";
 import { mergeRollup, type LiveWindow, type RollupRow } from "./live-tail";
 import { overlayDelta } from "./overlay-chart";
@@ -30,9 +32,23 @@ export type RollupQuery = RollupScope & {
   limit: number;
 };
 
-/** `/api/history/rollup` — the Eden client in production, a fake in tests. */
+/** `/api/history/rollup` — the core's client in production, a fake in tests. */
 export interface RollupApi {
   rollup(query: RollupQuery): Promise<{ data: unknown }>;
+}
+
+/** The core's rollup route as a feed's API. A refusal or an unreachable core answers no rows. */
+export function coreRollup(core: Client<paths>): RollupApi {
+  return {
+    rollup: async (query) => {
+      try {
+        const { data } = await core.GET("/api/history/rollup", { params: { query } });
+        return { data };
+      } catch {
+        return { data: undefined };
+      }
+    },
+  };
 }
 
 /** One key's fetched rows and the live frames past them — what a chart draws. */

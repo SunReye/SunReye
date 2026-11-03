@@ -46,7 +46,7 @@ pub struct Capabilities {
 impl Capabilities {
     /// Monitoring only (ADR 0005): nothing writes, and nothing here restarts the core.
     pub const SERVED: Self = Self {
-        history: false,
+        history: true,
         statistics: false,
         controls: false,
         automations: false,

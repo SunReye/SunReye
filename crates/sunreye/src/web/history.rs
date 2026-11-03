@@ -6,6 +6,7 @@ use axum::Json;
 use axum::extract::State;
 use serde::Deserialize;
 
+use super::kiosk::HistoryRead;
 use super::{ApiError, ApiQuery, ErrorBody};
 use crate::recent::{Recent, RecentError, Window, fold};
 use crate::run::Core;
@@ -65,11 +66,13 @@ impl From<RecentError> for ApiError {
         (status = 200, body = Recent),
         (status = 400, body = ErrorBody),
         (status = 401, body = ErrorBody),
-        (status = 500, body = ErrorBody)
+        (status = 500, body = ErrorBody),
+        (status = 503, body = ErrorBody)
     )
 )]
 pub async fn recent(
     State(core): State<Arc<Core>>,
+    _read: HistoryRead,
     ApiQuery(query): ApiQuery<RecentQuery>,
 ) -> Result<Json<Recent>, ApiError> {
     let window = query.window(core.now_ms())?;

@@ -1,6 +1,7 @@
 /**
  * JOURNEY, against the real core binary and the simulator: the first visitor creates the admin, onboards
- * a device, and the dashboard shows what the device answers.
+ * a device, and the dashboard shows what the device answers; then the history charts show the minute,
+ * hourly and daily tiers of what it has been answering.
  *
  * The values are the oracle fixture's, read from the file the simulator replays, so the expectation
  * and the simulator share a source but the dashboard's formatting stays the spec's independent claim.
@@ -26,6 +27,9 @@ async function selectProfile(page: Page, id: string): Promise<void> {
 }
 
 let simulator: { child: ChildProcess; port: number };
+
+// The history journey continues the first one's core: its admin account and its polled readings.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   simulator = await startSimulator();
 });
@@ -76,4 +80,80 @@ test("first-run admin, onboard a device, then live values on the dashboard", asy
   ]) {
     await expect(diagram).toContainText(shown, { timeout: 30_000 });
   }
+});
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
+type Row = { time: string; avg: number; min: number; max: number };
+type Answer = { metric: string; rows: Row[] };
+
+/** The first non-empty `bucket` answer the page gets for any metric: the cards on screen ask first. */
+function rollupAnswer(page: Page, bucket: string): Promise<Answer> {
+  return page
+    .waitForResponse(
+      async (response) => {
+        const url = new URL(response.url());
+        if (url.pathname !== "/api/history/rollup") return false;
+        if (url.searchParams.get("bucket") !== bucket || !response.ok()) return false;
+        return ((await response.json()) as Row[]).length > 0;
+      },
+      { timeout: 30_000 },
+    )
+    .then(async (response) => ({
+      metric: new URL(response.url()).searchParams.get("metric") ?? "",
+      rows: (await response.json()) as Row[],
+    }));
+}
+
+test("history charts show the minute, hourly and daily tiers", async ({ page }) => {
+  const readings = oracleReadings();
+  const grains = page.getByRole("group", { name: "Select time span" });
+  const chart = page.locator(".lc-root-container").first();
+
+  /** Buckets sit on the tier's UTC grid and the constant simulator's reading is every bucket's. */
+  const expectTier = ({ metric, rows }: Answer, width: number) => {
+    expect(rows.every((r) => Date.parse(r.time) % width === 0)).toBe(true);
+    expect(readings[metric], `oracle reading for ${metric}`).toBeDefined();
+    expect(rows.at(-1)!.avg).toBe(readings[metric]);
+  };
+
+  // ── 1. Back in as the admin; a minute bucket is stored once its minute has closed ──
+  const login = await page.request.post("/api/auth/login", {
+    data: { email: "ada@example.com", password: "analytical-engine" },
+  });
+  expect(login.ok()).toBe(true);
+  await expect
+    .poll(
+      async () => {
+        const answer = await page.request.get(
+          "/api/history/rollup?metric=battery.soc&bucket=minute&hours=1",
+        );
+        const body = await answer.text();
+        if (!answer.ok()) throw new Error(`${answer.status()} ${body}`);
+        return (JSON.parse(body) as Row[]).length;
+      },
+      { timeout: 100_000, intervals: [2_000] },
+    )
+    .toBeGreaterThan(0);
+
+  // ── 2. Day: the minute tier ───────────────────────────────────────────────
+  const minute = rollupAnswer(page, "minute");
+  await page.goto("/#/history");
+  await expect(heading(page)).toHaveText("History");
+  expectTier(await minute, MINUTE_MS);
+  await expect(chart).toBeVisible();
+
+  // ── 3. Month: the hourly tier, the open hour included ─────────────────────
+  const hour = rollupAnswer(page, "hour");
+  await grains.getByRole("button", { name: "Month", exact: true }).click();
+  expectTier(await hour, HOUR_MS);
+  await expect(chart).toBeVisible();
+
+  // ── 4. Year: the daily tier, today's open day included ────────────────────
+  const day = rollupAnswer(page, "day");
+  await grains.getByRole("button", { name: "Year", exact: true }).click();
+  expectTier(await day, DAY_MS);
+  await expect(chart).toBeVisible();
 });

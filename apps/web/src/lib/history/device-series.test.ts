@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import createClient from "openapi-fetch";
+import type { paths as CorePaths } from "$lib/core-api.gen";
 
 // mock-hygiene-ignore-next-line -- SvelteKit virtual modules: no real module exists under bun test. The server-side values keep `$lib/api` loadable.
 mock.module("$app/environment", () => ({ browser: false }));
@@ -9,31 +11,37 @@ mock.module("$env/dynamic/public", () => ({ env: {} }));
 // mock-hygiene-ignore-next-line -- a rune module: it cannot be compiled, so cannot be imported, under bun test.
 mock.module("$lib/source.svelte", () => ({ source: { query: { source: "plant" } } }));
 
-const realApi = await import("$lib/api");
-const realApiExports = { ...realApi };
+const realCore = await import("$lib/core-api");
+const realCoreExports = { ...realCore };
 
-type Query = Record<string, unknown>;
+type Query = Record<string, string>;
 type Point = { time: string; avg: number; min: number; max: number };
 const queries: Query[] = [];
-let answer: (query: Query) => unknown = () => [];
-mock.module("$lib/api", () => ({
-  ...realApi,
-  api: {
-    api: {
-      history: {
-        rollup: {
-          get: async ({ query }: { query: Query }) => {
-            queries.push(query);
-            return { data: answer(query) };
-          },
-        },
-      },
+const paths: string[] = [];
+let answer: (query: Query) => Response | Promise<Response> = () => json([]);
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+mock.module("$lib/core-api", () => ({
+  ...realCore,
+  core: createClient<CorePaths>({
+    baseUrl: "http://core.test",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      paths.push(url.pathname);
+      const query = Object.fromEntries(url.searchParams);
+      queries.push(query);
+      return answer(query);
     },
-  },
+  }),
 }));
 
 afterAll(() => {
-  mock.module("$lib/api", () => ({ ...realApiExports }));
+  mock.module("$lib/core-api", () => ({ ...realCoreExports }));
 });
 
 const { fetchSeriesSet } = await import("./device-series");
@@ -43,17 +51,23 @@ const point = (time: string, avg: number, min = avg, max = avg): Point => ({ tim
 
 beforeEach(() => {
   queries.length = 0;
-  answer = () => [];
+  answer = () => json([]);
+  paths.length = 0;
 });
 
 describe("fetchSeriesSet", () => {
   test("each alias is its metric's buckets keyed by epoch ms", async () => {
-    answer = () => [point("2026-09-01T00:00:00Z", 100), point("2026-09-01T00:01:00Z", 150)];
+    answer = () => json([point("2026-09-01T00:00:00Z", 100), point("2026-09-01T00:01:00Z", 150)]);
     const { pv } = await fetchSeriesSet({ pv: { metric: "pv.power" } }, WINDOW);
     expect([...pv]).toEqual([
       [Date.parse("2026-09-01T00:00:00Z"), 100],
       [Date.parse("2026-09-01T00:01:00Z"), 150],
     ]);
+  });
+
+  test("the read is the core's rollup route", async () => {
+    await fetchSeriesSet({ pv: { metric: "pv.power" } }, WINDOW);
+    expect(paths).toEqual(["/api/history/rollup"]);
   });
 
   test("the request carries the window, the minute tier and the row cap", async () => {
@@ -65,7 +79,7 @@ describe("fetchSeriesSet", () => {
         bucket: "minute",
         from: "2026-09-01T00:00:00.000Z",
         to: "2026-09-01T01:00:00.000Z",
-        limit: 1441,
+        limit: "1441",
       },
     ]);
   });
@@ -82,7 +96,7 @@ describe("fetchSeriesSet", () => {
   });
 
   test("two aliases over one metric and device share ONE request and differ by aggregate", async () => {
-    answer = () => [point("2026-09-01T00:00:00Z", 1.5, 1, 2)];
+    answer = () => json([point("2026-09-01T00:00:00Z", 1.5, 1, 2)]);
     const out = await fetchSeriesSet(
       {
         lo: { metric: "optimizer.state", inverterId: "optimizer", agg: "min" },
@@ -112,16 +126,24 @@ describe("fetchSeriesSet", () => {
     expect(out.load.size).toBe(0);
   });
 
-  test("a failed read, an empty body or a non-array body is an empty series, not a throw", async () => {
-    for (const body of [[], "", null, undefined]) {
-      answer = () => body;
+  test("an empty body, a non-array body, a refusal and an unreachable core are an empty series, not a throw", async () => {
+    const answers: (() => Response | Promise<Response>)[] = [
+      () => json([]),
+      () => new Response(null, { status: 200 }),
+      () => json(null),
+      () => json({ error: "metric is required" }, 400),
+      () => json({ error: "unauthorized" }, 401),
+      () => Promise.reject(new TypeError("fetch failed")),
+    ];
+    for (const next of answers) {
+      answer = next;
       const { pv } = await fetchSeriesSet({ pv: { metric: "pv.power" } }, WINDOW);
       expect(pv.size).toBe(0);
     }
   });
 
   test("a zero reading is a reading", async () => {
-    answer = () => [point("2026-09-01T00:00:00Z", 0)];
+    answer = () => json([point("2026-09-01T00:00:00Z", 0)]);
     const { pv } = await fetchSeriesSet({ pv: { metric: "pv.power" } }, WINDOW);
     expect(pv.get(Date.parse("2026-09-01T00:00:00Z"))).toBe(0);
   });
