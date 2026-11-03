@@ -56,8 +56,9 @@ days appended. Rows per device per day: 1,440 raw, 72,000 minute, 1,200 hourly, 
 
 - Raw keeps 7 days, not 2.0.0's 1825 (23 GB a device): the store sits on an SD card or phone storage. Raw
   adds only sub-minute detail over the minute tier, and the open hour and day it feeds close within a day.
-  Retention closes the open hour and day of a device whose last minute it drops, so a device offline
-  longer than raw retention keeps every bucket.
+  Retention keeps every reading of a device's open hour until the hour ends by the cutoff, then closes
+  that hour and its day before dropping them, so a device offline longer than raw retention keeps every
+  bucket.
 - Minute, hourly and daily keep 3.x's 90 days, 10 years and forever: about 1.2 GB a device after 10 years.
 - Settings `retention.raw_days`, `retention.minute_days`, `retention.hour_days` and `retention.day_days`
   override the defaults. The pass runs at start and hourly, deleting at most 1,000 rows a statement, so a
