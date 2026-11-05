@@ -111,8 +111,8 @@ pub(super) enum Source {
     Plant(PlantRead),
 }
 
-/// The plant's history members, retired ones included, and how the first device in service's profile folds
-/// each metric.
+/// The plant's history members, retired ones included, and how the first member with a known profile folds each
+/// metric.
 pub(super) struct PlantRead {
     pub members: Vec<i64>,
     pub aggregates: Aggregates,
@@ -128,12 +128,14 @@ pub(super) async fn source(core: &Core, source: Option<&str>) -> Result<Source, 
         Some("plant") => match plant::members(&devices, false).as_slice() {
             [sole] => Source::Device(sole.id),
             members => {
+                let mut aggregates = Aggregates::default();
+                for member in members {
+                    if let Some(profile) = core.profile(&member.profile_id).await? {
+                        aggregates = Aggregates::of_profile(&profile);
+                        break;
+                    }
+                }
                 let members = members.iter().map(|d| d.id).collect();
-                let primary = match first_in_service(&devices) {
-                    Some(d) => core.profile(&d.profile_id).await?,
-                    None => None,
-                };
-                let aggregates = primary.map(|profile| Aggregates::of_profile(&profile)).unwrap_or_default();
                 Source::Plant(PlantRead { members, aggregates })
             }
         },

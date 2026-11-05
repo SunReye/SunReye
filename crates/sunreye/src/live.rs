@@ -42,7 +42,7 @@ struct Members {
 }
 
 /// `into` becomes a copy of `from`, in the buffers it already holds.
-fn keep(into: &mut Sample, from: &Sample) {
+fn copy_into(into: &mut Sample, from: &Sample) {
     into.at_ms = from.at_ms;
     into.values.truncate(from.values.len());
     for (i, (key, value)) in from.values.iter().enumerate() {
@@ -77,7 +77,7 @@ impl Live {
             let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let members = &mut *members;
             if members.ids.contains(&device_id) {
-                keep(
+                copy_into(
                     members.last.entry(device_id).or_insert_with(|| Sample { at_ms: 0, values: Vec::new() }),
                     sample,
                 );
@@ -326,6 +326,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::oracle::{as_floats, oracle};
     use crate::plant::Aggregates;
     use crate::samples::Sample;
 
@@ -375,24 +376,8 @@ mod tests {
         );
     }
 
-    fn oracle(file: &str) -> Vec<Value> {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle").join(file);
-        let text = std::fs::read_to_string(path).expect("corpus");
-        text.lines().map(|line| serde_json::from_str(line).expect("json")).collect()
-    }
-
     fn at_ms(value: &Value) -> i64 {
         value.as_str().expect("instant").parse::<jiff::Timestamp>().expect("RFC 3339").as_millisecond()
-    }
-
-    /// JSON writes 100 where a float prints 100.0; both are the number 100.
-    fn as_floats(value: &Value) -> Value {
-        match value {
-            Value::Number(n) => json!(n.as_f64()),
-            Value::Array(items) => items.iter().map(as_floats).collect(),
-            Value::Object(fields) => fields.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect(),
-            other => other.clone(),
-        }
     }
 
     /// A case's device and its latest sample, if it has one.
@@ -406,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn every_plant_case_folds_the_live_members_latest_samples_as_2x() {
+    fn every_plant_case_folds_the_live_members_latest_samples_as_recorded() {
         for case in oracle("plant.ndjson") {
             let roles = case["roles"].as_object().expect("roles");
             let aggregates =
@@ -586,6 +571,20 @@ mod tests {
                 r#"{"topic":"metrics","data":{"time":"1970-01-01T00:00:00.000Z","inverterId":"1",
                     "metrics":{"c":-0.5}}}"#
             )
+        );
+    }
+
+    #[test]
+    fn a_member_value_that_is_not_finite_adds_nothing_to_the_plant() {
+        let roles =
+            [("pv", Some("pv.total.power")), ("soc", Some("battery.soc")), ("dead", Some("pv.total.power"))];
+        let one = sample(AT_MS, &[("pv", f64::NAN), ("soc", 80.0), ("dead", f64::NAN)]);
+        let two = sample(AT_MS, &[("pv", 3.0), ("soc", f64::INFINITY), ("dead", f64::NAN)]);
+        let frame = plant_frame(&[(1, Some(&one)), (2, Some(&two))], AT_MS, &Aggregates::of_roles(roles));
+        assert_eq!(
+            parsed(&frame)["data"]["metrics"],
+            parsed(r#"{"pv":3.0,"soc":80.0}"#),
+            "the other member's value alone; a metric no member has a value for is absent"
         );
     }
 

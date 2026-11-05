@@ -5,6 +5,8 @@ pub mod decode;
 pub mod forecast;
 pub mod manifest;
 pub mod modbus;
+#[cfg(test)]
+mod oracle;
 pub mod plant;
 pub mod poll;
 pub mod probe;

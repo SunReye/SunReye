@@ -21,7 +21,7 @@ use crate::retention::retain;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::sources::{find_profile, installed};
-use crate::store::{DeviceRow, Store, StoreError, first_in_service};
+use crate::store::{DeviceRow, Store, StoreError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -252,10 +252,11 @@ async fn spawn_devices(
     let mut tasks = JoinSet::new();
     let installed = installed(store).await?;
     let devices = store.devices().await?;
-    let members: Vec<i64> = plant::members(&devices, true).iter().map(|device| device.id).collect();
-    let primary =
-        first_in_service(&devices).and_then(|device| find_profile(bundle, &installed, &device.profile_id));
-    live.roster(&members, primary.map(|profile| Aggregates::of_profile(&profile)).unwrap_or_default());
+    let members = plant::members(&devices, true);
+    // The first member with a known profile decides how the plant folds; a meter's never does.
+    let primary = members.iter().find_map(|device| find_profile(bundle, &installed, &device.profile_id));
+    let aggregates = primary.map(|profile| Aggregates::of_profile(&profile)).unwrap_or_default();
+    live.roster(&members.iter().map(|device| device.id).collect::<Vec<_>>(), aggregates);
     for device in devices.into_iter().filter(DeviceRow::in_service) {
         match find_profile(bundle, &installed, &device.profile_id) {
             Some(profile) => {
@@ -591,6 +592,53 @@ mod tests {
         let frame: serde_json::Value = serde_json::from_str(&frame).unwrap_or_default();
         let members = frame["data"]["members"].as_array().cloned().unwrap_or_default();
         members.iter().filter_map(|m| m.as_str().map(str::to_owned)).collect()
+    }
+
+    /// A device of `role` on a connection of its own, in the store at `dir`.
+    async fn seed_role(dir: &Path, port: u16, profile: &str, role: &str) -> i64 {
+        let store = Store::open(dir).await.expect("store");
+        store.set_setting(INTERVAL_KEY, "50").await.expect("interval");
+        let endpoint =
+            NewConnection { transport: Transport::Tcp, host: "127.0.0.1".into(), port, logger_serial: None };
+        let connection = store.add_connection(&endpoint).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: profile.into(), unit_id: 1 };
+        let id = store.create_device(&device, None, role).await.expect("device");
+        store.close().await;
+        id
+    }
+
+    fn plant_data(core: &Core) -> serde_json::Value {
+        let frame = core.live.subscribe().plant().map(|text| text.to_string()).unwrap_or_default();
+        serde_json::from_str::<serde_json::Value>(&frame).unwrap_or_default()["data"].clone()
+    }
+
+    #[tokio::test]
+    async fn the_live_plant_is_its_inverters_folded_by_the_first_members_profile_and_never_a_meter() {
+        let case = oracle_case("deye-sg05lp3");
+        let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("sim");
+        let dir = dir("live-roster");
+        // The meter comes first in the roster: its profile must not decide how the plant folds.
+        let meter = seed_role(&dir, 1, "acme-meter", "meter").await;
+        let known = seed_role(&dir, sim.addr.port(), "deye-sg05lp3", "inverter").await;
+        let unknown = seed_role(&dir, 1, "no-such-profile", "inverter").await;
+        let core = Core::open(&dir).await.expect("core");
+        until_polled(&core, known, 1).await;
+        let data = plant_data(&core);
+        core.stop().await;
+
+        assert_eq!(
+            data["members"],
+            serde_json::json!([known.to_string(), unknown.to_string()]),
+            "meter {meter}"
+        );
+        assert_eq!(data["stale"], serde_json::json!([unknown.to_string()]), "an unpolled inverter is stale");
+        let metrics = data["metrics"].as_object().expect("metrics");
+        assert_eq!(
+            metrics.get("dc.total_power").and_then(serde_json::Value::as_f64),
+            Some(case.readings["dc.total_power"])
+        );
+        assert!(!metrics.contains_key("ac.l1.voltage"), "a per-device role has no plant value: {metrics:?}");
+        drop(std::fs::remove_dir_all(&dir));
     }
 
     #[tokio::test]

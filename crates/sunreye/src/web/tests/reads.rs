@@ -1,18 +1,13 @@
 //! The two reads the live dashboard makes on first paint: the profile manifest and the recent window.
 
 use super::*;
+pub(super) use crate::oracle::oracle;
 use crate::samples::{MINUTE_MS, Sample, minute_of};
 use crate::store::{NewConnection, NewDevice};
 
 /// 2026-03-01T00:02:30Z: the window of 300 s opens at 23:57:30 the day before.
 const NOW: i64 = 1_772_323_350_000;
 const MIDNIGHT: i64 = 1_772_323_200_000;
-
-pub(super) fn oracle(file: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle").join(file);
-    let text = std::fs::read_to_string(path).expect("corpus");
-    text.lines().map(|line| serde_json::from_str(line).expect("json")).collect()
-}
 
 /// A signed-in account that is not an admin.
 pub(super) async fn plain_user(admin: &Api) -> Api {

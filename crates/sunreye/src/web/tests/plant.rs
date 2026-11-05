@@ -2,9 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use super::reads::{oracle, plain_user};
+use super::reads::plain_user;
 use super::*;
 use crate::modbus::Transport;
+use crate::oracle::{as_floats, oracle};
 use crate::samples::{ClosedMinute, Sample, minute_of};
 use crate::store::{DeviceEdit, NewConnection, NewDevice};
 
@@ -17,16 +18,6 @@ fn fixed_clock() -> i64 {
 
 fn text(value: &Value) -> &str {
     value.as_str().unwrap_or_else(|| panic!("a string: {value}"))
-}
-
-/// JSON writes 100 where a float prints 100.0; both are the number 100.
-fn as_floats(value: &Value) -> Value {
-    match value {
-        Value::Number(n) => json!(n.as_f64()),
-        Value::Array(items) => items.iter().map(as_floats).collect(),
-        Value::Object(fields) => fields.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect(),
-        other => other.clone(),
-    }
 }
 
 /// A core at [`NOW`] holding the case's roster, each device under the id its slug names.
@@ -106,7 +97,7 @@ fn backfill_readings(backfill: &Value) -> Vec<(i64, String, f64)> {
 }
 
 #[tokio::test]
-async fn plant_recent_history_folds_every_history_members_own_as_2x() {
+async fn plant_recent_history_folds_every_history_members_own_as_recorded() {
     for case in oracle("plant.ndjson") {
         let name = text(&case["case"]).to_owned();
         let (core, admin) = with_roster(&format!("plant-recent-{name}"), &case).await;
@@ -143,7 +134,7 @@ async fn assert_plant_minutes(admin: &Api, label: &str, query: &str, recorded: &
 }
 
 #[tokio::test]
-async fn plant_minute_rollups_fold_every_history_members_own_as_2x() {
+async fn plant_minute_rollups_fold_every_history_members_own_as_recorded() {
     for case in oracle("plant-rollups.ndjson") {
         let name = text(&case["case"]).to_owned();
         let (core, admin) = with_roster(&format!("plant-rollup-{name}"), &case).await;
@@ -165,7 +156,7 @@ async fn plant_minute_rollups_fold_every_history_members_own_as_2x() {
 }
 
 #[tokio::test]
-async fn sources_name_the_plant_members_and_every_device_as_2x() {
+async fn sources_name_the_plant_members_and_every_device_as_recorded() {
     for case in oracle("plant.ndjson") {
         let name = text(&case["case"]).to_owned();
         let (core, admin) = with_roster(&format!("plant-sources-{name}"), &case).await;
@@ -217,6 +208,50 @@ async fn a_stranger_reads_the_plant_under_the_kiosk_view_as_a_session_does_withi
     assert_eq!(
         (recent.status, recent.json()),
         (StatusCode::OK, get(&admin, "/api/history/recent?source=plant").await.json())
+    );
+    finish(core, admin).await;
+}
+
+#[tokio::test]
+async fn a_plant_rollup_holds_its_limit_across_members_for_a_session_and_a_kiosk_stranger() {
+    let case =
+        oracle("plant-rollups.ndjson").into_iter().find(|c| c["case"] == "overlapping-roles").expect("case");
+    let (core, admin) = with_roster("plant-limit", &case).await;
+    for device in case["devices"].as_array().expect("devices") {
+        store(&core, text(&device["slug"]).parse().expect("id"), &readings(device)).await;
+    }
+    let golden = case["minute"]["dc.total_power"].as_array().expect("buckets");
+    assert!(golden.len() > 3, "the members' buckets outnumber the limit");
+    let window = format!("from={}&to={}", text(&case["window"]["from"]), text(&case["window"]["to"]));
+    let read =
+        format!("/api/history/rollup?metric=dc.total_power&bucket=minute&source=plant&{window}&limit=3");
+    assert_eq!(put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await.status, StatusCode::OK);
+    for (who, api) in [("admin", &admin), ("stranger", &admin.anonymous())] {
+        let answer = get(api, &read).await;
+        assert_eq!(answer.status, StatusCode::OK, "{who}");
+        assert_eq!(as_floats(&answer.json()), as_floats(&json!(golden[..3])), "{who}");
+    }
+    finish(core, admin).await;
+}
+
+#[tokio::test]
+async fn a_meter_first_in_the_roster_does_not_decide_how_the_plant_folds() {
+    let device = |slug: &str, profile: &str, role: &str| json!({"slug": slug, "name": slug, "profileId": profile, "role": role, "retiredAt": null});
+    let roster = json!({
+        "devices": [device("1", "acme-meter", "meter"), device("2", PROFILE, "inverter"), device("3", PROFILE, "inverter")],
+        "roles": {"dc.total_power": "pv.total.power"},
+    });
+    let (core, admin) = with_roster("plant-meter-first", &roster).await;
+    let at = NOW - 120_000;
+    store(&core, 2, &[(at, "dc.total_power".into(), 100.0)]).await;
+    store(&core, 3, &[(at, "dc.total_power".into(), 50.0)]).await;
+    let answer = get(&admin, "/api/history/rollup?metric=dc.total_power&bucket=minute&source=plant").await;
+    assert_eq!(
+        (answer.status, answer.json()),
+        (
+            StatusCode::OK,
+            json!([{"time": "2026-03-01T00:00:00.000Z", "avg": 150.0, "max": 150.0, "min": 150.0}])
+        )
     );
     finish(core, admin).await;
 }

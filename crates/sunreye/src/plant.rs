@@ -189,20 +189,14 @@ pub fn fold_buckets(members: Vec<Vec<Bucket>>, aggregate: Aggregate) -> Vec<Buck
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
 
     use jiff::Timestamp;
     use serde_json::{Value, json};
 
     use super::*;
     use crate::modbus::Transport;
+    use crate::oracle::{as_floats, oracle};
     use crate::rollup::{Tier, rollup};
-
-    fn oracle(file: &str) -> Vec<Value> {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle").join(file);
-        let text = std::fs::read_to_string(path).expect("corpus");
-        text.lines().map(|line| serde_json::from_str(line).expect("json")).collect()
-    }
 
     fn name(aggregate: Aggregate) -> &'static str {
         match aggregate {
@@ -286,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn every_case_folds_recent_history_over_the_history_members_as_2x() {
+    fn every_case_folds_recent_history_over_the_history_members_as_recorded() {
         for case in oracle("plant.ndjson") {
             let history: Vec<Recent> = case["members"]["history"]
                 .as_array()
@@ -312,6 +306,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_member_value_that_is_not_finite_holds_its_last_finite_one() {
+        let aggregates =
+            Aggregates::of_roles([("pv", Some("pv.total.power")), ("dead", Some("pv.total.power"))]);
+        let member = |pv: Series, dead: Series| Recent {
+            t0: 1_000,
+            step: 1,
+            metrics: BTreeMap::from([("pv".to_owned(), pv), ("dead".to_owned(), dead)]),
+        };
+        let members = [
+            member(
+                Series { o: vec![0, 1], v: vec![10.0, f64::NAN] },
+                Series { o: vec![0], v: vec![f64::NAN] },
+            ),
+            member(Series { o: vec![1], v: vec![f64::INFINITY] }, Series { o: vec![1], v: vec![f64::NAN] }),
+        ];
+        let folded = fold_recent(&members, &aggregates, 1);
+        assert_eq!(
+            folded.metrics,
+            BTreeMap::from([("pv".to_owned(), Series { o: vec![0, 1], v: vec![10.0, 10.0] })]),
+            "a metric no member has a finite value for is absent"
+        );
+    }
+
     fn readings(series: &Value) -> Vec<(Timestamp, f64)> {
         let instant = |v: &Value| text(v).parse::<Timestamp>().expect("instant");
         series
@@ -327,16 +345,6 @@ mod tests {
             .iter()
             .map(|b| json!({"time": b.start.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(), "avg": b.avg, "max": b.max, "min": b.min}))
             .collect()
-    }
-
-    /// JSON writes 100 where a float prints 100.0; both are the number 100.
-    fn as_floats(value: &Value) -> Value {
-        match value {
-            Value::Number(n) => json!(n.as_f64()),
-            Value::Array(items) => items.iter().map(as_floats).collect(),
-            Value::Object(fields) => fields.iter().map(|(k, v)| (k.clone(), as_floats(v))).collect(),
-            other => other.clone(),
-        }
     }
 
     fn member_minutes(member: &Value, metric: &str) -> Vec<Bucket> {
@@ -368,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn every_case_folds_minute_rollups_over_the_history_members_as_2x() {
+    fn every_case_folds_minute_rollups_over_the_history_members_as_recorded() {
         for case in oracle("plant-rollups.ndjson") {
             assert_rollups(&case);
         }
