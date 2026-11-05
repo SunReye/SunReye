@@ -203,7 +203,6 @@ mod tests {
         }
     }
 
-    /// Polls until `done`, failing after 20 s.
     async fn until(done: impl Fn() -> bool) {
         let deadline = Instant::now() + Duration::from_secs(20);
         while !done() {
@@ -277,17 +276,32 @@ mod tests {
 
         let hash = spawn_hash(&passwords, "another long password");
         let known = spawn_verify(&passwords, "correct horse battery", Some(stored));
-        let unknown = spawn_verify(&passwords, "correct horse battery", None);
         // Each task has run to the cap and queued. Closing it refuses what is queued, so a check that
         // ran past the cap would hash or verify instead.
         tokio::task::yield_now().await;
         passwords.gate.close();
         assert_eq!(hash.await.expect("join"), None, "hashed past the cap");
         assert!(!known.await.expect("join"), "verified past the cap");
-        assert!(!unknown.await.expect("join"));
 
         drop(taken);
         assert_eq!(passwords.gate.available_permits(), CHECKS, "the cap is returned");
+    }
+
+    /// The unknown account is the path an attacker needs no account for; its dummy check is capped too.
+    #[tokio::test]
+    async fn an_unknown_account_queues_for_the_cap() {
+        let passwords = Passwords::new();
+        let taken = Arc::clone(&passwords.gate).acquire_many_owned(cap()).await.expect("open");
+        let mut unknown = std::pin::pin!(passwords.verify("correct horse battery".into(), None));
+        assert!(futures_util::poll!(&mut unknown).is_pending(), "returned under a full cap");
+
+        // A freed permit goes to a queued check first; one that skipped the queue leaves it free.
+        passwords.gate.add_permits(1);
+        assert_eq!(passwords.gate.available_permits(), 0, "checked without waiting for the cap");
+        assert!(!unknown.await);
+
+        drop(taken);
+        assert_eq!(passwords.gate.available_permits(), CHECKS + 1);
     }
 
     fn cap() -> u32 {
