@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(client.read_holding(0, 1, 1).await, Err(Error::Timeout));
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn an_rtu_reply_that_stops_halfway_times_out_and_one_that_ends_halfway_is_an_i_o_error() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let port = listener.local_addr().expect("addr").port();

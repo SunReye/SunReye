@@ -92,6 +92,7 @@ bun scripts/require-tests.ts "$(git merge-base "$base" HEAD)"
 step "lint and format"
 bunx oxlint
 bunx oxfmt --check
+bun run test:timing
 bunx fallow --quiet
 
 step typecheck

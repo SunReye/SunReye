@@ -147,6 +147,12 @@
       ]
     },
     {
+      "file": "scripts/timing-hygiene.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
       "file": "scripts/nginx-locations.ts",
       "exports": [
         "*"
