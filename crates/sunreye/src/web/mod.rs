@@ -10,6 +10,7 @@ mod inverter;
 mod kiosk;
 mod origin;
 mod password;
+mod plant;
 mod profile_sources;
 mod reachability;
 mod rollup;
@@ -95,6 +96,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(auth::current, auth::logout))
+        .routes(routes!(plant::sources))
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .route_layer(login_required!(Accounts))

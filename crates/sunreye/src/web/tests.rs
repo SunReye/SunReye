@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 46] = [
+const SERVED: [(&str, &str); 47] = [
     ("post", "/api/connections"),
     ("post", "/api/connections/probe"),
     ("post", "/api/connections/scan-units"),
@@ -458,6 +458,7 @@ const SERVED: [(&str, &str); 46] = [
     ("get", "/api/settings/inverter"),
     ("get", "/api/settings/profile-sources"),
     ("get", "/api/setup-status"),
+    ("get", "/api/sources"),
     ("get", "/api/v1/entities"),
     ("post", "/api/settings/inverter/test"),
     ("post", "/api/settings/profile-sources"),
@@ -1198,6 +1199,7 @@ mod api_keys;
 mod devices;
 mod forecast;
 mod kiosk;
+mod plant;
 mod reads;
 mod rollup;
 mod time_zone;

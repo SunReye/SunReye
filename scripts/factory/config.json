@@ -42,7 +42,10 @@
   ],
   "generated_conflict_paths": [
     "bun.lock",
-    "*.gen.ts"
+    "Cargo.lock",
+    "*.gen.ts",
+    "crates/sunreye/openapi_snapshot.json",
+    ".sqlx/*"
   ],
   "commands": {
     "install": [
@@ -57,6 +60,25 @@
       [
         "bun",
         "install"
+      ],
+      [
+        "env",
+        "UPDATE_OPENAPI=1",
+        "cargo",
+        "test",
+        "-p",
+        "sunreye",
+        "openapi"
+      ],
+      [
+        "bun",
+        "run",
+        "--cwd",
+        "apps/web",
+        "gen:core-api"
+      ],
+      [
+        "scripts/sqlx-cache"
       ]
     ],
     "gate": [
