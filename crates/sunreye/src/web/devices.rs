@@ -172,6 +172,7 @@ pub struct NewDeviceRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::option_option, reason = "absent leaves a field, null clears it")]
 pub struct DevicePatch {
     name: Option<String>,
     role: Option<String>,
@@ -182,18 +183,18 @@ pub struct DevicePatch {
     retired: Option<bool>,
     /// Replaces the inverter's arrays.
     arrays: Option<Vec<PvArray>>,
-    temp_coefficient: Option<f64>,
-    system_loss: Option<f64>,
+    /// `null` falls back to the plant's; absent leaves it.
+    #[serde(default, deserialize_with = "crate::weather::present")]
+    #[schema(value_type = Option<f64>, required = false)]
+    temp_coefficient: Option<Option<f64>>,
+    /// `null` falls back to the plant's; absent leaves it.
+    #[serde(default, deserialize_with = "crate::weather::present")]
+    #[schema(value_type = Option<f64>, required = false)]
+    system_loss: Option<Option<f64>>,
     /// `null` removes the pack; absent leaves it.
-    #[allow(clippy::option_option, reason = "absent leaves the pack, null removes it")]
-    #[serde(default, deserialize_with = "stated_or_null")]
+    #[serde(default, deserialize_with = "crate::weather::present")]
     #[schema(value_type = Option<Battery>, required = false)]
     battery: Option<Option<Battery>>,
-}
-
-#[allow(clippy::option_option, reason = "absent leaves the pack, null removes it")]
-fn stated_or_null<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<Battery>>, D::Error> {
-    Option::<Battery>::deserialize(d).map(Some)
 }
 
 impl DevicePatch {
@@ -208,8 +209,8 @@ impl DevicePatch {
 
     fn apply_pv(self, mut pv: DevicePv) -> DevicePv {
         pv.arrays = self.arrays.unwrap_or(pv.arrays);
-        pv.temp_coefficient = self.temp_coefficient.or(pv.temp_coefficient);
-        pv.system_loss = self.system_loss.or(pv.system_loss);
+        pv.temp_coefficient = self.temp_coefficient.unwrap_or(pv.temp_coefficient);
+        pv.system_loss = self.system_loss.unwrap_or(pv.system_loss);
         pv.battery = self.battery.unwrap_or(pv.battery);
         pv
     }

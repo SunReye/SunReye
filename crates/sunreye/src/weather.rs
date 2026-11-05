@@ -228,7 +228,9 @@ fn stated<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option
 
 /// A stated key, `null` included, as `Some`.
 #[allow(clippy::option_option, reason = "absent keeps the stored value, null clears it")]
-fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<Option<T>>, D::Error> {
+pub(crate) fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(d).map(Some)
 }
 

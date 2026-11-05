@@ -2862,14 +2862,16 @@
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "`null` falls back to the plant's; absent leaves it."
           },
           "tempCoefficient": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "`null` falls back to the plant's; absent leaves it."
           },
           "unitId": {
             "type": [

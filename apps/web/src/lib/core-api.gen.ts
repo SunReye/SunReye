@@ -663,9 +663,15 @@ export interface components {
             /** @description True retires the device: kept with its history, no longer polled. False restores it. */
             retired?: boolean | null;
             role?: string | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description `null` falls back to the plant's; absent leaves it.
+             */
             systemLoss?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description `null` falls back to the plant's; absent leaves it.
+             */
             tempCoefficient?: number | null;
             /** Format: int64 */
             unitId?: number | null;

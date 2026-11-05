@@ -274,6 +274,30 @@ async fn an_array_on_a_string_the_inverter_lacks_or_shares_and_arrays_on_a_meter
 }
 
 #[tokio::test]
+async fn an_inverter_s_physics_override_is_set_by_a_value_kept_when_absent_and_cleared_by_null() {
+    let (core, admin, _) = forecasting("device-physics-override", fixed_now).await;
+    let physics = |answer: Answer| {
+        let device = answer.json();
+        (device["tempCoefficient"].clone(), device["systemLoss"].clone())
+    };
+    let set = patch(&admin, "/api/devices/1", &json!({"tempCoefficient": -0.3, "systemLoss": 12})).await;
+    assert_eq!(physics(set), (json!(-0.3), json!(12.0)));
+    let absent = patch(&admin, "/api/devices/1", &json!({"name": "roof"})).await;
+    assert_eq!(physics(absent), (json!(-0.3), json!(12.0)), "absent keeps both");
+    let one = patch(&admin, "/api/devices/1", &json!({"tempCoefficient": null})).await;
+    assert_eq!(physics(one), (Value::Null, json!(12.0)), "null clears only the named field");
+    let other = patch(&admin, "/api/devices/1", &json!({"systemLoss": null})).await;
+    assert_eq!(physics(other), (Value::Null, Value::Null));
+    let plant = get(&admin, "/api/settings/weather").await.json();
+    assert_eq!(
+        (&plant["forecast"]["tempCoefficient"], &plant["forecast"]["systemLoss"]),
+        (&json!(-0.4), &json!(14.0))
+    );
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn the_forecast_answers_the_model_s_series_and_a_second_request_does_not_refetch() {
     let (core, admin, standin) = forecasting("forecast-served", fixed_now).await;
     configure(&admin, None).await;
