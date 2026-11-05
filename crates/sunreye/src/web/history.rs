@@ -111,15 +111,15 @@ pub(super) enum Source {
     Plant(PlantRead),
 }
 
-/// The plant's history members, retired ones included, and how the first member with a known profile folds each
-/// metric.
+/// The plant's history members, retired ones included, and how the first member with a known profile
+/// folds each metric.
 pub(super) struct PlantRead {
     pub members: Vec<i64>,
     pub aggregates: Aggregates,
 }
 
-/// `source` names a device by its decimal id, retired or not, or `plant`; none or empty is the first device in
-/// service. An id no device has reads nothing, as 3.x reads an unknown slug.
+/// `source` names a device by its decimal id, retired or not, or `plant`; none or empty is the first
+/// device in service. An id no device has reads nothing, as 3.x reads an unknown slug.
 pub(super) async fn source(core: &Core, source: Option<&str>) -> Result<Source, StoreError> {
     let devices = core.store.devices().await?;
     let device = |id: Option<i64>| id.map_or(Source::Nothing, Source::Device);

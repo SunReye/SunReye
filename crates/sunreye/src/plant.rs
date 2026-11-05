@@ -343,7 +343,10 @@ mod tests {
     fn buckets(buckets: &[Bucket]) -> Value {
         buckets
             .iter()
-            .map(|b| json!({"time": b.start.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(), "avg": b.avg, "max": b.max, "min": b.min}))
+            .map(|b| {
+                let time = b.start.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                json!({"time": time, "avg": b.avg, "max": b.max, "min": b.min})
+            })
             .collect()
     }
 

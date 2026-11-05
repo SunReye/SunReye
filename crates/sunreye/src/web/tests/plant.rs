@@ -236,9 +236,17 @@ async fn a_plant_rollup_holds_its_limit_across_members_for_a_session_and_a_kiosk
 
 #[tokio::test]
 async fn a_meter_first_in_the_roster_does_not_decide_how_the_plant_folds() {
-    let device = |slug: &str, profile: &str, role: &str| json!({"slug": slug, "name": slug, "profileId": profile, "role": role, "retiredAt": null});
+    let device = |slug: &str, profile: &str, role: &str| {
+        json!({
+            "slug": slug, "name": slug, "profileId": profile, "role": role, "retiredAt": null,
+        })
+    };
     let roster = json!({
-        "devices": [device("1", "acme-meter", "meter"), device("2", PROFILE, "inverter"), device("3", PROFILE, "inverter")],
+        "devices": [
+            device("1", "acme-meter", "meter"),
+            device("2", PROFILE, "inverter"),
+            device("3", PROFILE, "inverter"),
+        ],
         "roles": {"dc.total_power": "pv.total.power"},
     });
     let (core, admin) = with_roster("plant-meter-first", &roster).await;

@@ -139,7 +139,11 @@ impl From<Bucket> for RollupPoint {
         (status = 200, body = Vec<RollupPoint>),
         (status = 400, body = ErrorBody),
         (status = 401, body = ErrorBody),
-        (status = 422, body = ErrorBody, description = "A per-device metric read for a plant of several members"),
+        (
+            status = 422,
+            body = ErrorBody,
+            description = "A per-device metric read for a plant of several members"
+        ),
         (status = 500, body = ErrorBody),
         (status = 503, body = ErrorBody)
     )
