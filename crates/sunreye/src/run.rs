@@ -97,7 +97,16 @@ impl Core {
         now: fn() -> i64,
         forecast_url: String,
     ) -> Result<Arc<Self>, RunError> {
-        let store = Arc::new(Store::open(data_dir).await?);
+        Self::start(Store::open(data_dir).await?, roots, now, forecast_url).await
+    }
+
+    async fn start(
+        store: Store,
+        roots: Vec<CertificateDer<'static>>,
+        now: fn() -> i64,
+        forecast_url: String,
+    ) -> Result<Arc<Self>, RunError> {
+        let store = Arc::new(store);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));

@@ -285,6 +285,20 @@ async fn an_upgrade_past_the_connection_cap_is_refused_until_one_closes() {
 }
 
 #[tokio::test]
+async fn an_upgrade_that_finds_the_database_busy_is_a_503_not_a_hang() {
+    let (core, admin) = open(&dir("ws-busy")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let held = core.store.hold().await;
+    tokio::time::pause();
+    assert_eq!(upgrade(addr, &admin, SAME_ORIGIN).await.err(), Some(StatusCode::SERVICE_UNAVAILABLE));
+    tokio::time::resume();
+    drop(held);
+    drop(connect(addr, &admin).await);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn strangers_past_their_cap_are_refused_and_the_rest_stays_for_sessions() {
     let (core, admin) = open(&dir("ws-strangers")).await;
     let live = LiveLimits { connections: 3, strangers: 1, ..LiveLimits::default() };
