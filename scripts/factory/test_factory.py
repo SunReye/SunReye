@@ -1151,7 +1151,8 @@ class Gc(unittest.TestCase):
             calls.append((args, check))
             return ""
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(slots, "sh", side_effect=fake_sh):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(slots, "sh", side_effect=fake_sh), \
+                mock.patch.object(slots, "review_target_dir", return_value=Path(tmp) / "none"):
             store = FakeStore(tmp)
             store.slot_path = lambda slot: store.dir / "slots" / slot
             slots.gc(store, {"slots": {}})
@@ -1161,36 +1162,70 @@ class Gc(unittest.TestCase):
 class ReviewTargetGc(unittest.TestCase):
     """gc prunes the reviewers' shared cargo target dir only when no review is live and disk is tight."""
 
-    def gc(self, free_gb, runs):
-        pause = factory.CFG["disk_pause_free_gb"]
+    PAUSE = factory.CFG["disk_pause_free_gb"]
+
+    def gc(self, free_gb, runs, link_target=False, locked=False):
+        """Run gc over a temp cache holding the target, a sibling file and an outside file; report what survives."""
         usage = mock.Mock(free=int(free_gb * slots.GB))
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "review-target"
-            (target / "debug").mkdir(parents=True)
-            (target / "debug" / "blob").write_text("x")
+            cache = Path(tmp) / "cache"
+            outside = Path(tmp) / "outside"
+            target = cache / "review-target"
+            cache.mkdir()
+            outside.mkdir()
+            (outside / "keep").write_text("x")
+            (cache / "sibling").write_text("x")
+            if link_target:
+                target.symlink_to(outside)
+            else:
+                (target / "debug").mkdir(parents=True)
+                (target / "debug" / "blob").write_text("x")
+                (target / "debug" / "link").symlink_to(outside)
             store = FakeStore(tmp)
             store.slot_path = lambda slot: store.dir / "slots" / slot
-            with mock.patch.object(slots, "sh", return_value=""), \
-                    mock.patch.object(slots, "review_target_dir", return_value=target), \
-                    mock.patch.object(slots.shutil, "disk_usage", return_value=usage):
-                report = slots.gc(store, {"slots": {}, "runs": runs})
-            self.assertEqual(pause, 30)
-            return target.exists(), report["review_target"]
+            if locked:
+                cache.chmod(0o500)
+            try:
+                with mock.patch.object(slots, "sh", return_value=""), \
+                        mock.patch.object(slots, "review_target_dir", return_value=target), \
+                        mock.patch.object(slots.shutil, "disk_usage", return_value=usage):
+                    report = slots.gc(store, {"slots": {}, "runs": runs})
+            finally:
+                cache.chmod(0o700)
+            return {"target": os.path.lexists(target), "status": report["review_target"],
+                    "sibling": (cache / "sibling").exists(), "outside": (outside / "keep").exists()}
 
     LIVE = {"review:7": {"role": "review", "target": "7", "since": 0}}
 
     def test_idle_reviewers_and_tight_disk_prune_the_target(self):
-        self.assertEqual(self.gc(29.9, {}), (False, "pruned"))
+        got = self.gc(self.PAUSE - 0.1, {})
+        self.assertEqual((got["target"], got["status"]), (False, "pruned"))
+
+    def test_pruning_leaves_siblings_and_symlink_targets_intact(self):
+        got = self.gc(self.PAUSE / 2, {})
+        self.assertEqual((got["sibling"], got["outside"]), (True, True))
+
+    def test_a_symlinked_target_is_unlinked_and_its_destination_kept(self):
+        got = self.gc(self.PAUSE / 2, {}, link_target=True)
+        self.assertEqual(got, {"target": False, "status": "pruned", "sibling": True, "outside": True})
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_a_target_that_survives_removal_is_not_reported_pruned(self):
+        got = self.gc(self.PAUSE / 2, {}, link_target=True, locked=True)
+        self.assertEqual((got["target"], got["status"]), (True, "kept"))
 
     def test_a_live_review_keeps_the_target(self):
-        self.assertEqual(self.gc(5, self.LIVE), (True, "kept"))
+        got = self.gc(self.PAUSE / 6, self.LIVE)
+        self.assertEqual((got["target"], got["status"]), (True, "kept"))
 
     def test_free_disk_at_the_pause_line_keeps_the_target(self):
-        self.assertEqual(self.gc(30, {}), (True, "kept"))
+        got = self.gc(self.PAUSE, {})
+        self.assertEqual((got["target"], got["status"]), (True, "kept"))
 
     def test_a_split_or_other_run_does_not_hold_the_target(self):
         runs = {"split:9": {"role": "split", "target": "9", "since": 0}}
-        self.assertEqual(self.gc(10, runs), (False, "pruned"))
+        got = self.gc(self.PAUSE / 3, runs)
+        self.assertEqual((got["target"], got["status"]), (False, "pruned"))
 
     def test_a_missing_target_dir_is_reported_absent(self):
         with tempfile.TemporaryDirectory() as tmp:

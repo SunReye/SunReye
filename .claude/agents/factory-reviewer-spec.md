@@ -19,11 +19,11 @@ You review one PR on the **spec axis**: does it do what its ticket and the spec 
 
 ## Scratch and budget
 
-- Run in a scratch worktree, never the dispatcher checkout: `git worktree add --detach "$HOME/.cache/sunreye-review/<pr>-<axis>" origin/<branch>`, with `TMPDIR` set to a private directory beside it. Remove both before replying.
-- `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Never put a target dir inside a repo.
+- Run in a scratch worktree outside the dispatcher checkout: `git worktree add --detach "$HOME/.cache/sunreye-review/<pr>-<axis>" origin/<branch>`, with `TMPDIR` set to a private directory beside it. Remove both before replying.
+- `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Keep every target dir outside repos.
 - Kill every process you start. About 40 tool calls; 12 minutes per command.
-- Skip `scripts/ci`, route smoke, budgets and the full e2e.
-- When `scripts/factory/factory gate-result <head-sha>` exits 0, do not re-run the full suite: run only the changed tests and mutation checks.
+- Leave `scripts/ci`, route smoke, budgets and the full e2e to the gate.
+- When `scripts/factory/factory gate-result <head-sha>` exits 0, run only the changed tests and mutation checks.
 - Prove each new guard bites: flip its bound once, see its test go red, restore it. A guard whose test stays green is a finding.
 
 ## Review bar

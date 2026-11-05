@@ -312,13 +312,17 @@ def review_target_dir():
 def prune_review_target(store, state):
     """Reviewers share one cargo target dir; drop it when none runs and free disk is under the pause line."""
     target = review_target_dir()
-    if not target.exists():
+    if not os.path.lexists(target):
         return "absent"
     if any(key.startswith("review:") for key in state.get("runs", {})) \
             or disk(store)["level"] == "green":
         return "kept"
-    shutil.rmtree(target, ignore_errors=True)
-    return "pruned"
+    if target.is_symlink():
+        with contextlib.suppress(OSError):
+            target.unlink()
+    else:
+        shutil.rmtree(target, ignore_errors=True)
+    return "kept" if os.path.lexists(target) else "pruned"
 
 
 def gc(store, state, aggressive=False):
