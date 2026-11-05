@@ -6,13 +6,19 @@ come from configuration. Reuse bounds disk to (slots × cap)."""
 import contextlib
 import fcntl
 import json
+import os
 import re
+import shlex
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
 
 GB = 1024 ** 3
+GATE_WAIT_SECONDS = 540
+GATE_POLL_SECONDS = 2
+GATE_TAIL_LINES = 60
 
 
 def sh(*args, cwd=None, check=True):
@@ -79,13 +85,98 @@ def env_file_text(env, nice):
     return text
 
 
-def run_commands(cfg, phase, path):
-    """Run configured argv commands in order; stop on the first failure."""
+def phase_commands(cfg, phase):
     commands = cfg["commands"].get(phase, [])
     if phase == "gate" and not commands:
         raise SystemExit("configure at least one gate command before running the factory")
-    for command in commands:
+    return commands
+
+
+def run_commands(cfg, phase, path):
+    """Run configured argv commands in order; stop on the first failure."""
+    for command in phase_commands(cfg, phase):
         subprocess.run(command, cwd=path, check=True)
+
+
+def gate_files(slot):
+    logs = main_root() / ".factory" / "logs"
+    return {name: logs / f"gate-{slot}.{name}" for name in ("log", "exit", "pid")}
+
+
+def proc_stat(pid):
+    """(state, start time) of a pid from /proc/<pid>/stat, or None once it is gone."""
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    return fields[0], fields[19]
+
+
+def recorded_gate(files):
+    """(pid, start time) from the pid file, or None when absent or unreadable."""
+    try:
+        pid, start = files["pid"].read_text().split()
+        return int(pid), start
+    except (OSError, ValueError):
+        return None
+
+
+def gate_running(files):
+    """A recycled pid differs in start time; a zombie has state Z."""
+    gate = recorded_gate(files)
+    if files["exit"].exists() or not gate:
+        return False
+    stat = proc_stat(gate[0])
+    return bool(stat) and stat[0] != "Z" and stat[1] == gate[1]
+
+
+def kill_leftovers(files):
+    """Kill the previous gate's process group: children outlive a killed wrapper."""
+    gate = recorded_gate(files)
+    if not gate:
+        return
+    stat = proc_stat(gate[0])
+    if stat and stat[1] != gate[1]:  # pid recycled: its group is not ours
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(gate[0], signal.SIGKILL)
+
+
+def start_gate(cfg, slot, path, train=False):
+    """Run the gate in a background session; its log and exit code land in the main checkout's .factory/logs."""
+    commands = phase_commands(cfg, "gate") + (phase_commands(cfg, "train_gate") if train else [])
+    files = gate_files(slot)
+    if gate_running(files):
+        raise SystemExit(f"gate already running in {slot}: factory gate-wait --slot {slot}")
+    kill_leftovers(files)
+    files["log"].parent.mkdir(parents=True, exist_ok=True)
+    for name in ("log", "exit", "pid"):
+        files[name].unlink(missing_ok=True)
+    chain = " && ".join(shlex.join(command) for command in commands)
+    script = f'{chain}; rc=$?; echo "$rc" > "$1.tmp" && mv "$1.tmp" "$1"'
+    with open(files["log"], "w") as log:
+        proc = subprocess.Popen(["sh", "-c", script, "sh", str(files["exit"])], cwd=path, stdin=subprocess.DEVNULL,
+                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    stat = proc_stat(proc.pid)
+    files["pid"].write_text(f"{proc.pid} {stat[1] if stat else '-'}")
+    return {"log": str(files["log"]), "exit": str(files["exit"])}
+
+
+def wait_gate(slot):
+    """Block up to GATE_WAIT_SECONDS: running, or the exit code with the log tail on failure."""
+    files = gate_files(slot)
+    if not files["log"].exists():
+        raise SystemExit(f"no gate started in {slot}: factory gate --detach")
+    deadline = time.monotonic() + GATE_WAIT_SECONDS
+    while gate_running(files) and time.monotonic() < deadline:
+        time.sleep(GATE_POLL_SECONDS)
+    if gate_running(files):
+        return {"status": "running"}
+    tail = "".join(files["log"].read_text(errors="replace").splitlines(keepends=True)[-GATE_TAIL_LINES:])
+    if files["exit"].exists():
+        code = int(files["exit"].read_text())
+        return {"status": "passed", "exit": 0} if code == 0 else {"status": "failed", "exit": code, "tail": tail}
+    return {"status": "failed", "exit": 1, "tail": "gate process died before writing an exit code\n" + tail}
 
 
 def prepare(store, slot, branch, new_branch=False):
