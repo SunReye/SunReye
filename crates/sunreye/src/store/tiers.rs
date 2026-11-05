@@ -492,10 +492,14 @@ mod tests {
         let connection = store.add_connection(&connection).await.expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 2 };
         let second = store.add_device(&device).await.expect("device");
-        let started = std::time::Instant::now();
         store.append_minute(second, &poll(late)).await.expect("append");
-        let took = started.elapsed();
-        assert!(took < std::time::Duration::from_millis(100), "{took:?}");
+        let (buckets, newest): (i64, i64) =
+            sqlx::query_as("SELECT COUNT(*), MAX(start_us) FROM rollup WHERE tier = 0 AND device_id = ?")
+                .bind(second)
+                .fetch_one(&store.pool)
+                .await
+                .expect("count");
+        assert_eq!((buckets, newest), (METRICS as i64, 1_200_000_000_000));
     }
 
     async fn plan(store: &Store, query: &str) -> String {
