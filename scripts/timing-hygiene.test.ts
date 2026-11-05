@@ -62,6 +62,15 @@ describe("Rust: waits", () => {
     expect(rust(`fn t() {\n  clock.sleep(1);\n}\nfn sleep(x: u8) {}`)).toEqual([]);
   });
 
+  test("sleep imported under another name is flagged", () => {
+    expect(
+      rust(`use tokio::time::sleep as nap;\nasync fn t() {\n  nap(d).await;\n}`).map((f) => f.line),
+    ).toEqual([3]);
+    expect(
+      rust(`use std::thread::{self, sleep as doze};\nfn t() {\n  doze(d);\n}`).map((f) => f.line),
+    ).toEqual([3]);
+  });
+
   test("paused tokio time passes", () => {
     expect(
       rust(
@@ -126,7 +135,7 @@ describe("Rust: assertions on elapsed time", () => {
     expect(rust(source).map((f) => f.line)).toEqual([5]);
   });
 
-  test("a bare Duration threshold is flagged", () => {
+  test("a bare Duration threshold is flagged: the scan cannot see an injected clock behind a call", () => {
     expect(rules(rust(`fn t() {\n  assert!(cost() <= Duration::from_secs(1));\n}`))).toEqual([
       "rust-elapsed",
     ]);
@@ -151,6 +160,28 @@ describe("Rust: assertions on elapsed time", () => {
       rust(`fn t() {\n  let started = Instant::now();\n  work();\n  log(started.elapsed());\n}`),
     ).toEqual([]);
   });
+
+  test("an elapsed assertion under paused tokio time is exact and passes", () => {
+    const source = `#[tokio::test(start_paused = true)]\nasync fn t() {\n  let s = Instant::now();\n  sleep(Duration::from_secs(5)).await;\n  assert_eq!(s.elapsed(), Duration::from_secs(5));\n}`;
+    expect(rust(source)).toEqual([]);
+    const paused = `#[tokio::test]\nasync fn t() {\n  tokio::time::pause();\n  let s = Instant::now();\n  assert!(s.elapsed() >= Duration::from_secs(5));\n}`;
+    expect(rust(paused)).toEqual([]);
+  });
+
+  test("pause in one test does not excuse an elapsed assertion in another", () => {
+    const source = `#[tokio::test(start_paused = true)]\nasync fn a() {}\n#[tokio::test]\nasync fn b() {\n  let s = Instant::now();\n  assert_eq!(s.elapsed(), Duration::from_secs(5));\n}`;
+    expect(rust(source).map((f) => f.line)).toEqual([6]);
+  });
+
+  test("a threshold on an injected clock passes", () => {
+    const source = `fn t() {\n  let start = clock.now();\n  run(&clock);\n  assert!(clock.now() - start < Duration::from_secs(5));\n}`;
+    expect(rust(source)).toEqual([]);
+  });
+
+  test("an injected clock does not excuse a wall-clock measure in the same assertion", () => {
+    const source = `fn t() {\n  let s = Instant::now();\n  assert!(clock.now() - start < s.elapsed() + Duration::from_secs(5));\n}`;
+    expect(rules(rust(source))).toEqual(["rust-elapsed"]);
+  });
 });
 
 describe("Rust: test code only", () => {
@@ -161,6 +192,16 @@ describe("Rust: test code only", () => {
 
   test("production code outside tests is never flagged", () => {
     expect(rustInline(`async fn run() {\n  tokio::time::sleep(d).await;\n}\n`)).toEqual([]);
+  });
+
+  test("#[cfg(test)] followed by a second attribute starts a test module", () => {
+    const source = `#[cfg(test)]\n#[allow(clippy::unwrap_used)]\nmod tests {\n  fn t() {\n    std::thread::sleep(d);\n  }\n}\n`;
+    expect(rustInline(source).map((f) => f.line)).toEqual([5]);
+  });
+
+  test("#[cfg(all(test, ..))] starts a test module, #[cfg(not(test))] does not", () => {
+    const source = `#[cfg(all(test, feature = "x"))]\nmod tests {\n  fn t() {\n    std::thread::sleep(d);\n  }\n}\n#[cfg(all(not(test), unix))]\nmod real {\n  fn run() {\n    std::thread::sleep(d);\n  }\n}\n`;
+    expect(rustInline(source).map((f) => f.line)).toEqual([4]);
   });
 
   test("a whole file under tests/ is scanned", () => {
@@ -198,6 +239,23 @@ describe("TypeScript: waits", () => {
     expect(rules(ts(`const flush = () => new Promise((r) => setTimeout(r, 0));`))).toEqual([
       "ts-sleep",
     ]);
+  });
+
+  test("a typed promise that resolves on a setTimeout is flagged", () => {
+    expect(rules(ts(`await new Promise<void>((r) => setTimeout(r, 50));`))).toEqual(["ts-sleep"]);
+    const multiline = `await new Promise<void>(\n  (resolve) => {\n    setTimeout(resolve, 50);\n  },\n);`;
+    expect(ts(multiline).map((f) => f.line)).toEqual([1]);
+  });
+
+  test("the promise form of setTimeout from node:timers/promises is flagged", () => {
+    const aliased = `import { setTimeout as sleep } from "node:timers/promises";\nawait sleep(10);`;
+    expect(ts(aliased).map((f) => f.line)).toEqual([2]);
+    const plain = `import { setTimeout } from "timers/promises";\nawait setTimeout(10);`;
+    expect(ts(plain).map((f) => f.line)).toEqual([2]);
+  });
+
+  test("the global setTimeout is not the promise one", () => {
+    expect(ts(`import { sleep } from "./wait";\nsetTimeout(fn, 1);`)).toEqual([]);
   });
 
   test("a promise without a timer is not a sleep", () => {
@@ -276,6 +334,19 @@ describe("TypeScript: assertions on elapsed time", () => {
   test("an injected clock passes", () => {
     expect(
       ts(`const clock = fakeClock(0);\nclock.advance(5000);\nexpect(clock.now()).toBe(5000);`),
+    ).toEqual([]);
+  });
+
+  test("an elapsed assertion under fake timers is exact and passes", () => {
+    const vitest = `vi.useFakeTimers();\nconst t = Date.now();\nvi.advanceTimersByTime(1000);\nexpect(Date.now() - t).toBe(1000);`;
+    expect(ts(vitest)).toEqual([]);
+    const playwright = `await page.clock.install();\nconst t = await page.evaluate(() => Date.now());\nawait page.clock.runFor(1000);\nexpect(await page.evaluate(() => Date.now()) - t).toBe(1000);`;
+    expect(ts(playwright, "a.spec.ts")).toEqual([]);
+  });
+
+  test("a delta on an injected clock passes", () => {
+    expect(
+      ts(`const t = clock.now();\nclock.advance(5000);\nexpect(clock.now() - t).toBe(5000);`),
     ).toEqual([]);
   });
 });

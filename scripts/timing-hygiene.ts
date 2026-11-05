@@ -15,6 +15,9 @@
  *
  * Passes: paused tokio time, fake timers, an injected clock, and a
  * poll-until-predicate loop whose deadline only bounds how long it may spin.
+ * An injected clock is recognised only by a `.now()` read off a value
+ * (`clock.now()`) inside the assertion; a `Duration` threshold on a value whose
+ * source the assertion does not show (`cost() < Duration::..`) is flagged.
  *
  * Existing offenders are counted per file in `scripts/timing-baseline.json`. A
  * file may only shrink: a new offender or a raised count fails, and a shrunk
@@ -72,7 +75,9 @@ function closingBrace(code: string, open: number): number {
   return code.length;
 }
 
-const CFG_TEST_MOD = /#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/g;
+/** `#[cfg(test)]` or `#[cfg(all(test, ..))]`, any further attributes, then the module or fn it gates. */
+const CFG_TEST_MOD =
+  /#\[cfg\((?:test|(?:all|any)\([^\]]*?(?<!not\()\btest\b[^\]]*\))\)\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?(?:mod\s+\w+|(?:async\s+)?fn\s+\w+[^{;]*)\s*\{/g;
 
 /** Everything outside `#[cfg(test)] mod name { ... }` blocks, blanked. */
 function onlyCfgTestModules(masked: string): string {
@@ -159,14 +164,21 @@ function pausedFn(code: string, index: number): boolean {
 
 type Hit = { index: number; rule: Rule };
 
-const RUST_SLEEP = /(?<![\w.:])(?:(?:std::)?thread::|(?:tokio::)?time::)?sleep(?:_until)?\s*\(/g;
+/** `sleep` and `sleep_until`, plus the names a `use ... as` binds them to. */
+function rustSleep(code: string): RegExp {
+  const aliases = [...code.matchAll(/\bsleep(?:_until)?\s+as\s+(\w+)/g)].map((m) => `|${m[1]}`);
+  return new RegExp(
+    `(?<![\\w.:])(?:(?:std::)?thread::|(?:tokio::)?time::)?(?:sleep(?:_until)?${aliases.join("")})\\s*\\(`,
+    "g",
+  );
+}
 const RUST_ASSERT = /\b(?:debug_)?assert(?:_eq|_ne)?!\s*\(/g;
 const RUST_MEASURE = /\b(?:Instant::now|duration_since)\b|\.elapsed\s*\(/;
 const RUST_DURATION = /\bDuration::(?:from_\w+|new)\s*\(/;
 const COMPARISON = /\s[<>]=?\s/;
 
 function rustSleeps(code: string): Hit[] {
-  return [...code.matchAll(RUST_SLEEP)]
+  return [...code.matchAll(rustSleep(code))]
     .filter((match) => !/\bfn\s+$/.test(code.slice(0, match.index)))
     .filter((match) => !inPollLoop(code, match.index))
     .filter((match) => match[0].includes("thread::") || !pausedFn(code, match.index))
@@ -182,15 +194,19 @@ const boundTo = (code: string, pattern: RegExp, statement: RegExp): string[] =>
 const mentions = (text: string, names: string[]) =>
   names.some((name) => new RegExp(`\\b${name}\\b`).test(text));
 
+/** A `.now()` read off a value rather than the `Instant` or `SystemTime` type: an injected clock. */
+const INJECTED_NOW = /(?<!\b(?:Instant|SystemTime)\s*::\s*)\b\w+\s*\.\s*now\s*\(/;
+
 function rustAsserts(code: string): Hit[] {
   const measured = boundTo(code, RUST_MEASURE, /\blet\s+(?:mut\s+)?(\w+)\s*(?::[^=;]+)?=([^;]*);/g);
   return [...code.matchAll(RUST_ASSERT)]
     .filter((match) => {
       const body = callBody(code, match.index);
-      const threshold = RUST_DURATION.test(body) && COMPARISON.test(body);
-      return threshold || RUST_MEASURE.test(body) || mentions(body, measured);
+      if (RUST_MEASURE.test(body) || mentions(body, measured)) return true;
+      return RUST_DURATION.test(body) && COMPARISON.test(body) && !INJECTED_NOW.test(body);
     })
     .filter((match) => !inPollLoop(code, match.index))
+    .filter((match) => !pausedFn(code, match.index))
     .map((match) => ({ index: match.index, rule: "rust-elapsed" }));
 }
 
@@ -213,15 +229,24 @@ function expectStatement(code: string, from: number): string {
   return code.slice(from, end);
 }
 
-function tsSleeps(code: string): Hit[] {
+/** Calls to the names an `import { setTimeout as x } from "node:timers/promises"` binds. */
+function promiseTimers(code: string, source: string): RegExpMatchArray[] {
+  const names = [...code.matchAll(/\bimport\s*\{([^}]*)\}\s*from\s*["']/g)]
+    .filter((m) => /^(?:node:)?timers\/promises["']/.test(source.slice(m.index + m[0].length)))
+    .flatMap((m) => [...(m[1] as string).matchAll(/\bsetTimeout(?:\s+as\s+(\w+))?/g)])
+    .map((m) => m[1] ?? "setTimeout");
+  return names.flatMap((name) => [...code.matchAll(new RegExp(`(?<![\\w.])${name}\\s*\\(`, "g"))]);
+}
+
+function tsSleeps(code: string, source: string): Hit[] {
   const faked = TS_FAKE_TIMERS.test(code);
   const bunSleeps = [...code.matchAll(/\bBun\s*\.\s*sleep(?:Sync)?\s*\(/g)];
   const timerPromises = faked
     ? []
-    : [...code.matchAll(/\bnew\s+Promise\s*\(/g)].filter((m) =>
+    : [...code.matchAll(/\bnew\s+Promise\s*(?:<[^>]*>)?\s*\(/g)].filter((m) =>
         /\bsetTimeout\b/.test(callBody(code, m.index)),
       );
-  return [...bunSleeps, ...timerPromises]
+  return [...bunSleeps, ...timerPromises, ...promiseTimers(code, source)]
     .filter((match) => !inPollLoop(code, match.index))
     .map((match) => ({ index: match.index, rule: "ts-sleep" }));
 }
@@ -233,6 +258,7 @@ function tsWaitForTimeouts(code: string): Hit[] {
 }
 
 function tsAsserts(code: string): Hit[] {
+  if (TS_FAKE_TIMERS.test(code)) return [];
   const deltas = boundTo(code, TS_DELTA, /\b(?:const|let|var)\s+(\w+)\s*=([^;\n]*)/g);
   return [...code.matchAll(/\bexpect\s*(?:\.\s*(?:soft|poll)\s*)?\(/g)]
     .filter((match) => {
@@ -262,7 +288,7 @@ export function scanFile(file: string, source: string): Finding[] {
     return hitsToFindings(file, code, [...rustSleeps(code), ...rustAsserts(code)]);
   }
   const code = maskTs(source);
-  const hits = [...tsSleeps(code), ...tsWaitForTimeouts(code), ...tsAsserts(code)];
+  const hits = [...tsSleeps(code, source), ...tsWaitForTimeouts(code), ...tsAsserts(code)];
   return hitsToFindings(file, code, hits);
 }
 
