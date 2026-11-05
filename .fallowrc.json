@@ -28,6 +28,7 @@
     "scripts/db-parity.ts",
     "scripts/ensure-browser.ts",
     "scripts/fixture-1-2-0.ts",
+    "scripts/oracle/*.ts",
     "scripts/replay-rehearsal.ts",
     "scripts/route-smoke.ts",
     "scripts/route-smoke-plan.ts",
@@ -55,6 +56,13 @@
     "@SunReye/inverter-core"
   ],
   "ignoreExports": [
+    {
+      "comment": "Each oracle generator exports `oracle`; scripts/oracle/registry.ts imports the files by directory listing.",
+      "file": "scripts/oracle/*.ts",
+      "exports": [
+        "oracle"
+      ]
+    },
     {
       "file": "apps/docs/astro.config.mjs",
       "exports": [

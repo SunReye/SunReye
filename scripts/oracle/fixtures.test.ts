@@ -3,15 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CORPUS_DIR, staleFiles } from "./corpus";
-import {
-  buildProfileDecodeCorpus,
-  decodeReadings,
-  officialProfilesDir,
-  type ProfileDecodeCase,
-} from "./profile-decode";
-import { buildForecastCorpus } from "./forecast";
-import { buildPlantCorpus } from "./plant";
-import { buildTransportCorpus } from "./transport";
+import { decodeReadings, officialProfilesDir, type ProfileDecodeCase } from "./profile-decode";
+import { discoverGenerators, readDocumentation } from "./registry";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
 const lines = async (path: string): Promise<Array<Record<string, any>>> =>
@@ -20,10 +13,23 @@ const lines = async (path: string): Promise<Array<Record<string, any>>> =>
     .split("\n")
     .map((line) => JSON.parse(line));
 
+const profilesDir = officialProfilesDir();
+const generators = await discoverGenerators();
+
 describe("the committed corpus, database-free groups", () => {
-  test("transport framing is what the 2.x transport produces now", async () => {
-    expect(await staleFiles(await buildTransportCorpus())).toEqual([]);
-  }, 120_000);
+  for (const { name, oracle } of generators) {
+    test.skipIf(oracle.needsProfiles === true && profilesDir === null)(
+      `${name} is what its generator produces now`,
+      async () => {
+        const files = await oracle.build({ profilesDir });
+        expect(await staleFiles(files)).toEqual([]);
+        expect([...new Set(Object.keys(files).map((path) => path.split("/")[0]))].sort()).toEqual(
+          [...oracle.files].sort(),
+        );
+      },
+      120_000,
+    );
+  }
 
   test("every profile decode line replays from the metric definitions it carries", async () => {
     const profiles = (await lines("profile-decode.ndjson")) as unknown as ProfileDecodeCase[];
@@ -41,14 +47,6 @@ describe("the committed corpus, database-free groups", () => {
         expect(replayed.clamped).toEqual(c.clamped);
       }
     }
-  });
-
-  test("the forecast is what the 3.x forecast model produces now", async () => {
-    expect(await staleFiles(await buildForecastCorpus())).toEqual([]);
-  });
-
-  test("the plant fold, member set and sources are what the 2.x code produces now", async () => {
-    expect(await staleFiles(await buildPlantCorpus())).toEqual([]);
   });
 
   test("every plant case names a stale member, a role one member lacks and a retired member", async () => {
@@ -73,14 +71,6 @@ describe("the committed corpus, database-free groups", () => {
       ),
     ).toBe(true);
   });
-
-  const dir = officialProfilesDir();
-  test.skipIf(dir === null)(
-    "profile decode is what the profile repository produces now",
-    async () => {
-      expect(await staleFiles(await buildProfileDecodeCorpus(dir!))).toEqual([]);
-    },
-  );
 });
 
 describe("the corpus as a whole", () => {
@@ -115,7 +105,7 @@ describe("the corpus as a whole", () => {
   });
 
   test("the README lists every case", async () => {
-    const readme = await read("README.md");
+    const readme = await readDocumentation(CORPUS_DIR);
     const names: string[] = [];
     for (const file of [
       "transport.ndjson",
