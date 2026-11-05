@@ -43,9 +43,9 @@ export default defineConfig({
   // is running. Those specs are gone (see git history for
   // `chart-mount-cost.spec.ts` and `overview-baseline.spec.ts`): what is left
   // asserts behaviour a contended machine cannot change — layout, request
-  // counts, mount counts, socket lifecycle. Do NOT add a timing budget back
-  // here without also giving it a serial home; under these settings it would
-  // measure the runner's other workers.
+  // counts, mount counts, socket lifecycle. A timing or CPU-time measurement
+  // does not belong here: it goes in `bench/` (`bun run bench:e2e`), which runs
+  // one worker at a time and asserts nothing.
   fullyParallel: true,
   // Locally: the machine. In CI: the runner has 4 cores and is also serving the
   // dev server, so oversubscribing costs more than it buys.

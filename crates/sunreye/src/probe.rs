@@ -265,9 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn nothing_listening_fails_with_the_connection_error() {
-        let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+        let (_closed, port) = crate::test_net::closed_port();
         let result = test_connection(&profile("deye-sg05lp3"), &config(port, 1)).await;
         assert!(!result.ok);
         assert!(result.error.expect("error").starts_with("i/o error"), "a refused connection");
@@ -328,9 +326,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_probe_of_nothing_listening_fails_with_the_connection_error() {
-        let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+        let (_closed, port) = crate::test_net::closed_port();
         let probe = probe_endpoint(&endpoint(Wire::Tcp, port, None), QUICK).await;
         assert!(!probe.ok);
         assert!(probe.error.expect("error").starts_with("i/o error"));
@@ -368,9 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_scan_of_nothing_listening_is_the_connection_error() {
-        let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+        let (_closed, port) = crate::test_net::closed_port();
         let scan = scan_units(&profile("deye-sg05lp3"), &endpoint(Wire::Tcp, port, None), &[1], QUICK).await;
         assert!(matches!(scan, Err(Error::Io(_))), "{scan:?}");
     }

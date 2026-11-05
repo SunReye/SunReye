@@ -61,6 +61,7 @@ axum-login = "0.18"
 bcrypt = "0.19"
 password-hash = { version = "0.5", default-features = false, features = ["getrandom"] }
 tower-sessions = "0.14"
+async-trait = "0.1"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 ring = { version = "0.17", default-features = false }
 

@@ -89,11 +89,11 @@ test("a new decision refreshes the charts exactly once; a repeated frame costs n
   // not what a reconnect replaying its snapshot does.
   const frame = automationStream();
   await backend.pushAutomations(frame);
-  await page.waitForTimeout(1000);
+  await backend.settled();
   backend.resetRequests();
 
   await backend.pushAutomations(frame);
-  await page.waitForTimeout(1000);
+  await backend.settled();
   expect(decisionCalls(backend.requests)).toEqual([]);
 
   // A tick. One refresh: one request per declared series, and no more.
@@ -107,7 +107,7 @@ test("a new decision refreshes the charts exactly once; a repeated frame costs n
   await expect
     .poll(() => decisionCalls(backend.requests).length, { timeout: 5000 })
     .toBe(DECISION_METRICS.length);
-  await page.waitForTimeout(500);
+  await backend.settled();
   expect(decisionCalls(backend.requests)).toHaveLength(DECISION_METRICS.length);
 });
 

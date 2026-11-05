@@ -1,5 +1,3 @@
-use std::pin::Pin;
-
 use tokio::sync::OwnedSemaphorePermit;
 
 use super::*;
@@ -217,13 +215,17 @@ fn request(path: &str) -> Request<Body> {
     Request::get(path).header(header::HOST, HOST).body(Body::empty()).expect("request")
 }
 
-/// Polls `read` for a while and asserts it is still waiting.
-async fn still_pending<F: Future + Unpin>(read: &mut F, what: &str) {
-    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    for _ in 0..20 {
-        assert!(Pin::new(&mut *read).poll(&mut context).is_pending(), "{what}: answered while waiting");
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
+/// Starts a stranger's read of `path` and returns it still waiting: a session read begun after it, over
+/// the same store, has been answered meanwhile. A read past the permit would be answered ahead of that one.
+async fn waiting_read(admin: &Api, stranger: &Api, path: &str) -> tokio::task::JoinHandle<Response> {
+    let read = stranger.router.clone().oneshot(request(path));
+    let read = tokio::spawn(async move { read.await.expect("response") });
+    tokio::task::yield_now().await;
+    // A session read behind a permit would never be answered; the bound only ends the wait.
+    let session = tokio::time::timeout(Duration::from_secs(20), get(admin, path)).await;
+    assert_eq!(session.expect("a session waited for a permit").status, StatusCode::OK, "session: {path}");
+    assert!(!read.is_finished(), "{path}: answered while waiting");
+    read
 }
 
 #[tokio::test]
@@ -251,13 +253,9 @@ async fn a_seventh_strangers_read_waits_for_a_permit_and_a_session_never_waits()
     let stranger = admin.anonymous();
     for path in HISTORY_READS {
         let mut held = hold_all(&core).await;
-        let mut read = Box::pin(stranger.router.clone().oneshot(request(path)));
-        still_pending(&mut read, path).await;
-        let started = Instant::now();
-        assert_eq!(get(&admin, path).await.status, StatusCode::OK, "session: {path}");
-        assert!(started.elapsed() < Duration::from_secs(2), "{path}: a session waited");
+        let read = waiting_read(&admin, &stranger, path).await;
         held.pop();
-        let answer = answer(read.await.expect("response")).await;
+        let answer = answer(read.await.expect("join")).await;
         assert_eq!(answer.status, StatusCode::OK, "{path}: once a permit freed");
         drop(held);
         assert!(all_free(&core).await, "{path}");
@@ -296,13 +294,12 @@ async fn a_waiting_strangers_read_whose_client_leaves_takes_no_permit() {
     let stranger = admin.anonymous();
     for path in HISTORY_READS {
         let mut held = hold_all(&core).await;
-        let mut left = Box::pin(stranger.router.clone().oneshot(request(path)));
-        still_pending(&mut left, path).await;
-        let mut next = Box::pin(stranger.router.clone().oneshot(request(path)));
-        still_pending(&mut next, path).await;
-        drop(left);
+        let left = waiting_read(&admin, &stranger, path).await;
+        let next = waiting_read(&admin, &stranger, path).await;
+        left.abort();
+        assert!(left.await.expect_err("aborted").is_cancelled());
         held.pop();
-        assert_eq!(answer(next.await.expect("response")).await.status, StatusCode::OK, "{path}");
+        assert_eq!(answer(next.await.expect("join")).await.status, StatusCode::OK, "{path}");
         drop(held);
         assert!(all_free(&core).await, "{path}");
     }

@@ -24,6 +24,7 @@
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { openPage } from "./support/open-page";
+import { frames } from "./support/settle";
 
 const PHONE = { width: 390, height: 844 };
 const LAPTOP = { width: 1024, height: 768 };
@@ -289,7 +290,7 @@ test("a held finger gets the numbers clear of its own hand, and they stay put", 
   // equality, not a tolerance: the point of a pure clamp is that the position
   // IS the arithmetic on the frame it is computed, and the wrapper turns the
   // spring off to make that true (see chart-tooltip-root.svelte).
-  await page.waitForTimeout(600);
+  await frames(page, 36);
   const later = await tooltipBox(page);
   expect(later).toEqual(held);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });

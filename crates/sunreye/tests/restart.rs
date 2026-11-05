@@ -23,7 +23,7 @@ fn oracle() -> PathBuf {
 }
 
 fn data_dir(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }

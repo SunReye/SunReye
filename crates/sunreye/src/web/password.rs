@@ -91,7 +91,8 @@ impl Passwords {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
+    use std::sync::{Condvar, Mutex};
+    use std::time::{Duration, Instant};
 
     use tokio::task::JoinHandle;
 
@@ -181,16 +182,48 @@ mod tests {
         }
     }
 
-    /// A capped check that counts the checks running beside it, recording the most seen.
+    /// Blocks every `wait` until `open`.
+    #[derive(Default)]
+    struct Latch {
+        opened: Mutex<bool>,
+        change: Condvar,
+    }
+
+    impl Latch {
+        fn wait(&self) {
+            let mut opened = self.opened.lock().expect("latch");
+            while !*opened {
+                opened = self.change.wait(opened).expect("latch");
+            }
+        }
+
+        fn open(&self) {
+            *self.opened.lock().expect("latch") = true;
+            self.change.notify_all();
+        }
+    }
+
+    async fn until(done: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !done() {
+            assert!(Instant::now() < deadline, "condition not reached");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    /// A capped check that counts the checks running beside it, recording the most seen, and runs
+    /// until `latch` opens.
     fn spawn_counted(
         passwords: &Passwords,
         running: &Arc<AtomicUsize>,
         most: &Arc<AtomicUsize>,
+        latch: &Arc<Latch>,
     ) -> JoinHandle<Option<()>> {
-        let (passwords, running, most) = (passwords.clone(), Arc::clone(running), Arc::clone(most));
+        let (passwords, running, most, latch) =
+            (passwords.clone(), Arc::clone(running), Arc::clone(most), Arc::clone(latch));
         let check = move || {
             most.fetch_max(running.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(50));
+            latch.wait();
             running.fetch_sub(1, Ordering::SeqCst);
         };
         tokio::spawn(async move { passwords.capped(check).await })
@@ -200,7 +233,11 @@ mod tests {
     async fn parallel_checks_never_run_past_the_cap() {
         let passwords = Passwords::new();
         let (running, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-        let checks: Vec<_> = (0..6).map(|_| spawn_counted(&passwords, &running, &most)).collect();
+        let latch = Arc::new(Latch::default());
+        let checks: Vec<_> = (0..6).map(|_| spawn_counted(&passwords, &running, &most, &latch)).collect();
+        // Every permit taken and the cap's worth of checks running: the rest are queued behind them.
+        until(|| running.load(Ordering::SeqCst) >= CHECKS && passwords.gate.available_permits() == 0).await;
+        latch.open();
         for check in checks {
             check.await.expect("join").expect("ran");
         }
@@ -223,12 +260,12 @@ mod tests {
         dropped.abort();
         assert!(dropped.await.expect_err("aborted").is_cancelled());
 
+        assert_eq!(passwords.gate.available_permits(), 0, "the dropped check's hash still holds the cap");
         let next = spawn_verify(&passwords, "correct horse battery", None);
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!next.is_finished(), "ran beside the dropped check's hash");
 
         finish.send(()).expect("hash waits");
         assert!(!next.await.expect("join"));
+        until(|| passwords.gate.available_permits() == CHECKS).await;
     }
 
     #[tokio::test]
@@ -239,15 +276,32 @@ mod tests {
 
         let hash = spawn_hash(&passwords, "another long password");
         let known = spawn_verify(&passwords, "correct horse battery", Some(stored));
-        let unknown = spawn_verify(&passwords, "correct horse battery", None);
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!hash.is_finished() && !known.is_finished() && !unknown.is_finished(), "ran past the cap");
+        // Each task has run to the cap and queued. Closing it refuses what is queued, so a check that
+        // ran past the cap would hash or verify instead.
+        tokio::task::yield_now().await;
+        passwords.gate.close();
+        assert_eq!(hash.await.expect("join"), None, "hashed past the cap");
+        assert!(!known.await.expect("join"), "verified past the cap");
 
         drop(taken);
-        assert!(hash.await.expect("join").is_some());
-        assert!(known.await.expect("join"));
-        assert!(!unknown.await.expect("join"));
         assert_eq!(passwords.gate.available_permits(), CHECKS, "the cap is returned");
+    }
+
+    /// The unknown account is the path an attacker needs no account for; its dummy check is capped too.
+    #[tokio::test]
+    async fn an_unknown_account_queues_for_the_cap() {
+        let passwords = Passwords::new();
+        let taken = Arc::clone(&passwords.gate).acquire_many_owned(cap()).await.expect("open");
+        let mut unknown = std::pin::pin!(passwords.verify("correct horse battery".into(), None));
+        assert!(futures_util::poll!(&mut unknown).is_pending(), "returned under a full cap");
+
+        // A freed permit goes to a queued check first; one that skipped the queue leaves it free.
+        passwords.gate.add_permits(1);
+        assert_eq!(passwords.gate.available_permits(), 0, "checked without waiting for the cap");
+        assert!(!unknown.await);
+
+        drop(taken);
+        assert_eq!(passwords.gate.available_permits(), CHECKS + 1);
     }
 
     fn cap() -> u32 {

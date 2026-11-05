@@ -142,7 +142,6 @@ test("the card's area draws the house power fill on the day it opens on", async 
   // Samples, so the plot has a series to fade under rather than an empty box.
   for (let i = 0; i < 4; i++) {
     await backend.pushMetrics();
-    await page.waitForTimeout(150);
   }
   await waitForMarks(page);
   expectHouseFill(await powerFills(page), "today's areas");

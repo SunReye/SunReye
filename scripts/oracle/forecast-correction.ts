@@ -12,6 +12,7 @@ import type {
 } from "../../apps/server/src/forecast/forecast-correction";
 
 import { type CorpusFiles, ndjson } from "./corpus";
+import type { OracleGenerator } from "./registry";
 
 /** `month:hour` to cell, the model as recorded. */
 type Cells = Record<string, CorrectionCell>;
@@ -220,7 +221,7 @@ function cellsOf(model: CorrectionModel): Cells {
 }
 
 /** Every case, its recorded output beside the input it was produced from. */
-export async function buildForecastCorrectionCorpus(): Promise<CorpusFiles> {
+async function buildForecastCorrectionCorpus(): Promise<CorpusFiles> {
   const { correctionFactor, learn, skillImprovementPct } =
     await import("../../apps/server/src/forecast/forecast-correction");
 
@@ -258,3 +259,8 @@ export async function buildForecastCorrectionCorpus(): Promise<CorpusFiles> {
   }
   return { "forecast-correction.ndjson": ndjson(rows) };
 }
+
+export const oracle: OracleGenerator = {
+  files: ["forecast-correction.ndjson"],
+  build: buildForecastCorrectionCorpus,
+};

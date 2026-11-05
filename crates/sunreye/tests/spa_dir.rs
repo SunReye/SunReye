@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use spa_dir::choose;
 
 fn folder(name: &str, with_index: bool) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("spa-dir-{name}"));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("spa-dir-{name}-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     std::fs::create_dir_all(&dir).expect("create");
     if with_index {

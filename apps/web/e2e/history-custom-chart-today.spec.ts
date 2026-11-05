@@ -20,9 +20,6 @@
 import { expect, test } from "@playwright/test";
 import { mountedCharts, openHistory, periodNavigator, rollupCalls } from "./support/history";
 
-/** Long enough for the per-card fetch burst to finish and the page to go quiet. */
-const SETTLE_MS = 2000;
-
 const OVERLAY = ["dc.pv1.power", "dc.pv2.power"];
 
 test("a saved custom chart fetches today's civil day, once per series", async ({ page }) => {
@@ -33,7 +30,7 @@ test("a saved custom chart fetches today's civil day, once per series", async ({
   // The page opens on the current day, which is the case that was broken.
   await expect(periodNavigator(page).forward).toBeDisabled();
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await backend.settled();
 
   const calls = rollupCalls(backend);
 

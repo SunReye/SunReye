@@ -607,8 +607,9 @@ mod tests {
             })
             .collect();
         assert_eq!(held, want, "20 frames published unread: frames 4 to 19 are held, in order");
-        let past_newest = tokio::time::timeout(std::time::Duration::from_millis(50), feed.next()).await;
-        assert!(past_newest.is_err(), "nothing past the newest frame: {past_newest:?}");
+        // Everything published is already queued, so a further frame would be ready now.
+        let past_newest = futures_util::FutureExt::now_or_never(feed.next());
+        assert!(past_newest.is_none(), "nothing past the newest frame: {past_newest:?}");
     }
 
     #[test]

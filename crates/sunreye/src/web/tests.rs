@@ -84,6 +84,7 @@ struct Answer {
     status: StatusCode,
     content_type: String,
     set_cookie: Option<String>,
+    retry_after: Option<String>,
     body: Vec<u8>,
 }
 
@@ -119,9 +120,10 @@ async fn answer(response: Response) -> Answer {
         |name| response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_owned);
     let content_type = header_text(header::CONTENT_TYPE).unwrap_or_default();
     let set_cookie = header_text(header::SET_COOKIE);
+    let retry_after = header_text(header::RETRY_AFTER);
     let status = response.status();
     let body = to_bytes(response.into_body(), usize::MAX).await.expect("body").to_vec();
-    Answer { status, content_type, set_cookie, body }
+    Answer { status, content_type, set_cookie, retry_after, body }
 }
 
 async fn get(api: &Api, path: &str) -> Answer {
@@ -338,7 +340,7 @@ async fn saving_the_last_of_connection_and_profile_starts_polling() {
     let (sim, _) = simulator().await;
     let (core, app) = open(&dir("starts")).await;
     put(&app, "/api/settings/inverter", &connection(sim.addr.port())).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(core.store.devices().await.expect("devices").len(), 0, "no device to poll yet");
     assert_eq!(sim.requests().len(), 0, "a connection without a profile polls nothing");
 
     put(&app, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
@@ -960,12 +962,18 @@ fn idle(id: &str) -> crate::sources::Installed {
     crate::sources::Installed::validate(profile.to_string()).expect("valid")
 }
 
-/// Polls `sim` with the profile `id`, which must already be stored.
-async fn poll_with(app: &Api, sim: &Simulator, id: &str) {
+/// Polls `sim` with the profile `id`, which must already be stored, until a poll has been recorded.
+async fn poll_with(core: &Core, app: &Api, sim: &Simulator, id: &str) {
     put(app, "/api/settings/active-profile", &json!({"id": id})).await;
     let saved = put(app, "/api/settings/inverter", &connection(sim.addr.port())).await;
     assert_eq!(saved.status, StatusCode::OK);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    let device = core.store.devices().await.expect("devices")[0].id;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    // An idle profile reads nothing, so a poll leaves an empty sample held and no request.
+    while core.unstored.held(device).is_empty() {
+        assert!(Instant::now() < deadline, "the device was never polled");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert!(sim.requests().is_empty(), "the stored definition reads nothing");
 }
 
@@ -980,7 +988,7 @@ async fn a_re_added_source_replaces_the_definition_the_running_poll_uses() {
         index_path: "index.json".into(),
     };
     crate::sources::save_source(&core.store, &source, &[idle("acme-hybrid")]).await.expect("save");
-    poll_with(&app, &sim, "acme-hybrid").await;
+    poll_with(&core, &app, &sim, "acme-hybrid").await;
 
     let added = post(&app, "/api/settings/profile-sources", &source_body(port)).await;
     assert_eq!(added.status, StatusCode::OK, "{:?}", added.json());
@@ -1099,7 +1107,7 @@ async fn importing_again_replaces_the_definition_the_running_poll_uses() {
     let (sim, _) = simulator().await;
     let (core, app) = open(&dir("import-replace")).await;
     crate::sources::import_profile(&core.store, &idle("acme-hybrid")).await.expect("import");
-    poll_with(&app, &sim, "acme-hybrid").await;
+    poll_with(&core, &app, &sim, "acme-hybrid").await;
 
     let (_, profile) = third_party("acme-hybrid", PROFILE);
     assert_eq!(import(&app, &profile).await.status, StatusCode::OK);
@@ -1199,6 +1207,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 }
 
 mod api_keys;
+mod busy;
 mod correction;
 mod devices;
 mod forecast;

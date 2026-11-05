@@ -31,7 +31,9 @@ for (const { name, size } of WIDTHS) {
     await expect(toast).toBeVisible();
     // Sonner slides the toast in; measure where it settles, not mid-flight.
     await expect(toast).toHaveAttribute("data-mounted", "true");
-    await page.waitForTimeout(500);
+    await toast.evaluate((el) =>
+      Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+    );
 
     const t = await toast.boundingBox();
     const f = await footer.boundingBox();

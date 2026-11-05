@@ -3,16 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CORPUS_DIR, staleFiles } from "./corpus";
-import {
-  buildProfileDecodeCorpus,
-  decodeReadings,
-  officialProfilesDir,
-  type ProfileDecodeCase,
-} from "./profile-decode";
-import { buildForecastCorpus } from "./forecast";
-import { buildForecastCorrectionCorpus } from "./forecast-correction";
-import { buildPlantCorpus } from "./plant";
-import { buildTransportCorpus } from "./transport";
+import { decodeReadings, officialProfilesDir, type ProfileDecodeCase } from "./profile-decode";
+import { DATABASE_OWNED, discoverGenerators, documentationProblems } from "./registry";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
 const lines = async (path: string): Promise<Array<Record<string, any>>> =>
@@ -21,10 +13,23 @@ const lines = async (path: string): Promise<Array<Record<string, any>>> =>
     .split("\n")
     .map((line) => JSON.parse(line));
 
+const profilesDir = officialProfilesDir();
+const generators = await discoverGenerators();
+
 describe("the committed corpus, database-free groups", () => {
-  test("transport framing is what the 2.x transport produces now", async () => {
-    expect(await staleFiles(await buildTransportCorpus())).toEqual([]);
-  }, 120_000);
+  for (const { name, oracle } of generators) {
+    test.skipIf(oracle.needsProfiles === true && profilesDir === null)(
+      `${name} is what its generator produces now`,
+      async () => {
+        const files = await oracle.build({ profilesDir });
+        expect(await staleFiles(files)).toEqual([]);
+        expect([...new Set(Object.keys(files).map((path) => path.split("/")[0]))].sort()).toEqual(
+          [...oracle.files].sort(),
+        );
+      },
+      120_000,
+    );
+  }
 
   test("every profile decode line replays from the metric definitions it carries", async () => {
     const profiles = (await lines("profile-decode.ndjson")) as unknown as ProfileDecodeCase[];
@@ -42,18 +47,6 @@ describe("the committed corpus, database-free groups", () => {
         expect(replayed.clamped).toEqual(c.clamped);
       }
     }
-  });
-
-  test("the forecast is what the 3.x forecast model produces now", async () => {
-    expect(await staleFiles(await buildForecastCorpus())).toEqual([]);
-  });
-
-  test("the forecast correction is what the 3.x correction model produces now", async () => {
-    expect(await staleFiles(await buildForecastCorrectionCorpus())).toEqual([]);
-  });
-
-  test("the plant fold, member set and sources are what the 2.x code produces now", async () => {
-    expect(await staleFiles(await buildPlantCorpus())).toEqual([]);
   });
 
   test("every plant case names a stale member, a role one member lacks and a retired member", async () => {
@@ -78,31 +71,14 @@ describe("the committed corpus, database-free groups", () => {
       ),
     ).toBe(true);
   });
-
-  const dir = officialProfilesDir();
-  test.skipIf(dir === null)(
-    "profile decode is what the profile repository produces now",
-    async () => {
-      expect(await staleFiles(await buildProfileDecodeCorpus(dir!))).toEqual([]);
-    },
-  );
 });
 
 describe("the corpus as a whole", () => {
   test("every group exists", async () => {
     const files = new Set(await readdir(CORPUS_DIR, { recursive: true }));
+    const groups = [...generators.flatMap((g) => g.oracle.files), ...DATABASE_OWNED];
     for (const path of [
-      "transport.ndjson",
-      "profile-decode.ndjson",
-      "profile-manifest.ndjson",
-      "role-kinds.ndjson",
-      "rollups.ndjson",
-      "statistics.ndjson",
-      "forecast.ndjson",
-      "forecast-correction.ndjson",
-      "role-aggregates.ndjson",
-      "plant.ndjson",
-      "plant-rollups.ndjson",
+      ...groups,
       "archives/current-2.x/archive.tar.gz",
       "archives/legacy-1.2.0/archive.tar.gz",
       "README.md",
@@ -120,22 +96,7 @@ describe("the corpus as a whole", () => {
     );
   });
 
-  test("the README lists every case", async () => {
-    const readme = await read("README.md");
-    const names: string[] = [];
-    for (const file of [
-      "transport.ndjson",
-      "rollups.ndjson",
-      "statistics.ndjson",
-      "forecast.ndjson",
-      "forecast-correction.ndjson",
-      "plant.ndjson",
-      "plant-rollups.ndjson",
-    ]) {
-      names.push(...(await lines(file)).map((c) => c.case));
-    }
-    names.push(...(await lines("profile-decode.ndjson")).map((p) => p.profile.id));
-    names.push(...(await readdir(join(CORPUS_DIR, "archives"))));
-    for (const name of names) expect(readme, name).toContain(`\`${name}\``);
+  test("the README and cases.d document every case, and every fragment has an owner", async () => {
+    expect(await documentationProblems(CORPUS_DIR, generators)).toEqual([]);
   });
 });

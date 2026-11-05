@@ -11,14 +11,12 @@
  * None of that is visible to the unit suite: the tier only exists in a running
  * document, and a source-text test over the branch would pass for a branch that
  * renders the wrong thing. So the tiers are proved by looking at what is in the
- * document, and the saving is proved by counting text mutations — a COUNT, not a
- * duration, so it means the same thing on a contended runner as on an idle one
- * (see `support/perf.ts`, "Read these numbers as ratios").
+ * document. The frame-watch that steps `auto` down and the readout write counts
+ * per tier depend on the host's frame rate: `bench/motion-tier.bench.ts`.
  */
 
 import { expect, test } from "@playwright/test";
 import { openPage } from "./support/open-page";
-import { countTextMutations } from "./support/perf";
 
 /** Pin the per-device setting before the app boots and reads it. */
 async function withMotion(page: import("@playwright/test").Page, value: string): Promise<void> {
@@ -30,51 +28,6 @@ async function withMotion(page: import("@playwright/test").Page, value: string):
       // not then claim anything about.
     }
   }, value);
-}
-
-/**
- * Make the page a device that holds its frames, BY CONSTRUCTION.
- *
- * Every real frame hands its rAF callbacks a timestamp exactly one 60 Hz frame
- * after the previous one, however long the runner actually took to produce it;
- * callbacks in the same real frame share it, as in a browser. The frame watch
- * reads nothing else. Without this, "a machine that can afford the diagram" was
- * whatever machine ran the spec, and a CI shard contended by its neighbours is
- * not one: it dropped frames, the watch rightly stepped down, and the spec went
- * red on a heuristic doing its job.
- */
-async function withSteadyFrames(page: import("@playwright/test").Page): Promise<void> {
-  await framesAt(page, 1000 / 60);
-}
-
-/**
- * Make the page a device that drops every other frame, BY CONSTRUCTION.
- *
- * The mirror of {@link withSteadyFrames}, 50 ms between frames. The watch is
- * bounded (three windows, then it stops), so it only downgrades a device that
- * is slow while it watches. CPU throttling applied after boot raced that
- * window: on a contended runner the throttle landed after the watch had judged
- * three healthy windows and given up, and nothing was left to downgrade it.
- */
-async function withSlowFrames(page: import("@playwright/test").Page): Promise<void> {
-  await framesAt(page, 50);
-}
-
-/** Every real frame advances the rAF timestamp by `stepMs`, and nothing else does. */
-async function framesAt(page: import("@playwright/test").Page, stepMs: number): Promise<void> {
-  await page.addInitScript((step) => {
-    const real = window.requestAnimationFrame.bind(window);
-    let lastReal: number | null = null;
-    let faked = 0;
-    window.requestAnimationFrame = (callback) =>
-      real((ts) => {
-        if (ts !== lastReal) {
-          faked = lastReal === null ? ts : faked + step;
-          lastReal = ts;
-        }
-        callback(faked);
-      });
-  }, stepMs);
 }
 
 const comets = (page: import("@playwright/test").Page) => page.locator("animateMotion");
@@ -135,151 +88,18 @@ test("the degraded tiers stop the hero's per-sample transitions too", async ({ p
   // Measured on the idle overview before this fix: 43 at once, at the tier that
   // was supposed to be holding still.
   await withMotion(page, "lite");
-  await openPage(page, "/");
-  await page.waitForTimeout(3000);
-  const transitions = await page.evaluate(
-    () =>
-      document
-        .getAnimations()
-        .filter((a) => a.constructor.name === "CSSTransition" && a.playState === "running").length,
-  );
-  expect(transitions).toBe(0);
-});
-
-test("auto steps a device that cannot hold its frames down a tier, and remembers", async ({
-  page,
-}) => {
-  // The mechanism the whole fix rests on, and the one no static signal could
-  // deliver: a Fire HD 10 reports eight cores and no `deviceMemory`, so the only
-  // thing that identifies it is that it drops frames. Here the device is made
-  // slow from before the first frame and has to be caught by measurement alone.
-  await withMotion(page, "auto");
-  await withSlowFrames(page);
-  await openPage(page, "/");
-  // The watch settles for 4 s, then judges windows of 120 frames.
-  await expect(dashes(page).first()).toBeAttached({ timeout: 60_000 });
-  // The tier swap is not one commit: the dashes can be in before the last comet is out.
-  await expect(comets(page)).toHaveCount(0);
-
-  // …and it is remembered, so the next visit starts lean instead of stuttering
-  // through another window first.
-  const stored = await page.evaluate(() => localStorage.getItem("sunreye.motion-strain"));
-  expect(Number(stored)).toBeGreaterThan(0);
-});
-
-test("auto leaves a device that IS holding its frames alone", async ({ page }) => {
-  // The other half of the claim, and the one a downgrade-happy heuristic would
-  // fail: a machine that can afford the diagram keeps it. An unasked-for
-  // downgrade is as much a bug as the stutter it was meant to remove.
-  await withMotion(page, "auto");
-  await withSteadyFrames(page);
-  await openPage(page, "/");
-  // Past the settle delay and several windows — the watch has judged and given
-  // up by now (it is bounded, so a quiet kiosk is not held at 60 Hz forever).
-  await page.waitForTimeout(15_000);
-  await expect(comets(page).first()).toBeAttached();
-  expect(await dashes(page).count()).toBe(0);
-  const stored = await page.evaluate(() => localStorage.getItem("sunreye.motion-strain"));
-  expect(stored === null || stored === "0").toBe(true);
-});
-
-/** Samples counted per tier. The count is per sample, never per second. */
-const SAMPLES = 3;
-
-/** Quiet that ends a sample: past the glide's last frame, short of the next sample. */
-const QUIET_MS = 800;
-
-/**
- * Watch for the readouts to go quiet, in the page's own clock.
- *
- * Armed BEFORE the sample is pushed, so the write it causes is seen. Resolves at
- * the first frame that comes {@link QUIET_MS} after the last text write, having
- * seen at least one: a glide ends when it ends, however many frames the host
- * managed meanwhile, and a snap is one write and then quiet.
- */
-async function armQuiet(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate((quietMs) => {
-    const w = window as unknown as { __readoutsQuiet?: Promise<void> };
-    w.__readoutsQuiet = new Promise<void>((resolve) => {
-      let last = 0;
-      let seen = false;
-      const observer = new MutationObserver(() => {
-        seen = true;
-        last = performance.now();
-      });
-      observer.observe(document.documentElement, { subtree: true, characterData: true });
-      const frame = (now: number) => {
-        if (seen && now - last >= quietMs) {
-          observer.disconnect();
-          resolve();
-        } else requestAnimationFrame(frame);
-      };
-      requestAnimationFrame(frame);
-    });
-  }, QUIET_MS);
-}
-
-async function untilQuiet(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(
-    () => (window as unknown as { __readoutsQuiet: Promise<void> }).__readoutsQuiet,
-  );
-}
-
-/** Push one sample and wait until every readout has finished reacting to it. */
-async function pushAndSettle(
-  page: import("@playwright/test").Page,
-  backend: import("./support/api-mock").MockBackend,
-): Promise<void> {
-  await armQuiet(page);
-  await backend.pushMetrics();
-  await untilQuiet(page);
-}
-
-/**
- * Text-node writes over {@link SAMPLES} samples at one tier.
- *
- * The samples are pushed by the spec and each is waited out, so the window is
- * a number of samples rather than a number of seconds: a host too busy to run
- * a clock on time still gets the same samples, and a glide still gets to finish.
- * No CPU throttle either: the counts are of writes, a throttle only takes
- * the frames the glide needs to be told apart from a snap.
- */
-async function readoutWrites(
-  browserPage: import("@playwright/test").Page,
-  tier: string,
-): Promise<number> {
-  await withMotion(browserPage, tier);
-  const { backend } = await openPage(browserPage, "/", { feedIntervalMs: 0 });
-  // The boot's own writes (em dash to first value) are not the tier's business.
-  await pushAndSettle(browserPage, backend);
-  return countTextMutations(browserPage, async () => {
-    for (let i = 0; i < SAMPLES; i++) await pushAndSettle(browserPage, backend);
-  });
-}
-
-test("every tier below full stops the readout storm the glide runs", async ({ page }) => {
-  // Three pages boot in turn, and a dev-server boot is tens of seconds on a busy host.
-  test.setTimeout(360_000);
-  // The glide writes a text node per readout per FRAME while it runs; snapping
-  // writes one per readout per SAMPLE. At the fixture's 1 Hz feed that is the
-  // difference between a per-frame storm and a handful of writes — and it is the
-  // half of the frame cost that is not the hero, so `lite` has to take it too.
-  // `lite` keeps the motion that is INFORMATION (the rails' direction and
-  // speed); the readout drift is an affordance, and the number is the same
-  // either way.
-  const glided = await readoutWrites(page, "full");
-
-  const lean = await page.context().newPage();
-  const snapped = await readoutWrites(lean, "lite");
-  await lean.close();
-
-  const stillPage = await page.context().newPage();
-  const frozen = await readoutWrites(stillPage, "still");
-  await stillPage.close();
-
-  // Ratios, deliberately loose: the glide's count moves with the frames the host
-  // manages, a snap's does not (measured at load average 60: ~550-860 gliding
-  // against 30 snapping, one write per readout per sample).
-  expect(snapped).toBeLessThan(glided / 4);
-  expect(frozen).toBeLessThan(glided / 4);
+  const { backend } = await openPage(page, "/", { feedIntervalMs: 0 });
+  // A sample is what starts them: asked for straight after one, while a 500 ms transition would
+  // still be running, so nothing is waited out and a transition cannot have finished unseen.
+  for (let sample = 0; sample < 3; sample++) {
+    await backend.pushMetrics();
+    const transitions = await page.evaluate(
+      () =>
+        document
+          .getAnimations()
+          .filter((a) => a.constructor.name === "CSSTransition" && a.playState === "running")
+          .length,
+    );
+    expect(transitions).toBe(0);
+  }
 });

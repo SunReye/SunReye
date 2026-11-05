@@ -21,6 +21,7 @@ import {
 import { aggregateOfMetric } from "../../apps/server/src/shared/plant-read";
 import { plantMembers } from "../../apps/server/src/shared/plant-source";
 import { type CorpusFiles, ndjson } from "./corpus";
+import type { OracleGenerator } from "./registry";
 
 /** 2026-03-01T00:02:30.000Z: the instant every live fold runs at. */
 const NOW_MS = 1_772_323_350_000;
@@ -288,7 +289,7 @@ async function plantCase(c: PlantCase) {
 }
 
 /** Build `role-aggregates.ndjson` and `plant.ndjson`. */
-export async function buildPlantCorpus(): Promise<CorpusFiles> {
+async function buildPlantCorpus(): Promise<CorpusFiles> {
   return {
     "role-aggregates.ndjson": ndjson([
       Object.fromEntries(Object.keys(ROLE_CATALOG).map((role) => [role, plantAggregateOf(role)])),
@@ -296,3 +297,8 @@ export async function buildPlantCorpus(): Promise<CorpusFiles> {
     "plant.ndjson": ndjson(await Promise.all(PLANT_CASES.map(plantCase))),
   };
 }
+
+export const oracle: OracleGenerator = {
+  files: ["role-aggregates.ndjson", "plant.ndjson"],
+  build: buildPlantCorpus,
+};

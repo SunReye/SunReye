@@ -11,6 +11,11 @@ bun run test:db                     # database groups, among the rest of that la
 
 - **Deterministic.** No clock, no randomness: a second run is byte-identical.
 - **Fresh.** A committed file that differs from what its generator produces fails a test.
+- **Registration.** A new oracle file is `scripts/oracle/<name>.ts` exporting `oracle` (`{files, build}`), its fixtures and
+  a case table in `cases.d/<name>.md`, which `test:oracle` reads with this file. A database-free group edits no shared
+  file: generators are found by listing `scripts/oracle/`, and a fixture with no generator, a generator with no fixture,
+  an undocumented case or a `cases.d/` fragment with no generator fails `test:oracle`. A database group also registers
+  in `apps/server/db-tests/oracle.test.ts` and in `DATABASE_OWNED` in `scripts/oracle/registry.ts`.
 - **Where it runs.** Transport framing and profile decode need no database. Rollups, statistics and archives run as
   `apps/server/db-tests/oracle.test.ts` against TimescaleDB, only on `sunreye_dbtest` (`DB_TEST_URL` names the
   server). The generator refuses `--database-url` / `ORACLE_DATABASE_URL` naming any other database. No live inverter

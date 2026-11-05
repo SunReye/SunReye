@@ -22,7 +22,7 @@ use support::official_files;
 const BASE: &str = "https://profiles.example.org/repo/";
 
 fn dir(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("removal-{name}"));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("removal-{name}-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }
