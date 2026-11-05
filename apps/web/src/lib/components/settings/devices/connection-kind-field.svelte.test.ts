@@ -35,3 +35,11 @@ test("an engine serving integrations offers both kinds", async () => {
     m.devices_kind_mqtt(),
   ]);
 });
+
+test("a saved connection states its kind and why it cannot change", async () => {
+  await served(true);
+  render(KindField, { value: "mqtt", locked: true });
+  await expect.element(page.getByText(m.devices_kind_mqtt())).toBeVisible();
+  await expect.element(page.getByText(m.devices_kind_locked())).toBeVisible();
+  await expect.element(page.getByRole("combobox")).not.toBeInTheDocument();
+});
