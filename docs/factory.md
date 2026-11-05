@@ -20,7 +20,7 @@ scripts/factory/factory config
 | `require_ci` | Refuse merging a PR whose current head has absent, pending or failed hosted checks |
 | `commands.install` | Runs when a slot has no `node_modules` |
 | `commands.prepare` | Runs on every slot checkout; empty for SunReye |
-| `commands.regenerate` | Runs on request after merges: `bun install`, the OpenAPI snapshot, the web client, then the `.sqlx` cache (`scripts/sqlx-cache`, which supplies the scratch database); area guides cover migrations |
+| `commands.regenerate` | Runs on request after merges: `bun install`, the OpenAPI snapshot, the web client, the `.sqlx` cache (`scripts/sqlx-cache`, which supplies the scratch database), then the timing baseline (`bun scripts/timing-hygiene.ts --write`); area guides cover migrations |
 | `commands.gate` | Required local checks; must contain at least one command |
 | `commands.train_gate` | Additional checks for the combined train, after the regular gate |
 | `clean_paths` | Slot-relative disposable directories deleted on release; `target` for SunReye |
