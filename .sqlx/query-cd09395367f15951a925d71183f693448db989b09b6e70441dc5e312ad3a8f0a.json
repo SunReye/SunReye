@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO forecast_correction_state (device_id, learned_through, mae_raw, mae_corrected, samples)\n             VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "cd09395367f15951a925d71183f693448db989b09b6e70441dc5e312ad3a8f0a"
+}

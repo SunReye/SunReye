@@ -28,6 +28,7 @@ pub mod weather;
 pub mod web;
 
 pub mod https;
+pub mod learn;
 pub mod live;
 
 use std::net::SocketAddr;

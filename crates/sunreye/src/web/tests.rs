@@ -51,7 +51,7 @@ async fn open(dir: &Path) -> (Arc<Core>, Api) {
 }
 
 async fn open_with(dir: &Path, config: &Config) -> (Arc<Core>, Api) {
-    signed_in(Core::open(dir).await.expect("core"), config).await
+    signed_in(Core::open_at(dir, crate::run::now_ms).await.expect("core"), config).await
 }
 
 /// A core that also trusts `ca`, as its profile sources are served by a local HTTPS server.
@@ -427,7 +427,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 47] = [
+const SERVED: [(&str, &str); 48] = [
     ("post", "/api/connections"),
     ("post", "/api/connections/probe"),
     ("post", "/api/connections/scan-units"),
@@ -474,6 +474,7 @@ const SERVED: [(&str, &str); 47] = [
     ("put", "/api/settings/time-zone"),
     ("get", "/api/forecast"),
     ("get", "/api/forecast/usable"),
+    ("get", "/api/forecast/correction"),
     ("get", "/api/forecast/providers"),
 ];
 
@@ -562,7 +563,7 @@ const ADMIN_ROUTES: [(&str, &str); 32] = [
     ("POST", "/api/admin/api-keys/revoke"),
 ];
 
-const SESSION_ROUTES: [(&str, &str); 8] = [
+const SESSION_ROUTES: [(&str, &str); 9] = [
     ("GET", "/api/capabilities"),
     ("GET", "/api/profile"),
     ("GET", "/api/history/recent"),
@@ -571,6 +572,7 @@ const SESSION_ROUTES: [(&str, &str); 8] = [
     ("DELETE", "/api/auth/session"),
     ("GET", "/api/forecast"),
     ("GET", "/api/forecast/usable"),
+    ("GET", "/api/forecast/correction"),
 ];
 
 async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
@@ -584,7 +586,7 @@ async fn call_for_answer(api: &Api, (method, path): (&str, &str)) -> Answer {
 
 #[tokio::test]
 async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
-    let core = Core::open(&dir("sign-up")).await.expect("core");
+    let core = Core::open_at(&dir("sign-up"), crate::run::now_ms).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
     assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": true}));
 
@@ -617,7 +619,7 @@ async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
 
 #[tokio::test]
 async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
-    let core = Core::open(&dir("sign-up-invalid")).await.expect("core");
+    let core = Core::open_at(&dir("sign-up-invalid"), crate::run::now_ms).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
     for body in [
         json!({"email": "", "name": "A", "password": ADMIN_PASSWORD}),
@@ -652,7 +654,8 @@ async fn a_password_of_8_characters_to_72_bytes_signs_up_and_one_outside_is_a_40
         ("72 ending in NUL", format!("{}\0", "x".repeat(71)), nul),
     ];
     for (name, password, refusal) in cases {
-        let core = Core::open(&dir(&format!("password-length-{name}"))).await.expect("core");
+        let core =
+            Core::open_at(&dir(&format!("password-length-{name}")), crate::run::now_ms).await.expect("core");
         let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
         let answer = sign_up(&api, ADMIN_EMAIL, &password).await;
         if let Some(message) = refusal {
@@ -845,7 +848,7 @@ async fn a_state_changing_request_from_an_untrusted_origin_is_refused() {
 #[tokio::test]
 async fn the_session_cookie_is_secure_when_configured() {
     let config = Config { secure_cookies: true, ..Config::default() };
-    let core = Core::open(&dir("secure")).await.expect("core");
+    let core = Core::open_at(&dir("secure"), crate::run::now_ms).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &config), cookie: None };
     let header = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await.set_cookie.expect("cookie");
     assert!(header.contains("Secure"), "{header}");
@@ -1205,6 +1208,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 
 mod api_keys;
 mod busy;
+mod correction;
 mod devices;
 mod forecast;
 mod kiosk;

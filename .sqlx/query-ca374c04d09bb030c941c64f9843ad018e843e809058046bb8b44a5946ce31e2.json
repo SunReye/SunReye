@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT learned_through, mae_raw, mae_corrected, samples FROM forecast_correction_state\n             WHERE device_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "learned_through",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "mae_raw",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "mae_corrected",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "samples",
+        "ordinal": 3,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ca374c04d09bb030c941c64f9843ad018e843e809058046bb8b44a5946ce31e2"
+}

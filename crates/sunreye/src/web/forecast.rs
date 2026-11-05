@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::forecast::{DetailedPoint, ForecastView, Variant};
+use crate::learn;
 use crate::live::iso;
 use crate::run::Core;
 use crate::solar::Served;
@@ -142,4 +143,75 @@ pub async fn raw(State(core): State<Arc<Core>>) -> Result<Json<Option<ForecastEx
 )]
 pub async fn usable(State(core): State<Arc<Core>>) -> Result<Json<Option<ForecastExport>>, ApiError> {
     Ok(Json(core.solar.serve(&core).await?.map(|served| export(&served, Variant::Usable))))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrectionSkill {
+    /// Decayed mean absolute error without the correction, W.
+    mae_raw: f64,
+    /// The same with the correction applied, W.
+    mae_corrected: f64,
+    improvement_pct: f64,
+    samples: f64,
+}
+
+/// One learned (month, hour) cell.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CorrectionCellView {
+    month: i8,
+    hour: i8,
+    /// The multiplier applied, shrunk and clamped.
+    factor: f64,
+    /// Effective sample count behind it.
+    weight: f64,
+}
+
+/// The learned forecast correction as 3.x's `ForecastCorrectionView`.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CorrectionView {
+    /// Applied to the forecast; it learns either way.
+    enabled: bool,
+    /// The last plant-local day learned, `YYYY-MM-DD`; null before the first run.
+    #[schema(required = true)]
+    learned_through: Option<String>,
+    skill: CorrectionSkill,
+    /// In month, hour order.
+    cells: Vec<CorrectionCellView>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/forecast/correction",
+    operation_id = "forecastCorrection",
+    responses(
+        (status = 200, body = CorrectionView),
+        (status = 401, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn correction(State(core): State<Arc<Core>>) -> Result<Json<CorrectionView>, ApiError> {
+    let enabled = weather::read(&core.store).await?.forecast.correction.enabled;
+    let (model, state) = learn::stored(&core.store).await?.unwrap_or_default();
+    let skill = state.map(|s| s.skill).unwrap_or_default();
+    Ok(Json(CorrectionView {
+        enabled,
+        learned_through: state.map(|s| s.learned_through.to_string()),
+        skill: CorrectionSkill {
+            mae_raw: skill.mae_raw,
+            mae_corrected: skill.mae_corrected,
+            improvement_pct: skill.improvement_pct(),
+            samples: skill.samples,
+        },
+        cells: model
+            .cells()
+            .map(|(month, hour, cell)| CorrectionCellView {
+                month,
+                hour,
+                factor: model.factor(month, hour),
+                weight: cell.weight,
+            })
+            .collect(),
+    }))
 }
