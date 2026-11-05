@@ -33,6 +33,25 @@ describe("Rust coverage scripts", () => {
   });
 });
 
+describe("bare test scripts", () => {
+  // The per-PR gate's unit step: the same files and flags as `bun run test`, minus coverage and cargo.
+  test("test:unit runs the workspace TypeScript tests in parallel, with no coverage", () => {
+    const unit = manifest.scripts["test:unit"] ?? "";
+    expect(unit).toContain("bun test --parallel apps/*/src packages/*/src ./scripts");
+    expect(unit).not.toMatch(/coverage|cargo/);
+  });
+});
+
+describe("test:rust", () => {
+  // nextest runs the same 710 tests as `cargo test --workspace` (no doctest exists) in a fifth of the time.
+  test("runs the whole workspace under nextest and names the install when it is missing", () => {
+    const script = manifest.scripts["test:rust"] ?? "";
+    expect(script).toContain("cargo nextest run --workspace");
+    expect(script).toContain("cargo install cargo-nextest --locked");
+    expect(script).not.toMatch(/llvm-cov/);
+  });
+});
+
 describe("scripts/ci", () => {
   test("stops on the first failing command", () => {
     expect(ci).toContain("set -euo pipefail");
@@ -50,24 +69,18 @@ describe("scripts/ci", () => {
     expect(at("bun run test:coverage:rust")).toBeLessThan(at("bun run test:floor:rust"));
   });
 
-  // The coverage run executes every Rust test and fails when one fails, so a second run is waste.
-  test("runs each Rust test once, under Rust coverage", () => {
+  // Coverage runs every Rust test and fails when one fails, so the bare run is only for the per-PR
+  // gate; scripts/ci-scope-gate.test.ts proves the two never both run in one mode.
+  test("runs the Rust tests bare for a PR and under coverage for a train, never anywhere else", () => {
     const runsRustTests = (l: string) =>
       /\bcargo (llvm-cov|test|nextest)\b/.test(l) ||
-      /\bbun run (test|test:coverage:rust)(\s|$)/.test(l);
+      /\bbun run (test|test:rust|test:coverage:rust)(\s|$)/.test(l);
     expect(ciCommands.filter(runsRustTests)).toEqual([
       expect.stringContaining("bun run test:coverage:rust"),
+      expect.stringContaining("bun run test:rust"),
     ]);
     expect(readFileSync("scripts/rust-gate", "utf8")).not.toMatch(
       /\bcargo (llvm-cov|test|nextest)\b/,
     );
-  });
-
-  test("builds for Android after the Rust gate, unforgiven", () => {
-    const at = (command: string) => ciCommands.findIndex((l) => l.includes(command));
-    const line = ciCommands[at("scripts/target-gate")];
-    expect(line, "scripts/target-gate").toBeDefined();
-    expect(line).not.toContain("||");
-    expect(at("scripts/target-gate")).toBeGreaterThan(at("scripts/rust-gate"));
   });
 });

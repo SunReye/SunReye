@@ -129,7 +129,7 @@ What is enforced mechanically:
 | ------------------------------------- | -------------------------------- | ---------------------------- |
 | Suite is green                        | `.husky/pre-commit`, CI          | commit, PR                   |
 | Source changed ⇒ a test changed       | CI job **Tests required**        | PR (advisory on commit)      |
-| Coverage may not fall                 | `scripts/coverage-floor.ts`, CI  | PR                           |
+| Coverage may not fall                 | `scripts/coverage-floor.ts`      | train (`scripts/ci --train`) |
 
 A new oracle file registers by existing: `scripts/oracle/<name>.ts` exporting `oracle`, plus `fixtures/oracle/cases.d/<name>.md` (`fixtures/oracle/README.md`, "Registration").
 
@@ -242,6 +242,15 @@ bun run test:required  # source changed ⇒ a test changed (diffs against origin
 bunx fallow            # code-health gate (dead code, duplication, complexity)
 bun run build          # only when you touched build config or shared packages
 ```
+
+`scripts/ci` is the per-PR gate and finishes in about 5 minutes on a warm `target/`: lint, typecheck,
+mock hygiene, unit and Rust tests without coverage, `cargo fmt`, the sqlx cache, clippy, factory
+tests, and the build, component tests, database tests and route smoke the change can affect. Coverage
+and its floors, budgets and the browser suite run once per train: `scripts/ci --train` after the
+per-PR gate, or `scripts/ci --full` for everything. A step the change cannot affect prints a `skip`
+line; the rule table is `scripts/ci-scope.ts`, listed in `docs/factory.md` "Gate scope". The Android
+build (`scripts/target-gate`, toolchain from `scripts/setup-targets`) is a manual pre-release step,
+not part of any mode.
 
 Web work additionally:
 

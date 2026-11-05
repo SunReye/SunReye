@@ -1323,6 +1323,58 @@ class SlotCleanup(unittest.TestCase):
                 self.assertTrue(self.path.exists())
 
 
+class ReleaseKeepsTarget(unittest.TestCase):
+    """`factory release` keeps the cargo target dir while disk is green; below the pause line it goes."""
+
+    PAUSE = factory.CFG["disk_pause_free_gb"]
+    CRITICAL = factory.CFG["disk_critical_free_gb"]
+
+    def release(self, free_gb):
+        """Release a slot holding a sentinel under target/ and one under cache/; report what survives."""
+        usage = mock.Mock(free=int(free_gb * slots.GB))
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FakeStore(tmp)
+            store.cfg = {**factory.CFG, "clean_paths": ["target", "cache"]}
+            store.slot_path = lambda slot: Path(tmp) / slot
+            path = store.slot_path("impl-1")
+            for name in ("target/debug", "cache", "node_modules"):
+                (path / name).mkdir(parents=True)
+            (path / "target/debug/sentinel").write_text("x")
+            (path / "cache/sentinel").write_text("x")
+            with mock.patch.object(slots.shutil, "disk_usage", return_value=usage):
+                _, body = run(factory.cmd_release, store, FakeForge([]), "impl-1")
+            return {"target": (path / "target/debug/sentinel").exists(),
+                    "cache": (path / "cache/sentinel").exists(),
+                    "node_modules": (path / "node_modules").is_dir(), "body": body}
+
+    def test_green_disk_keeps_target_and_every_other_configured_path(self):
+        got = self.release(self.PAUSE + 5)
+        self.assertEqual((got["target"], got["cache"], got["node_modules"]), (True, True, True))
+
+    def test_free_disk_at_the_pause_line_is_still_green(self):
+        self.assertTrue(self.release(self.PAUSE)["target"])
+
+    def test_just_below_the_pause_line_removes_target(self):
+        got = self.release(self.PAUSE - 0.1)
+        self.assertEqual((got["target"], got["cache"], got["node_modules"]), (False, False, True))
+
+    def test_critical_disk_removes_target(self):
+        self.assertFalse(self.release(self.CRITICAL - 1)["target"])
+
+    def test_the_report_names_what_happened_to_the_configured_paths(self):
+        self.assertEqual(self.release(self.PAUSE + 5)["body"]["clean_paths"], "kept")
+        self.assertEqual(self.release(self.PAUSE - 1)["body"]["clean_paths"], "removed")
+
+    def test_gc_cleaning_an_idle_slot_removes_target_whatever_the_disk_says(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FakeStore(tmp)
+            store.cfg = {**factory.CFG, "clean_paths": ["target"]}
+            store.slot_path = lambda slot: Path(tmp) / slot
+            (store.slot_path("impl-1") / "target").mkdir(parents=True)
+            slots.clean_slot(store, "impl-1")
+            self.assertFalse((store.slot_path("impl-1") / "target").exists())
+
+
 class SlotPreparation(unittest.TestCase):
     def test_slot_runs_configured_commands_without_a_worker_app_and_reuses_install(self):
         with tempfile.TemporaryDirectory() as tmp:
