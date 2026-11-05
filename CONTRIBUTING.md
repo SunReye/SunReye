@@ -131,6 +131,8 @@ What is enforced mechanically:
 | Source changed ⇒ a test changed       | CI job **Tests required**        | PR (advisory on commit)      |
 | Coverage may not fall                 | `scripts/coverage-floor.ts`, CI  | PR                           |
 
+A new oracle file registers by existing: `scripts/oracle/<name>.ts` exporting `oracle`, plus `fixtures/oracle/cases.d/<name>.md` (`fixtures/oracle/README.md`, "Registration").
+
 The coverage floor is a **ratchet**: it only turns up. If a change drops coverage, cover the
 behaviour — do not lower `FLOOR`. If a file genuinely cannot hold a branch (a barrel, a type
 module, a route shell), exempt it explicitly in `scripts/require-tests.ts`, with a test for
