@@ -176,3 +176,46 @@ bell computed by the generator, recorded in `input`; the second day of a series 
 | `forecast/learned-correction` | correction factors shrunk and clamped |
 | `forecast/next15-across-slot-boundary` | `next15` window spans two slots |
 | `forecast/remaining-today-mid-slot` | `remainingTodayKwh` prorates the running hourly slot |
+
+## 7. `forecast-correction.ndjson`: learned forecast correction
+
+One line per case: `{case,producer,input,output}`, database-free, produced by the 3.x code. A model is `month:hour` to
+`{ratio,weight}`; observations carry `localTime` (plant-local `YYYY-MM-DDTHH:mm`), `expectedW` and `actualW`.
+
+- `learn`: `input` `{model,skill,observations,nameplateW,exportCapW?}`, `output` `{model,touched,skill,improvementPct,factors}`:
+  the model after the fold in month, hour order, the cells the batch changed, the skill, its `skillImprovementPct` and
+  `correctionFactor` of every cell. Producer: `learn` (`apps/server/src/forecast/forecast-correction.ts`). Nameplate
+  10 kWp unless stated: an hour expecting under 300 W is too dim, one expecting or measuring 8500 W or more is curtailed.
+- `correctionFactor`: `input` `{model,month,hour}`, `output` `{factor}`.
+- `skillImprovementPct`: `input` `{skill}`, `output` `{pct}`.
+
+| case | boundary |
+| --- | --- |
+| `learn/empty` | no observations |
+| `learn/one-day` | one July day, dawn too dim, noon curtailed |
+| `learn/shrinkage-toward-one` | one observation at 1.4: the factor moves a sixth of the way |
+| `learn/clamp-high` | ratio 5 folds as 2.5, the factor stops at 1.4 |
+| `learn/clamp-low` | ratio 0.01 folds as 0.2, the factor stops at 0.6 |
+| `learn/half-life-decay` | a year of 0.7 in June and July, then 1.1: the older months fade |
+| `learn/skill-zero-error` | measured equals expected: no error, no improvement |
+| `learn/zero-production-day` | nothing measured all day: every lit hour folds at 0.2 |
+| `learn/dim-negative-and-curtailed-skipped` | the floor and ceiling at their edges, zero and negative expected, negative measured |
+| `learn/export-cap` | a feed-in cap below the saturation ceiling lowers it |
+| `learn/export-cap-above-saturation` | a cap above the ceiling changes nothing |
+| `learn/no-nameplate` | no arrays: nothing is learned |
+| `learn/prior-model-out-of-sample-skill` | a stored model and skill: the skill uses each cell's factor before its own fold |
+| `learn/dst-autumn-repeated-hour` | local 02:00 twice on 2025-10-26: both fold into one cell |
+| `learn/dst-spring-missing-hour` | local 02:00 absent on 2026-03-29 |
+| `factor/unlearned-cell` | no cell for the slot |
+| `factor/zero-weight` | a cell without weight applies 1 |
+| `factor/shrunk` | weight 5 halves the ratio's distance from 1 |
+| `factor/at-upper-bound` | shrunk to exactly 1.4 |
+| `factor/above-upper-bound` | clamped to 1.4 |
+| `factor/at-lower-bound` | shrunk to exactly 0.6 |
+| `factor/below-lower-bound` | clamped to 0.6 |
+| `factor/december-midnight` | month 12, hour 0 |
+| `skill/no-samples` | no samples: 0 |
+| `skill/zero-error` | no raw error: 0 |
+| `skill/improved` | corrected error lower |
+| `skill/worse` | corrected error higher: negative |
+| `skill/perfect` | no corrected error: 100 |

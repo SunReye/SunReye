@@ -10,6 +10,7 @@ import {
   type ProfileDecodeCase,
 } from "./profile-decode";
 import { buildForecastCorpus } from "./forecast";
+import { buildForecastCorrectionCorpus } from "./forecast-correction";
 import { buildTransportCorpus } from "./transport";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
@@ -46,6 +47,10 @@ describe("the committed corpus, database-free groups", () => {
     expect(await staleFiles(await buildForecastCorpus())).toEqual([]);
   });
 
+  test("the forecast correction is what the 3.x correction model produces now", async () => {
+    expect(await staleFiles(await buildForecastCorrectionCorpus())).toEqual([]);
+  });
+
   const dir = officialProfilesDir();
   test.skipIf(dir === null)(
     "profile decode is what the profile repository produces now",
@@ -66,6 +71,7 @@ describe("the corpus as a whole", () => {
       "rollups.ndjson",
       "statistics.ndjson",
       "forecast.ndjson",
+      "forecast-correction.ndjson",
       "archives/current-2.x/archive.tar.gz",
       "archives/legacy-1.2.0/archive.tar.gz",
       "README.md",
@@ -91,6 +97,7 @@ describe("the corpus as a whole", () => {
       "rollups.ndjson",
       "statistics.ndjson",
       "forecast.ndjson",
+      "forecast-correction.ndjson",
     ]) {
       names.push(...(await lines(file)).map((c) => c.case));
     }
