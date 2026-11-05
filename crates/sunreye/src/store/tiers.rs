@@ -492,10 +492,22 @@ mod tests {
         let connection = store.add_connection(&connection).await.expect("connection");
         let device = NewDevice { connection_id: connection, profile_id: "p".into(), unit_id: 2 };
         let second = store.add_device(&device).await.expect("device");
-        let started = std::time::Instant::now();
-        store.append_minute(second, &poll(late)).await.expect("append");
-        let took = started.elapsed();
-        assert!(took < std::time::Duration::from_millis(100), "{took:?}");
+        // 3 from half a minute in; the first device's buckets end on 1, so carrying one in would average 2.
+        let values = (0..METRICS).map(|m| (format!("m{m}"), 3.0)).collect();
+        let half =
+            ClosedMinute { minute: minute_of(late), samples: vec![Sample { at_ms: late + 30_000, values }] };
+        store.append_minute(second, &half).await.expect("append");
+        let (buckets, newest, low, high): (i64, i64, f64, f64) = sqlx::query_as(
+            "SELECT COUNT(*), MAX(start_us), MIN(avg), MAX(avg) FROM rollup WHERE tier = 0 AND device_id = ?",
+        )
+        .bind(second)
+        .fetch_one(&store.pool)
+        .await
+        .expect("count");
+        assert_eq!(
+            (buckets, newest, low, high),
+            (i64::try_from(METRICS).expect("metrics"), 1_200_000_000_000, 3.0, 3.0)
+        );
     }
 
     async fn plan(store: &Store, query: &str) -> String {
