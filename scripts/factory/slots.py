@@ -6,13 +6,18 @@ come from configuration. Reuse bounds disk to (slots × cap)."""
 import contextlib
 import fcntl
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
 GB = 1024 ** 3
+GATE_WAIT_SECONDS = 540
+GATE_POLL_SECONDS = 2
+GATE_TAIL_LINES = 60
 
 
 def sh(*args, cwd=None, check=True):
@@ -79,13 +84,78 @@ def env_file_text(env, nice):
     return text
 
 
-def run_commands(cfg, phase, path):
-    """Run configured argv commands in order; stop on the first failure."""
+def phase_commands(cfg, phase):
     commands = cfg["commands"].get(phase, [])
     if phase == "gate" and not commands:
         raise SystemExit("configure at least one gate command before running the factory")
-    for command in commands:
+    return commands
+
+
+def run_commands(cfg, phase, path):
+    """Run configured argv commands in order; stop on the first failure."""
+    for command in phase_commands(cfg, phase):
         subprocess.run(command, cwd=path, check=True)
+
+
+def gate_files(slot):
+    logs = main_root() / ".factory" / "logs"
+    return {name: logs / f"gate-{slot}.{name}" for name in ("log", "exit", "pid")}
+
+
+def pid_alive(pid):
+    try:
+        if os.waitpid(pid, os.WNOHANG)[0]:  # our own child: reap it, or a dead one reads as alive
+            return False
+    except ChildProcessError:
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def gate_running(files):
+    if files["exit"].exists() or not files["pid"].exists():
+        return False
+    return pid_alive(int(files["pid"].read_text()))
+
+
+def start_gate(cfg, slot, path, train=False):
+    """Run the gate in a background session; its log and exit code land in the main checkout's .factory/logs."""
+    commands = phase_commands(cfg, "gate") + (phase_commands(cfg, "train_gate") if train else [])
+    files = gate_files(slot)
+    if gate_running(files):
+        raise SystemExit(f"gate already running in {slot}: factory gate-wait --slot {slot}")
+    files["log"].parent.mkdir(parents=True, exist_ok=True)
+    for name in ("exit", "pid"):
+        files[name].unlink(missing_ok=True)
+    chain = " && ".join(shlex.join(command) for command in commands)
+    script = f'{chain}; rc=$?; echo "$rc" > "$1.tmp" && mv "$1.tmp" "$1"'
+    with open(files["log"], "w") as log:
+        proc = subprocess.Popen(["sh", "-c", script, "sh", str(files["exit"])], cwd=path, stdin=subprocess.DEVNULL,
+                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    files["pid"].write_text(str(proc.pid))
+    return {"log": str(files["log"]), "exit": str(files["exit"])}
+
+
+def wait_gate(slot):
+    """Block up to GATE_WAIT_SECONDS: running, or the exit code with the log tail on failure."""
+    files = gate_files(slot)
+    if not files["log"].exists():
+        raise SystemExit(f"no gate started in {slot}: factory gate --detach")
+    deadline = time.monotonic() + GATE_WAIT_SECONDS
+    while gate_running(files) and time.monotonic() < deadline:
+        time.sleep(GATE_POLL_SECONDS)
+    if gate_running(files):
+        return {"status": "running"}
+    tail = "".join(files["log"].read_text(errors="replace").splitlines(keepends=True)[-GATE_TAIL_LINES:])
+    if files["exit"].exists():
+        code = int(files["exit"].read_text())
+        return {"status": "passed", "exit": 0} if code == 0 else {"status": "failed", "exit": code, "tail": tail}
+    return {"status": "failed", "exit": 1, "tail": "gate process died before writing an exit code\n" + tail}
 
 
 def prepare(store, slot, branch, new_branch=False):
