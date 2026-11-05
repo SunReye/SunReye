@@ -1,18 +1,1 @@
-{
-  "apps/web/e2e/auth-expired-session.spec.ts": 1,
-  "apps/web/e2e/chart-gesture-lock.spec.ts": 1,
-  "apps/web/e2e/chart-power-fill.spec.ts": 1,
-  "apps/web/e2e/chart-tooltip-viewport.spec.ts": 1,
-  "apps/web/e2e/history-custom-chart-today.spec.ts": 1,
-  "apps/web/e2e/history-live-append.spec.ts": 6,
-  "apps/web/e2e/history-period-step.spec.ts": 7,
-  "apps/web/e2e/history-readout-idle.spec.ts": 1,
-  "apps/web/e2e/history-scroll-mounts.spec.ts": 1,
-  "apps/web/e2e/history-smoke.spec.ts": 2,
-  "apps/web/e2e/motion-tier.spec.ts": 2,
-  "apps/web/e2e/optimizer-history.spec.ts": 3,
-  "apps/web/e2e/setup-toast-clearance.spec.ts": 1,
-  "apps/web/e2e/shell-lease-loop.spec.ts": 2,
-  "apps/web/e2e/statistics-live-refresh.spec.ts": 3,
-  "apps/web/e2e/ws-reconnect-backoff.spec.ts": 2
-}
+{}

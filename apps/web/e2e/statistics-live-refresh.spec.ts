@@ -50,7 +50,7 @@ async function openStatistics(page: Page) {
 test("a settled page asks for nothing more", async ({ page }) => {
   const { backend } = await openStatistics(page);
   backend.resetRequests();
-  await page.waitForTimeout(3000);
+  await backend.settled();
   expect(counts(backend)).toEqual({
     comparison: 0,
     costBars: 0,
@@ -73,7 +73,7 @@ test("a live push on a now-inclusive window refreshes every section once", async
   await backend.pushStatistics();
   await expect.poll(() => backend.requestCount(READS.comparison)).toBe(1);
   // Settle, then take the census: a storm would keep climbing.
-  await page.waitForTimeout(1500);
+  await backend.settled();
   expect(counts(backend)).toEqual({
     comparison: 1,
     costBars: 1,
@@ -96,7 +96,7 @@ test("a spot-price sync refetches the price reads once each, and nothing else", 
   backend.resetRequests();
   await backend.pushStatistics({ type: "prices" });
   await expect.poll(() => backend.requestCount(READS.dayAhead)).toBe(1);
-  await page.waitForTimeout(1500);
+  await backend.settled();
   expect(counts(backend)).toEqual({
     comparison: 0,
     costBars: 0,

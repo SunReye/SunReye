@@ -32,6 +32,7 @@
 
 import { expect, test } from "@playwright/test";
 import { mockBackend } from "./support/api-mock";
+import { frames } from "./support/settle";
 
 /** Survives a hash navigation; cannot survive a document load. */
 const plantSentinel = (page: import("@playwright/test").Page) =>
@@ -91,11 +92,38 @@ test("a stale session does not bounce a page that is already pre-auth", async ({
   // anything on the page that does would otherwise bounce it back to where it
   // already is, forever.
   const backend = await mockBackend(page, { role: null });
+  await page.addInitScript(() => {
+    const w = window as unknown as { __navigations: number };
+    w.__navigations = 0;
+    // A bounce to the page one is already on is still a navigation, though the URL never changes.
+    (window as unknown as { navigation: EventTarget }).navigation.addEventListener(
+      "navigate",
+      () => {
+        w.__navigations++;
+      },
+    );
+  });
   await page.goto("/#/login");
+  // Booted: the client module imported below is the one the page already runs.
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   await plantSentinel(page);
+  const navigations = () =>
+    page.evaluate(() => (window as unknown as { __navigations: number }).__navigations);
+  const before = await navigations();
   backend.expireSession();
 
-  await page.waitForTimeout(2000);
+  // Nothing on /login reads anything privileged, so provoke the refusal through the app's own
+  // client: the hook that would bounce is the thing under test.
+  const status = await page.evaluate(async () => {
+    // A variable specifier: the module is the dev server's, not one tsc can resolve.
+    const specifier = "/src/lib/api.ts";
+    const { api } = await import(/* @vite-ignore */ specifier);
+    return (await api.api.profile.get()).status as number;
+  });
+  expect(status).toBe(401);
+  // The bounce is `import().then(goto)`, a few tasks after the response: let frames pass.
+  await frames(page, 60);
+  expect(await navigations()).toBe(before);
   expect(hash(page)).toBe("#/login");
   expect(await sentinel(page)).toBe("same-document");
 });

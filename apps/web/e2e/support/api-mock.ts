@@ -49,6 +49,7 @@ import { fileURLToPath } from "node:url";
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
 import type { ConnectionView, DeviceView, IntegrationList } from "@SunReye/contracts/devices";
 import * as fixture from "./api-fixtures";
+import { frames } from "./settle";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -231,6 +232,9 @@ const KIOSK_READS = ["capabilities", "profile", "history/recent", "history/rollu
 
 type GateKey = "role" | "kiosk" | "needsSetup" | "needsProfile" | "migration";
 
+/** Consecutive request-free frames that count as quiet: past a fetch's answer and the render it causes. */
+const CALM_FRAMES = 120;
+
 export interface MockBackend {
   /** The manifest this instance serves. */
   readonly manifest: FixtureManifest;
@@ -271,6 +275,12 @@ export interface MockBackend {
    * bounds everything else.
    */
   waitForLive(stallMs?: number): Promise<void>;
+  /**
+   * Resolve once the page has stopped asking: no request in flight across {@link CALM_FRAMES}
+   * consecutive frames. Use it before a census of requests, so a burst of per-card fetches has
+   * landed; it ends when the page is quiet, not after a guessed delay.
+   */
+  settled(): Promise<void>;
   /** Send exactly one `metrics` frame, optionally forcing some values. */
   pushMetrics(overrides?: Record<string, number>): Promise<void>;
   /**
@@ -459,9 +469,20 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
   const touch = () => {
     lastActivity = Date.now();
   };
-  page.on("request", touch);
-  page.on("requestfinished", touch);
-  page.on("requestfailed", touch);
+  /** Requests the page has sent and not yet seen answered. */
+  let inFlight = 0;
+  page.on("request", () => {
+    inFlight++;
+    touch();
+  });
+  page.on("requestfinished", () => {
+    inFlight--;
+    touch();
+  });
+  page.on("requestfailed", () => {
+    inFlight--;
+    touch();
+  });
   const subscribed = new Set<string>();
   const denied: string[] = [];
   const evccSnapshot = options.evcc === null ? null : fixture.EVCC_STATE;
@@ -1196,6 +1217,12 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
           `${clientFrames.length} client frames: ${shown.join(", ")}` +
           `${more > 0 ? `, +${more} more` : ""})${churn}`,
       );
+    },
+    async settled() {
+      for (let calm = 0; calm < CALM_FRAMES; ) {
+        await frames(page, 1);
+        calm = inFlight === 0 ? calm + 1 : 0;
+      }
     },
     async pushMetrics(overrides) {
       if (sockets.length === 0)

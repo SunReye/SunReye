@@ -31,6 +31,10 @@
 import { expect, test } from "@playwright/test";
 import { mockBackend } from "./support/api-mock";
 import { countRequests } from "./support/perf";
+import { frames } from "./support/settle";
+
+/** Frames the page renders while the loop would be running: about three seconds at 60 Hz. */
+const LOOP_WINDOW_FRAMES = 180;
 
 /** `{t:"sub"|"unsub", topics}` frames the client sent for a given topic. */
 function topicFrames(frames: readonly unknown[], t: "sub" | "unsub"): number {
@@ -58,9 +62,9 @@ test("the shell boots once and stays booted", async ({ page }) => {
 
   // Let the app settle well past the point the loop would have been running:
   // the broken build managed ~12 boot cycles a SECOND, so three seconds of
-  // quiet is three seconds the bug could not have survived.
+  // rendered frames is a window the bug could not have survived.
   const bootCalls = await countRequests(page, /\/api\/(profile|history\/recent)\b/, () =>
-    page.waitForTimeout(3000),
+    frames(page, LOOP_WINDOW_FRAMES),
   );
 
   // The boot is a boot, not a poll. Reverting the `untrack` scores 388-464 in
@@ -80,7 +84,7 @@ test("the live socket is opened once and the metrics lease is never dropped", as
   // Again no `waitForLive()`: the assertion below IS the thing that would make
   // it time out, and a setup failure is a worse error message than a number.
   await expect.poll(() => backend.socketOpens, { timeout: 20_000 }).toBeGreaterThan(0);
-  await page.waitForTimeout(3000);
+  await frames(page, LOOP_WINDOW_FRAMES);
 
   // The socket closed before it could finish opening, 2708 times, because the
   // effect cleanup tore the connection down between every re-run. Reverting the

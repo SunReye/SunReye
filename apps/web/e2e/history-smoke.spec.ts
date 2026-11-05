@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { CHARTABLE_METRIC_COUNT } from "./support/api-mock";
 import { metricCards, mountedCharts, openHistory } from "./support/history";
 import { countRequests, countTextMutations } from "./support/perf";
+import { frames } from "./support/settle";
 
 /**
  * Proof the harness itself works: the mocks match the real contracts and the
@@ -46,7 +47,6 @@ test.describe("/history harness", () => {
     const mutations = await countTextMutations(page, async () => {
       for (let i = 0; i < 5; i++) {
         await backend.pushMetrics();
-        await page.waitForTimeout(200);
       }
     });
     expect(mutations).toBeGreaterThan(0);
@@ -59,7 +59,7 @@ test.describe("/history harness", () => {
     // and `/api/history/recent` refetching ~12 times a second, and the socket
     // being closed before it could open. On a settled page: neither.
     const boots = await countRequests(page, /\/api\/(profile|history\/recent)\b/, () =>
-      page.waitForTimeout(3000),
+      frames(page, 180),
     );
     expect(boots).toBe(0);
     expect(backend.socketOpens).toBe(1);

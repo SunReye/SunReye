@@ -1,5 +1,5 @@
 /**
- * Moving the period on /history: one refetch, and a Year that is affordable.
+ * Moving the period on /history: one refetch, and a Year that asks for day buckets.
  *
  * Neither claim is a value a unit test can read.
  *
@@ -26,10 +26,8 @@
  *     does not make it a lie.
  *
  *  3. THE YEAR GRAIN. Nobody had measured it: it is a window this page never
- *     offered, over ~60 metric cards. Two things make it affordable and both are
- *     checked — the bucket really is DAILY in the query the cards send, and a
- *     card at that row count builds inside the same per-mount budget a preset
- *     window does.
+ *     offered, over ~60 metric cards. What makes it affordable is checked: the
+ *     bucket really is DAILY in the query the cards send.
  */
 
 import { expect, test } from "@playwright/test";
@@ -42,10 +40,6 @@ import {
   rollupCalls,
   selectRange,
 } from "./support/history";
-import { countChartMounts } from "./support/perf";
-
-/** Long enough for a burst of per-card fetches to finish and for the page to go quiet. */
-const SETTLE_MS = 2000;
 
 /**
  * Rows one card fetches on the Year grain, in production: `bucketForSpan` puts a
@@ -67,7 +61,8 @@ test("stepping the period refetches once per chart, not in a storm", async ({ pa
   // that it is fetched (once), and that the window it fetches is the civil day.
   await expect(nav.forward).toBeDisabled();
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(3);
+  await backend.settled();
 
   const today = rollupCalls(backend);
   expect(today.length).toBeGreaterThan(3);
@@ -108,7 +103,8 @@ test("stepping the period refetches once per chart, not in a storm", async ({ pa
   await nav.back.click();
   await expect(nav.forward).toBeEnabled();
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(3);
+  await backend.settled();
 
   const first = rollupCalls(backend);
   expect(first.length).toBeGreaterThan(3);
@@ -118,7 +114,8 @@ test("stepping the period refetches once per chart, not in a storm", async ({ pa
 
   backend.resetRequests();
   await nav.back.click();
-  await page.waitForTimeout(SETTLE_MS);
+  await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(3);
+  await backend.settled();
 
   const second = rollupCalls(backend);
   expect(second.length).toBeGreaterThan(3);
@@ -143,13 +140,13 @@ test("stepping the period refetches once per chart, not in a storm", async ({ pa
   // Settled: the page has stopped asking. A reactive loop shows up here as a
   // count that keeps climbing while nothing is happening.
   const afterStep = second.length;
-  await page.waitForTimeout(3000);
+  await backend.settled();
   expect(rollupCalls(backend).length).toBe(afterStep);
   expect(backend.socketOpens).toBe(1);
   expect(backend.unhandled).toEqual([]);
 });
 
-test("a Year-grain card builds inside the same budget a preset one does", async ({ page }) => {
+test("a Year-grain card asks for day buckets and keeps the feed", async ({ page }) => {
   // THE UNMEASURED CHANGE. Year is a window this page never had: ~60 metric
   // cards, each over a whole year, on the page whose scroll cost was the subject
   // of three recent commits. Nobody had a number for it.
@@ -158,13 +155,15 @@ test("a Year-grain card builds inside the same budget a preset one does", async 
   // own right now (#216) — so let those calls land and drop them, or the
   // bucket assertion below reads the Day grain's answer as well as the Year's.
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(3);
+  await backend.settled();
   backend.resetRequests();
 
   await selectRange(page, "Year");
   await expect(metricCards(page)).toHaveCount(CHARTABLE_METRIC_COUNT);
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(3);
+  await backend.settled();
 
   // The affordability mechanism, in the query string — and what justifies the
   // 365 rows above. A year on HOURLY rollups is 8760 points per card, which is
@@ -173,13 +172,7 @@ test("a Year-grain card builds inside the same budget a preset one does", async 
   expect(calls.length).toBeGreaterThan(3);
   expect(new Set(calls.map((c) => c.bucket))).toEqual(new Set(["day"]));
 
-  // The per-mount blocked-time budget that used to close this test went with the
-  // rest of the measurement layer: the suite is parallel and sharded now, so a
-  // millisecond figure would measure the other workers. What the wide window has
-  // to prove is above — day buckets, not hourly — and below.
-  const mounts = await countChartMounts(page, () => page.waitForTimeout(SETTLE_MS));
-  expect(mounts).toBeGreaterThanOrEqual(0);
-
+  // What the wide window has to prove is above — day buckets, not hourly — and below.
   // And the wider window did not buy its time by refetching or dropping the feed.
   expect(backend.socketOpens).toBe(1);
   expect(backend.unhandled).toEqual([]);
