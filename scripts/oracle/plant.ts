@@ -67,32 +67,35 @@ const device = (
   retiredAt: string | null = null,
 ): PlantDevice => ({ slug, name, profileId: "deye-sg05lp3", role, retiredAt });
 
+/** A live block read at `NOW_MS` with the default staleness. */
+const liveAt = (samples: Record<string, LiveSample>): PlantCase["live"] => ({
+  now: at(0),
+  staleAfterMs: STALE_AFTER_MS,
+  samples,
+});
+
 const PLANT_CASES: PlantCase[] = [
   {
     // Both report PV and production; only the roof has a battery; the voltage is each machine's own.
     case: "overlapping-roles",
     devices: [device("1", "Roof"), device("2", "Garage")],
     roles: ROLES,
-    live: {
-      now: at(0),
-      staleAfterMs: STALE_AFTER_MS,
-      samples: {
-        "1": {
-          time: at(-1000),
-          metrics: {
-            "dc.total_power": 3000,
-            "battery.soc": 80,
-            "battery.power": -1200,
-            "ac.l1.voltage": 230.1,
-            total_energy: 1520.4,
-          },
-        },
-        "2": {
-          time: at(-1500),
-          metrics: { "dc.total_power": 1500.5, "ac.l1.voltage": 229.4, total_energy: 310.2 },
+    live: liveAt({
+      "1": {
+        time: at(-1000),
+        metrics: {
+          "dc.total_power": 3000,
+          "battery.soc": 80,
+          "battery.power": -1200,
+          "ac.l1.voltage": 230.1,
+          total_energy: 1520.4,
         },
       },
-    },
+      "2": {
+        time: at(-1500),
+        metrics: { "dc.total_power": 1500.5, "ac.l1.voltage": 229.4, total_energy: 310.2 },
+      },
+    }),
     recent: {
       "1": {
         t0: T0,
@@ -120,17 +123,13 @@ const PLANT_CASES: PlantCase[] = [
     case: "stale-member",
     devices: [device("1", "Roof"), device("2", "Garage")],
     roles: ROLES,
-    live: {
-      now: at(0),
-      staleAfterMs: STALE_AFTER_MS,
-      samples: {
-        "1": { time: at(-2000), metrics: { "dc.total_power": 2500, "battery.soc": 55 } },
-        "2": {
-          time: at(-STALE_AFTER_MS - 1),
-          metrics: { "dc.total_power": 900, "battery.soc": 20 },
-        },
+    live: liveAt({
+      "1": { time: at(-2000), metrics: { "dc.total_power": 2500, "battery.soc": 55 } },
+      "2": {
+        time: at(-STALE_AFTER_MS - 1),
+        metrics: { "dc.total_power": 900, "battery.soc": 20 },
       },
-    },
+    }),
     recent: {
       "1": {
         t0: T0,
@@ -153,15 +152,11 @@ const PLANT_CASES: PlantCase[] = [
       device("3", "Grid meter", "meter"),
     ],
     roles: ROLES,
-    live: {
-      now: at(0),
-      staleAfterMs: STALE_AFTER_MS,
-      samples: {
-        "1": { time: at(-1000), metrics: { "dc.total_power": 2000, "ac.l1.voltage": 231 } },
-        "2": { time: at(-11_000), metrics: { "dc.total_power": 700, "ac.l1.voltage": 228 } },
-        "3": { time: at(-1000), metrics: { "dc.total_power": 50 } },
-      },
-    },
+    live: liveAt({
+      "1": { time: at(-1000), metrics: { "dc.total_power": 2000, "ac.l1.voltage": 231 } },
+      "2": { time: at(-11_000), metrics: { "dc.total_power": 700, "ac.l1.voltage": 228 } },
+      "3": { time: at(-1000), metrics: { "dc.total_power": 50 } },
+    }),
     recent: {
       "1": {
         t0: T0,
@@ -186,15 +181,11 @@ const PLANT_CASES: PlantCase[] = [
       device("3", "Grid meter", "meter"),
     ],
     roles: ROLES,
-    live: {
-      now: at(0),
-      staleAfterMs: STALE_AFTER_MS,
-      samples: {
-        "1": { time: at(-500), metrics: { "dc.total_power": 4200, "ac.l1.voltage": 230.5 } },
-        "2": { time: at(-500), metrics: { "dc.total_power": 4100, "ac.l1.voltage": 230.2 } },
-        "3": { time: at(-500), metrics: { "dc.total_power": 10 } },
-      },
-    },
+    live: liveAt({
+      "1": { time: at(-500), metrics: { "dc.total_power": 4200, "ac.l1.voltage": 230.5 } },
+      "2": { time: at(-500), metrics: { "dc.total_power": 4100, "ac.l1.voltage": 230.2 } },
+      "3": { time: at(-500), metrics: { "dc.total_power": 10 } },
+    }),
     recent: {
       "1": {
         t0: T0,
@@ -213,14 +204,10 @@ const PLANT_CASES: PlantCase[] = [
     case: "two-batteries",
     devices: [device("1", "Roof"), device("2", "Garage")],
     roles: ROLES,
-    live: {
-      now: at(0),
-      staleAfterMs: STALE_AFTER_MS,
-      samples: {
-        "1": { time: at(-1000), metrics: { "battery.soc": 80, "battery.power": -1000 } },
-        "2": { time: at(-2000), metrics: { "battery.soc": 40, "battery.power": 500 } },
-      },
-    },
+    live: liveAt({
+      "1": { time: at(-1000), metrics: { "battery.soc": 80, "battery.power": -1000 } },
+      "2": { time: at(-2000), metrics: { "battery.soc": 40, "battery.power": 500 } },
+    }),
     recent: {
       "1": {
         t0: T0,
