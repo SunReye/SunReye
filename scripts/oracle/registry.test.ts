@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import {
   DATABASE_OWNED,
+  type Discovered,
   discoverGenerators,
   generatorNames,
   readCorpusEntries,
@@ -28,6 +29,15 @@ afterAll(() => rm(root, { recursive: true, force: true }));
 const put = async (dir: string, path: string, content: string): Promise<void> => {
   await mkdir(dirname(join(dir, path)), { recursive: true });
   await writeFile(join(dir, path), content);
+};
+
+/** The generators in `dir`, each built once: what a generator declares is what its `build` writes. */
+const discover = async (dir: string): Promise<Discovered[]> => {
+  const found = await discoverGenerators(dir);
+  for (const { oracle } of found) {
+    expect(Object.keys(await oracle.build({ profilesDir: null }))).toEqual([...oracle.files]);
+  }
+  return found;
 };
 
 /** What a new oracle file adds: the generator, its fixture and its case table. Nothing else. */
@@ -106,10 +116,10 @@ describe("two PRs that each add an oracle file", () => {
     expect(git(dir, "diff", "--name-only", "base", "HEAD", "--", ...SHARED).out.trim()).toBe("");
 
     const oracleDir = join(dir, "scripts/oracle");
-    expect((await discoverGenerators(oracleDir)).map((g) => g.name)).toEqual(["alpha", "beta"]);
+    expect((await discover(oracleDir)).map((g) => g.name)).toEqual(["alpha", "beta"]);
     expect(
       registrationProblems(
-        await discoverGenerators(oracleDir),
+        await discover(oracleDir),
         await readCorpusEntries(join(dir, "fixtures/oracle")),
       ),
     ).toEqual([]);
@@ -173,10 +183,7 @@ describe("registrationProblems", () => {
     return { oracleDir: join(dir, "scripts/oracle"), corpusDir: join(dir, "fixtures/oracle") };
   };
   const problems = async (d: { oracleDir: string; corpusDir: string }): Promise<string[]> =>
-    registrationProblems(
-      await discoverGenerators(d.oracleDir),
-      await readCorpusEntries(d.corpusDir),
-    );
+    registrationProblems(await discover(d.oracleDir), await readCorpusEntries(d.corpusDir));
 
   test("registered oracles leave nothing to report; cases.d and README are not fixtures", async () => {
     const d = await setup("ok");
@@ -203,7 +210,7 @@ describe("registrationProblems", () => {
     await put(
       join(d.oracleDir, ".."),
       "oracle/gamma.ts",
-      `export const oracle = { files: ["alpha.ndjson"], build: async () => ({}) };\n`,
+      `export const oracle = { files: ["alpha.ndjson"], build: async () => ({ "alpha.ndjson": "" }) };\n`,
     );
     expect(await problems(d)).toEqual(["alpha.ndjson: claimed by alpha and gamma"]);
   });
