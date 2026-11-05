@@ -84,6 +84,7 @@ struct Answer {
     status: StatusCode,
     content_type: String,
     set_cookie: Option<String>,
+    retry_after: Option<String>,
     body: Vec<u8>,
 }
 
@@ -119,9 +120,10 @@ async fn answer(response: Response) -> Answer {
         |name| response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_owned);
     let content_type = header_text(header::CONTENT_TYPE).unwrap_or_default();
     let set_cookie = header_text(header::SET_COOKIE);
+    let retry_after = header_text(header::RETRY_AFTER);
     let status = response.status();
     let body = to_bytes(response.into_body(), usize::MAX).await.expect("body").to_vec();
-    Answer { status, content_type, set_cookie, body }
+    Answer { status, content_type, set_cookie, retry_after, body }
 }
 
 async fn get(api: &Api, path: &str) -> Answer {
@@ -1192,6 +1194,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 }
 
 mod api_keys;
+mod busy;
 mod devices;
 mod forecast;
 mod kiosk;

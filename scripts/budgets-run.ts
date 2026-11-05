@@ -39,6 +39,7 @@ import {
   render,
 } from "./budgets-plan";
 import { boot, requireOk, signIn } from "./core-boot";
+import { stallWatch, whileBusy } from "./liveness";
 import { mirrorDir } from "./mirror-dir";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,8 +55,11 @@ const ADMIN = {
 };
 const PROFILE = "deye-sg05lp3";
 
-/** Fails a hold in which no poll cycle ended for this long; never part of a verdict. */
-const STALL_MS = 60_000;
+/**
+ * Fails a hold in which no poll cycle ended for this long; never part of a verdict. Sized for a host
+ * under a full gate, where a cycle can be minutes late.
+ */
+const STALL_MS = 300_000;
 
 const log = (message: string) => console.log(`[budgets] ${message}`);
 
@@ -120,12 +124,15 @@ async function startSim() {
 async function setUp(base: string, simPort: number) {
   const cookie = await signIn(base, "/api/auth/sign-up", ADMIN, "admin sign-up");
   const put = async (path: string, body: object) => {
-    const response = await fetch(`${base}${path}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json", cookie, origin: base },
-      body: JSON.stringify(body),
-    });
-    await requireOk(response, `PUT ${path}`);
+    const what = `PUT ${path}`;
+    const response = await whileBusy(what, () =>
+      fetch(`${base}${path}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", cookie, origin: base },
+        body: JSON.stringify(body),
+      }),
+    );
+    await requireOk(response, what);
   };
   await put("/api/settings/inverter", {
     host: "127.0.0.1",
@@ -143,20 +150,22 @@ async function setUp(base: string, simPort: number) {
 type Session = { base: string; cookie: string };
 
 async function login({ base }: Session) {
-  const response = await fetch(`${base}/api/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password }),
-  });
+  const response = await whileBusy("login", () =>
+    fetch(`${base}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password }),
+    }),
+  );
   await requireOk(response, "login");
   await response.arrayBuffer();
 }
 
 /** The dashboard's seed read: an hour of every metric. */
 async function recentHistory({ base, cookie }: Session) {
-  const response = await fetch(`${base}/api/history/recent?seconds=3600`, {
-    headers: { cookie },
-  });
+  const response = await whileBusy("GET /api/history/recent", () =>
+    fetch(`${base}/api/history/recent?seconds=3600`, { headers: { cookie } }),
+  );
   await requireOk(response, "GET /api/history/recent");
   await response.arrayBuffer();
 }
@@ -194,24 +203,19 @@ async function soakLogins(session: Session, pid: number, logins: number) {
 function soakPolls(sim: { onCycle: (() => void) | undefined }, pid: number) {
   return new Promise<number[]>((resolve, reject) => {
     const readings: number[] = [];
-    let stalled: ReturnType<typeof setTimeout>;
-    const arm = () => {
-      clearTimeout(stalled);
-      stalled = setTimeout(() => {
-        sim.onCycle = undefined;
-        reject(
-          new Error(
-            `${readings.length} of up to ${POLL_SAMPLES} poll cycles ended, none in the last ${STALL_MS} ms: the core is not polling the simulator`,
-          ),
-        );
-      }, STALL_MS);
-    };
-    arm();
+    const watch = stallWatch(STALL_MS, () => {
+      sim.onCycle = undefined;
+      reject(
+        new Error(
+          `${readings.length} of up to ${POLL_SAMPLES} poll cycles ended, none in the last ${STALL_MS} ms: the core is not polling the simulator`,
+        ),
+      );
+    });
     sim.onCycle = () => {
       readings.push(readStatus(pid).rssBytes);
       const start = pollWindowStart(readings);
-      if (start === undefined || readings.length < start + POLL_READINGS) return arm();
-      clearTimeout(stalled);
+      if (start === undefined || readings.length < start + POLL_READINGS) return watch.beat();
+      watch.stop();
       sim.onCycle = undefined;
       resolve(readings);
     };

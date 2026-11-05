@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::time::Duration;
 
 use sqlx::migrate::{MigrateError, Migrator};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -26,6 +27,10 @@ use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
 
 const FILE: &str = "sunreye.db";
 
+/// How long a query waits for the pool's one connection before it fails as [`StoreError::is_busy`]; sqlx's
+/// own default, named here so a test can shorten it.
+const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("database error: {0}")]
@@ -43,6 +48,40 @@ pub enum StoreError {
     Transport(#[from] UnknownTransport),
     #[error("session store: {0}")]
     Sessions(String),
+}
+
+impl StoreError {
+    /// The database could not take the query now, and a retry may: the pool's connection stayed taken for
+    /// the whole acquire timeout, or `SQLite` answered `SQLITE_BUSY` or `SQLITE_LOCKED` (or an extended
+    /// form of either).
+    pub fn is_busy(&self) -> bool {
+        match self {
+            Self::Sqlx(sqlx::Error::PoolTimedOut) => true,
+            Self::Sqlx(sqlx::Error::Database(error)) => {
+                error.code().and_then(|code| code.parse().ok()).is_some_and(busy_code)
+            }
+            Self::Sessions(text) => busy_text(text),
+            _ => false,
+        }
+    }
+}
+
+/// `SQLITE_BUSY` and `SQLITE_LOCKED`, whose extended codes keep them in the low byte.
+fn busy_code(code: i32) -> bool {
+    matches!(code & 0xff, 5 | 6)
+}
+
+/// The session store keeps only the text of the `sqlx` error it hit: the timeout's own, or `(code: N)`
+/// as `sqlx` writes an `SQLite` error.
+pub(crate) fn busy_text(text: &str) -> bool {
+    const CODE: &str = "(code: ";
+    if text.contains(&sqlx::Error::PoolTimedOut.to_string()) {
+        return true;
+    }
+    text.split_once(CODE)
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .and_then(|(code, _)| code.parse().ok())
+        .is_some_and(busy_code)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,13 +188,18 @@ pub struct Store {
 impl Store {
     /// Opens `dir/sunreye.db`, creating the directory and the file, and applies pending migrations.
     pub async fn open(dir: &Path) -> Result<Self, StoreError> {
+        Self::open_waiting(dir, ACQUIRE_TIMEOUT).await
+    }
+
+    /// [`Store::open`] whose queries wait at most `acquire` for the connection.
+    pub(crate) async fn open_waiting(dir: &Path, acquire: Duration) -> Result<Self, StoreError> {
         std::fs::create_dir_all(dir)?;
         let options = SqliteConnectOptions::new()
             .filename(dir.join(FILE))
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal);
-        Self::connect(options).await
+        Self::connect(options, acquire).await
     }
 
     /// Takes the one connection, so every other use of the store waits until it is dropped.
@@ -166,13 +210,14 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) async fn in_memory() -> Result<Self, StoreError> {
-        Self::connect(SqliteConnectOptions::new().in_memory(true)).await
+        Self::connect(SqliteConnectOptions::new().in_memory(true), ACQUIRE_TIMEOUT).await
     }
 
     /// One connection: writers never contend, and an in-memory database is not lost to a recycled one.
-    async fn connect(options: SqliteConnectOptions) -> Result<Self, StoreError> {
+    async fn connect(options: SqliteConnectOptions, acquire: Duration) -> Result<Self, StoreError> {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            .acquire_timeout(acquire)
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_with(options.foreign_keys(true))
@@ -464,6 +509,50 @@ async fn intern_metric<'e, E: Executor<'e, Database = Sqlite>>(
     .fetch_one(executor)
     .await?;
     u32::try_from(row.id).map_err(|_| StoreError::Corrupt("metric id"))
+}
+
+/// A store error `SQLite` answers with `code`, worded as `sqlx` words it, for tests of what the core makes
+/// of one.
+#[cfg(test)]
+pub(crate) fn refused(code: &'static str) -> StoreError {
+    #[derive(Debug)]
+    struct Coded(&'static str);
+
+    impl std::fmt::Display for Coded {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "(code: {}) refused", self.0)
+        }
+    }
+
+    impl std::error::Error for Coded {}
+
+    impl sqlx::error::DatabaseError for Coded {
+        fn message(&self) -> &'static str {
+            "refused"
+        }
+
+        fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+            Some(self.0.into())
+        }
+
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::Other
+        }
+    }
+
+    StoreError::Sqlx(sqlx::Error::Database(Box::new(Coded(code))))
 }
 
 #[cfg(test)]
@@ -1241,5 +1330,61 @@ mod tests {
         assert_eq!(store.setting("k").await.expect("get").as_deref(), Some("v"));
         store.close().await;
         drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[test]
+    fn a_pool_timeout_and_every_busy_or_locked_code_is_busy() {
+        assert!(StoreError::Sqlx(sqlx::Error::PoolTimedOut).is_busy());
+        // BUSY, LOCKED, then their extended forms: BUSY_RECOVERY, LOCKED_SHAREDCACHE, BUSY_SNAPSHOT,
+        // BUSY_TIMEOUT, LOCKED_VTAB.
+        for code in ["5", "6", "261", "262", "517", "773", "518"] {
+            assert!(refused(code).is_busy(), "code {code}");
+        }
+    }
+
+    #[test]
+    fn any_other_failure_is_not_busy() {
+        // ERROR, IOERR, CORRUPT, CONSTRAINT_UNIQUE, NOMEM, a code that is no number, and the neighbours of 5 and 6
+        for code in ["1", "10", "11", "2067", "7", "4", "x", "", "261x", "-5"] {
+            assert!(!refused(code).is_busy(), "code {code:?}");
+        }
+        assert!(!StoreError::Sqlx(sqlx::Error::RowNotFound).is_busy());
+        assert!(!StoreError::Sqlx(sqlx::Error::PoolClosed).is_busy());
+        assert!(!StoreError::Corrupt("minute").is_busy());
+        assert!(!StoreError::Sessions("Decoding failed with: eof".into()).is_busy());
+    }
+
+    #[tokio::test]
+    async fn a_file_another_connection_holds_locked_is_busy_as_a_query_and_as_a_session_error() {
+        use sqlx::Connection;
+        let dir = std::env::temp_dir().join(format!("sunreye-store-busy-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let options = SqliteConnectOptions::new()
+            .filename(dir.join("busy.db"))
+            .create_if_missing(true)
+            .busy_timeout(Duration::ZERO);
+        let mut holder = sqlx::SqliteConnection::connect_with(&options).await.expect("holder");
+        sqlx::query("BEGIN EXCLUSIVE").execute(&mut holder).await.expect("lock");
+        let mut other = sqlx::SqliteConnection::connect_with(&options).await.expect("other");
+        let error = sqlx::query("SELECT 1 FROM sqlite_master").execute(&mut other).await.expect_err("locked");
+        // What a session store's error carries: the cause as text.
+        let as_session = StoreError::Sessions(error.to_string());
+        assert!(StoreError::from(error).is_busy());
+        assert!(as_session.is_busy());
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[test]
+    fn a_session_error_is_busy_when_its_text_says_the_pool_timed_out_or_the_file_was_locked() {
+        let timed_out = sqlx::Error::PoolTimedOut.to_string();
+        for text in
+            [timed_out.as_str(), "(code: 5) database is locked", "(code: 262) database table is locked"]
+        {
+            assert!(StoreError::Sessions(text.into()).is_busy(), "{text}");
+        }
+        for text in ["", "(code: 1) no such table", "(code: 11) disk image is malformed", "locked"] {
+            assert!(!StoreError::Sessions(text.into()).is_busy(), "{text}");
+        }
     }
 }

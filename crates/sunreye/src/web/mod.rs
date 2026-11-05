@@ -3,6 +3,7 @@
 mod api_keys;
 mod assets;
 mod auth;
+mod busy;
 mod devices;
 mod forecast;
 mod history;
@@ -23,8 +24,8 @@ use std::sync::Arc;
 
 use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request};
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Extension, Json, Router, middleware};
@@ -158,7 +159,7 @@ pub fn openapi() -> Document {
 pub fn router(core: Arc<Core>, config: &Config) -> Router {
     let (routes, document) = api();
     let document = Arc::new(document);
-    let sessions = SessionManagerLayer::new(core.store.sessions())
+    let sessions = SessionManagerLayer::new(busy::Watched(core.store.sessions()))
         .with_secure(config.secure_cookies)
         .with_same_site(SameSite::Lax)
         .with_http_only(true)
@@ -171,6 +172,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
         .layer(Extension(config.live))
         .layer(Extension(config.stranger_wait))
         .layer(accounts)
+        .layer(middleware::from_fn(busy::surface))
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))
         .with_state(core)
 }
@@ -190,11 +192,16 @@ pub struct ApiError {
     status: StatusCode,
     message: String,
     field: Option<&'static str>,
+    /// Seconds a client waits before it asks again; sent as `Retry-After`.
+    retry_after: Option<u32>,
 }
+
+/// Seconds a client waits after a busy database: the pool's connection frees within one.
+const BUSY_RETRY_AFTER: u32 = 1;
 
 impl ApiError {
     fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self { status, message: message.into(), field: None }
+        Self { status, message: message.into(), field: None, retry_after: None }
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
@@ -221,6 +228,11 @@ impl ApiError {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, message)
     }
 
+    /// The database cannot answer now: a 503 that says when to ask again.
+    pub fn busy() -> Self {
+        Self { retry_after: Some(BUSY_RETRY_AFTER), ..Self::unavailable("The database is busy: try again") }
+    }
+
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(StatusCode::CONFLICT, message)
     }
@@ -239,16 +251,32 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(ErrorBody { error: self.message, field: self.field })).into_response()
+        let body = Json(ErrorBody { error: self.message, field: self.field });
+        match self.retry_after {
+            Some(seconds) => {
+                (self.status, [(header::RETRY_AFTER, seconds.to_string())], body).into_response()
+            }
+            None => (self.status, body).into_response(),
+        }
     }
 }
 
-/// A store failure is the core's fault: logged here, answered without its detail.
+/// A busy store is a 503 to retry; any other store failure is the core's fault: logged here, answered
+/// without its detail.
 impl From<StoreError> for ApiError {
     fn from(error: StoreError) -> Self {
-        tracing::error!(%error, "store failed while answering a request");
-        Self::internal()
+        if error.is_busy() { busy(&error) } else { failed(&error) }
     }
+}
+
+fn busy(error: &StoreError) -> ApiError {
+    tracing::warn!(%error, "store busy while answering a request");
+    ApiError::busy()
+}
+
+fn failed(error: &StoreError) -> ApiError {
+    tracing::error!(%error, "store failed while answering a request");
+    ApiError::internal()
 }
 
 /// `Json` whose rejection is a 400 in the shape above, so the SPA reads one error format.
