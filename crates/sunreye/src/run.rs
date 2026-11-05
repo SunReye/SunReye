@@ -414,6 +414,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
     use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
@@ -674,15 +675,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unreachable_device_stores_nothing_and_does_not_stop_the_core() {
-        let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+    async fn a_device_that_drops_every_connection_stores_nothing_and_does_not_stop_the_core() {
+        let device_end = listener().await;
+        let port = device_end.local_addr().expect("addr").port();
+        let (dialled, dial) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            // The first poll dials in and is hung up on.
+            drop(device_end.accept().await);
+            dialled.send(()).ok();
+        });
         let dir = dir("unreachable");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
-            .await
-            .expect("run");
+        run(&dir, &Config::default(), listener().await, wait(dial)).await.expect("run");
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -726,7 +730,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_running_core_drops_buckets_past_retention_and_keeps_the_rest() {
+    async fn the_core_drops_buckets_past_retention_and_keeps_the_rest() {
         let dir = dir("retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
         let store = Store::open(&dir).await.expect("store");
@@ -738,33 +742,52 @@ mod tests {
         }
         store.close().await;
 
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
-            .await
-            .expect("run");
-
-        let store = Store::open(&dir).await.expect("store");
+        let core = Core::open(&dir).await.expect("open");
+        let store = &core.store;
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while store.buckets(Tier::Minute, device, "power").await.expect("buckets").len() > 1 {
+            assert!(Instant::now() < deadline, "the first pass did not run");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let minutes = store.buckets(Tier::Minute, device, "power").await.expect("buckets");
         let kept = Timestamp::from_millisecond(minute_of(now - 89 * 24 * 60 * MINUTE_MS) * MINUTE_MS);
         assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
         assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 2);
-        store.close().await;
+        core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
+    }
+
+    /// The retention passes `counted_now` has been read for.
+    static PASSES: AtomicUsize = AtomicUsize::new(0);
+
+    fn counted_now() -> i64 {
+        PASSES.fetch_add(1, Ordering::SeqCst);
+        now_ms()
     }
 
     #[tokio::test]
     async fn a_settings_change_runs_no_retention_pass() {
         let dir = dir("apply-retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let core = Core::open(&dir).await.expect("open");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let at_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
-        let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
-        let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
-        core.store.append_minute(device, &minute).await.expect("append");
+        let stale_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
+        let store = Store::open(&dir).await.expect("store");
+        append_at(&store, device, stale_ms).await;
+        store.close().await;
+        let core = Core::open_at(&dir, counted_now).await.expect("open");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        // The pass drops raw readings, then the minute tier; the coarser tiers keep this row.
+        while !core.store.buckets(Tier::Minute, device, "power").await.expect("buckets").is_empty() {
+            assert!(Instant::now() < deadline, "the first pass did not run");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "the start runs one pass");
+        append_at(&core.store, device, stale_ms).await;
 
         core.apply().await.expect("apply");
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // A pass the restart spawned has read the clock by its first poll, which this yield gives it.
+        tokio::task::yield_now().await;
 
+        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "a restart starts no pass");
         let minutes = core.store.buckets(Tier::Minute, device, "power").await.expect("buckets");
         assert_eq!(minutes.len(), 1, "the next pass is an hour after start");
         core.stop().await;
@@ -775,9 +798,8 @@ mod tests {
     async fn a_device_with_an_unknown_profile_is_skipped() {
         let dir = dir("unknown");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(100)))
-            .await
-            .expect("run");
+        // Nothing is polled once the roster is read, so there is nothing left to wait for.
+        Core::open(&dir).await.expect("open").stop().await;
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }

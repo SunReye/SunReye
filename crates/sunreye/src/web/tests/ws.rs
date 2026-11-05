@@ -210,15 +210,15 @@ async fn the_server_pings_and_a_client_that_answers_stays_open() {
     let (core, admin) = open(&dir("ws-ping")).await;
     let addr = serve(&core, &quick()).await;
     let mut socket = connect(addr, &admin).await;
-    let mut pings = 0;
-    let until = Instant::now() + Duration::from_millis(1_000);
-    while let Ok(next) = tokio::time::timeout_at(until.into(), socket.next()).await {
-        match next.expect("open").expect("frame") {
-            Message::Ping(_) => pings += 1,
+    // Eight pings take at least 800 ms of the server's clock, past two idle timeouts: a client the
+    // server did not keep alive would be closed before the last. The bound only ends a silent wait.
+    for _ in 0..8 {
+        let next = tokio::time::timeout(Duration::from_secs(20), socket.next()).await;
+        match next.expect("a ping").expect("open").expect("frame") {
+            Message::Ping(_) => {}
             other => panic!("unexpected {other:?}"),
         }
     }
-    assert!((3..=12).contains(&pings), "{pings} pings in 1 s at a 100 ms interval");
     let ack = subscribe(&mut socket, r#"["metrics"]"#).await;
     assert_eq!(ack["data"]["subscribed"], json!(["metrics"]), "open past three idle timeouts");
     drop(admin);
@@ -231,8 +231,12 @@ async fn a_client_that_stops_answering_is_closed_after_the_idle_timeout() {
     let addr = serve(&core, &quick()).await;
     let socket = connect(addr, &admin).await;
     connections(&core, 1).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The connection is up and nothing else touches the store: the server's timers run on virtual time.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_millis(150)).await;
     assert_eq!(core.live.connections(), 1, "open inside the timeout");
+    tokio::time::advance(Duration::from_millis(200)).await;
+    tokio::time::resume();
     connections(&core, 0).await;
     drop((socket, admin));
     core.stop().await;

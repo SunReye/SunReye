@@ -9,11 +9,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// A store directory of its own, so no test writes into the working directory or shares a file.
+/// A store directory of its own, so no test, in this process or a parallel one, shares a file.
 fn fresh_data_dir() -> std::path::PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("cli-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "cli-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }
@@ -129,10 +132,16 @@ fn exits_zero_on_sigint() {
 
 #[test]
 fn log_level_error_silences_the_startup_line() {
-    let mut child = spawn(&["--log-level", "error"]);
+    let port = std::net::TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("addr").port();
+    let mut child = Command::new(BIN)
+        .args(["--log-level", "error", "--listen", &format!("127.0.0.1:{port}"), "--data-dir"])
+        .arg(fresh_data_dir())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sunreye");
     let stderr = child.stderr.take().expect("piped stderr");
-    // The handlers are installed before logging; give them a moment, then stop it.
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    serving(&mut child, port);
     assert!(signal(&child, "TERM").success());
     let status = child.wait().expect("wait");
     let mut logged = String::new();
@@ -145,7 +154,8 @@ fn log_level_error_silences_the_startup_line() {
 
 #[test]
 fn an_unusable_data_dir_exits_non_zero_and_says_why() {
-    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not-a-directory");
+    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("not-a-directory-{}", std::process::id()));
     std::fs::write(&file, b"x").expect("write");
     let out = Command::new(BIN).arg("--data-dir").arg(&file).output().expect("run");
     assert!(!out.status.success());
@@ -156,6 +166,17 @@ fn an_unusable_data_dir_exits_non_zero_and_says_why() {
 fn port(listening: &str) -> u16 {
     let digits: String = listening.trim_end().chars().rev().take_while(char::is_ascii_digit).collect();
     digits.chars().rev().collect::<String>().parse().expect("a port")
+}
+
+/// Returns once `child` answers on `port`, which is after it installed its signal handlers and opened its store.
+fn serving(child: &mut Child, port: u16) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
+        assert!(child.try_wait().expect("poll the child").is_none(), "exited before serving");
+        assert!(std::time::Instant::now() < deadline, "not serving on {port}");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(request(port, "GET /api/setup-status", "").contains("200"));
 }
 
 /// One HTTP/1.1 request over loopback; the answer's status line.
@@ -199,8 +220,17 @@ fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16,
     log
 }
 
+/// The WARN lines the run itself logged: sqlx adds a `slow statement` one when the machine is loaded.
 fn warnings(log: &str) -> Vec<&str> {
-    log.lines().filter(|l| l.contains("WARN")).collect()
+    log.lines().filter(|l| l.contains("WARN") && !l.contains("sqlx::query")).collect()
+}
+
+#[test]
+fn warnings_leave_out_what_sqlx_logs_when_the_machine_is_loaded() {
+    let log = "2026-11-05T10:00:00Z  INFO sunreye listening on 127.0.0.1:41000\n\
+               2026-11-05T10:00:01Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold elapsed=1.2s\n\
+               2026-11-05T10:00:01Z  WARN sunreye::run: listen address is not loopback\n";
+    assert_eq!(warnings(log), ["2026-11-05T10:00:01Z  WARN sunreye::run: listen address is not loopback"]);
 }
 
 #[test]
