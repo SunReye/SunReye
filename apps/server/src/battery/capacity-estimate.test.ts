@@ -169,17 +169,30 @@ describe("dischargeSegments: cost", () => {
     return { soc, power };
   }
 
-  test("a week of dense readings is segmented in bounded time, not quadratic", () => {
+  test("a week of dense readings is segmented in linear work, not quadratic", () => {
     // Seen live 2026-09-09: the boot-time pass read the whole backfilled raw
     // window and every SOC sample re-scanned the entire power array. Millions
     // of samples squared put the event loop away for good; the watchdog
     // restarted the addon every few minutes and it never came back up.
-    const { soc, power } = cycling(7, 60_000, 2_000);
-    const began = performance.now();
+    const { soc, power: plain } = cycling(7, 60_000, 2_000);
+    let reads = 0;
+    const power = plain.map((interval) => ({
+      get t() {
+        reads++;
+        return interval.t;
+      },
+      get durMs() {
+        reads++;
+        return interval.durMs;
+      },
+      get w() {
+        reads++;
+        return interval.w;
+      },
+    }));
     const segments = dischargeSegments(soc, power);
-    const elapsedMs = performance.now() - began;
     expect(segments.length).toBe(7);
-    expect(elapsedMs).toBeLessThan(2_000);
+    expect(reads).toBeLessThan(power.length * 20);
   });
 
   test("power handed over out of order measures the same as sorted power", () => {

@@ -50,7 +50,7 @@ describe("enterRequestContext", () => {
   it("makes the id visible to everything downstream in the same async chain", async () => {
     const seen: (string | undefined)[] = [];
     const deep = async () => {
-      await new Promise((r) => setTimeout(r, 1));
+      await new Promise<void>((r) => setImmediate(r));
       seen.push(requestContextStorage.getStore()?.requestId as string | undefined);
     };
 
@@ -64,18 +64,18 @@ describe("enterRequestContext", () => {
   // Two requests in flight must not read each other's id — the bug the old
   // plugin had with its app-level `store`.
   it("keeps concurrent requests apart", async () => {
-    const observe = async (id: string, delayMs: number): Promise<string | undefined> =>
+    const gates = new Map<string, () => void>();
+    const observe = async (id: string): Promise<string | undefined> =>
       requestContextStorage.run({}, async () => {
         enterRequestContext(id);
-        await new Promise((r) => setTimeout(r, delayMs));
+        await new Promise<void>((resolve) => gates.set(id, resolve));
         return requestContextStorage.getStore()?.requestId as string | undefined;
       });
 
-    expect(await Promise.all([observe("a", 8), observe("b", 1), observe("c", 4)])).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    // All three parked mid-request, then resumed in the reverse of arrival order.
+    const all = Promise.all([observe("a"), observe("b"), observe("c")]);
+    for (const id of ["c", "b", "a"]) gates.get(id)?.();
+    expect(await all).toEqual(["a", "b", "c"]);
   });
 
   it("reports nothing outside a request", () => {

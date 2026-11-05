@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import type { MqttParams } from "@SunReye/db/connection-kinds";
 import type { EvccConfig } from "@SunReye/db/evcc-config";
 import { type BrokerClient, createBrokerPool } from "../devices/broker-pool";
@@ -100,6 +100,9 @@ const stopEvcc = ingest.stop;
 /** Comfortably past the ingest's emit debounce, so a due push has landed. */
 const EMIT_WAIT_MS = 300;
 
+/** Run the debounce timer the ingest armed under fake timers. */
+const drainEmits = () => jest.advanceTimersByTime(EMIT_WAIT_MS);
+
 /**
  * Capture what the ingest logs while `run` executes. Two tests below are named
  * "…is logged, not thrown"; `not.toThrow()` alone only ever proved the second
@@ -161,6 +164,7 @@ function sendLimitLayers(): void {
 }
 
 afterEach(async () => {
+  jest.useRealTimers();
   await stopEvcc();
   evccConfig = { ...DEFAULT_EVCC_CONFIG };
   topicRootRow = null;
@@ -347,8 +351,9 @@ describe("limit write path", () => {
 
 describe("pushes", () => {
   test("vehicle state alone pushes nothing; loadpoint state still does", async () => {
+    jest.useFakeTimers();
     await connectEvcc();
-    await Bun.sleep(EMIT_WAIT_MS); // let the connect/status push drain
+    drainEmits(); // let the connect/status push drain
     let pushes = 0;
     const unsubscribe = streams.subscribe("evcc", () => {
       pushes += 1;
@@ -357,11 +362,11 @@ describe("pushes", () => {
       // Vehicle state is write-routing input only, never in the snapshot, so
       // pushing on it would just repeat the previous snapshot to every client.
       send("evcc/vehicles/tesla_ble/limitSoc", "80");
-      await Bun.sleep(EMIT_WAIT_MS);
+      drainEmits();
       expect(pushes).toBe(0);
       // EVCC mirrors the change onto the loadpoint, and that is what reaches the UI.
       send("evcc/loadpoints/1/effectiveLimitSoc", "80");
-      await Bun.sleep(EMIT_WAIT_MS);
+      drainEmits();
       expect(pushes).toBe(1);
     } finally {
       unsubscribe();
@@ -555,9 +560,10 @@ describe("house-load samples", () => {
   });
 
   test("a wobble under the noise floor pushes nothing; an attributed step pushes", async () => {
+    jest.useFakeTimers();
     await connectEvccWith({ subtractFromHome: true });
     chargingLoadpoint(0);
-    await Bun.sleep(EMIT_WAIT_MS); // let the ingest's own pushes drain
+    drainEmits(); // let the ingest's own pushes drain
 
     let pushes = 0;
     const unsubscribe = streams.subscribe("evcc", () => {
@@ -566,12 +572,12 @@ describe("house-load samples", () => {
     try {
       evccOnLoadSample(0);
       evccOnLoadSample(100); // meter noise / slow house drift, under 150 W
-      await Bun.sleep(EMIT_WAIT_MS);
+      drainEmits();
       expect(pushes).toBe(0);
       expect(loadpoint().chargePowerLive).toBe(0);
 
       evccOnLoadSample(790); // the noise was absorbed, so this is +690 W
-      await Bun.sleep(EMIT_WAIT_MS);
+      drainEmits();
       expect(pushes).toBe(1);
       expect(loadpoint().chargePowerLive).toBe(690);
     } finally {

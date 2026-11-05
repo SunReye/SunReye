@@ -44,6 +44,15 @@ interface FakeTimer {
   cancelled: boolean;
 }
 
+/** Poll until `check` holds; the deadline only bounds a hang. */
+async function until(check: () => boolean, ms = 5_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("condition not met in time");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 const broker = (over: Partial<{ brokerUrl: string; username: string; clientId: string }> = {}) => ({
   brokerUrl: "mqtt://hass.test:1883",
   ...over,
@@ -256,8 +265,7 @@ describe("re-opening", () => {
     const first = h.client();
 
     h.pool.acquire(7, broker({ brokerUrl: "mqtt://moved.test:1883" }));
-    await Bun.sleep(0);
-    expect(h.dials).toHaveLength(2);
+    await until(() => h.dials.length === 2);
     expect(first.ended).toBe(1);
     expect(link.status().connected).toBe(false);
     // The holder that never asked for the move sees the new endpoint too:
@@ -281,8 +289,7 @@ describe("re-opening", () => {
     expect(h.dials).toHaveLength(1);
 
     link.update(broker({ brokerUrl: "mqtt://moved.test:1883" }));
-    await Bun.sleep(0);
-    expect(h.dials).toHaveLength(2);
+    await until(() => h.dials.length === 2);
     // Still ONE holder: releasing it must still close the client, or the tier
     // re-applying a row every pass would make it unclosable.
     await link.release();
@@ -314,8 +321,7 @@ describe("re-opening", () => {
     // LWT is a CONNECT-time property, so declaring one is a re-dial or it is
     // nothing at all.
     h.pool.acquire(7, broker(), { will });
-    await Bun.sleep(0);
-    expect(h.dials).toHaveLength(2);
+    await until(() => h.dials.length === 2);
     expect(h.dials[1]?.options.will).toEqual(will);
 
     h.pool.acquire(7, broker(), { will });
@@ -405,7 +411,7 @@ describe("publishing", () => {
     const h = harness();
     const link = h.pool.acquire(7, broker());
     h.pool.acquire(7, broker({ brokerUrl: "mqtt://moved.test:1883" }));
-    await Bun.sleep(0);
+    await until(() => h.clients.length === 2);
     link.publish("x", "1");
     expect(h.clients[0]?.published).toEqual([]);
     expect(h.clients[1]?.published).toEqual([{ topic: "x", payload: "1" }]);

@@ -9,6 +9,7 @@ pub mod open_meteo;
 #[cfg(test)]
 mod oracle;
 pub mod plant;
+pub mod plant_zone;
 pub mod poll;
 pub mod probe;
 pub mod profile;

@@ -424,8 +424,11 @@ function fakeLegacyStore(
   return store;
 }
 
-/** Let the fire-and-forget legacy sweep settle before asserting on the wire. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+/**
+ * Let every pending microtask run (the fire-and-forget legacy sweep, an async message
+ * handler) before asserting on the wire: one macrotask turn drains them.
+ */
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 type Harness = {
   bridge: NonNullable<ReturnType<typeof startMqttBridge>>;
@@ -509,9 +512,8 @@ function start(
     },
     async deliver(topic, payload) {
       client.emit("message", topic, Buffer.from(payload));
-      // The message handler is async (it awaits the inverter write); give the
-      // microtask queue a turn so the write has landed before we assert.
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The message handler is async: it awaits the inverter write.
+      await settle();
     },
   };
 }
@@ -1444,7 +1446,7 @@ describe("inbound commands", () => {
       Buffer.from("10"),
     );
     h.client.emit("message", "sunreye/haus-sud/inverter/setting/mode/set", Buffer.from("0"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
     expect(h.writes).toEqual([
       { key: "setting.charge.current", value: 10 },
       { key: "setting.mode", value: 0 },
@@ -1472,7 +1474,7 @@ describe("shutting down", () => {
     const closing = h.bridge.close().then(() => {
       closed = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await settle();
     expect(closed).toBe(false);
     expect(h.client.ended).toBe(0);
     h.client.releaseAcks();

@@ -36,10 +36,17 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-/** Let every already-scheduled microtask (and timer, if any) run. */
-const settle = async (ms = 0) => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-};
+/** Let every already-scheduled microtask run: one macrotask turn drains them. */
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** Poll until `check` holds; the deadline only bounds a hang. */
+async function until(check: () => boolean, ms = 5_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("condition not met in time");
+    await settle();
+  }
+}
 
 /** A recording stand-in for {@link Streams} that can report live listener count. */
 function fakeStreams() {
@@ -556,7 +563,6 @@ describe("robustness", () => {
 
     hangs = true;
     const stalled = h.handlers.message(sock.ws, { t: "sub", topics: ["logs"] });
-    await Promise.race([stalled, settle(200)]);
     // The stalled frame is dropped rather than answered…
     await expect(stalled).resolves.toBeUndefined();
     expect(sock.sent).toEqual([]);
@@ -620,7 +626,8 @@ describe("close", () => {
     await h.handlers.open(sock.ws);
 
     await h.handlers.message(sock.ws, { t: "sub", topics: ["statistics"] });
-    await settle(25);
+    expect(h.bus.listenerCount("statistics")).toBe(1); // buffering live frames behind the snapshot
+    await until(() => h.bus.listenerCount("statistics") === 0);
 
     // No snapshot to send, but the client still gets the live feed: a stalled
     // query must not cost it the topic.

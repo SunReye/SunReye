@@ -458,14 +458,21 @@ describe("request correlation reaching the viewer", () => {
   it("keeps two concurrent requests' records apart", async () => {
     const seen: LogEntry[] = [];
     const unsubscribe = streams.subscribe("logs", (entry) => seen.push(entry));
-    const emit = (id: string, delayMs: number) =>
+    const gates = new Map<string, () => void>();
+    const emit = (id: string) =>
       requestContextStorage.run({}, async () => {
         enterRequestContext(id);
-        await new Promise((r) => setTimeout(r, delayMs));
+        await new Promise<void>((resolve) => gates.set(id, resolve));
         log("engine").info("work for {id}", { id });
       });
     try {
-      await Promise.all([emit("slow", 8), emit("fast", 1)]);
+      // Both are parked mid-request; the later one finishes first.
+      const slow = emit("slow");
+      const fast = emit("fast");
+      gates.get("fast")?.();
+      await fast;
+      gates.get("slow")?.();
+      await slow;
     } finally {
       unsubscribe();
     }
