@@ -11,6 +11,7 @@ use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 pub use correction::{CorrectionCell, CorrectionModel};
 pub use geometry::{SunPosition, cos_aoi, sun_position};
@@ -111,7 +112,7 @@ pub enum Error {
     Calendar(#[from] jiff::Error),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Point {
     /// Slot start, plant-local.
@@ -123,7 +124,7 @@ pub struct Point {
 }
 
 /// The 15 minutes after `now`; `avg_power_w × 0.25 h` equals `energy_kwh`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Next15 {
     pub max_power_w: f64,
@@ -132,7 +133,7 @@ pub struct Next15 {
 }
 
 /// One power projection over the series and its sums.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ForecastView {
     pub series: Vec<Point>,
@@ -161,7 +162,7 @@ pub enum Variant {
 }
 
 /// One slot of the Solcast-shaped curve Home Assistant PV blueprints read.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct DetailedPoint {
     pub period_start: String,
     pub watts: f64,

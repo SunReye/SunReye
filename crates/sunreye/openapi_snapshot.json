@@ -1293,6 +1293,127 @@
         }
       }
     },
+    "/api/forecast": {
+      "get": {
+        "summary": "The uncurtailed PV potential; null while the forecast is off or unconfigured, or no irradiance was had.",
+        "operationId": "rawForecast",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ForecastExport"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/forecast/providers": {
+      "get": {
+        "operationId": "forecastProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Provider"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/forecast/usable": {
+      "get": {
+        "summary": "What the feed-in cap and the battery leave of it; null as for the raw forecast.",
+        "operationId": "usableForecast",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ForecastExport"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/history/recent": {
       "get": {
         "summary": "The last readings of every metric, bucketed, to seed the live sparklines.",
@@ -2296,6 +2417,110 @@
         }
       }
     },
+    "/api/settings/weather": {
+      "get": {
+        "operationId": "readWeather",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "A patch of the plant-level fields; arrays, panel physics and the battery are edited on the inverter.",
+        "operationId": "saveWeather",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeatherPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/setup-status": {
       "get": {
         "operationId": "setupStatus",
@@ -2522,6 +2747,32 @@
           }
         }
       },
+      "Battery": {
+        "type": "object",
+        "description": "The battery the forecast's clipping sim models.",
+        "required": [
+          "usableKwh"
+        ],
+        "properties": {
+          "maxChargeW": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "W; unbounded when null."
+          },
+          "minSoc": {
+            "type": "number",
+            "format": "double",
+            "description": "Reserve floor, %."
+          },
+          "usableKwh": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "Capabilities": {
         "type": "object",
         "description": "The SPA areas this core serves; the SPA hides every area that reads false.",
@@ -2677,6 +2928,18 @@
           }
         }
       },
+      "Correction": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Apply the learned correction; it learns either way."
+          }
+        }
+      },
       "CreatedApiKey": {
         "allOf": [
           {
@@ -2696,6 +2959,23 @@
         ],
         "description": "The only answer that holds the key."
       },
+      "DetailedPoint": {
+        "type": "object",
+        "description": "One slot of the Solcast-shaped curve Home Assistant PV blueprints read.",
+        "required": [
+          "period_start",
+          "watts"
+        ],
+        "properties": {
+          "period_start": {
+            "type": "string"
+          },
+          "watts": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "DeviceKind": {
         "type": "string",
         "enum": [
@@ -2705,6 +2985,27 @@
       "DevicePatch": {
         "type": "object",
         "properties": {
+          "arrays": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PvArray"
+            },
+            "description": "Replaces the inverter's arrays."
+          },
+          "battery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Battery",
+                "description": "`null` removes the pack; absent leaves it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "connectionId": {
             "type": [
               "integer",
@@ -2736,6 +3037,22 @@
               "string",
               "null"
             ]
+          },
+          "systemLoss": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`null` falls back to the plant's; absent leaves it."
+          },
+          "tempCoefficient": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`null` falls back to the plant's; absent leaves it."
           },
           "unitId": {
             "type": [
@@ -2796,13 +3113,17 @@
           "arrays": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/PvArray"
             }
           },
           "battery": {
-            "type": [
-              "object",
-              "null"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Battery"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "connection": {
@@ -2872,14 +3193,16 @@
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "%; the plant's when null."
           },
           "tempCoefficient": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "%/°C; the plant's when null."
           },
           "unitId": {
             "type": "integer",
@@ -2986,6 +3309,135 @@
           },
           "positive": {
             "type": "string"
+          }
+        }
+      },
+      "ForecastExport": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ForecastView"
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider",
+              "stepMinutes",
+              "utcOffsetSeconds",
+              "detailedForecast",
+              "fetchedAt",
+              "stale"
+            ],
+            "properties": {
+              "detailedForecast": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DetailedPoint"
+                },
+                "description": "The Solcast-shaped curve Home Assistant PV blueprints read."
+              },
+              "fetchedAt": {
+                "type": "string",
+                "description": "When the irradiance was fetched, UTC ISO 8601."
+              },
+              "provider": {
+                "type": "string"
+              },
+              "stale": {
+                "type": "boolean",
+                "description": "The last fetch failed: this is built from the irradiance before it."
+              },
+              "stepMinutes": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "utcOffsetSeconds": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          }
+        ],
+        "description": "One view as 3.x exports it, with the age of its irradiance."
+      },
+      "ForecastPatch": {
+        "type": "object",
+        "properties": {
+          "correction": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Correction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "houseLoadW": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "maxOutputW": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "smartMeterSince": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ForecastView": {
+        "type": "object",
+        "description": "One power projection over the series and its sums.",
+        "required": [
+          "series",
+          "todayKwh",
+          "remainingTodayKwh",
+          "tomorrowKwh",
+          "next15"
+        ],
+        "properties": {
+          "next15": {
+            "$ref": "#/components/schemas/Next15"
+          },
+          "remainingTodayKwh": {
+            "type": "number",
+            "format": "double",
+            "description": "From `now` to plant-local midnight, the running slot prorated."
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            }
+          },
+          "todayKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "tomorrowKwh": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -3453,6 +3905,29 @@
           }
         }
       },
+      "Next15": {
+        "type": "object",
+        "description": "The 15 minutes after `now`; `avg_power_w × 0.25 h` equals `energy_kwh`.",
+        "required": [
+          "maxPowerW",
+          "avgPowerW",
+          "energyKwh"
+        ],
+        "properties": {
+          "avgPowerW": {
+            "type": "number",
+            "format": "double"
+          },
+          "energyKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxPowerW": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "PlantSource": {
         "type": "object",
         "required": [
@@ -3469,6 +3944,30 @@
           },
           "timeZone": {
             "type": "string"
+          }
+        }
+      },
+      "Point": {
+        "type": "object",
+        "required": [
+          "time",
+          "watts",
+          "peakWatts"
+        ],
+        "properties": {
+          "peakWatts": {
+            "type": "number",
+            "format": "double",
+            "description": "Peak within the slot, W."
+          },
+          "time": {
+            "type": "string",
+            "description": "Slot start, plant-local."
+          },
+          "watts": {
+            "type": "number",
+            "format": "double",
+            "description": "Average over the slot, W."
           }
         }
       },
@@ -3537,6 +4036,75 @@
           },
           "needsProfile": {
             "type": "boolean"
+          }
+        }
+      },
+      "Provider": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "capabilities"
+        ],
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "PvArray": {
+        "type": "object",
+        "description": "One PV array: panels sharing an orientation.",
+        "required": [
+          "kwp",
+          "tilt",
+          "azimuth"
+        ],
+        "properties": {
+          "azimuth": {
+            "type": "number",
+            "format": "double",
+            "description": "Degrees: 0 south, -90 east, 90 west."
+          },
+          "kwp": {
+            "type": "number",
+            "format": "double"
+          },
+          "mppt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`index` of the inverter's `pv.string.*` metrics this array is wired into.",
+            "minimum": 0
+          },
+          "systemLoss": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "%; the inverter's, else the plant's, when absent."
+          },
+          "tempCoefficient": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "%/°C; the inverter's, else the plant's, when absent."
+          },
+          "tilt": {
+            "type": "number",
+            "format": "double",
+            "description": "Degrees from horizontal."
           }
         }
       },
@@ -3788,6 +4356,83 @@
           }
         }
       },
+      "SolarForecastConfig": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "provider",
+          "arrays",
+          "tempCoefficient",
+          "systemLoss",
+          "maxOutputW",
+          "battery",
+          "houseLoadW",
+          "smartMeterSince",
+          "correction"
+        ],
+        "properties": {
+          "arrays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PvArray"
+            },
+            "description": "Every in-service inverter's, in roster order."
+          },
+          "battery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Battery",
+                "description": "The in-service inverters' packs as one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "correction": {
+            "$ref": "#/components/schemas/Correction"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "houseLoadW": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "W; inferred from history when null."
+          },
+          "maxOutputW": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Feed-in cap, W."
+          },
+          "provider": {
+            "type": "string"
+          },
+          "smartMeterSince": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`YYYY-MM-DD` the smart meter gateway was installed."
+          },
+          "systemLoss": {
+            "type": "number",
+            "format": "double",
+            "description": "Plant fallback, %."
+          },
+          "tempCoefficient": {
+            "type": "number",
+            "format": "double",
+            "description": "Plant fallback, %/°C."
+          }
+        }
+      },
       "Source": {
         "type": "object",
         "description": "Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is\nrefused, so nothing secret is stored or logged.",
@@ -3949,6 +4594,84 @@
               "minimum": 0
             },
             "description": "Every id asked, in order, so a miss names what was ruled out."
+          }
+        }
+      },
+      "WeatherConfig": {
+        "type": "object",
+        "description": "The composed record.",
+        "required": [
+          "enabled",
+          "latitude",
+          "longitude",
+          "label",
+          "forecast"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/SolarForecastConfig"
+          },
+          "label": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WeatherPatch": {
+        "type": "object",
+        "description": "A `PUT /api/settings/weather` body: absent keeps the stored value, `null` clears a nullable one.",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "forecast": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForecastPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
           }
         }
       }

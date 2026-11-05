@@ -5,6 +5,7 @@ pub mod decode;
 pub mod forecast;
 pub mod manifest;
 pub mod modbus;
+pub mod open_meteo;
 #[cfg(test)]
 mod oracle;
 pub mod plant;
@@ -17,8 +18,10 @@ pub mod rollup;
 pub mod run;
 pub mod samples;
 pub mod settings;
+pub mod solar;
 pub mod sources;
 pub mod store;
+pub mod weather;
 pub mod web;
 
 pub mod https;

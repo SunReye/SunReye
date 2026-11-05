@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device_id AS \"device_id!\", temp_coefficient, system_loss, battery_usable_kwh,\n                      battery_max_charge_w, battery_min_soc\n               FROM device_pv",
+  "describe": {
+    "columns": [
+      {
+        "name": "device_id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "temp_coefficient",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "system_loss",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "battery_usable_kwh",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "battery_max_charge_w",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "battery_min_soc",
+        "ordinal": 5,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "e2dc13740300771644122f5e51afb4b0eec244ea5a8476671a9537d8f5dc610e"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pv_array (device_id, position, kwp, tilt, azimuth, temp_coefficient, system_loss, mppt)\n                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "9b98dff13d48f9cfd83143023731f9e54f3fb3cd7665d01bc116d6c5322e4080"
+}

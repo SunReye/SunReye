@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 40] = [
+const SERVED: [(&str, &str); 45] = [
     ("post", "/api/connections"),
     ("post", "/api/connections/probe"),
     ("post", "/api/connections/scan-units"),
@@ -466,6 +466,11 @@ const SERVED: [(&str, &str); 40] = [
     ("put", "/api/settings/active-profile"),
     ("put", "/api/settings/inverter"),
     ("put", "/api/settings/kiosk"),
+    ("get", "/api/settings/weather"),
+    ("put", "/api/settings/weather"),
+    ("get", "/api/forecast"),
+    ("get", "/api/forecast/usable"),
+    ("get", "/api/forecast/providers"),
 ];
 
 fn operations(document: &Value) -> Vec<(String, String)> {
@@ -518,7 +523,7 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 27] = [
+const ADMIN_ROUTES: [(&str, &str); 30] = [
     ("GET", "/api/devices"),
     ("POST", "/api/devices"),
     ("PATCH", "/api/devices/1"),
@@ -539,6 +544,9 @@ const ADMIN_ROUTES: [(&str, &str); 27] = [
     ("PUT", "/api/settings/inverter"),
     ("POST", "/api/settings/inverter/test"),
     ("PUT", "/api/settings/kiosk"),
+    ("GET", "/api/settings/weather"),
+    ("PUT", "/api/settings/weather"),
+    ("GET", "/api/forecast/providers"),
     ("GET", "/api/admin/users"),
     ("POST", "/api/admin/users"),
     ("PUT", "/api/admin/users/1/role"),
@@ -548,13 +556,15 @@ const ADMIN_ROUTES: [(&str, &str); 27] = [
     ("POST", "/api/admin/api-keys/revoke"),
 ];
 
-const SESSION_ROUTES: [(&str, &str); 6] = [
+const SESSION_ROUTES: [(&str, &str); 8] = [
     ("GET", "/api/capabilities"),
     ("GET", "/api/profile"),
     ("GET", "/api/history/recent"),
     ("GET", "/api/history/rollup"),
     ("GET", "/api/auth/session"),
     ("DELETE", "/api/auth/session"),
+    ("GET", "/api/forecast"),
+    ("GET", "/api/forecast/usable"),
 ];
 
 async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
@@ -1183,6 +1193,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 
 mod api_keys;
 mod devices;
+mod forecast;
 mod kiosk;
 mod plant;
 mod reads;
