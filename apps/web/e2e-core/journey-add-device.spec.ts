@@ -4,7 +4,8 @@
  *
  * Starts from the core the onboarding journey left: its admin and its one device. The new connection is
  * this spec's simulator, so the connection test and the unit-id scan are answered by a device. The added
- * device is retired at the end, so the journeys after this one read a one-device plant.
+ * device is retired at the end, and again in `afterAll` if the journey broke first, so the journeys after
+ * this one read a one-device plant.
  */
 
 import type { ChildProcess } from "node:child_process";
@@ -15,8 +16,24 @@ let simulator: { child: ChildProcess; port: number };
 test.beforeAll(async () => {
   simulator = await startSimulator();
 });
-test.afterAll(() => {
+test.afterAll(async ({ browser }, testInfo) => {
   simulator.child.kill();
+  const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
+  const page = await context.newPage();
+  await signIn(page);
+  const roster = await (await page.request.get("/api/devices")).json();
+  const added = roster.devices.find(
+    (d: { name: string; retiredAt?: string | null }) => d.name === "Garage meter" && !d.retiredAt,
+  );
+  if (added) {
+    const retired = await page.request.patch(`/api/devices/${added.id}`, {
+      data: { retired: true },
+      // The core refuses a write without its own origin.
+      headers: { origin: new URL(page.url()).origin },
+    });
+    expect(retired.status()).toBe(200);
+  }
+  await context.close();
 });
 
 const next = (page: Page) => page.getByRole("button", { name: "Next" });
