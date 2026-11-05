@@ -286,6 +286,7 @@ class OpenedSize(unittest.TestCase):
             "apps__worker__migrations__meta__0001_snapshot.json": "x\n" * 3000,
             "bun.lock": "x\n" * 500,
             "apps__agent__Cargo.lock": "x\n" * 500,
+            "scripts__timing-baseline.json": "x\n" * 500,
         }
         self.push_branch(**{f"f{i}.txt": "x\n" for i in range(50)}, **generated)
         code, body = self.opened()
@@ -576,7 +577,31 @@ class ConfiguredTrain(unittest.TestCase):
             ["env", "UPDATE_OPENAPI=1", "cargo", "test", "-p", "sunreye", "openapi"],
             ["bun", "run", "--cwd", "apps/web", "gen:core-api"],
             ["scripts/sqlx-cache"],
+            ["bun", "scripts/timing-hygiene.ts", "--write"],
         ])
+
+    def test_the_timing_baseline_may_conflict_in_a_train(self):
+        baseline = "scripts/timing-baseline.json"
+        self.assertIn(baseline, factory.CFG["generated_conflict_paths"])
+
+    def test_prs_shrinking_the_timing_baseline_for_different_files_merge_and_regenerate_once(self):
+        baseline = "scripts/timing-baseline.json"
+        counts = lambda a, b: f'{{\n  "a.test.ts": {a},\n  "b.test.ts": {b}\n}}\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Origin(tmp, base=factory.CFG["base"])
+            origin.commit(origin.base, {baseline: counts(2, 2)})
+            prs = [origin.pr(1, {baseline: counts(1, 2)}), origin.pr(2, {baseline: counts(2, 1)})]
+            train = factory.build_train(origin.work, prs)
+            self.assertEqual(([p["pr"] for p in train["prs"]], train["dropped"]), ([1, 2], []))
+            calls = origin.work / "calls"
+            probe = [sys.executable, "-c", "from pathlib import Path; import sys; p = Path(sys.argv[1]); "
+                     "p.write_text((p.read_text() if p.exists() else '') + 'x')", str(calls)]
+            cwd = os.getcwd()
+            os.chdir(origin.work)
+            self.addCleanup(os.chdir, cwd)
+            with mock.patch.dict(factory.CFG, {"commands": {"regenerate": [probe]}}):
+                self.assertEqual(run(factory.main, ["regenerate"])[0], 0)
+            self.assertEqual(calls.read_text(), "x")
 
     def test_disabled_gap_epic_refuses_before_any_tracker_request(self):
         forge = RecordingForge("factory/1")
