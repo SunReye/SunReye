@@ -20,10 +20,17 @@ fn text(value: &Value) -> &str {
     value.as_str().unwrap_or_else(|| panic!("a string: {value}"))
 }
 
-/// A core at [`NOW`] holding the case's roster, each device under the id its slug names.
-async fn with_roster(name: &str, case: &Value) -> (Arc<Core>, Api) {
+/// A core at [`NOW`] cutting plant days in the cases' recorded `UTC`, not the host's zone.
+async fn recorded_core(name: &str) -> (Arc<Core>, Api) {
     let (core, admin) =
         signed_in(Core::open_at(&dir(name), fixed_clock).await.expect("core"), &Config::default()).await;
+    core.store.save_plant_time_zone("UTC").await.expect("zone");
+    (core, admin)
+}
+
+/// A [`recorded_core`] holding the case's roster, each device under the id its slug names.
+async fn with_roster(name: &str, case: &Value) -> (Arc<Core>, Api) {
+    let (core, admin) = recorded_core(name).await;
     for (index, row) in case["devices"].as_array().expect("devices").iter().enumerate() {
         let connection = NewConnection {
             transport: Transport::Tcp,
@@ -164,6 +171,27 @@ async fn sources_name_the_plant_members_and_every_device_as_recorded() {
         assert_eq!((answer.status, answer.json()), (StatusCode::OK, case["sources"].clone()), "{name}");
         finish(core, admin).await;
     }
+}
+
+#[tokio::test]
+async fn sources_carry_the_saved_plant_zone_and_the_default_while_none_is_saved() {
+    let case = oracle("plant.ndjson").into_iter().find(|c| c["case"] == "retired-member").expect("case");
+    let (core, admin) = with_roster("plant-sources-zone", &case).await;
+    let zone_of = |answer: Answer| answer.json()["plant"]["timeZone"].clone();
+    for zone in ["Asia/Kathmandu", "Europe/Berlin"] {
+        let saved = put(&admin, "/api/settings/time-zone", &json!({"timeZone": zone})).await;
+        assert_eq!(saved.status, StatusCode::OK, "{zone}");
+        assert_eq!(zone_of(get(&admin, "/api/sources").await), json!(zone));
+    }
+    finish(core, admin).await;
+    let (core, admin) = signed_in(
+        Core::open_at(&dir("plant-sources-default-zone"), fixed_clock).await.expect("core"),
+        &Config::default(),
+    )
+    .await;
+    let default = crate::plant_zone::plant_zone(&core.store).await.expect("zone");
+    assert_eq!(zone_of(get(&admin, "/api/sources").await), json!(default.iana_name().expect("named")));
+    finish(core, admin).await;
 }
 
 #[tokio::test]
