@@ -8,6 +8,7 @@
 import { api } from "$lib/api";
 import type { CapabilityName } from "$lib/capabilities";
 import { core } from "$lib/core-api";
+import * as m from "$lib/paraglide/messages";
 import type { Catalog } from "../wizard/add-wizard";
 import type { Answer, RosterTransport } from "./device-roster";
 
@@ -32,11 +33,11 @@ async function coreAnswer<T>(
 }
 
 /** What a core without integrations attaches: a Modbus device by profile, nothing else. */
-const DEVICES_ONLY: Catalog = {
+const devicesOnly = (): Catalog => ({
   modbus: [
     {
       id: "modbus-device",
-      label: "Modbus device",
+      label: m.wizard_attach_modbus_device(),
       via: "profile",
       addable: true,
       multiInstance: true,
@@ -45,7 +46,7 @@ const DEVICES_ONLY: Catalog = {
   ],
   mqtt: [],
   internal: [],
-};
+});
 
 const byId = (id: number) => ({ params: { path: { id } } });
 const integration = (id: number) => api.api.integrations({ id: String(id) });
@@ -61,7 +62,7 @@ export function rosterTransport(offers: (area: CapabilityName) => boolean): Rost
     catalog: async () =>
       offers("integrations")
         ? answer(api.api.integrations.catalog.get())
-        : { ok: true, data: DEVICES_ONLY },
+        : { ok: true, data: devicesOnly() },
     profiles: () => coreAnswer(core.GET("/api/profiles")),
     addDevice: (body) => coreAnswer(core.POST("/api/devices", { body: body as never })),
     patchDevice: (id, body) => coreAnswer(core.PATCH("/api/devices/{id}", { ...byId(id), body })),

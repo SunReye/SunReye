@@ -1065,6 +1065,7 @@
   "wizard_connection_hint": "Alle Endpunkte dieser Anlage. Was hinzugefügt werden kann, hängt von der Wahl ab.",
   "wizard_attach_empty": "An eine Verbindung dieser Art lässt sich noch nichts anhängen.",
   "wizard_attach_taken": "Bereits an dieser Verbindung",
+  "wizard_attach_modbus_device": "Modbus-Gerät",
   "wizard_settings_none": "Nichts einzustellen — das hier hat keine eigenen Einstellungen.",
   "wizard_back": "Zurück",
   "wizard_next": "Weiter",

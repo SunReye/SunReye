@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as m from "$lib/paraglide/messages";
+
 // mock-hygiene-ignore-next-line -- SvelteKit virtual modules: no real module exists under bun test. The server-side values keep `$lib/api` loadable.
 mock.module("$app/environment", () => ({ browser: false }));
 // mock-hygiene-ignore-next-line -- SvelteKit virtual module, see above.
@@ -118,9 +120,9 @@ describe("rosterTransport on the core", () => {
     const catalog = await onCore.catalog();
     expect(catalog.ok && catalog.data.mqtt).toEqual([]);
     expect(catalog.ok && catalog.data.internal).toEqual([]);
-    expect(catalog.ok && catalog.data.modbus.map((entry) => [entry.id, entry.via])).toEqual([
-      ["modbus-device", "profile"],
-    ]);
+    expect(
+      catalog.ok && catalog.data.modbus.map((entry) => [entry.id, entry.via, entry.label]),
+    ).toEqual([["modbus-device", "profile", m.wizard_attach_modbus_device()]]);
     expect([trail, coreCalls]).toEqual([[], []]);
   });
 });
