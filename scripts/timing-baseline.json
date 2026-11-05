@@ -40,7 +40,6 @@
   "apps/web/src/lib/ws/live-contract.test.ts": 2,
   "apps/web/src/lib/ws/reconnecting-socket.test.ts": 6,
   "crates/sim/tests/simulator.rs": 1,
-  "crates/sunreye/src/modbus.rs": 1,
   "crates/sunreye/src/modbus/solarman.rs": 1,
   "crates/sunreye/src/run.rs": 5,
   "crates/sunreye/src/web/password.rs": 3,

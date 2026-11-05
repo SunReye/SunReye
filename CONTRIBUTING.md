@@ -185,7 +185,8 @@ in this repo unit-tests it. The one escape hatch is
 an idle machine and flake under the gate's load. `bun run test:timing` fails on `thread::sleep`,
 `tokio::time::sleep`, `Instant`/`.elapsed()` or a `Duration` threshold in an assertion (Rust);
 `Bun.sleep`, `waitForTimeout`, `new Promise(... setTimeout ...)` and a `Date.now`/`performance.now`
-delta in an assertion (TS), in test code only. Existing offenders are counted per file in
+delta in an assertion (TS), in test code only; paused tokio time, fake timers and an injected
+`clock.now()` pass. Existing offenders are counted per file in
 `scripts/timing-baseline.json`: a count may fall (then `bun scripts/timing-hygiene.ts --write`
 lowers it), never rise. Replace the wait, not the number:
 
