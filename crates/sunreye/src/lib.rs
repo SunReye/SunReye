@@ -6,6 +6,7 @@ pub mod forecast;
 pub mod manifest;
 pub mod modbus;
 pub mod open_meteo;
+pub mod plant_zone;
 pub mod poll;
 pub mod probe;
 pub mod profile;

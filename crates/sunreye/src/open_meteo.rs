@@ -40,16 +40,7 @@ struct Series {
 #[derive(Debug, Default, Deserialize)]
 struct Response {
     utc_offset_seconds: Option<i32>,
-    /// The IANA zone of the location, as `timezone=auto` resolves it.
-    timezone: Option<String>,
     minutely_15: Option<Series>,
-}
-
-/// One series and the zone its location keeps.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Fetched {
-    pub irradiance: Irradiance,
-    pub time_zone: Option<String>,
 }
 
 /// Distinct orientations in first-seen order; identical planes share one request.
@@ -89,9 +80,9 @@ fn assemble(
     location: Location,
     planes: &[Plane],
     responses: &[(Plane, Response)],
-) -> Result<Fetched, FetchError> {
+) -> Result<Irradiance, FetchError> {
     let first = responses.first().ok_or(FetchError::Fields)?;
-    let (utc_offset_seconds, time_zone) = (first.1.utc_offset_seconds.unwrap_or(0), first.1.timezone.clone());
+    let utc_offset_seconds = first.1.utc_offset_seconds.unwrap_or(0);
     let series = first.1.minutely_15.as_ref().ok_or(FetchError::Fields)?;
     let times = series.time.as_ref().filter(|t| !t.is_empty()).ok_or(FetchError::Fields)?;
     let aligned =
@@ -106,17 +97,14 @@ fn assemble(
             gti.ok_or(FetchError::Irradiance)
         })
         .collect::<Result<_, _>>()?;
-    Ok(Fetched {
-        irradiance: Irradiance {
-            times: times.clone(),
-            utc_offset_seconds,
-            location,
-            temperature,
-            gti,
-            dni: aligned(&series.direct_normal_irradiance_instant),
-            wind_speed: aligned(&series.wind_speed_10m),
-        },
-        time_zone,
+    Ok(Irradiance {
+        times: times.clone(),
+        utc_offset_seconds,
+        location,
+        temperature,
+        gti,
+        dni: aligned(&series.direct_normal_irradiance_instant),
+        wind_speed: aligned(&series.wind_speed_10m),
     })
 }
 
@@ -126,7 +114,7 @@ pub async fn fetch(
     roots: &[CertificateDer<'_>],
     location: Location,
     planes: &[Plane],
-) -> Result<Fetched, FetchError> {
+) -> Result<Irradiance, FetchError> {
     let mut responses = Vec::new();
     for (i, plane) in unique(planes).into_iter().enumerate() {
         let body = get_with_roots(&url(base, location, plane, i == 0), LIMITS, roots).await?;
@@ -176,10 +164,8 @@ mod tests {
         }));
         let second = response(json!({"minutely_15": {"global_tilted_irradiance_instant": [100.0, 200.0]}}));
         let planes = [(30.0, 0.0), (10.0, 90.0), (30.0, 0.0)];
-        let fetched =
+        let series =
             assemble(HERE, &planes, &[((30.0, 0.0), first), ((10.0, 90.0), second)]).expect("series");
-        assert_eq!(fetched.time_zone.as_deref(), Some("Europe/Berlin"));
-        let series = fetched.irradiance;
         assert_eq!((series.utc_offset_seconds, &series.temperature), (7200, &vec![20.0, 0.0]));
         assert_eq!(series.gti, [vec![500.0, 0.0], vec![100.0, 200.0], vec![500.0, 0.0]]);
         assert_eq!((series.dni, series.wind_speed), (Some(vec![600.0, 610.0]), None), "wind is misaligned");
@@ -230,7 +216,7 @@ mod tests {
         let body = response(json!({"minutely_15": {"time": ["a", "b"], "temperature_2m": [null, null],
             "global_tilted_irradiance_instant": [null, null], "direct_normal_irradiance_instant": [1, 2, 3],
             "wind_speed_10m": [null, null]}}));
-        let series = assemble(HERE, &[plane], &[(plane, body)]).expect("series").irradiance;
+        let series = assemble(HERE, &[plane], &[(plane, body)]).expect("series");
         assert_eq!((series.temperature, series.gti), (vec![0.0, 0.0], vec![vec![0.0, 0.0]]));
         assert_eq!((series.dni, series.wind_speed), (None, Some(vec![0.0, 0.0])));
     }
