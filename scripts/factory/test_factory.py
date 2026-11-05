@@ -1158,6 +1158,55 @@ class Gc(unittest.TestCase):
         self.assertIn((("docker", "image", "prune", "-f"), False), calls)
 
 
+class ReviewTargetGc(unittest.TestCase):
+    """gc prunes the reviewers' shared cargo target dir only when no review is live and disk is tight."""
+
+    def gc(self, free_gb, runs):
+        pause = factory.CFG["disk_pause_free_gb"]
+        usage = mock.Mock(free=int(free_gb * slots.GB))
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "review-target"
+            (target / "debug").mkdir(parents=True)
+            (target / "debug" / "blob").write_text("x")
+            store = FakeStore(tmp)
+            store.slot_path = lambda slot: store.dir / "slots" / slot
+            with mock.patch.object(slots, "sh", return_value=""), \
+                    mock.patch.object(slots, "review_target_dir", return_value=target), \
+                    mock.patch.object(slots.shutil, "disk_usage", return_value=usage):
+                report = slots.gc(store, {"slots": {}, "runs": runs})
+            self.assertEqual(pause, 30)
+            return target.exists(), report["review_target"]
+
+    LIVE = {"review:7": {"role": "review", "target": "7", "since": 0}}
+
+    def test_idle_reviewers_and_tight_disk_prune_the_target(self):
+        self.assertEqual(self.gc(29.9, {}), (False, "pruned"))
+
+    def test_a_live_review_keeps_the_target(self):
+        self.assertEqual(self.gc(5, self.LIVE), (True, "kept"))
+
+    def test_free_disk_at_the_pause_line_keeps_the_target(self):
+        self.assertEqual(self.gc(30, {}), (True, "kept"))
+
+    def test_a_split_or_other_run_does_not_hold_the_target(self):
+        runs = {"split:9": {"role": "split", "target": "9", "since": 0}}
+        self.assertEqual(self.gc(10, runs), (False, "pruned"))
+
+    def test_a_missing_target_dir_is_reported_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FakeStore(tmp)
+            store.slot_path = lambda slot: store.dir / "slots" / slot
+            with mock.patch.object(slots, "sh", return_value=""), \
+                    mock.patch.object(slots, "review_target_dir", return_value=Path(tmp) / "none"), \
+                    mock.patch.object(slots.shutil, "disk_usage", return_value=mock.Mock(free=0)):
+                report = slots.gc(store, {"slots": {}, "runs": {}})
+        self.assertEqual(report["review_target"], "absent")
+
+    def test_the_shared_target_lives_in_the_home_cache_outside_the_repo(self):
+        with mock.patch.dict(os.environ, {"HOME": "/home/someone"}):
+            self.assertEqual(slots.review_target_dir(), Path("/home/someone/.cache/sunreye-review-target"))
+
+
 class StateStore:
     """Store with persistent state whose merge slot is the Origin clone."""
 

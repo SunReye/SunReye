@@ -74,7 +74,7 @@ Implementer shells are reniced using `slot_nice`; the merge slot keeps normal pr
 | Checkout | `git clean` keeps `target/` and `node_modules` |
 | After every agent | `factory release` deletes `clean_paths` (`target/`), and `node_modules` above `slot_node_modules_cap_gb` |
 | Each tick | free disk below `disk_pause_free_gb` (30): `gc`, no new tickets · below `disk_critical_free_gb` (15): `gc --aggressive`, no build work |
-| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune` |
+| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune`, removes the reviewers' shared `~/.cache/sunreye-review-target` when no review runs and free disk is below `disk_pause_free_gb` |
 | `scripts/ci` | heavy steps hold one of `CI_HEAVY_CAP` (2) machine-wide locks; database and route smoke share one exclusive lock |
 
 Never deleted: your own checkouts and their `target/`. Budget about 15 GB free disk per extra implementer slot.

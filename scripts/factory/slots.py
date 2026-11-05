@@ -305,6 +305,22 @@ def remove_orphan_slots(store):
     return removed
 
 
+def review_target_dir():
+    return Path.home() / ".cache" / "sunreye-review-target"
+
+
+def prune_review_target(store, state):
+    """Reviewers share one cargo target dir; drop it when none runs and free disk is under the pause line."""
+    target = review_target_dir()
+    if not target.exists():
+        return "absent"
+    if any(key.startswith("review:") for key in state.get("runs", {})) \
+            or disk(store)["level"] == "green":
+        return "kept"
+    shutil.rmtree(target, ignore_errors=True)
+    return "pruned"
+
+
 def gc(store, state, aggressive=False):
     report = []
     orphans = remove_orphan_slots(store)
@@ -319,7 +335,8 @@ def gc(store, state, aggressive=False):
         if branch and branch not in busy:
             sh("git", "branch", "-q", "-D", branch, check=False)
     sh("docker", "image", "prune", "-f", check=False)
-    return {"slots": report, "orphans": orphans, "disk": disk(store), "at": int(time.time())}
+    return {"slots": report, "orphans": orphans, "review_target": prune_review_target(store, state),
+            "disk": disk(store), "at": int(time.time())}
 
 
 if __name__ == "__main__":

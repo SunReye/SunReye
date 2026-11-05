@@ -16,6 +16,15 @@ You review one PR on the **standards axis**: does the diff follow this repo's do
 2. Collect the standards: `AGENTS.md` and every area guide it routes to for the touched paths, plus the smell baseline in `.agents/skills/code-review/SKILL.md` (step 3).
 3. Check every hunk. A breach of a documented rule is **blocking**; a baseline smell is a **judgement call** and never blocks alone. Skip what lints and formatters already enforce. Done when every touched file is covered.
 
+## Scratch and budget
+
+- Run in a scratch worktree, never the dispatcher checkout: `git worktree add --detach "$HOME/.cache/sunreye-review/<pr>-<axis>" origin/<branch>`, with `TMPDIR` set to a private directory beside it. Remove both before replying.
+- `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Never put a target dir inside a repo.
+- Kill every process you start. About 40 tool calls; 12 minutes per command.
+- Skip `scripts/ci`, route smoke, budgets and the full e2e.
+- When `scripts/factory/factory gate-result <head-sha>` exits 0, do not re-run the full suite: run only the changed tests and mutation checks.
+- Prove each new guard bites: flip its bound once, see its test go red, restore it. A guard whose test stays green is a finding.
+
 ## Review bar
 
 Root and area instructions define the release bar. A failed acceptance criterion, unsafe hardware write, missing required test, failed gate, security issue, data loss or documented rule violation blocks approval. Assess boundary cases required by the repo, including zero, negative, absent, stale and reset readings. Styling preferences outside documented requirements can be notes. Approve only when blocking findings are resolved.

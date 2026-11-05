@@ -17,6 +17,15 @@ You review one PR on the **spec axis**: does it do what its ticket and the spec 
 3. Run `scripts/factory/factory guard-golden <pr>`. Golden values must come from oracle fixtures or a cited source; a test whose expected value was derived from the implementation is **wrong**.
 4. Apply the repository's domain-specific requirements from root and area guides: write permissions, audit, units, locales, numeric boundaries and hardware safety where relevant. Record unmet requirements with evidence. File follow-up tickets only when the task or repo instructions authorize them.
 
+## Scratch and budget
+
+- Run in a scratch worktree, never the dispatcher checkout: `git worktree add --detach "$HOME/.cache/sunreye-review/<pr>-<axis>" origin/<branch>`, with `TMPDIR` set to a private directory beside it. Remove both before replying.
+- `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Never put a target dir inside a repo.
+- Kill every process you start. About 40 tool calls; 12 minutes per command.
+- Skip `scripts/ci`, route smoke, budgets and the full e2e.
+- When `scripts/factory/factory gate-result <head-sha>` exits 0, do not re-run the full suite: run only the changed tests and mutation checks.
+- Prove each new guard bites: flip its bound once, see its test go red, restore it. A guard whose test stays green is a finding.
+
 ## Review bar
 
 Root and area instructions define the release bar. A failed acceptance criterion, unsafe hardware write, missing required test, failed gate, security issue, data loss or documented rule violation blocks approval. Assess boundary cases required by the repo, including zero, negative, absent, stale and reset readings. Styling preferences outside documented requirements can be notes. Approve only when blocking findings are resolved.
