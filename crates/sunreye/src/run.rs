@@ -18,7 +18,7 @@ use crate::modbus::Client;
 use crate::open_meteo;
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
-use crate::retention::retain;
+use crate::retention::hourly;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::solar::Solar;
@@ -315,30 +315,8 @@ async fn spawn_devices(
 fn spawn_retention(store: &Arc<Store>, now: fn() -> i64) -> Running {
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(retention(Arc::clone(store), now, stopped));
+    tasks.spawn(hourly(Arc::clone(store), now, stopped));
     Running { stop, tasks }
-}
-
-const RETENTION_EVERY: Duration = Duration::from_hours(1);
-
-/// Runs the retention pass at start and hourly until `stopped` changes.
-async fn retention(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Receiver<bool>) {
-    let mut ticker = tokio::time::interval(RETENTION_EVERY);
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    loop {
-        tokio::select! {
-            biased;
-            _ = stopped.changed() => break,
-            _ = ticker.tick() => retain_now(&store, now()).await,
-        }
-    }
-}
-
-async fn retain_now(store: &Store, now_ms: i64) {
-    let Some(now) = instant(now_ms) else { return };
-    if let Err(error) = retain(store, now).await {
-        tracing::error!(%error, "retention pass failed");
-    }
 }
 
 /// Holds the core weakly, so the task never keeps it from stopping.
@@ -348,14 +326,6 @@ fn spawn_learning(core: &Arc<Core>, job: learn::Job) -> Running {
     let mut tasks = JoinSet::new();
     tasks.spawn(learn::schedule(move || core.upgrade().map(|core| async move { job(&core).await }), stopped));
     Running { stop, tasks }
-}
-
-fn instant(now_ms: i64) -> Option<jiff::Timestamp> {
-    let now = jiff::Timestamp::from_millisecond(now_ms);
-    if now.is_err() {
-        tracing::error!(now_ms, "clock out of range, retention pass skipped");
-    }
-    now.ok()
 }
 
 fn log_unknown_profile(device: &DeviceRow) {
@@ -860,20 +830,6 @@ mod tests {
         let kept = core.store.readings(device, 0, i64::MAX).await.expect("readings");
         assert_eq!(kept.iter().map(|s| s.at_ms).collect::<Vec<_>>(), [PAST_MS - 6 * DAY_MS]);
         core.stop().await;
-        drop(std::fs::remove_dir_all(&dir));
-    }
-
-    #[tokio::test]
-    async fn an_out_of_range_clock_skips_the_retention_pass() {
-        let dir = dir("retention-range");
-        let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let store = Store::open(&dir).await.expect("store");
-        append_at(&store, device, PAST_MS).await;
-
-        retain_now(&store, i64::MAX).await;
-
-        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 1);
-        store.close().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 }
