@@ -1,3 +1,7 @@
 # Append-only note files: two PRs that each add lines land together.
 /apps/*/AGENTS.md merge=union
 /apps/web/TESTING.md merge=union
+# Sorted, unique, one route per line: two PRs that each add a line keep both. Rust source never
+# unions: it would keep both sides of a changed line. Additions in one gap may land unsorted;
+# the parsers name the line.
+/crates/sunreye/route-access.txt merge=union
