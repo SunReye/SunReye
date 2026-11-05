@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -102,25 +103,43 @@ def gate_files(slot):
     return {name: logs / f"gate-{slot}.{name}" for name in ("log", "exit", "pid")}
 
 
-def pid_alive(pid):
+def proc_stat(pid):
+    """(state, start time) of a pid from /proc/<pid>/stat, or None once it is gone."""
     try:
-        if os.waitpid(pid, os.WNOHANG)[0]:  # our own child: reap it, or a dead one reads as alive
-            return False
-    except ChildProcessError:
-        pass
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    return fields[0], fields[19]
+
+
+def recorded_gate(files):
+    """(pid, start time) from the pid file, or None when absent or unreadable."""
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        pid, start = files["pid"].read_text().split()
+        return int(pid), start
+    except (OSError, ValueError):
+        return None
 
 
 def gate_running(files):
-    if files["exit"].exists() or not files["pid"].exists():
+    """A recycled pid differs in start time; a zombie has state Z."""
+    gate = recorded_gate(files)
+    if files["exit"].exists() or not gate:
         return False
-    return pid_alive(int(files["pid"].read_text()))
+    stat = proc_stat(gate[0])
+    return bool(stat) and stat[0] != "Z" and stat[1] == gate[1]
+
+
+def kill_leftovers(files):
+    """Kill the previous gate's process group: children outlive a killed wrapper."""
+    gate = recorded_gate(files)
+    if not gate:
+        return
+    stat = proc_stat(gate[0])
+    if stat and stat[1] != gate[1]:  # pid recycled: its group is not ours
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(gate[0], signal.SIGKILL)
 
 
 def start_gate(cfg, slot, path, train=False):
@@ -129,15 +148,17 @@ def start_gate(cfg, slot, path, train=False):
     files = gate_files(slot)
     if gate_running(files):
         raise SystemExit(f"gate already running in {slot}: factory gate-wait --slot {slot}")
+    kill_leftovers(files)
     files["log"].parent.mkdir(parents=True, exist_ok=True)
-    for name in ("exit", "pid"):
+    for name in ("log", "exit", "pid"):
         files[name].unlink(missing_ok=True)
     chain = " && ".join(shlex.join(command) for command in commands)
     script = f'{chain}; rc=$?; echo "$rc" > "$1.tmp" && mv "$1.tmp" "$1"'
     with open(files["log"], "w") as log:
         proc = subprocess.Popen(["sh", "-c", script, "sh", str(files["exit"])], cwd=path, stdin=subprocess.DEVNULL,
                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    files["pid"].write_text(str(proc.pid))
+    stat = proc_stat(proc.pid)
+    files["pid"].write_text(f"{proc.pid} {stat[1] if stat else '-'}")
     return {"log": str(files["log"]), "exit": str(files["exit"])}
 
 
