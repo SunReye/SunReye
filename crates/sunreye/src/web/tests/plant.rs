@@ -195,7 +195,7 @@ async fn sources_carry_the_saved_plant_zone_and_the_default_while_none_is_saved(
 }
 
 #[tokio::test]
-async fn sources_answer_any_session_and_refuse_a_stranger_with_the_kiosk_view_on_or_off() {
+async fn sources_answer_any_session_and_a_stranger_only_with_the_kiosk_view_on() {
     let case = oracle("plant.ndjson").into_iter().find(|c| c["case"] == "retired-member").expect("case");
     let (core, admin) = with_roster("plant-sources-gate", &case).await;
     let user = plain_user(&admin).await;
@@ -203,10 +203,12 @@ async fn sources_answer_any_session_and_refuse_a_stranger_with_the_kiosk_view_on
     for on in [false, true] {
         assert_eq!(put(&admin, "/api/settings/kiosk", &json!({"enabled": on})).await.status, StatusCode::OK);
         let stranger = get(&admin.anonymous(), "/api/sources").await;
-        assert_eq!(
-            (stranger.status, stranger.json()),
+        let want = if on {
+            (StatusCode::OK, case["sources"].clone())
+        } else {
             (StatusCode::UNAUTHORIZED, json!({"error": "Not signed in"}))
-        );
+        };
+        assert_eq!((stranger.status, stranger.json()), want, "kiosk on: {on}");
     }
     drop(user);
     finish(core, admin).await;

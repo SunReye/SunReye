@@ -34,7 +34,7 @@ GET /api/settings/profile-sources admin
 GET /api/settings/time-zone admin
 GET /api/settings/weather admin
 GET /api/setup-status public
-GET /api/sources session
+GET /api/sources kiosk
 GET /api/v1/entities key
 PATCH /api/connections/{id} admin
 PATCH /api/devices/{id} admin

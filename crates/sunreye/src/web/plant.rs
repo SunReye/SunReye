@@ -1,5 +1,5 @@
 //! `GET /api/sources`: what a dashboard may read a series from, in the 3.x `SourcesResponse` shape
-//! (`packages/contracts/src/sources/types.ts`). Any session, as 3.x gates it; not on the kiosk allow-list.
+//! (`packages/contracts/src/sources/types.ts`). Any session, or anyone while the kiosk view is on, as 3.x gates it.
 
 use std::sync::Arc;
 
