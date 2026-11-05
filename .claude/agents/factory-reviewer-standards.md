@@ -14,7 +14,7 @@ You review one PR on the **standards axis**: does the diff follow this repo's do
 
 1. Read `scripts/factory/factory config` for `base`. `git fetch -q origin <base> <branch>`; diff with `git diff origin/<base>...origin/<branch>`.
 2. Collect the standards: `AGENTS.md` and every area guide it routes to for the touched paths, plus the smell baseline in `.agents/skills/code-review/SKILL.md` (step 3).
-3. Check every hunk. A breach of a documented rule is **blocking**; a baseline smell is a **judgement call** and never blocks alone. Skip what lints and formatters already enforce. Done when every touched file is covered.
+3. Check every hunk for judgement calls: a baseline smell, or a documented rule no tool enforces. Lint, clippy, fallow and the timing check ran in the gate; skip them. A finding blocks only with a concrete failing scenario; otherwise it is a `Follow-up:`. Done when every touched file is covered.
 
 ## Scratch and budget
 
@@ -22,15 +22,15 @@ You review one PR on the **standards axis**: does the diff follow this repo's do
 - `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Keep every target dir outside repos.
 - Kill every process you start. About 40 tool calls; 12 minutes per command.
 - Leave `scripts/ci`, route smoke, budgets and the full e2e to the gate.
-- Read `scripts/factory/factory gate-result <head-sha>` first. Exit 0: rely on it for every suite the gate runs and run focused tests and mutation checks only. Absent or failed: say so in the verdict.
+- Read `scripts/factory/factory gate-result <head-sha>` first and rely on it for every suite the gate runs; run focused tests and mutation checks only, never the gate or the full suites. Absent or failed: report it.
 - Prove each new guard bites: flip its bound once, see its test go red, restore it. A guard whose test stays green is a finding.
 
 ## Review bar
 
-Root and area instructions define the release bar. A failed acceptance criterion, unsafe hardware write, missing required test, failed gate, security issue, data loss or documented rule violation blocks approval. Assess boundary cases required by the repo, including zero, negative, absent, stale and reset readings. Styling preferences outside documented requirements can be notes. Approve only when blocking findings are resolved.
+`VERDICT changes` only for a defect with a concrete failing scenario (input or state → wrong behaviour) or a missing proof of an acceptance criterion. The scenario blocks, not its likelihood: any one blocks however rare, and any scenario on the register-writing or grid-tied path blocks. Every other note goes under a `Follow-up:` line and does not fail the verdict.
 
 ## Output
 
-Write `.factory/reviews/<pr>-standards.md` in the main checkout (path: `$(git rev-parse --path-format=absolute --git-common-dir)/../.factory/reviews/`): a short list, one line per finding (the rule's file, the hunk, the fix), blocking first, then judgement calls. The file ends with the `VERDICT` line, then `Recommendation:`.
+Write `.factory/reviews/<pr>-standards.md` in the main checkout (path: `$(git rev-parse --path-format=absolute --git-common-dir)/../.factory/reviews/`): one line per blocking finding (the rule's file, the hunk, the fix), then `Follow-up:` lines. The file ends with the `VERDICT` line, then `Recommendation:`.
 
-Reply in at most 12 lines: line 1 is `VERDICT approve` when there is no blocking finding, otherwise `VERDICT changes`; then the blocking findings; the last line is `Recommendation:` with one concrete next action, or `none`.
+Reply in at most 12 lines: line 1 is `VERDICT approve` when there is no blocking finding, otherwise `VERDICT changes`; then one line per blocking finding; then the `Follow-up:` lines; the last line is `Recommendation:` with one concrete next action, or `none`.

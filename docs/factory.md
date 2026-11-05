@@ -41,7 +41,7 @@ scripts/factory/factory gate
 scripts/factory/factory gate --train
 ```
 
-A gate record stores its tree hash and the `origin/<base>` tip. `gate --train` fetches the base and, when a green non-train record has the same tree and tip, runs only `commands.train_gate` and says why; a dirty tree, a failed fetch or any mismatch runs the full gate.
+The per-PR gate runs once per PR, on the final tree before the push; a fix round that changes code reruns it once. A merge-only fix round (the `chore: merge <base>` commit and its conflict resolution) runs the fast checks only (fmt, lint, typecheck, regenerate, the tests of conflict-touched files); the train gate verifies the combined tree. Reviewers read `gate-result <head>` and never run the gate. A gate record stores its tree hash and the `origin/<base>` tip. `gate --train` fetches the base and, when a green non-train record has the same tree and tip, runs only `commands.train_gate` and says why; a dirty tree, a failed fetch or any mismatch runs the full gate.
 
 These commands do not authenticate to GitHub. They execute project commands and can modify generated files as those commands normally do. Neither gate replaces additional checks required by root or area instructions: component, browser, database, route, Nix and other checks apply to the areas changed. Database tests must use the guarded scratch harness; coordinate tests using shared ports or scratch databases across slots. Factory work must never use live inverter connections or a production database.
 
