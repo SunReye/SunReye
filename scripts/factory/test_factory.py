@@ -791,6 +791,32 @@ class GateRecord(unittest.TestCase):
         self.assertEqual(run(factory.main, ["gate-wait"])[1]["exit"], 6)
         self.assertEqual((self.recorded()["ok"], self.result()[0]), (False, 1))
 
+    def test_a_record_gated_in_a_slot_worktree_is_read_from_the_main_checkout(self):
+        slot = tempfile.TemporaryDirectory()
+        self.addCleanup(slot.cleanup)
+        worktree = Path(slot.name) / "slot"
+        git(self.root, "worktree", "add", "-q", "--detach", str(worktree))
+        os.chdir(worktree)
+        self.gate()
+        self.assertEqual(self.recorded()["sha"], self.sha)
+        self.assertFalse((worktree / ".factory" / "gates").exists())
+        os.chdir(self.root)
+        self.assertEqual(self.result(), (0, self.recorded()))
+
+    def test_a_crash_mid_write_leaves_no_record(self):
+        with mock.patch.object(Path, "replace", side_effect=OSError("killed")):
+            with self.assertRaises(OSError):
+                self.gate()
+        self.assertEqual(list(self.record_path.parent.glob("*.json")), [])
+        self.assertIn("no gate record", str(self.result()[0]))
+
+    def test_a_corrupt_record_is_absent(self):
+        self.record_path.parent.mkdir(parents=True)
+        self.record_path.write_text('{"sha": ')
+        code, printed = self.result()
+        self.assertIn("no gate record", str(code))
+        self.assertIsNone(printed)
+
     def test_gate_result_without_one_sha_refuses(self):
         code, _ = run(factory.main, ["gate-result"])
         self.assertIn("usage: factory gate-result <sha>", str(code))

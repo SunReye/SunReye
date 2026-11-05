@@ -192,9 +192,13 @@ def gate_record(sha, path):
         raise SystemExit("worktree has uncommitted or untracked files: commit them and rerun the gate")
     full = sh("git", "rev-parse", "--verify", "-q", f"{sha}^{{commit}}", cwd=path, check=False)
     file = gates_dir() / f"{full}.json"
+    missing = SystemExit(f"no gate record for {sha}: factory gate --detach")
     if not full or not file.exists():
-        raise SystemExit(f"no gate record for {sha}: factory gate --detach")
-    return json.loads(file.read_text())
+        raise missing
+    try:
+        return json.loads(file.read_text())
+    except json.JSONDecodeError:
+        raise missing from None
 
 
 def start_gate(cfg, slot, path, train=False):
