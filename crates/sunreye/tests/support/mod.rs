@@ -159,5 +159,5 @@ async fn answer(acceptor: TlsAcceptor, tcp: TcpStream, site: Arc<(Site, BTreeMap
 }
 
 async fn stall() {
-    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    std::future::pending::<()>().await;
 }

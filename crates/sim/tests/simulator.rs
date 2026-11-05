@@ -18,7 +18,6 @@ async fn exchange(addr: std::net::SocketAddr, parts: &[&[u8]], reply_len: usize)
     stream.set_nodelay(true).expect("nodelay");
     for part in parts {
         stream.write_all(part).await.expect("write");
-        tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let mut reply = vec![0_u8; reply_len];
     tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut reply))
@@ -165,13 +164,12 @@ async fn an_rtu_frame_with_a_bad_crc_is_dropped_and_the_next_one_answered() {
 
 #[tokio::test]
 async fn an_rtu_unit_that_does_not_answer_stays_silent() {
-    let sim = rtu_sim(Registers::from_runs([(500, vec![1])]), &[1]).await;
-    let mut stream = TcpStream::connect(sim.addr).await.expect("connect");
-    stream.write_all(&hex("000301f40001c5d5")).await.ok();
-    let mut byte = [0_u8; 1];
-    let read = tokio::time::timeout(Duration::from_millis(150), stream.read(&mut byte)).await;
-    assert!(read.is_err(), "no reply");
-    assert_eq!(sim.requests(), []);
+    let sim = rtu_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[1]).await;
+    // Replies come back in order: the first bytes read are the answered request's, so none went to unit 0.
+    let (unit_0, unit_1) = (hex("000301f40001c5d5"), hex("010301f40005c5c7"));
+    let reply = exchange(sim.addr, &[&unit_0, &unit_1], 15).await;
+    assert_eq!(reply, hex("01030a0901fc181234000100954d00"));
+    assert_eq!(sim.requests().len(), 1, "only unit 1 was asked");
 }
 
 const STICK: u32 = 3_168_930_341;
@@ -272,14 +270,12 @@ async fn a_solarman_frame_with_a_bad_checksum_is_dropped_and_the_next_one_answer
 
 #[tokio::test]
 async fn a_solarman_unit_that_does_not_answer_stays_silent() {
-    let sim = solarman_sim(Registers::from_runs([(500, vec![1])]), &[1]).await;
-    let [_, (request, _)] = recorded("solarman-v5/read-unit-0").try_into().expect("probe and read");
-    let mut stream = TcpStream::connect(sim.addr).await.expect("connect");
-    stream.write_all(&request).await.ok();
-    let mut byte = [0_u8; 1];
-    let read = tokio::time::timeout(Duration::from_millis(150), stream.read(&mut byte)).await;
-    assert!(read.is_err(), "no reply");
-    assert_eq!(sim.requests(), []);
+    let sim = solarman_sim(Registers::from_runs([(500, vec![2305, 64536, 4660, 1, 149])]), &[1]).await;
+    let [_, (unit_0, _)] = recorded("solarman-v5/read-unit-0").try_into().expect("probe and read");
+    let [_, (unit_1, reply)] = recorded("solarman-v5/read-unit-1").try_into().expect("probe and read");
+    // Replies come back in order: the first bytes read are the answered request's, so none went to unit 0.
+    assert_eq!(exchange(sim.addr, &[&unit_0, &unit_1], reply.len()).await, reply);
+    assert_eq!(sim.requests().len(), 1, "only unit 1 was asked");
 }
 
 #[tokio::test]
