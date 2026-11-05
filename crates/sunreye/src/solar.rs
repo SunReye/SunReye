@@ -3,11 +3,12 @@
 //! per request. A failed fetch keeps the last irradiance for the same key and reports it stale.
 
 use jiff::civil::DateTime;
-use jiff::tz::{Offset, TimeZone};
+use jiff::tz::TimeZone;
 use tokio::sync::Mutex;
 
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
-use crate::open_meteo::{self, Fetched, Plane};
+use crate::open_meteo::{self, Plane};
+use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, StoreError, first_in_service};
@@ -32,7 +33,6 @@ struct Cached {
     key: String,
     fetched_ms: i64,
     data: Irradiance,
-    zone: TimeZone,
 }
 
 /// A forecast and the age of the irradiance it was built from.
@@ -59,7 +59,8 @@ impl Solar {
         let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
         let Some(hit) = cache.as_ref() else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
-        let run = Run { time_zone: &hit.zone, now_ms, sim, correction: None };
+        let zone = plant_zone::plant_zone(&core.store).await?;
+        let run = Run { time_zone: &zone, now_ms, sim, correction: None };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
         Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale }))
@@ -81,7 +82,7 @@ impl Solar {
         let Ok(fetched) = fetched.inspect_err(|error| tracing::warn!(%error, "forecast fetch failed")) else {
             return held.map(|_| true);
         };
-        *cache = Some(cached(wanted.key, now_ms, fetched));
+        *cache = Some(Cached { key: wanted.key, fetched_ms: now_ms, data: fetched });
         Some(false)
     }
 
@@ -163,16 +164,6 @@ fn wanted(config: &WeatherConfig) -> Option<Wanted> {
     Some(Wanted { key, location, planes })
 }
 
-fn cached(key: String, fetched_ms: i64, fetched: Fetched) -> Cached {
-    let offset = fetched.irradiance.utc_offset_seconds;
-    let zone = fetched.time_zone.as_deref().and_then(|name| jiff::tz::db().get(name).ok());
-    let zone = zone.unwrap_or_else(|| {
-        tracing::warn!(zone = fetched.time_zone, "unknown time zone, plant days follow the series' offset");
-        Offset::from_seconds(offset).map_or(TimeZone::UTC, TimeZone::fixed)
-    });
-    Cached { key, fetched_ms, data: fetched.irradiance, zone }
-}
-
 fn hours(from_ms: i64, to_ms: i64, limit: i64) -> BucketWindow {
     let at = |ms| jiff::Timestamp::from_millisecond(ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
     BucketWindow { from: at(from_ms), to: at(to_ms), limit: u32::try_from(limit).unwrap_or(u32::MAX) }
@@ -214,27 +205,5 @@ mod tests {
         assert_eq!(median(vec![7.0]), Some(7.0));
         assert_eq!(median(vec![300.0, 100.0, 200.0]), Some(200.0));
         assert_eq!(median(vec![400.0, 100.0, 300.0, 200.0]), Some(250.0));
-    }
-
-    #[test]
-    fn a_zone_the_database_lacks_falls_back_to_the_series_offset() {
-        let fetched = |zone: Option<&str>| Fetched {
-            irradiance: Irradiance {
-                times: vec![],
-                utc_offset_seconds: 19_800,
-                location: Location { latitude: 0.0, longitude: 0.0 },
-                temperature: vec![],
-                gti: vec![],
-                dni: None,
-                wind_speed: None,
-            },
-            time_zone: zone.map(str::to_owned),
-        };
-        let berlin = cached("k".into(), 0, fetched(Some("Europe/Berlin"))).zone;
-        assert_eq!(berlin.iana_name(), Some("Europe/Berlin"));
-        for zone in [None, Some("Mars/Olympus")] {
-            let fixed = cached("k".into(), 0, fetched(zone)).zone;
-            assert_eq!(fixed.to_fixed_offset().expect("fixed").seconds(), 19_800, "{zone:?}");
-        }
     }
 }

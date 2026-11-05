@@ -17,6 +17,7 @@ mod accounts;
 mod forecast;
 mod roster;
 mod tiers;
+mod time_zone;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
 pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
