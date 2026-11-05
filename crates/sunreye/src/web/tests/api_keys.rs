@@ -6,7 +6,11 @@ const ENTITIES: &str = "/api/v1/entities";
 
 /// How an integration calls `/api/v1`: no cookie, no Origin, the key in a header.
 async fn integration(api: &Api, path: &str, header: Option<(&str, &str)>) -> Answer {
-    let mut request = Request::builder().uri(path).header(header::HOST, HOST);
+    integration_as(api, "GET", path, header).await
+}
+
+async fn integration_as(api: &Api, method: &str, path: &str, header: Option<(&str, &str)>) -> Answer {
+    let mut request = Request::builder().method(method).uri(path).header(header::HOST, HOST);
     if let Some((name, value)) = header {
         request = request.header(name, value);
     }
@@ -166,6 +170,27 @@ async fn a_session_does_not_open_v1_and_a_key_opens_nothing_else() {
     for path in ["/api/profiles", "/api/auth/session", KEYS, "/api/admin/users"] {
         let answer = integration(&anonymous, path, Some(("authorization", &format!("Bearer {key}")))).await;
         assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{path}");
+    }
+    drop((anonymous, admin));
+    core.stop().await;
+}
+
+/// The table's `key` class: a key opens the route, a session and no credentials do not.
+#[tokio::test]
+async fn a_key_route_refuses_a_session_and_no_credentials_and_accepts_a_key() {
+    let (core, admin, me) = with_profile("keys-class").await;
+    let key = secret(&issue(&admin, me, "Home Assistant").await);
+    let bearer = format!("Bearer {key}");
+    let anonymous = admin.anonymous();
+    let routes = requests(&[Access::Key]);
+    assert!(!routes.is_empty(), "the table lists a key route");
+    for (method, path) in &routes {
+        let none = integration_as(&anonymous, method, path, None).await;
+        assert_eq!(none.status, StatusCode::UNAUTHORIZED, "{method} {path}: no credentials");
+        let session = call_for_answer(&admin, (method, path)).await;
+        assert_eq!(session.status, StatusCode::UNAUTHORIZED, "{method} {path}: a session");
+        let keyed = integration_as(&anonymous, method, path, Some(("authorization", &bearer))).await;
+        assert_eq!(keyed.status, StatusCode::OK, "{method} {path}: a key");
     }
     drop((anonymous, admin));
     core.stop().await;

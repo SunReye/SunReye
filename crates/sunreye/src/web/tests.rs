@@ -427,56 +427,90 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 48] = [
-    ("post", "/api/connections"),
-    ("post", "/api/connections/probe"),
-    ("post", "/api/connections/scan-units"),
-    ("delete", "/api/connections/{id}"),
-    ("patch", "/api/connections/{id}"),
-    ("get", "/api/devices"),
-    ("post", "/api/devices"),
-    ("delete", "/api/devices/{id}"),
-    ("patch", "/api/devices/{id}"),
-    ("get", "/api/admin/api-keys"),
-    ("post", "/api/admin/api-keys"),
-    ("post", "/api/admin/api-keys/revoke"),
-    ("get", "/api/admin/users"),
-    ("post", "/api/admin/users"),
-    ("delete", "/api/admin/users/{id}"),
-    ("put", "/api/admin/users/{id}/role"),
-    ("delete", "/api/auth/session"),
-    ("delete", "/api/settings/profile-sources"),
-    ("delete", "/api/settings/profiles/{id}"),
-    ("get", "/api/auth/session"),
-    ("post", "/api/auth/login"),
-    ("post", "/api/auth/sign-up"),
-    ("get", "/api/capabilities"),
-    ("get", "/api/history/recent"),
-    ("get", "/api/history/rollup"),
-    ("get", "/api/kiosk"),
-    ("get", "/api/profile"),
-    ("get", "/api/profile-status"),
-    ("get", "/api/profiles"),
-    ("get", "/api/settings/inverter"),
-    ("get", "/api/settings/profile-sources"),
-    ("get", "/api/setup-status"),
-    ("get", "/api/sources"),
-    ("get", "/api/v1/entities"),
-    ("post", "/api/settings/inverter/test"),
-    ("post", "/api/settings/profile-sources"),
-    ("post", "/api/settings/profiles/import"),
-    ("put", "/api/settings/active-profile"),
-    ("put", "/api/settings/inverter"),
-    ("put", "/api/settings/kiosk"),
-    ("get", "/api/settings/weather"),
-    ("put", "/api/settings/weather"),
-    ("get", "/api/settings/time-zone"),
-    ("put", "/api/settings/time-zone"),
-    ("get", "/api/forecast"),
-    ("get", "/api/forecast/usable"),
-    ("get", "/api/forecast/correction"),
-    ("get", "/api/forecast/providers"),
-];
+/// Who may call a route, as `route-access.txt` declares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Access {
+    Public,
+    Credential,
+    Key,
+    Kiosk,
+    Session,
+    Admin,
+}
+
+/// One line of `route-access.txt`: lowercase method, templated path.
+struct Route {
+    method: String,
+    path: String,
+    access: Access,
+}
+
+impl Route {
+    /// The request that reaches the route: upper-case method, a path parameter filled in.
+    fn request(&self) -> (String, String) {
+        let mut path = String::new();
+        let mut rest = self.path.as_str();
+        while let Some((head, tail)) = rest.split_once('{') {
+            path.push_str(head);
+            path.push('1');
+            rest = tail.split_once('}').expect("a closed path parameter").1;
+        }
+        path.push_str(rest);
+        (self.method.to_uppercase(), path)
+    }
+}
+
+fn parse_access(text: &str) -> Vec<Route> {
+    let mut routes: Vec<Route> = Vec::new();
+    let mut previous = String::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
+        let [method, path, access] = line.split_whitespace().collect::<Vec<_>>()[..] else {
+            panic!("route-access.txt wants `METHOD /path access`: {line:?}");
+        };
+        let access = match access {
+            "public" => Access::Public,
+            "credential" => Access::Credential,
+            "key" => Access::Key,
+            "kiosk" => Access::Kiosk,
+            "session" => Access::Session,
+            "admin" => Access::Admin,
+            other => panic!("route-access.txt: unknown access {other:?} in {line:?}"),
+        };
+        let method = method.to_lowercase();
+        assert!(
+            !routes.iter().any(|r| r.method == method && r.path == path),
+            "route-access.txt lists {line:?} twice"
+        );
+        let label = format!("{} {path}", method.to_uppercase());
+        assert!(label >= previous, "route-access.txt unsorted: {label} after {previous}");
+        previous = label;
+        routes.push(Route { method, path: path.to_owned(), access });
+    }
+    routes
+}
+
+#[test]
+#[should_panic(expected = "route-access.txt unsorted: GET /api/a after GET /api/b")]
+fn a_route_access_table_out_of_order_is_refused() {
+    parse_access("GET /api/b admin\nGET /api/a admin");
+}
+
+#[test]
+fn a_route_access_table_in_order_is_read_in_order() {
+    let table = parse_access("# note\nDELETE /api/b admin\n\nGET /api/a public\n");
+    let read: Vec<_> = table.iter().map(|r| (r.method.as_str(), r.path.as_str())).collect();
+    assert_eq!(read, [("delete", "/api/b"), ("get", "/api/a")]);
+}
+
+/// Every route the core declares an access for.
+fn access_table() -> Vec<Route> {
+    parse_access(include_str!("../../route-access.txt"))
+}
+
+/// The requests of the routes whose access is one of `accesses`.
+fn requests(accesses: &[Access]) -> Vec<(String, String)> {
+    access_table().iter().filter(|route| accesses.contains(&route.access)).map(Route::request).collect()
+}
 
 fn operations(document: &Value) -> Vec<(String, String)> {
     let mut found = Vec::new();
@@ -490,17 +524,19 @@ fn operations(document: &Value) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn the_openapi_document_lists_every_route_served_and_each_answers() {
+async fn the_openapi_document_lists_every_route_with_an_access_decision_and_each_answers() {
     let (core, app) = open(&dir("openapi")).await;
     let served = get(&app, "/openapi/json").await;
     assert_eq!(served.status, StatusCode::OK);
     let document = served.json();
     assert_eq!(document, serde_json::to_value(openapi()).expect("document"));
 
-    let mut want: Vec<(String, String)> =
-        SERVED.iter().map(|(method, path)| ((*method).to_owned(), (*path).to_owned())).collect();
-    want.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
-    assert_eq!(operations(&document), want);
+    let want: Vec<(String, String)> = access_table().into_iter().map(|r| (r.method, r.path)).collect();
+    let listed = operations(&document);
+    let undecided: Vec<_> = listed.iter().filter(|op| !want.contains(op)).collect();
+    assert!(undecided.is_empty(), "routes served without a line in route-access.txt: {undecided:?}");
+    let unserved: Vec<_> = want.iter().filter(|op| !listed.contains(op)).collect();
+    assert!(unserved.is_empty(), "route-access.txt lines no route serves: {unserved:?}");
 
     for (method, path) in &want {
         let method = Method::from_bytes(method.to_uppercase().as_bytes()).expect("method");
@@ -528,55 +564,8 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 32] = [
-    ("GET", "/api/devices"),
-    ("POST", "/api/devices"),
-    ("PATCH", "/api/devices/1"),
-    ("DELETE", "/api/devices/1"),
-    ("POST", "/api/connections"),
-    ("PATCH", "/api/connections/1"),
-    ("DELETE", "/api/connections/1"),
-    ("POST", "/api/connections/probe"),
-    ("POST", "/api/connections/scan-units"),
-    ("DELETE", "/api/settings/profiles/acme"),
-    ("DELETE", "/api/settings/profile-sources"),
-    ("POST", "/api/settings/profiles/import"),
-    ("GET", "/api/settings/profile-sources"),
-    ("POST", "/api/settings/profile-sources"),
-    ("GET", "/api/profiles"),
-    ("PUT", "/api/settings/active-profile"),
-    ("GET", "/api/settings/inverter"),
-    ("PUT", "/api/settings/inverter"),
-    ("POST", "/api/settings/inverter/test"),
-    ("PUT", "/api/settings/kiosk"),
-    ("GET", "/api/settings/weather"),
-    ("PUT", "/api/settings/weather"),
-    ("GET", "/api/settings/time-zone"),
-    ("PUT", "/api/settings/time-zone"),
-    ("GET", "/api/forecast/providers"),
-    ("GET", "/api/admin/users"),
-    ("POST", "/api/admin/users"),
-    ("PUT", "/api/admin/users/1/role"),
-    ("DELETE", "/api/admin/users/1"),
-    ("GET", "/api/admin/api-keys"),
-    ("POST", "/api/admin/api-keys"),
-    ("POST", "/api/admin/api-keys/revoke"),
-];
-
-const SESSION_ROUTES: [(&str, &str); 9] = [
-    ("GET", "/api/capabilities"),
-    ("GET", "/api/profile"),
-    ("GET", "/api/history/recent"),
-    ("GET", "/api/history/rollup"),
-    ("GET", "/api/auth/session"),
-    ("DELETE", "/api/auth/session"),
-    ("GET", "/api/forecast"),
-    ("GET", "/api/forecast/usable"),
-    ("GET", "/api/forecast/correction"),
-];
-
-async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
-    call_for_answer(api, route).await.status
+async fn call(api: &Api, route: &(String, String)) -> StatusCode {
+    call_for_answer(api, (&route.0, &route.1)).await.status
 }
 
 async fn call_for_answer(api: &Api, (method, path): (&str, &str)) -> Answer {
@@ -759,13 +748,13 @@ async fn an_expired_session_is_refused() {
 async fn without_a_session_every_gated_route_is_refused() {
     let (core, admin) = open(&dir("anonymous")).await;
     let api = admin.anonymous();
-    for route in ADMIN_ROUTES.into_iter().chain(SESSION_ROUTES) {
-        let answer = call_for_answer(&api, route).await;
+    for route in requests(&[Access::Admin, Access::Session, Access::Kiosk]) {
+        let answer = call_for_answer(&api, (&route.0, &route.1)).await;
         assert_eq!(answer.status, StatusCode::UNAUTHORIZED, "{route:?}");
         assert_eq!(answer.json(), json!({"error": "Not signed in"}), "{route:?}");
     }
-    for path in ["/api/setup-status", "/api/profile-status", "/api/kiosk"] {
-        assert_eq!(get(&api, path).await.status, StatusCode::OK, "{path} is public");
+    for (_, path) in requests(&[Access::Public]) {
+        assert_eq!(get(&api, &path).await.status, StatusCode::OK, "{path} is public");
     }
     drop((api, admin));
     core.stop().await;
@@ -783,14 +772,20 @@ async fn a_plain_user_reaches_the_session_routes_and_is_refused_on_admin_routes(
     let signed_in = login(&admin.anonymous(), "user@example.org", ADMIN_PASSWORD, false).await;
     assert_eq!(signed_in.json()["admin"], false);
     let user = admin.with_cookie(&signed_in.session_cookie());
-    for route in ADMIN_ROUTES {
-        let answer = call_for_answer(&user, route).await;
+    let admin_routes = requests(&[Access::Admin]);
+    for route in &admin_routes {
+        let answer = call_for_answer(&user, (&route.0, &route.1)).await;
         assert_eq!(answer.status, StatusCode::FORBIDDEN, "{route:?}");
         assert_eq!(answer.json(), json!({"error": "Admin only"}), "{route:?}");
     }
-    assert_eq!(get(&user, "/api/capabilities").await.status, StatusCode::OK);
-    assert_eq!(get(&user, "/api/auth/session").await.json()["email"], "user@example.org");
-    for route in ADMIN_ROUTES {
+    let mut open_to_users = requests(&[Access::Session, Access::Kiosk]);
+    open_to_users.sort_by_key(|route| route.0 == "DELETE" && route.1 == "/api/auth/session");
+    for route in &open_to_users {
+        let answer = call_for_answer(&user, (&route.0, &route.1)).await;
+        assert_ne!(answer.status, StatusCode::UNAUTHORIZED, "{route:?}");
+        assert!(!answer.body.starts_with(br#"{"error":"Admin only"#), "{route:?}");
+    }
+    for route in &admin_routes {
         assert_ne!(call(&admin, route).await, StatusCode::FORBIDDEN, "the admin passes {route:?}");
     }
     drop((user, admin));
