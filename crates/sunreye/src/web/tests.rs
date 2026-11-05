@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 45] = [
+const SERVED: [(&str, &str); 47] = [
     ("post", "/api/connections"),
     ("post", "/api/connections/probe"),
     ("post", "/api/connections/scan-units"),
@@ -468,6 +468,8 @@ const SERVED: [(&str, &str); 45] = [
     ("put", "/api/settings/kiosk"),
     ("get", "/api/settings/weather"),
     ("put", "/api/settings/weather"),
+    ("get", "/api/settings/time-zone"),
+    ("put", "/api/settings/time-zone"),
     ("get", "/api/forecast"),
     ("get", "/api/forecast/usable"),
     ("get", "/api/forecast/providers"),
@@ -523,7 +525,7 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 30] = [
+const ADMIN_ROUTES: [(&str, &str); 32] = [
     ("GET", "/api/devices"),
     ("POST", "/api/devices"),
     ("PATCH", "/api/devices/1"),
@@ -546,6 +548,8 @@ const ADMIN_ROUTES: [(&str, &str); 30] = [
     ("PUT", "/api/settings/kiosk"),
     ("GET", "/api/settings/weather"),
     ("PUT", "/api/settings/weather"),
+    ("GET", "/api/settings/time-zone"),
+    ("PUT", "/api/settings/time-zone"),
     ("GET", "/api/forecast/providers"),
     ("GET", "/api/admin/users"),
     ("POST", "/api/admin/users"),
@@ -1198,5 +1202,6 @@ mod kiosk;
 mod plant;
 mod reads;
 mod rollup;
+mod time_zone;
 mod users;
 mod ws;

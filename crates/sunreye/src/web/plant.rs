@@ -10,10 +10,8 @@ use utoipa::ToSchema;
 
 use super::{ApiError, ErrorBody};
 use crate::plant;
+use crate::plant_zone;
 use crate::run::Core;
-
-/// The zone the plant's buckets are cut in: the core keeps none and buckets in UTC.
-const TIME_ZONE: &str = "UTC";
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SourcesResponse {
@@ -68,9 +66,10 @@ pub async fn sources(State(core): State<Arc<Core>>) -> Result<Json<SourcesRespon
             member: members.contains(&row.id),
         });
     }
+    let zone = plant_zone::plant_zone(&core.store).await?;
     let plant = PlantSource {
         members: members.iter().map(ToString::to_string).collect(),
-        time_zone: TIME_ZONE.to_owned(),
+        time_zone: zone.iana_name().unwrap_or("UTC").to_owned(),
     };
     Ok(Json(SourcesResponse { plant, devices }))
 }
