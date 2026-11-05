@@ -12,7 +12,9 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 GB = 1024 ** 3
@@ -142,9 +144,66 @@ def kill_leftovers(files):
         os.killpg(gate[0], signal.SIGKILL)
 
 
+def gate_steps(cfg, train=False):
+    return phase_commands(cfg, "gate") + (phase_commands(cfg, "train_gate") if train else [])
+
+
+def gates_dir():
+    return main_root() / ".factory" / "gates"
+
+
+def tree_state(path):
+    """(HEAD sha, dirty): dirty counts modified and untracked files, never ignored ones."""
+    return sh("git", "rev-parse", "HEAD", cwd=path), bool(sh("git", "status", "--porcelain", cwd=path))
+
+
+def run_gate(commands, path, train=False):
+    """Run steps in order, stop at the first failure, record the result for HEAD; returns the exit code.
+
+    A tree that was dirty or moved during the run proves nothing about a SHA: no record."""
+    before = tree_state(path)
+    steps, code = [], 0
+    for command in commands:
+        began = time.monotonic()
+        code = subprocess.run(command, cwd=path).returncode
+        steps.append({"command": shlex.join(command), "ok": code == 0,
+                      "seconds": round(time.monotonic() - began, 1)})
+        if code:
+            break
+    if before != tree_state(path) or before[1]:
+        print("tree was dirty or changed during the gate: no gate record written", file=sys.stderr)
+        return code
+    record = {"sha": before[0], "ok": code == 0, "train": train, "steps": steps,
+              "finished_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    write_atomic(gates_dir() / f"{before[0]}.json", json.dumps(record, indent=2))
+    return code
+
+
+def write_atomic(target, text):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(text)
+    tmp.replace(target)
+
+
+def gate_record(sha, path):
+    """The recorded gate for sha; refuses when the tree is dirty or no record exists."""
+    if tree_state(path)[1]:
+        raise SystemExit("worktree has uncommitted or untracked files: commit them and rerun the gate")
+    full = sh("git", "rev-parse", "--verify", "-q", f"{sha}^{{commit}}", cwd=path, check=False)
+    file = gates_dir() / f"{full}.json"
+    missing = SystemExit(f"no gate record for {sha}: factory gate --detach")
+    if not full or not file.exists():
+        raise missing
+    try:
+        return json.loads(file.read_text())
+    except json.JSONDecodeError:
+        raise missing from None
+
+
 def start_gate(cfg, slot, path, train=False):
     """Run the gate in a background session; its log and exit code land in the main checkout's .factory/logs."""
-    commands = phase_commands(cfg, "gate") + (phase_commands(cfg, "train_gate") if train else [])
+    commands = gate_steps(cfg, train)
     files = gate_files(slot)
     if gate_running(files):
         raise SystemExit(f"gate already running in {slot}: factory gate-wait --slot {slot}")
@@ -152,11 +211,11 @@ def start_gate(cfg, slot, path, train=False):
     files["log"].parent.mkdir(parents=True, exist_ok=True)
     for name in ("log", "exit", "pid"):
         files[name].unlink(missing_ok=True)
-    chain = " && ".join(shlex.join(command) for command in commands)
-    script = f'{chain}; rc=$?; echo "$rc" > "$1.tmp" && mv "$1.tmp" "$1"'
+    job = json.dumps({"commands": commands, "train": train})
     with open(files["log"], "w") as log:
-        proc = subprocess.Popen(["sh", "-c", script, "sh", str(files["exit"])], cwd=path, stdin=subprocess.DEVNULL,
-                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        proc = subprocess.Popen([sys.executable, __file__, str(files["exit"]), job], cwd=path,
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                start_new_session=True)
     stat = proc_stat(proc.pid)
     files["pid"].write_text(f"{proc.pid} {stat[1] if stat else '-'}")
     return {"log": str(files["log"]), "exit": str(files["exit"])}
@@ -261,3 +320,9 @@ def gc(store, state, aggressive=False):
             sh("git", "branch", "-q", "-D", branch, check=False)
     sh("docker", "image", "prune", "-f", check=False)
     return {"slots": report, "orphans": orphans, "disk": disk(store), "at": int(time.time())}
+
+
+if __name__ == "__main__":
+    # Detached gate: argv = exit file, JSON job. The exit file is written last, atomically.
+    job = json.loads(sys.argv[2])
+    write_atomic(Path(sys.argv[1]), f"{run_gate(job['commands'], Path.cwd(), job['train'])}\n")
