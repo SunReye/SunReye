@@ -1,6 +1,6 @@
 //! The plant: which devices are its members and how their figures fold by role, ported from 3.x
 //! (`apps/server/src/shared/plant-source.ts`, `plant-fold.ts`, `rollup-sql.ts`) and held against
-//! `fixtures/oracle/README.md` §6.
+//! `fixtures/oracle/README.md` §7.
 //!
 //! A controller present reports the total, so it is the whole member set; otherwise every inverter is a
 //! member. Meters and chargers never are. History keeps a retired member, because its readings belong to

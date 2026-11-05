@@ -1,5 +1,5 @@
 /**
- * Oracle group 6, database half: a plant's minute rollups folded across its members, from the 2.x read
+ * Oracle group 7, database half: a plant's minute rollups folded across its members, from the 2.x read
  * path against TimescaleDB. Each case is a device roster, the metric roles and every device's readings.
  * The 2.x code decides the rest: the history member set (`plantMembers`, retired devices included), the
  * plant read per metric (`plantFoldFor`: a per-device role is refused, a plant of one member is read as

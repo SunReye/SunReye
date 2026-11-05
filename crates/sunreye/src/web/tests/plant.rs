@@ -1,4 +1,4 @@
-//! `source=plant` reads and `GET /api/sources`, held against `fixtures/oracle/README.md` §6.
+//! `source=plant` reads and `GET /api/sources`, held against `fixtures/oracle/README.md` §7.
 
 use std::collections::BTreeMap;
 

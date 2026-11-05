@@ -9,6 +9,7 @@ import {
   officialProfilesDir,
   type ProfileDecodeCase,
 } from "./profile-decode";
+import { buildForecastCorpus } from "./forecast";
 import { buildPlantCorpus } from "./plant";
 import { buildTransportCorpus } from "./transport";
 
@@ -40,6 +41,10 @@ describe("the committed corpus, database-free groups", () => {
         expect(replayed.clamped).toEqual(c.clamped);
       }
     }
+  });
+
+  test("the forecast is what the 3.x forecast model produces now", async () => {
+    expect(await staleFiles(await buildForecastCorpus())).toEqual([]);
   });
 
   test("the plant fold, member set and sources are what the 2.x code produces now", async () => {
@@ -88,6 +93,7 @@ describe("the corpus as a whole", () => {
       "role-kinds.ndjson",
       "rollups.ndjson",
       "statistics.ndjson",
+      "forecast.ndjson",
       "role-aggregates.ndjson",
       "plant.ndjson",
       "plant-rollups.ndjson",
@@ -115,6 +121,7 @@ describe("the corpus as a whole", () => {
       "transport.ndjson",
       "rollups.ndjson",
       "statistics.ndjson",
+      "forecast.ndjson",
       "plant.ndjson",
       "plant-rollups.ndjson",
     ]) {

@@ -1,5 +1,5 @@
 /**
- * Oracle group 6, database-free half: a plant of several devices folded by role, as the 2.x code
+ * Oracle group 7, database-free half: a plant of several devices folded by role, as the 2.x code
  * does it. Each case is a device roster, the metric roles, every device's latest live sample and
  * every device's recent-history backfill. The 2.x code decides the rest: the member sets
  * (`plantMembers`), `GET /api/sources` (`listSources`), the live fold the `plant` topic publishes

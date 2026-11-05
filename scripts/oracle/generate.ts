@@ -3,7 +3,7 @@
 /**
  * Rebuild the oracle corpus (`fixtures/oracle/`) from the 2.x code.
  *
- * Transport framing, profile decode and the plant fold need no database and are written from here.
+ * Transport framing, profile decode, the forecast and the plant fold need no database and are written from here.
  * Rollups, statistics, plant rollups and archives need TimescaleDB, so they run as `apps/server/db-tests/oracle.test.ts`
  * with `ORACLE_WRITE=1`, on the harness's own `sunreye_dbtest` and nowhere else.
  *
@@ -12,6 +12,7 @@
  *   `DB_TEST_URL`           the Postgres server for the database groups, as for `bun run test:db`
  */
 import { type CorpusFiles, CORPUS_DIR, writeCorpus } from "./corpus";
+import { buildForecastCorpus } from "./forecast";
 import { buildPlantCorpus } from "./plant";
 import { buildProfileDecodeCorpus, officialProfilesDir } from "./profile-decode";
 import { buildTransportCorpus } from "./transport";
@@ -43,6 +44,7 @@ export interface GenerateDeps {
   profilesDir: () => string | null;
   transport: () => Promise<CorpusFiles>;
   profiles: (dir: string) => Promise<CorpusFiles>;
+  forecast: () => Promise<CorpusFiles>;
   plant: () => Promise<CorpusFiles>;
   databaseGroups: (url: string | null) => Promise<number>;
   log: (message: string) => void;
@@ -95,6 +97,8 @@ export async function generate(
   deps.log("transport framing written");
   await writeCorpus(await deps.profiles(profiles), deps.out);
   deps.log("profile decode written");
+  await writeCorpus(await deps.forecast(), deps.out);
+  deps.log("forecast written");
   await writeCorpus(await deps.plant(), deps.out);
   deps.log("plant fold written");
   return deps.databaseGroups(url);
@@ -106,6 +110,7 @@ if (import.meta.main) {
     profilesDir: () => officialProfilesDir(),
     transport: buildTransportCorpus,
     profiles: buildProfileDecodeCorpus,
+    forecast: buildForecastCorpus,
     plant: buildPlantCorpus,
     databaseGroups: runDatabaseGroups,
     log: (message) => console.log(message),
