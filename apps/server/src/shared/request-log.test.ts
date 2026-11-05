@@ -20,7 +20,7 @@ const appWith = (options?: Parameters<typeof requestLogger>[0]) => {
     .get("/deep", async () => {
       // Stands in for the engine: unrelated code, several awaits away, that
       // logs without being handed anything.
-      await new Promise((r) => setTimeout(r, 1));
+      await new Promise<void>((r) => setImmediate(r));
       contexts.push(requestContextStorage.getStore()?.requestId as string | undefined);
       return "deep";
     })

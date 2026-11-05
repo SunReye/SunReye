@@ -19,8 +19,9 @@ const { core } = await import("./core-api");
 async function request(path: "/api/history/rollup" | "/api/auth/session", status: number) {
   const fetch = (async () => new Response("{}", { status })) as unknown as typeof globalThis.fetch;
   await core.GET(path as "/api/auth/session", { fetch });
-  // The bounce loads `$app/navigation` lazily.
-  await Bun.sleep(5);
+  // The bounce loads `$app/navigation` lazily: this import queues behind the bounce's own,
+  // so once it resolves the bounce has either called `goto` or never will.
+  await import("$app/navigation");
 }
 
 const realLocation = globalThis.location;

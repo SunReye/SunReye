@@ -127,6 +127,10 @@ class FakeLogger {
   readonly server = net.createServer();
   /** Every client socket still attached, so a test can reset one from the peer side. */
   readonly clients: net.Socket[] = [];
+  /** Requests received, answered or not. */
+  received = 0;
+  /** Set to take requests and answer none: a transaction left outstanding. */
+  silent = false;
   #buffer: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
 
   async listen(): Promise<number> {
@@ -159,7 +163,10 @@ class FakeLogger {
     merged.set(chunk, this.#buffer.length);
     const { frames, rest } = splitFrames(merged);
     this.#buffer = rest;
-    for (const frame of frames) socket.write(this.#answer(frame));
+    for (const frame of frames) {
+      this.received += 1;
+      if (!this.silent) socket.write(this.#answer(frame));
+    }
   }
 
   #answer(frame: Uint8Array): Buffer {
@@ -190,6 +197,15 @@ class FakeLogger {
   }
 }
 
+/** Poll until `check` holds; the deadline only bounds a hang. */
+async function until(check: () => boolean, ms = 4_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("condition not met in time");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
 let logger: FakeLogger | undefined;
 let transport: ModbusTransport | undefined;
 
@@ -200,7 +216,7 @@ afterEach(async () => {
   logger = undefined;
 });
 
-const connect = async (): Promise<ModbusTransport> => {
+const connect = async (timeoutMs = 2000): Promise<ModbusTransport> => {
   logger = new FakeLogger();
   const port = await logger.listen();
   const conn: InverterConnection = {
@@ -208,7 +224,7 @@ const connect = async (): Promise<ModbusTransport> => {
     port,
     unitId: 1,
     transport: "solarman-v5",
-    timeoutMs: 2000,
+    timeoutMs,
   };
   transport = new ModbusTransport(profile, conn);
   return transport;
@@ -314,14 +330,13 @@ describe("a Solarman reject drives the split-and-remember fallback end to end", 
   });
 
   test("the refusal costs a round trip, not the transaction timeout", async () => {
-    const t = await connect();
-    const started = performance.now();
+    // Before the translation the dropped reject left modbus-serial with no reply at
+    // all and this poll cost the full `timeoutMs` budget — on every poll, forever,
+    // for any profile declaring a register this inverter will not serve. The budget
+    // here outlasts the test's own limit, so a poll that waits it out never returns.
+    const t = await connect(600_000);
     await t.read();
-    // `timeoutMs` is 2000 above. Before the translation the dropped reject left
-    // modbus-serial with no reply at all and this poll cost the full budget —
-    // on every poll, forever, for any profile declaring a register this inverter
-    // will not serve.
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(logger!.rejected).not.toEqual([]);
   });
 
   test("the logger serial is discovered over the same connection", async () => {
@@ -351,13 +366,17 @@ describe("a Solarman reject drives the split-and-remember fallback end to end", 
  * error object" but "the next poll reads".
  */
 describe("a peer reset on an open Solarman port", () => {
+  /** Whether the transport's modbus client still holds an open port: false once the RST has landed. */
+  const portOpen = (t: ModbusTransport) =>
+    (t as unknown as { client: { isOpen: boolean } | null }).client?.isOpen ?? false;
+
   test("does not raise an unhandled error, and the next poll reconnects and reads", async () => {
     const t = await connect();
     await t.read();
 
     logger!.resetClients();
     // Let the RST land and the port tear its socket down before polling again.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await until(() => !portOpen(t));
 
     const { values } = await t.read();
     expect(values["a"]).toBe(100);
@@ -366,15 +385,19 @@ describe("a peer reset on an open Solarman port", () => {
 
   test("a reset with a transaction in flight fails that poll and leaves the next one healthy", async () => {
     const t = await connect();
-    const reading = t.read();
+    await t.read();
     // The RST arrives while a block's transaction is still outstanding — the
     // shape that reproduced the crash, since the port is open and modbus-serial
-    // is waiting on it.
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    // is waiting on it. The logger takes the request and never answers.
+    logger!.silent = true;
+    const asked = logger!.received;
+    const reading = t.read();
+    await until(() => logger!.received > asked);
     logger!.resetClients();
     await reading.catch(() => {});
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    logger!.silent = false;
+    await until(() => !portOpen(t));
     const { values } = await t.read();
     expect(values["a"]).toBe(100);
   });

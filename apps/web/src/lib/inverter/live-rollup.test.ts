@@ -53,7 +53,8 @@ function harness(startAt = at(600)) {
   };
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+/** One macrotask turn: every pending microtask (an answered call) has run. */
+const flush = () => new Promise<void>((r) => setImmediate(r));
 
 describe("the window, fetched once", () => {
   test("asks for each key over the whole window, at its grain, scoped to the source", () => {
