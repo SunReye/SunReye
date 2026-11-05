@@ -14,11 +14,13 @@ use tokio::time::MissedTickBehavior;
 
 use crate::live::Live;
 use crate::modbus::Client;
+use crate::open_meteo;
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
 use crate::retention::retain;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
+use crate::solar::Solar;
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
@@ -47,6 +49,7 @@ pub struct Core {
     pub live: Arc<Live>,
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
+    pub solar: Solar,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
     stranger_reads: Arc<Semaphore>,
@@ -67,19 +70,31 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now_ms).await
+        Self::open_clocked(data_dir, roots, now_ms, open_meteo::URL.into()).await
     }
 
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, Vec::new(), now).await
+        Self::open_clocked(data_dir, Vec::new(), now, open_meteo::URL.into()).await
+    }
+
+    /// [`Core::open`] fetching the forecast from `forecast_url`, trusting `roots`, the clock where `now` says.
+    #[cfg(test)]
+    pub(crate) async fn open_forecasting(
+        data_dir: &Path,
+        roots: Vec<CertificateDer<'static>>,
+        forecast_url: String,
+        now: fn() -> i64,
+    ) -> Result<Arc<Self>, RunError> {
+        Self::open_clocked(data_dir, roots, now, forecast_url).await
     }
 
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
+        forecast_url: String,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
@@ -94,6 +109,7 @@ impl Core {
             roots,
             live,
             unstored,
+            solar: Solar::new(forecast_url),
             kiosk,
             stranger_reads,
             now,

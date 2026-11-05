@@ -231,7 +231,12 @@ describe("the public surface is a closed list", () => {
   });
 
   test("no settings read is on it", () => {
-    for (const label of ["GET /api/profiles", "GET /api/settings/inverter"]) {
+    for (const label of [
+      "GET /api/profiles",
+      "GET /api/settings/inverter",
+      "GET /api/settings/weather",
+      "GET /api/forecast/providers",
+    ]) {
       expect(isPublicLabel(label)).toBe(false);
     }
   });
@@ -655,12 +660,14 @@ describe("planning carries both bodies", () => {
 // ---------------------------------------------------------------------------
 
 describe("the session surface is a closed list", () => {
-  test("a plain signed-in user reaches the session, capabilities and the three dashboard reads, nothing else", () => {
+  test("a plain signed-in user reaches the session, capabilities, the dashboard reads and the forecast, nothing else", () => {
     expect([...SESSION_LABELS].sort()).toEqual(
       [
         "DELETE /api/auth/session",
         "GET /api/auth/session",
         "GET /api/capabilities",
+        "GET /api/forecast",
+        "GET /api/forecast/usable",
         "GET /api/history/recent",
         "GET /api/history/rollup",
         "GET /api/profile",
@@ -669,7 +676,12 @@ describe("the session surface is a closed list", () => {
   });
 
   test("no settings read is on it — those are admin", () => {
-    for (const label of ["GET /api/profiles", "GET /api/settings/inverter"]) {
+    for (const label of [
+      "GET /api/profiles",
+      "GET /api/settings/inverter",
+      "GET /api/settings/weather",
+      "GET /api/forecast/providers",
+    ]) {
       expect(isSessionLabel(label)).toBe(false);
     }
   });

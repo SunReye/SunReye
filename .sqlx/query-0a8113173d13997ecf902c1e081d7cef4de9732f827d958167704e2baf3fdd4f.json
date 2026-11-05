@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT enabled AS \"enabled: bool\", latitude, longitude, label, forecast_enabled AS \"forecast_enabled: bool\",\n                      provider, max_output_w, house_load_w, smart_meter_since,\n                      correction_enabled AS \"correction_enabled: bool\"\n               FROM plant_forecast WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "enabled: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "latitude",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "longitude",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "label",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "forecast_enabled: bool",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "provider",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "max_output_w",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "house_load_w",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "smart_meter_since",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "correction_enabled: bool",
+        "ordinal": 9,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "0a8113173d13997ecf902c1e081d7cef4de9732f827d958167704e2baf3fdd4f"
+}
