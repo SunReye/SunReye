@@ -1065,6 +1065,7 @@
   "wizard_connection_hint": "Todos los puntos de conexión de la planta. Lo que puede añadirse depende de cuál elijas.",
   "wizard_attach_empty": "Todavía no hay nada que añadir a una conexión de este tipo.",
   "wizard_attach_taken": "Ya está en esta conexión",
+  "wizard_attach_modbus_device": "Dispositivo Modbus",
   "wizard_settings_none": "Nada que configurar: esto no tiene ajustes propios.",
   "wizard_back": "Atrás",
   "wizard_next": "Siguiente",

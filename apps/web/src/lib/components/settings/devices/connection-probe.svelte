@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { api } from '$lib/api';
 	import { apiErrorText } from '$lib/api-error';
 	import { Button } from '$lib/components/ui/button';
+	import { core } from '$lib/core-api';
 	import * as m from '$lib/paraglide/messages';
 	import { connectionProbeAnswer, describeConnectionProbe } from './probe-logic';
 	import { type ConnectionDraft, connectionParamsOf } from './connection-draft';
@@ -30,9 +30,14 @@
 	const blocked = $derived(probing || body === null);
 	const outcomeClass = $derived(outcome?.ok ? 'text-emerald-500' : 'text-destructive');
 
-	/** What to say when the REQUEST failed, so there is no answer body to read. */
-	function failureText(error: { value: unknown } | null): string {
-		return apiErrorText(error?.value, m.conn_request_failed());
+	/** The answer, or the reason there is none: the refusal's body, else a dead connection. */
+	async function ask(target: NonNullable<typeof body>): Promise<{ data?: unknown; failure: string }> {
+		try {
+			const { data, error } = await core.POST('/api/connections/probe', { body: target as never });
+			return { data, failure: apiErrorText(error, m.conn_request_failed()) };
+		} catch {
+			return { failure: m.conn_request_failed() };
+		}
 	}
 
 	async function probe() {
@@ -40,9 +45,9 @@
 		if (!target) return;
 		probing = true;
 		outcome = null;
-		const { data, error } = await api.api.connections.probe.post(target);
+		const { data, failure } = await ask(target);
 		probing = false;
-		const answer = connectionProbeAnswer(data, failureText(error));
+		const answer = connectionProbeAnswer(data, failure);
 		if (answer.ok && answer.serial !== undefined) draft.modbus.loggerSerial = answer.serial;
 		outcome = describeConnectionProbe(target.kind, answer);
 	}

@@ -1,13 +1,15 @@
 /**
- * The roster's production adapter: each {@link RosterTransport} call is one
- * Eden treaty request, its answer narrowed to {@link Answer}. The one place the
- * treaty's `data` is cast to the contract type the server built it from. The
- * profile list is the exception: the core serves it, on the typed `core` client.
+ * The roster's production adapter: devices, connections and profiles on the
+ * core's typed client; integrations on Eden, asked only of an engine that serves
+ * them. The one place an answer's `data` is cast to the contract type the
+ * server built it from.
  */
 
 import { api } from "$lib/api";
+import type { CapabilityName } from "$lib/capabilities";
 import { core } from "$lib/core-api";
-import type { RegisteredProfile } from "../profile-types";
+import * as m from "$lib/paraglide/messages";
+import type { Catalog } from "../wizard/add-wizard";
 import type { Answer, RosterTransport } from "./device-roster";
 
 /** The two fields of an Eden answer this reads. */
@@ -18,32 +20,59 @@ async function answer<T>(request: Promise<EdenAnswer>): Promise<Answer<T>> {
   return data ? { ok: true, data: data as T } : { ok: false, error: error?.value };
 }
 
-/** The core's profile list. A dead connection throws; it is a failure with no reason, like the rest. */
-async function coreProfiles(): Promise<Answer<RegisteredProfile[]>> {
+/** A core answer. A dead connection throws; it is a failure with no reason, like the rest. */
+async function coreAnswer<T>(
+  request: Promise<{ data?: unknown; error?: unknown }>,
+): Promise<Answer<T>> {
   try {
-    const { data, error } = await core.GET("/api/profiles");
-    return data ? { ok: true, data } : { ok: false, error };
+    const { data, error } = await request;
+    return data ? { ok: true, data: data as T } : { ok: false, error };
   } catch {
     return { ok: false, error: undefined };
   }
 }
 
-const device = (id: number) => api.api.devices({ id: String(id) });
-const connection = (id: number) => api.api.connections({ id: String(id) });
+/** What a core without integrations attaches: a Modbus device by profile, nothing else. */
+const devicesOnly = (): Catalog => ({
+  modbus: [
+    {
+      id: "modbus-device",
+      label: m.wizard_attach_modbus_device(),
+      via: "profile",
+      addable: true,
+      multiInstance: true,
+      fields: [],
+    },
+  ],
+  mqtt: [],
+  internal: [],
+});
+
+const byId = (id: number) => ({ params: { path: { id } } });
 const integration = (id: number) => api.api.integrations({ id: String(id) });
 
-export const edenRosterTransport: RosterTransport = {
-  devices: () => answer(api.api.devices.get()),
-  integrations: () => answer(api.api.integrations.get()),
-  catalog: () => answer(api.api.integrations.catalog.get()),
-  profiles: coreProfiles,
-  addDevice: (body) => answer(api.api.devices.post(body)),
-  patchDevice: (id, body) => answer(device(id).patch(body)),
-  deleteDevice: (id) => answer(device(id).delete()),
-  addConnection: (body) => answer(api.api.connections.post(body)),
-  patchConnection: (id, body) => answer(connection(id).patch(body)),
-  deleteConnection: (id) => answer(connection(id).delete()),
-  addIntegration: (body) => answer(api.api.integrations.post(body)),
-  patchIntegration: (id, body) => answer(integration(id).patch(body)),
-  deleteIntegration: (id) => answer(integration(id).delete()),
-};
+/** `offers` is the connected engine's capabilities: absent integrations are answered here, unasked. */
+export function rosterTransport(offers: (area: CapabilityName) => boolean): RosterTransport {
+  return {
+    devices: () => coreAnswer(core.GET("/api/devices")),
+    integrations: async () =>
+      offers("integrations")
+        ? answer(api.api.integrations.get())
+        : { ok: true, data: { integrations: [] } },
+    catalog: async () =>
+      offers("integrations")
+        ? answer(api.api.integrations.catalog.get())
+        : { ok: true, data: devicesOnly() },
+    profiles: () => coreAnswer(core.GET("/api/profiles")),
+    addDevice: (body) => coreAnswer(core.POST("/api/devices", { body: body as never })),
+    patchDevice: (id, body) => coreAnswer(core.PATCH("/api/devices/{id}", { ...byId(id), body })),
+    deleteDevice: (id) => coreAnswer(core.DELETE("/api/devices/{id}", byId(id))),
+    addConnection: (body) => coreAnswer(core.POST("/api/connections", { body: body as never })),
+    patchConnection: (id, body) =>
+      coreAnswer(core.PATCH("/api/connections/{id}", { ...byId(id), body: body as never })),
+    deleteConnection: (id) => coreAnswer(core.DELETE("/api/connections/{id}", byId(id))),
+    addIntegration: (body) => answer(api.api.integrations.post(body)),
+    patchIntegration: (id, body) => answer(integration(id).patch(body)),
+    deleteIntegration: (id) => answer(integration(id).delete()),
+  };
+}

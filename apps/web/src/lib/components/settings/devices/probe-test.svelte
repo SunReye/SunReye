@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { api } from '$lib/api';
 	import { apiErrorText } from '$lib/api-error';
 	import { Button } from '$lib/components/ui/button';
+	import { core } from '$lib/core-api';
 	import * as m from '$lib/paraglide/messages';
 	import type { TestResult } from '../inverter-types';
 	import SnapshotDialog from '../snapshot-dialog.svelte';
@@ -31,8 +31,9 @@
 	const hasSnapshot = $derived((result?.metrics?.length ?? 0) > 0);
 
 	async function probe(t: ProbeTarget): Promise<TestResult> {
-		const { data, error } = await api.api.settings.inverter.test.post({ ...t, host: t.host.trim() });
-		return data ?? { ok: false, error: apiErrorText(error?.value, m.conn_request_failed()) };
+		const body = { ...t, host: t.host.trim(), simulate: false, loggerSerial: t.loggerSerial ?? null };
+		const { data, error } = await core.POST('/api/settings/inverter/test', { body });
+		return data ?? { ok: false, error: apiErrorText(error, m.conn_request_failed()) };
 	}
 
 	async function test() {

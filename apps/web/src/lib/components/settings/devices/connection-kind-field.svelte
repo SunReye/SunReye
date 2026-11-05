@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { Label } from '$lib/components/ui/label';
 	import * as NativeSelect from '$lib/components/ui/native-select';
 	import * as m from '$lib/paraglide/messages';
-	import { CONNECTION_KINDS, type ConnectionKind } from './device-types';
+	import { offeredKinds, picksKind } from './connection-kinds';
+	import type { ConnectionKind } from './device-types';
 
 	// WHICH KIND of endpoint — chosen while adding, frozen while editing.
 	//
@@ -23,18 +25,22 @@
 		modbus: m.devices_kind_modbus,
 		mqtt: m.devices_kind_mqtt
 	};
+
+	const kinds = $derived(offeredKinds(coreCapabilities.has('integrations')));
 </script>
 
 <div class="flex flex-col gap-1.5 sm:col-span-2">
 	<Label for="connection-kind">{m.devices_field_kind()}</Label>
-	{#if locked}
-		<p id="connection-kind" class="text-sm">{LABELS[value]()}</p>
-		<span class="text-xs text-muted-foreground">{m.devices_kind_locked()}</span>
-	{:else}
+	{#if picksKind(locked, kinds)}
 		<NativeSelect.Root id="connection-kind" class="w-full" bind:value>
-			{#each CONNECTION_KINDS as option (option)}
+			{#each kinds as option (option)}
 				<NativeSelect.Option value={option}>{LABELS[option]()}</NativeSelect.Option>
 			{/each}
 		</NativeSelect.Root>
+	{:else}
+		<p id="connection-kind" class="text-sm">{LABELS[value]()}</p>
+		{#if locked}
+			<span class="text-xs text-muted-foreground">{m.devices_kind_locked()}</span>
+		{/if}
 	{/if}
 </div>

@@ -727,6 +727,8 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         automations: true,
         restart: true,
         profileSources: true,
+        integrations: true,
+        pvAndBattery: true,
       });
     }
     if (at("kiosk")) return json(route, { enabled: options.kiosk ?? false });

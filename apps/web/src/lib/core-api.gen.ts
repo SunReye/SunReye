@@ -161,6 +161,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/connections/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Whether something accepts a connection at the endpoint: no unit id, no register read. A failure is a
+         *     result (`ok: false`), not an error of the request.
+         */
+        post: operations["probeConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/scan-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The first unit id that answers a one-register read with the profile's map. Only reads. */
+        post: operations["scanUnits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections/{id}": {
         parameters: {
             query?: never;
@@ -603,7 +640,11 @@ export interface components {
             automations: boolean;
             controls: boolean;
             history: boolean;
+            /** @description Coded integrations and the MQTT connections they run over. */
+            integrations: boolean;
             profileSources: boolean;
+            /** @description An inverter's PV arrays and battery pack, kept per device. */
+            pvAndBattery: boolean;
             restart: boolean;
             statistics: boolean;
         };
@@ -719,6 +760,15 @@ export interface components {
             /** Format: int32 */
             unitId: number;
         };
+        /** @description Whether something accepted a connection at an endpoint, as 3.x answers it. */
+        EndpointProbe: {
+            error?: string;
+            /** @description Over Solarman V5: the serial the stick named itself with. */
+            logger?: components["schemas"]["Logger"];
+            /** Format: int64 */
+            ms: number;
+            ok: boolean;
+        };
         Entity: {
             group: string | null;
             key: string;
@@ -779,6 +829,13 @@ export interface components {
             /** Format: double */
             tomorrowKwh: number;
         };
+        /** @description The unit id that answered, and how long its read took. */
+        FoundUnit: {
+            /** Format: int64 */
+            ms: number;
+            /** Format: int32 */
+            unitId: number;
+        };
         ImportedProfile: {
             id: string;
         };
@@ -838,6 +895,11 @@ export interface components {
         /** @description A stored source with the ids of the profiles it supplied. */
         Listed: components["schemas"]["Source"] & {
             profileIds: string[];
+        };
+        /** @description The stick that answered an endpoint probe. */
+        Logger: {
+            /** Format: int32 */
+            serial: number;
         };
         LoginRequest: {
             email: string;
@@ -940,6 +1002,12 @@ export interface components {
              */
             watts: number;
         };
+        /** @description An endpoint to test, as the connection dialog holds it. */
+        ProbeRequest: {
+            /** @description `modbus`; the core reaches no other kind. */
+            kind: string;
+            params: components["schemas"]["ModbusParams"];
+        };
         ProfileEntry: {
             active: boolean;
             /** @description Compiled into the binary. */
@@ -1026,6 +1094,15 @@ export interface components {
             min: number;
             /** @description UTC start of the bucket. */
             time: string;
+        };
+        ScanRequest: {
+            /** @description The ids to ask, in order, at most 16; by default 1, 0, 2, 3, 4, 5. */
+            candidates?: number[] | null;
+            /** @description `modbus`; the core reaches no other kind. */
+            kind: string;
+            params: components["schemas"]["ModbusParams"];
+            /** @description Whose register map the scan reads with. */
+            profileId: string;
         };
         /** @description One metric's points: `o[i]` steps after `t0`, holding `v[i]`. */
         Series: {
@@ -1118,6 +1195,11 @@ export interface components {
          * @enum {string}
          */
         Transport: "tcp" | "rtu-over-tcp" | "solarman-v5";
+        UnitScan: {
+            found: components["schemas"]["FoundUnit"] | null;
+            /** @description Every id asked, in order, so a miss names what was ruled out. */
+            scanned: number[];
+        };
         /** @description The composed record. */
         WeatherConfig: {
             enabled: boolean;
@@ -1760,6 +1842,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    probeConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointProbe"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    scanUnits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitScan"];
                 };
             };
             400: {

@@ -222,6 +222,25 @@ describe("connectionPatchBody", () => {
     expect(Object.keys(patch!).sort()).toEqual(["name", "params"]);
   });
 
+  // The core has no per-connection timings: it shows its core-wide ones on every
+  // row and refuses an edit that changes them. Untouched, they must go back as shown.
+  test("an untouched Modbus edit sends back the timings the core showed, not the form defaults", () => {
+    const shown = {
+      ...gateway,
+      params: { ...gateway.params, timeoutMs: 3500, pollIntervalMs: 7000 },
+    };
+    expect(connectionPatchBody(draftFromConnection(shown))).toEqual({
+      name: "Gateway 1",
+      params: {
+        host: "10.0.0.5",
+        port: 502,
+        transport: "tcp",
+        timeoutMs: 3500,
+        pollIntervalMs: 7000,
+      },
+    });
+  });
+
   test("an untouched broker edit omits the password, so the stored one survives", () => {
     expect(connectionPatchBody(draftFromConnection(broker))).toEqual({
       name: "Home broker",

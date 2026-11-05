@@ -26,7 +26,7 @@ use crate::weather::{Battery, DevicePv, PvArray};
 /// The roles an operator may add, as 3.x lists them.
 const ROLES: [&str; 4] = ["inverter", "meter", "charger", "controller"];
 /// Modbus unit ids; 248–255 are reserved.
-const UNIT_MAX: i64 = 247;
+pub(super) const UNIT_MAX: i64 = 247;
 /// 3.x's slug limit, which bounds a name.
 const NAME_MAX: usize = 48;
 const DEFAULT_PORT: i64 = 502;
@@ -237,7 +237,7 @@ fn polled() -> ApiError {
     ApiError::conflict("this device is the one being polled; change the inverter connection first")
 }
 
-fn refused(field: &'static str, message: &str) -> ApiError {
+pub(super) fn refused(field: &'static str, message: &str) -> ApiError {
     ApiError::bad_request(format!("{field}: {message}")).on(field)
 }
 
@@ -263,14 +263,14 @@ fn checked_role(role: &str) -> Result<String, ApiError> {
         .ok_or_else(|| refused("role", &format!("one of {}", ROLES.join(", "))))
 }
 
-fn checked_unit(unit: i64) -> Result<u8, ApiError> {
+pub(super) fn checked_unit(unit: i64) -> Result<u8, ApiError> {
     u8::try_from(unit)
         .ok()
         .filter(|unit| i64::from(*unit) <= UNIT_MAX)
         .ok_or_else(|| refused("unitId", &format!("unit id must be 0–{UNIT_MAX}")))
 }
 
-fn modbus_only(kind: &str) -> Result<(), ApiError> {
+pub(super) fn modbus_only(kind: &str) -> Result<(), ApiError> {
     if kind == "modbus" { Ok(()) } else { Err(refused("kind", "this core reaches Modbus connections only")) }
 }
 
@@ -279,7 +279,7 @@ fn modbus_params(params: Value) -> Result<ModbusParams, ApiError> {
 }
 
 /// An added connection's endpoint: the core's poll timing applies whatever the writer states.
-fn added_endpoint(mut params: Value) -> Result<NewConnection, ApiError> {
+pub(super) fn added_endpoint(mut params: Value) -> Result<NewConnection, ApiError> {
     if let Some(params) = params.as_object_mut() {
         params.remove("timeoutMs");
         params.remove("pollIntervalMs");
