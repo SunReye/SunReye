@@ -3,13 +3,18 @@
 //! folded into the plant's primary inverter's grid. Learns whenever the forecast is configured; the forecast
 //! applies the grid only while `forecast.correction.enabled`.
 //!
-//! The learning unit is the inverter and its total PV power, as in 3.x. A per-array unit fed from a string's
-//! power (#448) changes which arrays a run models and which metric it pairs them with, not the fold.
+//! The learning target is the primary inverter: its own arrays against its total PV power. 3.x models every
+//! plant array against it, which overstates a multi-inverter plant.
 
 use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::time::Duration;
 
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
+use tokio::sync::watch;
+use tokio::time::MissedTickBehavior;
 
 use crate::forecast::{
     self, CorrectionModel, ForecastConfig, Location, Observation, Point, Run, SimInputs, Skill,
@@ -19,6 +24,46 @@ use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, DeviceRow, Store, StoreError};
 use crate::weather::{self, OPEN_METEO, WeatherConfig};
+
+/// The first run waits for the core to settle; later runs retry days the archive had not settled.
+const FIRST_AFTER: Duration = Duration::from_mins(2);
+const EVERY: Duration = Duration::from_hours(12);
+
+/// What the learn task runs each time: [`learn_logged`] outside tests.
+pub(crate) type Job = for<'a> fn(&'a Core) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+
+/// [`learn_once`] with its failure logged.
+pub(crate) fn learn_logged(core: &Core) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+    Box::pin(async move {
+        if let Err(error) = learn_once(core).await {
+            tracing::error!(%error, "forecast correction learn failed");
+        }
+    })
+}
+
+/// Runs `job` after [`FIRST_AFTER`] and then every [`EVERY`] until `stopped` changes, which also drops a run
+/// in flight, or until `job` has nothing to run.
+pub(crate) async fn schedule<F, R>(mut job: F, mut stopped: watch::Receiver<bool>)
+where
+    F: FnMut() -> Option<R>,
+    R: Future<Output = ()>,
+{
+    let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + FIRST_AFTER, EVERY);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => return,
+            _ = ticker.tick() => {}
+        }
+        let Some(run) = job() else { return };
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => return,
+            () = run => {}
+        }
+    }
+}
 
 const PV_ROLE: &str = "pv.total.power";
 const HOUR_MS: i64 = 3_600_000;
@@ -61,23 +106,27 @@ pub async fn stored(store: &Store) -> Result<Option<(CorrectionModel, Option<Lea
 }
 
 /// What a run learns for: the primary inverter, its arrays as the model reads them and its total PV metric.
-struct Unit {
+struct Target {
     device: i64,
     model: ForecastConfig,
     pv_key: String,
 }
 
+/// The model over only the arrays wired into the inverter `slug`, its nameplate theirs alone.
+fn own_model(config: &WeatherConfig, slug: &str) -> ForecastConfig {
+    let mut own = config.clone();
+    own.forecast.arrays.retain(|a| a.device_slug.as_deref() == Some(slug));
+    own.model()
+}
+
 /// None while the primary inverter has no arrays or no total PV power.
-async fn unit(core: &Core, config: &WeatherConfig) -> Result<Option<Unit>, StoreError> {
+async fn target(core: &Core, config: &WeatherConfig) -> Result<Option<Target>, StoreError> {
     let devices = core.store.devices().await?;
     let Some(device) = primary(&devices) else { return Ok(None) };
-    let slug = device.id.to_string();
-    let own = config.forecast.arrays.iter().map(|a| a.device_slug.as_deref() == Some(slug.as_str()));
-    let mut model = config.model();
-    model.arrays = model.arrays.into_iter().zip(own).filter(|(_, own)| *own).map(|(a, _)| a).collect();
+    let model = own_model(config, &device.id.to_string());
     let profile = core.profile(&device.profile_id).await?;
     let pv = profile.as_ref().and_then(|p| p.metrics.iter().find(|m| m.role.as_deref() == Some(PV_ROLE)));
-    Ok(pv.filter(|_| !model.arrays.is_empty()).map(|pv| Unit {
+    Ok(pv.filter(|_| !model.arrays.is_empty()).map(|pv| Target {
         device: device.id,
         model,
         pv_key: pv.key.clone(),
@@ -88,11 +137,11 @@ async fn unit(core: &Core, config: &WeatherConfig) -> Result<Option<Unit>, Store
 /// be had, logged.
 async fn modelled(
     core: &Core,
-    unit: &Unit,
+    target: &Target,
     location: Location,
     days: (Date, Date),
 ) -> Option<(Vec<Point>, TimeZone)> {
-    let planes: Vec<open_meteo::Plane> = unit.model.arrays.iter().map(|a| (a.tilt, a.azimuth)).collect();
+    let planes: Vec<open_meteo::Plane> = target.model.arrays.iter().map(|a| (a.tilt, a.azimuth)).collect();
     let fetched = open_meteo::fetch_archive(&core.archive_url, &core.roots, location, &planes, days).await;
     let fetched = fetched
         .inspect_err(
@@ -105,7 +154,7 @@ async fn modelled(
         return None;
     };
     let run = Run { time_zone: &TimeZone::UTC, now_ms: 0, sim: SimInputs::default(), correction: None };
-    let built = forecast::build(&unit.model, &fetched.irradiance, OPEN_METEO, &run);
+    let built = forecast::build(&target.model, &fetched.irradiance, OPEN_METEO, &run);
     let built =
         built.inspect_err(|error| tracing::warn!(%error, "correction archive series unusable")).ok()?;
     Some((built.raw.series, zone))
@@ -115,23 +164,23 @@ async fn modelled(
 pub async fn learn_once(core: &Core) -> Result<Outcome, StoreError> {
     let config = weather::read(&core.store).await?;
     let Some(location) = config.forecast_ready() else { return Ok(Outcome::Idle) };
-    let Some(unit) = unit(core, &config).await? else { return Ok(Outcome::Idle) };
-    let (mut model, state) = core.store.correction(unit.device).await?;
+    let Some(target) = target(core, &config).await? else { return Ok(Outcome::Idle) };
+    let (mut model, state) = core.store.correction(target.device).await?;
     let Some(days) = window(state.map(|s| s.learned_through), core.now_ms()) else {
         return Ok(Outcome::UpToDate);
     };
-    let Some((series, zone)) = modelled(core, &unit, location, days).await else {
+    let Some((series, zone)) = modelled(core, &target, location, days).await else {
         return Ok(Outcome::FetchFailed);
     };
-    let measured = measured(&core.store, unit.device, &unit.pv_key, &series).await?;
+    let measured = measured(&core.store, target.device, &target.pv_key, &series).await?;
     let paired = observations(&series, &measured, &zone, days);
     let Some(&(through, _)) = paired.last() else { return Ok(Outcome::NoMeasuredHours) };
     let hours: Vec<Observation> = paired.into_iter().map(|(_, o)| o).collect();
-    let nameplate_w = unit.model.arrays.iter().map(|a| a.kwp).sum::<f64>() * 1000.0;
+    let nameplate_w = target.model.arrays.iter().map(|a| a.kwp).sum::<f64>() * 1000.0;
     let skill = state.map(|s| s.skill).unwrap_or_default();
-    let fold = model.learn(skill, &hours, nameplate_w, unit.model.max_output_w);
+    let fold = model.learn(skill, &hours, nameplate_w, target.model.max_output_w);
     let state = LearnState { learned_through: through, skill: fold.skill };
-    core.store.save_correction(unit.device, &model, &fold.touched, &state).await?;
+    core.store.save_correction(target.device, &model, &fold.touched, &state).await?;
     tracing::info!(hours = hours.len(), %through, cells = fold.touched.len(), "forecast correction learned");
     Ok(Outcome::Learned { hours: hours.len(), through })
 }
@@ -203,7 +252,12 @@ fn observations(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
     use jiff::civil::date;
+    use tokio::sync::watch;
 
     use super::*;
 
@@ -217,6 +271,118 @@ mod tests {
 
     fn point(time: &str, watts: f64) -> Point {
         Point { time: time.into(), watts, peak_watts: watts }
+    }
+
+    /// Counts the job's runs; each one finishes at once.
+    fn counted() -> (Arc<AtomicUsize>, impl FnMut() -> Option<std::future::Ready<()>>) {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&runs);
+        (runs, move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Some(std::future::ready(()))
+        })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_job_first_runs_after_two_minutes_then_every_twelve_hours_and_never_after_a_stop() {
+        let (runs, job) = counted();
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(schedule(job, stopped));
+        tokio::time::sleep(Duration::from_secs(119)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 0, "before 2 min");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "at 2 min");
+        tokio::time::sleep(Duration::from_secs(12 * 3600 - 2)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "before 12 h later");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 2, "12 h later");
+        stop.send_replace(true);
+        task.await.expect("schedule");
+        tokio::time::sleep(Duration::from_hours(48)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 2, "after the stop");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_before_the_first_run_ends_the_task_with_no_run() {
+        let (runs, job) = counted();
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(schedule(job, stopped));
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        stop.send_replace(true);
+        task.await.expect("schedule");
+        assert_eq!(runs.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_during_a_stalled_run_ends_the_task() {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&runs);
+        let stalled = move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Some(std::future::pending::<()>())
+        };
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(schedule(stalled, stopped));
+        tokio::time::sleep(Duration::from_secs(180)).await;
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "a run is in flight");
+        stop.send_replace(true);
+        let ended = tokio::time::timeout(Duration::from_hours(1), task).await;
+        assert!(matches!(ended, Ok(Ok(()))), "the stop drops the stalled run");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_job_with_nothing_to_run_ends_the_task() {
+        let (_stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(schedule(|| None::<std::future::Ready<()>>, stopped));
+        let ended = tokio::time::timeout(Duration::from_hours(1), task).await;
+        assert!(matches!(ended, Ok(Ok(()))));
+    }
+
+    static CORE_RUNS: AtomicUsize = AtomicUsize::new(0);
+
+    fn count_core_run(_: &Core) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {
+            CORE_RUNS.fetch_add(1, Ordering::SeqCst);
+        })
+    }
+
+    #[tokio::test]
+    async fn a_core_learns_once_per_tick_however_often_its_settings_are_applied() {
+        let dir = std::env::temp_dir().join(format!("sunreye-learn-core-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        let core = Core::open_learning(&dir, count_core_run).await.expect("core");
+        core.apply().await.expect("apply");
+        core.apply().await.expect("apply");
+        // Paused only now: the store's pool times out on a clock that leaps while it opens.
+        tokio::time::pause();
+        tokio::time::sleep(Duration::from_secs(150)).await;
+        assert_eq!(CORE_RUNS.load(Ordering::SeqCst), 1, "one run at 2 min");
+        core.stop().await;
+        tokio::time::sleep(Duration::from_hours(24)).await;
+        assert_eq!(CORE_RUNS.load(Ordering::SeqCst), 1, "none after the stop");
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    fn array(slug: &str, kwp: f64, azimuth: f64) -> weather::PvArray {
+        weather::PvArray {
+            kwp,
+            tilt: 30.0,
+            azimuth,
+            device_slug: Some(slug.into()),
+            temp_coefficient: None,
+            system_loss: None,
+            mppt: None,
+        }
+    }
+
+    #[test]
+    fn a_run_models_only_the_arrays_wired_into_its_inverter() {
+        let mut config = weather::compose(weather::PlantSettings::default(), &[], &BTreeMap::new());
+        config.forecast.arrays = vec![array("2", 3.0, -90.0), array("1", 5.0, 0.0), array("1", 2.0, 90.0)];
+        let model = own_model(&config, "1");
+        let own: Vec<_> = model.arrays.iter().map(|a| (a.kwp, a.azimuth)).collect();
+        assert_eq!(own, [(5.0, 0.0), (2.0, 90.0)]);
+        assert_eq!(own_model(&config, "3").arrays, []);
     }
 
     #[test]

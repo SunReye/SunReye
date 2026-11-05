@@ -12,6 +12,7 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
+use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
 use crate::open_meteo;
@@ -77,35 +78,42 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now_ms, open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into())
-            .await
+        let urls = (open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into());
+        Self::open_clocked(data_dir, roots, now_ms, urls, learn::learn_logged).await
     }
 
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, Vec::new(), now, open_meteo::URL.into(), UNREACHABLE.into()).await
+        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        Self::open_clocked(data_dir, Vec::new(), now, urls, learn::learn_logged).await
     }
 
-    /// [`Core::open`] fetching the forecast from `forecast_url` and the archive from its `/v1/archive`, trusting
-    /// `roots`, the clock where `now` says.
+    /// [`Core::open_at`] on the wall clock, learning with `job`.
+    #[cfg(test)]
+    pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
+        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        Self::open_clocked(data_dir, Vec::new(), now_ms, urls, job).await
+    }
+
+    /// [`Core::open`] fetching the forecast and the archive from `urls`, trusting `roots`, the clock where `now`
+    /// says.
     #[cfg(test)]
     pub(crate) async fn open_forecasting(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        forecast_url: String,
+        urls: (String, String),
         now: fn() -> i64,
     ) -> Result<Arc<Self>, RunError> {
-        let archive_url = forecast_url.replace("/v1/forecast", "/v1/archive");
-        Self::open_clocked(data_dir, roots, now, forecast_url, archive_url).await
+        Self::open_clocked(data_dir, roots, now, urls, learn::learn_logged).await
     }
 
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
-        forecast_url: String,
-        archive_url: String,
+        (forecast_url, archive_url): (String, String),
+        learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
@@ -129,7 +137,7 @@ impl Core {
             retention,
             learning: Mutex::new(None),
         });
-        *core.learning.lock().await = Some(spawn_learning(&core));
+        *core.learning.lock().await = Some(spawn_learning(&core, learn));
         core.apply().await?;
         Ok(core)
     }
@@ -333,32 +341,12 @@ async fn retain_now(store: &Store, now_ms: i64) {
     }
 }
 
-/// The first learn run waits for the core to settle; reanalysis lands once a day.
-const LEARN_FIRST_AFTER: Duration = Duration::from_mins(2);
-const LEARN_EVERY: Duration = Duration::from_hours(12);
-
 /// Holds the core weakly, so the task never keeps it from stopping.
-fn spawn_learning(core: &Arc<Core>) -> Running {
-    let (stop, mut stopped) = watch::channel(false);
+fn spawn_learning(core: &Arc<Core>, job: learn::Job) -> Running {
+    let (stop, stopped) = watch::channel(false);
     let core = Arc::downgrade(core);
     let mut tasks = JoinSet::new();
-    tasks.spawn(async move {
-        let start = tokio::time::Instant::now() + LEARN_FIRST_AFTER;
-        let mut ticker = tokio::time::interval_at(start, LEARN_EVERY);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        loop {
-            tokio::select! {
-                biased;
-                _ = stopped.changed() => break,
-                _ = ticker.tick() => {
-                    let Some(core) = core.upgrade() else { break };
-                    if let Err(error) = crate::learn::learn_once(&core).await {
-                        tracing::error!(%error, "forecast correction learn failed");
-                    }
-                }
-            }
-        }
-    });
+    tasks.spawn(learn::schedule(move || core.upgrade().map(|core| async move { job(&core).await }), stopped));
     Running { stop, tasks }
 }
 
@@ -450,7 +438,7 @@ impl DeviceTask {
     }
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     i64::try_from(since_epoch.as_millis()).unwrap_or(i64::MAX)
 }
@@ -622,7 +610,7 @@ mod tests {
         let dir = dir("two-devices");
         let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
         let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         until_polled(&core, first, 2).await;
         until_polled(&core, second, 2).await;
 
@@ -660,7 +648,7 @@ mod tests {
         let dir = dir("retired");
         let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
         let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         until_polled(&core, retired, 2).await;
 
         let retire =
@@ -691,7 +679,7 @@ mod tests {
         let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
         let dir = dir("restart-held");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "20").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         wait_for_requests(&sim, 20).await;
         let held = core.unstored.held(device);
         assert!(!held.is_empty(), "the poll loop holds what it has not stored");
@@ -738,7 +726,7 @@ mod tests {
         drop(free);
         let dir = dir("held-while-writing");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         // Now, so the retention pass started by `open` keeps it.
         let at_ms = core.now_ms();
         core.unstored.push(device, Sample { at_ms, values: vec![("pv".into(), 1.0)] });
@@ -799,7 +787,7 @@ mod tests {
     async fn a_settings_change_runs_no_retention_pass() {
         let dir = dir("apply-retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let core = Core::open(&dir).await.expect("open");
+        let core = Core::open_at(&dir, now_ms).await.expect("open");
         tokio::time::sleep(Duration::from_millis(200)).await;
         let at_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
         let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };

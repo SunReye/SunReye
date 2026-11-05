@@ -103,7 +103,7 @@ pub(super) fn model(max_output_w: Option<f64>) -> ForecastConfig {
 /// Answers a forecast request with the payload and an archive request with the archive payload, or 500 while
 /// failing; counts what it was asked.
 pub(super) struct StandIn {
-    url: String,
+    urls: (String, String),
     pub(super) hits: Arc<AtomicUsize>,
     pub(super) failing: Arc<AtomicBool>,
     pub(super) paths: Arc<Mutex<Vec<String>>>,
@@ -123,7 +123,9 @@ async fn stand_in(ca: &Ca) -> StandIn {
             tokio::spawn(answer_one(tls.clone(), tcp, seen.clone()));
         }
     });
-    StandIn { url: format!("https://localhost:{port}/v1/forecast"), hits, failing, paths }
+    let urls =
+        (format!("https://localhost:{port}/v1/forecast"), format!("https://localhost:{port}/v1/archive"));
+    StandIn { urls, hits, failing, paths }
 }
 
 async fn answer_one(
@@ -152,7 +154,7 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     let ca = Ca::new("forecast test CA");
     let standin = stand_in(&ca).await;
     let core =
-        Core::open_forecasting(&dir(name), vec![ca.root()], standin.url.clone(), now).await.expect("core");
+        Core::open_forecasting(&dir(name), vec![ca.root()], standin.urls.clone(), now).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
     let port = unused_port().await;
