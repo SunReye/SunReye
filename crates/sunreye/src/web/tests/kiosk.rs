@@ -3,8 +3,9 @@ use tokio::sync::OwnedSemaphorePermit;
 use super::*;
 
 /// What the dashboard reads, each as a request that answers 200 to a session.
-const DASHBOARD_READS: [&str; 4] = [
+const DASHBOARD_READS: [&str; 5] = [
     "/api/capabilities",
+    "/api/sources",
     "/api/profile",
     "/api/history/recent",
     "/api/history/rollup?metric=pv_power&bucket=minute",

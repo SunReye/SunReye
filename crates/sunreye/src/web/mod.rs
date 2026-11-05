@@ -87,6 +87,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(setup::capabilities))
         .routes(routes!(setup::manifest))
+        .routes(routes!(plant::sources))
         .routes(routes!(history::recent))
         .routes(routes!(rollup::buckets))
         .route("/ws", get(ws::upgrade))
@@ -97,7 +98,6 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(auth::current, auth::logout))
-        .routes(routes!(plant::sources))
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .routes(routes!(forecast::correction))
