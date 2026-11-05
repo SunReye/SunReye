@@ -14,7 +14,7 @@ Setup, launch and tuning live in `docs/factory.md`. Read `scripts/factory/factor
 3. **Disk.** `disk.level` `red`: run `scripts/factory/factory gc --aggressive` and dispatch no build work this tick (no claim, checkout or integrator). `amber`: run `scripts/factory/factory gc` and claim no new tickets.
 4. **Merge.** For each PR in `prs.merging` (a train PR GitHub was slow to accept): `scripts/factory/factory merge <pr>`.
 5. **Train.** If `free_slots.merge` and `prs.approved` are not empty and `prs.merging` is (a train built before that PR lands would stop on `stale-base`): run `scripts/factory/factory guard-golden <pr>` for each approved PR; where `ok` is false, write the touched paths to `.factory/reviews/<pr>-golden.md` and run `factory verdict <pr> changes`. Then `scripts/factory/factory train` (up to `max_train_prs` approved PRs, largest first; remaining PRs go in the next train) and spawn **factory-integrator** with that JSON.
-6. **Review.** For each PR in `prs.review` with no `review:<pr>` entry in `runs`, up to `max_parallel_reviews` running: `scripts/factory/factory run start review <pr>`, then spawn reviewers (prompt: `pr`, `issue`, `branch`):
+6. **Review.** For each PR in `prs.review` with no `review:<pr>` entry in `runs`, up to `max_parallel_reviews` running: `scripts/factory/factory run start review <pr>`, then spawn reviewers. The agent definitions carry the scratch, budget and gate rules; the prompt is `pr`, `issue`, `branch` plus ticket-specific points only:
    - `deep` PR: **factory-reviewer-spec** (pass `model: opus`, `effort: medium`) and **factory-reviewer-standards** in one message.
    - `std` PR: one **factory-reviewer-spec** that also covers the standards axis (prompt it to read `AGENTS.md`, the area guides and the smell baseline, and to write both `<pr>-spec.md` and `<pr>-standards.md`); its reply opens with one `VERDICT` line.
    - Re-review fix rounds against the previous findings and changed behavior; test-only and documentation changes still need a verdict.
@@ -28,6 +28,7 @@ Setup, launch and tuning live in `docs/factory.md`. Read `scripts/factory/factor
 11. **Wake.** `done` true and nothing dispatched: stop the loop and report the `human` list. Agents running: schedule a long fallback (1800 s); their completions wake you sooner. Only CI pending: 300 s. Otherwise 900 s.
 
 - **Parents.** An open ticket titled `Epic:` or whose body lists child tickets, with every child closed, is closed with a one-line comment naming the children; never build it. Do this before claiming from the frontier.
+- **Rate limit.** A stop whose summary names `rate_limit` (HTTP 429, "weekly limit") is not a failure: do not call `factory fail`, dispatch nothing new until the stated reset time, then resume each agent with `SendMessage` and a one-line brief.
 - **Train isolation.** Merge into the configured base only between trains. A slow or failed gate remains unresolved: read its log and repair or drop the responsible PR. Landing requires every applicable gate to pass; elapsed time never substitutes for verification.
 
 
