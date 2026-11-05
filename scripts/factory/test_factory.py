@@ -320,6 +320,15 @@ def git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
 
 
+def init_repo(root):
+    """A repository with one commit that ignores `.factory/` the way the real one does."""
+    git(root, "init", "-q")
+    (Path(root) / ".gitignore").write_text("/.factory/\nignored.txt\n")
+    git(root, "add", ".gitignore")
+    git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
+    return git(root, "rev-parse", "HEAD")
+
+
 class Origin:
     """Bare origin with a staging branch, a clone acting as the train slot, and PR branches."""
 
@@ -581,6 +590,7 @@ class LocalCommands(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
+        init_repo(self.root)
         cwd = Path.cwd()
         os.chdir(self.root)
         self.addCleanup(os.chdir, cwd)
@@ -601,7 +611,7 @@ class LocalCommands(unittest.TestCase):
             code, result = run(factory.main, ["gate"])
         self.assertEqual(code, 0)
         self.assertEqual((self.root / "steps").read_text(), "gate\n")
-        self.assertFalse((self.root / ".factory").exists())
+        self.assertFalse((self.root / ".factory" / "state.json").exists())
 
     def test_train_gate_runs_regular_gate_then_train_commands(self):
         run(factory.main, ["gate", "--train"])
@@ -609,9 +619,8 @@ class LocalCommands(unittest.TestCase):
 
     def test_gate_failure_stops_before_other_commands(self):
         self.cfg["commands"]["gate"] = [[sys.executable, "-c", "raise SystemExit(7)"], self.record("later")]
-        with self.assertRaises(subprocess.CalledProcessError) as failure:
-            factory.main(["gate", "--train"])
-        self.assertEqual(failure.exception.returncode, 7)
+        code, _ = run(factory.main, ["gate", "--train"])
+        self.assertEqual(code, 7)
         self.assertFalse((self.root / "steps").exists())
 
     def test_empty_gate_refuses_to_report_success(self):
@@ -629,7 +638,162 @@ class LocalCommands(unittest.TestCase):
         with mock.patch.object(factory, "Forge", side_effect=AssertionError("config authenticated")):
             code, result = run(factory.main, ["config"])
         self.assertEqual(result["repo"], "SunReye/SunReye")
-        self.assertFalse((self.root / ".factory").exists())
+        self.assertFalse((self.root / ".factory" / "state.json").exists())
+
+
+class GateRecord(unittest.TestCase):
+    """A gate leaves `.factory/gates/<head-sha>.json`; `gate-result` answers from it for a clean tree only."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.sha = init_repo(self.root)
+        self.record_path = self.root / ".factory" / "gates" / f"{self.sha}.json"
+        cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, cwd)
+        self.cfg = {**factory.CFG, "commands": {"gate": [self.step("pass"), self.step("x = 1")],
+                                                "train_gate": [self.step("y = 2")]}}
+        for patcher in (mock.patch.object(factory, "CFG", self.cfg),
+                        mock.patch.object(subprocess.Popen, "__del__", lambda proc: None),
+                        mock.patch.dict(os.environ, {"FACTORY_SLOT": "impl-1"}),
+                        mock.patch.object(slots, "GATE_WAIT_SECONDS", 20),
+                        mock.patch.object(slots, "GATE_POLL_SECONDS", 0.02)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def step(self, code):
+        return [sys.executable, "-c", code]
+
+    def gate(self, *args):
+        with contextlib.redirect_stderr(io.StringIO()):
+            return run(factory.main, ["gate", *args])
+
+    def result(self, sha=None):
+        return run(factory.main, ["gate-result", sha or self.sha])
+
+    def recorded(self):
+        return json.loads(self.record_path.read_text())
+
+    def test_a_passing_gate_records_ok_steps_with_durations_and_finish_time(self):
+        self.gate()
+        record = self.recorded()
+        self.assertEqual((record["sha"], record["ok"], record["train"]), (self.sha, True, False))
+        self.assertEqual([s["ok"] for s in record["steps"]], [True, True])
+        self.assertEqual([s["command"] for s in record["steps"]],
+                         [f"{sys.executable} -c pass", f"{sys.executable} -c 'x = 1'"])
+        self.assertTrue(all(s["seconds"] >= 0 for s in record["steps"]))
+        self.assertRegex(record["finished_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+    def test_gate_result_prints_the_record_and_exits_zero_for_a_pass(self):
+        self.gate()
+        code, printed = self.result()
+        self.assertEqual((code, printed), (0, self.recorded()))
+
+    def test_a_failing_gate_is_recorded_and_still_fails(self):
+        self.cfg["commands"]["gate"] = [self.step("pass"), self.step("raise SystemExit(4)"), self.step("print('x')")]
+        code, _ = self.gate()
+        self.assertEqual(code, 4)
+        record = self.recorded()
+        self.assertEqual((record["ok"], [s["ok"] for s in record["steps"]]), (False, [True, False]))
+
+    def test_gate_result_prints_a_failed_record_and_exits_one(self):
+        self.cfg["commands"]["gate"] = [self.step("raise SystemExit(4)")]
+        self.gate()
+        code, printed = self.result()
+        self.assertEqual((code, printed["ok"]), (1, False))
+
+    def test_a_sha_never_gated_is_absent(self):
+        code, printed = self.result()
+        self.assertIn("no gate record", str(code))
+        self.assertIsNone(printed)
+
+    def test_an_unknown_ref_is_absent(self):
+        code, _ = self.result("0" * 40)
+        self.assertIn("no gate record", str(code))
+
+    def test_an_abbreviated_sha_finds_the_record(self):
+        self.gate()
+        code, printed = self.result(self.sha[:10])
+        self.assertEqual((code, printed["sha"]), (0, self.sha))
+
+    def test_a_new_commit_does_not_inherit_the_record(self):
+        self.gate()
+        (self.root / "more.txt").write_text("x")
+        git(self.root, "add", "more.txt")
+        git(self.root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "more")
+        code, _ = self.result("HEAD")
+        self.assertIn("no gate record", str(code))
+
+    def test_the_train_flag_records_the_train_steps(self):
+        self.gate("--train")
+        record = self.recorded()
+        self.assertEqual((record["train"], len(record["steps"])), (True, 3))
+
+    def test_a_modified_tracked_file_never_matches(self):
+        self.gate()
+        (self.root / ".gitignore").write_text("/.factory/\n")
+        code, _ = self.result()
+        self.assertIn("uncommitted", str(code))
+
+    def test_an_untracked_file_never_matches(self):
+        self.gate()
+        (self.root / "new.txt").write_text("x")
+        code, _ = self.result()
+        self.assertIn("uncommitted", str(code))
+
+    def test_an_ignored_file_does_not_break_the_match(self):
+        self.gate()
+        (self.root / "ignored.txt").write_text("x")
+        code, _ = self.result()
+        self.assertEqual(code, 0)
+
+    def test_a_dirty_tree_refuses_a_recorded_sha_by_its_full_name(self):
+        self.gate()
+        (self.root / "new.txt").write_text("x")
+        code, _ = self.result(self.sha)
+        self.assertIn("uncommitted", str(code))
+
+    def test_a_gate_run_on_a_dirty_tree_records_nothing(self):
+        (self.root / "new.txt").write_text("x")
+        code, _ = self.gate()
+        self.assertEqual(code, 0)
+        self.assertFalse(self.record_path.exists())
+
+    def test_a_gate_that_dirties_the_tree_records_nothing(self):
+        self.cfg["commands"]["gate"] = [self.step("open('made.txt', 'w').write('x')")]
+        self.gate()
+        self.assertFalse(self.record_path.exists())
+
+    def test_a_gate_that_commits_records_nothing(self):
+        self.cfg["commands"]["gate"] = [self.step(
+            "import subprocess; subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', "
+            "'commit', '-q', '--allow-empty', '-m', 'mid'], check=True)")]
+        self.gate()
+        self.assertFalse(self.record_path.exists())
+        self.assertEqual(list((self.root / ".factory" / "gates").glob("*.json")), [])
+
+    def test_a_detached_gate_writes_the_same_record(self):
+        self.gate()
+        foreground = self.recorded()
+        self.record_path.unlink()
+        run(factory.main, ["gate", "--detach"])
+        self.assertEqual(run(factory.main, ["gate-wait"])[1], {"status": "passed", "exit": 0})
+        detached = self.recorded()
+        self.assertEqual(detached.keys(), foreground.keys())
+        self.assertEqual([s["command"] for s in detached["steps"]], [s["command"] for s in foreground["steps"]])
+        self.assertEqual(self.result()[0], 0)
+
+    def test_a_detached_failure_is_recorded_and_reported(self):
+        self.cfg["commands"]["gate"] = [self.step("raise SystemExit(6)")]
+        run(factory.main, ["gate", "--detach"])
+        self.assertEqual(run(factory.main, ["gate-wait"])[1]["exit"], 6)
+        self.assertEqual((self.recorded()["ok"], self.result()[0]), (False, 1))
+
+    def test_gate_result_without_one_sha_refuses(self):
+        code, _ = run(factory.main, ["gate-result"])
+        self.assertIn("usage: factory gate-result <sha>", str(code))
 
 
 class DetachedGate(unittest.TestCase):
@@ -639,7 +803,7 @@ class DetachedGate(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        init_repo(self.root)
         cwd = Path.cwd()
         os.chdir(self.root)
         self.addCleanup(os.chdir, cwd)
