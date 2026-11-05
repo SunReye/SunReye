@@ -233,7 +233,7 @@ const KIOSK_READS = ["capabilities", "profile", "history/recent", "history/rollu
 type GateKey = "role" | "kiosk" | "needsSetup" | "needsProfile" | "migration";
 
 /** Consecutive request-free frames that count as quiet: past a fetch's answer and the render it causes. */
-const CALM_FRAMES = 24;
+const CALM_FRAMES = 120;
 
 export interface MockBackend {
   /** The manifest this instance serves. */

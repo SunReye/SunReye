@@ -93,9 +93,9 @@ test("a dropped socket reconnects, after a pause, and resubscribes", async ({ pa
   // connection — the server's topic list is per-socket, so a reconnect that
   // did not resubscribe would be a socket that never delivers another frame.
   await advance(page, 1);
+  expect(backend.socketOpens).toBe(2);
   await page.clock.resume();
   await backend.waitForLive();
-  expect(backend.socketOpens).toBe(2);
   await backend.pushMetrics();
 });
 
@@ -114,10 +114,12 @@ test("a healthy connection resets the backoff, so the second outage is not slowe
   await freeze(page);
 
   await dropAndAwaitClose(page, backend, 1);
-  await advance(page, BASE_BACKOFF_MS);
+  await advance(page, BASE_BACKOFF_MS - 1);
+  expect(backend.socketOpens).toBe(1);
+  await advance(page, 1);
+  expect(backend.socketOpens).toBe(2);
   await page.clock.resume();
   await backend.waitForLive();
-  expect(backend.socketOpens).toBe(2);
   await freeze(page);
 
   await dropAndAwaitClose(page, backend, 2);
@@ -128,8 +130,8 @@ test("a healthy connection resets the backoff, so the second outage is not slowe
   // had carried over, the timer would be at 2000 ms and this step would not
   // reach it.
   await advance(page, 1);
+  expect(backend.socketOpens).toBe(3);
   await page.clock.resume();
   await backend.waitForLive();
-  expect(backend.socketOpens).toBe(3);
   await backend.pushMetrics();
 });
