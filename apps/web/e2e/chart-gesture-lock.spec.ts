@@ -184,7 +184,7 @@ test("THE assertion: locked, a horizontal drag selects nothing and refetches not
   // answer one by refetching every card at a finer rollup. That is what a
   // brush-by-default does to a mis-swipe on a phone.
   expect(await chart.locator(".lc-brush-range").count()).toBe(0);
-  await page.waitForTimeout(500);
+  await backend.settled();
   expect(rollupCalls(backend).length).toBe(before);
 });
 

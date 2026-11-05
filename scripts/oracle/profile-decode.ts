@@ -29,6 +29,7 @@ import {
 } from "@SunReye/inverter-core";
 
 import { type CorpusFiles, ndjson } from "./corpus";
+import type { OracleGenerator } from "./registry";
 
 /** A metric as the decode needs it: a register binding or a compute expression. */
 export interface SlimMetric {
@@ -253,3 +254,12 @@ export async function buildProfileDecodeCorpus(dir: string): Promise<CorpusFiles
     ]),
   };
 }
+
+export const oracle: OracleGenerator = {
+  files: ["profile-decode.ndjson", "profile-manifest.ndjson", "role-kinds.ndjson"],
+  needsProfiles: true,
+  build: ({ profilesDir }) => {
+    if (profilesDir === null) throw new Error("no profile repository: set SUNREYE_PROFILES_DIR");
+    return buildProfileDecodeCorpus(profilesDir);
+  },
+};

@@ -99,7 +99,7 @@ describe("isTestFile", () => {
   // (since deleted) came to exist.
   test("a Playwright spec counts — for a rune shell it is the only test there is", () => {
     expect(isTestFile("apps/web/e2e/shell-lease-loop.spec.ts")).toBe(true);
-    expect(isTestFile("apps/web/e2e/history-scroll-mounts.spec.ts")).toBe(true);
+    expect(isTestFile("apps/web/e2e/history-readout-idle.spec.ts")).toBe(true);
   });
 
   // Scoped to an `e2e/` directory on purpose: `.spec.ts` is not a convention

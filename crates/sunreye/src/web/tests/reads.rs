@@ -169,15 +169,14 @@ async fn polled_simulator_readings_come_back_as_the_compact_series() {
     core.stop().await;
 
     let (core, admin) = open(&dir).await;
-    let before = std::time::SystemTime::now();
+    let before = core.now_ms();
     let answer = get(&admin, "/api/history/recent?seconds=300&stepSeconds=1").await;
+    let after = core.now_ms();
     assert_eq!(answer.status, StatusCode::OK);
     let body = answer.json();
     assert_eq!(body["step"], 1);
     let t0 = body["t0"].as_i64().expect("t0");
-    let now =
-        i64::try_from(before.duration_since(std::time::UNIX_EPOCH).expect("epoch").as_millis()).expect("ms");
-    assert!((now - 301_000..=now).contains(&t0), "t0 {t0} is inside the window");
+    assert!((before - 301_000..=after).contains(&t0), "t0 {t0} is inside the window");
     let metrics = body["metrics"].as_object().expect("metrics");
     assert_eq!(metrics.len(), case.readings.len());
     for (key, want) in &case.readings {

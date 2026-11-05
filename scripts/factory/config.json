@@ -17,7 +17,8 @@
     "*.gen.ts",
     "*_snapshot.json",
     "bun.lock",
-    "Cargo.lock"
+    "Cargo.lock",
+    "timing-baseline.json"
   ],
   "max_waiting_prs": 3,
   "max_train_prs": 5,
@@ -45,7 +46,8 @@
     "Cargo.lock",
     "*.gen.ts",
     "crates/sunreye/openapi_snapshot.json",
-    ".sqlx/*"
+    ".sqlx/*",
+    "scripts/timing-baseline.json"
   ],
   "commands": {
     "install": [
@@ -79,6 +81,11 @@
       ],
       [
         "scripts/sqlx-cache"
+      ],
+      [
+        "bun",
+        "scripts/timing-hygiene.ts",
+        "--write"
       ]
     ],
     "gate": [

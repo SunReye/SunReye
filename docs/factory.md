@@ -20,7 +20,7 @@ scripts/factory/factory config
 | `require_ci` | Refuse merging a PR whose current head has absent, pending or failed hosted checks |
 | `commands.install` | Runs when a slot has no `node_modules` |
 | `commands.prepare` | Runs on every slot checkout; empty for SunReye |
-| `commands.regenerate` | Runs on request after merges: `bun install`, the OpenAPI snapshot, the web client, then the `.sqlx` cache (`scripts/sqlx-cache`, which supplies the scratch database); area guides cover migrations |
+| `commands.regenerate` | Runs on request after merges: `bun install`, the OpenAPI snapshot, the web client, the `.sqlx` cache (`scripts/sqlx-cache`, which supplies the scratch database), then the timing baseline (`bun scripts/timing-hygiene.ts --write`); area guides cover migrations |
 | `commands.gate` | Required local checks; must contain at least one command |
 | `commands.train_gate` | Additional checks for the combined train, after the regular gate |
 | `clean_paths` | Slot-relative disposable directories deleted on release; `target` for SunReye |
@@ -74,7 +74,7 @@ Implementer shells are reniced using `slot_nice`; the merge slot keeps normal pr
 | Checkout | `git clean` keeps `target/` and `node_modules` |
 | After every agent | `factory release` deletes `clean_paths` (`target/`), and `node_modules` above `slot_node_modules_cap_gb` |
 | Each tick | free disk below `disk_pause_free_gb` (30): `gc`, no new tickets · below `disk_critical_free_gb` (15): `gc --aggressive`, no build work |
-| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune` |
+| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune`, removes the reviewers' shared `~/.cache/sunreye-review-target` when no review runs and free disk is below `disk_pause_free_gb` |
 | `scripts/ci` | heavy steps hold one of `CI_HEAVY_CAP` (2) machine-wide locks; database and route smoke share one exclusive lock |
 
 Never deleted: your own checkouts and their `target/`. Budget about 15 GB free disk per extra implementer slot.

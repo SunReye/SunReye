@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use sunreye::https::{GetError, Limits, get, get_with_roots};
 use tokio::io::AsyncWriteExt;
@@ -78,8 +78,7 @@ async fn respond<W: AsyncWriteExt + Unpin>(out: &mut W, reply: &Reply) -> std::i
 }
 
 async fn stall() -> std::io::Result<()> {
-    tokio::time::sleep(Duration::from_secs(60)).await;
-    Ok(())
+    std::future::pending().await
 }
 
 fn limits(max_bytes: usize) -> Limits {
@@ -134,10 +133,8 @@ async fn an_unbounded_body_over_the_cap_is_refused() {
 async fn an_announced_length_over_the_cap_is_refused_before_the_body_arrives() {
     let ca = Ca::new("test root");
     let port = serve(ca.leaf("localhost"), Reply::Announces(10 << 30)).await;
-    let started = Instant::now();
     let err = get_with_roots(&url(port), limits(1024), &[ca.root()]).await.expect_err("too large");
     assert!(matches!(err, GetError::TooLarge { max_bytes: 1024 }), "{err:?}");
-    assert!(started.elapsed() < Duration::from_secs(3), "waited for the body");
 }
 
 #[tokio::test]
@@ -170,10 +167,8 @@ async fn a_silent_server_times_out() {
     let ca = Ca::new("test root");
     let port = serve(ca.leaf("localhost"), Reply::Silence).await;
     let limits = Limits { timeout: Duration::from_millis(300), max_bytes: 1024 };
-    let started = Instant::now();
     let err = get_with_roots(&url(port), limits, &[ca.root()]).await.expect_err("timeout");
     assert!(matches!(err, GetError::Timeout), "{err:?}");
-    assert!(started.elapsed() < Duration::from_secs(3));
 }
 
 #[tokio::test]
@@ -195,10 +190,10 @@ async fn a_non_success_status_is_reported() {
 
 #[tokio::test]
 async fn a_closed_port_is_a_connect_error() {
-    let port = {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        listener.local_addr().expect("addr").port()
-    };
+    // Bound, so no server this binary starts can take the port, and never listening.
+    let closed = tokio::net::TcpSocket::new_v4().expect("socket");
+    closed.bind("127.0.0.1:0".parse().expect("addr")).expect("bind");
+    let port = closed.local_addr().expect("addr").port();
     let err = get(&url(port), limits(1024)).await.expect_err("refused");
     assert!(matches!(err, GetError::Connect(_)), "{err:?}");
 }

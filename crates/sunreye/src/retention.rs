@@ -1,6 +1,11 @@
 //! How long each tier is kept, from core settings, and the pass that drops what is older (ADR 0004).
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use jiff::Timestamp;
+use tokio::sync::watch;
+use tokio::time::MissedTickBehavior;
 
 use crate::rollup::Tier;
 use crate::settings::positive;
@@ -52,6 +57,36 @@ fn days_before(now: Timestamp, days: u64) -> Timestamp {
     Timestamp::from_microsecond(now.as_microsecond().saturating_sub(back)).unwrap_or(Timestamp::MIN)
 }
 
+const RETENTION_EVERY: Duration = Duration::from_hours(1);
+
+/// Runs the retention pass at start and hourly until `stopped` changes.
+pub(crate) async fn hourly(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Receiver<bool>) {
+    let mut ticker = tokio::time::interval(RETENTION_EVERY);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => break,
+            _ = ticker.tick() => retain_now(&store, now()).await,
+        }
+    }
+}
+
+async fn retain_now(store: &Store, now_ms: i64) {
+    let Some(now) = instant(now_ms) else { return };
+    if let Err(error) = retain(store, now).await {
+        tracing::error!(%error, "retention pass failed");
+    }
+}
+
+fn instant(now_ms: i64) -> Option<Timestamp> {
+    let now = Timestamp::from_millisecond(now_ms);
+    if now.is_err() {
+        tracing::error!(now_ms, "clock out of range, retention pass skipped");
+    }
+    now.ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +135,13 @@ mod tests {
 
     async fn starts(store: &Store, tier: Tier, device: i64) -> Vec<Timestamp> {
         store.buckets(tier, device, "power").await.expect("buckets").iter().map(|b| b.start).collect()
+    }
+
+    #[tokio::test]
+    async fn an_out_of_range_clock_skips_the_retention_pass() {
+        let (store, device) = with_readings(&["2026-05-07T22:00:00Z"]).await;
+        retain_now(&store, i64::MAX).await;
+        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 1);
     }
 
     #[tokio::test]

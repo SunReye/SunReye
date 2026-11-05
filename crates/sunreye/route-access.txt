@@ -20,6 +20,7 @@ GET /api/auth/session session
 GET /api/capabilities kiosk
 GET /api/devices admin
 GET /api/forecast session
+GET /api/forecast/correction session
 GET /api/forecast/providers admin
 GET /api/forecast/usable session
 GET /api/history/recent kiosk

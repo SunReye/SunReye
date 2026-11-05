@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO forecast_correction_cell (device_id, month, hour, ratio, weight)\n                 VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "695910720c67cd1fb8ef8a56a60cd6ed7f817f549c49f20cddd56eedfa2632c9"
+}

@@ -9,25 +9,30 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// A store directory of its own, so no test writes into the working directory or shares a file.
+/// A store directory of its own, so no test, in this process or a parallel one, shares a file.
 fn fresh_data_dir() -> std::path::PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("cli-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "cli-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }
 
-fn spawn(args: &[&str]) -> Child {
-    Command::new(BIN)
-        .args(args)
-        .args(["--listen", "127.0.0.1:0"])
-        .arg("--data-dir")
-        .arg(fresh_data_dir())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn sunreye")
+fn spawn(args: &[&str]) -> Running {
+    Running(
+        Command::new(BIN)
+            .args(args)
+            .args(["--listen", "127.0.0.1:0"])
+            .arg("--data-dir")
+            .arg(fresh_data_dir())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sunreye"),
+    )
 }
 
 /// Waits for the startup line, which is logged after the signal handlers exist.
@@ -84,16 +89,16 @@ fn a_bad_log_level_exits_non_zero() {
 #[test]
 fn logs_its_version_and_exits_zero_on_sigterm() {
     let mut child = spawn(&[]);
-    let (line, _stderr) = started(&mut child);
+    let (line, _stderr) = started(&mut child.0);
     assert!(line.contains(VERSION), "startup line lacks the version: {line}");
-    assert!(signal(&child, "TERM").success());
-    assert!(child.wait().expect("wait").success());
+    assert!(signal(&child.0, "TERM").success());
+    assert!(child.0.wait().expect("wait").success());
 }
 
 #[test]
 fn logs_the_address_it_listens_on() {
     let mut child = spawn(&[]);
-    let (_line, mut stderr) = started(&mut child);
+    let (_line, mut stderr) = started(&mut child.0);
     let mut line = String::new();
     stderr.read_line(&mut line).expect("a listening line");
     assert!(line.contains("sunreye listening"), "{line}");
@@ -102,8 +107,8 @@ fn logs_the_address_it_listens_on() {
         !bound.starts_with("0 ") && !bound.starts_with('0'),
         "the bound port, not the requested one: {line}"
     );
-    assert!(signal(&child, "TERM").success());
-    assert!(child.wait().expect("wait").success());
+    assert!(signal(&child.0, "TERM").success());
+    assert!(child.0.wait().expect("wait").success());
 }
 
 #[test]
@@ -122,19 +127,19 @@ fn a_listen_address_already_served_exits_non_zero_and_says_so() {
 #[test]
 fn exits_zero_on_sigint() {
     let mut child = spawn(&["--log-level", "info"]);
-    let (_line, _stderr) = started(&mut child);
-    assert!(signal(&child, "INT").success());
-    assert!(child.wait().expect("wait").success());
+    let (_line, _stderr) = started(&mut child.0);
+    assert!(signal(&child.0, "INT").success());
+    assert!(child.0.wait().expect("wait").success());
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn log_level_error_silences_the_startup_line() {
     let mut child = spawn(&["--log-level", "error"]);
-    let stderr = child.stderr.take().expect("piped stderr");
-    // The handlers are installed before logging; give them a moment, then stop it.
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert!(signal(&child, "TERM").success());
-    let status = child.wait().expect("wait");
+    let stderr = child.0.stderr.take().expect("piped stderr");
+    serving(&mut child.0);
+    assert!(signal(&child.0, "TERM").success());
+    let status = child.0.wait().expect("wait");
     let mut logged = String::new();
     for line in BufReader::new(stderr).lines() {
         logged.push_str(&line.expect("readable"));
@@ -145,9 +150,11 @@ fn log_level_error_silences_the_startup_line() {
 
 #[test]
 fn an_unusable_data_dir_exits_non_zero_and_says_why() {
-    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not-a-directory");
+    let file = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("not-a-directory-{}", std::process::id()));
     std::fs::write(&file, b"x").expect("write");
-    let out = Command::new(BIN).arg("--data-dir").arg(&file).output().expect("run");
+    let out =
+        Command::new(BIN).args(["--listen", "127.0.0.1:0", "--data-dir"]).arg(&file).output().expect("run");
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("data directory"));
 }
@@ -158,28 +165,76 @@ fn port(listening: &str) -> u16 {
     digits.chars().rev().collect::<String>().parse().expect("a port")
 }
 
+/// A child killed when the test panics, so a failed run leaves no server behind.
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        drop(self.0.kill());
+        drop(self.0.wait());
+    }
+}
+
+/// The TCP port `pid` itself listens on: no other process can answer in its place.
+#[cfg(target_os = "linux")]
+fn listening_port(pid: u32) -> Option<u16> {
+    let sockets: Vec<String> = std::fs::read_dir(format!("/proc/{pid}/fd"))
+        .ok()?
+        .filter_map(|fd| std::fs::read_link(fd.ok()?.path()).ok())
+        .filter_map(|link| Some(link.to_str()?.strip_prefix("socket:[")?.strip_suffix(']')?.to_owned()))
+        .collect();
+    let table = std::fs::read_to_string("/proc/net/tcp").ok()?;
+    table.lines().skip(1).find_map(|row| {
+        let cols: Vec<&str> = row.split_whitespace().collect();
+        let listening =
+            cols.get(3) == Some(&"0A") && cols.get(9).is_some_and(|inode| sockets.iter().any(|s| s == inode));
+        listening.then(|| u16::from_str_radix(cols.get(1)?.split(':').nth(1)?, 16).ok()).flatten()
+    })
+}
+
+/// Returns once `child` answers on its own port, which is after it installed its signal handlers and opened its store.
+#[cfg(target_os = "linux")]
+fn serving(child: &mut Child) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let answer = listening_port(child.id()).map(|port| try_request(port, "GET /api/setup-status", ""));
+        if matches!(answer, Some(Ok(ref status)) if status.contains("200")) {
+            return;
+        }
+        assert!(child.try_wait().expect("poll the child").is_none(), "exited before serving");
+        assert!(std::time::Instant::now() < deadline, "not serving: {answer:?}");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 /// One HTTP/1.1 request over loopback; the answer's status line.
 fn request(port: u16, head: &str, body: &str) -> String {
-    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    try_request(port, head, body).expect("an answer")
+}
+
+fn try_request(port: u16, head: &str, body: &str) -> std::io::Result<String> {
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port))?;
     let request = format!(
         "{head} HTTP/1.1\r\nhost: sunreye\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     );
-    stream.write_all(request.as_bytes()).expect("send");
+    stream.write_all(request.as_bytes())?;
     let mut answer = String::new();
-    stream.read_to_string(&mut answer).expect("answer");
-    answer.lines().next().unwrap_or_default().to_owned()
+    stream.read_to_string(&mut answer)?;
+    Ok(answer.lines().next().unwrap_or_default().to_owned())
 }
 
 fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16, u32)) -> String {
-    let mut child = Command::new(BIN)
-        .args(["--listen", listen, "--data-dir"])
-        .arg(data_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn sunreye");
-    let mut reader = BufReader::new(child.stderr.take().expect("piped stderr"));
+    let mut child = Running(
+        Command::new(BIN)
+            .args(["--listen", listen, "--data-dir"])
+            .arg(data_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn sunreye"),
+    );
+    let mut reader = BufReader::new(child.0.stderr.take().expect("piped stderr"));
     let mut log = String::new();
     let listening = loop {
         let mut line = String::new();
@@ -192,15 +247,24 @@ fn log_of_a_run(listen: &str, data_dir: &std::path::Path, then: impl FnOnce(u16,
     let port = port(&listening);
     // Answered only once the store is open, so every startup warning is logged by then.
     assert!(request(port, "GET /api/setup-status", "").contains("200"));
-    then(port, child.id());
-    assert!(signal(&child, "TERM").success());
-    assert!(child.wait().expect("wait").success());
+    then(port, child.0.id());
+    assert!(signal(&child.0, "TERM").success());
+    assert!(child.0.wait().expect("wait").success());
     reader.read_to_string(&mut log).expect("the rest of the log");
     log
 }
 
+/// The WARN lines the run itself logged: sqlx adds a `slow statement` one when the machine is loaded.
 fn warnings(log: &str) -> Vec<&str> {
-    log.lines().filter(|l| l.contains("WARN")).collect()
+    log.lines().filter(|l| l.contains("WARN") && !l.contains("sqlx::query")).collect()
+}
+
+#[test]
+fn warnings_leave_out_what_sqlx_logs_when_the_machine_is_loaded() {
+    let log = "2026-11-05T10:00:00Z  INFO sunreye listening on 127.0.0.1:41000\n\
+               2026-11-05T10:00:01Z  WARN sqlx::query: slow statement: execution time exceeded alert threshold elapsed=1.2s\n\
+               2026-11-05T10:00:01Z  WARN sunreye::run: listen address is not loopback\n";
+    assert_eq!(warnings(log), ["2026-11-05T10:00:01Z  WARN sunreye::run: listen address is not loopback"]);
 }
 
 #[test]

@@ -11,6 +11,11 @@ bun run test:db                     # database groups, among the rest of that la
 
 - **Deterministic.** No clock, no randomness: a second run is byte-identical.
 - **Fresh.** A committed file that differs from what its generator produces fails a test.
+- **Registration.** A new oracle file is `scripts/oracle/<name>.ts` exporting `oracle` (`{files, build}`), its fixtures and
+  a case table in `cases.d/<name>.md`, which `test:oracle` reads with this file. A database-free group edits no shared
+  file: generators are found by listing `scripts/oracle/`, and a fixture with no generator, a generator with no fixture,
+  an undocumented case or a `cases.d/` fragment with no generator fails `test:oracle`. A database group also registers
+  in `apps/server/db-tests/oracle.test.ts` and in `DATABASE_OWNED` in `scripts/oracle/registry.ts`.
 - **Where it runs.** Transport framing and profile decode need no database. Rollups, statistics and archives run as
   `apps/server/db-tests/oracle.test.ts` against TimescaleDB, only on `sunreye_dbtest` (`DB_TEST_URL` names the
   server). The generator refuses `--database-url` / `ORACLE_DATABASE_URL` naming any other database. No live inverter
@@ -204,3 +209,46 @@ arm (`plantRollupSeries`, `apps/server/src/shared/rollup-sql.ts`) after `refresh
 | `retired-member` | a retired member keeps its history in the plant and leaves the live members; a meter is no member |
 | `controller-and-meter` | a controller is the whole member set; a plant of one member is that device |
 | `two-batteries` | both fresh members report a battery SOC: the mean at weight 1 (no `batteryKwh`), the members' extremes |
+
+## 8. `forecast-correction.ndjson`: learned forecast correction
+
+One line per case: `{case,producer,input,output}`, database-free, produced by the 3.x code. A model is `month:hour` to
+`{ratio,weight}`; observations carry `localTime` (plant-local `YYYY-MM-DDTHH:mm`), `expectedW` and `actualW`.
+
+- `learn`: `input` `{model,skill,observations,nameplateW,exportCapW?}`, `output` `{model,touched,skill,improvementPct,factors}`:
+  the model after the fold in month, hour order, the cells the batch changed, the skill, its `skillImprovementPct` and
+  `correctionFactor` of every cell. Producer: `learn` (`apps/server/src/forecast/forecast-correction.ts`). Nameplate
+  10 kWp unless stated: an hour expecting under 300 W is too dim, one expecting or measuring 8500 W or more is curtailed.
+- `correctionFactor`: `input` `{model,month,hour}`, `output` `{factor}`.
+- `skillImprovementPct`: `input` `{skill}`, `output` `{pct}`.
+
+| case | boundary |
+| --- | --- |
+| `learn/empty` | no observations |
+| `learn/one-day` | one July day, dawn too dim, noon curtailed |
+| `learn/shrinkage-toward-one` | one observation at 1.4: the factor moves a sixth of the way |
+| `learn/clamp-high` | ratio 5 folds as 2.5, the factor stops at 1.4 |
+| `learn/clamp-low` | ratio 0.01 folds as 0.2, the factor stops at 0.6 |
+| `learn/half-life-decay` | a year of 0.7 in June and July, then 1.1: the older months fade |
+| `learn/skill-zero-error` | measured equals expected: no error, no improvement |
+| `learn/zero-production-day` | nothing measured all day: every lit hour folds at 0.2 |
+| `learn/dim-negative-and-curtailed-skipped` | the floor and ceiling at their edges, zero and negative expected, negative measured |
+| `learn/export-cap` | a feed-in cap below the saturation ceiling lowers it |
+| `learn/export-cap-above-saturation` | a cap above the ceiling changes nothing |
+| `learn/no-nameplate` | no arrays: nothing is learned |
+| `learn/prior-model-out-of-sample-skill` | a stored model and skill: the skill uses each cell's factor before its own fold |
+| `learn/dst-autumn-repeated-hour` | local 02:00 twice on 2025-10-26: both fold into one cell |
+| `learn/dst-spring-missing-hour` | local 02:00 absent on 2026-03-29 |
+| `factor/unlearned-cell` | no cell for the slot |
+| `factor/zero-weight` | a cell without weight applies 1 |
+| `factor/shrunk` | weight 5 halves the ratio's distance from 1 |
+| `factor/at-upper-bound` | shrunk to exactly 1.4 |
+| `factor/above-upper-bound` | clamped to 1.4 |
+| `factor/at-lower-bound` | shrunk to exactly 0.6 |
+| `factor/below-lower-bound` | clamped to 0.6 |
+| `factor/december-midnight` | month 12, hour 0 |
+| `skill/no-samples` | no samples: 0 |
+| `skill/zero-error` | no raw error: 0 |
+| `skill/improved` | corrected error lower |
+| `skill/worse` | corrected error higher: negative |
+| `skill/perfect` | no corrected error: 100 |

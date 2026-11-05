@@ -1335,6 +1335,40 @@
         }
       }
     },
+    "/api/forecast/correction": {
+      "get": {
+        "operationId": "forecastCorrection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionView"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/forecast/providers": {
       "get": {
         "operationId": "forecastProviders",
@@ -3041,6 +3075,98 @@
           "enabled": {
             "type": "boolean",
             "description": "Apply the learned correction; it learns either way."
+          }
+        }
+      },
+      "CorrectionCellView": {
+        "type": "object",
+        "description": "One learned (month, hour) cell.",
+        "required": [
+          "month",
+          "hour",
+          "factor",
+          "weight"
+        ],
+        "properties": {
+          "factor": {
+            "type": "number",
+            "format": "double",
+            "description": "The multiplier applied, shrunk and clamped."
+          },
+          "hour": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "month": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "weight": {
+            "type": "number",
+            "format": "double",
+            "description": "Effective sample count behind it."
+          }
+        }
+      },
+      "CorrectionSkill": {
+        "type": "object",
+        "required": [
+          "maeRaw",
+          "maeCorrected",
+          "improvementPct",
+          "samples"
+        ],
+        "properties": {
+          "improvementPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "maeCorrected": {
+            "type": "number",
+            "format": "double",
+            "description": "The same with the correction applied, W."
+          },
+          "maeRaw": {
+            "type": "number",
+            "format": "double",
+            "description": "Decayed mean absolute error without the correction, W."
+          },
+          "samples": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "CorrectionView": {
+        "type": "object",
+        "description": "The learned forecast correction as 3.x's `ForecastCorrectionView`.",
+        "required": [
+          "enabled",
+          "learnedThrough",
+          "skill",
+          "cells"
+        ],
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrectionCellView"
+            },
+            "description": "In month, hour order."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Applied to the forecast; it learns either way."
+          },
+          "learnedThrough": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last plant-local day learned, `YYYY-MM-DD`; null before the first run."
+          },
+          "skill": {
+            "$ref": "#/components/schemas/CorrectionSkill"
           }
         }
       },

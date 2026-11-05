@@ -20,6 +20,7 @@ import {
 } from "@SunReye/inverter-core";
 
 import { type CorpusFiles, hex, ndjson } from "./corpus";
+import type { OracleGenerator } from "./registry";
 
 /** The Solarman stick whose serial 2.x's tests were captured from. */
 const STICK_SERIAL = 0xbce20a25;
@@ -557,3 +558,8 @@ export async function buildTransportCorpus(): Promise<CorpusFiles> {
   for (const scenario of SCENARIOS) cases.push(await runScenario(scenario));
   return { "transport.ndjson": ndjson(cases) };
 }
+
+export const oracle: OracleGenerator = {
+  files: ["transport.ndjson"],
+  build: buildTransportCorpus,
+};

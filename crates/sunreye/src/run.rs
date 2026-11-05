@@ -12,13 +12,14 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
+use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
 use crate::open_meteo;
 use crate::plant::{self, Aggregates};
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
-use crate::retention::retain;
+use crate::retention::hourly;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
 use crate::solar::Solar;
@@ -39,6 +40,10 @@ pub enum RunError {
 /// session's read never queues behind a crowd of them.
 const STRANGER_READS: usize = 6;
 
+/// An archive no test core may reach: the learn task never leaves the host.
+#[cfg(test)]
+const UNREACHABLE: &str = "https://127.0.0.1:9/v1/archive";
+
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
 #[derive(Debug)]
 pub struct Core {
@@ -51,6 +56,8 @@ pub struct Core {
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
     pub solar: Solar,
+    /// Open-Meteo's reanalysis archive, or a stand-in.
+    pub archive_url: String,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
     stranger_reads: Arc<Semaphore>,
@@ -58,6 +65,7 @@ pub struct Core {
     now: fn() -> i64,
     polling: Polling,
     retention: Mutex<Option<Running>>,
+    learning: Mutex<Option<Running>>,
 }
 
 impl Core {
@@ -71,40 +79,52 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now_ms, open_meteo::URL.into()).await
+        let urls = (open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into());
+        Self::open_clocked(data_dir, roots, now_ms, urls, learn::learn_logged).await
     }
 
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, Vec::new(), now, open_meteo::URL.into()).await
+        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        Self::open_clocked(data_dir, Vec::new(), now, urls, learn::learn_logged).await
     }
 
-    /// [`Core::open`] fetching the forecast from `forecast_url`, trusting `roots`, the clock where `now` says.
+    /// [`Core::open_at`] on the wall clock, learning with `job`.
+    #[cfg(test)]
+    pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
+        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        Self::open_clocked(data_dir, Vec::new(), now_ms, urls, job).await
+    }
+
+    /// [`Core::open`] fetching the forecast and the archive from `urls`, trusting `roots`, the clock where `now`
+    /// says.
     #[cfg(test)]
     pub(crate) async fn open_forecasting(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        forecast_url: String,
+        urls: (String, String),
         now: fn() -> i64,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now, forecast_url).await
+        Self::open_clocked(data_dir, roots, now, urls, learn::learn_logged).await
     }
 
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
-        forecast_url: String,
+        (forecast_url, archive_url): (String, String),
+        learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        Self::start(Store::open(data_dir).await?, roots, now, forecast_url).await
+        Self::start(Store::open(data_dir).await?, roots, now, (forecast_url, archive_url), learn).await
     }
 
     async fn start(
         store: Store,
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
-        forecast_url: String,
+        (forecast_url, archive_url): (String, String),
+        learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(store);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
@@ -120,12 +140,15 @@ impl Core {
             live,
             unstored,
             solar: Solar::new(forecast_url),
+            archive_url,
             kiosk,
             stranger_reads,
             now,
             polling,
             retention,
+            learning: Mutex::new(None),
         });
+        *core.learning.lock().await = Some(spawn_learning(&core, learn));
         core.apply().await?;
         Ok(core)
     }
@@ -171,6 +194,7 @@ impl Core {
     pub async fn stop(self: Arc<Self>) {
         self.polling.stop().await;
         stop(self.retention.lock().await.take()).await;
+        stop(self.learning.lock().await.take()).await;
         if let Some(core) = Arc::into_inner(self)
             && let Some(store) = Arc::into_inner(core.store)
         {
@@ -305,38 +329,17 @@ async fn spawn_devices(
 fn spawn_retention(store: &Arc<Store>, now: fn() -> i64) -> Running {
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(retention(Arc::clone(store), now, stopped));
+    tasks.spawn(hourly(Arc::clone(store), now, stopped));
     Running { stop, tasks }
 }
 
-const RETENTION_EVERY: Duration = Duration::from_hours(1);
-
-/// Runs the retention pass at start and hourly until `stopped` changes.
-async fn retention(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Receiver<bool>) {
-    let mut ticker = tokio::time::interval(RETENTION_EVERY);
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    loop {
-        tokio::select! {
-            biased;
-            _ = stopped.changed() => break,
-            _ = ticker.tick() => retain_now(&store, now()).await,
-        }
-    }
-}
-
-async fn retain_now(store: &Store, now_ms: i64) {
-    let Some(now) = instant(now_ms) else { return };
-    if let Err(error) = retain(store, now).await {
-        tracing::error!(%error, "retention pass failed");
-    }
-}
-
-fn instant(now_ms: i64) -> Option<jiff::Timestamp> {
-    let now = jiff::Timestamp::from_millisecond(now_ms);
-    if now.is_err() {
-        tracing::error!(now_ms, "clock out of range, retention pass skipped");
-    }
-    now.ok()
+/// Holds the core weakly, so the task never keeps it from stopping.
+fn spawn_learning(core: &Arc<Core>, job: learn::Job) -> Running {
+    let (stop, stopped) = watch::channel(false);
+    let core = Arc::downgrade(core);
+    let mut tasks = JoinSet::new();
+    tasks.spawn(learn::schedule(move || core.upgrade().map(|core| async move { job(&core).await }), stopped));
+    Running { stop, tasks }
 }
 
 fn log_unknown_profile(device: &DeviceRow) {
@@ -419,7 +422,7 @@ impl DeviceTask {
     }
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     i64::try_from(since_epoch.as_millis()).unwrap_or(i64::MAX)
 }
@@ -427,6 +430,7 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
     use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
@@ -440,6 +444,7 @@ mod tests {
     use crate::samples::{MINUTE_MS, Sample, minute_of};
     use crate::settings::INTERVAL_KEY;
     use crate::store::{DeviceEdit, NewConnection, NewDevice};
+    use crate::test_net::closed_port;
     use crate::web::Config;
 
     fn dir(name: &str) -> PathBuf {
@@ -591,7 +596,7 @@ mod tests {
         let dir = dir("two-devices");
         let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
         let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         until_polled(&core, first, 2).await;
         until_polled(&core, second, 2).await;
 
@@ -676,7 +681,7 @@ mod tests {
         let dir = dir("retired");
         let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
         let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         until_polled(&core, retired, 2).await;
 
         let retire =
@@ -707,7 +712,7 @@ mod tests {
         let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
         let dir = dir("restart-held");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "20").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         wait_for_requests(&sim, 20).await;
         let held = core.unstored.held(device);
         assert!(!held.is_empty(), "the poll loop holds what it has not stored");
@@ -734,27 +739,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unreachable_device_stores_nothing_and_does_not_stop_the_core() {
-        let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+    async fn a_device_that_drops_every_connection_stores_nothing_and_does_not_stop_the_core() {
+        let device_end = listener().await;
+        let port = device_end.local_addr().expect("addr").port();
+        let (dialled, dial) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            // The first poll dials in and is hung up on.
+            drop(device_end.accept().await);
+            dialled.send(()).ok();
+        });
         let dir = dir("unreachable");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
-            .await
-            .expect("run");
+        run(&dir, &Config::default(), listener().await, wait(dial)).await.expect("run");
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }
 
     #[tokio::test]
+    async fn a_device_on_a_closed_port_fails_its_poll_with_the_refused_connect_and_holds_nothing() {
+        let (_closed, port) = closed_port();
+        let dir = dir("refused");
+        let id = seed(&dir, port, "deye-sg05lp3", "20").await;
+        let store = Arc::new(Store::open(&dir).await.expect("store"));
+        let device =
+            store.devices().await.expect("devices").into_iter().find(|d| d.id == id).expect("device");
+        let profile =
+            find_profile(&Bundle::official().expect("bundle"), &[], &device.profile_id).expect("profile");
+        let mut task = DeviceTask {
+            store: Arc::clone(&store),
+            live: Arc::default(),
+            unstored: Arc::default(),
+            poller: DevicePoller::new(profile, device.unit_id),
+            device,
+            client: None,
+            // Only a refusal ends the dial: a hang never reaches this timeout within the deadline below.
+            timeout: Duration::from_hours(1),
+        };
+        let polled = tokio::time::timeout(Duration::from_secs(20), task.poll_once()).await;
+        match polled.expect("the dial hung") {
+            Err(crate::modbus::Error::Io(error)) => assert!(error.contains("refused"), "{error}"),
+            other => panic!("not a refused connect: {other:?}"),
+        }
+        tokio::time::timeout(Duration::from_secs(20), task.tick()).await.expect("the tick hung");
+        assert!(task.client.is_none(), "no connection kept");
+        assert_eq!(task.unstored.held(id), [], "no reading held");
+        drop(task);
+        Arc::into_inner(store).expect("one owner").close().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
     async fn a_minute_stays_held_while_its_write_waits_on_the_database() {
-        let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+        let (_closed, port) = closed_port();
         let dir = dir("held-while-writing");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        let core = Core::open(&dir).await.expect("core");
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
         // Now, so the retention pass started by `open` keeps it.
         let at_ms = core.now_ms();
         core.unstored.push(device, Sample { at_ms, values: vec![("pv".into(), 1.0)] });
@@ -786,7 +825,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_running_core_drops_buckets_past_retention_and_keeps_the_rest() {
+    async fn the_core_drops_buckets_past_retention_and_keeps_the_rest() {
         let dir = dir("retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
         let store = Store::open(&dir).await.expect("store");
@@ -798,33 +837,56 @@ mod tests {
         }
         store.close().await;
 
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(200)))
-            .await
-            .expect("run");
-
-        let store = Store::open(&dir).await.expect("store");
+        let core = Core::open(&dir).await.expect("open");
+        let store = &core.store;
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while store.buckets(Tier::Minute, device, "power").await.expect("buckets").len() > 1 {
+            assert!(Instant::now() < deadline, "the first pass did not run");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let minutes = store.buckets(Tier::Minute, device, "power").await.expect("buckets");
         let kept = Timestamp::from_millisecond(minute_of(now - 89 * 24 * 60 * MINUTE_MS) * MINUTE_MS);
         assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
         assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 2);
-        store.close().await;
+        core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
+    }
+
+    /// The retention passes `counted_now` has been read for; a static because the core clock is a
+    /// `fn`, so one test alone may read it.
+    static PASSES: AtomicUsize = AtomicUsize::new(0);
+
+    fn counted_now() -> i64 {
+        PASSES.fetch_add(1, Ordering::SeqCst);
+        now_ms()
     }
 
     #[tokio::test]
     async fn a_settings_change_runs_no_retention_pass() {
         let dir = dir("apply-retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let core = Core::open(&dir).await.expect("open");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let at_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
-        let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
-        let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
-        core.store.append_minute(device, &minute).await.expect("append");
+        let stale_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
+        let store = Store::open(&dir).await.expect("store");
+        append_at(&store, device, stale_ms).await;
+        store.close().await;
+        let core = Core::open_at(&dir, counted_now).await.expect("open");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        // The pass drops raw readings, then the minute tier; the coarser tiers keep this row.
+        while !core.store.buckets(Tier::Minute, device, "power").await.expect("buckets").is_empty() {
+            assert!(Instant::now() < deadline, "the first pass did not run");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "the start runs one pass");
+        append_at(&core.store, device, stale_ms).await;
 
         core.apply().await.expect("apply");
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Paused, the clock runs every timer due within the minute, a respawned pass's immediate
+        // first tick included, and stops short of the start's next pass an hour on.
+        tokio::time::pause();
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        tokio::time::resume();
 
+        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "a restart starts no pass");
         let minutes = core.store.buckets(Tier::Minute, device, "power").await.expect("buckets");
         assert_eq!(minutes.len(), 1, "the next pass is an hour after start");
         core.stop().await;
@@ -835,9 +897,8 @@ mod tests {
     async fn a_device_with_an_unknown_profile_is_skipped() {
         let dir = dir("unknown");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
-        run(&dir, &Config::default(), listener().await, tokio::time::sleep(Duration::from_millis(100)))
-            .await
-            .expect("run");
+        // Nothing is polled once the roster is read, so there is nothing left to wait for.
+        Core::open(&dir).await.expect("open").stop().await;
         assert_eq!(stored(&dir, device).await, []);
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -888,20 +949,6 @@ mod tests {
         let kept = core.store.readings(device, 0, i64::MAX).await.expect("readings");
         assert_eq!(kept.iter().map(|s| s.at_ms).collect::<Vec<_>>(), [PAST_MS - 6 * DAY_MS]);
         core.stop().await;
-        drop(std::fs::remove_dir_all(&dir));
-    }
-
-    #[tokio::test]
-    async fn an_out_of_range_clock_skips_the_retention_pass() {
-        let dir = dir("retention-range");
-        let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let store = Store::open(&dir).await.expect("store");
-        append_at(&store, device, PAST_MS).await;
-
-        retain_now(&store, i64::MAX).await;
-
-        assert_eq!(store.readings(device, 0, i64::MAX).await.expect("readings").len(), 1);
-        store.close().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 }
