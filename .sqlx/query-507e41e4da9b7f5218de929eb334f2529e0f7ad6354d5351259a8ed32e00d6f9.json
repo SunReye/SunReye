@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO plant_time_zone (id, name) VALUES (1, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "507e41e4da9b7f5218de929eb334f2529e0f7ad6354d5351259a8ed32e00d6f9"
+}
