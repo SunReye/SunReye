@@ -6,27 +6,22 @@
 	import ChartTooltipRoot from '$lib/charts/chart-tooltip-root.svelte';
 	import { houseCell } from '$lib/charts/house-style';
 	import { scaleBand } from 'd3-scale';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
+	import type { components } from '$lib/core-api.gen';
 	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
 	import GradientLegend from '$lib/components/inverter/_shared/gradient-legend.svelte';
 	import { fittedPadding } from '$lib/charts/plot-padding';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
-	// Mirrors the server's ForecastCorrectionView (apps/server/src/forecast/forecast-correction-job.ts).
-	type CorrectionCell = { month: number; hour: number; factor: number; weight: number };
-	type CorrectionView = {
-		enabled: boolean;
-		learnedThrough: string | null;
-		skill: { maeRaw: number; maeCorrected: number; improvementPct: number; samples: number };
-		cells: CorrectionCell[];
-	};
+	type CorrectionCell = components['schemas']['CorrectionCellView'];
+	type CorrectionView = components['schemas']['CorrectionView'];
 
 	let view = $state<CorrectionView | null>(null);
 
 	onMount(async () => {
-		const { data } = await api.api.forecast.correction.get();
-		if (data) view = data as CorrectionView;
+		const { data } = await core.GET('/api/forecast/correction');
+		if (data) view = data;
 	});
 
 	// The hour span that actually carries data (daylight varies by latitude/season,
