@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT month, hour, ratio, weight FROM forecast_correction_cell WHERE device_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "month",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "hour",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ratio",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "weight",
+        "ordinal": 3,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "beaa423347fdd3c69b7156f08a6e80fa6e6b04567796c1880e1a83c45f74e819"
+}

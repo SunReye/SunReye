@@ -668,6 +668,7 @@ describe("the session surface is a closed list", () => {
         "GET /api/auth/session",
         "GET /api/capabilities",
         "GET /api/forecast",
+        "GET /api/forecast/correction",
         "GET /api/forecast/usable",
         "GET /api/history/recent",
         "GET /api/history/rollup",
