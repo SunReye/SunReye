@@ -614,7 +614,8 @@ mod tests {
     #[test]
     fn array_geometry_at_its_bounds_is_accepted() {
         for (kwp, tilt, azimuth) in [(100_000.0, 0.0, -180.0), (0.001, 90.0, 180.0)] {
-            let pv = DevicePv { arrays: vec![PvArray { tilt, azimuth, ..array(kwp) }], ..DevicePv::default() };
+            let pv =
+                DevicePv { arrays: vec![PvArray { tilt, azimuth, ..array(kwp) }], ..DevicePv::default() };
             assert_eq!(pv.validate(&[]), Ok(()), "kwp {kwp} tilt {tilt} azimuth {azimuth}");
         }
     }
@@ -622,11 +623,8 @@ mod tests {
     #[test]
     fn array_geometry_past_each_bound_or_nan_is_refused() {
         let arrays = |a: PvArray| pv_refusal(&DevicePv { arrays: vec![a], ..DevicePv::default() }).1;
-        let (kwp, tilt, azimuth) = (
-            "kwp must be above 0 and at most 100000",
-            "tilt must be 0–90",
-            "azimuth must be -180–180",
-        );
+        let (kwp, tilt, azimuth) =
+            ("kwp must be above 0 and at most 100000", "tilt must be 0–90", "azimuth must be -180–180");
         for value in [0.0, -1.0, f64::NAN] {
             assert_eq!(arrays(array(value)), kwp, "kwp {value}");
         }

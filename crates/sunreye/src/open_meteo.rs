@@ -76,6 +76,10 @@ fn url(base: &str, location: Location, (tilt, azimuth): Plane, extras: bool) -> 
     )
 }
 
+fn decode(body: &[u8]) -> Result<Response, FetchError> {
+    Ok(serde_json::from_slice(body)?)
+}
+
 fn zeroed(series: &[Option<f64>]) -> Vec<f64> {
     series.iter().map(|v| v.unwrap_or(0.0)).collect()
 }
@@ -89,11 +93,10 @@ fn assemble(
     let first = responses.first().ok_or(FetchError::Fields)?;
     let (utc_offset_seconds, time_zone) = (first.1.utc_offset_seconds.unwrap_or(0), first.1.timezone.clone());
     let series = first.1.minutely_15.as_ref().ok_or(FetchError::Fields)?;
-    let (Some(times), Some(temperature)) = (&series.time, &series.temperature_2m) else {
-        return Err(FetchError::Fields);
-    };
+    let times = series.time.as_ref().filter(|t| !t.is_empty()).ok_or(FetchError::Fields)?;
     let aligned =
         |s: &Option<Vec<Option<f64>>>| s.as_ref().filter(|s| s.len() == times.len()).map(|s| zeroed(s));
+    let temperature = aligned(&series.temperature_2m).ok_or(FetchError::Fields)?;
     let gti = planes
         .iter()
         .map(|plane| {
@@ -108,7 +111,7 @@ fn assemble(
             times: times.clone(),
             utc_offset_seconds,
             location,
-            temperature: zeroed(temperature),
+            temperature,
             gti,
             dni: aligned(&series.direct_normal_irradiance_instant),
             wind_speed: aligned(&series.wind_speed_10m),
@@ -127,7 +130,7 @@ pub async fn fetch(
     let mut responses = Vec::new();
     for (i, plane) in unique(planes).into_iter().enumerate() {
         let body = get_with_roots(&url(base, location, plane, i == 0), LIMITS, roots).await?;
-        responses.push((plane, serde_json::from_slice(&body)?));
+        responses.push((plane, decode(&body)?));
     }
     assemble(location, planes, &responses)
 }
@@ -191,5 +194,44 @@ mod tests {
             "global_tilted_irradiance_instant": [1]}}));
         assert!(matches!(assemble(HERE, &[plane], &[(plane, short)]), Err(FetchError::Irradiance)));
         assert!(matches!(assemble(HERE, &[plane], &[]), Err(FetchError::Fields)));
+    }
+
+    #[test]
+    fn an_empty_or_non_json_body_is_unreadable() {
+        for body in [&b""[..], b"<html>bad gateway</html>", b"{\"minutely_15\":"] {
+            assert!(matches!(decode(body), Err(FetchError::Json(_))), "{}", String::from_utf8_lossy(body));
+        }
+    }
+
+    #[test]
+    fn an_empty_time_series_is_refused() {
+        let plane = (30.0, 0.0);
+        let empty = response(json!({"minutely_15": {"time": [], "temperature_2m": [],
+            "global_tilted_irradiance_instant": []}}));
+        assert!(matches!(assemble(HERE, &[plane], &[(plane, empty)]), Err(FetchError::Fields)));
+    }
+
+    #[test]
+    fn a_temperature_series_of_another_length_than_the_times_is_refused() {
+        let plane = (30.0, 0.0);
+        for temperature in [json!([20.0]), json!([20.0, 21.0, 22.0])] {
+            let body = response(json!({"minutely_15": {"time": ["a", "b"], "temperature_2m": temperature,
+                "global_tilted_irradiance_instant": [1, 2]}}));
+            assert!(
+                matches!(assemble(HERE, &[plane], &[(plane, body)]), Err(FetchError::Fields)),
+                "{temperature}"
+            );
+        }
+    }
+
+    #[test]
+    fn misaligned_extras_drop_out_and_all_null_series_read_as_zero() {
+        let plane = (30.0, 0.0);
+        let body = response(json!({"minutely_15": {"time": ["a", "b"], "temperature_2m": [null, null],
+            "global_tilted_irradiance_instant": [null, null], "direct_normal_irradiance_instant": [1, 2, 3],
+            "wind_speed_10m": [null, null]}}));
+        let series = assemble(HERE, &[plane], &[(plane, body)]).expect("series").irradiance;
+        assert_eq!((series.temperature, series.gti), (vec![0.0, 0.0], vec![vec![0.0, 0.0]]));
+        assert_eq!((series.dni, series.wind_speed), (None, Some(vec![0.0, 0.0])));
     }
 }
