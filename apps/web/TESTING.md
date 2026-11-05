@@ -204,6 +204,23 @@ spans the shell (the PR #60 outage) is a browser spec.
 **Prove every test discriminates.** Apply the exact regression it names, watch it go red, restore.
 A test nobody has watched fail is a guess.
 
+## Waiting and timing
+
+Do not `waitForTimeout`, `Bun.sleep` or `await new Promise((r) => setTimeout(r, n))`, and do not
+assert a `Date.now()` or `performance.now()` delta. `bun run test:timing` fails on all of them in
+`*.test.ts`, `*.svelte.test.ts` and `*.spec.ts`; the baseline in `scripts/timing-baseline.json`
+only shrinks (see `CONTRIBUTING.md` §6).
+
+| Instead of                         | Use                                                                  |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| `waitForTimeout(n)` before a check | a web-first assertion (`await expect(locator).toBeVisible()`)        |
+| polling a value by hand            | `expect.poll(() => value)`                                           |
+| sleeping past a timer              | Vitest fake timers, then advance them                                |
+| `Bun.sleep(0)` to let work settle  | await the promise the code resolves                                  |
+| asserting "under 100 ms"           | assert the behaviour; inject a clock if the duration is the behaviour |
+
+A poll-until-predicate loop with a deadline is fine: the deadline only bounds how long it spins.
+
 ## What to cover
 
 The failure mode on this dashboard is not a crash, it is a **plausible wrong number on a

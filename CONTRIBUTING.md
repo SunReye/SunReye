@@ -181,6 +181,25 @@ in this repo unit-tests it. The one escape hatch is
 `// mock-hygiene-ignore-next-line -- <reason>`, for a module that cannot be imported for real
 (`@SunReye/auth` boots Better Auth, which wants env and a database); the reason is mandatory.
 
+**One rule about time.** A test never sleeps for a guess and never asserts a duration: both pass on
+an idle machine and flake under the gate's load. `bun run test:timing` fails on `thread::sleep`,
+`tokio::time::sleep`, `Instant`/`.elapsed()` or a `Duration` threshold in an assertion (Rust);
+`Bun.sleep`, `waitForTimeout`, `new Promise(... setTimeout ...)` and a `Date.now`/`performance.now`
+delta in an assertion (TS), in test code only. Existing offenders are counted per file in
+`scripts/timing-baseline.json`: a count may fall (then `bun scripts/timing-hygiene.ts --write`
+lowers it), never rise. Replace the wait, not the number:
+
+- Rust: pause tokio time (`#[tokio::test(start_paused = true)]`, tokio `test-util` in
+  `dev-dependencies`) or inject a clock; to wait for an effect, use a channel, `Notify`, or a
+  poll-until-predicate loop.
+- Vitest and `bun test`: fake timers, or await the promise the code resolves.
+- Playwright: web-first assertions (`await expect(locator)...`) and `expect.poll`.
+- A poll-until-predicate loop may carry a deadline. The deadline bounds liveness: it is the
+  failure path, never the assertion.
+
+To prove a duration, assert the behaviour the duration stands for (a bounded read touches only its
+own rows), not the speed.
+
 Depth, not ceremony. A test that only re-states the happy path is close to worthless on this
 system. Cover the boundaries that actually bite: zero and negative values (0 °C is a
 temperature, −7.5 is a temperature, `0` is not "missing"), the empty and absent payload, the
