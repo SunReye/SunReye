@@ -441,6 +441,8 @@ export const SESSION_LABELS: readonly string[] = [
   "DELETE /api/auth/session",
   "GET /api/auth/session",
   "GET /api/capabilities",
+  "GET /api/forecast",
+  "GET /api/forecast/usable",
   "GET /api/history/recent",
   "GET /api/history/rollup",
   "GET /api/profile",

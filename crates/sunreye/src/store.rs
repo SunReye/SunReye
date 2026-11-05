@@ -13,6 +13,7 @@ use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
 mod accounts;
+mod forecast;
 mod roster;
 mod tiers;
 

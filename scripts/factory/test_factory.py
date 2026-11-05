@@ -509,6 +509,44 @@ class ConfiguredTrain(unittest.TestCase):
             self.assertEqual([p["pr"] for p in train["prs"]], [1, 2])
             self.assertEqual(train["dropped"], [])
 
+    def test_prs_conflicting_in_every_generated_artifact_merge_and_regenerate_once(self):
+        generated = {"crates/sunreye/openapi_snapshot.json": "{}\n", "apps/web/src/lib/core-api.gen.ts": "//\n",
+                     ".sqlx/query-a.json": "{}\n", "Cargo.lock": "lock\n"}
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Origin(tmp, base=factory.CFG["base"])
+            prs = [origin.pr(n, {**{k: f"{n}\n" for k in generated}, f"{n}.rs": f"{n}\n"}) for n in (1, 2)]
+            train = factory.build_train(origin.work, prs)
+            self.assertEqual(([p["pr"] for p in train["prs"]], train["dropped"]), ([1, 2], []))
+            seen = origin.work / "seen"
+            probe = [sys.executable, "-c", "from pathlib import Path; import sys; "
+                     "Path(sys.argv[1]).write_text(Path('1.rs').read_text() + Path('2.rs').read_text())", str(seen)]
+            cwd = os.getcwd()
+            os.chdir(origin.work)
+            self.addCleanup(os.chdir, cwd)
+            with mock.patch.dict(factory.CFG, {"commands": {"regenerate": [probe]}}):
+                self.assertEqual(run(factory.main, ["regenerate"])[0], 0)
+                self.assertEqual(seen.read_text(), "1\n2\n")
+                for path in generated:
+                    self.assertEqual((origin.work / path).read_text(), "1\n")
+
+    def test_a_hand_written_conflict_still_drops_the_pr_beside_generated_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            origin = Origin(tmp, base=factory.CFG["base"])
+            prs = [origin.pr(1, {"crates/sunreye/openapi_snapshot.json": "1\n", "crates/sunreye/src/lib.rs": "1\n"}),
+                   origin.pr(2, {"crates/sunreye/openapi_snapshot.json": "2\n", "crates/sunreye/src/lib.rs": "2\n"})]
+            train = factory.build_train(origin.work, prs)
+            self.assertEqual([p["pr"] for p in train["prs"]], [1])
+            self.assertEqual([(d["pr"], d["files"]) for d in train["dropped"]],
+                             [(2, ["crates/sunreye/openapi_snapshot.json", "crates/sunreye/src/lib.rs"])])
+
+    def test_regeneration_rebuilds_snapshot_client_and_sqlx_cache_in_order(self):
+        self.assertEqual(factory.CFG["commands"]["regenerate"], [
+            ["bun", "install"],
+            ["env", "UPDATE_OPENAPI=1", "cargo", "test", "-p", "sunreye", "openapi"],
+            ["bun", "run", "--cwd", "apps/web", "gen:core-api"],
+            ["scripts/sqlx-cache"],
+        ])
+
     def test_disabled_gap_epic_refuses_before_any_tracker_request(self):
         forge = RecordingForge("factory/1")
         with self.assertRaisesRegex(SystemExit, "ui_epic"):

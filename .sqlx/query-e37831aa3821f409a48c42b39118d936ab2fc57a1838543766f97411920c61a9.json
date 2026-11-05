@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device_id, kwp, tilt, azimuth, temp_coefficient, system_loss, mppt FROM pv_array\n             ORDER BY device_id, position",
+  "describe": {
+    "columns": [
+      {
+        "name": "device_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "kwp",
+        "ordinal": 1,
+        "type_info": "Float"
+      },
+      {
+        "name": "tilt",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "azimuth",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "temp_coefficient",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "system_loss",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "mppt",
+        "ordinal": 6,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "e37831aa3821f409a48c42b39118d936ab2fc57a1838543766f97411920c61a9"
+}

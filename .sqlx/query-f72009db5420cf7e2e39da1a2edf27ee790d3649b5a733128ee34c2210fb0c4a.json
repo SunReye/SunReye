@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM pv_array WHERE device_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f72009db5420cf7e2e39da1a2edf27ee790d3649b5a733128ee34c2210fb0c4a"
+}
