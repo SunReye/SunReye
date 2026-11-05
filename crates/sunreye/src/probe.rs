@@ -1,15 +1,18 @@
-//! A throwaway connection test: dial the device, read it once with a profile, report what answered.
+//! Throwaway connection tests, reads only (ADR 0005): dial an endpoint, read a device once with a profile,
+//! or find the unit id a device answers on.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::modbus::Client;
+use crate::decode::plan_reads;
+use crate::modbus::{Client, Error};
 use crate::poll::DevicePoller;
 use crate::profile::Profile;
 use crate::settings::InverterConfig;
+use crate::store::NewConnection;
 
 /// One decoded value of a test read.
 #[derive(Debug, Serialize, ToSchema)]
@@ -67,6 +70,102 @@ pub async fn test_connection(profile: &Arc<Profile>, config: &InverterConfig) ->
     }
 }
 
+/// The stick that answered an endpoint probe.
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+pub struct Logger {
+    pub serial: u32,
+}
+
+/// Whether something accepted a connection at an endpoint, as 3.x answers it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EndpointProbe {
+    pub ok: bool,
+    pub ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub error: Option<String>,
+    /// Over Solarman V5: the serial the stick named itself with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    pub logger: Option<Logger>,
+}
+
+/// Connects to the endpoint and closes again. A gateway is a TCP connect; a Solarman stick must also
+/// name its serial, and be the stick a configured serial names.
+pub async fn probe_endpoint(endpoint: &NewConnection, timeout: Duration) -> EndpointProbe {
+    let started = Instant::now();
+    let NewConnection { transport, host, port, logger_serial } = endpoint;
+    // No configured serial: a stick that stays silent must fail, not echo the operator's guess back.
+    let answered = Client::connect(*transport, host, *port, None, timeout).await;
+    let ms = elapsed_ms(started);
+    let failed = |error: String| EndpointProbe { ok: false, ms, error: Some(error), logger: None };
+    match answered.map(|client| client.logger_serial()) {
+        Err(error) => failed(error.to_string()),
+        Ok(Some(serial)) if logger_serial.is_some_and(|configured| configured != serial) => failed(format!(
+            "{host}:{port} is logger {serial}, not the {} configured here: a different stick",
+            logger_serial.unwrap_or_default()
+        )),
+        Ok(serial) => {
+            EndpointProbe { ok: true, ms, error: None, logger: serial.map(|serial| Logger { serial }) }
+        }
+    }
+}
+
+/// The unit id that answered, and how long its read took.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundUnit {
+    pub unit_id: u8,
+    pub ms: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UnitScan {
+    /// Every id asked, in order, so a miss names what was ruled out.
+    pub scanned: Vec<u8>,
+    #[schema(required = true)]
+    pub found: Option<FoundUnit>,
+}
+
+/// Asks each candidate for the profile's first planned register, one word, and stops at the first that
+/// answers. Any refusal is a miss; after one that may leave a reply in flight the connection is replaced.
+pub async fn scan_units(
+    profile: &Profile,
+    endpoint: &NewConnection,
+    candidates: &[u8],
+    timeout: Duration,
+) -> Result<UnitScan, Error> {
+    let Some(register) = plan_reads(profile).first().map(|block| block.start) else {
+        return Err(Error::Protocol("the profile maps no register to scan with"));
+    };
+    let NewConnection { transport, host, port, logger_serial } = endpoint;
+    let mut client: Option<Client> = None;
+    let mut scanned = Vec::new();
+    for &unit in candidates {
+        let open = match client.as_mut() {
+            Some(open) => open,
+            None => client.insert(Client::connect(*transport, host, *port, *logger_serial, timeout).await?),
+        };
+        scanned.push(unit);
+        let started = Instant::now();
+        match open.read_holding(unit, register, 1).await {
+            Ok(_) => {
+                return Ok(UnitScan {
+                    scanned,
+                    found: Some(FoundUnit { unit_id: unit, ms: elapsed_ms(started) }),
+                });
+            }
+            Err(Error::Exception(_)) => {}
+            Err(_) => client = None,
+        }
+    }
+    Ok(UnitScan { scanned, found: None })
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Computed metrics read as zero from nothing, so only a register's answer proves the device spoke.
 fn any_register(profile: &Profile, values: &[(String, f64)]) -> bool {
     values.iter().any(|(key, _)| profile.metrics.iter().any(|m| m.key == *key && m.is_register()))
@@ -87,7 +186,7 @@ fn snapshot(profile: &Profile, values: Vec<(String, f64)>, started: Instant) -> 
         })
         .collect();
     metrics.sort_by(|a, b| a.group.cmp(&b.group).then_with(|| a.label.cmp(&b.label)));
-    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let duration_ms = elapsed_ms(started);
     TestResult {
         ok: true,
         error: None,
@@ -101,9 +200,10 @@ fn snapshot(profile: &Profile, values: Vec<(String, f64)>, started: Instant) -> 
 mod tests {
     use std::path::Path;
 
-    use sunreye_sim::{Framing, Registers, Simulator, profile_case};
+    use sunreye_sim::{FC_READ_HOLDING, Framing, Registers, Simulator, profile_case};
 
     use super::*;
+    use crate::modbus::Transport as Wire;
     use crate::profile::Bundle;
     use crate::settings::Transport;
 
@@ -180,6 +280,99 @@ mod tests {
         let result = test_connection(&profile("deye-sg05lp3"), &config(sim.addr.port(), 1)).await;
         assert!(!result.ok);
         assert_eq!(result.error.as_deref(), Some("No register of the profile answered"));
+    }
+
+    const STICK: u32 = 3_168_930_341;
+    const QUICK: Duration = Duration::from_millis(200);
+
+    fn endpoint(transport: crate::modbus::Transport, port: u16, serial: Option<u32>) -> NewConnection {
+        NewConnection { transport, host: "127.0.0.1".into(), port, logger_serial: serial }
+    }
+
+    fn ramp() -> sunreye_sim::ProfileCase {
+        let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+        profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case")
+    }
+
+    #[tokio::test]
+    async fn a_gateway_probe_is_a_connect_and_sends_nothing() {
+        let sim = Simulator::start(ramp().registers, &[1]).await.expect("sim");
+        let probe = probe_endpoint(&endpoint(Wire::Tcp, sim.addr.port(), None), QUICK).await;
+        assert!(probe.ok && probe.error.is_none() && probe.logger.is_none(), "{probe:?}");
+        assert_eq!(sim.requests(), []);
+    }
+
+    #[tokio::test]
+    async fn a_stick_probe_names_the_stick_and_refuses_one_that_is_not_the_configured_serial() {
+        let sim =
+            Simulator::start_with(Framing::SolarmanV5(STICK), ramp().registers, &[1]).await.expect("sim");
+        let port = sim.addr.port();
+        for configured in [None, Some(STICK)] {
+            let probe = probe_endpoint(&endpoint(Wire::SolarmanV5, port, configured), QUICK).await;
+            assert!(probe.ok, "{configured:?}: {probe:?}");
+            assert_eq!(probe.logger.map(|logger| logger.serial), Some(STICK));
+        }
+        let other = probe_endpoint(&endpoint(Wire::SolarmanV5, port, Some(1234)), QUICK).await;
+        assert!(!other.ok && other.logger.is_none());
+        assert_eq!(
+            other.error.as_deref(),
+            Some(
+                format!(
+                    "127.0.0.1:{port} is logger {STICK}, not the 1234 configured here: a different stick"
+                )
+                .as_str()
+            )
+        );
+        assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "a probe only reads");
+    }
+
+    #[tokio::test]
+    async fn a_probe_of_nothing_listening_fails_with_the_connection_error() {
+        let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = free.local_addr().expect("addr").port();
+        drop(free);
+        let probe = probe_endpoint(&endpoint(Wire::Tcp, port, None), QUICK).await;
+        assert!(!probe.ok);
+        assert!(probe.error.expect("error").starts_with("i/o error"));
+    }
+
+    #[tokio::test]
+    async fn a_scan_stops_at_the_first_unit_that_answers_and_sends_only_one_register_reads() {
+        for framing in [Framing::Tcp, Framing::RtuOverTcp, Framing::SolarmanV5(STICK)] {
+            let sim = Simulator::start_with(framing, ramp().registers, &[2, 3]).await.expect("sim");
+            let wire = match framing {
+                Framing::Tcp => Wire::Tcp,
+                Framing::RtuOverTcp => Wire::RtuOverTcp,
+                Framing::SolarmanV5(_) => Wire::SolarmanV5,
+            };
+            let at = endpoint(wire, sim.addr.port(), None);
+            let scan = scan_units(&profile("deye-sg05lp3"), &at, &[1, 0, 2, 3], QUICK).await.expect("scan");
+            assert_eq!(scan.scanned, [1, 0, 2], "{framing:?}");
+            assert_eq!(scan.found.map(|found| found.unit_id), Some(2), "{framing:?}");
+            let requests = sim.requests();
+            assert_eq!(requests.len(), 1, "{framing:?}: one read at the unit that answered");
+            assert!(
+                requests.iter().all(|r| r.function == FC_READ_HOLDING && r.count == 1 && r.unit == 2),
+                "{framing:?}: {requests:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_scan_nobody_answers_names_every_id_it_ruled_out() {
+        let sim = Simulator::start(ramp().registers, &[]).await.expect("sim");
+        let at = endpoint(Wire::Tcp, sim.addr.port(), None);
+        let scan = scan_units(&profile("deye-sg05lp3"), &at, &[1, 0], QUICK).await.expect("scan");
+        assert_eq!((scan.scanned, scan.found.is_none()), (vec![1, 0], true));
+    }
+
+    #[tokio::test]
+    async fn a_scan_of_nothing_listening_is_the_connection_error() {
+        let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = free.local_addr().expect("addr").port();
+        drop(free);
+        let scan = scan_units(&profile("deye-sg05lp3"), &endpoint(Wire::Tcp, port, None), &[1], QUICK).await;
+        assert!(matches!(scan, Err(Error::Io(_))), "{scan:?}");
     }
 
     #[tokio::test]

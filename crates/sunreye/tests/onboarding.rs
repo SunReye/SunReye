@@ -195,7 +195,7 @@ async fn the_running_core_advertises_history_and_profile_sources_and_serves_the_
         capabilities,
         json!({
             "history": true, "statistics": false, "controls": false, "automations": false,
-            "restart": false, "profileSources": true
+            "restart": false, "profileSources": true, "integrations": false, "pvAndBattery": false
         })
     );
     let (status, sources) = call(addr, &cookie, "GET", "/api/settings/profile-sources", None).await;

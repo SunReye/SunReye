@@ -188,7 +188,7 @@ async fn capabilities_report_only_history_and_profile_sources_served() {
         answer.json(),
         json!({
             "history": true, "statistics": false, "controls": false, "automations": false,
-            "restart": false, "profileSources": true
+            "restart": false, "profileSources": true, "integrations": false, "pvAndBattery": false
         })
     );
     drop(app);
@@ -425,8 +425,10 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 38] = [
+const SERVED: [(&str, &str); 40] = [
     ("post", "/api/connections"),
+    ("post", "/api/connections/probe"),
+    ("post", "/api/connections/scan-units"),
     ("delete", "/api/connections/{id}"),
     ("patch", "/api/connections/{id}"),
     ("get", "/api/devices"),
@@ -516,7 +518,7 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
-const ADMIN_ROUTES: [(&str, &str); 25] = [
+const ADMIN_ROUTES: [(&str, &str); 27] = [
     ("GET", "/api/devices"),
     ("POST", "/api/devices"),
     ("PATCH", "/api/devices/1"),
@@ -524,6 +526,8 @@ const ADMIN_ROUTES: [(&str, &str); 25] = [
     ("POST", "/api/connections"),
     ("PATCH", "/api/connections/1"),
     ("DELETE", "/api/connections/1"),
+    ("POST", "/api/connections/probe"),
+    ("POST", "/api/connections/scan-units"),
     ("DELETE", "/api/settings/profiles/acme"),
     ("DELETE", "/api/settings/profile-sources"),
     ("POST", "/api/settings/profiles/import"),

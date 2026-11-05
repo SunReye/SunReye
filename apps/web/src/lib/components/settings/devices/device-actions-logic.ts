@@ -59,12 +59,15 @@ const menu = (id: DeviceActionId, blocked = false): DeviceAction => ({
  * reading) and the dialog then offers retiring instead. Asking up front would
  * mean scanning years of readings to draw a roster.
  */
-export function actionsFor(device: DeviceView): readonly DeviceAction[] {
+export function actionsFor(
+  device: DeviceView,
+  polledId: number | null = null,
+): readonly DeviceAction[] {
   const retired = device.retiredAt !== null;
   if (device.kind === "modbus") {
     if (retired) return [primary("restore"), menu("delete")];
     // Re-point the polled device rather than retiring it — which Edit does.
-    const polled = device.state === "polling";
+    const polled = device.id === polledId;
     return [primary("edit"), menu("retire", polled), menu("delete", polled)];
   }
   // A coded row: what the narrowed gate allows, and nothing else. There used to
@@ -81,6 +84,14 @@ export function actionsFor(device: DeviceView): readonly DeviceAction[] {
   // refused by the server — it registers itself on boot.
   if (device.kind === "virtual") return [primary(retired ? "restore" : "rename")];
   return [];
+}
+
+/**
+ * The device the inverter settings edit: the first Modbus device in service.
+ * Every device in service is polled; this one alone may not be retired or deleted.
+ */
+export function polledDeviceId(devices: readonly DeviceView[]): number | null {
+  return devices.find((d) => d.kind === "modbus" && d.retiredAt === null)?.id ?? null;
 }
 
 /** What each control is called — shared by the row's button and its menu. */

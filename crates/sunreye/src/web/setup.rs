@@ -41,6 +41,10 @@ pub struct Capabilities {
     pub automations: bool,
     pub restart: bool,
     pub profile_sources: bool,
+    /// Coded integrations and the MQTT connections they run over.
+    pub integrations: bool,
+    /// An inverter's PV arrays and battery pack, kept per device.
+    pub pv_and_battery: bool,
 }
 
 impl Capabilities {
@@ -52,6 +56,8 @@ impl Capabilities {
         automations: false,
         restart: false,
         profile_sources: true,
+        integrations: false,
+        pv_and_battery: false,
     };
 }
 

@@ -1065,6 +1065,7 @@
   "wizard_connection_hint": "Tous les points de connexion de l'installation. Ce qui peut être ajouté dépend de celui choisi.",
   "wizard_attach_empty": "Rien ne peut encore être rattaché à une connexion de ce type.",
   "wizard_attach_taken": "Déjà sur cette connexion",
+  "wizard_attach_modbus_device": "Appareil Modbus",
   "wizard_settings_none": "Rien à régler — celui-ci n'a pas de réglages propres.",
   "wizard_back": "Retour",
   "wizard_next": "Suivant",

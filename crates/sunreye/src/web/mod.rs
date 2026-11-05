@@ -11,6 +11,7 @@ mod origin;
 mod password;
 mod plant;
 mod profile_sources;
+mod reachability;
 mod rollup;
 mod setup;
 mod users;
@@ -123,6 +124,8 @@ fn roster() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(devices::list, devices::add))
         .routes(routes!(devices::patch, devices::remove))
         .routes(routes!(devices::add_connection))
+        .routes(routes!(reachability::probe_connection))
+        .routes(routes!(reachability::scan_units))
         .routes(routes!(devices::patch_connection, devices::remove_connection))
 }
 
