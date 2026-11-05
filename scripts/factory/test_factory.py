@@ -70,8 +70,13 @@ def stat_fields(pid):
     """/proc/<pid>/stat fields from state (3) on, or None once the pid is gone."""
     try:
         return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
-    except FileNotFoundError:
+    except (OSError, IndexError):
         return None
+
+
+def is_dead(pid):
+    fields = stat_fields(pid)
+    return fields is None or fields[0] == "Z"
 
 
 def kill_quietly(pid):
@@ -85,6 +90,33 @@ def until(condition, seconds=20):
         if time.monotonic() > deadline:
             raise AssertionError(f"condition not met within {seconds}s")
         time.sleep(0.02)
+
+
+class StatFields(unittest.TestCase):
+    def read_fails(self, error):
+        return mock.patch.object(Path, "read_text", side_effect=error)
+
+    def test_a_live_process_reads_its_state(self):
+        self.assertIn(stat_fields(os.getpid())[0], "RSD")
+
+    def test_a_pid_that_is_gone_reads_as_none(self):
+        with self.read_fails(FileNotFoundError):
+            self.assertIsNone(stat_fields(1))
+
+    def test_a_pid_that_vanishes_mid_read_reads_as_none(self):
+        with self.read_fails(ProcessLookupError):
+            self.assertIsNone(stat_fields(1))
+
+    def test_a_stat_file_emptied_mid_read_reads_as_none(self):
+        with mock.patch.object(Path, "read_text", return_value=""):
+            self.assertIsNone(stat_fields(1))
+
+    def test_a_vanished_process_is_dead(self):
+        with self.read_fails(ProcessLookupError):
+            self.assertTrue(is_dead(1))
+
+    def test_a_live_process_is_not_dead(self):
+        self.assertFalse(is_dead(os.getpid()))
 
 
 class ClaimLimit(unittest.TestCase):
@@ -1055,10 +1087,10 @@ class DetachedGate(unittest.TestCase):
         until(child.exists)
         orphan = int(child.read_text())
         self.addCleanup(kill_quietly, orphan)
-        self.assertNotEqual((stat_fields(orphan) or ["Z"])[0], "Z")
+        self.assertFalse(is_dead(orphan))
         self.cfg["commands"]["gate"] = [self.step("pass")]
         self.detach()
-        until(lambda: stat_fields(orphan) is None or stat_fields(orphan)[0] == "Z")
+        until(lambda: is_dead(orphan))
 
     def test_a_new_detach_clears_the_previous_log_and_exit(self):
         self.logs.mkdir(parents=True)
