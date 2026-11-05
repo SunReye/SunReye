@@ -571,9 +571,8 @@ mod tests {
         true
     }
 
-    /// What the stick has been sent, once it has had time to read it.
-    async fn requests(seen: &Seen) -> Vec<Vec<u8>> {
-        tokio::time::sleep(Duration::from_millis(50)).await;
+    /// What the stick has been sent; it logs a request before it replies, so a reply read means it is there.
+    fn requests(seen: &Seen) -> Vec<Vec<u8>> {
         seen.lock().expect("log").clone()
     }
 
@@ -584,7 +583,7 @@ mod tests {
         let (mut stream, seen) = stick(vec![vec![hex(REJECT_06)]], false);
         let session = Session::open(&mut stream, Some(0x1122_3344), TIMEOUT).await.expect("open");
         assert_eq!(session.serial, STICK);
-        assert_eq!(requests(&seen).await, [hex(PROBE)]);
+        assert_eq!(requests(&seen), [hex(PROBE)]);
     }
 
     #[tokio::test]
@@ -637,7 +636,7 @@ mod tests {
         let (mut stream, seen) = stick(script, true);
         let mut session = Session::open(&mut stream, None, TIMEOUT).await.expect("open");
         assert_eq!(session.read_holding(&mut stream, 1, 500, 5).await, Ok(WORDS.to_vec()));
-        assert_eq!(requests(&seen).await, [hex(PROBE), hex(READ_1), hex(RETRY_SEQ_2)]);
+        assert_eq!(requests(&seen), [hex(PROBE), hex(READ_1), hex(RETRY_SEQ_2)]);
     }
 
     #[tokio::test]
@@ -648,7 +647,7 @@ mod tests {
             let mut session = Session::open(&mut stream, None, TIMEOUT).await.expect("open");
             let got = session.read_holding(&mut stream, 1, 500, 5).await;
             assert_eq!(got, Err(Error::Exception(want)));
-            assert_eq!(requests(&seen).await.len(), 2, "no retry");
+            assert_eq!(requests(&seen).len(), 2, "no retry");
         }
     }
 
