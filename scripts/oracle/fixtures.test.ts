@@ -11,6 +11,7 @@ import {
 } from "./profile-decode";
 import { buildForecastCorpus } from "./forecast";
 import { buildForecastCorrectionCorpus } from "./forecast-correction";
+import { buildPlantCorpus } from "./plant";
 import { buildTransportCorpus } from "./transport";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
@@ -51,6 +52,33 @@ describe("the committed corpus, database-free groups", () => {
     expect(await staleFiles(await buildForecastCorrectionCorpus())).toEqual([]);
   });
 
+  test("the plant fold, member set and sources are what the 2.x code produces now", async () => {
+    expect(await staleFiles(await buildPlantCorpus())).toEqual([]);
+  });
+
+  test("every plant case names a stale member, a role one member lacks and a retired member", async () => {
+    const cases = await lines("plant.ndjson");
+    const live = cases.map((c) => c.plant.live);
+    expect(live.some((l) => l.stale.length > 0 && l.members.length > l.stale.length)).toBe(true);
+    const lacks = cases.some((c) => {
+      const keys = Object.values(c.live.samples)
+        .filter((s): s is { metrics: Record<string, number> } => s !== null)
+        .map((s) => Object.keys(s.metrics).sort().join());
+      return new Set(keys).size > 1;
+    });
+    expect(lacks).toBe(true);
+    expect(
+      cases.some((c) =>
+        c.devices.some(
+          (d: { slug: string; retiredAt: string | null }) =>
+            d.retiredAt !== null &&
+            c.members.history.includes(d.slug) &&
+            !c.members.live.includes(d.slug),
+        ),
+      ),
+    ).toBe(true);
+  });
+
   const dir = officialProfilesDir();
   test.skipIf(dir === null)(
     "profile decode is what the profile repository produces now",
@@ -72,6 +100,9 @@ describe("the corpus as a whole", () => {
       "statistics.ndjson",
       "forecast.ndjson",
       "forecast-correction.ndjson",
+      "role-aggregates.ndjson",
+      "plant.ndjson",
+      "plant-rollups.ndjson",
       "archives/current-2.x/archive.tar.gz",
       "archives/legacy-1.2.0/archive.tar.gz",
       "README.md",
@@ -98,6 +129,8 @@ describe("the corpus as a whole", () => {
       "statistics.ndjson",
       "forecast.ndjson",
       "forecast-correction.ndjson",
+      "plant.ndjson",
+      "plant-rollups.ndjson",
     ]) {
       names.push(...(await lines(file)).map((c) => c.case));
     }

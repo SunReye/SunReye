@@ -177,7 +177,35 @@ bell computed by the generator, recorded in `input`; the second day of a series 
 | `forecast/next15-across-slot-boundary` | `next15` window spans two slots |
 | `forecast/remaining-today-mid-slot` | `remainingTodayKwh` prorates the running hourly slot |
 
-## 7. `forecast-correction.ndjson`: learned forecast correction
+## 7. `plant.ndjson`, `plant-rollups.ndjson`, `role-aggregates.ndjson`: plant fold
+
+A plant of several devices, folded by role. Every device is `deye-sg05lp3`, slug = id, no battery (weight 1).
+`roles` maps the metric keys read to their role. `role-aggregates.ndjson` is one line: every canonical role to how it
+folds across members (`sum`, `weighted-mean`, `per-device`). Producer: `plantAggregateOf`
+(`packages/inverter-core/src/plant-aggregate.ts`).
+
+`plant.ndjson` (database-free, `scripts/oracle/plant.ts`): input `devices` (roster with `role`, `retiredAt`), `live`
+(each device's latest sample, the fold instant, the stale limit) and `recent` (each device's own step-1 recent-history
+backfill). Output `members` (`history` keeps retired devices, `live` drops them), `sources` (`GET /api/sources`), and
+`plant.live` (the `plant` topic's reading over the live members) and `plant.recent` (recent history over the history
+members). Producers: `plantMembers` (`apps/server/src/shared/plant-source.ts`), `listSources`
+(`apps/server/src/devices/plant-sources.ts`, zone `UTC`), `foldLiveSamples` and `foldRecentBackfills`
+(`apps/server/src/shared/plant-fold.ts`), aggregates through `aggregateOfMetric`.
+
+`plant-rollups.ndjson` (database, `apps/server/db-tests/oracle/plant.ts`): input `devices` with their `readings` and the
+`window`; output the history `members` and `minute`: per metric the plant's minute buckets, or `{refused}` for a
+per-device role. Producer: `plantFoldFor` (`apps/server/src/shared/plant-read.ts`) then `queryRollup` with its plant
+arm (`plantRollupSeries`, `apps/server/src/shared/rollup-sql.ts`) after `refresh_continuous_aggregate`.
+
+| case | boundary |
+| --- | --- |
+| `overlapping-roles` | both report PV and production, one lacks the battery, the voltage has no plant value |
+| `stale-member` | one member's sample is five minutes and a millisecond old (`plant.ndjson` only) |
+| `retired-member` | a retired member keeps its history in the plant and leaves the live members; a meter is no member |
+| `controller-and-meter` | a controller is the whole member set; a plant of one member is that device |
+| `two-batteries` | both fresh members report a battery SOC: the mean at weight 1 (no `batteryKwh`), the members' extremes |
+
+## 8. `forecast-correction.ndjson`: learned forecast correction
 
 One line per case: `{case,producer,input,output}`, database-free, produced by the 3.x code. A model is `month:hour` to
 `{ratio,weight}`; observations carry `localTime` (plant-local `YYYY-MM-DDTHH:mm`), `expectedW` and `actualW`.

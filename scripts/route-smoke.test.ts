@@ -235,6 +235,7 @@ describe("the public surface is a closed list", () => {
       "GET /api/profiles",
       "GET /api/settings/inverter",
       "GET /api/settings/weather",
+      "GET /api/settings/time-zone",
       "GET /api/forecast/providers",
     ]) {
       expect(isPublicLabel(label)).toBe(false);
@@ -660,7 +661,7 @@ describe("planning carries both bodies", () => {
 // ---------------------------------------------------------------------------
 
 describe("the session surface is a closed list", () => {
-  test("a plain signed-in user reaches the session, capabilities, the dashboard reads and the forecast, nothing else", () => {
+  test("a plain signed-in user reaches the session, capabilities, the dashboard reads, the forecast and the sources, nothing else", () => {
     expect([...SESSION_LABELS].sort()).toEqual(
       [
         "DELETE /api/auth/session",
@@ -672,6 +673,7 @@ describe("the session surface is a closed list", () => {
         "GET /api/history/recent",
         "GET /api/history/rollup",
         "GET /api/profile",
+        "GET /api/sources",
       ].sort(),
     );
   });
@@ -681,6 +683,7 @@ describe("the session surface is a closed list", () => {
       "GET /api/profiles",
       "GET /api/settings/inverter",
       "GET /api/settings/weather",
+      "GET /api/settings/time-zone",
       "GET /api/forecast/providers",
     ]) {
       expect(isSessionLabel(label)).toBe(false);

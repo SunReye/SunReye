@@ -10,10 +10,12 @@ mod inverter;
 mod kiosk;
 mod origin;
 mod password;
+mod plant;
 mod profile_sources;
 mod reachability;
 mod rollup;
 mod setup;
+mod time_zone;
 mod users;
 mod v1;
 mod ws;
@@ -94,6 +96,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(auth::current, auth::logout))
+        .routes(routes!(plant::sources))
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .routes(routes!(forecast::correction))
@@ -117,10 +120,16 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(kiosk::switch))
-        .routes(routes!(forecast::read, forecast::save))
-        .routes(routes!(forecast::providers))
+        .merge(plant_settings())
         .merge(profile_settings())
         .merge(roster())
+}
+
+fn plant_settings() -> OpenApiRouter<Arc<Core>> {
+    OpenApiRouter::new()
+        .routes(routes!(forecast::read, forecast::save))
+        .routes(routes!(forecast::providers))
+        .routes(routes!(time_zone::read, time_zone::save))
 }
 
 fn roster() -> OpenApiRouter<Arc<Core>> {

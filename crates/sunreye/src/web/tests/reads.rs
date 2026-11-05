@@ -1,18 +1,13 @@
 //! The two reads the live dashboard makes on first paint: the profile manifest and the recent window.
 
 use super::*;
+pub(super) use crate::oracle::oracle;
 use crate::samples::{MINUTE_MS, Sample, minute_of};
 use crate::store::{NewConnection, NewDevice};
 
 /// 2026-03-01T00:02:30Z: the window of 300 s opens at 23:57:30 the day before.
 const NOW: i64 = 1_772_323_350_000;
 const MIDNIGHT: i64 = 1_772_323_200_000;
-
-pub(super) fn oracle(file: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle").join(file);
-    let text = std::fs::read_to_string(path).expect("corpus");
-    text.lines().map(|line| serde_json::from_str(line).expect("json")).collect()
-}
 
 /// A signed-in account that is not an admin.
 pub(super) async fn plain_user(admin: &Api) -> Api {
@@ -321,7 +316,11 @@ async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_read
     assert_eq!(read(format!("source={first}")).await, own(50_000, 1.0), "retired, still read");
     assert_eq!(read(format!("source={second}")).await, own(40_000, 2.0));
     assert_eq!(read(String::new()).await, own(40_000, 2.0), "no source: the first in service");
-    assert_eq!(read("source=plant".into()).await, own(40_000, 2.0));
+    assert_eq!(
+        read("source=plant".into()).await["metrics"],
+        json!({}),
+        "two members: a key with no role has no plant value"
+    );
     for unknown in ["source=99", "source=x", "source=-1"] {
         assert_eq!(read(unknown.into()).await, json!({"t0": 0, "step": 1, "metrics": {}}), "{unknown}");
     }

@@ -401,6 +401,39 @@ mod tests {
         assert_eq!(err.to_string(), "irradiance time \"tomorrow\" is not YYYY-MM-DDTHH:mm");
     }
 
+    fn days_in(name: &str, now_ms: i64) -> [i64; 3] {
+        local_days(now_ms, &jiff::tz::db().get(name).expect("bundled zone")).expect("days")
+    }
+
+    /// Day starts are UTC instants worked out by hand from each zone's offsets.
+    #[test]
+    fn a_dst_day_is_23_hours_in_spring_and_25_in_autumn() {
+        let hours =
+            |[today, tomorrow, after]: [i64; 3]| ((tomorrow - today) / HOUR_MS, (after - tomorrow) / HOUR_MS);
+        // 2026-03-29 12:00Z: Berlin skips 02:00-03:00; the day starts at 23:00Z, the next at 22:00Z.
+        let spring = days_in("Europe/Berlin", 1_774_785_600_000);
+        assert_eq!(spring, [1_774_738_800_000, 1_774_821_600_000, 1_774_908_000_000]);
+        assert_eq!(hours(spring), (23, 24));
+        // 2026-10-25 12:00Z: Berlin repeats 02:00-03:00; the day starts at 22:00Z, the next at 23:00Z.
+        let autumn = days_in("Europe/Berlin", 1_792_929_600_000);
+        assert_eq!(autumn, [1_792_879_200_000, 1_792_969_200_000, 1_793_055_600_000]);
+        assert_eq!(hours(autumn), (25, 24));
+    }
+
+    #[test]
+    fn a_half_hour_and_a_45_minute_zone_cut_days_off_the_hour() {
+        // 2026-07-24 20:00Z is 01:30 on the 25th in Kolkata (+05:30).
+        assert_eq!(
+            days_in("Asia/Kolkata", 1_784_923_200_000),
+            [1_784_917_800_000, 1_785_004_200_000, 1_785_090_600_000]
+        );
+        // 2026-07-24 18:20Z is 00:05 on the 25th in Kathmandu (+05:45).
+        assert_eq!(
+            days_in("Asia/Kathmandu", 1_784_917_200_000),
+            [1_784_916_900_000, 1_785_003_300_000, 1_785_089_700_000]
+        );
+    }
+
     #[test]
     fn offsets_print_as_iso_designators() {
         for (seconds, want) in [(0, "Z"), (7200, "+02:00"), (-12_600, "-03:30"), (20_700, "+05:45")] {

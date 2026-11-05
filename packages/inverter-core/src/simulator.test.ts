@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 
 import { SimulatedInverter } from "./simulator";
 import type { InverterProfile, MetricDef, MetricValues, SimContext } from "./types";
@@ -101,6 +101,8 @@ describe("the profile's own simulate hook", () => {
     expect(metrics["settings.grid_charge"]).toBe(0);
   });
 
+  afterEach(() => setSystemTime());
+
   test("the first sample reports no elapsed time, later ones report the gap", async () => {
     const seen: number[] = [];
     const sim = new SimulatedInverter(
@@ -110,13 +112,12 @@ describe("the profile's own simulate hook", () => {
       }),
     );
 
+    setSystemTime(new Date("2026-09-10T12:00:00.000Z"));
     await sim.read();
-    await Bun.sleep(15);
+    setSystemTime(new Date("2026-09-10T12:00:01.500Z"));
     await sim.read();
 
-    expect(seen[0]).toBe(0);
-    expect(seen[1]).toBeGreaterThan(0);
-    expect(seen[1]).toBeLessThan(5);
+    expect(seen).toEqual([0, 1.5]);
   });
 
   test("the state object is the same one across reads, so counters can integrate", async () => {

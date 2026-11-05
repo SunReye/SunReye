@@ -320,19 +320,21 @@ suite("the in-place 1.2.0 -> 2.0.0 upgrade", () => {
   });
 
   describe("the blocking step", () => {
-    let elapsedMs: number;
+    let rawOidBefore: number;
 
     beforeAll(async () => {
-      const began = Date.now();
+      rawOidBefore = await one(`select 'public.metrics_raw'::regclass::oid::bigint as n`);
       await runMigrations(url);
-      elapsedMs = Date.now() - began;
     }, 120_000);
 
-    test("is CATALOG-ONLY, so it fits in the addon's 120 s boot chain", () => {
-      // Measured at 0.2 s against the real 512 MB / 9.1 M bucket fixture. The
-      // bound here is deliberately loose — what is being pinned is that it does
-      // not move rows, and moving 9.1 M of them cannot be done in seconds.
-      expect(elapsedMs).toBeLessThan(30_000);
+    test("is CATALOG-ONLY, so it fits in the addon's 120 s boot chain", async () => {
+      // Measured at 0.2 s against the real 512 MB / 9.1 M bucket fixture. What is
+      // pinned is that it does not move rows: a rename keeps the relation, a copy
+      // would hand the legacy name to a new one.
+      const legacyRawOid = await one(
+        `select 'public.metrics_raw_legacy'::regclass::oid::bigint as n`,
+      );
+      expect(legacyRawOid).toBe(rawOidBefore);
     });
 
     test("leaves the NEW metrics_raw under the freed name", async () => {

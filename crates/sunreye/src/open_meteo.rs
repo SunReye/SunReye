@@ -140,9 +140,9 @@ fn assemble(
     location: Location,
     planes: &[Plane],
     responses: &[(Plane, Response)],
-) -> Result<Fetched, FetchError> {
+) -> Result<Irradiance, FetchError> {
     let first = responses.first().ok_or(FetchError::Fields)?;
-    let (utc_offset_seconds, time_zone) = (first.1.utc_offset_seconds.unwrap_or(0), first.1.timezone.clone());
+    let utc_offset_seconds = first.1.utc_offset_seconds.unwrap_or(0);
     let series = first.1.minutely_15.as_ref().ok_or(FetchError::Fields)?;
     let times = series.time.as_ref().filter(|t| !t.is_empty()).ok_or(FetchError::Fields)?;
     let aligned =
@@ -157,17 +157,14 @@ fn assemble(
             gti.ok_or(FetchError::Irradiance)
         })
         .collect::<Result<_, _>>()?;
-    Ok(Fetched {
-        irradiance: Irradiance {
-            times: times.clone(),
-            utc_offset_seconds,
-            location,
-            temperature,
-            gti,
-            dni: aligned(&series.direct_normal_irradiance_instant),
-            wind_speed: aligned(&series.wind_speed_10m),
-        },
-        time_zone,
+    Ok(Irradiance {
+        times: times.clone(),
+        utc_offset_seconds,
+        location,
+        temperature,
+        gti,
+        dni: aligned(&series.direct_normal_irradiance_instant),
+        wind_speed: aligned(&series.wind_speed_10m),
     })
 }
 
@@ -177,7 +174,7 @@ pub async fn fetch(
     roots: &[CertificateDer<'_>],
     location: Location,
     planes: &[Plane],
-) -> Result<Fetched, FetchError> {
+) -> Result<Irradiance, FetchError> {
     let mut responses = Vec::new();
     for (i, plane) in unique(planes).into_iter().enumerate() {
         let body = get_with_roots(&url(base, location, plane, i == 0), LIMITS, roots).await?;
@@ -199,7 +196,8 @@ pub async fn fetch_archive(
         let url = archive_url(base, location, plane, i == 0, (start, end));
         responses.push((plane, decode_archive(&get_with_roots(&url, ARCHIVE_LIMITS, roots).await?)?));
     }
-    assemble(location, planes, &responses)
+    let time_zone = responses.first().and_then(|(_, r)| r.timezone.clone());
+    Ok(Fetched { irradiance: assemble(location, planes, &responses)?, time_zone })
 }
 
 #[cfg(test)]
@@ -251,10 +249,9 @@ mod tests {
             "time": [1784887200, 1784890800], "temperature_2m": [20.0, 21.0],
             "global_tilted_irradiance_instant": [500.0, null]}}"#;
         let plane = (30.0, 0.0);
-        let fetched =
-            assemble(HERE, &[plane], &[(plane, decode_archive(body).expect("decoded"))]).expect("series");
-        assert_eq!(fetched.time_zone.as_deref(), Some("Europe/Berlin"));
-        let series = fetched.irradiance;
+        let decoded = decode_archive(body).expect("decoded");
+        assert_eq!(decoded.timezone.as_deref(), Some("Europe/Berlin"));
+        let series = assemble(HERE, &[plane], &[(plane, decoded)]).expect("series");
         assert_eq!(series.times, ["2026-07-24T10:00", "2026-07-24T11:00"]);
         assert_eq!((series.utc_offset_seconds, series.gti), (0, vec![vec![500.0, 0.0]]));
     }
@@ -281,10 +278,8 @@ mod tests {
         }));
         let second = response(json!({"minutely_15": {"global_tilted_irradiance_instant": [100.0, 200.0]}}));
         let planes = [(30.0, 0.0), (10.0, 90.0), (30.0, 0.0)];
-        let fetched =
+        let series =
             assemble(HERE, &planes, &[((30.0, 0.0), first), ((10.0, 90.0), second)]).expect("series");
-        assert_eq!(fetched.time_zone.as_deref(), Some("Europe/Berlin"));
-        let series = fetched.irradiance;
         assert_eq!((series.utc_offset_seconds, &series.temperature), (7200, &vec![20.0, 0.0]));
         assert_eq!(series.gti, [vec![500.0, 0.0], vec![100.0, 200.0], vec![500.0, 0.0]]);
         assert_eq!((series.dni, series.wind_speed), (Some(vec![600.0, 610.0]), None), "wind is misaligned");
@@ -335,7 +330,7 @@ mod tests {
         let body = response(json!({"minutely_15": {"time": ["a", "b"], "temperature_2m": [null, null],
             "global_tilted_irradiance_instant": [null, null], "direct_normal_irradiance_instant": [1, 2, 3],
             "wind_speed_10m": [null, null]}}));
-        let series = assemble(HERE, &[plane], &[(plane, body)]).expect("series").irradiance;
+        let series = assemble(HERE, &[plane], &[(plane, body)]).expect("series");
         assert_eq!((series.temperature, series.gti), (vec![0.0, 0.0], vec![vec![0.0, 0.0]]));
         assert_eq!((series.dni, series.wind_speed), (None, Some(vec![0.0, 0.0])));
     }

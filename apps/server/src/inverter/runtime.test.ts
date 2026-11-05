@@ -78,8 +78,8 @@ function deferred(): { promise: Promise<void>; release: () => void } {
   return { promise, release };
 }
 
-/** Let every pending microtask (and any 0 ms timer) run. */
-const settle = () => Bun.sleep(0);
+/** Let every pending microtask run: one macrotask turn drains them. */
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** One captured log line — enough to prove *which* line was emitted, and how often. */
 interface LogLine {

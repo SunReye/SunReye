@@ -14,7 +14,7 @@
  * flush is the only place that conversion happens.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { LogEntry } from "@SunReye/contracts/logs";
 import type { WsTopicPayloads } from "@SunReye/contracts/ws";
 import type { InverterSample } from "@SunReye/inverter-core";
@@ -22,10 +22,11 @@ import { createStreams } from "../shared/streams";
 import { type TopicPublisher, publishLiveTopics } from "./ws-publish";
 import { TOPIC_POLICY } from "./ws-topics";
 
-/** How long the tests let a coalescing window run for. */
+/** The coalescing window; fake timers run it on demand. */
 const FLUSH_MS = 5;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+beforeEach(() => jest.useFakeTimers());
+afterEach(() => jest.useRealTimers());
 
 const sample: InverterSample = {
   time: "2026-08-16T12:00:00.000Z",
@@ -71,7 +72,7 @@ function harness(options: { listening?: boolean } = {}) {
 }
 
 describe("the pub/sub name each topic fans out on", () => {
-  test("every live topic publishes on its own bare topic name", async () => {
+  test("every live topic publishes on its own bare topic name", () => {
     // The names are the wire topics themselves — no prefix, no namespace. The
     // `mux:` prefix that used to be here existed only to keep this fan-out off
     // the five legacy routes' topics while both shipped; those routes are gone,
@@ -84,7 +85,7 @@ describe("the pub/sub name each topic fans out on", () => {
     h.streams.emit("statistics", { type: "prices" });
     h.streams.emit("automations", { tickMs: 30_000 } as unknown as WsTopicPayloads["automations"]);
     h.streams.emit("logs", logLine("boot"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
 
     // Compared against the POLICY table rather than a literal list: a topic
     // added to `TOPIC_POLICY` with no `streams.subscribe` here would otherwise
@@ -95,7 +96,7 @@ describe("the pub/sub name each topic fans out on", () => {
     );
   });
 
-  test("the pub/sub name matches the topic the frame is tagged with", async () => {
+  test("the pub/sub name matches the topic the frame is tagged with", () => {
     // The two halves of one frame: publishing on `x` a frame tagged `y` would
     // deliver to the right sockets and be dropped by every client's `switch`.
     const h = harness();
@@ -103,7 +104,7 @@ describe("the pub/sub name each topic fans out on", () => {
     h.streams.emit("metrics", sample);
     h.streams.emit("statistics", { type: "prices" });
     h.streams.emit("logs", logLine("boot"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
 
     for (const { topic, frame } of h.frames()) expect(frame.topic).toBe(topic);
   });
@@ -131,7 +132,7 @@ describe("the frame envelope", () => {
 });
 
 describe("log coalescing", () => {
-  test("a burst becomes one frame carrying the batch as an array", async () => {
+  test("a burst becomes one frame carrying the batch as an array", () => {
     // Startup and error storms emit many lines at once; the wire contract for
     // `logs` is an array precisely because of this flush.
     const h = harness();
@@ -139,7 +140,7 @@ describe("log coalescing", () => {
     h.streams.emit("logs", logLine("one"));
     h.streams.emit("logs", logLine("two"));
     h.streams.emit("logs", logLine("three"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
 
     expect(h.published).toHaveLength(1);
     expect(h.frames().map(({ frame }) => frame.topic)).toEqual(["logs"]);
@@ -148,15 +149,15 @@ describe("log coalescing", () => {
     ).toEqual([["one", "two", "three"]]);
   });
 
-  test("a later line opens a fresh window instead of resending the closed one", async () => {
+  test("a later line opens a fresh window instead of resending the closed one", () => {
     // The flush drains the queue. Left undrained, the next window would resend
     // every line the viewer already has.
     const h = harness();
 
     h.streams.emit("logs", logLine("first"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
     h.streams.emit("logs", logLine("second"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
 
     expect(h.published).toHaveLength(2);
     expect(
@@ -166,7 +167,7 @@ describe("log coalescing", () => {
 });
 
 describe("before the server is listening", () => {
-  test("an emit is dropped rather than thrown, and the next one still publishes", async () => {
+  test("an emit is dropped rather than thrown, and the next one still publishes", () => {
     // The bus is wired while `app.server` is still undefined (the subscriptions
     // are registered before `.listen()` resolves), and a boot-time log line can
     // already be emitted in that window.
@@ -174,7 +175,7 @@ describe("before the server is listening", () => {
 
     h.streams.emit("metrics", sample);
     h.streams.emit("logs", logLine("boot"));
-    await sleep(FLUSH_MS * 3);
+    jest.advanceTimersByTime(FLUSH_MS);
     expect(h.published).toEqual([]);
 
     h.setListening(true);

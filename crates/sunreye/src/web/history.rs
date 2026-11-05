@@ -8,10 +8,11 @@ use serde::Deserialize;
 
 use super::kiosk::HistoryRead;
 use super::{ApiError, ApiQuery, ErrorBody};
+use crate::plant::{self, Aggregates};
 use crate::recent::{Recent, RecentError, Window, fold};
 use crate::run::Core;
 use crate::samples::with_unstored;
-use crate::store::{Store, StoreError, first_in_service};
+use crate::store::{StoreError, first_in_service};
 
 const DEFAULT_SECONDS: u32 = 300;
 const MAX_SECONDS: u32 = 3600;
@@ -79,24 +80,66 @@ pub async fn recent(
     ApiQuery(query): ApiQuery<RecentQuery>,
 ) -> Result<Json<Recent>, ApiError> {
     let window = query.window(core.now_ms())?;
+    Ok(Json(match source(&core, query.source.as_deref()).await? {
+        Source::Nothing => fold(window, std::iter::empty())?,
+        Source::Device(device) => device_recent(&core, device, window).await?,
+        Source::Plant(plant) => {
+            let mut members = Vec::with_capacity(plant.members.len());
+            for device in &plant.members {
+                members.push(device_recent(&core, *device, window).await?);
+            }
+            plant::fold_recent(&members, &plant.aggregates, window.step)
+        }
+    }))
+}
+
+async fn device_recent(core: &Core, device: i64, window: Window) -> Result<Recent, ApiError> {
     let (from, to) = (window.reach_ms(), window.now_ms + 1);
-    let Some(device) = source_device(&core.store, query.source.as_deref()).await? else {
-        return Ok(Json(fold(window, std::iter::empty())?));
-    };
     // Held before the store is read: a minute written in between is then in one or both, never neither.
     // A copy of up to two minutes of readings per request.
     let held = core.unstored.held(device);
     let minutes = core.store.minutes(device, from, to).await?;
-    Ok(Json(fold(window, with_unstored(minutes.samples(from, to), held))?))
+    Ok(fold(window, with_unstored(minutes.samples(from, to), held))?)
 }
 
-/// The device a history read is from: `source` names one by its decimal id, retired or not; none, empty or
-/// `plant` is the first in service. An id no device has reads nothing, as 3.x reads an unknown slug.
-pub(super) async fn source_device(store: &Store, source: Option<&str>) -> Result<Option<i64>, StoreError> {
-    let devices = store.devices().await?;
+/// What a history read is from.
+pub(super) enum Source {
+    /// No device: the read answers empty.
+    Nothing,
+    Device(i64),
+    /// Two or more members, or none; a plant of one member is read as that device.
+    Plant(PlantRead),
+}
+
+/// The plant's history members, retired ones included, and how the first member with a known profile
+/// folds each metric.
+pub(super) struct PlantRead {
+    pub members: Vec<i64>,
+    pub aggregates: Aggregates,
+}
+
+/// `source` names a device by its decimal id, retired or not, or `plant`; none or empty is the first
+/// device in service. An id no device has reads nothing, as 3.x reads an unknown slug.
+pub(super) async fn source(core: &Core, source: Option<&str>) -> Result<Source, StoreError> {
+    let devices = core.store.devices().await?;
+    let device = |id: Option<i64>| id.map_or(Source::Nothing, Source::Device);
     Ok(match source.filter(|source| !source.is_empty()) {
-        None | Some("plant") => first_in_service(&devices).map(|device| device.id),
-        Some(id) => devices.iter().find(|device| device.id.to_string() == id).map(|device| device.id),
+        None => device(first_in_service(&devices).map(|d| d.id)),
+        Some("plant") => match plant::members(&devices, false).as_slice() {
+            [sole] => Source::Device(sole.id),
+            members => {
+                let mut aggregates = Aggregates::default();
+                for member in members {
+                    if let Some(profile) = core.profile(&member.profile_id).await? {
+                        aggregates = Aggregates::of_profile(&profile);
+                        break;
+                    }
+                }
+                let members = members.iter().map(|d| d.id).collect();
+                Source::Plant(PlantRead { members, aggregates })
+            }
+        },
+        Some(id) => device(devices.iter().find(|d| d.id.to_string() == id).map(|d| d.id)),
     })
 }
 

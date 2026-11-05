@@ -12,6 +12,11 @@ _Avoid_: site, system, installation
 One inverter, battery, meter or other unit SunReye reads, described by a profile. Named by a slug: in the 4.0 core, the device id as a decimal string.
 _Avoid_: inverter (for any device), unit
 
+**Member**:
+A device the plant's figures are summed from: every inverter, or only the controller when one is present. A retired
+device stays a member of the plant's history and leaves its live figures.
+_Avoid_: participant
+
 **Retired**:
 Of a device: kept with its history, no longer polled, until restored. A device with history is retired, never deleted.
 _Avoid_: archived, disabled, deleted
@@ -77,7 +82,7 @@ _Avoid_: TTL, expiry
 
 **Plant time zone**:
 The time zone statistics days, months and years are cut in, from hourly rollups; it labels rollup buckets,
-which are UTC.
+which are UTC. An admin sets it; until then it is the host's zone, else UTC.
 _Avoid_: local time, server time
 
 **Display time zone**:

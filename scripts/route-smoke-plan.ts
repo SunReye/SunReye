@@ -447,6 +447,7 @@ export const SESSION_LABELS: readonly string[] = [
   "GET /api/history/recent",
   "GET /api/history/rollup",
   "GET /api/profile",
+  "GET /api/sources",
 ];
 
 const SESSION_SET = new Set(SESSION_LABELS);

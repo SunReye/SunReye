@@ -64,7 +64,7 @@ pub(super) struct Expected {
 pub(super) const FRESH: Expected = Expected { now_ms: NOW_MS, fetched_ms: NOW_MS, stale: false };
 
 fn expected(config: &ForecastConfig, sim: SimInputs, variant: Variant, at: &Expected) -> Value {
-    corrected(config, sim, variant, at, None)
+    expected_in(&zone("Europe/Berlin"), config, sim, variant, at)
 }
 
 /// [`expected`] with the learned `correction` applied.
@@ -75,9 +75,26 @@ pub(super) fn corrected(
     at: &Expected,
     correction: Option<&CorrectionModel>,
 ) -> Value {
-    let zone = jiff::tz::db().get("Europe/Berlin").expect("bundled zone");
-    let run = Run { time_zone: &zone, now_ms: at.now_ms, sim, correction };
-    let built = forecast::build(config, &irradiance(), "open-meteo", &run).expect("forecast");
+    let zone = zone("Europe/Berlin");
+    exported(config, variant, at, &Run { time_zone: &zone, now_ms: at.now_ms, sim, correction })
+}
+
+fn zone(name: &str) -> jiff::tz::TimeZone {
+    jiff::tz::db().get(name).expect("bundled zone")
+}
+
+fn expected_in(
+    zone: &jiff::tz::TimeZone,
+    config: &ForecastConfig,
+    sim: SimInputs,
+    variant: Variant,
+    at: &Expected,
+) -> Value {
+    exported(config, variant, at, &Run { time_zone: zone, now_ms: at.now_ms, sim, correction: None })
+}
+
+fn exported(config: &ForecastConfig, variant: Variant, at: &Expected, run: &Run) -> Value {
+    let built = forecast::build(config, &irradiance(), "open-meteo", run).expect("forecast");
     let mut value = serde_json::to_value(built.export(variant)).expect("export");
     value["fetchedAt"] = json!(crate::live::iso(at.fetched_ms));
     value["stale"] = json!(at.stale);
@@ -156,6 +173,9 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     let core =
         Core::open_forecasting(&dir(name), vec![ca.root()], standin.urls.clone(), now).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
+    // Expectations are Berlin days: save the zone first.
+    let berlin = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
+    assert_eq!(berlin.status, StatusCode::OK);
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
     let port = unused_port().await;
     assert_eq!(put(&admin, "/api/settings/inverter", &connection(port)).await.status, StatusCode::OK);
@@ -440,6 +460,56 @@ async fn the_battery_sim_starts_from_the_live_soc_the_median_load_and_the_day_st
         SimInputs { start_soc_pct: Some(95.0), house_load_w: Some(400.0), day_start_soc_pct: Some(55.0) };
     let usable = get(&admin, "/api/forecast/usable").await.json();
     assert_eq!(usable, expected(&config, sim, Variant::Usable, &FRESH));
+    drop(admin);
+    core.stop().await;
+}
+
+/// 2026-07-24T22:30:00Z: 00:30 on the 25th in Berlin, 04:00 on the 25th in Kolkata, still the 24th in UTC.
+const LATE_MS: i64 = 1_784_932_200_000;
+
+fn late_now() -> i64 {
+    LATE_MS
+}
+
+fn late(stale: bool) -> Expected {
+    Expected { now_ms: LATE_MS, fetched_ms: LATE_MS, stale }
+}
+
+/// The 24th's slots in the series, summed.
+fn today_kwh(answer: &Value) -> f64 {
+    answer["todayKwh"].as_f64().expect("todayKwh")
+}
+
+#[tokio::test]
+async fn the_forecast_cuts_its_days_in_the_saved_plant_zone_not_the_provider_s() {
+    let (core, admin, standin) = forecasting("forecast-plant-zone", late_now).await;
+    configure(&admin, None).await;
+    let base = &model(None);
+    // The stand-in answers `Europe/Berlin`; the saved zone decides which day is today.
+    for (name, today_has_the_series) in [("UTC", true), ("Asia/Kolkata", false), ("Asia/Kathmandu", false)] {
+        let saved = put(&admin, "/api/settings/time-zone", &json!({"timeZone": name})).await;
+        assert_eq!(saved.status, StatusCode::OK, "{name}");
+        let raw = get(&admin, "/api/forecast").await.json();
+        let want = expected_in(&zone(name), base, SimInputs::default(), Variant::Raw, &late(false));
+        assert_eq!(raw, want, "{name}");
+        assert_eq!(today_kwh(&raw) > 0.0, today_has_the_series, "{name}");
+    }
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "a zone change does not refetch");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_saved_zone_the_database_lost_cuts_utc_days_as_the_setting_reads_never_the_series_offset() {
+    let (core, admin, _) = forecasting("forecast-lost-zone", late_now).await;
+    configure(&admin, None).await;
+    core.store.save_plant_time_zone("Gone/Zone").await.expect("write");
+    let setting = get(&admin, "/api/settings/time-zone").await.json();
+    assert_eq!(setting, json!({"timeZone": "UTC"}));
+    let raw = get(&admin, "/api/forecast").await.json();
+    let want = expected_in(&zone("UTC"), &model(None), SimInputs::default(), Variant::Raw, &late(false));
+    assert_eq!(raw, want);
+    assert!(today_kwh(&raw) > 0.0, "22:30 on the 24th in UTC: the series' 24th is today");
     drop(admin);
     core.stop().await;
 }
