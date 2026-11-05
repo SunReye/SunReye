@@ -1,6 +1,17 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { describe, expect, test } from "bun:test";
-import { type TimingIo, type Finding, isTestFile, main, measure, scanFile } from "./timing-hygiene";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import {
+  type TimingIo,
+  type Finding,
+  fileIo,
+  isTestFile,
+  main,
+  measure,
+  scanFile,
+} from "./timing-hygiene";
 
 const rust = (body: string) => scanFile("crates/x/tests/it.rs", body);
 const rustInline = (source: string) => scanFile("crates/x/src/lib.rs", source);
@@ -401,5 +412,60 @@ describe("wiring", () => {
     const run = ci.indexOf("bun run test:timing");
     expect(run).toBeGreaterThan(lint);
     expect(run).toBeLessThan(ci.indexOf("step typecheck"));
+  });
+});
+
+describe("fileIo", () => {
+  const root = join(import.meta.dir, "..");
+  const scratch: string[] = [];
+  const tmp = async () => {
+    const dir = await mkdtemp(join(tmpdir(), "timing-hygiene-"));
+    scratch.push(dir);
+    return dir;
+  };
+  afterAll(() => Promise.all(scratch.map((dir) => rm(dir, { recursive: true, force: true }))));
+
+  test("lists this repo's test files and nothing else", async () => {
+    const files = await fileIo(root).files();
+    expect(files).toContain("scripts/timing-hygiene.test.ts");
+    expect(files).toContain("crates/sunreye/tests/cli.rs");
+    expect(files).not.toContain("scripts/timing-hygiene.ts");
+  });
+
+  test("reads a file relative to the root", async () => {
+    expect(await fileIo(root).read("scripts/timing-hygiene.ts")).toContain("Ban tests that wait");
+  });
+
+  test("a missing baseline reads as none, and a written one reads back", async () => {
+    const path = join(await tmp(), "baseline.json");
+    const io = fileIo(root, path);
+    expect(await io.readBaseline()).toBeNull();
+    await io.writeBaseline({ "a.rs": 2 });
+    expect(await io.readBaseline()).toEqual({ "a.rs": 2 });
+    expect(await Bun.file(path).text()).toBe('{\n  "a.rs": 2\n}\n');
+  });
+
+  test("the pass line goes to stdout and a failure to stderr", () => {
+    const out = spyOn(console, "log").mockImplementation(() => {});
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    fileIo(root).log("fine");
+    fileIo(root).error("broken");
+    expect([out.mock.calls, err.mock.calls]).toEqual([[["fine"]], [["broken"]]]);
+    out.mockRestore();
+    err.mockRestore();
+  });
+
+  test("the committed baseline holds only files the scan still lists", async () => {
+    const io = fileIo(root);
+    const listed = new Set(await io.files());
+    const baseline = (await io.readBaseline()) ?? {};
+    expect(Object.keys(baseline).filter((file) => !listed.has(file))).toEqual([]);
+  });
+});
+
+describe("an unterminated test module", () => {
+  test("is read to the end of the file rather than skipped", () => {
+    const source = "#[cfg(test)]\nmod tests {\n  fn t() {\n    std::thread::sleep(d);\n  }\n";
+    expect(rustInline(source)).toHaveLength(1);
   });
 });

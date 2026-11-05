@@ -23,6 +23,7 @@
  * Usage: `bun scripts/timing-hygiene.ts [--write]`.
  */
 
+import { join } from "node:path";
 import { keepOnly, maskRust, maskTs } from "./lib/mask-source";
 import { callBody } from "./mock-hygiene";
 
@@ -301,29 +302,33 @@ export interface TimingIo {
   error(message: string): void;
 }
 
-async function gitFiles(): Promise<string[]> {
-  const proc = Bun.spawn(["git", "ls-files", "--cached", "--others", "--exclude-standard"], {
-    stdout: "pipe",
-  });
+async function gitFiles(root: string): Promise<string[]> {
+  const proc = Bun.spawn(
+    ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard"],
+    {
+      stdout: "pipe",
+    },
+  );
   const text = await new Response(proc.stdout).text();
   return text.split("\n").filter(Boolean);
 }
 
-async function readBaselineFile(): Promise<Baseline | null> {
-  const file = Bun.file(BASELINE_PATH);
-  return (await file.exists()) ? ((await file.json()) as Baseline) : null;
+/** The real wiring over the repo at `root`: tracked and new files, and the baseline at `baselinePath`. */
+export function fileIo(root: string, baselinePath = join(root, BASELINE_PATH)): TimingIo {
+  return {
+    files: async () => (await gitFiles(root)).filter((file) => isTestFile(file)),
+    read: (file) => Bun.file(join(root, file)).text(),
+    readBaseline: async () => {
+      const file = Bun.file(baselinePath);
+      return (await file.exists()) ? ((await file.json()) as Baseline) : null;
+    },
+    writeBaseline: async (baseline) => {
+      await Bun.write(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+    },
+    log: (message) => console.log(message),
+    error: (message) => console.error(message),
+  };
 }
-
-export const productionIo: TimingIo = {
-  files: async () => (await gitFiles()).filter((file) => isTestFile(file)),
-  read: (file) => Bun.file(file).text(),
-  readBaseline: readBaselineFile,
-  writeBaseline: async (baseline) => {
-    await Bun.write(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`);
-  },
-  log: (message) => console.log(message),
-  error: (message) => console.error(message),
-};
 
 const sortedCounts = (found: Finding[]): Baseline =>
   Object.fromEntries(
@@ -361,7 +366,7 @@ async function scanAll(io: TimingIo): Promise<Finding[]> {
 
 /** Scan, compare with the baseline, report; returns the exit code. */
 export async function main(
-  io: TimingIo = productionIo,
+  io: TimingIo = fileIo(join(import.meta.dir, "..")),
   argv = process.argv.slice(2),
 ): Promise<number> {
   const write = argv.includes("--write");
