@@ -81,7 +81,14 @@ impl AuthnBackend for Accounts {
     }
 
     async fn get_user(&self, id: &i64) -> Result<Option<AccountRow>, StoreError> {
-        self.store.account(*id).await
+        let account = self.store.account(*id).await;
+        if let Err(error) = &account
+            && error.is_busy()
+        {
+            tracing::warn!(%error, "account lookup busy");
+            super::busy::note();
+        }
+        account
     }
 }
 
