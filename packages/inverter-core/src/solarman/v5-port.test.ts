@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import ModbusRTU from "modbus-serial";
 
 import { checksum, decodeFrame } from "./v5-frame";
@@ -570,24 +570,31 @@ describe("SolarmanV5Port — closing", () => {
    * socket nobody is reading.
    */
   test("closing while the discovery probe is outstanding disarms it", async () => {
-    const h = makePort({ loggerSerial: SERIAL, timeoutMs: 40 });
-    const opened = new Promise<Error | undefined>((resolve) => h.port.open(resolve));
-    // A logger that says nothing, so the probe is still in flight at close time.
-    h.socket().respond = () => [];
-    // And a socket that does not report its close synchronously, as a real one
-    // does not: `close()` itself has to disarm, not the close event it waits on.
-    h.socket().closeOnEnd = false;
+    jest.useFakeTimers();
+    try {
+      const h = makePort({ loggerSerial: SERIAL, timeoutMs: 40 });
+      const opened = new Promise<Error | undefined>((resolve) => h.port.open(resolve));
+      // A logger that says nothing, so the probe is still in flight at close time.
+      h.socket().respond = () => [];
+      // And a socket that does not report its close synchronously, as a real one
+      // does not: `close()` itself has to disarm, not the close event it waits on.
+      h.socket().closeOnEnd = false;
 
-    await new Promise((resolve) => setTimeout(resolve, 15));
-    h.port.close();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      // The connect lands on a microtask; the probe is written, and armed, after it.
+      await Promise.resolve();
+      expect(h.socket().writes).toHaveLength(1);
+      h.port.close();
+      jest.advanceTimersByTime(60);
 
-    // Past the probe deadline: nothing may have declared this port open.
-    expect(h.port.isOpen).toBe(false);
-    expect(h.port.loggerSerial).toBeUndefined();
-    // The open callback is still owed an answer, and it must be a failure.
-    h.socket().peerClose();
-    expect(await opened).toBeInstanceOf(Error);
+      // Past the probe deadline: nothing may have declared this port open.
+      expect(h.port.isOpen).toBe(false);
+      expect(h.port.loggerSerial).toBeUndefined();
+      // The open callback is still owed an answer, and it must be a failure.
+      h.socket().peerClose();
+      expect(await opened).toBeInstanceOf(Error);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("closing a port that was never opened still calls back", async () => {
@@ -982,27 +989,27 @@ describe("SolarmanV5Port — a reject reaching a real ModbusRTU client", () => {
       client.open((err?: Error) => (err ? reject(err) : resolve())),
     );
     client.setID(1);
-    client.setTimeout(400);
+    // Outlasts the test's own limit: a reject that never reaches the client leaves the read
+    // pending instead of failing it at a budget.
+    client.setTimeout(600_000);
     socket!.respond = (req) => [v5Reject(SERIAL, req[5]!, status)];
     return { client, port };
   };
 
-  const codeOf = async (status: number): Promise<{ code: unknown; ms: number }> => {
+  const codeOf = async (status: number): Promise<{ code: unknown }> => {
     const { client } = await openRejecting(status);
-    const started = performance.now();
     const err: unknown = await client.readHoldingRegisters(60000, 2).then(
       () => undefined,
       (e: unknown) => e,
     );
-    return { code: (err as { modbusCode?: number }).modbusCode, ms: performance.now() - started };
+    return { code: (err as { modbusCode?: number }).modbusCode };
   };
 
   test("a `05` reject arrives as modbusCode 2, the signal the split fallback reads", async () => {
-    const { code, ms } = await codeOf(0x05);
+    // The whole point is that a poll no longer spends its entire budget waiting for a
+    // reply that already came: the client's budget above is never reached.
+    const { code } = await codeOf(0x05);
     expect(code).toBe(2);
-    // Fast, not at timeout speed (400ms above): the whole point is that a poll
-    // no longer spends its entire budget waiting for a reply that already came.
-    expect(ms).toBeLessThan(200);
   });
 
   test("a `06` reject arrives as a failure that is NOT modbusCode 2", async () => {

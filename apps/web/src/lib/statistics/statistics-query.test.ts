@@ -65,7 +65,8 @@ function collect<T>(read: StatisticsRead<T>) {
   return { seen, dispose };
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+/** One macrotask turn: every pending microtask (an answered call) has run. */
+const flush = () => new Promise<void>((r) => setImmediate(r));
 
 const spec = (day: string, bucket: ChartSpec["bucket"] = "day"): ChartSpec => ({
   from: new Date(`${day}T00:00:00Z`),

@@ -21,13 +21,45 @@ afterAll(() => {
 const { api } = await import("./api");
 
 /** One request through the real client, answered by `fetch` with `status` and `body`. */
-async function request(status: number, body = "{}") {
+async function send(status: number, body = "{}") {
   const response = new Response(body, { status });
   globalThis.fetch = (async () => response) as unknown as typeof fetch;
   // The path is arbitrary: the hook sees every response whatever route asked.
   await (api as unknown as { probe: { get(): Promise<unknown> } }).probe.get();
-  // The bounce loads `$app/navigation` lazily.
-  await Bun.sleep(5);
+  return response;
+}
+
+const SENTINEL = { error: "sentinel" };
+
+/** Poll until `check` holds; the deadline only bounds a hang. */
+async function until(check: () => boolean, ms = 5_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("condition not met in time");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
+/**
+ * Wait for the hook's fire-and-forget work. The bounce loads `$app/navigation` lazily, so an
+ * import of it queues behind the bounce's own. The banner read has no signal, so a 422 sent
+ * after the request under test is awaited until it is observed: its body is read after
+ * every earlier one, so whatever an earlier response was going to report is already in `observed`.
+ */
+async function settleHook() {
+  await import("$app/navigation");
+  await send(422, JSON.stringify(SENTINEL));
+  await until(() => observed.some(([, body]) => isSentinel(body)));
+  const mine = observed.filter(([, body]) => !isSentinel(body));
+  observed.splice(0, observed.length, ...mine);
+}
+
+const isSentinel = (body: unknown) => JSON.stringify(body) === JSON.stringify(SENTINEL);
+
+/** {@link send}, then wait for the hook to finish. */
+async function request(status: number, body = "{}") {
+  const response = await send(status, body);
+  await settleHook();
   return response;
 }
 
@@ -86,20 +118,17 @@ describe("a 401", () => {
 describe("a 422", () => {
   test("hands the parsed body to the incomplete-range banner", async () => {
     await request(422, JSON.stringify({ error: "history incomplete" }));
-    await Bun.sleep(10);
     expect(observed).toEqual([[422, { error: "history incomplete" }]]);
   });
 
   test("a non-JSON 422 is somebody else's: nothing observed, nothing thrown", async () => {
     await request(422, "not json");
-    await Bun.sleep(10);
     expect(observed).toEqual([]);
   });
 
   test("other statuses are never read", async () => {
     await request(200);
     await request(404);
-    await Bun.sleep(10);
     expect(observed).toEqual([]);
   });
 });

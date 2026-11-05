@@ -6,11 +6,11 @@
  *
  * There is no `mock.module` here on purpose: the scheduler imports nothing at
  * runtime (its clock is constructor-injected), so a plain fake is all it takes.
- * One case runs against the real globals to prove the default wiring arms and
+ * One case runs against the global timers, faked, to prove the default wiring arms and
  * tears down without error.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 
 import { createJobScheduler, type ScheduledJob, type SchedulerTimers } from "./job-scheduler";
 
@@ -162,16 +162,22 @@ describe("the background job scheduler", () => {
     expect(clock.cleared).toHaveLength(0);
   });
 
-  test("against the real clock the default wiring arms and tears down cleanly", async () => {
-    // No injected timers: exercises the default globals path. Cadences are far
-    // longer than the test, so nothing fires on its own before the teardown.
-    const scheduler = createJobScheduler();
-    const job = countingJob({ intervalMs: 3_600_000, kickMs: 3_600_000 });
+  test("against the global timers the default wiring arms, fires and tears down cleanly", () => {
+    // No injected timers: exercises the default globals path, driven by fake timers.
+    jest.useFakeTimers();
+    try {
+      const scheduler = createJobScheduler();
+      const job = countingJob({ intervalMs: 3_600_000, kickMs: 1_000 });
 
-    scheduler.start([job]);
-    scheduler.stop();
-    await Bun.sleep(0);
+      scheduler.start([job]);
+      jest.advanceTimersByTime(1_000);
+      expect(job.calls()).toBe(1); // the kick, not the interval
 
-    expect(job.calls()).toBe(0);
+      scheduler.stop();
+      jest.advanceTimersByTime(2 * 3_600_000);
+      expect(job.calls()).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

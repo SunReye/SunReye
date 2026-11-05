@@ -1085,7 +1085,7 @@ describe("fetchSolarForecast clipping inputs", () => {
     // The DEVICE names the source, not the live sample: the id a sample carries
     // is the profile's, and a profile is not an identity.
     expect(inverterId).toBe(DEVICE_SLUG);
-    expect(Date.now() - (since as Date).getTime()).toBe(14 * 24 * HOUR);
+    expect((since as Date).getTime()).toBe(clockMs - 14 * 24 * HOUR);
 
     // The day-start SOC is read for the series' own first hour (11:00 local).
     // Bounded window, so: [source, source, metric, widened from, widened to,
