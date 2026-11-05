@@ -125,7 +125,7 @@ async fn an_anonymous_upgrade_is_refused_and_any_session_is_accepted() {
 async fn with_the_kiosk_view_on_a_stranger_is_upgraded_and_fed_and_with_it_off_refused() {
     let (core, admin) = open(&dir("ws-kiosk")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let stranger = admin.anonymous();
     assert_eq!(upgrade(addr, &stranger, SAME_ORIGIN).await.err(), Some(StatusCode::UNAUTHORIZED));
 
@@ -162,7 +162,7 @@ async fn closed(socket: &mut Socket) {
 async fn switching_the_kiosk_view_off_closes_a_strangers_open_socket_and_keeps_a_session_open() {
     let (core, admin) = open(&dir("ws-kiosk-off")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
     let mut stranger = connect(addr, &admin.anonymous()).await;
     let mut session = connect(addr, &admin).await;
@@ -259,7 +259,7 @@ async fn a_client_that_stops_reading_mid_send_is_closed_after_the_idle_timeout()
     let (core, admin) = open(&dir("ws-stalled")).await;
     let live = LiveLimits { idle: Duration::from_secs(1), ..LiveLimits::default() };
     let addr = serve(&core, &Config { live, ..Config::default() }).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let mut socket = connect_narrow(addr, &admin).await;
     subscribe(&mut socket, r#"["metrics"]"#).await;
     // About 6 MB, past any send buffer (4 MiB at most on Linux): the send blocks with the select loop
@@ -319,7 +319,7 @@ async fn an_upgrade_from_an_untrusted_origin_is_refused() {
 async fn a_reading_reaches_each_subscribed_topic_and_nothing_else() {
     let (core, admin) = open(&dir("ws-fan-out")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let mut metrics_only = connect(addr, &admin).await;
     subscribe(&mut metrics_only, r#"["metrics"]"#).await;
     let mut both = connect(addr, &admin).await;
@@ -353,7 +353,7 @@ async fn a_reading_reaches_each_subscribed_topic_and_nothing_else() {
 async fn a_new_subscriber_gets_the_last_plant_fold_and_no_metrics_snapshot() {
     let (core, admin) = open(&dir("ws-snapshot")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     core.live.publish(7, &reading(1_786_788_000_123, 5.0));
     let mut socket = connect(addr, &admin).await;
     subscribe(&mut socket, r#"["metrics","plant"]"#).await;
@@ -429,7 +429,7 @@ async fn a_client_message_over_16_kib_split_across_frames_closes_the_socket() {
 async fn many_subscribers_each_get_every_frame() {
     let (core, admin) = open(&dir("ws-many")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let mut sockets = Vec::new();
     for _ in 0..40 {
         let mut socket = connect(addr, &admin).await;
@@ -451,7 +451,7 @@ async fn many_subscribers_each_get_every_frame() {
 async fn a_subscriber_that_stops_reading_skips_ahead_and_holds_up_no_one() {
     let (core, admin) = open(&dir("ws-slow")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let mut slow = connect(addr, &admin).await;
     subscribe(&mut slow, r#"["metrics"]"#).await;
     let mut quick = connect(addr, &admin).await;
@@ -483,7 +483,7 @@ fn iso_ms(at_ms: i64) -> String {
 async fn a_subscriber_gone_mid_send_is_released_and_a_reconnect_is_served() {
     let (core, admin) = open(&dir("ws-gone")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     let mut first = connect(addr, &admin).await;
     subscribe(&mut first, r#"["metrics"]"#).await;
     connections(&core, 1).await;
@@ -505,7 +505,7 @@ async fn a_subscriber_gone_mid_send_is_released_and_a_reconnect_is_served() {
 async fn publishing_without_subscribers_keeps_no_frame() {
     let (core, admin) = open(&dir("ws-nobody")).await;
     let addr = serve(&core, &Config::default()).await;
-    core.live.roster(&[7]);
+    core.live.roster(&[7], crate::plant::Aggregates::default());
     for at_ms in 0..100 {
         core.live.publish(7, &reading(at_ms, 1.0));
     }

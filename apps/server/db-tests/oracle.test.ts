@@ -1,5 +1,5 @@
 /**
- * The oracle corpus's database groups — rollups, statistics and archives — against the 2.x code
+ * The oracle corpus's database groups — rollups, statistics, archives and plant rollups — against the 2.x code
  * and a real TimescaleDB (`fixtures/oracle/`, ADR 0002).
  *
  * Runs only under `bun run test:db`, on `sunreye_dbtest` and nowhere else. Two jobs:
@@ -15,6 +15,7 @@ import { databaseReachable, resetTestDatabase } from "./harness";
 import { buildArchives } from "./oracle/archives";
 import { buildRollupAndStatistics } from "./oracle/build";
 import { type Files, stale, write } from "./oracle/files";
+import { buildPlantRollups } from "./oracle/plant";
 import { CASES } from "./oracle/streams";
 
 const reachable = await databaseReachable();
@@ -49,7 +50,11 @@ suite("the oracle corpus, database groups", () => {
     const url = await resetTestDatabase();
     const raw = realDbExports.createDbAt(url);
     mock.module("@SunReye/db", () => ({ ...realDbExports, db: raw }));
-    files = { ...(await buildRollupAndStatistics(raw)), ...(await buildArchives(raw, url)) };
+    files = {
+      ...(await buildRollupAndStatistics(raw)),
+      ...(await buildArchives(raw, url)),
+      ...(await buildPlantRollups(raw)),
+    };
     for (const id of ["current-2.x", "legacy-1.2.0"]) {
       imports.set(id, JSON.parse(String(files[`archives/${id}/expected-import.json`])) as Line);
     }
@@ -184,6 +189,29 @@ suite("the oracle corpus, database groups", () => {
         ["2025", 22],
         ["2026", 32],
       ]);
+    });
+  });
+
+  describe("plant rollups", () => {
+    const plant = (id: string): Line =>
+      lines(files["plant-rollups.ndjson"]!).find((l) => l.case === id)!;
+
+    test("a sum adds each member's minute where it has one", () => {
+      // 23:52Z: the roof holds 3100 for 30 s then reads 2900 (3000 avg); the garage reads 1500 all minute.
+      const minute = plant("overlapping-roles").minute["dc.total_power"].find(
+        (b: Line) => b.time === "2026-02-28T23:52:00.000Z",
+      );
+      expect(minute.avg).toBe(4500);
+    });
+
+    test("a voltage has no plant value", () => {
+      expect(plant("overlapping-roles").minute["ac.l1.voltage"].refused).toContain("per device");
+    });
+
+    test("a retired member's readings stay in the plant; a meter's never enter", () => {
+      const first = plant("retired-member").minute["dc.total_power"][0];
+      expect(plant("retired-member").members).toEqual(["1", "2"]);
+      expect(first).toMatchObject({ time: "2026-02-28T23:50:00.000Z", avg: 2700 });
     });
   });
 
