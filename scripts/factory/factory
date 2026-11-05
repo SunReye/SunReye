@@ -183,7 +183,8 @@ def cmd_release(store, forge, slot):
     path = store.slot_path(slot)
     if path.exists():
         slots.sh("git", "switch", "-q", "--detach", cwd=path, check=False)
-        out(slots.clean_slot(store, slot))
+        # A warm cargo target saves the next ticket a cold build; only a tight disk pays for it.
+        out(slots.clean_slot(store, slot, keep_clean_paths=slots.disk(store)["level"] == "green"))
     else:
         out({"slot": slot, "action": "none"})
 

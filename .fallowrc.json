@@ -26,6 +26,7 @@
     "scripts/budget-gate.ts",
     "scripts/budgets-run.ts",
     "scripts/ci-already-proven.ts",
+    "scripts/ci-scope.ts",
     "scripts/ci-surfaces.ts",
     "scripts/db-parity.ts",
     "scripts/ensure-browser.ts",
@@ -134,6 +135,12 @@
     },
     {
       "file": "scripts/ci-surfaces.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "file": "scripts/ci-scope.ts",
       "exports": [
         "*"
       ]

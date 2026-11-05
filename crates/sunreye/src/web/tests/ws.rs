@@ -280,8 +280,10 @@ async fn a_client_that_stops_reading_mid_send_is_closed_after_the_idle_timeout()
     let mut socket = connect_narrow(addr, &admin).await;
     subscribe(&mut socket, r#"["metrics"]"#).await;
     // About 6 MB, past any send buffer (4 MiB at most on Linux): the send blocks with the select loop
-    // unpolled, so only a bounded send reaches the deadline.
-    let wide: Vec<(String, f64)> = (0..250_000).map(|i| (format!("metric_{i:06}"), f64::from(i))).collect();
+    // unpolled, so only a bounded send reaches the deadline. Long keys, few of them: the plant fold
+    // looks each key up linearly, so 250 000 short keys took minutes in a debug build.
+    let wide: Vec<(String, f64)> =
+        (0..4_000).map(|i| (format!("metric_{i:04}_{}", "x".repeat(1_500)), f64::from(i))).collect();
     core.live.publish(7, &Sample { at_ms: 0, values: wide });
     connections(&core, 0).await;
     drop((socket, admin));
