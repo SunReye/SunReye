@@ -3,7 +3,7 @@
 //! per request. A failed fetch keeps the last irradiance for the same key and reports it stale.
 
 use jiff::civil::DateTime;
-use jiff::tz::{Offset, TimeZone};
+use jiff::tz::TimeZone;
 use tokio::sync::Mutex;
 
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
@@ -11,7 +11,7 @@ use crate::open_meteo::{self, Plane};
 use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
-use crate::store::{BucketWindow, Store, StoreError, first_in_service};
+use crate::store::{BucketWindow, StoreError, first_in_service};
 use crate::weather::{self, OPEN_METEO, WeatherConfig};
 
 const TTL_MS: i64 = 30 * 60_000;
@@ -59,7 +59,7 @@ impl Solar {
         let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
         let Some(hit) = cache.as_ref() else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
-        let zone = plant_zone(&core.store, hit.data.utc_offset_seconds).await?;
+        let zone = plant_zone::plant_zone(&core.store).await?;
         let run = Run { time_zone: &zone, now_ms, sim, correction: None };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
@@ -164,13 +164,6 @@ fn wanted(config: &WeatherConfig) -> Option<Wanted> {
     Some(Wanted { key, location, planes })
 }
 
-/// The saved plant zone; the series' own UTC offset only when the saved name no longer resolves.
-async fn plant_zone(store: &Store, offset_seconds: i32) -> Result<TimeZone, StoreError> {
-    let resolved = plant_zone::resolved(store).await?;
-    Ok(resolved
-        .unwrap_or_else(|| Offset::from_seconds(offset_seconds).map_or(TimeZone::UTC, TimeZone::fixed)))
-}
-
 fn hours(from_ms: i64, to_ms: i64, limit: i64) -> BucketWindow {
     let at = |ms| jiff::Timestamp::from_millisecond(ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
     BucketWindow { from: at(from_ms), to: at(to_ms), limit: u32::try_from(limit).unwrap_or(u32::MAX) }
@@ -212,27 +205,5 @@ mod tests {
         assert_eq!(median(vec![7.0]), Some(7.0));
         assert_eq!(median(vec![300.0, 100.0, 200.0]), Some(200.0));
         assert_eq!(median(vec![400.0, 100.0, 300.0, 200.0]), Some(250.0));
-    }
-
-    async fn zone_for(saved: Option<&str>, offset_seconds: i32) -> TimeZone {
-        let store = Store::in_memory().await.expect("store");
-        if let Some(name) = saved {
-            store.save_plant_time_zone(name).await.expect("write");
-        }
-        plant_zone(&store, offset_seconds).await.expect("zone")
-    }
-
-    #[tokio::test]
-    async fn the_saved_zone_wins_over_the_series_offset() {
-        let kolkata = zone_for(Some("Asia/Kolkata"), 7_200).await;
-        assert_eq!(kolkata.iana_name(), Some("Asia/Kolkata"));
-    }
-
-    #[tokio::test]
-    async fn a_saved_zone_the_database_lacks_falls_back_to_the_series_offset() {
-        let fixed = zone_for(Some("Mars/Olympus"), 19_800).await;
-        assert_eq!(fixed.to_fixed_offset().expect("fixed").seconds(), 19_800);
-        let beyond_a_day = zone_for(Some("Mars/Olympus"), 100_000).await;
-        assert_eq!(beyond_a_day, TimeZone::UTC);
     }
 }

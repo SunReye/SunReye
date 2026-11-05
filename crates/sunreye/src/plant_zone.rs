@@ -12,7 +12,7 @@ pub fn lookup(name: &str) -> Option<TimeZone> {
 }
 
 /// The zone a plant starts with: the host's when it names a zone the database holds, else UTC.
-pub fn default_name(host: Option<&str>) -> String {
+fn default_name(host: Option<&str>) -> String {
     host.and_then(lookup).and_then(|zone| zone.iana_name().map(str::to_owned)).unwrap_or_else(|| "UTC".into())
 }
 
@@ -21,24 +21,23 @@ fn host_name() -> Option<String> {
     TimeZone::system().iana_name().map(str::to_owned)
 }
 
-/// The stored zone, or the default while none is saved. None when the stored name no longer resolves.
-pub async fn resolved(store: &Store) -> Result<Option<TimeZone>, StoreError> {
-    resolved_with(store, host_name().as_deref()).await
-}
-
-async fn resolved_with(store: &Store, host: Option<&str>) -> Result<Option<TimeZone>, StoreError> {
-    let name = store.plant_time_zone().await?.unwrap_or_else(|| default_name(host));
-    Ok(lookup(&name).or_else(|| warn_lost(&name)))
-}
-
-fn warn_lost(name: &str) -> Option<TimeZone> {
-    tracing::warn!(zone = name, "the plant time zone is not in the time zone database");
-    None
-}
-
-/// The zone plant days are cut in: [`resolved`], or UTC when the stored name no longer resolves.
+/// The zone plant days are cut in: the stored zone, the default while none is saved, UTC when the
+/// stored name no longer resolves.
 pub async fn plant_zone(store: &Store) -> Result<TimeZone, StoreError> {
-    Ok(resolved(store).await?.unwrap_or(TimeZone::UTC))
+    zone_with(store, host_name).await
+}
+
+async fn zone_with(store: &Store, host: impl FnOnce() -> Option<String>) -> Result<TimeZone, StoreError> {
+    let name = match store.plant_time_zone().await? {
+        Some(name) => name,
+        None => default_name(host().as_deref()),
+    };
+    Ok(lookup(&name).unwrap_or_else(|| lost(&name)))
+}
+
+fn lost(name: &str) -> TimeZone {
+    tracing::warn!(zone = name, "the plant time zone is not in the time zone database");
+    TimeZone::UTC
 }
 
 /// A name the database does not hold.
@@ -70,7 +69,7 @@ mod tests {
     }
 
     async fn read(store: &Store, host: Option<&str>) -> TimeZone {
-        resolved_with(store, host).await.expect("read").expect("zone")
+        zone_with(store, || host.map(str::to_owned)).await.expect("read")
     }
 
     fn name_of(zone: &TimeZone) -> Option<&str> {
@@ -111,7 +110,7 @@ mod tests {
         let store = store().await;
         assert_eq!(save(&store, "europe/berlin").await.expect("save"), "Europe/Berlin");
         assert_eq!(store.plant_time_zone().await.expect("row").as_deref(), Some("Europe/Berlin"));
-        let zone = resolved(&store).await.expect("read").expect("zone");
+        let zone = plant_zone(&store).await.expect("read");
         assert_eq!(name_of(&zone), Some("Europe/Berlin"));
         assert_eq!(save(&store, "Asia/Kathmandu").await.expect("save"), "Asia/Kathmandu");
         let zone = plant_zone(&store).await.expect("read");
@@ -129,10 +128,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_stored_name_the_database_lost_resolves_to_none_and_the_plant_zone_to_utc() {
+    async fn a_stored_name_the_database_lost_is_utc() {
         let store = store().await;
         store.save_plant_time_zone("Gone/Zone").await.expect("write");
-        assert!(resolved(&store).await.expect("read").is_none());
-        assert_eq!(name_of(&plant_zone(&store).await.expect("read")), Some("UTC"));
+        assert_eq!(name_of(&read(&store, Some("Asia/Kolkata")).await), Some("UTC"));
+    }
+
+    #[tokio::test]
+    async fn the_host_is_asked_only_while_no_zone_is_saved() {
+        let store = store().await;
+        store.save_plant_time_zone("Asia/Kathmandu").await.expect("write");
+        let zone = zone_with(&store, || panic!("the host was read")).await.expect("read");
+        assert_eq!(name_of(&zone), Some("Asia/Kathmandu"));
     }
 }

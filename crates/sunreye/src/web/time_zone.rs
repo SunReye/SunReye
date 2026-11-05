@@ -31,6 +31,7 @@ pub struct PlantTimeZone {
     )
 )]
 pub async fn read(State(core): State<Arc<Core>>) -> Result<Json<PlantTimeZone>, ApiError> {
+    // The zone every reader cuts days in: a stored name the database lost reads as UTC.
     let zone = plant_zone::plant_zone(&core.store).await?;
     Ok(Json(PlantTimeZone { time_zone: zone.iana_name().unwrap_or("UTC").to_owned() }))
 }

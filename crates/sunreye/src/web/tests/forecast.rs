@@ -153,7 +153,7 @@ async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api, StandIn) 
     let core =
         Core::open_forecasting(&dir(name), vec![ca.root()], standin.url.clone(), now).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
-    // The plant zone the series' own zone used to stand in for: the tests' expectations are Berlin days.
+    // Expectations are Berlin days: save the zone first.
     let berlin = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
     assert_eq!(berlin.status, StatusCode::OK);
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
@@ -480,15 +480,16 @@ async fn the_forecast_cuts_its_days_in_the_saved_plant_zone_not_the_provider_s()
 }
 
 #[tokio::test]
-async fn a_saved_zone_the_database_lost_falls_back_to_the_series_offset_never_the_host() {
+async fn a_saved_zone_the_database_lost_cuts_utc_days_as_the_setting_reads_never_the_series_offset() {
     let (core, admin, _) = forecasting("forecast-lost-zone", late_now).await;
     configure(&admin, None).await;
     core.store.save_plant_time_zone("Gone/Zone").await.expect("write");
+    let setting = get(&admin, "/api/settings/time-zone").await.json();
+    assert_eq!(setting, json!({"timeZone": "UTC"}));
     let raw = get(&admin, "/api/forecast").await.json();
-    let fixed = jiff::tz::TimeZone::fixed(jiff::tz::Offset::from_seconds(7200).expect("offset"));
-    let want = expected_in(&fixed, &model(None), SimInputs::default(), Variant::Raw, &late(false));
+    let want = expected_in(&zone("UTC"), &model(None), SimInputs::default(), Variant::Raw, &late(false));
     assert_eq!(raw, want);
-    assert!(today_kwh(&raw).abs() < f64::EPSILON, "00:30 on the 25th at +02:00: the 24th is yesterday");
+    assert!(today_kwh(&raw) > 0.0, "22:30 on the 24th in UTC: the series' 24th is today");
     drop(admin);
     core.stop().await;
 }
