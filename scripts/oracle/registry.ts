@@ -67,12 +67,59 @@ export async function readCorpusEntries(dir: string): Promise<string[]> {
   return (await readdir(dir)).filter((entry) => !DOCUMENTATION.includes(entry)).sort();
 }
 
+/** File names in `cases.d/`, sorted; none when the directory is absent. */
+async function caseTables(dir: string): Promise<string[]> {
+  return (await readdir(join(dir, "cases.d")).catch(() => [])).sort();
+}
+
 /** The README and every case table in `cases.d/`, joined: where a case name must appear. */
 export async function readDocumentation(dir: string): Promise<string> {
-  const tables = (await readdir(join(dir, "cases.d")).catch(() => [])).sort();
   const parts = [await readFile(join(dir, "README.md"), "utf8")];
-  for (const table of tables) parts.push(await readFile(join(dir, "cases.d", table), "utf8"));
+  for (const table of await caseTables(dir)) {
+    parts.push(await readFile(join(dir, "cases.d", table), "utf8"));
+  }
   return parts.join("\n");
+}
+
+/** Case names of a corpus entry: each line's `case` or `profile.id`, or a directory's entries. */
+async function caseNames(dir: string, entry: string): Promise<string[]> {
+  if (!entry.endsWith(".ndjson")) return (await readdir(join(dir, entry)).catch(() => [])).sort();
+  const text = await readFile(join(dir, entry), "utf8").catch(() => "");
+  const names: unknown[] = [];
+  for (const line of text.split("\n").filter((l) => l !== "")) {
+    const row = JSON.parse(line) as { case?: unknown; profile?: { id?: unknown } };
+    names.push(row.case ?? row.profile?.id);
+  }
+  return names.filter((name): name is string => typeof name === "string");
+}
+
+/** Cases the README and `cases.d/` do not document, and fragments no group owns. */
+export async function documentationProblems(
+  dir: string,
+  generators: readonly Discovered[],
+): Promise<string[]> {
+  const documentation = await readDocumentation(dir);
+  const entries = [...generators.flatMap((g) => g.oracle.files), ...DATABASE_OWNED];
+  const problems: string[] = [];
+  for (const entry of entries) {
+    for (const name of await caseNames(dir, entry)) {
+      if (!documentation.includes(`\`${name}\``)) {
+        problems.push(`${entry}: \`${name}\` is in neither README.md nor cases.d/`);
+      }
+    }
+  }
+  const owners = [
+    ...generators.map((g) => g.name),
+    ...DATABASE_OWNED.map((entry) => entry.replace(/\.ndjson$/, "")),
+  ];
+  for (const table of await caseTables(dir)) {
+    if (!owners.some((owner) => table === `${owner}.md`)) {
+      problems.push(
+        `cases.d/${table}: no generator or database group ${table.replace(/\.md$/, "")}`,
+      );
+    }
+  }
+  return problems;
 }
 
 /** Files a generator declares that another already claimed, or that the corpus lacks. */

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { CORPUS_DIR, staleFiles } from "./corpus";
 import { decodeReadings, officialProfilesDir, type ProfileDecodeCase } from "./profile-decode";
-import { discoverGenerators, readDocumentation } from "./registry";
+import { DATABASE_OWNED, discoverGenerators, documentationProblems } from "./registry";
 
 const read = (path: string): Promise<string> => readFile(join(CORPUS_DIR, path), "utf8");
 const lines = async (path: string): Promise<Array<Record<string, any>>> =>
@@ -76,17 +76,9 @@ describe("the committed corpus, database-free groups", () => {
 describe("the corpus as a whole", () => {
   test("every group exists", async () => {
     const files = new Set(await readdir(CORPUS_DIR, { recursive: true }));
+    const groups = [...generators.flatMap((g) => g.oracle.files), ...DATABASE_OWNED];
     for (const path of [
-      "transport.ndjson",
-      "profile-decode.ndjson",
-      "profile-manifest.ndjson",
-      "role-kinds.ndjson",
-      "rollups.ndjson",
-      "statistics.ndjson",
-      "forecast.ndjson",
-      "role-aggregates.ndjson",
-      "plant.ndjson",
-      "plant-rollups.ndjson",
+      ...groups,
       "archives/current-2.x/archive.tar.gz",
       "archives/legacy-1.2.0/archive.tar.gz",
       "README.md",
@@ -104,21 +96,7 @@ describe("the corpus as a whole", () => {
     );
   });
 
-  test("the README lists every case", async () => {
-    const readme = await readDocumentation(CORPUS_DIR);
-    const names: string[] = [];
-    for (const file of [
-      "transport.ndjson",
-      "rollups.ndjson",
-      "statistics.ndjson",
-      "forecast.ndjson",
-      "plant.ndjson",
-      "plant-rollups.ndjson",
-    ]) {
-      names.push(...(await lines(file)).map((c) => c.case));
-    }
-    names.push(...(await lines("profile-decode.ndjson")).map((p) => p.profile.id));
-    names.push(...(await readdir(join(CORPUS_DIR, "archives"))));
-    for (const name of names) expect(readme, name).toContain(`\`${name}\``);
+  test("the README and cases.d document every case, and every fragment has an owner", async () => {
+    expect(await documentationProblems(CORPUS_DIR, generators)).toEqual([]);
   });
 });
