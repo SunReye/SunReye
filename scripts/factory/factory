@@ -5,6 +5,7 @@
   gate [--train] [--detach]     run local gates, plus train gates when requested;
                                 --detach: run in the background, print the log and exit-file paths
   gate-wait [--slot S]          wait up to 9 minutes for a detached gate: running, or its exit code and log tail
+  gate-result <sha>             print the gate record for a commit; exit 1 when absent, failed or the worktree is dirty
   regenerate                    run configured regeneration commands
   setup                         create labels, slot dirs
   status                        snapshot for one loop tick
@@ -546,6 +547,14 @@ def main(argv):
             raise SystemExit("name the slot: factory gate-wait --slot S (or source the slot env)")
         out(slots.wait_gate(slot))
         return
+    if cmd == "gate-result":
+        if len(args) != 1:
+            raise SystemExit("usage: factory gate-result <sha>")
+        record = slots.gate_record(args[0], Path.cwd())
+        out(record)
+        if not record["ok"]:
+            raise SystemExit(1)
+        return
     if cmd in ("gate", "regenerate"):
         detach = cmd == "gate" and "--detach" in args
         args = [a for a in args if a != "--detach"] if detach else args
@@ -556,9 +565,12 @@ def main(argv):
                 raise SystemExit("gate --detach needs a slot: source the slot env (FACTORY_SLOT)")
             out(slots.start_gate(CFG, os.environ["FACTORY_SLOT"], Path.cwd(), train=bool(args)))
             return
-        slots.run_commands(CFG, cmd, Path.cwd())
-        if args == ["--train"]:
-            slots.run_commands(CFG, "train_gate", Path.cwd())
+        if cmd == "gate":
+            code = slots.run_gate(slots.gate_steps(CFG, bool(args)), Path.cwd(), train=bool(args))
+            if code:
+                raise SystemExit(code)
+        else:
+            slots.run_commands(CFG, cmd, Path.cwd())
         out({"ok": True, "command": cmd, "train": bool(args)})
         return
     store, forge = slots.Store(CFG), Forge(CFG)
