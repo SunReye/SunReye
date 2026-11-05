@@ -711,6 +711,132 @@
         }
       }
     },
+    "/api/connections/probe": {
+      "post": {
+        "summary": "Whether something accepts a connection at the endpoint: no unit id, no register read. A failure is a\nresult (`ok: false`), not an error of the request.",
+        "operationId": "probeConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointProbe"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connections/scan-units": {
+      "post": {
+        "summary": "The first unit id that answers a one-register read with the profile's map. Only reads.",
+        "operationId": "scanUnits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitScan"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/connections/{id}": {
       "delete": {
         "summary": "Refused while any device, retired included, is on it.",
@@ -2360,7 +2486,9 @@
           "controls",
           "automations",
           "restart",
-          "profileSources"
+          "profileSources",
+          "integrations",
+          "pvAndBattery"
         ],
         "properties": {
           "automations": {
@@ -2372,8 +2500,16 @@
           "history": {
             "type": "boolean"
           },
+          "integrations": {
+            "type": "boolean",
+            "description": "Coded integrations and the MQTT connections they run over."
+          },
           "profileSources": {
             "type": "boolean"
+          },
+          "pvAndBattery": {
+            "type": "boolean",
+            "description": "An inverter's PV arrays and battery pack, kept per device."
           },
           "restart": {
             "type": "boolean"
@@ -2707,6 +2843,31 @@
           }
         }
       },
+      "EndpointProbe": {
+        "type": "object",
+        "description": "Whether something accepted a connection at an endpoint, as 3.x answers it.",
+        "required": [
+          "ok",
+          "ms"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "logger": {
+            "$ref": "#/components/schemas/Logger",
+            "description": "Over Solarman V5: the serial the stick named itself with."
+          },
+          "ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "Entity": {
         "type": "object",
         "required": [
@@ -2780,6 +2941,26 @@
           },
           "positive": {
             "type": "string"
+          }
+        }
+      },
+      "FoundUnit": {
+        "type": "object",
+        "description": "The unit id that answered, and how long its read took.",
+        "required": [
+          "unitId",
+          "ms"
+        ],
+        "properties": {
+          "ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unitId": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -2962,6 +3143,20 @@
           }
         ],
         "description": "A stored source with the ids of the profiles it supplied."
+      },
+      "Logger": {
+        "type": "object",
+        "description": "The stick that answered an endpoint probe.",
+        "required": [
+          "serial"
+        ],
+        "properties": {
+          "serial": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "LoginRequest": {
         "type": "object",
@@ -3213,6 +3408,23 @@
           }
         }
       },
+      "ProbeRequest": {
+        "type": "object",
+        "description": "An endpoint to test, as the connection dialog holds it.",
+        "required": [
+          "kind",
+          "params"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`modbus`; the core reaches no other kind."
+          },
+          "params": {
+            "$ref": "#/components/schemas/ModbusParams"
+          }
+        }
+      },
       "ProfileEntry": {
         "type": "object",
         "required": [
@@ -3373,6 +3585,38 @@
           "time": {
             "type": "string",
             "description": "UTC start of the bucket."
+          }
+        }
+      },
+      "ScanRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "params",
+          "profileId"
+        ],
+        "properties": {
+          "candidates": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "The ids to ask, in order, at most 16; by default 1, 0, 2, 3, 4, 5."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`modbus`; the core reaches no other kind."
+          },
+          "params": {
+            "$ref": "#/components/schemas/ModbusParams"
+          },
+          "profileId": {
+            "type": "string",
+            "description": "Whose register map the scan reads with."
           }
         }
       },
@@ -3564,6 +3808,34 @@
           "rtu-over-tcp",
           "solarman-v5"
         ]
+      },
+      "UnitScan": {
+        "type": "object",
+        "required": [
+          "scanned",
+          "found"
+        ],
+        "properties": {
+          "found": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FoundUnit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanned": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Every id asked, in order, so a miss names what was ruled out."
+          }
+        }
       }
     }
   }

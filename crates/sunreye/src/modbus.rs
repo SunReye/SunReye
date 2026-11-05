@@ -115,6 +115,14 @@ impl Client {
         Ok(Self { stream, framing, timeout })
     }
 
+    /// The serial a Solarman stick speaks under; none for the other framings.
+    pub const fn logger_serial(&self) -> Option<u32> {
+        match &self.framing {
+            Framing::SolarmanV5(session) => Some(session.serial()),
+            Framing::Tcp { .. } | Framing::RtuOverTcp => None,
+        }
+    }
+
     /// Reads `count` holding registers from `start` of `unit`. After any error but
     /// [`Error::Exception`] the stream may hold a half-read reply: drop the client.
     pub async fn read_holding(&mut self, unit: u8, start: u16, count: u16) -> Result<Vec<u16>, Error> {
@@ -359,5 +367,22 @@ mod tests {
             assert_eq!(client.read_holding(1, 0, count).await, Err(Error::Protocol("count out of range")));
         }
         assert_eq!(sim.requests(), []);
+    }
+
+    #[tokio::test]
+    async fn only_a_solarman_client_names_a_logger_serial_and_it_is_the_sticks_own() {
+        let timeout = Duration::from_millis(300);
+        let stick = Simulator::start_with(Framing::SolarmanV5(3_168_930_341), Registers::default(), &[1])
+            .await
+            .expect("sim");
+        let client = Client::connect(Transport::SolarmanV5, "127.0.0.1", stick.addr.port(), Some(7), timeout)
+            .await
+            .expect("connect");
+        assert_eq!(client.logger_serial(), Some(3_168_930_341));
+        let gateway = Simulator::start(Registers::default(), &[1]).await.expect("sim");
+        let client = Client::connect(Transport::Tcp, "127.0.0.1", gateway.addr.port(), Some(7), timeout)
+            .await
+            .expect("tcp");
+        assert_eq!(client.logger_serial(), None);
     }
 }

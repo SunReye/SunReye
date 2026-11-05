@@ -2,7 +2,7 @@
  * The device roster: what the plant has (devices, connections, integrations,
  * and the catalog and profiles an add needs) and every write to it — with the
  * refusal decoded and the lists re-read once, here, instead of in seven dialogs.
- * The transport is a parameter: `./roster-transport.ts` is the Eden adapter,
+ * The transport is a parameter: `./roster-transport.ts` is the production one,
  * the test's in-memory one is the other. Views hold the state in `$state` via
  * `./device-roster.svelte.ts` and say the words; this module decides.
  */

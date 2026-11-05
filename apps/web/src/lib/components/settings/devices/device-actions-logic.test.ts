@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { type DeviceActionId, actionsFor } from "./device-actions-logic";
+import { type DeviceActionId, actionsFor, polledDeviceId } from "./device-actions-logic";
 import type { DeviceKind, DeviceState, DeviceView } from "@SunReye/contracts/devices";
 
 const device = (over: Partial<DeviceView>): DeviceView =>
@@ -31,11 +31,33 @@ describe("what a device row offers its operator", () => {
   // Rendered, refused, and explained: hiding the control would take the reason
   // with it, and the operator would look for a Retire that is simply absent.
   test("the polled Modbus row renders Retire and Delete disabled rather than dropping them", () => {
-    expect(actionsFor(device({ kind: "modbus", state: "polling" }))).toEqual([
+    expect(actionsFor(device({ id: 1, kind: "modbus", state: "polling" }), 1)).toEqual([
       { id: "edit", blocked: false, placement: "primary" },
       { id: "retire", blocked: true, placement: "menu" },
       { id: "delete", blocked: true, placement: "menu" },
     ]);
+  });
+
+  // The core polls every device in service and refuses only the one the
+  // inverter settings edit: a second polled device retires like any other.
+  test("another device being polled keeps Retire and Delete", () => {
+    const second = actionsFor(device({ id: 2, kind: "modbus", state: "polling" }), 1);
+    expect(second.every((a) => !a.blocked)).toBe(true);
+  });
+});
+
+describe("which device the inverter settings edit", () => {
+  const row = (id: number, over: Partial<DeviceView> = {}) => device({ id, ...over });
+
+  test("is the first Modbus device in service, as the core refuses it", () => {
+    expect(polledDeviceId([row(1), row(2)])).toBe(1);
+    expect(polledDeviceId([row(1, { retiredAt: "2026-11-01T00:00:00Z" }), row(2), row(3)])).toBe(2);
+    expect(polledDeviceId([row(1, { kind: "coded" }), row(4)])).toBe(4);
+  });
+
+  test("is none on an empty or fully retired roster", () => {
+    expect(polledDeviceId([])).toBeNull();
+    expect(polledDeviceId([row(1, { retiredAt: "2026-11-01T00:00:00Z" })])).toBeNull();
   });
 
   // #219: the server now allows `name` and `retired` on a coded row. Before

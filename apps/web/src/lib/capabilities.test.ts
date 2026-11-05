@@ -8,6 +8,8 @@ const NONE: Capabilities = {
   automations: false,
   restart: false,
   profileSources: false,
+  integrations: false,
+  pvAndBattery: false,
 };
 
 describe("hasCapability", () => {

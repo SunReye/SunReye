@@ -9,7 +9,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
-import { ADMIN, heading, oracleReadings, powerFlow, startSimulator } from "./support/core";
+import { heading, oracleReadings, powerFlow, signIn, startSimulator } from "./support/core";
 
 let simulator: { child: ChildProcess; port: number };
 test.beforeAll(async () => {
@@ -18,14 +18,6 @@ test.beforeAll(async () => {
 test.afterAll(() => {
   simulator.child.kill();
 });
-
-async function signIn(page: Page): Promise<void> {
-  await page.goto("/#/login");
-  await page.getByLabel("Email").fill(ADMIN.email);
-  await page.getByLabel("Password").fill(ADMIN.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(heading(page)).toHaveText("Overview");
-}
 
 /** Points the stored device at this spec's simulator. */
 async function pollSimulator(page: Page, port: number): Promise<void> {

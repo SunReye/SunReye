@@ -155,12 +155,12 @@ export function describeUnitScan(answer: UnitScanAnswer, words: UnitScanWords): 
  */
 export function scanOutcome(
   data: unknown,
-  error: { value: unknown } | null,
+  error: unknown,
   words: UnitScanWords,
   fallback: string,
 ): UnitScanOutcome {
   if (data === null || data === undefined) {
-    return { ok: false, unitId: undefined, message: apiErrorText(error?.value, fallback) };
+    return { ok: false, unitId: undefined, message: apiErrorText(error, fallback) };
   }
   return describeUnitScan(data as UnitScanAnswer, words);
 }

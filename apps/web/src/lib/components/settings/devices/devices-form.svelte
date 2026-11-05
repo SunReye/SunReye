@@ -11,8 +11,9 @@
 	import ConnectionDialog from './connection-dialog.svelte';
 	import DeviceList from './device-list.svelte';
 	import DeviceDeleteDialog from './device-delete-dialog.svelte';
+	import { polledDeviceId } from './device-actions-logic';
 	import { type WriteOutcome, failureText } from './device-roster';
-	import { deviceRoster } from './device-roster.svelte';
+	import { deviceRoster, setPolledDevice } from './device-roster.svelte';
 	import type {
 		ConnectionView,
 		DeviceHandlers,
@@ -63,6 +64,8 @@
 		editingConnection ? roster.devices.filter((d) => d.connectionId === editingConnection.id) : []
 	);
 	const groups = $derived(roster.groups);
+	const polledId = $derived(polledDeviceId(roster.devices));
+	setPolledDevice(() => polledId);
 
 	onMount(() => roster.load());
 
