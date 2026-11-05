@@ -24,6 +24,25 @@ describe("maskRust", () => {
     expect(maskRust(`let c = '{'; let d = '"'; ${sleep}`)).not.toContain("{'");
   });
 
+  test("blanks byte strings and byte raw strings", () => {
+    expect(maskRust(`let s = b"${sleep}";`)).not.toContain("sleep");
+    expect(maskRust(`let s = br"${sleep}";`)).not.toContain("sleep");
+    expect(maskRust(`let s = br#"${sleep} "quoted""#;`)).not.toContain("sleep");
+    expect(maskRust(`let s = br##"${sleep} "# "quoted""##;`)).not.toContain("sleep");
+  });
+
+  test("a byte raw string with an unbalanced quote does not leak into the code after it", () => {
+    const source = `a(br#"{"error":"Admin only"#); ${sleep};`;
+    const masked = maskRust(source);
+    expect(masked).toBe(`a(br#"${" ".repeat(20)}"#); ${sleep};`);
+  });
+
+  test("an identifier ending in r before a quote-hash is not a raw string", () => {
+    const blanks = " ".repeat(sleep.length);
+    expect(maskRust(`bar#"${sleep}"`)).toBe(`bar#"${blanks}"`);
+    expect(maskRust(`abr#"${sleep}"#`)).toBe(`abr#"${blanks}"#`);
+  });
+
   test("leaves lifetimes alone", () => {
     expect(maskRust(`fn f<'a>(x: &'a str) { ${sleep} }`)).toContain("sleep");
   });

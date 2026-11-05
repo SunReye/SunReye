@@ -52,8 +52,15 @@ function skipQuoted(quotes: string, multiline: boolean): Skipper {
 
 const RAW_OPEN = /r(#*)"/y;
 
+/** The `r` of a raw string opens one unless it ends an identifier; `br` is a byte raw string. */
+function startsRaw(source: string, at: number): boolean {
+  if (source[at] !== "r") return false;
+  const prefixed = source[at - 1] === "b" ? 2 : 1;
+  return !/\w/.test(source[at - prefixed] ?? " ");
+}
+
 function skipRawString(source: string, at: number): Skip | null {
-  if (source[at] !== "r" || /\w/.test(source[at - 1] ?? " ")) return null;
+  if (!startsRaw(source, at)) return null;
   RAW_OPEN.lastIndex = at;
   const open = RAW_OPEN.exec(source);
   if (!open) return null;
