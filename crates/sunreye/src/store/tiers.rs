@@ -499,7 +499,7 @@ mod tests {
                 .fetch_one(&store.pool)
                 .await
                 .expect("count");
-        assert_eq!((buckets, newest), (METRICS as i64, 1_200_000_000_000));
+        assert_eq!((buckets, newest), (i64::try_from(METRICS).expect("metrics"), 1_200_000_000_000));
     }
 
     async fn plan(store: &Store, query: &str) -> String {
