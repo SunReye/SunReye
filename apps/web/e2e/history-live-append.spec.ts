@@ -17,8 +17,6 @@
 import { expect, test } from "@playwright/test";
 import { mountedCharts, openHistory, periodNavigator, rollupCalls } from "./support/history";
 
-/** Long enough for a burst of per-card fetches to finish and the page to go quiet. */
-const SETTLE_MS = 2000;
 const OVERLAY = ["dc.pv1.power", "dc.pv2.power"];
 
 /** Requests per metric key. */
@@ -41,7 +39,7 @@ test("a minute tick asks each live chart for its delta once, and never the whole
   });
   await expect(periodNavigator(page).forward).toBeDisabled();
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await backend.settled();
 
   const loaded = rollupCalls(backend);
   const windowStart = loaded[0]!.from;
@@ -54,7 +52,7 @@ test("a minute tick asks each live chart for its delta once, and never the whole
   await page.clock.fastForward("02:00");
   await backend.pushMetrics();
   await expect.poll(() => rollupCalls(backend).length).toBeGreaterThan(0);
-  await page.waitForTimeout(SETTLE_MS);
+  await backend.settled();
 
   const deltas = rollupCalls(backend);
   // Deltas, not reloads: a tick that re-derives the window refetches from
@@ -78,21 +76,20 @@ test("past midnight, yesterday's window is not re-asked once a minute", async ({
     customCharts: [{ id: "chart-1", name: "PV strings", metrics: OVERLAY }],
   });
   await expect(mountedCharts(page).first()).toBeVisible();
-  await page.waitForTimeout(SETTLE_MS);
+  await backend.settled();
   const dayEnd = rollupCalls(backend)[0]!.to;
 
   // Across midnight, then one tick to let anything still owed land.
   await page.clock.fastForward("03:00");
   await backend.pushMetrics();
-  await page.waitForTimeout(SETTLE_MS);
+  await backend.settled();
 
   backend.resetRequests();
   for (let minute = 0; minute < 3; minute++) {
     await page.clock.fastForward("01:00");
     await backend.pushMetrics();
-    await page.waitForTimeout(300);
+    await backend.settled();
   }
-  await page.waitForTimeout(SETTLE_MS);
 
   expect(rollupCalls(backend).filter((c) => c.to === dayEnd)).toEqual([]);
 });

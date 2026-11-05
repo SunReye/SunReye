@@ -14,23 +14,31 @@
  * off-screen readout still updates — it just steps instead of drifting.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { CHARTABLE_METRIC_COUNT } from "./support/api-mock";
 import { metricCards, mountedCharts, openHistory } from "./support/history";
 import { countTextMutations } from "./support/perf";
 
-/** Feed `frames` samples by hand, so the count is per sample, not per wall clock. */
-const pushFrames = (backend: { pushMetrics: () => Promise<unknown> }, frames: number) =>
+/**
+ * Feed `samples` by hand, the page's clock stepped 200 ms after each, so the count is per sample
+ * and a glide gets the frames it would on a 5 Hz feed whatever the host is doing.
+ */
+const pushFrames = (
+  page: Page,
+  backend: { pushMetrics: () => Promise<unknown> },
+  samples: number,
+) =>
   async function () {
-    for (let i = 0; i < frames; i++) {
+    for (let i = 0; i < samples; i++) {
       await backend.pushMetrics();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await page.clock.runFor(200);
     }
   };
 
 test("off-screen readouts step instead of gliding, so the page stops repainting text", async ({
   page,
 }) => {
+  await page.clock.install();
   const backend = await openHistory(page, { feedIntervalMs: 0 });
   await expect(metricCards(page)).toHaveCount(CHARTABLE_METRIC_COUNT);
 
@@ -39,7 +47,7 @@ test("off-screen readouts step instead of gliding, so the page stops repainting 
   const onScreen = await mountedCharts(page).count();
   expect(onScreen).toBeLessThan(15);
 
-  const mutations = await countTextMutations(page, pushFrames(backend, 5));
+  const mutations = await countTextMutations(page, pushFrames(page, backend, 5));
 
   // Five samples across ~1s. Measured here: 2399 writes before the gate, 512
   // after. The remainder is the handful of cards actually on screen, which are

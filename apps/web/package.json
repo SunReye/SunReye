@@ -19,6 +19,7 @@
     "test:components": "vitest run",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
+    "bench:e2e": "playwright test -c playwright.bench.config.ts",
     "e2e:core": "cargo build --manifest-path ../../Cargo.toml -p sunreye -p sunreye-sim --bins && playwright test -c playwright.core.config.ts",
     "e2e:install": "playwright install --with-deps chromium",
     "e2e:types": "tsc -p e2e/tsconfig.json"
