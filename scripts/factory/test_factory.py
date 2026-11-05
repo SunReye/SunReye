@@ -879,6 +879,183 @@ class GateRecord(unittest.TestCase):
         self.assertIn("usage: factory gate-result <sha>", str(code))
 
 
+class TrainGateReuse(unittest.TestCase):
+    """`gate --train` skips `commands.gate` only for a tree a green non-train record covers, gated against
+    the base tip that is still current; every other case runs the full gate."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.root = self.tmp / "slot"
+        self.root.mkdir()
+        self.sha = init_repo(self.root)
+        for key, value in (("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false")):
+            git(self.root, "config", key, value)
+        self.base = factory.CFG["base"]
+        self.bare = self.tmp / "origin.git"
+        git(self.tmp, "init", "-q", "--bare", str(self.bare))
+        git(self.root, "remote", "add", "origin", str(self.bare))
+        git(self.root, "push", "-q", "origin", f"HEAD:refs/heads/{self.base}")
+        git(self.root, "fetch", "-q", "origin", self.base)
+        self.steps = self.tmp / "steps"
+        self.cfg = {**factory.CFG, "commands": {"gate": [self.record("gate")], "train_gate": [self.record("train")]}}
+        cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, cwd)
+        for patcher in (mock.patch.object(factory, "CFG", self.cfg),
+                        mock.patch.object(subprocess.Popen, "__del__", lambda proc: None),
+                        mock.patch.dict(os.environ, {"FACTORY_SLOT": "impl-1"}),
+                        mock.patch.object(slots, "GATE_WAIT_SECONDS", 20),
+                        mock.patch.object(slots, "GATE_POLL_SECONDS", 0.02)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def record(self, text):
+        return [sys.executable, "-c", f"from pathlib import Path; p=Path({str(self.steps)!r}); "
+                f"p.write_text((p.read_text() if p.exists() else '') + '{text}\\n')"]
+
+    def ran(self):
+        return self.steps.read_text().split() if self.steps.exists() else []
+
+    def gate(self, *args):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, _ = run(factory.main, ["gate", *args])
+        return code, err.getvalue()
+
+    def gated_then_train(self):
+        self.gate()
+        self.steps.unlink()
+        return self.gate("--train")
+
+    def empty_commit(self):
+        git(self.root, "commit", "-q", "--allow-empty", "-m", "same tree, new sha")
+        return git(self.root, "rev-parse", "HEAD")
+
+    def recorded(self, sha=None):
+        return json.loads((self.tmp / "slot" / ".factory" / "gates" / f"{sha or self.sha}.json").read_text())
+
+    def move_base(self):
+        other = self.tmp / f"other{len(list(self.tmp.glob('other*')))}"
+        git(self.tmp, "clone", "-q", "-b", self.base, str(self.bare), str(other))
+        (other / f"{other.name}.txt").write_text("x")
+        git(other, "add", "-A")
+        git(other, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "base moved")
+        git(other, "push", "-q", "origin", f"HEAD:refs/heads/{self.base}")
+
+    def test_a_gate_record_stores_its_tree_and_the_base_tip(self):
+        self.gate()
+        record = self.recorded()
+        self.assertEqual(record["tree"], git(self.root, "rev-parse", "HEAD^{tree}"))
+        self.assertEqual(record["base_tip"], git(self.root, "rev-parse", f"origin/{self.base}"))
+
+    def test_the_same_tree_gated_green_runs_only_the_train_steps_and_says_why(self):
+        code, err = self.gated_then_train()
+        self.assertEqual((code, self.ran()), (0, ["train"]))
+        self.assertIn(f"reusing green gate record {self.sha}", err)
+
+    def test_the_reusing_train_run_records_what_it_reused(self):
+        self.gated_then_train()
+        record = self.recorded()
+        self.assertEqual((record["train"], record["reused"], len(record["steps"])), (True, self.sha, 1))
+
+    def test_a_new_commit_with_the_same_tree_reuses_the_record(self):
+        self.gate()
+        self.steps.unlink()
+        head = self.empty_commit()
+        self.assertNotEqual(head, self.sha)
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["train"])
+
+    def test_a_gate_without_train_never_skips(self):
+        self.gate()
+        self.gate()
+        self.assertEqual(self.ran(), ["gate", "gate"])
+
+    def test_a_different_tree_runs_the_full_gate(self):
+        self.gate()
+        self.steps.unlink()
+        (self.root / "more.txt").write_text("x")
+        git(self.root, "add", "more.txt")
+        git(self.root, "commit", "-q", "-m", "more")
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_failed_record_runs_the_full_gate(self):
+        self.cfg["commands"]["gate"] = [self.record("gate"), [sys.executable, "-c", "raise SystemExit(3)"]]
+        self.gate()
+        self.steps.unlink()
+        self.cfg["commands"]["gate"] = [self.record("gate")]
+        self.empty_commit()
+        self.assertEqual(self.gate("--train")[0], 0)
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_train_record_is_not_reusable(self):
+        self.gate("--train")
+        self.steps.unlink()
+        self.empty_commit()
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_dirty_worktree_runs_the_full_gate(self):
+        self.gate()
+        self.steps.unlink()
+        (self.root / "new.txt").write_text("x")
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_moved_base_runs_the_full_gate(self):
+        self.gate()
+        self.steps.unlink()
+        self.move_base()
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_base_that_moved_before_the_record_does_not_cover_a_later_tip(self):
+        self.move_base()
+        self.gate()
+        self.steps.unlink()
+        self.move_base()
+        self.empty_commit()
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_record_without_a_base_tip_runs_the_full_gate(self):
+        self.gate()
+        self.steps.unlink()
+        path = self.root / ".factory" / "gates" / f"{self.sha}.json"
+        record = json.loads(path.read_text())
+        del record["base_tip"]
+        path.write_text(json.dumps(record))
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_an_unreachable_origin_runs_the_full_gate(self):
+        self.gate()
+        self.steps.unlink()
+        shutil.rmtree(self.bare)
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_record_gated_without_a_base_ref_is_never_reused(self):
+        git(self.root, "update-ref", "-d", f"refs/remotes/origin/{self.base}")
+        self.gate()
+        self.steps.unlink()
+        self.assertIsNone(self.recorded()["base_tip"])
+        self.gate("--train")
+        self.assertEqual(self.ran(), ["gate", "train"])
+
+    def test_a_detached_train_gate_reuses_the_record_and_logs_why(self):
+        self.gate()
+        self.steps.unlink()
+        run(factory.main, ["gate", "--detach", "--train"])
+        self.assertEqual(run(factory.main, ["gate-wait"])[1], {"status": "passed", "exit": 0})
+        self.assertEqual(self.ran(), ["train"])
+        log = (self.root / ".factory" / "logs" / "gate-impl-1.log").read_text()
+        self.assertIn(f"reusing green gate record {self.sha}", log)
+
+
 class DetachedGate(unittest.TestCase):
     """`gate --detach` runs the gate in the background; `gate-wait` reports it."""
 

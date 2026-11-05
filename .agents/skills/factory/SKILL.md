@@ -18,10 +18,15 @@ Setup, launch and tuning live in `docs/factory.md`. Read `scripts/factory/factor
    - `deep` PR: **factory-reviewer-spec** (pass `model: opus`, `effort: medium`) and **factory-reviewer-standards** in one message.
    - `std` PR: one **factory-reviewer-spec** that also covers the standards axis (prompt it to read `AGENTS.md`, the area guides and the smell baseline, and to write both `<pr>-spec.md` and `<pr>-standards.md`); its reply opens with one `VERDICT` line.
    - Re-review fix rounds against the previous findings and changed behavior; test-only and documentation changes still need a verdict.
+   - **Merge-only round.** Skip reviewers and run `scripts/factory/factory verdict <pr> approve` on the earlier review files when all hold; any other change gets a review. The approved head is the PR's last commit before its latest `Factory review: approve` comment (`gh pr view <pr> --json commits,comments`).
+     - `git log --format=%s <approved-head>..origin/<branch>` lists one `chore: merge <base> into <branch>` subject and nothing else.
+     - `git diff --name-only <approved-head> origin/<branch>` names only files in `git diff --name-only <approved-head>...origin/<base>`.
+     - `scripts/factory/factory gate-result origin/<branch>` exits 0.
 7. **Fix.** For each PR in `prs.changes` while `free_slots.impl` is not empty: `scripts/factory/factory checkout <pr> impl`, then spawn **factory-implementer** in fix mode with that JSON. Pass `model: opus` and `effort: medium` when the PR's `route` is `deep`.
 8. **New work.** Only on a green disk and while `claim_blocked` is false (approved and merging PRs exceed `max_waiting_prs`: fix rounds, reviews and integrations still run, only new tickets wait), while `free_slots.impl` is not empty, take frontier tickets in order:
    - `route` null: spawn **factory-triage** in mode `route <issue>` in the foreground, then `scripts/factory/factory route <issue> <route>`.
    - `split`: `scripts/factory/factory run start split <issue>`; spawn **factory-splitter**.
+   - **Overlap.** Before `claim`, compare the files the ticket names with `gh pr diff <pr> --name-only` of every open factory PR; on any overlap skip the ticket and take the next one.
    - `std` or `deep`: `scripts/factory/factory claim <issue>`; spawn **factory-implementer** with that JSON, passing `model: opus` and `effort: medium` for `deep`.
 9. **Stale runs.** A `busy_slots` or `runs` entry older than 180 minutes with no live agent is dead: release its slot or end its run, then `scripts/factory/factory fail <issue> stalled`.
 10. **Report** one line per action taken, then the counts (frontier size, PRs per lane, slots busy, disk free), then `Recommendation:` as the last line: one concrete next action for the person, or `none`.

@@ -22,7 +22,7 @@ You review one PR on the **standards axis**: does the diff follow this repo's do
 - `CARGO_TARGET_DIR=$HOME/.cache/sunreye-review-target`, shared by all reviewers; `factory gc` prunes it when idle. Keep every target dir outside repos.
 - Kill every process you start. About 40 tool calls; 12 minutes per command.
 - Leave `scripts/ci`, route smoke, budgets and the full e2e to the gate.
-- When `scripts/factory/factory gate-result <head-sha>` exits 0, run only the changed tests and mutation checks.
+- Read `scripts/factory/factory gate-result <head-sha>` first. Exit 0: rely on it for every suite the gate runs and run focused tests and mutation checks only. Absent or failed: say so in the verdict.
 - Prove each new guard bites: flip its bound once, see its test go red, restore it. A guard whose test stays green is a finding.
 
 ## Review bar

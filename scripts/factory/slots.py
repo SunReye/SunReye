@@ -157,11 +157,48 @@ def tree_state(path):
     return sh("git", "rev-parse", "HEAD", cwd=path), bool(sh("git", "status", "--porcelain", cwd=path))
 
 
-def run_gate(commands, path, train=False):
+def base_tip(path, cfg):
+    """The local tip of origin/<base>, or None when the ref is absent."""
+    return sh("git", "rev-parse", "--verify", "-q", f"refs/remotes/origin/{cfg['base']}", cwd=path,
+              check=False) or None
+
+
+def reusable_record(cfg, path, sha, dirty):
+    """A green non-train record for HEAD's tree gated against the base tip that is current on origin, else None.
+
+    Any doubt (dirty tree, no base tip, failed fetch, moved base) returns None: the full gate runs."""
+    if dirty:
+        return None
+    tree = sh("git", "rev-parse", f"{sha}^{{tree}}", cwd=path)
+    candidates = []
+    for file in sorted(gates_dir().glob("*.json")):
+        try:
+            record = json.loads(file.read_text())
+        except json.JSONDecodeError:
+            continue
+        if record.get("tree") == tree and record.get("ok") and not record.get("train") and record.get("base_tip"):
+            candidates.append(record)
+    if not candidates:
+        return None
+    if subprocess.run(["git", "fetch", "-q", "origin", cfg["base"]], cwd=path, capture_output=True).returncode:
+        return None
+    tip = base_tip(path, cfg)
+    return next((r for r in candidates if r["base_tip"] == tip), None)
+
+
+def run_gate(cfg, path, train=False):
     """Run steps in order, stop at the first failure, record the result for HEAD; returns the exit code.
 
+    A train gate on a tree a reusable record covers runs only the train steps.
     A tree that was dirty or moved during the run proves nothing about a SHA: no record."""
     before = tree_state(path)
+    reused = reusable_record(cfg, path, *before) if train else None
+    if reused:
+        commands = phase_commands(cfg, "train_gate")
+        print(f"train gate: reusing green gate record {reused['sha']} (same tree, same {cfg['base']} tip): "
+              "running train_gate only", file=sys.stderr)
+    else:
+        commands = gate_steps(cfg, train)
     steps, code = [], 0
     for command in commands:
         began = time.monotonic()
@@ -173,7 +210,9 @@ def run_gate(commands, path, train=False):
     if before != tree_state(path) or before[1]:
         print("tree was dirty or changed during the gate: no gate record written", file=sys.stderr)
         return code
-    record = {"sha": before[0], "ok": code == 0, "train": train, "steps": steps,
+    record = {"sha": before[0], "tree": sh("git", "rev-parse", "HEAD^{tree}", cwd=path),
+              "base_tip": base_tip(path, cfg), "ok": code == 0, "train": train, "steps": steps,
+              **({"reused": reused["sha"]} if reused else {}),
               "finished_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     write_atomic(gates_dir() / f"{before[0]}.json", json.dumps(record, indent=2))
     return code
@@ -203,7 +242,7 @@ def gate_record(sha, path):
 
 def start_gate(cfg, slot, path, train=False):
     """Run the gate in a background session; its log and exit code land in the main checkout's .factory/logs."""
-    commands = gate_steps(cfg, train)
+    gate_steps(cfg, train)  # refuses an empty gate before anything detaches
     files = gate_files(slot)
     if gate_running(files):
         raise SystemExit(f"gate already running in {slot}: factory gate-wait --slot {slot}")
@@ -211,7 +250,7 @@ def start_gate(cfg, slot, path, train=False):
     files["log"].parent.mkdir(parents=True, exist_ok=True)
     for name in ("log", "exit", "pid"):
         files[name].unlink(missing_ok=True)
-    job = json.dumps({"commands": commands, "train": train})
+    job = json.dumps({"cfg": {"base": cfg["base"], "commands": cfg["commands"]}, "train": train})
     with open(files["log"], "w") as log:
         proc = subprocess.Popen([sys.executable, __file__, str(files["exit"]), job], cwd=path,
                                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
@@ -346,4 +385,4 @@ def gc(store, state, aggressive=False):
 if __name__ == "__main__":
     # Detached gate: argv = exit file, JSON job. The exit file is written last, atomically.
     job = json.loads(sys.argv[2])
-    write_atomic(Path(sys.argv[1]), f"{run_gate(job['commands'], Path.cwd(), job['train'])}\n")
+    write_atomic(Path(sys.argv[1]), f"{run_gate(job['cfg'], Path.cwd(), job['train'])}\n")
