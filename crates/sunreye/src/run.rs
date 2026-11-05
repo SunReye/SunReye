@@ -432,6 +432,7 @@ mod tests {
     use crate::samples::{MINUTE_MS, Sample, minute_of};
     use crate::settings::INTERVAL_KEY;
     use crate::store::{DeviceEdit, NewConnection, NewDevice};
+    use crate::test_net::closed_port;
     use crate::web::Config;
 
     fn dir(name: &str) -> PathBuf {
@@ -742,60 +743,42 @@ mod tests {
         drop(std::fs::remove_dir_all(&dir));
     }
 
-    /// Log lines written on this thread, which on a current-thread runtime runs every spawned task.
-    fn captured_log() -> (Arc<std::sync::Mutex<Vec<u8>>>, tracing::subscriber::DefaultGuard) {
-        #[derive(Clone)]
-        struct Shared(Arc<std::sync::Mutex<Vec<u8>>>);
-        impl std::io::Write for Shared {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().expect("log").extend_from_slice(bytes);
-                Ok(bytes.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let log = Shared(Arc::default());
-        let writer = log.clone();
-        let subscriber =
-            tracing_subscriber::fmt().with_ansi(false).with_writer(move || writer.clone()).finish();
-        (log.0, tracing::subscriber::set_default(subscriber))
-    }
-
     #[tokio::test]
-    async fn a_device_on_a_closed_port_reports_the_refused_connect_and_does_not_stop_the_core() {
-        // Bound and never listening: every dial is refused, and no other test can take the port.
-        let closed = tokio::net::TcpSocket::new_v4().expect("socket");
-        closed.bind("127.0.0.1:0".parse().expect("addr")).expect("bind");
-        let port = closed.local_addr().expect("addr").port();
+    async fn a_device_on_a_closed_port_fails_its_poll_with_the_refused_connect_and_holds_nothing() {
+        let (_closed, port) = closed_port();
         let dir = dir("refused");
-        let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        let (log, _guard) = captured_log();
-        let core = Core::open(&dir).await.expect("open");
-        let deadline = Instant::now() + Duration::from_secs(20);
-        let refused = || String::from_utf8_lossy(&log.lock().expect("log")).contains("Connection refused");
-        while !refused() {
-            assert!(Instant::now() < deadline, "no refused dial logged");
-            tokio::time::sleep(Duration::from_millis(10)).await;
+        let id = seed(&dir, port, "deye-sg05lp3", "20").await;
+        let store = Arc::new(Store::open(&dir).await.expect("store"));
+        let device =
+            store.devices().await.expect("devices").into_iter().find(|d| d.id == id).expect("device");
+        let profile =
+            find_profile(&Bundle::official().expect("bundle"), &[], &device.profile_id).expect("profile");
+        let mut task = DeviceTask {
+            store: Arc::clone(&store),
+            live: Arc::default(),
+            unstored: Arc::default(),
+            poller: DevicePoller::new(profile, device.unit_id),
+            device,
+            client: None,
+            // Only a refusal ends the dial: a hang never reaches this timeout within the deadline below.
+            timeout: Duration::from_hours(1),
+        };
+        let polled = tokio::time::timeout(Duration::from_secs(20), task.poll_once()).await;
+        match polled.expect("the dial hung") {
+            Err(crate::modbus::Error::Io(error)) => assert!(error.contains("refused"), "{error}"),
+            other => panic!("not a refused connect: {other:?}"),
         }
-        let text = String::from_utf8_lossy(&log.lock().expect("log")).into_owned();
-        let line = text.lines().find(|l| l.contains("Connection refused")).expect("a refused line");
-        assert!(
-            line.contains("WARN")
-                && line.contains("poll failed")
-                && line.contains(&format!("device={device}")),
-            "{line}"
-        );
-        core.stop().await;
-        assert_eq!(stored(&dir, device).await, []);
+        tokio::time::timeout(Duration::from_secs(20), task.tick()).await.expect("the tick hung");
+        assert!(task.client.is_none(), "no connection kept");
+        assert_eq!(task.unstored.held(id), [], "no reading held");
+        drop(task);
+        Arc::into_inner(store).expect("one owner").close().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 
     #[tokio::test]
     async fn a_minute_stays_held_while_its_write_waits_on_the_database() {
-        let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let port = free.local_addr().expect("addr").port();
-        drop(free);
+        let (_closed, port) = closed_port();
         let dir = dir("held-while-writing");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
         let core = Core::open(&dir).await.expect("core");

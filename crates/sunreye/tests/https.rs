@@ -190,10 +190,10 @@ async fn a_non_success_status_is_reported() {
 
 #[tokio::test]
 async fn a_closed_port_is_a_connect_error() {
-    let port = {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        listener.local_addr().expect("addr").port()
-    };
+    // Bound, so no server this binary starts can take the port, and never listening.
+    let closed = tokio::net::TcpSocket::new_v4().expect("socket");
+    closed.bind("127.0.0.1:0".parse().expect("addr")).expect("bind");
+    let port = closed.local_addr().expect("addr").port();
     let err = get(&url(port), limits(1024)).await.expect_err("refused");
     assert!(matches!(err, GetError::Connect(_)), "{err:?}");
 }

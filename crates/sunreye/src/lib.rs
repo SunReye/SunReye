@@ -21,6 +21,8 @@ pub mod settings;
 pub mod solar;
 pub mod sources;
 pub mod store;
+#[cfg(test)]
+mod test_net;
 pub mod weather;
 pub mod web;
 
