@@ -3,16 +3,14 @@ name: pr
 description: "Use when writing a PR body."
 ---
 
-PR body: 3-6 bullets of what changed, one gate line (`scripts/ci` green, or the known flake), `Closes #<issue>`. Use the domain language of `GLOSSARY.md`. Example:
+PR body: at most 5 lines. One line per change in the domain language of `GLOSSARY.md`, one gate line, `Closes #<issue>`. No process narration, no recap. Numbers as `before → after`. Example:
 
 ```markdown
-- Add `GET /v1/wallets/:id/ledger` with cursor paging
-- Gate the route on `wallet.read` and audit the read
-- Generate the web client
-
-`scripts/ci --e2e` green.
-
-Closes #123
+- Reuse a green per-PR gate record when the train gate sees the same tree and base tip
+- Reviewers read `gate-result`; only defects with a failing scenario fail a verdict
+- Dispatcher skips reviews for merge-only rounds, skips overlapping tickets, files `Follow-up:` lines
+`scripts/factory/factory gate` green.
+Closes #489
 ```
 
-Fix-round comment: one line per finding, `F1: fixed in <file>`.
+Fix-round and merge-round comment: one line per finding, nothing else: `F1: fixed in <file>` or `F2: not a defect: <reason>`.

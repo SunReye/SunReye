@@ -566,7 +566,7 @@ def main(argv):
             out(slots.start_gate(CFG, os.environ["FACTORY_SLOT"], Path.cwd(), train=bool(args)))
             return
         if cmd == "gate":
-            code = slots.run_gate(slots.gate_steps(CFG, bool(args)), Path.cwd(), train=bool(args))
+            code = slots.run_gate(CFG, Path.cwd(), train=bool(args))
             if code:
                 raise SystemExit(code)
         else:

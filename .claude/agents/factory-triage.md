@@ -20,6 +20,8 @@ Read `scripts/factory/factory config`, root `AGENTS.md` and `gh issue view <issu
 - **split** also when its `Blocked by` chain reaches a ticket that is blocked by this one (dependency cycle). Check with `gh issue view` on each blocker.
 - **std**: everything else.
 
+A `split` reason names the fewest children that each fit `max_pr_files` and `max_pr_lines`, cut by vertical slice, not by file.
+
 Write 2 lines: `ROUTE std|deep|split: <one-sentence reason>`, then `Recommendation:` with one concrete next action, or `none`.
 
 ## Mode `failure <file>`
