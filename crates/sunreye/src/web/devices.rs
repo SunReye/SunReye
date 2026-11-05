@@ -13,7 +13,6 @@ use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ApiPath, ErrorBody};
 use crate::live::iso;
-use crate::probe::{EndpointProbe, UnitScan, probe_endpoint, scan_units as scan};
 use crate::profile::Profile;
 use crate::run::Core;
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, Transport, poll_interval, poll_timeout};
@@ -25,16 +24,10 @@ use crate::store::{
 /// The roles an operator may add, as 3.x lists them.
 const ROLES: [&str; 4] = ["inverter", "meter", "charger", "controller"];
 /// Modbus unit ids; 248–255 are reserved.
-const UNIT_MAX: i64 = 247;
+pub(super) const UNIT_MAX: i64 = 247;
 /// 3.x's slug limit, which bounds a name.
 const NAME_MAX: usize = 48;
 const DEFAULT_PORT: i64 = 502;
-/// The ids a scan asks when none are named: a device's factory id, a gateway's own, then where a second
-/// device on a shared bus is set. Short, since every miss costs a full timeout.
-const SCAN_CANDIDATES: [u8; 6] = [1, 0, 2, 3, 4, 5];
-const SCAN_MAX: usize = 16;
-/// Per id; a scan waits for a person.
-const SCAN_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -198,7 +191,7 @@ fn polled() -> ApiError {
     ApiError::conflict("this device is the one being polled; change the inverter connection first")
 }
 
-fn refused(field: &'static str, message: &str) -> ApiError {
+pub(super) fn refused(field: &'static str, message: &str) -> ApiError {
     ApiError::bad_request(format!("{field}: {message}")).on(field)
 }
 
@@ -224,14 +217,14 @@ fn checked_role(role: &str) -> Result<String, ApiError> {
         .ok_or_else(|| refused("role", &format!("one of {}", ROLES.join(", "))))
 }
 
-fn checked_unit(unit: i64) -> Result<u8, ApiError> {
+pub(super) fn checked_unit(unit: i64) -> Result<u8, ApiError> {
     u8::try_from(unit)
         .ok()
         .filter(|unit| i64::from(*unit) <= UNIT_MAX)
         .ok_or_else(|| refused("unitId", &format!("unit id must be 0–{UNIT_MAX}")))
 }
 
-fn modbus_only(kind: &str) -> Result<(), ApiError> {
+pub(super) fn modbus_only(kind: &str) -> Result<(), ApiError> {
     if kind == "modbus" { Ok(()) } else { Err(refused("kind", "this core reaches Modbus connections only")) }
 }
 
@@ -240,7 +233,7 @@ fn modbus_params(params: Value) -> Result<ModbusParams, ApiError> {
 }
 
 /// An added connection's endpoint: the core's poll timing applies whatever the writer states.
-fn added_endpoint(mut params: Value) -> Result<NewConnection, ApiError> {
+pub(super) fn added_endpoint(mut params: Value) -> Result<NewConnection, ApiError> {
     if let Some(params) = params.as_object_mut() {
         params.remove("timeoutMs");
         params.remove("pollIntervalMs");
@@ -667,96 +660,4 @@ pub async fn remove_connection(
         }
         Removal::Removed => Ok(Json(Removed { ok: true, id })),
     }
-}
-
-/// An endpoint to test, as the connection dialog holds it.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ProbeRequest {
-    /// `modbus`; the core reaches no other kind.
-    kind: String,
-    #[schema(value_type = ModbusParams)]
-    params: Value,
-}
-
-/// Whether something accepts a connection at the endpoint: no unit id, no register read. A failure is a
-/// result (`ok: false`), not an error of the request.
-#[utoipa::path(
-    post,
-    path = "/api/connections/probe",
-    operation_id = "probeConnection",
-    request_body = ProbeRequest,
-    responses(
-        (status = 200, body = EndpointProbe),
-        (status = 400, body = ErrorBody),
-        (status = 401, body = ErrorBody),
-        (status = 403, body = ErrorBody),
-        (status = 500, body = ErrorBody)
-    )
-)]
-pub async fn probe_connection(
-    State(core): State<Arc<Core>>,
-    ApiJson(request): ApiJson<ProbeRequest>,
-) -> Result<Json<EndpointProbe>, ApiError> {
-    modbus_only(&request.kind)?;
-    let endpoint = added_endpoint(request.params)?;
-    let timeout = poll_timeout(core.store.setting(TIMEOUT_KEY).await?.as_deref());
-    Ok(Json(probe_endpoint(&endpoint, timeout).await))
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanRequest {
-    /// `modbus`; the core reaches no other kind.
-    kind: String,
-    #[schema(value_type = ModbusParams)]
-    params: Value,
-    /// Whose register map the scan reads with.
-    profile_id: String,
-    /// The ids to ask, in order, at most 16; by default 1, 0, 2, 3, 4, 5.
-    #[schema(value_type = Option<Vec<i64>>)]
-    candidates: Option<Vec<i64>>,
-}
-
-fn checked_candidates(candidates: Option<Vec<i64>>) -> Result<Vec<u8>, ApiError> {
-    let Some(candidates) = candidates else { return Ok(SCAN_CANDIDATES.to_vec()) };
-    if candidates.is_empty() || candidates.len() > SCAN_MAX {
-        return Err(refused("candidates", &format!("a scan asks 1–{SCAN_MAX} unit ids")));
-    }
-    let ids: Vec<u8> = candidates
-        .into_iter()
-        .map(checked_unit)
-        .collect::<Result<_, _>>()
-        .map_err(|_| refused("candidates", &format!("unit id must be 0–{UNIT_MAX}")))?;
-    if (1..ids.len()).any(|i| ids[..i].contains(&ids[i])) {
-        return Err(refused("candidates", "a unit id may only be scanned once"));
-    }
-    Ok(ids)
-}
-
-/// The first unit id that answers a one-register read with the profile's map. Only reads.
-#[utoipa::path(
-    post,
-    path = "/api/connections/scan-units",
-    operation_id = "scanUnits",
-    request_body = ScanRequest,
-    responses(
-        (status = 200, body = UnitScan),
-        (status = 400, body = ErrorBody),
-        (status = 401, body = ErrorBody),
-        (status = 403, body = ErrorBody),
-        (status = 500, body = ErrorBody)
-    )
-)]
-pub async fn scan_units(
-    State(core): State<Arc<Core>>,
-    ApiJson(request): ApiJson<ScanRequest>,
-) -> Result<Json<UnitScan>, ApiError> {
-    modbus_only(&request.kind)?;
-    let endpoint = added_endpoint(request.params)?;
-    let candidates = checked_candidates(request.candidates)?;
-    let Some(profile) = core.profile(&request.profile_id).await? else {
-        return Err(refused("profileId", "profile not installed on this server"));
-    };
-    let found = scan(&profile, &endpoint, &candidates, SCAN_TIMEOUT).await;
-    Ok(Json(found.map_err(|error| ApiError::bad_request(error.to_string()))?))
 }
