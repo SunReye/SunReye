@@ -84,13 +84,23 @@ function day(ratio: (hour: number) => number): Observation[] {
 const learnCase = (name: string, input: Partial<LearnCase["input"]>): LearnCase => ({
   case: `learn/${name}`,
   producer: "learn",
-  input: { model: {}, skill: NO_SKILL, observations: [], nameplateW: NAMEPLATE_W, ...input },
+  input: {
+    model: {},
+    skill: NO_SKILL,
+    observations: [],
+    nameplateW: NAMEPLATE_W,
+    ...input,
+  },
 });
 
 const LEARN: LearnCase[] = [
   learnCase("empty", {}),
-  learnCase("one-day", { observations: day((hour) => 0.85 + (hour % 3) * 0.05) }),
-  learnCase("shrinkage-toward-one", { observations: stream(2026, 7, 13, 1.4, 1) }),
+  learnCase("one-day", {
+    observations: day((hour) => 0.85 + (hour % 3) * 0.05),
+  }),
+  learnCase("shrinkage-toward-one", {
+    observations: stream(2026, 7, 13, 1.4, 1),
+  }),
   learnCase("clamp-high", { observations: stream(2026, 7, 13, 5, 31, 1000) }),
   learnCase("clamp-low", { observations: stream(2026, 7, 13, 0.01, 31) }),
   learnCase("half-life-decay", {
@@ -132,9 +142,15 @@ const LEARN: LearnCase[] = [
       { localTime: at(2026, 5, 2, 13), expectedW: 8000, actualW: 7000 },
     ],
   }),
-  learnCase("no-nameplate", { nameplateW: 0, observations: stream(2026, 7, 13, 0.9, 3) }),
+  learnCase("no-nameplate", {
+    nameplateW: 0,
+    observations: stream(2026, 7, 13, 0.9, 3),
+  }),
   learnCase("prior-model-out-of-sample-skill", {
-    model: { "7:13": { ratio: 0.8, weight: 20 }, "7:14": { ratio: 1.2, weight: 4 } },
+    model: {
+      "7:13": { ratio: 0.8, weight: 20 },
+      "7:14": { ratio: 1.2, weight: 4 },
+    },
     skill: { maeRaw: 600, maeCorrected: 450, samples: 18 },
     observations: [
       ...stream(2026, 7, 13, 0.82, 2),
@@ -232,7 +248,10 @@ export async function buildForecastCorrectionCorpus(): Promise<CorpusFiles> {
   }
   for (const c of FACTOR) {
     const { model, month, hour } = c.input;
-    rows.push({ ...c, output: { factor: correctionFactor(modelOf(model), month, hour) } });
+    rows.push({
+      ...c,
+      output: { factor: correctionFactor(modelOf(model), month, hour) },
+    });
   }
   for (const c of SKILL) {
     rows.push({ ...c, output: { pct: skillImprovementPct(c.input.skill) } });

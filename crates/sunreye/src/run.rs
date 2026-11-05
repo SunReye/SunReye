@@ -38,6 +38,10 @@ pub enum RunError {
 /// session's read never queues behind a crowd of them.
 const STRANGER_READS: usize = 6;
 
+/// An archive no test core may reach: the learn task never leaves the host.
+#[cfg(test)]
+const UNREACHABLE: &str = "https://127.0.0.1:9/v1/archive";
+
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
 #[derive(Debug)]
 pub struct Core {
@@ -50,6 +54,8 @@ pub struct Core {
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
     pub solar: Solar,
+    /// Open-Meteo's reanalysis archive, or a stand-in.
+    pub archive_url: String,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
     stranger_reads: Arc<Semaphore>,
@@ -57,6 +63,7 @@ pub struct Core {
     now: fn() -> i64,
     polling: Polling,
     retention: Mutex<Option<Running>>,
+    learning: Mutex<Option<Running>>,
 }
 
 impl Core {
@@ -70,16 +77,18 @@ impl Core {
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now_ms, open_meteo::URL.into()).await
+        Self::open_clocked(data_dir, roots, now_ms, open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into())
+            .await
     }
 
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, Vec::new(), now, open_meteo::URL.into()).await
+        Self::open_clocked(data_dir, Vec::new(), now, open_meteo::URL.into(), UNREACHABLE.into()).await
     }
 
-    /// [`Core::open`] fetching the forecast from `forecast_url`, trusting `roots`, the clock where `now` says.
+    /// [`Core::open`] fetching the forecast from `forecast_url` and the archive from its `/v1/archive`, trusting
+    /// `roots`, the clock where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_forecasting(
         data_dir: &Path,
@@ -87,7 +96,8 @@ impl Core {
         forecast_url: String,
         now: fn() -> i64,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now, forecast_url).await
+        let archive_url = forecast_url.replace("/v1/forecast", "/v1/archive");
+        Self::open_clocked(data_dir, roots, now, forecast_url, archive_url).await
     }
 
     async fn open_clocked(
@@ -95,6 +105,7 @@ impl Core {
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
         forecast_url: String,
+        archive_url: String,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
@@ -110,12 +121,15 @@ impl Core {
             live,
             unstored,
             solar: Solar::new(forecast_url),
+            archive_url,
             kiosk,
             stranger_reads,
             now,
             polling,
             retention,
+            learning: Mutex::new(None),
         });
+        *core.learning.lock().await = Some(spawn_learning(&core));
         core.apply().await?;
         Ok(core)
     }
@@ -161,6 +175,7 @@ impl Core {
     pub async fn stop(self: Arc<Self>) {
         self.polling.stop().await;
         stop(self.retention.lock().await.take()).await;
+        stop(self.learning.lock().await.take()).await;
         if let Some(core) = Arc::into_inner(self)
             && let Some(store) = Arc::into_inner(core.store)
         {
@@ -316,6 +331,35 @@ async fn retain_now(store: &Store, now_ms: i64) {
     if let Err(error) = retain(store, now).await {
         tracing::error!(%error, "retention pass failed");
     }
+}
+
+/// The first learn run waits for the core to settle; reanalysis lands once a day.
+const LEARN_FIRST_AFTER: Duration = Duration::from_mins(2);
+const LEARN_EVERY: Duration = Duration::from_hours(12);
+
+/// Holds the core weakly, so the task never keeps it from stopping.
+fn spawn_learning(core: &Arc<Core>) -> Running {
+    let (stop, mut stopped) = watch::channel(false);
+    let core = Arc::downgrade(core);
+    let mut tasks = JoinSet::new();
+    tasks.spawn(async move {
+        let start = tokio::time::Instant::now() + LEARN_FIRST_AFTER;
+        let mut ticker = tokio::time::interval_at(start, LEARN_EVERY);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                biased;
+                _ = stopped.changed() => break,
+                _ = ticker.tick() => {
+                    let Some(core) = core.upgrade() else { break };
+                    if let Err(error) = crate::learn::learn_once(&core).await {
+                        tracing::error!(%error, "forecast correction learn failed");
+                    }
+                }
+            }
+        }
+    });
+    Running { stop, tasks }
 }
 
 fn instant(now_ms: i64) -> Option<jiff::Timestamp> {

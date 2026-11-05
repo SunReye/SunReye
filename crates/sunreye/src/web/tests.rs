@@ -425,7 +425,7 @@ async fn unknown_api_paths_and_missing_files_are_404_and_other_methods_on_the_sh
     core.stop().await;
 }
 
-const SERVED: [(&str, &str); 44] = [
+const SERVED: [(&str, &str); 45] = [
     ("post", "/api/connections"),
     ("post", "/api/connections/probe"),
     ("post", "/api/connections/scan-units"),
@@ -469,6 +469,7 @@ const SERVED: [(&str, &str); 44] = [
     ("put", "/api/settings/weather"),
     ("get", "/api/forecast"),
     ("get", "/api/forecast/usable"),
+    ("get", "/api/forecast/correction"),
     ("get", "/api/forecast/providers"),
 ];
 
@@ -555,7 +556,7 @@ const ADMIN_ROUTES: [(&str, &str); 30] = [
     ("POST", "/api/admin/api-keys/revoke"),
 ];
 
-const SESSION_ROUTES: [(&str, &str); 8] = [
+const SESSION_ROUTES: [(&str, &str); 9] = [
     ("GET", "/api/capabilities"),
     ("GET", "/api/profile"),
     ("GET", "/api/history/recent"),
@@ -564,6 +565,7 @@ const SESSION_ROUTES: [(&str, &str); 8] = [
     ("DELETE", "/api/auth/session"),
     ("GET", "/api/forecast"),
     ("GET", "/api/forecast/usable"),
+    ("GET", "/api/forecast/correction"),
 ];
 
 async fn call(api: &Api, route: (&str, &str)) -> StatusCode {
@@ -1191,6 +1193,7 @@ async fn a_stored_profile_with_a_compiled_in_id_is_not_listed_twice() {
 }
 
 mod api_keys;
+mod correction;
 mod devices;
 mod forecast;
 mod kiosk;

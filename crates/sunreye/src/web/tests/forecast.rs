@@ -6,16 +6,17 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 
 use tokio::io::AsyncWriteExt;
 
+use super::correction::archive_payload;
 use super::support::{acceptor, read_request};
 use super::*;
-use crate::forecast::{self, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
+use crate::forecast::{self, CorrectionModel, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
 use crate::samples::{ClosedMinute, Sample};
 
 /// 2026-07-24T10:07:00Z: plant-local 12:07 in Berlin, inside the stand-in's series.
 const NOW_MS: i64 = 1_784_887_620_000;
 const HALF_HOUR_MS: i64 = 1_800_000;
-const LAT: f64 = 50.5;
-const LON: f64 = 8.25;
+pub(super) const LAT: f64 = 50.5;
+pub(super) const LON: f64 = 8.25;
 const TIMES: [&str; 8] = [
     "2026-07-24T11:00",
     "2026-07-24T11:15",
@@ -54,17 +55,28 @@ fn irradiance() -> Irradiance {
 }
 
 /// What the route answers: the model's export for the payload at `now_ms`, stamped with its staleness.
-struct Expected {
+pub(super) struct Expected {
     now_ms: i64,
     fetched_ms: i64,
     stale: bool,
 }
 
-const FRESH: Expected = Expected { now_ms: NOW_MS, fetched_ms: NOW_MS, stale: false };
+pub(super) const FRESH: Expected = Expected { now_ms: NOW_MS, fetched_ms: NOW_MS, stale: false };
 
 fn expected(config: &ForecastConfig, sim: SimInputs, variant: Variant, at: &Expected) -> Value {
+    corrected(config, sim, variant, at, None)
+}
+
+/// [`expected`] with the learned `correction` applied.
+pub(super) fn corrected(
+    config: &ForecastConfig,
+    sim: SimInputs,
+    variant: Variant,
+    at: &Expected,
+    correction: Option<&CorrectionModel>,
+) -> Value {
     let zone = jiff::tz::db().get("Europe/Berlin").expect("bundled zone");
-    let run = Run { time_zone: &zone, now_ms: at.now_ms, sim, correction: None };
+    let run = Run { time_zone: &zone, now_ms: at.now_ms, sim, correction };
     let built = forecast::build(config, &irradiance(), "open-meteo", &run).expect("forecast");
     let mut value = serde_json::to_value(built.export(variant)).expect("export");
     value["fetchedAt"] = json!(crate::live::iso(at.fetched_ms));
@@ -72,7 +84,7 @@ fn expected(config: &ForecastConfig, sim: SimInputs, variant: Variant, at: &Expe
     value
 }
 
-fn model(max_output_w: Option<f64>) -> ForecastConfig {
+pub(super) fn model(max_output_w: Option<f64>) -> ForecastConfig {
     ForecastConfig {
         arrays: vec![forecast::PvArray {
             kwp: 6.4,
@@ -88,12 +100,13 @@ fn model(max_output_w: Option<f64>) -> ForecastConfig {
     }
 }
 
-/// Answers every request with the payload, or 500 while failing; counts what it was asked.
-struct StandIn {
+/// Answers a forecast request with the payload and an archive request with the archive payload, or 500 while
+/// failing; counts what it was asked.
+pub(super) struct StandIn {
     url: String,
-    hits: Arc<AtomicUsize>,
-    failing: Arc<AtomicBool>,
-    paths: Arc<Mutex<Vec<String>>>,
+    pub(super) hits: Arc<AtomicUsize>,
+    pub(super) failing: Arc<AtomicBool>,
+    pub(super) paths: Arc<Mutex<Vec<String>>>,
 }
 
 type Seen = (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>);
@@ -121,9 +134,10 @@ async fn answer_one(
     let Ok(mut stream) = tls.accept(tcp).await else { return };
     let Some(head) = read_request(&mut stream).await else { return };
     let head = String::from_utf8_lossy(&head).into_owned();
-    paths.lock().expect("paths").push(head.split_whitespace().nth(1).unwrap_or_default().to_owned());
+    let path = head.split_whitespace().nth(1).unwrap_or_default().to_owned();
+    let body = if path.starts_with("/v1/archive") { archive_payload() } else { payload() }.to_string();
+    paths.lock().expect("paths").push(path);
     hits.fetch_add(1, Ordering::SeqCst);
-    let body = payload().to_string();
     let wire = if failing.load(Ordering::SeqCst) {
         "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
     } else {
@@ -134,7 +148,7 @@ async fn answer_one(
 }
 
 /// An onboarded core reading the forecast from a stand-in, its clock at `now`.
-async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api, StandIn) {
+pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api, StandIn) {
     let ca = Ca::new("forecast test CA");
     let standin = stand_in(&ca).await;
     let core =
@@ -150,7 +164,7 @@ async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
     send(api, Method::PATCH, path, Some(&body.to_string())).await
 }
 
-async fn configure(admin: &Api, max_output_w: Option<f64>) {
+pub(super) async fn configure(admin: &Api, max_output_w: Option<f64>) {
     let arrays = json!({"arrays": [{"kwp": 6.4, "tilt": 35, "azimuth": 10, "tempCoefficient": -0.34, "mppt": 1}],
         "systemLoss": 12});
     assert_eq!(patch(admin, "/api/devices/1", &arrays).await.status, StatusCode::OK);
@@ -159,7 +173,7 @@ async fn configure(admin: &Api, max_output_w: Option<f64>) {
     assert_eq!(put(admin, "/api/settings/weather", &plant).await.status, StatusCode::OK);
 }
 
-fn fixed_now() -> i64 {
+pub(super) fn fixed_now() -> i64 {
     NOW_MS
 }
 

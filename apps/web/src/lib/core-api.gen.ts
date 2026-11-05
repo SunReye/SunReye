@@ -270,6 +270,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/forecast/correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["forecastCorrection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/forecast/providers": {
         parameters: {
             query?: never;
@@ -680,6 +696,49 @@ export interface components {
         Correction: {
             /** @description Apply the learned correction; it learns either way. */
             enabled: boolean;
+        };
+        /** @description One learned (month, hour) cell. */
+        CorrectionCellView: {
+            /**
+             * Format: double
+             * @description The multiplier applied, shrunk and clamped.
+             */
+            factor: number;
+            /** Format: int32 */
+            hour: number;
+            /** Format: int32 */
+            month: number;
+            /**
+             * Format: double
+             * @description Effective sample count behind it.
+             */
+            weight: number;
+        };
+        CorrectionSkill: {
+            /** Format: double */
+            improvementPct: number;
+            /**
+             * Format: double
+             * @description The same with the correction applied, W.
+             */
+            maeCorrected: number;
+            /**
+             * Format: double
+             * @description Decayed mean absolute error without the correction, W.
+             */
+            maeRaw: number;
+            /** Format: double */
+            samples: number;
+        };
+        /** @description The learned forecast correction as 3.x's `ForecastCorrectionView`. */
+        CorrectionView: {
+            /** @description In month, hour order. */
+            cells: components["schemas"]["CorrectionCellView"][];
+            /** @description Applied to the forecast; it learns either way. */
+            enabled: boolean;
+            /** @description The last plant-local day learned, `YYYY-MM-DD`; null before the first run. */
+            learnedThrough: string | null;
+            skill: components["schemas"]["CorrectionSkill"];
         };
         /** @description The only answer that holds the key. */
         CreatedApiKey: components["schemas"]["ApiKeyView"] & {
@@ -2393,6 +2452,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForecastExport"] | null;
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    forecastCorrection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionView"];
                 };
             };
             401: {

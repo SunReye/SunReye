@@ -96,6 +96,7 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(auth::current, auth::logout))
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
+        .routes(routes!(forecast::correction))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }

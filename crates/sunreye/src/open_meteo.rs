@@ -1,8 +1,12 @@
-//! Open-Meteo irradiance (3.x `providers/open-meteo.ts`, `open-meteo-shared.ts`): one request per distinct
-//! plane, 15-minute instantaneous GTI, the plane-independent extras on the first request only.
+//! Open-Meteo irradiance (3.x `providers/open-meteo.ts`, `open-meteo-archive.ts`, `open-meteo-shared.ts`): one
+//! request per distinct plane, instantaneous GTI, the plane-independent extras on the first request only. The
+//! forecast is 15-minute and plant-local; the reanalysis archive hourly and labelled in UTC, so a range
+//! across a DST change stays unambiguous.
 
 use std::time::Duration;
 
+use jiff::Timestamp;
+use jiff::civil::Date;
 use rustls::pki_types::CertificateDer;
 use serde::Deserialize;
 
@@ -10,7 +14,10 @@ use crate::forecast::{Irradiance, Location};
 use crate::https::{GetError, Limits, get_with_roots};
 
 pub const URL: &str = "https://api.open-meteo.com/v1/forecast";
+pub const ARCHIVE_URL: &str = "https://archive-api.open-meteo.com/v1/archive";
 const LIMITS: Limits = Limits { timeout: Duration::from_secs(8), max_bytes: 1 << 20 };
+/// A 90-day backfill is one hourly series per plane.
+const ARCHIVE_LIMITS: Limits = Limits { timeout: Duration::from_secs(15), max_bytes: 1 << 20 };
 const EXTRAS: &str = "direct_normal_irradiance_instant,temperature_2m,wind_speed_10m";
 
 /// A panel orientation: tilt and azimuth, degrees.
@@ -29,8 +36,8 @@ pub enum FetchError {
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct Series {
-    time: Option<Vec<String>>,
+struct Series<T = String> {
+    time: Option<Vec<T>>,
     temperature_2m: Option<Vec<Option<f64>>>,
     global_tilted_irradiance_instant: Option<Vec<Option<f64>>>,
     direct_normal_irradiance_instant: Option<Vec<Option<f64>>>,
@@ -38,11 +45,13 @@ struct Series {
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct Response {
+struct Response<T = String> {
     utc_offset_seconds: Option<i32>,
     /// The IANA zone of the location, as `timezone=auto` resolves it.
     timezone: Option<String>,
-    minutely_15: Option<Series>,
+    /// `hourly` in an archive response.
+    #[serde(alias = "hourly")]
+    minutely_15: Option<Series<T>>,
 }
 
 /// One series and the zone its location keeps.
@@ -63,12 +72,16 @@ fn unique(planes: &[Plane]) -> Vec<Plane> {
     out
 }
 
-fn url(base: &str, location: Location, (tilt, azimuth): Plane, extras: bool) -> String {
-    let vars = if extras {
+fn vars(extras: bool) -> String {
+    if extras {
         format!("global_tilted_irradiance_instant,{EXTRAS}")
     } else {
         "global_tilted_irradiance_instant".into()
-    };
+    }
+}
+
+fn url(base: &str, location: Location, (tilt, azimuth): Plane, extras: bool) -> String {
+    let vars = vars(extras);
     format!(
         "{base}?latitude={}&longitude={}&minutely_15={vars}&tilt={tilt}&azimuth={azimuth}\
          &wind_speed_unit=ms&timezone=auto&forecast_days=2",
@@ -76,8 +89,46 @@ fn url(base: &str, location: Location, (tilt, azimuth): Plane, extras: bool) -> 
     )
 }
 
+fn archive_url(
+    base: &str,
+    location: Location,
+    (tilt, azimuth): Plane,
+    extras: bool,
+    (start, end): (Date, Date),
+) -> String {
+    let vars = vars(extras);
+    format!(
+        "{base}?latitude={}&longitude={}&start_date={start}&end_date={end}&hourly={vars}&tilt={tilt}\
+         &azimuth={azimuth}&wind_speed_unit=ms&timezone=auto&timeformat=unixtime",
+        location.latitude, location.longitude
+    )
+}
+
 fn decode(body: &[u8]) -> Result<Response, FetchError> {
     Ok(serde_json::from_slice(body)?)
+}
+
+/// An archive response with its unix times as UTC labels, its offset 0.
+fn decode_archive(body: &[u8]) -> Result<Response, FetchError> {
+    let response: Response<i64> = serde_json::from_slice(body)?;
+    let series = response
+        .minutely_15
+        .map(|s| {
+            let time = s.time.map(|time| {
+                let label =
+                    |t: i64| Timestamp::from_second(t).map(|t| t.strftime("%Y-%m-%dT%H:%M").to_string());
+                time.into_iter().map(label).collect::<Result<Vec<_>, _>>().map_err(|_| FetchError::Fields)
+            });
+            Ok::<_, FetchError>(Series {
+                time: time.transpose()?,
+                temperature_2m: s.temperature_2m,
+                global_tilted_irradiance_instant: s.global_tilted_irradiance_instant,
+                direct_normal_irradiance_instant: s.direct_normal_irradiance_instant,
+                wind_speed_10m: s.wind_speed_10m,
+            })
+        })
+        .transpose()?;
+    Ok(Response { utc_offset_seconds: Some(0), timezone: response.timezone, minutely_15: series })
 }
 
 fn zeroed(series: &[Option<f64>]) -> Vec<f64> {
@@ -135,8 +186,25 @@ pub async fn fetch(
     assemble(location, planes, &responses)
 }
 
+/// Hourly reanalysis for `planes` over the plant-local days `start` to `end`, from `base`.
+pub async fn fetch_archive(
+    base: &str,
+    roots: &[CertificateDer<'_>],
+    location: Location,
+    planes: &[Plane],
+    (start, end): (Date, Date),
+) -> Result<Fetched, FetchError> {
+    let mut responses = Vec::new();
+    for (i, plane) in unique(planes).into_iter().enumerate() {
+        let url = archive_url(base, location, plane, i == 0, (start, end));
+        responses.push((plane, decode_archive(&get_with_roots(&url, ARCHIVE_LIMITS, roots).await?)?));
+    }
+    assemble(location, planes, &responses)
+}
+
 #[cfg(test)]
 mod tests {
+    use jiff::civil::date;
     use serde_json::{Value, json};
 
     use super::*;
@@ -159,6 +227,43 @@ mod tests {
             url("https://x", HERE, (0.0, 0.0), false)
                 .contains("minutely_15=global_tilted_irradiance_instant&")
         );
+    }
+
+    #[test]
+    fn an_archive_request_names_the_plant_local_days_hourly_in_unix_time() {
+        assert_eq!(
+            archive_url(
+                "https://x/v1/archive",
+                HERE,
+                (30.0, -90.0),
+                true,
+                (date(2026, 7, 1), date(2026, 7, 3))
+            ),
+            "https://x/v1/archive?latitude=50.5&longitude=8.25&start_date=2026-07-01&end_date=2026-07-03\
+             &hourly=global_tilted_irradiance_instant,direct_normal_irradiance_instant,temperature_2m,wind_speed_10m\
+             &tilt=30&azimuth=-90&wind_speed_unit=ms&timezone=auto&timeformat=unixtime"
+        );
+    }
+
+    #[test]
+    fn an_archive_series_is_labelled_in_utc_and_keeps_the_location_s_zone() {
+        let body = br#"{"utc_offset_seconds": 7200, "timezone": "Europe/Berlin", "hourly": {
+            "time": [1784887200, 1784890800], "temperature_2m": [20.0, 21.0],
+            "global_tilted_irradiance_instant": [500.0, null]}}"#;
+        let plane = (30.0, 0.0);
+        let fetched =
+            assemble(HERE, &[plane], &[(plane, decode_archive(body).expect("decoded"))]).expect("series");
+        assert_eq!(fetched.time_zone.as_deref(), Some("Europe/Berlin"));
+        let series = fetched.irradiance;
+        assert_eq!(series.times, ["2026-07-24T10:00", "2026-07-24T11:00"]);
+        assert_eq!((series.utc_offset_seconds, series.gti), (0, vec![vec![500.0, 0.0]]));
+    }
+
+    #[test]
+    fn an_archive_time_out_of_range_is_refused() {
+        let body = br#"{"hourly": {"time": [9223372036854775807], "temperature_2m": [1.0],
+            "global_tilted_irradiance_instant": [1.0]}}"#;
+        assert!(matches!(decode_archive(body), Err(FetchError::Fields)));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! The forecast served (3.x `fetchSolarForecast`): the settings composed, Open-Meteo irradiance cached
 //! 30 minutes per location and planes, the clipping sim's inputs read from the store, the model rebuilt
-//! per request. A failed fetch keeps the last irradiance for the same key and reports it stale.
+//! per request, scaled by the learned correction while it is enabled. A failed fetch keeps the last irradiance
+//! for the same key and reports it stale.
 
 use jiff::civil::DateTime;
 use jiff::tz::{Offset, TimeZone};
@@ -59,7 +60,12 @@ impl Solar {
         let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
         let Some(hit) = cache.as_ref() else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
-        let run = Run { time_zone: &hit.zone, now_ms, sim, correction: None };
+        let correction = if config.forecast.correction.enabled {
+            crate::learn::stored(&core.store).await?.map(|(model, _)| model).filter(|m| !m.is_empty())
+        } else {
+            None
+        };
+        let run = Run { time_zone: &hit.zone, now_ms, sim, correction: correction.as_ref() };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
         Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale }))

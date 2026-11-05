@@ -13,7 +13,7 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-pub use correction::{CorrectionCell, CorrectionModel};
+pub use correction::{CorrectionCell, CorrectionModel, Learned, Observation, Skill};
 pub use geometry::{SunPosition, cos_aoi, sun_position};
 pub use power::{PvSample, STC_CELL_TEMP_C, pv_power_w};
 
