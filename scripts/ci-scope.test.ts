@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { STEPS, collectPaths, formatScope, scopeFor, type Step } from "./ci-scope";
+import { STEPS, collectPaths, formatScope, main, scopeFor, type Io, type Step } from "./ci-scope";
 
 /**
  * The scope decides which heavy gate steps a change can affect. The rule is "provably unaffected":
@@ -290,5 +290,55 @@ describe("the command", () => {
     const { code, err } = bun(["--bogus"]);
     expect(code).toBe(2);
     expect(err).toContain("usage: bun scripts/ci-scope.ts");
+  });
+});
+
+describe("main", () => {
+  const run = (argv: string[], over: Partial<Io> = {}) => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const asked: (string | undefined)[] = [];
+    const io: Io = {
+      stdin: async () => "",
+      repoPaths: (base) => {
+        asked.push(base);
+        return ["docs/a.md"];
+      },
+      out: (text) => out.push(text),
+      err: (text) => err.push(text),
+      ...over,
+    };
+    return main(argv, io).then((code) => ({ code, out, err, asked }));
+  };
+
+  test("prints the scope of the repository's changed paths", async () => {
+    const got = await run([]);
+    expect(got.code).toBe(0);
+    expect(got.out).toEqual([formatScope(scopeFor(["docs/a.md"]))]);
+  });
+
+  test("--base names the base the repository's paths are measured from", async () => {
+    expect((await run(["--base", "origin/dev"])).asked).toEqual(["origin/dev"]);
+    expect((await run([])).asked).toEqual([undefined]);
+  });
+
+  test("--stdin reads the paths from standard input, ignoring blank lines and padding", async () => {
+    const got = await run(["--stdin"], { stdin: async () => " crates/a/src/b.rs \n\n" });
+    expect(got.out).toEqual([formatScope(scopeFor(["crates/a/src/b.rs"]))]);
+    expect(got.asked).toEqual([]);
+  });
+
+  test("--full selects every step", async () => {
+    const got = await run(["--full"]);
+    expect(got.out).toEqual([formatScope(scopeFor(["docs/a.md"], { full: true }))]);
+  });
+
+  test("an unknown option, or --base without a ref, is refused naming the usage", async () => {
+    for (const argv of [["--bogus"], ["--base"]]) {
+      const got = await run(argv);
+      expect(got.code, argv.join(" ")).toBe(2);
+      expect(got.err.join("")).toContain("usage: bun scripts/ci-scope.ts");
+      expect(got.out).toEqual([]);
+    }
   });
 });

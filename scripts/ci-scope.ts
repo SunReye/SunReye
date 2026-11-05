@@ -191,25 +191,38 @@ function parseArgs(argv: string[]): Args | undefined {
   return args;
 }
 
-async function readPaths(args: Args): Promise<string[]> {
-  if (args.stdin) {
-    return (await Bun.stdin.text())
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-  const config = JSON.parse(readFileSync(join(import.meta.dir, "factory/config.json"), "utf8"));
-  return collectPaths(args.base ?? `origin/${config.base}`, join(import.meta.dir, ".."));
+export interface Io {
+  stdin(): Promise<string>;
+  /** The changed paths of the checkout, against `base` or the configured one. */
+  repoPaths(base?: string): string[];
+  out(text: string): void;
+  err(text: string): void;
 }
 
-async function main(argv: string[]): Promise<number> {
+const realIo: Io = {
+  stdin: () => Bun.stdin.text(),
+  repoPaths: (base) => {
+    const config = JSON.parse(readFileSync(join(import.meta.dir, "factory/config.json"), "utf8"));
+    return collectPaths(base ?? `origin/${config.base}`, join(import.meta.dir, ".."));
+  },
+  out: (text) => console.log(text),
+  err: (text) => console.error(text),
+};
+
+export async function main(argv: string[], io: Io): Promise<number> {
   const args = parseArgs(argv);
   if (!args) {
-    console.error(USAGE);
+    io.err(USAGE);
     return 2;
   }
-  console.log(formatScope(scopeFor(await readPaths(args), { full: args.full })));
+  const paths = args.stdin
+    ? (await io.stdin())
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : io.repoPaths(args.base);
+  io.out(formatScope(scopeFor(paths, { full: args.full })));
   return 0;
 }
 
-if (import.meta.main) process.exit(await main(process.argv.slice(2)));
+if (import.meta.main) process.exit(await main(process.argv.slice(2), realIo));
