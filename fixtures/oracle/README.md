@@ -203,3 +203,4 @@ arm (`plantRollupSeries`, `apps/server/src/shared/rollup-sql.ts`) after `refresh
 | `stale-member` | one member's sample is five minutes and a millisecond old (`plant.ndjson` only) |
 | `retired-member` | a retired member keeps its history in the plant and leaves the live members; a meter is no member |
 | `controller-and-meter` | a controller is the whole member set; a plant of one member is that device |
+| `two-batteries` | both fresh members report a battery SOC: the mean at weight 1 (no `batteryKwh`), the members' extremes |

@@ -208,6 +208,38 @@ const PLANT_CASES: PlantCase[] = [
       "3": { t0: T0, step: 1, metrics: { "dc.total_power": series([0], [10]) } },
     },
   },
+  {
+    // Both report a battery SOC and are fresh: the plant SOC is their mean at weight 1, not their sum.
+    case: "two-batteries",
+    devices: [device("1", "Roof"), device("2", "Garage")],
+    roles: ROLES,
+    live: {
+      now: at(0),
+      staleAfterMs: STALE_AFTER_MS,
+      samples: {
+        "1": { time: at(-1000), metrics: { "battery.soc": 80, "battery.power": -1000 } },
+        "2": { time: at(-2000), metrics: { "battery.soc": 40, "battery.power": 500 } },
+      },
+    },
+    recent: {
+      "1": {
+        t0: T0,
+        step: 1,
+        metrics: {
+          "battery.soc": series([0, 4], [80, 81]),
+          "battery.power": series([0], [-1000]),
+        },
+      },
+      "2": {
+        t0: T0 + 2000,
+        step: 1,
+        metrics: {
+          "battery.soc": series([0, 3], [40, 30]),
+          "battery.power": series([0], [500]),
+        },
+      },
+    },
+  },
 ];
 
 /** A case's devices as the 2.x roster holds them; ids are the slugs. */

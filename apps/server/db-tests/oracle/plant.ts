@@ -130,6 +130,28 @@ export const PLANT_ROLLUP_CASES: PlantRollupCase[] = [
       device("3", "Grid meter", { "dc.total_power": [[at(0), 10]] }, "meter"),
     ],
   },
+  {
+    // Both report a battery SOC: the plant SOC is their mean at weight 1, with the members' extremes.
+    case: "two-batteries",
+    window: WINDOW,
+    roles: ROLES,
+    devices: [
+      device("1", "Roof", {
+        "battery.soc": [
+          [at(0), 80],
+          [at(0, 30), 84],
+          [at(2), 82],
+        ],
+      }),
+      device("2", "Garage", {
+        "battery.soc": [
+          [at(0), 40],
+          [at(1), 30],
+          [at(2, 30), 36],
+        ],
+      }),
+    ],
+  },
 ];
 
 const dbSlug = (c: PlantRollupCase, d: Device): string => `oracle-plant-${c.case}-${d.slug}`;
