@@ -91,17 +91,6 @@ impl Core {
         Self::open_clocked(data_dir, roots, now, forecast_url).await
     }
 
-    /// [`Core::open_at`] whose store queries wait at most `acquire` for its connection.
-    #[cfg(test)]
-    pub(crate) async fn open_waiting(
-        data_dir: &Path,
-        now: fn() -> i64,
-        acquire: Duration,
-    ) -> Result<Arc<Self>, RunError> {
-        let store = Store::open_waiting(data_dir, acquire).await?;
-        Self::start(store, Vec::new(), now, open_meteo::URL.into()).await
-    }
-
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,

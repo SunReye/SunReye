@@ -6,14 +6,6 @@ use std::sync::Mutex;
 use super::*;
 use crate::store::{NewConnection, NewDevice, StoreError, refused};
 
-const NOW: i64 = 1_772_323_350_000;
-/// Long enough that no statement of the test's own outlasts it, short enough to end a held pool fast.
-const PATIENCE: Duration = Duration::from_millis(200);
-
-fn fixed_clock() -> i64 {
-    NOW
-}
-
 /// What a stranger reads with the kiosk view on.
 const READS: [&str; 4] =
     ["/api/capabilities", "/api/profile", "/api/history/recent", "/api/history/rollup?metric=pv_power"];
@@ -23,17 +15,18 @@ const SESSION_READS: [&str; 3] = ["/api/sources", "/api/forecast", "/api/forecas
 
 #[tokio::test]
 async fn a_history_read_that_waits_out_the_pool_is_a_503_with_retry_after() {
-    let core = Core::open_waiting(&dir("busy-pool"), fixed_clock, PATIENCE).await.expect("core");
-    let (core, admin) = signed_in(core, &Config::default()).await;
+    let (core, admin) = open(&dir("busy-pool")).await;
     assert_eq!(put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await.status, StatusCode::OK);
     let stranger = admin.anonymous();
     let held = core.store.hold().await;
+    tokio::time::pause();
     for path in READS {
         let busy = get(&stranger, path).await;
         assert_eq!(busy.status, StatusCode::SERVICE_UNAVAILABLE, "{path}");
         assert_eq!(busy.retry_after.as_deref(), Some("1"), "{path}");
         assert_eq!(busy.json(), json!({"error": "The database is busy: try again"}), "{path}");
     }
+    tokio::time::resume();
     drop(held);
     for path in READS {
         let answered = get(&stranger, path).await;
@@ -45,14 +38,15 @@ async fn a_history_read_that_waits_out_the_pool_is_a_503_with_retry_after() {
 
 #[tokio::test]
 async fn a_signed_in_read_that_waits_out_the_pool_is_a_503_with_retry_after() {
-    let core = Core::open_waiting(&dir("busy-session"), fixed_clock, PATIENCE).await.expect("core");
-    let (core, admin) = signed_in(core, &Config::default()).await;
+    let (core, admin) = open(&dir("busy-session")).await;
     let held = core.store.hold().await;
+    tokio::time::pause();
     for path in READS.into_iter().chain(SESSION_READS) {
         let busy = get(&admin, path).await;
         assert_eq!(busy.status, StatusCode::SERVICE_UNAVAILABLE, "{path}: {:?}", busy.body);
         assert_eq!(busy.retry_after.as_deref(), Some("1"), "{path}");
     }
+    tokio::time::resume();
     drop(held);
     drop(admin);
     core.stop().await;
@@ -60,7 +54,7 @@ async fn a_signed_in_read_that_waits_out_the_pool_is_a_503_with_retry_after() {
 
 #[tokio::test]
 async fn a_failure_that_is_not_busy_stays_a_500_that_names_nothing() {
-    let core = Core::open_waiting(&dir("busy-genuine"), fixed_clock, PATIENCE).await.expect("core");
+    let core = Core::open(&dir("busy-genuine")).await.expect("core");
     let connection = NewConnection {
         transport: crate::modbus::Transport::Tcp,
         host: "10.0.0.5".into(),
@@ -78,6 +72,21 @@ async fn a_failure_that_is_not_busy_stays_a_500_that_names_nothing() {
     assert_eq!(
         (failed.status, failed.retry_after.clone(), failed.json()),
         (StatusCode::INTERNAL_SERVER_ERROR, None, json!({"error": "internal error"}))
+    );
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_session_store_failure_that_is_not_busy_stays_a_bare_500() {
+    let (core, admin) = open(&dir("busy-session-genuine")).await;
+    let mut held = core.store.hold().await;
+    sqlx::query("DROP TABLE tower_sessions").execute(&mut *held).await.expect("drop");
+    drop(held);
+    let failed = get(&admin, "/api/sources").await;
+    assert_eq!(
+        (failed.status, failed.retry_after.clone(), failed.body.is_empty()),
+        (StatusCode::INTERNAL_SERVER_ERROR, None, true)
     );
     drop(admin);
     core.stop().await;

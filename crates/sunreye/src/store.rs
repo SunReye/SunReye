@@ -29,7 +29,7 @@ use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
 const FILE: &str = "sunreye.db";
 
 /// How long a query waits for the pool's one connection before it fails as [`StoreError::is_busy`]; sqlx's
-/// own default, named here so a test can shorten it.
+/// own default; a test moves past it on paused time.
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -189,18 +189,13 @@ pub struct Store {
 impl Store {
     /// Opens `dir/sunreye.db`, creating the directory and the file, and applies pending migrations.
     pub async fn open(dir: &Path) -> Result<Self, StoreError> {
-        Self::open_waiting(dir, ACQUIRE_TIMEOUT).await
-    }
-
-    /// [`Store::open`] whose queries wait at most `acquire` for the connection.
-    pub(crate) async fn open_waiting(dir: &Path, acquire: Duration) -> Result<Self, StoreError> {
         std::fs::create_dir_all(dir)?;
         let options = SqliteConnectOptions::new()
             .filename(dir.join(FILE))
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal);
-        Self::connect(options, acquire).await
+        Self::connect(options).await
     }
 
     /// Takes the one connection, so every other use of the store waits until it is dropped.
@@ -211,14 +206,14 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) async fn in_memory() -> Result<Self, StoreError> {
-        Self::connect(SqliteConnectOptions::new().in_memory(true), ACQUIRE_TIMEOUT).await
+        Self::connect(SqliteConnectOptions::new().in_memory(true)).await
     }
 
     /// One connection: writers never contend, and an in-memory database is not lost to a recycled one.
-    async fn connect(options: SqliteConnectOptions, acquire: Duration) -> Result<Self, StoreError> {
+    async fn connect(options: SqliteConnectOptions) -> Result<Self, StoreError> {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
-            .acquire_timeout(acquire)
+            .acquire_timeout(ACQUIRE_TIMEOUT)
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_with(options.foreign_keys(true))
