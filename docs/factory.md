@@ -119,5 +119,6 @@ Agents run the gate detached so the turn stays open while it runs:
 
 - `scripts/factory/factory gate [--train] --detach` starts it, logs to `.factory/logs/gate-<slot>.log`, writes the exit code to `gate-<slot>.exit` and prints both paths. A second start in the slot is refused while the gate runs; otherwise it kills the previous gate's process group and clears its log and exit file.
 - `scripts/factory/factory gate-wait [--slot S]` blocks up to 9 minutes and prints `running`, or the exit code with the log tail on failure; loop it until it prints an exit code.
+- Every gate, foreground or detached, writes `.factory/gates/<head-sha>.json` (`ok`, steps with seconds, `finished_at`; failures too) unless the tree was dirty or moved during the run. `scripts/factory/factory gate-result <sha>` prints it and exits 1 when absent, failed, or the worktree has modified or untracked files (ignored files do not count).
 
 Factory tests use temporary Git repositories and a GitHub stand-in: they exercise setup, reuse, cleanup, command failure, CI waiting, train tree equality, stale bases and heads, and the real hook's stdin/exit-code contract. They do not call GitHub or start app servers. `scripts/ci` runs the factory tests alongside the other repo checks. `check-result-lines` checks the agent/dispatcher reporting contract; it does not replace behavioral tests.
