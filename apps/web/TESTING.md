@@ -116,6 +116,11 @@ asserts what a contended machine cannot change: layout, request counts, mount co
 lifecycle. The instruments are in `e2e/support/perf.ts` — `countRequests`, `countChartMounts`,
 `countTextMutations`, `measureScroll`, `throttleCpu`; the counting ones are contention-independent.
 
+What does measure it lives in `bench/`: `bun run bench:e2e` runs those specs one worker at a time,
+prints their numbers (`motion-tier`'s frame watch and readout writes, `history-scroll-mounts`' throttled
+sweeps) and asserts nothing. The gate never runs it. A spec whose claim is a duration or CPU cost goes
+there; resident-memory and byte budgets stay in the gate (`test:budgets`).
+
 ### Browser specs against the real core
 
 `e2e-core/` is the one place the backend is not faked: `bun run e2e:core` builds `sunreye` and
@@ -150,12 +155,13 @@ Copy the shape of an existing one; the whole harness is three modules in `e2e/su
 import { expect, test } from "@playwright/test";
 import { mockBackend } from "./support/api-mock";
 import { countRequests } from "./support/perf";
+import { frames } from "./support/settle";
 
 test("the shell boots once and stays booted", async ({ page }) => {
   const backend = await mockBackend(page);   // MUST come before goto
   await page.goto("/#/");                    // hash router: `/#/history`, `/#/settings`
   await backend.waitForLive();
-  const calls = await countRequests(page, /\/api\/profile$/, () => page.waitForTimeout(3000));
+  const calls = await countRequests(page, /\/api\/profile$/, () => frames(page, 180));
   expect(calls).toBe(0);
 });
 ```
@@ -218,6 +224,7 @@ only shrinks (see `CONTRIBUTING.md` §6).
 | sleeping past a timer              | Vitest fake timers, then advance them                                |
 | `Bun.sleep(0)` to let work settle  | await the promise the code resolves                                  |
 | asserting "under 100 ms"           | assert the behaviour; inject a clock if the duration is the behaviour |
+| "give the page a moment" in a spec | `backend.settled()` (no request in flight for 24 frames), `frames(page, n)`, or `page.clock` |
 
 A poll-until-predicate loop with a deadline is fine: the deadline only bounds how long it spins.
 

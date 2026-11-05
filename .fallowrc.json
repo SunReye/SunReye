@@ -4,6 +4,8 @@
     "apps/server/db-tests/**",
     "apps/web/e2e/**",
     "apps/web/e2e-core/**",
+    "apps/web/bench/**",
+    "apps/web/playwright.bench.config.ts",
     "apps/web/playwright.config.ts",
     "apps/web/playwright.core.config.ts",
     "apps/web/src/lib/core-api.gen.ts",
