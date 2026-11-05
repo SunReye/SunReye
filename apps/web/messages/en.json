@@ -1065,6 +1065,7 @@
   "wizard_connection_hint": "Every endpoint this plant talks to. What can be attached depends on which one you pick.",
   "wizard_attach_empty": "Nothing can be attached to a connection of this kind yet.",
   "wizard_attach_taken": "Already on this connection",
+  "wizard_attach_modbus_device": "Modbus device",
   "wizard_settings_none": "Nothing to configure — this one has no settings of its own.",
   "wizard_back": "Back",
   "wizard_next": "Next",

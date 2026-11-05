@@ -13,6 +13,8 @@ const ABSENT = {
   automations: false,
   restart: false,
   profileSources: false,
+  integrations: false,
+  pvAndBattery: false,
 };
 
 afterEach(() => get.mockReset());

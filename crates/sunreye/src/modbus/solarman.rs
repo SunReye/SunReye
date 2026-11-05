@@ -266,6 +266,10 @@ impl Session {
         }
     }
 
+    pub(super) const fn serial(&self) -> u32 {
+        self.serial
+    }
+
     /// The sequence to send next. A byte, because only the low byte is echoed back.
     fn next_seq(&mut self) -> u8 {
         let seq = self.seq;
