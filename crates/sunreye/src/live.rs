@@ -10,6 +10,7 @@ use serde::ser::SerializeMap;
 use serde_json::json;
 use tokio::sync::{broadcast, watch};
 
+use crate::plant::{Aggregate, Aggregates, Fold};
 use crate::samples::Sample;
 
 /// Frames held for the slowest connection. Sending never waits: a connection that falls further
@@ -31,12 +32,28 @@ pub struct Live {
     members: Mutex<Members>,
 }
 
-/// The polled devices and when each last answered, for the plant fold. Values are not kept: only a
-/// plant of one member carries any, and that member's are the sample being published.
+/// The plant's live members, each one's last sample and how each metric folds. A sample's buffers are
+/// reused, so a poll allocates no more than the roster holds.
 #[derive(Debug, Default)]
 struct Members {
     ids: Vec<i64>,
-    last_ms: BTreeMap<i64, i64>,
+    last: BTreeMap<i64, Sample>,
+    aggregates: Aggregates,
+}
+
+/// `into` becomes a copy of `from`, in the buffers it already holds.
+fn copy_into(into: &mut Sample, from: &Sample) {
+    into.at_ms = from.at_ms;
+    into.values.truncate(from.values.len());
+    for (i, (key, value)) in from.values.iter().enumerate() {
+        match into.values.get_mut(i) {
+            Some(slot) => {
+                slot.0.clone_from(key);
+                slot.1 = *value;
+            }
+            None => into.values.push((key.clone(), *value)),
+        }
+    }
 }
 
 impl Default for Live {
@@ -46,33 +63,28 @@ impl Default for Live {
 }
 
 impl Live {
-    /// The devices now polled; a device dropped from the roster leaves the plant with its sample.
-    pub fn roster(&self, ids: &[i64]) {
+    /// The plant's live members and how its metrics fold; a device that leaves takes its sample with it.
+    pub fn roster(&self, ids: &[i64], aggregates: Aggregates) {
         let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         members.ids = ids.to_vec();
-        members.last_ms.retain(|id, _| ids.contains(id));
+        members.last.retain(|id, _| ids.contains(id));
+        members.aggregates = aggregates;
     }
 
     /// Sends `sample` on `metrics` and the plant's new fold on `plant`. Never waits.
     pub fn publish(&self, device_id: i64, sample: &Sample) {
         let plant = {
             let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let members = &mut *members;
             if members.ids.contains(&device_id) {
-                members.last_ms.insert(device_id, sample.at_ms);
+                copy_into(
+                    members.last.entry(device_id).or_insert_with(|| Sample { at_ms: 0, values: Vec::new() }),
+                    sample,
+                );
             }
-            let others: Vec<(i64, Option<Sample>)> = members
-                .ids
-                .iter()
-                .map(|id| {
-                    let last = (*id != device_id).then(|| members.last_ms.get(id)).flatten();
-                    (*id, last.map(|at_ms| Sample { at_ms: *at_ms, values: Vec::new() }))
-                })
-                .collect();
-            let folded: Vec<(i64, Option<&Sample>)> = others
-                .iter()
-                .map(|(id, last)| if *id == device_id { (*id, Some(sample)) } else { (*id, last.as_ref()) })
-                .collect();
-            Utf8Bytes::from(plant_frame(&folded, sample.at_ms))
+            let folded: Vec<(i64, Option<&Sample>)> =
+                members.ids.iter().map(|id| (*id, members.last.get(id))).collect();
+            Utf8Bytes::from(plant_frame(&folded, sample.at_ms, &members.aggregates))
         };
         if self.frames.receiver_count() > 0 {
             self.send(Topic::Metrics, metrics_frame(device_id, sample).into());
@@ -131,9 +143,9 @@ pub fn iso(at_ms: i64) -> String {
 
 /// A sample's values as a JSON object, written straight from the slice. JSON has no NaN or infinity;
 /// such a value is absent, never `null`.
-struct Metrics<'a>(&'a [(String, f64)]);
+struct Metrics<'a, K>(&'a [(K, f64)]);
 
-impl Serialize for Metrics<'_> {
+impl<K: Serialize> Serialize for Metrics<'_, K> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
         for (key, value) in self.0.iter().filter(|(_, v)| v.is_finite()) {
@@ -166,7 +178,7 @@ pub fn metrics_frame(device_id: i64, sample: &Sample) -> String {
     struct InverterSample<'a> {
         time: String,
         inverter_id: String,
-        metrics: Metrics<'a>,
+        metrics: Metrics<'a, String>,
     }
     frame(
         "metrics",
@@ -274,35 +286,39 @@ pub fn ack_frame(decision: &Decision) -> String {
 /// A member whose last sample is older than this is left out of the plant and named in `stale`.
 const STALE_AFTER_MS: i64 = 5 * 60 * 1000;
 
-/// `{"topic":"plant","data":PlantSample}` over every polled device's last sample.
-///
-/// A plant of one member is that member. With more, a metric folds only by its role's aggregate, and
-/// 4.0 profiles carry no roles yet, so every metric is per-device and the fold has none.
-pub fn plant_frame(members: &[(i64, Option<&Sample>)], now_ms: i64) -> String {
+/// `{"topic":"plant","data":PlantSample}` over the live members' last samples: each metric folded by its
+/// role across the fresh members (`crate::plant`).
+pub fn plant_frame(members: &[(i64, Option<&Sample>)], now_ms: i64, aggregates: &Aggregates) -> String {
     #[derive(Serialize)]
     struct PlantSample<'a> {
         time: String,
-        metrics: Metrics<'a>,
+        metrics: Metrics<'a, &'a str>,
         members: Vec<String>,
         stale: Vec<String>,
     }
-    let fresh: Vec<&Sample> = members
-        .iter()
-        .filter_map(|(_, sample)| *sample)
-        .filter(|sample| now_ms - sample.at_ms <= STALE_AFTER_MS)
-        .collect();
-    let stale: Vec<String> = members
-        .iter()
-        .filter(|(_, sample)| !sample.is_some_and(|s| now_ms - s.at_ms <= STALE_AFTER_MS))
-        .map(|(id, _)| slug(*id))
-        .collect();
-    let metrics = match (members.len(), fresh.as_slice()) {
-        (1, [sole]) => Metrics(&sole.values),
-        _ => Metrics(&[]),
-    };
+    let is_fresh = |sample: &Sample| now_ms - sample.at_ms <= STALE_AFTER_MS;
+    let fresh: Vec<&Sample> =
+        members.iter().filter_map(|(_, sample)| *sample).filter(|s| is_fresh(s)).collect();
+    let stale: Vec<String> =
+        members.iter().filter(|(_, sample)| !sample.is_some_and(is_fresh)).map(|(id, _)| slug(*id)).collect();
+    let mut folds: Vec<(&str, Aggregate, Fold)> = Vec::new();
+    for (key, value) in fresh.iter().flat_map(|s| s.values.iter()).filter(|(_, v)| v.is_finite()) {
+        if let Some((_, _, fold)) = folds.iter_mut().find(|(k, _, _)| k == key) {
+            fold.add(*value);
+            continue;
+        }
+        let aggregate = aggregates.of(key, members.len());
+        if aggregate != Aggregate::PerDevice {
+            let mut fold = Fold::default();
+            fold.add(*value);
+            folds.push((key, aggregate, fold));
+        }
+    }
+    let metrics: Vec<(&str, f64)> =
+        folds.into_iter().filter_map(|(key, aggregate, fold)| Some((key, fold.value(aggregate)?))).collect();
     let newest = fresh.iter().map(|sample| sample.at_ms).max().unwrap_or(now_ms);
     let members = members.iter().map(|(id, _)| slug(*id)).collect();
-    frame("plant", PlantSample { time: iso(newest), metrics, members, stale })
+    frame("plant", PlantSample { time: iso(newest), metrics: Metrics(&metrics), members, stale })
 }
 
 #[cfg(test)]
@@ -310,6 +326,8 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::oracle::{as_floats, oracle};
+    use crate::plant::Aggregates;
     use crate::samples::Sample;
 
     /// 2026-08-15T10:00:00.123Z
@@ -348,7 +366,7 @@ mod tests {
     #[test]
     fn a_plant_of_one_member_is_that_member() {
         let reading = sample(AT_MS, &[("pv_power", 1234.5), ("battery_soc", 87.0)]);
-        let frame = plant_frame(&[(7, Some(&reading))], AT_MS + 1);
+        let frame = plant_frame(&[(7, Some(&reading))], AT_MS + 1, &Aggregates::default());
         assert_eq!(
             parsed(&frame),
             parsed(
@@ -358,25 +376,80 @@ mod tests {
         );
     }
 
+    fn at_ms(value: &Value) -> i64 {
+        value.as_str().expect("instant").parse::<jiff::Timestamp>().expect("RFC 3339").as_millisecond()
+    }
+
+    /// A case's device and its latest sample, if it has one.
+    fn live_sample(case: &Value, slug: &str) -> (i64, Option<Sample>) {
+        let sample = &case["live"]["samples"][slug];
+        let values = sample["metrics"]
+            .as_object()
+            .map(|metrics| metrics.iter().map(|(k, v)| (k.clone(), v.as_f64().expect("value"))).collect());
+        let sample = values.map(|values| Sample { at_ms: at_ms(&sample["time"]), values });
+        (slug.parse().expect("id"), sample)
+    }
+
     #[test]
-    fn two_members_fold_no_metric_while_profiles_carry_no_roles() {
-        let first = sample(AT_MS - 1000, &[("pv_power", 100.0)]);
-        let second = sample(AT_MS, &[("pv_power", 200.0)]);
-        let frame = plant_frame(&[(1, Some(&first)), (2, Some(&second))], AT_MS);
-        assert_eq!(
-            parsed(&frame),
-            parsed(
-                r#"{"topic":"plant","data":{"time":"2026-08-15T10:00:00.123Z",
-                    "metrics":{},"members":["1","2"],"stale":[]}}"#
-            )
+    fn every_plant_case_folds_the_live_members_latest_samples_as_recorded() {
+        for case in oracle("plant.ndjson") {
+            let roles = case["roles"].as_object().expect("roles");
+            let aggregates =
+                Aggregates::of_roles(roles.iter().map(|(key, role)| (key.as_str(), role.as_str())));
+            let live: Vec<(i64, Option<Sample>)> = case["members"]["live"]
+                .as_array()
+                .expect("members")
+                .iter()
+                .map(|slug| live_sample(&case, slug.as_str().expect("slug")))
+                .collect();
+            let members: Vec<(i64, Option<&Sample>)> = live.iter().map(|(id, s)| (*id, s.as_ref())).collect();
+            let frame = plant_frame(&members, at_ms(&case["live"]["now"]), &aggregates);
+            assert_eq!(
+                as_floats(&parsed(&frame)["data"]),
+                as_floats(&case["plant"]["live"]),
+                "{}",
+                case["case"]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_plant_topic_folds_each_members_last_sample_by_role() {
+        let case =
+            oracle("plant.ndjson").into_iter().find(|c| c["case"] == "overlapping-roles").expect("case");
+        let roles = case["roles"].as_object().expect("roles");
+        let live = Live::default();
+        live.roster(
+            &[1, 2],
+            Aggregates::of_roles(roles.iter().map(|(key, role)| (key.as_str(), role.as_str()))),
         );
+        let mut feed = live.subscribe();
+        for slug in ["2", "1"] {
+            let sample = &case["live"]["samples"][slug];
+            let values = sample["metrics"]
+                .as_object()
+                .expect("metrics")
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_f64().expect("value")));
+            live.publish(
+                slug.parse().expect("id"),
+                &Sample { at_ms: at_ms(&sample["time"]), values: values.collect() },
+            );
+        }
+        let plant = std::iter::repeat_n((), 4)
+            .map(|()| feed.frames.try_recv().expect("frame"))
+            .last()
+            .expect("frame");
+        assert_eq!(plant.topic, Topic::Plant);
+        assert_eq!(as_floats(&parsed(plant.text.as_str())["data"]), as_floats(&case["plant"]["live"]));
     }
 
     #[test]
     fn a_member_without_a_sample_or_older_than_five_minutes_is_stale() {
         let edge = sample(AT_MS - FIVE_MINUTES_MS, &[("pv_power", 1.0)]);
         let old = sample(AT_MS - FIVE_MINUTES_MS - 1, &[("pv_power", 2.0)]);
-        let frame = plant_frame(&[(1, Some(&edge)), (2, Some(&old)), (3, None)], AT_MS);
+        let frame =
+            plant_frame(&[(1, Some(&edge)), (2, Some(&old)), (3, None)], AT_MS, &Aggregates::default());
         let data = &parsed(&frame)["data"];
         assert_eq!(data["stale"], parsed(r#"["2","3"]"#));
         assert_eq!(data["time"], "2026-08-15T09:55:00.123Z", "the newest fresh sample");
@@ -385,7 +458,7 @@ mod tests {
     #[test]
     fn a_plant_whose_only_member_is_stale_has_no_metrics_and_the_fold_time() {
         let old = sample(AT_MS - FIVE_MINUTES_MS - 1, &[("pv_power", 2.0)]);
-        let frame = plant_frame(&[(4, Some(&old))], AT_MS);
+        let frame = plant_frame(&[(4, Some(&old))], AT_MS, &Aggregates::default());
         assert_eq!(
             parsed(&frame),
             parsed(
@@ -474,9 +547,9 @@ mod tests {
     #[tokio::test]
     async fn a_device_off_the_roster_leaves_the_plant() {
         let live = Live::default();
-        live.roster(&[1, 2]);
+        live.roster(&[1, 2], Aggregates::default());
         live.publish(1, &sample(AT_MS, &[("pv_power", 1.0)]));
-        live.roster(&[2]);
+        live.roster(&[2], Aggregates::default());
         let mut feed = live.subscribe();
         live.publish(2, &sample(AT_MS, &[("pv_power", 2.0)]));
         assert_eq!(next(&mut feed).await.topic, Topic::Metrics);
@@ -498,6 +571,20 @@ mod tests {
                 r#"{"topic":"metrics","data":{"time":"1970-01-01T00:00:00.000Z","inverterId":"1",
                     "metrics":{"c":-0.5}}}"#
             )
+        );
+    }
+
+    #[test]
+    fn a_member_value_that_is_not_finite_adds_nothing_to_the_plant() {
+        let roles =
+            [("pv", Some("pv.total.power")), ("soc", Some("battery.soc")), ("dead", Some("pv.total.power"))];
+        let one = sample(AT_MS, &[("pv", f64::NAN), ("soc", 80.0), ("dead", f64::NAN)]);
+        let two = sample(AT_MS, &[("pv", 3.0), ("soc", f64::INFINITY), ("dead", f64::NAN)]);
+        let frame = plant_frame(&[(1, Some(&one)), (2, Some(&two))], AT_MS, &Aggregates::of_roles(roles));
+        assert_eq!(
+            parsed(&frame)["data"]["metrics"],
+            parsed(r#"{"pv":3.0,"soc":80.0}"#),
+            "the other member's value alone; a metric no member has a value for is absent"
         );
     }
 
@@ -532,7 +619,7 @@ mod tests {
             parsed(r#"{"battery_power":0.0,"pv_power":0.0}"#)
         );
         assert_eq!(
-            parsed(&plant_frame(&[(7, Some(&reading))], AT_MS))["data"],
+            parsed(&plant_frame(&[(7, Some(&reading))], AT_MS, &Aggregates::default()))["data"],
             parsed(
                 r#"{"time":"2026-08-15T10:00:00.123Z","metrics":{"battery_power":0.0,"pv_power":0.0},
                     "members":["7"],"stale":[]}"#

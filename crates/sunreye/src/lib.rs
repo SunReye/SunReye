@@ -6,6 +6,9 @@ pub mod forecast;
 pub mod manifest;
 pub mod modbus;
 pub mod open_meteo;
+#[cfg(test)]
+mod oracle;
+pub mod plant;
 pub mod poll;
 pub mod probe;
 pub mod profile;
