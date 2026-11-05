@@ -47,18 +47,9 @@ struct Series<T = String> {
 #[derive(Debug, Default, Deserialize)]
 struct Response<T = String> {
     utc_offset_seconds: Option<i32>,
-    /// The IANA zone of the location, as `timezone=auto` resolves it.
-    timezone: Option<String>,
     /// `hourly` in an archive response.
     #[serde(alias = "hourly")]
     minutely_15: Option<Series<T>>,
-}
-
-/// One series and the zone its location keeps.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Fetched {
-    pub irradiance: Irradiance,
-    pub time_zone: Option<String>,
 }
 
 /// Distinct orientations in first-seen order; identical planes share one request.
@@ -94,12 +85,12 @@ fn archive_url(
     location: Location,
     (tilt, azimuth): Plane,
     extras: bool,
-    (start, end): (Date, Date),
+    (start, end, zone): (Date, Date, &str),
 ) -> String {
     let vars = vars(extras);
     format!(
         "{base}?latitude={}&longitude={}&start_date={start}&end_date={end}&hourly={vars}&tilt={tilt}\
-         &azimuth={azimuth}&wind_speed_unit=ms&timezone=auto&timeformat=unixtime",
+         &azimuth={azimuth}&wind_speed_unit=ms&timezone={zone}&timeformat=unixtime",
         location.latitude, location.longitude
     )
 }
@@ -128,7 +119,7 @@ fn decode_archive(body: &[u8]) -> Result<Response, FetchError> {
             })
         })
         .transpose()?;
-    Ok(Response { utc_offset_seconds: Some(0), timezone: response.timezone, minutely_15: series })
+    Ok(Response { utc_offset_seconds: Some(0), minutely_15: series })
 }
 
 fn zeroed(series: &[Option<f64>]) -> Vec<f64> {
@@ -183,21 +174,20 @@ pub async fn fetch(
     assemble(location, planes, &responses)
 }
 
-/// Hourly reanalysis for `planes` over the plant-local days `start` to `end`, from `base`.
+/// Hourly reanalysis for `planes` over the days `start` to `end` in the IANA zone `zone`, from `base`.
 pub async fn fetch_archive(
     base: &str,
     roots: &[CertificateDer<'_>],
     location: Location,
     planes: &[Plane],
-    (start, end): (Date, Date),
-) -> Result<Fetched, FetchError> {
+    days: (Date, Date, &str),
+) -> Result<Irradiance, FetchError> {
     let mut responses = Vec::new();
     for (i, plane) in unique(planes).into_iter().enumerate() {
-        let url = archive_url(base, location, plane, i == 0, (start, end));
+        let url = archive_url(base, location, plane, i == 0, days);
         responses.push((plane, decode_archive(&get_with_roots(&url, ARCHIVE_LIMITS, roots).await?)?));
     }
-    let time_zone = responses.first().and_then(|(_, r)| r.timezone.clone());
-    Ok(Fetched { irradiance: assemble(location, planes, &responses)?, time_zone })
+    assemble(location, planes, &responses)
 }
 
 #[cfg(test)]
@@ -228,30 +218,29 @@ mod tests {
     }
 
     #[test]
-    fn an_archive_request_names_the_plant_local_days_hourly_in_unix_time() {
+    fn an_archive_request_names_the_days_in_the_plant_zone_hourly_in_unix_time() {
         assert_eq!(
             archive_url(
                 "https://x/v1/archive",
                 HERE,
                 (30.0, -90.0),
                 true,
-                (date(2026, 7, 1), date(2026, 7, 3))
+                (date(2026, 7, 1), date(2026, 7, 3), "Asia/Kathmandu")
             ),
             "https://x/v1/archive?latitude=50.5&longitude=8.25&start_date=2026-07-01&end_date=2026-07-03\
              &hourly=global_tilted_irradiance_instant,direct_normal_irradiance_instant,temperature_2m,wind_speed_10m\
-             &tilt=30&azimuth=-90&wind_speed_unit=ms&timezone=auto&timeformat=unixtime"
+             &tilt=30&azimuth=-90&wind_speed_unit=ms&timezone=Asia/Kathmandu&timeformat=unixtime"
         );
     }
 
     #[test]
-    fn an_archive_series_is_labelled_in_utc_and_keeps_the_location_s_zone() {
+    fn an_archive_series_is_labelled_in_utc() {
         let body = br#"{"utc_offset_seconds": 7200, "timezone": "Europe/Berlin", "hourly": {
             "time": [1784887200, 1784890800], "temperature_2m": [20.0, 21.0],
             "global_tilted_irradiance_instant": [500.0, null]}}"#;
         let plane = (30.0, 0.0);
-        let decoded = decode_archive(body).expect("decoded");
-        assert_eq!(decoded.timezone.as_deref(), Some("Europe/Berlin"));
-        let series = assemble(HERE, &[plane], &[(plane, decoded)]).expect("series");
+        let series =
+            assemble(HERE, &[plane], &[(plane, decode_archive(body).expect("decoded"))]).expect("series");
         assert_eq!(series.times, ["2026-07-24T10:00", "2026-07-24T11:00"]);
         assert_eq!((series.utc_offset_seconds, series.gti), (0, vec![vec![500.0, 0.0]]));
     }

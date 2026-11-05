@@ -72,15 +72,23 @@ async fn seed_measured(core: &Core) {
     }
 }
 
-/// What learning the seeded hours folds: the model's watts for each UTC hour against the measured average.
+/// What learning the seeded hours folds in Berlin, where they start at 11:00.
 fn learned() -> (CorrectionModel, LearnState) {
+    learned_at([11, 12, 13, 14])
+}
+
+/// What learning the seeded hours folds: the model's watts for each UTC hour against the measured average,
+/// in the plant-local `hours` they start in.
+fn learned_at(hours: [i8; 4]) -> (CorrectionModel, LearnState) {
     let run = Run { time_zone: &TimeZone::UTC, now_ms: 0, sim: SimInputs::default(), correction: None };
     let series = forecast::build(&model(None), &archive(), "open-meteo", &run).expect("model").raw.series;
-    let observations: Vec<Observation> = (11..15)
-        .map(|local_hour| Observation {
+    let observations: Vec<Observation> = hours
+        .into_iter()
+        .zip(11..15)
+        .map(|(hour, slot)| Observation {
             month: 7,
-            hour: local_hour,
-            expected_w: series[usize::try_from(local_hour).expect("hour")].watts,
+            hour,
+            expected_w: series[slot].watts,
             actual_w: MEASURED_W,
         })
         .collect();
@@ -112,6 +120,34 @@ async fn a_learn_run_folds_the_measured_hours_and_a_second_run_for_the_day_is_a_
     assert_eq!(core.store.correction(1).await.expect("read"), (model, Some(state)));
     drop(admin);
     core.stop().await;
+}
+
+#[tokio::test]
+async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive_names() {
+    // The archive names Europe/Berlin; the seeded hours are 09:00Z to 12:59Z.
+    for (saved, name, hours) in [
+        ("Asia/Kolkata", "Asia/Kolkata", [14, 15, 16, 17]),
+        ("Asia/Kathmandu", "Asia/Kathmandu", [14, 15, 16, 17]),
+        ("UTC", "UTC", [9, 10, 11, 12]),
+        ("Gone/Zone", "UTC", [9, 10, 11, 12]),
+    ] {
+        let (core, admin, standin) =
+            forecasting(&format!("correction-zone-{}", saved.replace('/', "-")), learn_now).await;
+        configure(&admin, None).await;
+        core.store.save_plant_time_zone(saved).await.expect("zone");
+        seed_measured(&core).await;
+        assert_eq!(
+            learn_once(&core).await.expect("learn"),
+            Outcome::Learned { hours: 4, through: date(2026, 7, 20) },
+            "{saved}"
+        );
+        let (model, state) = learned_at(hours);
+        assert_eq!(core.store.correction(1).await.expect("read"), (model, Some(state)), "{saved}");
+        let path = standin.paths.lock().expect("paths")[0].clone();
+        assert!(path.contains(&format!("&timezone={name}&")), "{saved}: {path}");
+        drop(admin);
+        core.stop().await;
+    }
 }
 
 #[tokio::test]

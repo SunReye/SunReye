@@ -20,6 +20,7 @@ use crate::forecast::{
     self, CorrectionModel, ForecastConfig, Location, Observation, Point, Run, SimInputs, Skill,
 };
 use crate::open_meteo;
+use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, DeviceRow, Store, StoreError};
@@ -133,31 +134,25 @@ async fn target(core: &Core, config: &WeatherConfig) -> Result<Option<Target>, S
     }))
 }
 
-/// The modelled hours over `days` (UTC labels) and the plant zone the archive names; none when it cannot
-/// be had, logged.
+/// The modelled hours (UTC labels) over `days` in the plant `zone`; none when they cannot be had, logged.
 async fn modelled(
     core: &Core,
     target: &Target,
     location: Location,
-    days: (Date, Date),
-) -> Option<(Vec<Point>, TimeZone)> {
+    (start, end): (Date, Date),
+    zone: &TimeZone,
+) -> Option<Vec<Point>> {
     let planes: Vec<open_meteo::Plane> = target.model.arrays.iter().map(|a| (a.tilt, a.azimuth)).collect();
+    let days = (start, end, zone.iana_name().unwrap_or("UTC"));
     let fetched = open_meteo::fetch_archive(&core.archive_url, &core.roots, location, &planes, days).await;
     let fetched = fetched
-        .inspect_err(
-            |error| tracing::warn!(%error, start = %days.0, end = %days.1, "correction archive fetch failed"),
-        )
+        .inspect_err(|error| tracing::warn!(%error, %start, %end, "correction archive fetch failed"))
         .ok()?;
-    let zone = fetched.time_zone.as_deref().and_then(|name| jiff::tz::db().get(name).ok());
-    let Some(zone) = zone else {
-        tracing::warn!(zone = fetched.time_zone, "correction archive names no known time zone");
-        return None;
-    };
     let run = Run { time_zone: &TimeZone::UTC, now_ms: 0, sim: SimInputs::default(), correction: None };
-    let built = forecast::build(&target.model, &fetched.irradiance, OPEN_METEO, &run);
+    let built = forecast::build(&target.model, &fetched, OPEN_METEO, &run);
     let built =
         built.inspect_err(|error| tracing::warn!(%error, "correction archive series unusable")).ok()?;
-    Some((built.raw.series, zone))
+    Some(built.raw.series)
 }
 
 /// One learn run over the days due at the core's clock.
@@ -169,7 +164,8 @@ pub async fn learn_once(core: &Core) -> Result<Outcome, StoreError> {
     let Some(days) = window(state.map(|s| s.learned_through), core.now_ms()) else {
         return Ok(Outcome::UpToDate);
     };
-    let Some((series, zone)) = modelled(core, &target, location, days).await else {
+    let zone = plant_zone::plant_zone(&core.store).await?;
+    let Some(series) = modelled(core, &target, location, days, &zone).await else {
         return Ok(Outcome::FetchFailed);
     };
     let measured = measured(&core.store, target.device, &target.pv_key, &series).await?;
@@ -450,6 +446,43 @@ mod tests {
                 .collect();
         let kept = observations(&series, &measured, &berlin(), (date(2025, 10, 26), date(2025, 10, 26)));
         assert_eq!(kept.iter().map(|(day, o)| (*day, o.hour)).collect::<Vec<_>>(), [(date(2025, 10, 26), 0)]);
+    }
+
+    /// The plant-local hours kept for `day` in `zone` from `count` measured UTC hours starting at `from`.
+    fn day_cut(zone: &str, from: &str, count: i64, day: Date) -> Vec<i8> {
+        let start = at(from);
+        let instants: Vec<i64> = (0..count).map(|h| start + h * HOUR_MS).collect();
+        let label = |ms: i64| {
+            jiff::Timestamp::from_millisecond(ms).expect("instant").strftime("%Y-%m-%dT%H:%M").to_string()
+        };
+        let series: Vec<Point> = instants.iter().map(|&ms| point(&label(ms), 1.0)).collect();
+        let measured: BTreeMap<i64, f64> = instants.iter().map(|&ms| (ms, 1.0)).collect();
+        let zone = plant_zone::lookup(zone).expect("bundled zone");
+        observations(&series, &measured, &zone, (day, day)).iter().map(|(_, o)| o.hour).collect()
+    }
+
+    #[test]
+    fn a_spring_forward_day_has_23_hours_from_local_midnight_to_midnight() {
+        let hours = day_cut("Europe/Berlin", "2026-03-28T22:00:00Z", 25, date(2026, 3, 29));
+        assert_eq!(hours.len(), 23);
+        assert_eq!((hours[0], hours[1], hours[2], hours[22]), (0, 1, 3, 23));
+    }
+
+    #[test]
+    fn a_fall_back_day_has_25_hours_from_local_midnight_to_midnight() {
+        let hours = day_cut("Europe/Berlin", "2025-10-25T21:00:00Z", 27, date(2025, 10, 26));
+        assert_eq!(hours.len(), 25);
+        assert_eq!(&hours[..5], [0, 1, 2, 2, 3]);
+        assert_eq!(hours[24], 23);
+    }
+
+    #[test]
+    fn a_half_hour_and_a_45_minute_zone_cut_the_day_at_their_own_midnight() {
+        // 2026-07-19T18:00Z is 23:30 in Kolkata and 23:45 in Kathmandu, still the 19th.
+        for zone in ["Asia/Kolkata", "Asia/Kathmandu"] {
+            let hours = day_cut(zone, "2026-07-19T18:00:00Z", 26, date(2026, 7, 20));
+            assert_eq!(hours, (0..24).collect::<Vec<i8>>(), "{zone}");
+        }
     }
 
     #[test]
