@@ -755,12 +755,15 @@ function withCapturedTimers<T>(fn: () => T): T {
 
 /** Wait for the scheduled run to finish — it clones real repos, not microtasks. */
 async function waitFor(done: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (done()) return;
+  const deadline = Date.now() + 10_000;
+  while (!done()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await Bun.sleep(5);
   }
-  throw new Error(`timed out waiting for ${what}`);
 }
+
+/** One macrotask turn: every pending microtask (a rejection reaching its `.catch`) has run. */
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe("background update checks", () => {
   beforeEach(() => {
@@ -848,7 +851,7 @@ describe("background update checks", () => {
     withCapturedTimers(() => startUpdateChecks());
     timeouts[0]?.fn();
     await waitFor(() => selectFailure === null, "the failing check");
-    await Bun.sleep(5);
+    await turn();
 
     expect(getUpdateCheck()).toBe(previous); // not clobbered with an empty result
     withCapturedTimers(() => stopUpdateChecks());

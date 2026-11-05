@@ -4,7 +4,16 @@
  * the validation and the error hook run as one request does.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  setSystemTime,
+  test,
+} from "bun:test";
 import { defineProfile, hydrateProfile, metric } from "@SunReye/inverter-core";
 import type { PlantMember } from "../shared/plant-source";
 import { liveState } from "../shared/state";
@@ -252,6 +261,10 @@ describe("the catalog and live reads", () => {
 describe("/entities/:key/history", () => {
   const history = (query = "") =>
     call(app(), `/entities/battery.soc/history${query}`, bearer("static-key"));
+  const NOW = Date.parse("2026-09-10T12:00:00.000Z");
+
+  beforeEach(() => setSystemTime(new Date(NOW)));
+  afterEach(() => setSystemTime());
 
   test("an unknown entity is 404 and reads nothing", async () => {
     const res = await call(app(), "/entities/nope/history", bearer("static-key"));
@@ -260,14 +273,12 @@ describe("/entities/:key/history", () => {
   });
 
   test("raw samples by default, from the profile's own device and the default window", async () => {
-    const before = Date.now();
     expect((await history()).status).toBe(200);
     expect(reads).toHaveLength(1);
     const read = reads[0]!;
     expect(read.kind).toBe("raw");
     expect(read.q).toMatchObject({ metric: "battery.soc", inverterId: "api-test", limit: 5000 });
-    const since = (read.q.since as Date).getTime();
-    expect(Math.abs(before - 24 * 3_600_000 - since)).toBeLessThan(5_000);
+    expect((read.q.since as Date).getTime()).toBe(NOW - 24 * 3_600_000);
   });
 
   test("a bucket reads the rollup, with hours and limit applied", async () => {
@@ -275,7 +286,7 @@ describe("/entities/:key/history", () => {
     const read = reads[0]!;
     expect(read.kind).toBe("rollup");
     expect(read.q).toMatchObject({ bucket: "hour", limit: 10 });
-    expect(Date.now() - 2 * 3_600_000 - (read.q.since as Date).getTime()).toBeLessThan(5_000);
+    expect((read.q.since as Date).getTime()).toBe(NOW - 2 * 3_600_000);
   });
 
   test("source names a device slug", async () => {

@@ -202,9 +202,9 @@ function bridge(options: { backfill?: Record<string, () => unknown> } = {}) {
    */
   const settle = async () => {
     await Promise.all(inflight.splice(0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all(inflight.splice(0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setImmediate(resolve));
   };
 
   /** Push one live payload onto the server's read-side bus. */

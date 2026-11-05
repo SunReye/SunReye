@@ -5,6 +5,9 @@ import {
   type SocketLike,
 } from "./reconnecting-socket";
 
+/** One macrotask turn: every pending microtask (a hook continuing after its await) has run. */
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 /** A socket that records what happened to it and lets a test fire its events. */
 class FakeSocket implements SocketLike {
   closed = 0;
@@ -58,19 +61,6 @@ describe("ReconnectingSocket", () => {
     expect(sockets[0]?.closed).toBe(0);
     b();
     expect(sockets[0]?.closed).toBe(1);
-  });
-
-  test("closes for good when the last lease goes away", async () => {
-    // The page releases its lease when the picked range stops including now; a
-    // leaked lease would keep the server's periodic job publishing for nobody.
-    const { socket, sockets } = harness();
-    const release = socket.connect();
-    release();
-    expect(sockets[0]?.closed).toBe(1);
-    // A close event on the released socket must not reopen anything.
-    sockets[0]?.emit("close");
-    await Bun.sleep(1200);
-    expect(sockets).toHaveLength(1);
   });
 
   test("a disposer run twice gives back one lease, not two", () => {
@@ -151,7 +141,7 @@ describe("ReconnectingSocket with an asynchronous onStart", () => {
     socket.connect();
     backfill.reject();
     await backfill.promise.catch(() => {});
-    await Bun.sleep(0);
+    await turn();
     expect(sockets).toHaveLength(1);
   });
 
@@ -190,7 +180,7 @@ describe("ReconnectingSocket with an asynchronous onStart", () => {
     socket.connect();
     backfill.resolve();
     await backfill.promise;
-    await Bun.sleep(0);
+    await turn();
     expect(wanted).toEqual([true]);
   });
 
@@ -218,7 +208,7 @@ describe("ReconnectingSocket with an asynchronous onStart", () => {
     release();
     backfill.resolve();
     await backfill.promise;
-    await Bun.sleep(0);
+    await turn();
     expect(wanted).toEqual([false]);
     expect(sockets).toHaveLength(0);
   });
@@ -244,7 +234,7 @@ describe("ReconnectingSocket with an asynchronous onStart", () => {
     backfills[0]?.resolve();
     backfills[1]?.resolve();
     await Promise.all(backfills.map((b) => b.promise));
-    await Bun.sleep(0);
+    await turn();
     expect(wanted).toEqual([false, true]);
   });
 
@@ -269,7 +259,7 @@ describe("ReconnectingSocket with an asynchronous onStart", () => {
     backfills[0]?.resolve();
     backfills[1]?.resolve();
     await Promise.all(backfills.map((b) => b.promise));
-    await Bun.sleep(0);
+    await turn();
     expect(started).toBe(2);
     expect(sockets).toHaveLength(1);
   });
@@ -393,6 +383,19 @@ describe("ReconnectingSocket after an unexpected drop", () => {
   afterEach(() => {
     globalThis.setTimeout = realSetTimeout;
     globalThis.clearTimeout = realClearTimeout;
+  });
+
+  test("closes for good when the last lease goes away", () => {
+    // The page releases its lease when the picked range stops including now; a
+    // leaked lease would keep the server's periodic job publishing for nobody.
+    const { socket, sockets } = harness();
+    const release = socket.connect();
+    release();
+    expect(sockets[0]?.closed).toBe(1);
+    // A close event on the released socket must not arm a reconnect, so nothing reopens.
+    sockets[0]?.emit("close");
+    expect(pending()).toEqual([]);
+    expect(sockets).toHaveLength(1);
   });
 
   test("waits a second before the first retry and doubles the wait for each failure", () => {

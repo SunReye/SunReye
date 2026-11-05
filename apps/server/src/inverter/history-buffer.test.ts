@@ -28,8 +28,8 @@ function deferred(): { promise: Promise<void>; release: () => void } {
   return { promise, release };
 }
 
-/** Let every pending microtask (and any 0 ms timer) run. */
-const settle = () => Bun.sleep(0);
+/** Let every pending microtask run: the buffer owns no timer, so one macrotask turn drains it. */
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** One history row; only the metric key needs to vary between rows. */
 const row = (metric: string, value = 0): StorageRow => ({
