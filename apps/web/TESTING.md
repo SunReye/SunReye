@@ -118,7 +118,7 @@ lifecycle. The instruments are in `e2e/support/perf.ts` — `countRequests`, `co
 
 What does measure it lives in `bench/`: `bun run bench:e2e` runs those specs one worker at a time,
 prints their numbers (`motion-tier`'s frame watch and readout writes, `history-scroll-mounts`' throttled
-sweeps) and asserts nothing. The gate never runs it. A spec whose claim is a duration or CPU cost goes
+sweeps) and asserts nothing. The gate never runs it, and `test:timing` does not scan it: a bench may use `waitForTimeout` and `performance.now`. A spec whose claim is a duration or CPU cost goes
 there; resident-memory and byte budgets stay in the gate (`test:budgets`).
 
 ### Browser specs against the real core
@@ -224,7 +224,7 @@ only shrinks (see `CONTRIBUTING.md` §6).
 | sleeping past a timer              | Vitest fake timers, then advance them                                |
 | `Bun.sleep(0)` to let work settle  | await the promise the code resolves                                  |
 | asserting "under 100 ms"           | assert the behaviour; inject a clock if the duration is the behaviour |
-| "give the page a moment" in a spec | `backend.settled()` (no request in flight for 24 frames), `frames(page, n)`, or `page.clock` |
+| "give the page a moment" in a spec | `backend.settled()` (no request in flight for 120 frames), `frames(page, n)`, or `page.clock` |
 
 A poll-until-predicate loop with a deadline is fine: the deadline only bounds how long it spins.
 
