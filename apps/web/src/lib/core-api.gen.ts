@@ -253,6 +253,56 @@ export interface paths {
         patch: operations["patchDevice"];
         trace?: never;
     };
+    "/api/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The uncurtailed PV potential; null while the forecast is off or unconfigured, or no irradiance was had. */
+        get: operations["rawForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forecast/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["forecastProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forecast/usable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the feed-in cap and the battery leave of it; null as for the raw forecast. */
+        get: operations["usableForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/recent": {
         parameters: {
             query?: never;
@@ -483,6 +533,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readWeather"];
+        /** A patch of the plant-level fields; arrays, panel physics and the battery are edited on the inverter. */
+        put: operations["saveWeather"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup-status": {
         parameters: {
             query?: never;
@@ -553,6 +620,21 @@ export interface components {
             userId: number;
             userName: string;
         };
+        /** @description The battery the forecast's clipping sim models. */
+        Battery: {
+            /**
+             * Format: double
+             * @description W; unbounded when null.
+             */
+            maxChargeW?: number | null;
+            /**
+             * Format: double
+             * @description Reserve floor, %.
+             */
+            minSoc?: number;
+            /** Format: double */
+            usableKwh: number;
+        };
         /** @description The SPA areas this core serves; the SPA hides every area that reads false. */
         Capabilities: {
             automations: boolean;
@@ -595,13 +677,26 @@ export interface components {
             name: string;
             params: components["schemas"]["ModbusParams"];
         };
+        Correction: {
+            /** @description Apply the learned correction; it learns either way. */
+            enabled: boolean;
+        };
         /** @description The only answer that holds the key. */
         CreatedApiKey: components["schemas"]["ApiKeyView"] & {
             key: string;
         };
+        /** @description One slot of the Solcast-shaped curve Home Assistant PV blueprints read. */
+        DetailedPoint: {
+            period_start: string;
+            /** Format: double */
+            watts: number;
+        };
         /** @enum {string} */
         DeviceKind: "modbus";
         DevicePatch: {
+            /** @description Replaces the inverter's arrays. */
+            arrays?: components["schemas"]["PvArray"][] | null;
+            battery?: components["schemas"]["Battery"] | null;
             /** Format: int64 */
             connectionId?: number | null;
             name?: string | null;
@@ -609,6 +704,16 @@ export interface components {
             /** @description True retires the device: kept with its history, no longer polled. False restores it. */
             retired?: boolean | null;
             role?: string | null;
+            /**
+             * Format: double
+             * @description `null` falls back to the plant's; absent leaves it.
+             */
+            systemLoss?: number | null;
+            /**
+             * Format: double
+             * @description `null` falls back to the plant's; absent leaves it.
+             */
+            tempCoefficient?: number | null;
             /** Format: int64 */
             unitId?: number | null;
         };
@@ -622,8 +727,8 @@ export interface components {
          */
         DeviceState: "polling" | "idle" | "retired";
         DeviceView: {
-            arrays: Record<string, never>[];
-            battery?: Record<string, never> | null;
+            arrays: components["schemas"]["PvArray"][];
+            battery?: components["schemas"]["Battery"] | null;
             connection?: components["schemas"]["ConnectionView"] | null;
             /** Format: int64 */
             connectionId: number;
@@ -642,9 +747,15 @@ export interface components {
             /** @description The device id as a decimal string. */
             slug: string;
             state: components["schemas"]["DeviceState"];
-            /** Format: double */
+            /**
+             * Format: double
+             * @description %; the plant's when null.
+             */
             systemLoss?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description %/°C; the plant's when null.
+             */
             tempCoefficient?: number | null;
             /** Format: int32 */
             unitId: number;
@@ -679,6 +790,44 @@ export interface components {
         Flow: {
             negative: string;
             positive: string;
+        };
+        /** @description One view as 3.x exports it, with the age of its irradiance. */
+        ForecastExport: components["schemas"]["ForecastView"] & {
+            /** @description The Solcast-shaped curve Home Assistant PV blueprints read. */
+            detailedForecast: components["schemas"]["DetailedPoint"][];
+            /** @description When the irradiance was fetched, UTC ISO 8601. */
+            fetchedAt: string;
+            provider: string;
+            /** @description The last fetch failed: this is built from the irradiance before it. */
+            stale: boolean;
+            /** Format: int64 */
+            stepMinutes: number;
+            /** Format: int32 */
+            utcOffsetSeconds: number;
+        };
+        ForecastPatch: {
+            correction?: components["schemas"]["Correction"] | null;
+            enabled?: boolean | null;
+            /** Format: double */
+            houseLoadW?: number | null;
+            /** Format: double */
+            maxOutputW?: number | null;
+            provider?: string | null;
+            smartMeterSince?: string | null;
+        };
+        /** @description One power projection over the series and its sums. */
+        ForecastView: {
+            next15: components["schemas"]["Next15"];
+            /**
+             * Format: double
+             * @description From `now` to plant-local midnight, the running slot prorated.
+             */
+            remainingTodayKwh: number;
+            series: components["schemas"]["Point"][];
+            /** Format: double */
+            todayKwh: number;
+            /** Format: double */
+            tomorrowKwh: number;
         };
         /** @description The unit id that answered, and how long its read took. */
         FoundUnit: {
@@ -830,6 +979,29 @@ export interface components {
             name: string;
             password: string;
         };
+        /** @description The 15 minutes after `now`; `avg_power_w × 0.25 h` equals `energy_kwh`. */
+        Next15: {
+            /** Format: double */
+            avgPowerW: number;
+            /** Format: double */
+            energyKwh: number;
+            /** Format: double */
+            maxPowerW: number;
+        };
+        Point: {
+            /**
+             * Format: double
+             * @description Peak within the slot, W.
+             */
+            peakWatts: number;
+            /** @description Slot start, plant-local. */
+            time: string;
+            /**
+             * Format: double
+             * @description Average over the slot, W.
+             */
+            watts: number;
+        };
         /** @description An endpoint to test, as the connection dialog holds it. */
         ProbeRequest: {
             /** @description `modbus`; the core reaches no other kind. */
@@ -849,6 +1021,41 @@ export interface components {
         ProfileStatus: {
             activeProfileId: string | null;
             needsProfile: boolean;
+        };
+        Provider: {
+            capabilities: components["schemas"]["Capabilities"];
+            id: string;
+            label: string;
+        };
+        /** @description One PV array: panels sharing an orientation. */
+        PvArray: {
+            /**
+             * Format: double
+             * @description Degrees: 0 south, -90 east, 90 west.
+             */
+            azimuth: number;
+            /** Format: double */
+            kwp: number;
+            /**
+             * Format: int32
+             * @description `index` of the inverter's `pv.string.*` metrics this array is wired into.
+             */
+            mppt?: number | null;
+            /**
+             * Format: double
+             * @description %; the inverter's, else the plant's, when absent.
+             */
+            systemLoss?: number | null;
+            /**
+             * Format: double
+             * @description %/°C; the inverter's, else the plant's, when absent.
+             */
+            tempCoefficient?: number | null;
+            /**
+             * Format: double
+             * @description Degrees from horizontal.
+             */
+            tilt: number;
         };
         Range: {
             /** Format: double */
@@ -925,6 +1132,36 @@ export interface components {
             /** Format: double */
             value: number;
         };
+        SolarForecastConfig: {
+            /** @description Every in-service inverter's, in roster order. */
+            arrays: components["schemas"]["PvArray"][];
+            battery: components["schemas"]["Battery"] | null;
+            correction: components["schemas"]["Correction"];
+            enabled: boolean;
+            /**
+             * Format: double
+             * @description W; inferred from history when null.
+             */
+            houseLoadW: number | null;
+            /**
+             * Format: double
+             * @description Feed-in cap, W.
+             */
+            maxOutputW: number | null;
+            provider: string;
+            /** @description `YYYY-MM-DD` the smart meter gateway was installed. */
+            smartMeterSince: string | null;
+            /**
+             * Format: double
+             * @description Plant fallback, %.
+             */
+            systemLoss: number;
+            /**
+             * Format: double
+             * @description Plant fallback, %/°C.
+             */
+            tempCoefficient: number;
+        };
         /**
          * @description Where a source's profile files live. No credentials: a URL with userinfo, a query or a fragment is
          *     refused, so nothing secret is stored or logged.
@@ -962,6 +1199,26 @@ export interface components {
             found: components["schemas"]["FoundUnit"] | null;
             /** @description Every id asked, in order, so a miss names what was ruled out. */
             scanned: number[];
+        };
+        /** @description The composed record. */
+        WeatherConfig: {
+            enabled: boolean;
+            forecast: components["schemas"]["SolarForecastConfig"];
+            label: string;
+            /** Format: double */
+            latitude: number | null;
+            /** Format: double */
+            longitude: number | null;
+        };
+        /** @description A `PUT /api/settings/weather` body: absent keeps the stored value, `null` clears a nullable one. */
+        WeatherPatch: {
+            enabled?: boolean | null;
+            forecast?: components["schemas"]["ForecastPatch"] | null;
+            label?: string | null;
+            /** Format: double */
+            latitude?: number | null;
+            /** Format: double */
+            longitude?: number | null;
         };
     };
     responses: never;
@@ -2121,6 +2378,111 @@ export interface operations {
             };
         };
     };
+    rawForecast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForecastExport"] | null;
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    forecastProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Provider"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    usableForecast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForecastExport"] | null;
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     recentHistory: {
         parameters: {
             query?: {
@@ -2931,6 +3293,104 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    readWeather: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeatherConfig"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    saveWeather: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeatherPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeatherConfig"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

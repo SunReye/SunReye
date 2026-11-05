@@ -62,9 +62,9 @@ fn diff(path: &str, got: &Value, want: &Value, out: &mut Vec<String>) {
     }
 }
 
+/// From the IANA database compiled into the core, never the host's.
 fn zone(name: &str) -> TimeZone {
-    let tzif = std::fs::read(Path::new("/usr/share/zoneinfo").join(name)).expect("zoneinfo");
-    TimeZone::tzif(name, &tzif).expect("tzif")
+    jiff::tz::db().get(name).expect("bundled zone")
 }
 
 fn correction(cells: &Value) -> CorrectionModel {

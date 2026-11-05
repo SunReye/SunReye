@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO plant_forecast (id, enabled, latitude, longitude, label, forecast_enabled, provider,\n                                                   max_output_w, house_load_w, smart_meter_since, correction_enabled)\n             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "74da5a41cfcbb25f055d3409ac89ad0d27965e3f98f2dd19c4119b828b58109b"
+}
