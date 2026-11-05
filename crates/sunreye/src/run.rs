@@ -742,6 +742,55 @@ mod tests {
         drop(std::fs::remove_dir_all(&dir));
     }
 
+    /// Log lines written on this thread, which on a current-thread runtime runs every spawned task.
+    fn captured_log() -> (Arc<std::sync::Mutex<Vec<u8>>>, tracing::subscriber::DefaultGuard) {
+        #[derive(Clone)]
+        struct Shared(Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Shared {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().expect("log").extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let log = Shared(Arc::default());
+        let writer = log.clone();
+        let subscriber =
+            tracing_subscriber::fmt().with_ansi(false).with_writer(move || writer.clone()).finish();
+        (log.0, tracing::subscriber::set_default(subscriber))
+    }
+
+    #[tokio::test]
+    async fn a_device_on_a_closed_port_reports_the_refused_connect_and_does_not_stop_the_core() {
+        // Bound and never listening: every dial is refused, and no other test can take the port.
+        let closed = tokio::net::TcpSocket::new_v4().expect("socket");
+        closed.bind("127.0.0.1:0".parse().expect("addr")).expect("bind");
+        let port = closed.local_addr().expect("addr").port();
+        let dir = dir("refused");
+        let device = seed(&dir, port, "deye-sg05lp3", "20").await;
+        let (log, _guard) = captured_log();
+        let core = Core::open(&dir).await.expect("open");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let refused = || String::from_utf8_lossy(&log.lock().expect("log")).contains("Connection refused");
+        while !refused() {
+            assert!(Instant::now() < deadline, "no refused dial logged");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let text = String::from_utf8_lossy(&log.lock().expect("log")).into_owned();
+        let line = text.lines().find(|l| l.contains("Connection refused")).expect("a refused line");
+        assert!(
+            line.contains("WARN")
+                && line.contains("poll failed")
+                && line.contains(&format!("device={device}")),
+            "{line}"
+        );
+        core.stop().await;
+        assert_eq!(stored(&dir, device).await, []);
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
     #[tokio::test]
     async fn a_minute_stays_held_while_its_write_waits_on_the_database() {
         let free = TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -808,7 +857,8 @@ mod tests {
         drop(std::fs::remove_dir_all(&dir));
     }
 
-    /// The retention passes `counted_now` has been read for.
+    /// The retention passes `counted_now` has been read for; a static because the core clock is a
+    /// `fn`, so one test alone may read it.
     static PASSES: AtomicUsize = AtomicUsize::new(0);
 
     fn counted_now() -> i64 {
@@ -835,8 +885,11 @@ mod tests {
         append_at(&core.store, device, stale_ms).await;
 
         core.apply().await.expect("apply");
-        // A pass the restart spawned has read the clock by its first poll, which this yield gives it.
-        tokio::task::yield_now().await;
+        // Paused, the clock runs every timer due within the minute, a respawned pass's immediate
+        // first tick included, and stops short of the start's next pass an hour on.
+        tokio::time::pause();
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        tokio::time::resume();
 
         assert_eq!(PASSES.load(Ordering::SeqCst), 1, "a restart starts no pass");
         let minutes = core.store.buckets(Tier::Minute, device, "power").await.expect("buckets");
