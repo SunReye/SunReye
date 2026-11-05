@@ -3,6 +3,7 @@
 //! removed by id. Every change re-applies polling. What the core keeps no store for (PV arrays, a pack,
 //! integration settings) is answered empty or null.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::Json;
@@ -20,6 +21,7 @@ use crate::sources::{find_profile, installed};
 use crate::store::{
     ConnectionEdit, ConnectionRow, DeviceEdit, DeviceRow, NewConnection, NewDevice, Removal, first_in_service,
 };
+use crate::weather::{Battery, DevicePv, PvArray};
 
 /// The roles an operator may add, as 3.x lists them.
 const ROLES: [&str; 4] = ["inverter", "meter", "charger", "controller"];
@@ -107,15 +109,15 @@ pub struct DeviceView {
     connection_id: i64,
     #[schema(value_type = Object)]
     params: Map<String, Value>,
-    #[schema(value_type = Vec<Object>)]
-    arrays: Vec<Value>,
+    arrays: Vec<PvArray>,
+    /// %/°C; the plant's when null.
     temp_coefficient: Option<f64>,
+    /// %; the plant's when null.
     system_loss: Option<f64>,
     /// UTC ISO 8601 while retired.
     retired_at: Option<String>,
     connection: Option<ConnectionView>,
-    #[schema(value_type = Option<Object>)]
-    battery: Option<Value>,
+    battery: Option<Battery>,
     profile_name: Option<String>,
     profile_known: bool,
     kind: DeviceKind,
@@ -178,6 +180,49 @@ pub struct DevicePatch {
     profile_id: Option<String>,
     /// True retires the device: kept with its history, no longer polled. False restores it.
     retired: Option<bool>,
+    /// Replaces the inverter's arrays.
+    arrays: Option<Vec<PvArray>>,
+    temp_coefficient: Option<f64>,
+    system_loss: Option<f64>,
+    /// `null` removes the pack; absent leaves it.
+    #[allow(clippy::option_option, reason = "absent leaves the pack, null removes it")]
+    #[serde(default, deserialize_with = "stated_or_null")]
+    #[schema(value_type = Option<Battery>, required = false)]
+    battery: Option<Option<Battery>>,
+}
+
+#[allow(clippy::option_option, reason = "absent leaves the pack, null removes it")]
+fn stated_or_null<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<Battery>>, D::Error> {
+    Option::<Battery>::deserialize(d).map(Some)
+}
+
+impl DevicePatch {
+    /// The inverter-only field the patch names first.
+    fn pv_field(&self) -> Option<&'static str> {
+        if self.battery.is_some() {
+            return Some("battery");
+        }
+        (self.arrays.is_some() || self.temp_coefficient.is_some() || self.system_loss.is_some())
+            .then_some("arrays")
+    }
+
+    fn apply_pv(self, mut pv: DevicePv) -> DevicePv {
+        pv.arrays = self.arrays.unwrap_or(pv.arrays);
+        pv.temp_coefficient = self.temp_coefficient.or(pv.temp_coefficient);
+        pv.system_loss = self.system_loss.or(pv.system_loss);
+        pv.battery = self.battery.unwrap_or(pv.battery);
+        pv
+    }
+}
+
+/// The `index` of every `pv.string.*` metric the profile reads.
+fn strings(profile: Option<&Profile>) -> Vec<u32> {
+    let metrics = profile.map(|p| p.metrics.as_slice()).unwrap_or_default();
+    metrics
+        .iter()
+        .filter(|m| m.role.as_deref().is_some_and(|r| r.starts_with("pv.string.")))
+        .filter_map(|m| m.index)
+        .collect()
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -268,6 +313,7 @@ fn checked_endpoint(params: &ModbusParams) -> Result<NewConnection, ApiError> {
 /// What a view needs besides the rows.
 struct Context {
     profiles: Vec<crate::sources::Installed>,
+    pv: BTreeMap<i64, DevicePv>,
     timeout_ms: i64,
     interval_ms: i64,
 }
@@ -277,6 +323,7 @@ impl Context {
         let millis = |d: std::time::Duration| i64::try_from(d.as_millis()).unwrap_or(i64::MAX);
         Ok(Self {
             profiles: installed(&core.store).await?,
+            pv: core.store.device_pv().await?,
             timeout_ms: millis(poll_timeout(core.store.setting(TIMEOUT_KEY).await?.as_deref())),
             interval_ms: millis(poll_interval(core.store.setting(INTERVAL_KEY).await?.as_deref())),
         })
@@ -322,6 +369,7 @@ impl Context {
         };
         // An unnamed device is its profile's, as 3.x names the device it provisions.
         let name = row.name.or_else(|| profile_name.clone()).unwrap_or_else(|| row.profile_id.clone());
+        let pv = self.pv.get(&row.id).cloned().unwrap_or_default();
         DeviceView {
             id: row.id,
             slug: row.id.to_string(),
@@ -331,12 +379,12 @@ impl Context {
             unit_id: row.unit_id,
             connection_id: row.connection_id,
             params: Map::new(),
-            arrays: Vec::new(),
-            temp_coefficient: None,
-            system_loss: None,
+            arrays: pv.arrays,
+            temp_coefficient: pv.temp_coefficient,
+            system_loss: pv.system_loss,
             retired_at: row.retired_at,
             connection: connections.iter().find(|c| c.id == row.connection_id).map(|c| self.connection(c)),
-            battery: None,
+            battery: pv.battery,
             profile_known: profile_name.is_some(),
             profile_name,
             kind: DeviceKind::Modbus,
@@ -480,22 +528,57 @@ pub async fn patch(
         role: patch.role.as_deref().map(checked_role).transpose()?,
         unit_id: patch.unit_id.map(checked_unit).transpose()?,
         connection_id: patch.connection_id,
-        profile_id: patch.profile_id,
+        profile_id: patch.profile_id.clone(),
         retired_at: patch.retired.map(|retired| retired.then(|| iso(core.now_ms()))),
     };
-    if edit == DeviceEdit::default() {
+    if edit == DeviceEdit::default() && patch.pv_field().is_none() {
         return Err(ApiError::bad_request("nothing to change"));
     }
-    if edit.connection_id.is_some() || edit.profile_id.is_some() || edit.unit_id.is_some() {
-        let connection_id = edit.connection_id.unwrap_or(current.connection_id);
-        let profile_id = edit.profile_id.as_deref().unwrap_or(&current.profile_id);
-        let unit = (connection_id, edit.unit_id.unwrap_or(current.unit_id));
-        let named = edit.connection_id.map(|connection| (connection, "connectionId"));
-        check_target(&core, Some(id), profile_id, named, unit).await?;
-    }
-    core.store.edit_device(id, &edit).await?;
-    core.apply().await?;
+    let pv = patched_pv(&core, current, &edit, patch).await?;
+    check_moved(&core, current, &edit).await?;
+    save_patch(&core, id, &edit, pv.as_ref()).await?;
     Ok(Json(view_of(&core, id).await?))
+}
+
+/// A device moved to another connection, profile or unit id must land on a free, known one.
+async fn check_moved(core: &Core, current: &DeviceRow, edit: &DeviceEdit) -> Result<(), ApiError> {
+    if edit.connection_id.is_none() && edit.profile_id.is_none() && edit.unit_id.is_none() {
+        return Ok(());
+    }
+    let connection_id = edit.connection_id.unwrap_or(current.connection_id);
+    let profile_id = edit.profile_id.as_deref().unwrap_or(&current.profile_id);
+    let unit = (connection_id, edit.unit_id.unwrap_or(current.unit_id));
+    let named = edit.connection_id.map(|connection| (connection, "connectionId"));
+    check_target(core, Some(current.id), profile_id, named, unit).await
+}
+
+/// The inverter's PV description with the patch applied, if it names one, checked against the strings its profile reads.
+async fn patched_pv(
+    core: &Core,
+    current: &DeviceRow,
+    edit: &DeviceEdit,
+    patch: DevicePatch,
+) -> Result<Option<DevicePv>, ApiError> {
+    let Some(field) = patch.pv_field() else { return Ok(None) };
+    if edit.role.as_deref().unwrap_or(&current.role) != "inverter" {
+        return Err(refused(field, "only an inverter carries PV arrays and a pack"));
+    }
+    let profile = core.profile(edit.profile_id.as_deref().unwrap_or(&current.profile_id)).await?;
+    let pv = patch.apply_pv(core.store.device_pv().await?.remove(&current.id).unwrap_or_default());
+    pv.validate(&strings(profile.as_deref())).map_err(|(field, message)| refused(field, &message))?;
+    Ok(Some(pv))
+}
+
+/// Polling restarts only for a change to the device itself.
+async fn save_patch(core: &Core, id: i64, edit: &DeviceEdit, pv: Option<&DevicePv>) -> Result<(), ApiError> {
+    if let Some(pv) = pv {
+        core.store.save_device_pv(id, pv).await?;
+    }
+    if *edit != DeviceEdit::default() {
+        core.store.edit_device(id, edit).await?;
+        core.apply().await?;
+    }
+    Ok(())
 }
 
 /// Only a device that never stored a reading: one with history is refused with `field: "history"`, so

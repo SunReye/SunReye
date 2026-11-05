@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO device_pv (device_id, temp_coefficient, system_loss, battery_usable_kwh,\n                                              battery_max_charge_w, battery_min_soc)\n             VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "0ed445936d22f27b123491030af5a76dcc8e42f50a2262d3c30f18d166080712"
+}

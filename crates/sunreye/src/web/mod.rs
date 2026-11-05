@@ -4,6 +4,7 @@ mod api_keys;
 mod assets;
 mod auth;
 mod devices;
+mod forecast;
 mod history;
 mod inverter;
 mod kiosk;
@@ -92,6 +93,8 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(auth::current, auth::logout))
+        .routes(routes!(forecast::raw))
+        .routes(routes!(forecast::usable))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
@@ -112,6 +115,8 @@ fn settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(inverter::read, inverter::save))
         .routes(routes!(inverter::test))
         .routes(routes!(kiosk::switch))
+        .routes(routes!(forecast::read, forecast::save))
+        .routes(routes!(forecast::providers))
         .merge(profile_settings())
         .merge(roster())
 }
