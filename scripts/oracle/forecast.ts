@@ -18,6 +18,7 @@ import type {
 import type { PvSample } from "../../apps/server/src/forecast/pv-model";
 
 import { type CorpusFiles, ndjson } from "./corpus";
+import type { OracleGenerator } from "./registry";
 
 type ForecastConfig = Parameters<typeof BuildSolarForecast>[0];
 type PvArray = ForecastConfig["arrays"][number];
@@ -80,26 +81,42 @@ interface SeriesShape {
   baseWm2?: number;
 }
 
+const utcHour = (ms: number): number => (ms % (24 * HOUR_MS)) / HOUR_MS;
+
+/** The bell at an instant: a peak W/m² shifted by hours, the second day (from `startMs`) dimmer. */
+function bellFrom(startMs: number): (ms: number, peak: number, shiftH: number) => number {
+  const dim = (ms: number): number => (ms - startMs >= 24 * HOUR_MS ? 0.6 : 1);
+  return (ms, peak, shiftH) =>
+    round1(Math.max(0, peak * Math.sin((Math.PI * (utcHour(ms) - 3.5 - shiftH)) / 15)) * dim(ms));
+}
+
+/** The series the shape asks for beyond temperature and plane irradiance. */
+function optionalSeries(
+  shape: SeriesShape,
+  at: readonly number[],
+  bell: (ms: number, peak: number, shiftH: number) => number,
+): Pick<IrradianceForecast, "dni" | "windSpeed"> {
+  return {
+    ...(shape.dni ? { dni: at.map((ms) => bell(ms, 820, 0)) } : {}),
+    ...(shape.wind ? { windSpeed: at.map((_ms, k) => round1(0.5 + ((k * 7) % 11) * 0.4)) } : {}),
+  };
+}
+
 /**
  * A clear-sky-like bell per plane over the UTC hour, the second day dimmer. Values are rounded so
  * the fixture reads like provider data.
  */
 function series(shape: SeriesShape): IrradianceForecast {
-  const index: number[] = [];
-  for (let i = 0; i < shape.count; i++) if (!shape.skip?.(i)) index.push(i);
+  const index = Array.from({ length: shape.count }, (_, i) => i).filter((i) => !shape.skip?.(i));
   const at = index.map((i) => shape.startMs + i * shape.stepMinutes * 60_000);
-  const utcHour = (ms: number): number => (ms % (24 * HOUR_MS)) / HOUR_MS;
-  const dim = (ms: number): number => (ms - shape.startMs >= 24 * HOUR_MS ? 0.6 : 1);
-  const bell = (ms: number, peak: number, shiftH: number): number =>
-    round1(Math.max(0, peak * Math.sin((Math.PI * (utcHour(ms) - 3.5 - shiftH)) / 15)) * dim(ms));
+  const bell = bellFrom(shape.startMs);
   return {
     times: at.map((ms) => localLabel(ms, shape.utcOffsetSeconds)),
     utcOffsetSeconds: shape.utcOffsetSeconds,
     location: LIMBURG,
     temperature: at.map((ms) => round1(12 + 10 * Math.sin((Math.PI * (utcHour(ms) - 6)) / 18))),
     gti: shape.planes.map((p) => at.map((ms) => bell(ms, p.peak, p.shiftH) + (shape.baseWm2 ?? 0))),
-    ...(shape.dni ? { dni: at.map((ms) => bell(ms, 820, 0)) } : {}),
-    ...(shape.wind ? { windSpeed: at.map((_ms, k) => round1(0.5 + ((k * 7) % 11) * 0.4)) } : {}),
+    ...optionalSeries(shape, at, bell),
   };
 }
 
@@ -363,26 +380,29 @@ const FORECAST: ForecastCase[] = [
 const correctionModel = (cells: Record<string, CorrectionCell>): CorrectionModel =>
   new Map(Object.entries(cells));
 
-/** Every case, its recorded output beside the input it was produced from. */
-export async function buildForecastCorpus(): Promise<CorpusFiles> {
-  // The 3.x forecast modules import the server env through their logger; the pure functions read none of it.
-  process.env.SKIP_ENV_VALIDATION ??= "1";
-  const { cosAoi, sunPosition } = await import("../../apps/server/src/forecast/solar-geometry");
-  const { pvPowerW } = await import("../../apps/server/src/forecast/pv-model");
-  const { buildSolarForecast, toForecastExport } =
-    await import("../../apps/server/src/forecast/solar-forecast");
+type ForecastModules = {
+  solarGeometry: typeof import("../../apps/server/src/forecast/solar-geometry");
+  pvModel: typeof import("../../apps/server/src/forecast/pv-model");
+  solarForecast: typeof import("../../apps/server/src/forecast/solar-forecast");
+};
 
-  const rows: unknown[] = [];
-  for (const c of GEOMETRY) {
+const geometryRows = ({ solarGeometry: { cosAoi, sunPosition } }: ForecastModules): unknown[] =>
+  GEOMETRY.map((c) => {
     const { latitude, longitude, atMs, planes } = c.input;
     const sun = sunPosition(latitude, longitude, atMs);
-    rows.push({ ...c, output: { sun, cosAoi: planes.map((p) => cosAoi(sun, p.tilt, p.azimuth)) } });
-  }
-  for (const c of POWER) {
+    return { ...c, output: { sun, cosAoi: planes.map((p) => cosAoi(sun, p.tilt, p.azimuth)) } };
+  });
+
+const powerRows = ({ pvModel: { pvPowerW } }: ForecastModules): unknown[] =>
+  POWER.map((c) => {
     const { sample, kwp, tempCoefficient, systemLoss } = c.input;
-    rows.push({ ...c, output: { watts: pvPowerW(sample, kwp, tempCoefficient, systemLoss) } });
-  }
-  for (const c of FORECAST) {
+    return { ...c, output: { watts: pvPowerW(sample, kwp, tempCoefficient, systemLoss) } };
+  });
+
+const forecastRows = ({
+  solarForecast: { buildSolarForecast, toForecastExport },
+}: ForecastModules): unknown[] =>
+  FORECAST.map((c) => {
     const { config, data, provider, timeZone, nowMs, sim, correction } = c.input;
     const built = buildSolarForecast(
       config,
@@ -393,10 +413,31 @@ export async function buildForecastCorpus(): Promise<CorpusFiles> {
       sim,
       correction && correctionModel(correction),
     );
-    rows.push({
+    return {
       ...c,
       output: { raw: toForecastExport(built, "raw"), usable: toForecastExport(built, "usable") },
-    });
-  }
-  return { "forecast.ndjson": ndjson(rows) };
+    };
+  });
+
+/** Every case, its recorded output beside the input it was produced from. */
+async function buildForecastCorpus(): Promise<CorpusFiles> {
+  // The 3.x forecast modules import the server env through their logger; the pure functions read none of it.
+  process.env.SKIP_ENV_VALIDATION ??= "1";
+  const modules: ForecastModules = {
+    solarGeometry: await import("../../apps/server/src/forecast/solar-geometry"),
+    pvModel: await import("../../apps/server/src/forecast/pv-model"),
+    solarForecast: await import("../../apps/server/src/forecast/solar-forecast"),
+  };
+  return {
+    "forecast.ndjson": ndjson([
+      ...geometryRows(modules),
+      ...powerRows(modules),
+      ...forecastRows(modules),
+    ]),
+  };
 }
+
+export const oracle: OracleGenerator = {
+  files: ["forecast.ndjson"],
+  build: buildForecastCorpus,
+};

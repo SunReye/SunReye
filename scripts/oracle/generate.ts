@@ -3,7 +3,7 @@
 /**
  * Rebuild the oracle corpus (`fixtures/oracle/`) from the 2.x code.
  *
- * Transport framing, profile decode, the forecast and the plant fold need no database and are written from here.
+ * Every `scripts/oracle/<name>.ts` that exports `oracle` is written from here (see registry.ts); none needs a database.
  * Rollups, statistics, plant rollups and archives need TimescaleDB, so they run as `apps/server/db-tests/oracle.test.ts`
  * with `ORACLE_WRITE=1`, on the harness's own `sunreye_dbtest` and nowhere else.
  *
@@ -11,11 +11,9 @@
  *   `SUNREYE_PROFILES_DIR`  the SunReye-Official-Profiles checkout (default: beside the main checkout)
  *   `DB_TEST_URL`           the Postgres server for the database groups, as for `bun run test:db`
  */
-import { type CorpusFiles, CORPUS_DIR, writeCorpus } from "./corpus";
-import { buildForecastCorpus } from "./forecast";
-import { buildPlantCorpus } from "./plant";
-import { buildProfileDecodeCorpus, officialProfilesDir } from "./profile-decode";
-import { buildTransportCorpus } from "./transport";
+import { CORPUS_DIR, writeCorpus } from "./corpus";
+import { officialProfilesDir } from "./profile-decode";
+import { type Discovered, discoverGenerators } from "./registry";
 
 const ORACLE_DATABASE = "sunreye_dbtest";
 
@@ -42,10 +40,7 @@ export function oracleDatabaseUrl(
 export interface GenerateDeps {
   out: string;
   profilesDir: () => string | null;
-  transport: () => Promise<CorpusFiles>;
-  profiles: (dir: string) => Promise<CorpusFiles>;
-  forecast: () => Promise<CorpusFiles>;
-  plant: () => Promise<CorpusFiles>;
+  generators: () => Promise<Discovered[]>;
   databaseGroups: (url: string | null) => Promise<number>;
   log: (message: string) => void;
 }
@@ -87,20 +82,17 @@ export async function generate(
   deps: GenerateDeps,
 ): Promise<number> {
   const url = oracleDatabaseUrl(argv, env);
-  const profiles = deps.profilesDir();
-  if (profiles === null) {
+  const profilesDir = deps.profilesDir();
+  const generators = await deps.generators();
+  if (profilesDir === null && generators.some((g) => g.oracle.needsProfiles)) {
     throw new Error(
       "no profile repository: set SUNREYE_PROFILES_DIR to a SunReye-Official-Profiles checkout",
     );
   }
-  await writeCorpus(await deps.transport(), deps.out);
-  deps.log("transport framing written");
-  await writeCorpus(await deps.profiles(profiles), deps.out);
-  deps.log("profile decode written");
-  await writeCorpus(await deps.forecast(), deps.out);
-  deps.log("forecast written");
-  await writeCorpus(await deps.plant(), deps.out);
-  deps.log("plant fold written");
+  for (const { name, oracle } of generators) {
+    await writeCorpus(await oracle.build({ profilesDir }), deps.out);
+    deps.log(`${name} written`);
+  }
   return deps.databaseGroups(url);
 }
 
@@ -108,10 +100,7 @@ if (import.meta.main) {
   const code = await generate(process.argv.slice(2), process.env, {
     out: CORPUS_DIR,
     profilesDir: () => officialProfilesDir(),
-    transport: buildTransportCorpus,
-    profiles: buildProfileDecodeCorpus,
-    forecast: buildForecastCorpus,
-    plant: buildPlantCorpus,
+    generators: () => discoverGenerators(),
     databaseGroups: runDatabaseGroups,
     log: (message) => console.log(message),
   });
