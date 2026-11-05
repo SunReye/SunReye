@@ -1,3 +1,10 @@
 # Append-only note files: two PRs that each add lines land together.
 /apps/*/AGENTS.md merge=union
 /apps/web/TESTING.md merge=union
+# Route registration: two PRs that each add a line at the same spot land together. A real clash in
+# the same file leaves duplicate lines that fail to compile or to parse (scripts/route-merge.test.ts).
+/crates/sunreye/route-access.txt merge=union
+/crates/sunreye/src/lib.rs merge=union
+/crates/sunreye/src/run.rs merge=union
+/crates/sunreye/src/web/mod.rs merge=union
+/crates/sunreye/src/web/tests.rs merge=union

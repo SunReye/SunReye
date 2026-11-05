@@ -13,17 +13,13 @@ const DASHBOARD_READS: [&str; 4] = [
 ];
 
 /// The listed operations a stranger may reach with the kiosk view on, beside the sign-in routes.
-const OPEN_WITH_KIOSK: [(&str, &str); 7] = [
-    ("get", "/api/capabilities"),
-    ("get", "/api/history/recent"),
-    ("get", "/api/history/rollup"),
-    ("get", "/api/kiosk"),
-    ("get", "/api/profile"),
-    ("get", "/api/profile-status"),
-    ("get", "/api/setup-status"),
-];
-
-const SIGN_IN: [(&str, &str); 2] = [("post", "/api/auth/login"), ("post", "/api/auth/sign-up")];
+fn open_with_kiosk() -> Vec<(String, String)> {
+    access_table()
+        .into_iter()
+        .filter(|route| matches!(route.access, Access::Public | Access::Kiosk))
+        .map(|route| (route.method, route.path))
+        .collect()
+}
 
 async fn switch(api: &Api, on: bool) -> Answer {
     put(api, "/api/settings/kiosk", &json!({"enabled": on})).await
@@ -114,9 +110,14 @@ async fn with_the_kiosk_view_on_a_stranger_reaches_only_the_allow_list() {
     switch(&admin, true).await;
     let document = get(&admin, "/openapi/json").await.json();
     let stranger = admin.anonymous();
+    let sign_in: Vec<(String, String)> = access_table()
+        .into_iter()
+        .filter(|route| route.access == Access::Credential)
+        .map(|route| (route.method, route.path))
+        .collect();
     let mut open = Vec::new();
     for (method, path) in operations(&document) {
-        if SIGN_IN.contains(&(method.as_str(), path.as_str())) {
+        if sign_in.contains(&(method.clone(), path.clone())) {
             continue;
         }
         let route = (method.to_uppercase(), path.replace("{id}", "1"));
@@ -127,9 +128,7 @@ async fn with_the_kiosk_view_on_a_stranger_reaches_only_the_allow_list() {
             open.push((method, path));
         }
     }
-    let want: Vec<(String, String)> =
-        OPEN_WITH_KIOSK.iter().map(|(m, p)| ((*m).into(), (*p).into())).collect();
-    assert_eq!(open, want);
+    assert_eq!(open, open_with_kiosk());
     assert!(kiosk_on(&admin).await, "no refused write switched it off");
     drop((stranger, admin));
     core.stop().await;

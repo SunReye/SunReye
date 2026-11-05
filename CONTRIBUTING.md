@@ -209,6 +209,8 @@ leads the rollups, the restart that leaves a hole in a counter. Prefer pure func
 can be tested directly over logic buried in a component — extracting the guard so it can be
 proven *is* part of the work, and both bugs the gates were built from were exactly that.
 
+**A new route registers in one place per concern:** its `.routes(routes!(..))` line in the guard group of `crates/sunreye/src/web/mod.rs` and one `METHOD /path access` line in `crates/sunreye/route-access.txt`, which the web tests and `bun run test:routes` read; `.gitattributes` merges both files as unions, so two route PRs land together (`scripts/route-merge.test.ts`).
+
 ### Why the layers are shaped this way
 
 - **Database specs** (`bun run test:db`) pass `--timeout 60000`: bun's default 5 s is not a budget

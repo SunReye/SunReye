@@ -12,6 +12,7 @@ import {
   classifyUpgrade,
   isPublicLabel,
   isSessionLabel,
+  parseAccess,
   parseArgs,
   planProbes,
   sampleBody,
@@ -660,21 +661,25 @@ describe("planning carries both bodies", () => {
 // attacker finds.
 // ---------------------------------------------------------------------------
 
-describe("the session surface is a closed list", () => {
-  test("a plain signed-in user reaches the session, capabilities, the dashboard reads, the forecast and the sources, nothing else", () => {
-    expect([...SESSION_LABELS].sort()).toEqual(
-      [
-        "DELETE /api/auth/session",
-        "GET /api/auth/session",
-        "GET /api/capabilities",
-        "GET /api/forecast",
-        "GET /api/forecast/usable",
-        "GET /api/history/recent",
-        "GET /api/history/rollup",
-        "GET /api/profile",
-        "GET /api/sources",
-      ].sort(),
-    );
+describe("the route access table", () => {
+  test("a line is METHOD /path access; blank lines and comments are skipped", () => {
+    expect(parseAccess("# note\n\nget /api/a public\nDELETE /api/b/{id}   admin\n")).toEqual([
+      { label: "GET /api/a", access: "public" },
+      { label: "DELETE /api/b/{id}", access: "admin" },
+    ]);
+  });
+
+  test("an unknown access, a missing field and a repeated route are refused", () => {
+    expect(() => parseAccess("GET /api/a everyone")).toThrow(/unknown access everyone/);
+    expect(() => parseAccess("GET /api/a")).toThrow(/METHOD \/path access/);
+    expect(() => parseAccess("GET /api/a public extra")).toThrow(/METHOD \/path access/);
+    expect(() => parseAccess("GET /api/a public\nget /api/a admin")).toThrow(/twice/);
+  });
+});
+
+describe("the session surface", () => {
+  test("a kiosk route is a session route too: the kiosk view only adds strangers", () => {
+    for (const label of KIOSK_LABELS) expect(SESSION_LABELS).toContain(label);
   });
 
   test("no settings read is on it — those are admin", () => {

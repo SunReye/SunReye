@@ -41,6 +41,8 @@
  * Run `bun scripts/route-smoke.ts --help`.
  */
 
+import { readFileSync } from "node:fs";
+
 /**
  * A raw sanity floor on the size of the listing: it catches a document that
  * shrank wholesale — a truncated `/openapi/json`, a route group that failed to
@@ -396,6 +398,54 @@ export function classify(
  */
 export type AuthMode = "anonymous" | "kiosk" | "member" | "authenticated";
 
+/** Who may call a route: one word per line of `crates/sunreye/route-access.txt`. */
+export type Access = "public" | "credential" | "key" | "kiosk" | "session" | "admin";
+
+const ACCESSES: readonly Access[] = ["public", "credential", "key", "kiosk", "session", "admin"];
+
+export interface RouteAccess {
+  /** `METHOD /templated/path`, the identity a failure is reported under. */
+  label: string;
+  access: Access;
+}
+
+const isEntry = (line: string): boolean => line.trim() !== "" && !line.startsWith("#");
+
+function toAccess(word: string, line: string): Access {
+  if (!ACCESSES.includes(word as Access)) {
+    throw new Error(`route-access.txt: unknown access ${word}: ${line}`);
+  }
+  return word as Access;
+}
+
+function parseLine(line: string): RouteAccess {
+  const fields = line.trim().split(/\s+/);
+  if (fields.length !== 3) {
+    throw new Error(`route-access.txt wants \`METHOD /path access\`: ${line}`);
+  }
+  const [method, path, access] = fields as [string, string, string];
+  return { label: `${method.toUpperCase()} ${path}`, access: toAccess(access, line) };
+}
+
+/** Reads `METHOD /path access` lines; blank lines and `#` comments are skipped. */
+export function parseAccess(text: string): RouteAccess[] {
+  const routes = text.split("\n").filter(isEntry).map(parseLine);
+  const seen = new Set<string>();
+  for (const { label } of routes) {
+    if (seen.has(label)) throw new Error(`route-access.txt lists ${label} twice`);
+    seen.add(label);
+  }
+  return routes;
+}
+
+/** Every route the core declares an access for, shared with the core's own web tests. */
+const ROUTE_ACCESS = parseAccess(
+  readFileSync(new URL("../crates/sunreye/route-access.txt", import.meta.url), "utf8"),
+);
+
+const labelsOf = (...accesses: Access[]): string[] =>
+  ROUTE_ACCESS.filter((route) => accesses.includes(route.access)).map((route) => route.label);
+
 /**
  * The closed list of routes that must answer WITHOUT credentials: the pre-auth
  * gates the web shell reads before it knows whether to show a login page.
@@ -407,11 +457,7 @@ export type AuthMode = "anonymous" | "kiosk" | "member" | "authenticated";
  * Anything added here widens the unauthenticated surface. It is a list, not a
  * prefix rule: a prefix would silently adopt the next route mounted under it.
  */
-export const PUBLIC_LABELS: readonly string[] = [
-  "GET /api/setup-status",
-  "GET /api/profile-status",
-  "GET /api/kiosk",
-];
+export const PUBLIC_LABELS: readonly string[] = labelsOf("public");
 
 const PUBLIC_SET = new Set(PUBLIC_LABELS);
 
@@ -421,10 +467,7 @@ const PUBLIC_SET = new Set(PUBLIC_LABELS);
  * is the check answering, not a gate, so the sweep only asks that they answer.
  * The core's own tests hold what each answers to whom.
  */
-export const CREDENTIAL_LABELS: readonly string[] = [
-  "POST /api/auth/sign-up",
-  "POST /api/auth/login",
-];
+export const CREDENTIAL_LABELS: readonly string[] = labelsOf("credential");
 
 /** Whether `METHOD /path` is declared public. Exact match — never a prefix. */
 export const isPublicLabel = (label: string): boolean => PUBLIC_SET.has(label);
@@ -437,17 +480,7 @@ export const isPublicLabel = (label: string): boolean => PUBLIC_SET.has(label);
  * newly mounted route therefore defaults to admin-only, the fail-safe
  * direction.
  */
-export const SESSION_LABELS: readonly string[] = [
-  "DELETE /api/auth/session",
-  "GET /api/auth/session",
-  "GET /api/capabilities",
-  "GET /api/forecast",
-  "GET /api/forecast/usable",
-  "GET /api/history/recent",
-  "GET /api/history/rollup",
-  "GET /api/profile",
-  "GET /api/sources",
-];
+export const SESSION_LABELS: readonly string[] = labelsOf("session", "kiosk");
 
 const SESSION_SET = new Set(SESSION_LABELS);
 
@@ -458,12 +491,7 @@ export const isSessionLabel = (label: string): boolean => SESSION_SET.has(label)
  * The closed list of routes a stranger reaches while the kiosk view is on: the
  * dashboard's reads. `/ws` opens with them. Every other route still refuses.
  */
-export const KIOSK_LABELS: readonly string[] = [
-  "GET /api/capabilities",
-  "GET /api/history/recent",
-  "GET /api/history/rollup",
-  "GET /api/profile",
-];
+export const KIOSK_LABELS: readonly string[] = labelsOf("kiosk");
 
 const KIOSK_SET = new Set(KIOSK_LABELS);
 

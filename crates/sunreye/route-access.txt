@@ -1,0 +1,57 @@
+# Who may call each route: one `METHOD /path access` per line.
+# Every route in the OpenAPI document needs exactly one line; the web tests and
+# `scripts/route-smoke-plan.ts` read it.
+#
+#   public      anyone, no credentials
+#   credential  anyone; the body carries the credentials (sign-up, login)
+#   key         an API key, not a session
+#   kiosk       any session, or anyone while the kiosk view is on
+#   session     any signed-in account
+#   admin       an admin account
+DELETE /api/admin/users/{id} admin
+DELETE /api/auth/session session
+DELETE /api/connections/{id} admin
+DELETE /api/devices/{id} admin
+DELETE /api/settings/profile-sources admin
+DELETE /api/settings/profiles/{id} admin
+GET /api/admin/api-keys admin
+GET /api/admin/users admin
+GET /api/auth/session session
+GET /api/capabilities kiosk
+GET /api/devices admin
+GET /api/forecast session
+GET /api/forecast/providers admin
+GET /api/forecast/usable session
+GET /api/history/recent kiosk
+GET /api/history/rollup kiosk
+GET /api/kiosk public
+GET /api/profile kiosk
+GET /api/profile-status public
+GET /api/profiles admin
+GET /api/settings/inverter admin
+GET /api/settings/profile-sources admin
+GET /api/settings/time-zone admin
+GET /api/settings/weather admin
+GET /api/setup-status public
+GET /api/sources session
+GET /api/v1/entities key
+PATCH /api/connections/{id} admin
+PATCH /api/devices/{id} admin
+POST /api/admin/api-keys admin
+POST /api/admin/api-keys/revoke admin
+POST /api/admin/users admin
+POST /api/auth/login credential
+POST /api/auth/sign-up credential
+POST /api/connections admin
+POST /api/connections/probe admin
+POST /api/connections/scan-units admin
+POST /api/devices admin
+POST /api/settings/inverter/test admin
+POST /api/settings/profile-sources admin
+POST /api/settings/profiles/import admin
+PUT /api/admin/users/{id}/role admin
+PUT /api/settings/active-profile admin
+PUT /api/settings/inverter admin
+PUT /api/settings/kiosk admin
+PUT /api/settings/time-zone admin
+PUT /api/settings/weather admin
