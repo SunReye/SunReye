@@ -35,7 +35,11 @@ tokio = { version = "1", default-features = false, features = [
   "time",
 ] }
 thiserror = "2"
-jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff = { version = "0.2", default-features = false, features = [
+  "std",
+  "tz-system",
+  "tzdb-bundle-always",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
   "fmt",

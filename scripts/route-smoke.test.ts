@@ -235,6 +235,7 @@ describe("the public surface is a closed list", () => {
       "GET /api/profiles",
       "GET /api/settings/inverter",
       "GET /api/settings/weather",
+      "GET /api/settings/time-zone",
       "GET /api/forecast/providers",
     ]) {
       expect(isPublicLabel(label)).toBe(false);
@@ -681,6 +682,7 @@ describe("the session surface is a closed list", () => {
       "GET /api/profiles",
       "GET /api/settings/inverter",
       "GET /api/settings/weather",
+      "GET /api/settings/time-zone",
       "GET /api/forecast/providers",
     ]) {
       expect(isSessionLabel(label)).toBe(false);
