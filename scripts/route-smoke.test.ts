@@ -663,10 +663,17 @@ describe("planning carries both bodies", () => {
 
 describe("the route access table", () => {
   test("a line is METHOD /path access; blank lines and comments are skipped", () => {
-    expect(parseAccess("# note\n\nget /api/a public\nDELETE /api/b/{id}   admin\n")).toEqual([
-      { label: "GET /api/a", access: "public" },
+    expect(parseAccess("# note\n\nDELETE /api/b/{id}   admin\nget /api/a public\n")).toEqual([
       { label: "DELETE /api/b/{id}", access: "admin" },
+      { label: "GET /api/a", access: "public" },
     ]);
+  });
+
+  test("lines out of order are refused, naming the line that breaks the order", () => {
+    expect(() => parseAccess("GET /api/b public\nGET /api/a public")).toThrow(
+      /unsorted: GET \/api\/a after GET \/api\/b/,
+    );
+    expect(() => parseAccess("GET /api/a admin\nDELETE /api/z admin")).toThrow(/unsorted/);
   });
 
   test("an unknown access, a missing field and a repeated route are refused", () => {

@@ -1,18 +1,19 @@
 /**
- * Two branches that each add a route must merge without a conflict.
+ * `.gitattributes` unions `crates/sunreye/route-access.txt`: two branches that each add a route
+ * line merge without a conflict. Only the table is unioned. A union keeps both sides of a line that
+ * both branches changed, so the table parser must reject what that leaves.
  *
- * Every route-adding PR once touched the same lines: module and route
- * registration, the route lists. The factory merges the base into each branch, so
- * a conflict there stops the train. This builds a temporary repo from the real
- * files, adds one route on each of two branches at the same spot, and merges.
+ * Builds a temporary repo from the real table and `.gitattributes`.
  */
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { parseAccess } from "./route-smoke-plan";
 
 const REPO = new URL("../", import.meta.url).pathname;
+const TABLE = "crates/sunreye/route-access.txt";
 
 const git = (cwd: string, ...args: string[]) => {
   const run = Bun.spawnSync(
@@ -33,71 +34,62 @@ const git = (cwd: string, ...args: string[]) => {
   return { code: run.exitCode, out: run.stdout.toString() + run.stderr.toString() };
 };
 
-/** Inserts `line` after the first line matching `anchor`: the same gap on every branch. */
-const after = (anchor: RegExp, line: (name: string) => string) => (text: string, name: string) => {
-  const found = anchor.exec(text);
-  if (!found) throw new Error(`anchor ${anchor} not found`);
-  const end = found.index + found[0].length;
-  return `${text.slice(0, end)}\n${line(name)}${text.slice(end)}`;
-};
-
-const chain =
-  (...steps: ((text: string, name: string) => string)[]) =>
-  (text: string, name: string) =>
-    steps.reduce((acc, step) => step(acc, name), text);
-
-/** What adding a route changes in each shared file. */
-const ADDING_A_ROUTE: Record<string, (text: string, name: string) => string> = {
-  "crates/sunreye/route-access.txt": after(
-    /^[A-Z]+ \/\S+ \w+$/m,
-    (name) => `GET /api/${name} admin`,
-  ),
-  "crates/sunreye/src/web/tests.rs": after(/^mod \w+;$/m, (name) => `mod ${name};`),
-  "crates/sunreye/src/lib.rs": after(/^pub mod \w+;$/m, (name) => `pub mod ${name};`),
-  "crates/sunreye/src/run.rs": after(/^use crate::\w+.*;$/m, (name) => `use crate::${name};`),
-  "crates/sunreye/src/web/mod.rs": chain(
-    after(/^mod \w+;$/m, (name) => `mod ${name};`),
-    after(/^ +\.routes\(routes!\(.*\)\)$/m, (name) => `        .routes(routes!(${name}::read))`),
-  ),
-};
-
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "route-merge-"));
+  git(dir, "init", "-q");
+  for (const file of [".gitattributes", TABLE]) {
+    mkdirSync(dirname(join(dir, file)), { recursive: true });
+    writeFileSync(join(dir, file), readFileSync(join(REPO, file), "utf8"));
+  }
+  expect(git(dir, "add", "-A").code).toBe(0);
+  expect(git(dir, "commit", "-q", "-m", "base").code).toBe(0);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const read = (root: string, file: string) => readFileSync(join(root, file), "utf8");
-const write = (file: string, text: string) => {
-  mkdirSync(dirname(join(dir, file)), { recursive: true });
-  writeFileSync(join(dir, file), text);
-};
+const table = () => readFileSync(join(dir, TABLE), "utf8");
 
-function branchWith(branch: string, name: string) {
-  expect(git(dir, "checkout", "-q", "-b", branch, "base").code).toBe(0);
-  for (const [file, edit] of Object.entries(ADDING_A_ROUTE))
-    write(file, edit(read(dir, file), name));
-  expect(git(dir, "commit", "-q", "-am", `feat: add ${name}`).code).toBe(0);
+/** A commit on its own branch from `base` that rewrites one exact table line. */
+function branch(name: string, edit: (text: string) => string) {
+  expect(git(dir, "checkout", "-q", "-b", name, "base").code).toBe(0);
+  const text = table();
+  const edited = edit(text);
+  expect(edited).not.toBe(text);
+  writeFileSync(join(dir, TABLE), edited);
+  expect(git(dir, "commit", "-q", "-am", name).code).toBe(0);
 }
 
-test("two branches that each add a route merge without a conflict", () => {
-  git(dir, "init", "-q");
-  for (const file of [".gitattributes", ...Object.keys(ADDING_A_ROUTE)])
-    write(file, read(REPO, file));
-  expect(git(dir, "add", "-A").code).toBe(0);
-  expect(git(dir, "commit", "-q", "-m", "base").code).toBe(0);
+const replace = (from: string, to: string) => (text: string) => {
+  expect(text).toContain(`${from}\n`);
+  return text.replace(`${from}\n`, `${to}\n`);
+};
 
-  branchWith("first", "alpha");
-  branchWith("second", "beta");
+test("two branches that each add a route line at one spot merge into a table the parser accepts", () => {
+  branch(
+    "first",
+    replace("GET /api/kiosk public", "GET /api/kiosk public\nGET /api/kiosk/alpha admin"),
+  );
+  branch(
+    "second",
+    replace("GET /api/kiosk public", "GET /api/kiosk public\nGET /api/kiosk/beta admin"),
+  );
   git(dir, "checkout", "-q", "first");
   const merged = git(dir, "merge", "--no-edit", "second");
 
   expect(merged.out).not.toContain("CONFLICT");
   expect(merged.code).toBe(0);
-  for (const file of Object.keys(ADDING_A_ROUTE)) {
-    const text = read(dir, file);
-    expect(text).toContain("alpha");
-    expect(text).toContain("beta");
-    expect(text).not.toContain("<<<<<<<");
-  }
+  const labels = parseAccess(table()).map((route) => route.label);
+  expect(labels).toContain("GET /api/kiosk/alpha");
+  expect(labels).toContain("GET /api/kiosk/beta");
+});
+
+test("two branches that give one route different access merge, and the parser rejects the result", () => {
+  branch("first", replace("GET /api/forecast session", "GET /api/forecast admin"));
+  branch("second", replace("GET /api/forecast session", "GET /api/forecast key"));
+  git(dir, "checkout", "-q", "first");
+  const merged = git(dir, "merge", "--no-edit", "second");
+
+  expect(merged.code).toBe(0);
+  expect(table()).toContain("GET /api/forecast admin\nGET /api/forecast key\n");
+  expect(() => parseAccess(table())).toThrow(/GET \/api\/forecast twice/);
 });

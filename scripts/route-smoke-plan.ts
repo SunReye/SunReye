@@ -427,13 +427,19 @@ function parseLine(line: string): RouteAccess {
   return { label: `${method.toUpperCase()} ${path}`, access: toAccess(access, line) };
 }
 
-/** Reads `METHOD /path access` lines; blank lines and `#` comments are skipped. */
+/**
+ * Reads `METHOD /path access` lines; blank lines and `#` comments are skipped. Lines are sorted by
+ * `METHOD /path` (byte order) and unique.
+ */
 export function parseAccess(text: string): RouteAccess[] {
   const routes = text.split("\n").filter(isEntry).map(parseLine);
   const seen = new Set<string>();
+  let previous = "";
   for (const { label } of routes) {
     if (seen.has(label)) throw new Error(`route-access.txt lists ${label} twice`);
+    if (label < previous) throw new Error(`route-access.txt unsorted: ${label} after ${previous}`);
     seen.add(label);
+    previous = label;
   }
   return routes;
 }

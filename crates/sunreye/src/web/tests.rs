@@ -462,6 +462,7 @@ impl Route {
 
 fn parse_access(text: &str) -> Vec<Route> {
     let mut routes: Vec<Route> = Vec::new();
+    let mut previous = String::new();
     for line in text.lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')) {
         let [method, path, access] = line.split_whitespace().collect::<Vec<_>>()[..] else {
             panic!("route-access.txt wants `METHOD /path access`: {line:?}");
@@ -480,10 +481,25 @@ fn parse_access(text: &str) -> Vec<Route> {
             !routes.iter().any(|r| r.method == method && r.path == path),
             "route-access.txt lists {line:?} twice"
         );
+        let label = format!("{} {path}", method.to_uppercase());
+        assert!(label >= previous, "route-access.txt unsorted: {label} after {previous}");
+        previous = label;
         routes.push(Route { method, path: path.to_owned(), access });
     }
-    routes.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.method.cmp(&b.method)));
     routes
+}
+
+#[test]
+#[should_panic(expected = "route-access.txt unsorted: GET /api/a after GET /api/b")]
+fn a_route_access_table_out_of_order_is_refused() {
+    parse_access("GET /api/b admin\nGET /api/a admin");
+}
+
+#[test]
+fn a_route_access_table_in_order_is_read_in_order() {
+    let table = parse_access("# note\nDELETE /api/b admin\n\nGET /api/a public\n");
+    let read: Vec<_> = table.iter().map(|r| (r.method.as_str(), r.path.as_str())).collect();
+    assert_eq!(read, [("delete", "/api/b"), ("get", "/api/a")]);
 }
 
 /// Every route the core declares an access for.
