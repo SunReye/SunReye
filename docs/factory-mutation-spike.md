@@ -27,12 +27,13 @@ Reviewer blockers that `cargo-mutants` did not reproduce, because it rewrites fu
 - #452 geometry bounds (tilt 90, azimuth +-180, kwp): literals are never mutated. On the pre-fix tree the operator mutants in `above` and `within` were already caught.
 - #452 B1-B3 (temperature length, empty body, `Option<Option>` null): the pre-fix run over `assemble`, `decode`, `apply_pv` and `validate` surfaced none of them.
 - #451 B1-B3 (roster filter, `is_finite` skip, `folded.truncate`): deleted statements and closures are not mutants. Only whole-function stubs exist for `spawn_devices` and `buckets`.
+- #451 weighted-mean blocker (`Fold::value`, mean to sum): a body/operator mutant the oracle tests caught; a full run could have reproduced it.
 - #450 blockers are TypeScript (kinds helper, i18n key, journey cleanup): out of scope.
 
-Mutation testing found test gaps the reviewers missed, all minor. It found none of the blocking findings. Reviewers' by-hand mutants (literal and deleted-line) cover the complement.
+Mutation testing found minor test gaps the reviewers missed. It reproduced none of the blockers on #450 and #452. #451 is unmeasured beyond its 15-mutant sample (0 missed). Reviewers' by-hand mutants (literal and deleted-line) cover the complement.
 
 ## Decision: no gate
 
-- A diff-scoped run costs 15m for 32 mutants. #451 and #452 would need an estimated 77m and 170m unloaded; no budget that fits `scripts/ci` covers them, and a sampled run proves nothing about the unsampled lines.
+- A diff-scoped run costs 15m for 32 mutants. Estimate: mutants x 75s / 2 jobs, unviable ones counted as full cost: about 64m (#451, 102) and 143m (#452, 227) on an idle host. Loaded, the 40m runs extrapolate to about 272m (#451, 15 of 102) and 103m (#452, 88 of 227). No budget that fits `scripts/ci` covers them, and a sampled run proves nothing about the unsampled lines.
 - A 40m cap tests 15-90 mutants and finds minor gaps only, at the price of a baseline that must be load-proof (two flaky or slow tests in `sunreye` already broke it).
-- Not rejected as advice: the missed boundaries above are test gaps worth one ticket. A reviewer may run `cargo mutants --in-diff <diff> --jobs 2 -F <regex>` on a function a PR changed. It is not part of the gate.
+- Deferred: one ticket for the missed boundaries above. Reviewers may run `cargo mutants --in-diff <diff> --jobs 2 -F <regex>` on a function a PR changed; it is not part of the gate.
