@@ -144,7 +144,9 @@ async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive
         let (model, state) = learned_at(hours);
         assert_eq!(core.store.correction(1).await.expect("read"), (model, Some(state)), "{saved}");
         let path = standin.paths.lock().expect("paths")[0].clone();
-        assert!(path.contains(&format!("&timezone={name}&")), "{saved}: {path}");
+        let url = reqwest::Url::parse(&format!("http://archive{path}")).expect("path");
+        let zone = url.query_pairs().find(|(k, _)| k == "timezone").map(|(_, v)| v.into_owned());
+        assert_eq!(zone.as_deref(), Some(name), "{saved}: {path}");
         drop(admin);
         core.stop().await;
     }

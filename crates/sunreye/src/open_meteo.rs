@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use jiff::Timestamp;
 use jiff::civil::Date;
+use reqwest::Url;
 use rustls::pki_types::CertificateDer;
 use serde::Deserialize;
 
@@ -86,13 +87,22 @@ fn archive_url(
     (tilt, azimuth): Plane,
     extras: bool,
     (start, end, zone): (Date, Date, &str),
-) -> String {
-    let vars = vars(extras);
-    format!(
-        "{base}?latitude={}&longitude={}&start_date={start}&end_date={end}&hourly={vars}&tilt={tilt}\
-         &azimuth={azimuth}&wind_speed_unit=ms&timezone={zone}&timeformat=unixtime",
-        location.latitude, location.longitude
-    )
+) -> Result<String, GetError> {
+    let mut url = Url::parse(base).map_err(|e| GetError::Url(format!("{base}: {e}")))?;
+    url.query_pairs_mut().extend_pairs([
+        ("latitude", location.latitude.to_string()),
+        ("longitude", location.longitude.to_string()),
+        ("start_date", start.to_string()),
+        ("end_date", end.to_string()),
+        ("hourly", vars(extras)),
+        ("tilt", tilt.to_string()),
+        ("azimuth", azimuth.to_string()),
+        ("wind_speed_unit", "ms".into()),
+        // Encoded: a `+` in `Etc/GMT+5` would otherwise arrive as a space.
+        ("timezone", zone.into()),
+        ("timeformat", "unixtime".into()),
+    ]);
+    Ok(url.into())
 }
 
 fn decode(body: &[u8]) -> Result<Response, FetchError> {
@@ -184,7 +194,7 @@ pub async fn fetch_archive(
 ) -> Result<Irradiance, FetchError> {
     let mut responses = Vec::new();
     for (i, plane) in unique(planes).into_iter().enumerate() {
-        let url = archive_url(base, location, plane, i == 0, days);
+        let url = archive_url(base, location, plane, i == 0, days)?;
         responses.push((plane, decode_archive(&get_with_roots(&url, ARCHIVE_LIMITS, roots).await?)?));
     }
     assemble(location, planes, &responses)
@@ -219,18 +229,49 @@ mod tests {
 
     #[test]
     fn an_archive_request_names_the_days_in_the_plant_zone_hourly_in_unix_time() {
-        assert_eq!(
-            archive_url(
-                "https://x/v1/archive",
-                HERE,
-                (30.0, -90.0),
-                true,
-                (date(2026, 7, 1), date(2026, 7, 3), "Asia/Kathmandu")
+        let url = archive_url(
+            "https://x/v1/archive",
+            HERE,
+            (30.0, -90.0),
+            true,
+            (date(2026, 7, 1), date(2026, 7, 3), "Asia/Kathmandu"),
+        )
+        .expect("base");
+        let url = Url::parse(&url).expect("url");
+        assert_eq!(url.as_str().split('?').next(), Some("https://x/v1/archive"));
+        let pairs: Vec<(String, String)> = url.query_pairs().map(|(k, v)| (k.into(), v.into())).collect();
+        let expected = [
+            ("latitude", "50.5"),
+            ("longitude", "8.25"),
+            ("start_date", "2026-07-01"),
+            ("end_date", "2026-07-03"),
+            (
+                "hourly",
+                "global_tilted_irradiance_instant,direct_normal_irradiance_instant,temperature_2m,wind_speed_10m",
             ),
-            "https://x/v1/archive?latitude=50.5&longitude=8.25&start_date=2026-07-01&end_date=2026-07-03\
-             &hourly=global_tilted_irradiance_instant,direct_normal_irradiance_instant,temperature_2m,wind_speed_10m\
-             &tilt=30&azimuth=-90&wind_speed_unit=ms&timezone=Asia/Kathmandu&timeformat=unixtime"
-        );
+            ("tilt", "30"),
+            ("azimuth", "-90"),
+            ("wind_speed_unit", "ms"),
+            ("timezone", "Asia/Kathmandu"),
+            ("timeformat", "unixtime"),
+        ]
+        .map(|(k, v)| (k.to_owned(), v.to_owned()));
+        assert_eq!(pairs, expected);
+    }
+
+    #[test]
+    fn an_archive_request_keeps_the_plus_in_a_fixed_offset_zone() {
+        let url = archive_url(
+            "https://x/v1/archive",
+            HERE,
+            (30.0, 0.0),
+            false,
+            (date(2026, 7, 1), date(2026, 7, 3), "Etc/GMT+5"),
+        )
+        .expect("base");
+        let url = Url::parse(&url).expect("url");
+        let zone = url.query_pairs().find(|(k, _)| k == "timezone").map(|(_, v)| v.into_owned());
+        assert_eq!(zone.as_deref(), Some("Etc/GMT+5"));
     }
 
     #[test]
