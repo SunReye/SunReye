@@ -205,20 +205,37 @@ fn a_connection_is_pinged_every_30_s_closed_after_120_s_silent_and_64_are_served
     assert_eq!(Config::default().live, want);
 }
 
+/// Subscribes to nothing; the pings that arrive before the ack, which also keeps the client heard.
+async fn pings_before_ack(socket: &mut Socket) -> usize {
+    send_text(socket, r#"{"t":"sub","topics":[]}"#).await;
+    let mut pings = 0;
+    loop {
+        match socket.next().await.expect("open").expect("frame") {
+            Message::Ping(_) => pings += 1,
+            Message::Text(_) => return pings,
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+}
+
 #[tokio::test]
 async fn the_server_pings_and_a_client_that_answers_stays_open() {
     let (core, admin) = open(&dir("ws-ping")).await;
     let addr = serve(&core, &quick()).await;
     let mut socket = connect(addr, &admin).await;
-    // Eight pings take at least 800 ms of the server's clock, past two idle timeouts: a client the
-    // server did not keep alive would be closed before the last. The bound only ends a silent wait.
-    for _ in 0..8 {
-        let next = tokio::time::timeout(Duration::from_secs(20), socket.next()).await;
-        match next.expect("a ping").expect("open").expect("frame") {
-            Message::Ping(_) => {}
-            other => panic!("unexpected {other:?}"),
+    // One second of virtual time in 10 ms steps: a 100 ms interval pings 10 times, give or take the
+    // one tick at each edge that races the subscribe whose ack flushes the pings sent before it.
+    tokio::time::pause();
+    pings_before_ack(&mut socket).await;
+    let mut pings = 0;
+    for step in 1..=100 {
+        tokio::time::advance(Duration::from_millis(10)).await;
+        if step % 5 == 0 {
+            pings += pings_before_ack(&mut socket).await;
         }
     }
+    tokio::time::resume();
+    assert!((8..=12).contains(&pings), "{pings} pings in 1 s at a 100 ms interval");
     let ack = subscribe(&mut socket, r#"["metrics"]"#).await;
     assert_eq!(ack["data"]["subscribed"], json!(["metrics"]), "open past three idle timeouts");
     drop(admin);
