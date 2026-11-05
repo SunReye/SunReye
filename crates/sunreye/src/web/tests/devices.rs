@@ -151,11 +151,12 @@ async fn a_device_is_renamed_retired_and_restored_by_id() {
     );
 
     post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
+    let before = core.now_ms();
     let retired = patch(&admin, "/api/devices/2", &json!({"retired": true})).await.json();
+    let after = core.now_ms();
     assert_eq!(retired["state"], "retired");
     let at: jiff::Timestamp = retired["retiredAt"].as_str().expect("retiredAt").parse().expect("ISO instant");
-    let now = jiff::Timestamp::now();
-    assert!(at <= now && now.duration_since(at).as_secs() < 60, "{at}");
+    assert!((before..=after).contains(&at.as_millisecond()), "retired at {at}, between {before} and {after}");
     let restored = patch(&admin, "/api/devices/2", &json!({"retired": false})).await.json();
     assert_eq!(
         (&restored["state"], &restored["retiredAt"], &restored["name"]),

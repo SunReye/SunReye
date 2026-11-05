@@ -402,9 +402,12 @@ async fn a_stalled_file_is_cut_off_by_the_time_budget_not_the_request_timeout() 
     let instead = BTreeMap::from([(stalled, Instead::Stall)]);
     let port = serve_site_with(&ca, site(&files), instead).await;
     let budget = Budget { time: Duration::from_millis(400), ..BUDGET };
-    let started = std::time::Instant::now();
-    let fetched = fetch(&source(port), limits(), budget, &[ca.root()], |_| false).await.expect("fetched");
-    assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    // The request timeout is an hour, so only the budget can end the stall; the 20 s bound ends a hang.
+    let patient = Limits { timeout: Duration::from_hours(1), ..limits() };
+    let (source, roots) = (source(port), [ca.root()]);
+    let fetching = fetch(&source, patient, budget, &roots, |_| false);
+    let fetched = tokio::time::timeout(Duration::from_secs(20), fetching).await;
+    let fetched = fetched.expect("the budget cut the stall off").expect("fetched");
     assert_eq!(fetched.skipped[0].reason, "timed out");
     assert_eq!(fetched.skipped[1].reason, "the source took longer than 400ms");
 }

@@ -72,7 +72,8 @@ fn minutes(samples: Vec<Sample>) -> Vec<ClosedMinute> {
 }
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("rollup-restart-{name}"));
+    let dir =
+        Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("rollup-restart-{name}-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }

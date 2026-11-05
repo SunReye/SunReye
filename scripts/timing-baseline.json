@@ -14,18 +14,5 @@
   "apps/web/e2e/setup-toast-clearance.spec.ts": 1,
   "apps/web/e2e/shell-lease-loop.spec.ts": 2,
   "apps/web/e2e/statistics-live-refresh.spec.ts": 3,
-  "apps/web/e2e/ws-reconnect-backoff.spec.ts": 2,
-  "crates/sim/tests/simulator.rs": 1,
-  "crates/sunreye/src/modbus/solarman.rs": 1,
-  "crates/sunreye/src/run.rs": 5,
-  "crates/sunreye/src/web/password.rs": 3,
-  "crates/sunreye/src/web/tests.rs": 2,
-  "crates/sunreye/src/web/tests/devices.rs": 1,
-  "crates/sunreye/src/web/tests/kiosk.rs": 2,
-  "crates/sunreye/src/web/tests/reads.rs": 1,
-  "crates/sunreye/src/web/tests/ws.rs": 1,
-  "crates/sunreye/tests/cli.rs": 1,
-  "crates/sunreye/tests/https.rs": 3,
-  "crates/sunreye/tests/profile_sources.rs": 1,
-  "crates/sunreye/tests/support/mod.rs": 1
+  "apps/web/e2e/ws-reconnect-backoff.spec.ts": 2
 }

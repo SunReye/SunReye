@@ -83,7 +83,7 @@ fn stop(mut running: Running) {
 }
 
 fn data_dir() -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("onboarding");
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("onboarding-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     dir
 }
@@ -183,7 +183,7 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
 
 #[tokio::test]
 async fn the_running_core_advertises_history_and_profile_sources_and_serves_the_sources_the_spa_then_shows() {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("capabilities");
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("capabilities-{}", std::process::id()));
     drop(std::fs::remove_dir_all(&dir));
     let running = start(&dir);
     let addr = running.addr;
