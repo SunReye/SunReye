@@ -7,7 +7,7 @@
  * the options the pool asked for, and that a refused broker schedules a retry
  * which neither holds the process open nor outlives a release.
  */
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { createServer } from "node:net";
 
 import { brokerPool } from "./broker-pool-instance";
@@ -30,11 +30,37 @@ async function until(check: () => boolean, ms = 3_000): Promise<void> {
   }
 }
 
+/** The pool's first retry delay: how a retry it armed is told from `mqtt`'s own timers. */
+const RETRY_DELAY_MS = 1_000;
+
+/** Every retry timer the pool armed, and every timer cancelled, while the test runs. */
+function watchRetries() {
+  const armed: unknown[] = [];
+  const cancelled: unknown[] = [];
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const set = spyOn(globalThis, "setTimeout").mockImplementation(((
+    ...args: Parameters<typeof setTimeout>
+  ) => {
+    const timer = realSet(...args);
+    if (args[1] === RETRY_DELAY_MS) armed.push(timer);
+    return timer;
+  }) as typeof setTimeout);
+  const clear = spyOn(globalThis, "clearTimeout").mockImplementation(((
+    timer?: Parameters<typeof clearTimeout>[0],
+  ) => {
+    cancelled.push(timer);
+    return realClear(timer);
+  }) as typeof clearTimeout);
+  return { armed, cancelled, stop: () => (set.mockRestore(), clear.mockRestore()) };
+}
+
 afterAll(() => brokerPool.close());
 
 describe("the process's broker pool", () => {
   test("a refused broker is reported as an error on its connection, never as connected", async () => {
     const port = await closedPort();
+    const retries = watchRetries();
     const link = brokerPool.acquire(
       9_001,
       {
@@ -48,9 +74,14 @@ describe("the process's broker pool", () => {
     await until(() => link.status().lastError !== null);
     expect(link.status().connected).toBe(false);
     // The close that follows the refusal arms a retry; a release must cancel it.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await link.release();
-    expect(brokerPool.status(9_001)).toBeNull();
+    try {
+      await until(() => retries.armed.length > 0);
+      await link.release();
+      expect(retries.cancelled).toContain(retries.armed[0]);
+      expect(brokerPool.status(9_001)).toBeNull();
+    } finally {
+      retries.stop();
+    }
   });
 
   test("a connection with no client id or will still dials", async () => {

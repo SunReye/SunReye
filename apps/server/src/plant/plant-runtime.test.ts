@@ -45,6 +45,9 @@ function recorder(overrides: Partial<PlantRuntimeDeps> = {}) {
   return { order, deps, ctx, plantLive };
 }
 
+/** One macrotask turn: every pending microtask has run. */
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 describe("boot", () => {
   test("provisions, seeds the broker, reads the roster, THEN builds the context", async () => {
     // Provisioning creates the rows the roster reads; the broker needs the plant
@@ -155,7 +158,7 @@ describe("start", () => {
     const booted = await createPlantRuntime(deps).boot();
     order.length = 0;
     const started = booted.start(() => false);
-    await Bun.sleep(0);
+    await turn();
     expect(order).toEqual([]);
     resolveStart();
     await started;
@@ -193,7 +196,7 @@ describe("afterPlantWrite", () => {
     const written = createPlantRuntime(deps)
       .afterPlantWrite()
       .then(() => void (settled = true));
-    await Bun.sleep(0);
+    await turn();
     expect(settled).toBe(false);
     resolveRebuild();
     await written;

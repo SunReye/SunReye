@@ -39,7 +39,7 @@ function harness(
     staleAfterMs: 5_000,
     membersTtlMs: 1_000,
   });
-  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const tick = () => new Promise<void>((r) => setImmediate(r));
   return {
     streams,
     published,
