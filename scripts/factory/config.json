@@ -95,14 +95,8 @@
     ],
     "train_gate": [
       [
-        "bun",
-        "run",
-        "e2e:types"
-      ],
-      [
-        "bun",
-        "run",
-        "e2e"
+        "scripts/ci",
+        "--train"
       ]
     ]
   }

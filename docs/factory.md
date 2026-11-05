@@ -2,7 +2,7 @@
 
 The factory takes labelled GitHub tickets through implementation, review and integration. One Claude Code session runs `/loop /factory`; deterministic scripts own slots, tracker state and merges. It opens and merges real PRs when running. Copying or configuring it does not start it.
 
-SunReye's profile targets `v4` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot; the train gate adds the browser suite. `factory merge` trusts that green run (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
+SunReye's profile targets `v4` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot (about 5 minutes on a warm `target/`); the train gate adds the slow checks: coverage and its floors, budgets and the browser suite. `factory merge` trusts those green runs (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
 
 ## Configuration
 
@@ -70,19 +70,46 @@ Implementer shells are reniced using `slot_nice`; the merge slot keeps normal pr
 | Control | Setting |
 | --- | --- |
 | Rust builds in a slot | `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_{DEV,TEST}_DEBUG=line-tables-only`, `CARGO_BUILD_JOBS=cargo_build_jobs`, `CARGO_TARGET_DIR=<slot>/target` (never shared across slots) |
-| Android toolchain | machine-wide under `~/.cache/sunreye-targets` (about 2 GB), installed once by `scripts/setup-targets`; `scripts/ci` fails naming it when it is missing |
+| Android toolchain | machine-wide under `~/.cache/sunreye-targets` (about 2 GB), installed once by `scripts/setup-targets`; used only by the manual `scripts/target-gate` before a release, never by `scripts/ci` |
 | Checkout | `git clean` keeps `target/` and `node_modules` |
-| After every agent | `factory release` deletes `clean_paths` (`target/`), and `node_modules` above `slot_node_modules_cap_gb` |
+| After every agent | `factory release` keeps `clean_paths` (`target/`) while free disk is at or above `disk_pause_free_gb` (green) and deletes them below it; `node_modules` above `slot_node_modules_cap_gb` goes either way |
 | Each tick | free disk below `disk_pause_free_gb` (30): `gc`, no new tickets · below `disk_critical_free_gb` (15): `gc --aggressive`, no build work |
-| `gc` | cleans idle slots, removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune`, removes the reviewers' shared `~/.cache/sunreye-review-target` when no review runs and free disk is below `disk_pause_free_gb` |
-| `scripts/ci` | heavy steps hold one of `CI_HEAVY_CAP` (2) machine-wide locks; database and route smoke share one exclusive lock |
+| `gc` | cleans idle slots (always deletes `clean_paths`), removes slot dirs outside the configured pool, prunes worktrees, deletes merged `factory/*` branches, `docker image prune`, removes the reviewers' shared `~/.cache/sunreye-review-target` when no review runs and free disk is below `disk_pause_free_gb` |
+| `scripts/ci` | skips heavy steps the change cannot affect (see Gate scope); heavy steps hold one of `CI_HEAVY_CAP` (2) machine-wide locks; database and route smoke share one exclusive lock |
 
 Never deleted: your own checkouts and their `target/`. Budget about 15 GB free disk per extra implementer slot.
+
+### Gate scope
+
+`scripts/ci` is the per-PR gate. It always runs: agent guides, install, tests required, lint, typecheck, migration drift, mock hygiene, unit tests and factory tests (no coverage). It runs the heavy steps the change can affect: `rust` (fmt, sqlx cache, clippy, Rust tests), `build`, `components`, `db` and `routes`.
+
+| Mode | Runs |
+| --- | --- |
+| `scripts/ci` | the per-PR gate above |
+| `scripts/ci --train` | what the train adds, once per train: `test:coverage` and `test:floor`, `test:coverage:rust` and `test:floor:rust` (when `rust` is selected), `budgets`, and `e2e` (types, browser suite, and `e2e:core` when `e2e` or `rust` is selected) |
+| `scripts/ci --full` | both, with the tests run once, under coverage; every heavy step regardless of the diff |
+| `scripts/ci --e2e` | the per-PR gate plus the browser suite |
+
+The factory's gate is `scripts/ci`; the train gate runs it, then `scripts/ci --train`. A coverage, floor, budget or browser failure fails the train and drops the responsible PR like any other train failure. The Android build (`scripts/target-gate`) is in no mode: run it by hand before a release.
+
+`scripts/ci-scope.ts` maps the changed paths (`git diff --name-only <base>...HEAD` plus staged, unstaged and untracked files) to the steps `rust`, `build`, `budgets`, `components`, `db`, `routes` and `e2e`. Its rule table is the reference.
+
+| Changed path | Steps |
+| --- | --- |
+| docs, root `*.md`, `.claude/`, `.agents/`, `nixos/`, `sunreye*/`, `scripts/factory/` (not `config.json`), `scripts/oracle/` | none |
+| `crates/` | rust, budgets, routes |
+| `fixtures/` | rust, db, budgets, e2e |
+| `apps/web/` | build, budgets, components, e2e |
+| `apps/server/`, `packages/` | build, budgets, components, e2e, db |
+| `crates/sunreye/openapi_snapshot.json` | the `crates/` steps and the web steps |
+| `scripts/ci`, the scope table and its helper, `scripts/factory/config.json`, root manifests, lockfiles, unknown paths, an empty diff | every step |
+
+A skipped step prints `skip <step>: <rule>` and is absent from the timings. `CI_SCOPE_BASE` replaces the diff base for selection only. Add a path rule only with the step that reads it: a rule that skips a step something reads hides the break.
 
 ## Integration
 
 1. `factory train` selects up to `max_train_prs` approved PRs, largest first, and merges them onto `factory/train` from the configured base in the merge slot. Ordinary conflicts drop a PR with an integration note; only configured generated conflicts keep the train's version for regeneration.
-2. The integrator regenerates, commits any resulting changes, runs the configured train gate (`gate --train --detach`, then `gate-wait` until an exit code) and all other required checks. On failure it can drop the responsible PR and rebuild. No passing gate means no landing, regardless of elapsed time.
+2. The integrator regenerates, commits any resulting changes, runs the configured train gate (`gate --train --detach`, then `gate-wait` until an exit code; it runs `scripts/ci`, then `scripts/ci --train`) and all other required checks. On failure it can drop the responsible PR and rebuild. No passing gate means no landing, regardless of elapsed time.
 3. `factory land` checks base-tree and PR-head freshness before each push. It pushes integrated PR branches normally and merges through the GitHub API with the exact head SHA. Hosted checks on the pushed head must be green when `require_ci` is true. Pending checks leave the PR in `factory:merging` for a later tick. The base tree must finally equal the verified train tree.
 
 The base must not move during a train. A moved base or head causes landing to stop; remaining PRs need fresh integration. Dropped PRs return to changes; unreached approved PRs wait for the next train. Existing `.gitattributes` union rules combine append-only app notes; root and package guides retain normal conflict handling.

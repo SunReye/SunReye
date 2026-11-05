@@ -274,8 +274,8 @@ def disk(store):
     return {"free_gb": round(free, 1), "level": level}
 
 
-def clean_slot(store, slot, aggressive=False):
-    """Shrink an idle slot: drop configured local state, and node_modules over cap."""
+def clean_slot(store, slot, aggressive=False, keep_clean_paths=False):
+    """Shrink an idle slot: drop configured local state (unless kept), and node_modules over cap."""
     path = store.slot_path(slot)
     root = path.resolve()
     targets = []
@@ -284,13 +284,15 @@ def clean_slot(store, slot, aggressive=False):
         if Path(name).is_absolute() or target == root or root not in target.parents:
             raise SystemExit(f"unsafe cleanup path: {name}")
         targets.append(target)
-    for target in targets:
-        shutil.rmtree(target, ignore_errors=True)
+    if not keep_clean_paths:
+        for target in targets:
+            shutil.rmtree(target, ignore_errors=True)
+    report = {"slot": slot, "clean_paths": "kept" if keep_clean_paths else "removed"}
     size = dir_size(path / "node_modules")
     if aggressive or size > store.cfg["slot_node_modules_cap_gb"] * GB:
         shutil.rmtree(path / "node_modules", ignore_errors=True)
-        return {"slot": slot, "node_modules_gb": round(size / GB, 1), "action": "node_modules removed"}
-    return {"slot": slot, "node_modules_gb": round(size / GB, 1), "action": "kept"}
+        return {**report, "node_modules_gb": round(size / GB, 1), "action": "node_modules removed"}
+    return {**report, "node_modules_gb": round(size / GB, 1), "action": "kept"}
 
 
 def remove_orphan_slots(store):

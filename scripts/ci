@@ -2,10 +2,20 @@
 # The merge gate. Hosted workflows run only on manual dispatch: implementers, the integrator and
 # people run this locally, and `scripts/factory/factory merge` trusts their green run.
 #
-# Usage: scripts/ci [--e2e]
-#   --e2e  also run the Playwright browser suite (~10 min).
+# Usage: scripts/ci [--train] [--full] [--e2e]
+#   (none)   the per-PR gate, built to finish in 5 minutes on a warm target/: agent guides, install,
+#            tests required, lint, typecheck, migration drift, mock hygiene, unit and Rust tests
+#            without coverage, cargo fmt, sqlx cache and clippy, factory scripts, and the build,
+#            component tests, database tests and route smoke the change can affect.
+#   --train  only the checks that run once per train, after the per-PR gate: coverage and its
+#            floors (TypeScript and Rust), budgets and the browser suite.
+#   --full   both: everything, with the tests run once, under coverage.
+#   --e2e    also run the Playwright browser suite (~10 min) in the per-PR gate.
+# A change can skip a heavy step it cannot affect (scripts/ci-scope.ts); --full runs them all.
+# The Android build (scripts/target-gate) is a manual pre-release step, not part of any mode.
 #
-# Base: `base` in scripts/factory/config.json, compared against origin/<base>.
+# Base: `base` in scripts/factory/config.json, compared against origin/<base>. CI_SCOPE_BASE
+# replaces it for step selection only. A skipped step prints one `skip` line naming the rule.
 # Heavy steps hold one of CI_HEAVY_CAP (2) machine-wide locks, so factory slots queue instead of
 # fighting for cores and disk. The database and route-smoke steps also hold one exclusive lock: both
 # start throwaway TimescaleDB containers on fixed ports.
@@ -13,11 +23,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-e2e=0
+pr=1 train=0 e2e=0
+full_flags=()
 for arg in "$@"; do
   case $arg in
+    --train) pr=0 train=1 ;;
+    --full) train=1 full_flags=(--full) ;;
     --e2e) e2e=1 ;;
-    *) echo "usage: scripts/ci [--e2e]" >&2; exit 2 ;;
+    *) echo "usage: scripts/ci [--train] [--full] [--e2e]" >&2; exit 2 ;;
   esac
 done
 
@@ -43,6 +56,9 @@ report() {
 }
 trap report EXIT
 step() { finish; current=$*; started=$SECONDS; printf '\n== %s\n' "$*"; }
+
+# shellcheck source=lib/ci-scope.sh
+source scripts/lib/ci-scope.sh
 
 # db_tests: TimescaleDB on $db_port (host network: bridged containers fail on the LXC host), then the
 # database suite with CI=1 so an unreachable database fails instead of skipping.
@@ -75,80 +91,116 @@ heavy() {
   done
 }
 
-step "agent guides"
-# AGENTS.md files hold routing and rules, set by a person: AGENTS_EDIT=1 allows a deliberate edit.
 git fetch -q origin "${base#origin/}"
-if [[ -z ${AGENTS_EDIT:-} ]] && git diff --name-only "$base"...HEAD | grep -E '(^|/)AGENTS\.md$'; then
-  echo "AGENTS.md changed: feature notes do not belong there. Revert it (a deliberate edit sets AGENTS_EDIT=1)." >&2
-  exit 1
+# After the fetch, so the base is current. Staged, unstaged and untracked files count: the gate runs
+# before the commit.
+scope_load --base "${CI_SCOPE_BASE:-$base}" "${full_flags[@]}"
+
+if ((pr)); then
+  step "agent guides"
+  # AGENTS.md files hold routing and rules, set by a person: AGENTS_EDIT=1 allows a deliberate edit.
+  if [[ -z ${AGENTS_EDIT:-} ]] && git diff --name-only "$base"...HEAD | grep -E '(^|/)AGENTS\.md$'; then
+    echo "AGENTS.md changed: feature notes do not belong there. Revert it (a deliberate edit sets AGENTS_EDIT=1)." >&2
+    exit 1
+  fi
 fi
 
 step install
 bun install --frozen-lockfile
 
-step "tests required"
-bun scripts/require-tests.ts "$(git merge-base "$base" HEAD)"
+if ((pr)); then
+  step "tests required"
+  bun scripts/require-tests.ts "$(git merge-base "$base" HEAD)"
 
-step "lint and format"
-bunx oxlint
-bunx oxfmt --check
-bun run test:timing
-bunx fallow --quiet
+  step "lint and format"
+  bunx oxlint
+  bunx oxfmt --check
+  bun run test:timing
+  bunx fallow --quiet
 
-step typecheck
-SKIP_ENV_VALIDATION=1 bun run check-types
-bun run --cwd apps/web i18n:lint
-SKIP_ENV_VALIDATION=1 bun run --cwd apps/web check
+  step typecheck
+  SKIP_ENV_VALIDATION=1 bun run check-types
+  bun run --cwd apps/web i18n:lint
+  SKIP_ENV_VALIDATION=1 bun run --cwd apps/web check
 
-step "migration drift"
-(
-  cd packages/db
-  bunx drizzle-kit check
-  bunx drizzle-kit generate
-  if [[ -n $(git status --porcelain src/migrations) ]]; then
-    echo "schema changed without a committed migration: run 'bun run db:generate' in packages/db" >&2
-    exit 1
+  step "migration drift"
+  (
+    cd packages/db
+    bunx drizzle-kit check
+    bunx drizzle-kit generate
+    if [[ -n $(git status --porcelain src/migrations) ]]; then
+      echo "schema changed without a committed migration: run 'bun run db:generate' in packages/db" >&2
+      exit 1
+    fi
+  )
+
+  step "mock hygiene"
+  bun run test:mocks
+fi
+
+# Coverage runs every test, so a train run never repeats them; the per-PR gate runs them bare.
+if ((train)); then
+  step "unit tests and coverage"
+  heavy bun run test:coverage
+  bun run test:floor
+elif ((pr)); then
+  step "unit tests"
+  heavy bun run test:unit
+fi
+
+if scoped rust "rust"; then
+  if ((pr)); then
+    heavy scripts/rust-gate
   fi
-)
+  if ((train)); then
+    heavy bun run test:coverage:rust
+    bun run test:floor:rust
+  elif ((pr)); then
+    heavy bun run test:rust
+  fi
+fi
 
-step "unit tests and coverage"
-bun run test:mocks
-heavy bun run test:coverage
-bun run test:floor
+if ((pr)); then
+  step "factory scripts"
+  bun run test:factory
 
-step "rust"
-heavy scripts/rust-gate
-heavy bun run test:coverage:rust
-bun run test:floor:rust
+  if scoped build "build"; then
+    heavy env SKIP_ENV_VALIDATION=1 bun run build
+  fi
 
-step "android build"
-heavy scripts/target-gate
+  if scoped components "component tests"; then
+    bun scripts/ensure-browser.ts
+    heavy bun run test:components
+  fi
 
-step "factory scripts"
-bun run test:factory
+  export -f db_tests
+  if scoped db "database tests"; then
+    heavy flock "$locks/database" bash -c db_tests
+  fi
+  if scoped routes "route smoke"; then
+    heavy flock "$locks/database" bun run test:routes
+  fi
+fi
 
-step build
-heavy env SKIP_ENV_VALIDATION=1 bun run build
+if ((train)); then
+  if scoped budgets "budgets"; then
+    # Release binary with the real SPA, then repeated logins against the simulator (docs/adr/0006).
+    heavy bun run test:budgets
+  fi
+fi
 
-step budgets
-# Release binary with the real SPA, then repeated logins against the simulator (docs/adr/0006).
-heavy bun run test:budgets
-
-step "component tests"
-bun scripts/ensure-browser.ts
-heavy bun run test:components
-
-step "database and route smoke"
-export -f db_tests
-heavy flock "$locks/database" bash -c db_tests
-heavy flock "$locks/database" bun run test:routes
-
-if ((e2e)); then
-  step e2e
-  bun run e2e:types
-  heavy bun run e2e
-  # The real core binary and the simulator, no faked backend.
-  heavy bun run --cwd apps/web e2e:core
+if ((train || e2e)); then
+  if scoped e2e "e2e"; then
+    bun run e2e:types
+    heavy bun run e2e
+  fi
+  # The real core binary and the simulator, no faked backend: a core change moves it too.
+  if selected e2e || selected rust; then
+    step "e2e core"
+    heavy bun run --cwd apps/web e2e:core
+  else
+    echo "skip e2e core: ${scope_reason[rust]}"
+  fi
 fi
 
 step "ci green"
