@@ -19,9 +19,11 @@ const { core } = await import("./core-api");
 async function request(path: "/api/history/rollup" | "/api/auth/session", status: number) {
   const fetch = (async () => new Response("{}", { status })) as unknown as typeof globalThis.fetch;
   await core.GET(path as "/api/auth/session", { fetch });
-  // The bounce loads `$app/navigation` lazily: this import queues behind the bounce's own,
-  // so once it resolves the bounce has either called `goto` or never will.
+  // The bounce loads `$app/navigation` lazily. Awaiting the import settles the first load; the
+  // macrotask turn drains every further `import().then(goto)` chained behind it, so a second
+  // `goto` lands before the assertion.
   await import("$app/navigation");
+  await new Promise<void>((r) => setImmediate(r));
 }
 
 const realLocation = globalThis.location;

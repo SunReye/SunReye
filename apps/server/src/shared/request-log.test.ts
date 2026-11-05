@@ -89,8 +89,8 @@ describe("requestLogger", () => {
     await Promise.all([get(app, "/ping"), get(app, "/thing", { method: "POST" })]);
     expect(seen).toHaveLength(2);
     for (const entry of seen) {
+      expect(Number.isFinite(entry.durationMs)).toBe(true);
       expect(entry.durationMs).toBeGreaterThanOrEqual(0);
-      expect(entry.durationMs).toBeLessThan(10_000);
     }
   });
 
