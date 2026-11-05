@@ -82,7 +82,7 @@ Never deleted: your own checkouts and their `target/`. Budget about 15 GB free d
 ## Integration
 
 1. `factory train` selects up to `max_train_prs` approved PRs, largest first, and merges them onto `factory/train` from the configured base in the merge slot. Ordinary conflicts drop a PR with an integration note; only configured generated conflicts keep the train's version for regeneration.
-2. The integrator regenerates, commits any resulting changes, runs the configured train gate and all other required checks. On failure it can drop the responsible PR and rebuild. No passing gate means no landing, regardless of elapsed time.
+2. The integrator regenerates, commits any resulting changes, runs the configured train gate (`gate --train --detach`, then `gate-wait` until an exit code) and all other required checks. On failure it can drop the responsible PR and rebuild. No passing gate means no landing, regardless of elapsed time.
 3. `factory land` checks base-tree and PR-head freshness before each push. It pushes integrated PR branches normally and merges through the GitHub API with the exact head SHA. Hosted checks on the pushed head must be green when `require_ci` is true. Pending checks leave the PR in `factory:merging` for a later tick. The base tree must finally equal the verified train tree.
 
 The base must not move during a train. A moved base or head causes landing to stop; remaining PRs need fresh integration. Dropped PRs return to changes; unreached approved PRs wait for the next train. Existing `.gitattributes` union rules combine append-only app notes; root and package guides retain normal conflict handling.
@@ -114,5 +114,10 @@ Inspect progress with `scripts/factory/factory status`. Esc stops new dispatch; 
 bun run test:factory
 bun run test
 ```
+
+Agents run the gate detached so the turn stays open while it runs:
+
+- `scripts/factory/factory gate [--train] --detach` starts it, logs to `.factory/logs/gate-<slot>.log`, writes the exit code to `gate-<slot>.exit` and prints both paths. A second start in the slot is refused while the gate runs; otherwise it kills the previous gate's process group and clears its log and exit file.
+- `scripts/factory/factory gate-wait [--slot S]` blocks up to 9 minutes and prints `running`, or the exit code with the log tail on failure; loop it until it prints an exit code.
 
 Factory tests use temporary Git repositories and a GitHub stand-in: they exercise setup, reuse, cleanup, command failure, CI waiting, train tree equality, stale bases and heads, and the real hook's stdin/exit-code contract. They do not call GitHub or start app servers. `scripts/ci` runs the factory tests alongside the other repo checks. `check-result-lines` checks the agent/dispatcher reporting contract; it does not replace behavioral tests.

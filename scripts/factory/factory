@@ -2,7 +2,9 @@
 """Factory control plane: one JSON answer per call. Usage: scripts/factory/factory <command> [args]
 
   config                        show repository configuration (no authentication)
-  gate [--train]                run local gates, plus train gates when requested
+  gate [--train] [--detach]     run local gates, plus train gates when requested;
+                                --detach: run in the background, print the log and exit-file paths
+  gate-wait [--slot S]          wait up to 9 minutes for a detached gate: running, or its exit code and log tail
   regenerate                    run configured regeneration commands
   setup                         create labels, slot dirs
   status                        snapshot for one loop tick
@@ -30,6 +32,7 @@
 
 import fnmatch
 import json
+import os
 import subprocess
 import sys
 import time
@@ -533,9 +536,26 @@ def main(argv):
     if cmd == "config":
         out(CFG)
         return
+    if cmd == "gate-wait":
+        slot = os.environ.get("FACTORY_SLOT")
+        if args[:1] == ["--slot"] and len(args) == 2:
+            slot = args[1]
+        elif args:
+            raise SystemExit("usage: factory gate-wait [--slot S]")
+        if not slot:
+            raise SystemExit("name the slot: factory gate-wait --slot S (or source the slot env)")
+        out(slots.wait_gate(slot))
+        return
     if cmd in ("gate", "regenerate"):
+        detach = cmd == "gate" and "--detach" in args
+        args = [a for a in args if a != "--detach"] if detach else args
         if args not in ([], ["--train"]) or (cmd == "regenerate" and args):
-            raise SystemExit(f"usage: factory {cmd}" + (" [--train]" if cmd == "gate" else ""))
+            raise SystemExit(f"usage: factory {cmd}" + (" [--train] [--detach]" if cmd == "gate" else ""))
+        if detach:
+            if not os.environ.get("FACTORY_SLOT"):
+                raise SystemExit("gate --detach needs a slot: source the slot env (FACTORY_SLOT)")
+            out(slots.start_gate(CFG, os.environ["FACTORY_SLOT"], Path.cwd(), train=bool(args)))
+            return
         slots.run_commands(CFG, cmd, Path.cwd())
         if args == ["--train"]:
             slots.run_commands(CFG, "train_gate", Path.cwd())

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 from importlib.machinery import SourceFileLoader
@@ -63,6 +64,27 @@ def run(command, *args):
         except SystemExit as exit_:
             code = exit_.code
     return code, json.loads(buf.getvalue()) if buf.getvalue().strip() else None
+
+
+def stat_fields(pid):
+    """/proc/<pid>/stat fields from state (3) on, or None once the pid is gone."""
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except FileNotFoundError:
+        return None
+
+
+def kill_quietly(pid):
+    with contextlib.suppress(ProcessLookupError):
+        os.kill(pid, 9)
+
+
+def until(condition, seconds=20):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"condition not met within {seconds}s")
+        time.sleep(0.02)
 
 
 class ClaimLimit(unittest.TestCase):
@@ -608,6 +630,240 @@ class LocalCommands(unittest.TestCase):
             code, result = run(factory.main, ["config"])
         self.assertEqual(result["repo"], "SunReye/SunReye")
         self.assertFalse((self.root / ".factory").exists())
+
+
+class DetachedGate(unittest.TestCase):
+    """`gate --detach` runs the gate in the background; `gate-wait` reports it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        cwd = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, cwd)
+        self.release = self.root / "release"
+        self.addCleanup(self.release.write_text, "")
+        self.cfg = {**factory.CFG, "commands": {"gate": [self.step("print('ran gate')")],
+                                                "train_gate": [self.step("print('ran train')")]}}
+        for patcher in (mock.patch.object(factory, "CFG", self.cfg),
+                        # The CLI exits after spawning; here the test process outlives the gate it spawned.
+                        mock.patch.object(subprocess.Popen, "__del__", lambda proc: None),
+                        mock.patch.dict(os.environ, {"FACTORY_SLOT": "impl-1"}),
+                        mock.patch.object(slots, "GATE_WAIT_SECONDS", 0.5),
+                        mock.patch.object(slots, "GATE_POLL_SECONDS", 0.02)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.logs = self.root / ".factory" / "logs"
+
+    def step(self, code):
+        return [sys.executable, "-c", code]
+
+    def blocked_gate(self):
+        """A gate that holds until the release file exists."""
+        self.cfg["commands"]["gate"] = [self.step(
+            "import time, pathlib\nr = pathlib.Path('release')\n"
+            "for _ in range(1500):\n    if r.exists(): break\n    time.sleep(0.02)")]
+
+    def detach(self, *args):
+        return run(factory.main, ["gate", "--detach", *args])
+
+    def wait(self, *args):
+        return run(factory.main, ["gate-wait", *args])
+
+    def test_detach_prints_both_paths_and_returns_before_the_gate_ends(self):
+        self.blocked_gate()
+        code, result = self.detach()
+        self.assertEqual(code, 0)
+        self.assertEqual(result["log"], str(self.logs / "gate-impl-1.log"))
+        self.assertEqual(result["exit"], str(self.logs / "gate-impl-1.exit"))
+        self.assertFalse((self.logs / "gate-impl-1.exit").exists())
+
+    def test_a_running_gate_reports_running(self):
+        self.blocked_gate()
+        self.detach()
+        code, result = self.wait()
+        self.assertEqual((code, result), (0, {"status": "running"}))
+
+    def test_a_passing_gate_reports_exit_zero_and_writes_the_exit_file(self):
+        self.detach()
+        slots.GATE_WAIT_SECONDS = 20
+        code, result = self.wait()
+        self.assertEqual((code, result), (0, {"status": "passed", "exit": 0}))
+        self.assertEqual((self.logs / "gate-impl-1.exit").read_text().strip(), "0")
+        self.assertIn("ran gate", (self.logs / "gate-impl-1.log").read_text())
+
+    def test_a_running_gate_that_ends_while_waiting_is_reported_without_the_full_wait(self):
+        self.blocked_gate()
+        self.detach()
+        self.release.write_text("")
+        slots.GATE_WAIT_SECONDS = 20
+        self.assertEqual(self.wait()[1], {"status": "passed", "exit": 0})
+
+    def test_a_failing_gate_reports_its_exit_code_and_log_tail(self):
+        noise = "\n".join(f"line {i}" for i in range(100))
+        self.cfg["commands"]["gate"] = [self.step(f"print({noise!r}); print('boom'); raise SystemExit(3)")]
+        self.detach()
+        slots.GATE_WAIT_SECONDS = 20
+        code, result = self.wait()
+        self.assertEqual((code, result["status"]), (0, "failed"))
+        self.assertEqual(result["exit"], 3)
+        self.assertIn("boom", result["tail"])
+        self.assertIn("line 99", result["tail"])
+        self.assertNotIn("line 0\n", result["tail"])
+
+    def test_the_train_flag_adds_the_train_gate(self):
+        self.detach("--train")
+        slots.GATE_WAIT_SECONDS = 20
+        self.wait()
+        log = (self.logs / "gate-impl-1.log").read_text()
+        self.assertLess(log.index("ran gate"), log.index("ran train"))
+
+    def test_a_train_step_is_skipped_after_a_failing_gate_step(self):
+        self.cfg["commands"]["gate"] = [self.step("raise SystemExit(5)")]
+        self.detach("--train")
+        slots.GATE_WAIT_SECONDS = 20
+        self.assertEqual(self.wait()[1]["status"], "failed")
+        self.assertNotIn("ran train", (self.logs / "gate-impl-1.log").read_text())
+
+    def test_wait_without_a_started_gate_refuses(self):
+        code, _ = self.wait()
+        self.assertNotEqual(code, 0)
+        self.assertIn("no gate", str(code))
+
+    def test_a_second_detach_while_one_runs_is_refused(self):
+        self.blocked_gate()
+        self.detach()
+        code, _ = self.detach()
+        self.assertIn("already running", str(code))
+
+    def test_a_new_detach_after_the_last_one_ended_starts_fresh(self):
+        self.cfg["commands"]["gate"] = [self.step("raise SystemExit(5)")]
+        self.detach()
+        slots.GATE_WAIT_SECONDS = 20
+        self.assertEqual(self.wait()[1]["status"], "failed")
+        self.cfg["commands"]["gate"] = [self.step("print('second')")]
+        self.detach()
+        self.assertEqual(self.wait()[1], {"status": "passed", "exit": 0})
+        self.assertNotIn("raise", (self.logs / "gate-impl-1.log").read_text())
+
+    def test_a_gate_killed_without_an_exit_file_is_reported_failed(self):
+        self.cfg["commands"]["gate"] = [self.step("import os; os.kill(os.getppid(), 9)")]
+        self.detach()
+        slots.GATE_WAIT_SECONDS = 20
+        code, result = self.wait()
+        self.assertEqual((code, result["status"]), (0, "failed"))
+        self.assertIn("died", result["tail"])
+
+    def test_slots_keep_separate_logs_and_wait_takes_a_slot(self):
+        self.blocked_gate()
+        self.detach()
+        with mock.patch.dict(os.environ, {"FACTORY_SLOT": "merge-1"}):
+            self.cfg["commands"]["gate"] = [self.step("print('merge gate')")]
+            self.detach()
+            slots.GATE_WAIT_SECONDS = 20
+            self.assertEqual(self.wait()[1], {"status": "passed", "exit": 0})
+        slots.GATE_WAIT_SECONDS = 0.2
+        self.assertEqual(self.wait("--slot", "impl-1")[1], {"status": "running"})
+        self.assertIn("merge gate", (self.logs / "gate-merge-1.log").read_text())
+
+    def test_detach_needs_a_slot(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("FACTORY_SLOT")
+            code, _ = self.detach()
+        self.assertIn("slot", str(code))
+
+    def holder(self):
+        """A live process unrelated to any gate, released by the release file."""
+        proc = subprocess.Popen(self.step(
+            "import time, pathlib\nfor _ in range(1500):\n"
+            "    if pathlib.Path('release').exists(): break\n    time.sleep(0.02)"), cwd=self.root)
+        self.addCleanup(proc.wait)
+        self.addCleanup(self.release.write_text, "")
+        return proc
+
+    def stale_gate(self, pid_text):
+        self.logs.mkdir(parents=True)
+        (self.logs / "gate-impl-1.log").write_text("old\n")
+        (self.logs / "gate-impl-1.pid").write_text(pid_text)
+
+    def test_a_pid_file_naming_an_unrelated_live_process_reads_as_died(self):
+        proc = self.holder()
+        start = stat_fields(proc.pid)[19]
+        self.stale_gate(f"{proc.pid} {int(start) + 1}")
+        code, result = self.wait()
+        self.assertEqual((code, result["status"], result["exit"]), (0, "failed", 1))
+        self.assertIn("died", result["tail"])
+        self.assertIsNone(proc.poll())
+        self.assertEqual(self.detach()[0], 0)
+
+    def test_a_pid_file_without_a_start_time_reads_as_died(self):
+        self.stale_gate(str(self.holder().pid))
+        self.assertEqual(self.wait()[1]["status"], "failed")
+
+    def test_an_absent_empty_or_garbage_pid_file_reads_as_died(self):
+        self.stale_gate("")
+        for text in (None, "", "garbage", "12 x y"):
+            pid = self.logs / "gate-impl-1.pid"
+            pid.unlink(missing_ok=True)
+            if text is not None:
+                pid.write_text(text)
+            with self.subTest(pid=text):
+                code, result = self.wait()
+                self.assertEqual((code, result["status"]), (0, "failed"))
+
+    def test_a_zombie_gate_process_reads_as_died(self):
+        proc = subprocess.Popen(self.step("pass"))
+        self.addCleanup(proc.wait)
+        until(lambda: stat_fields(proc.pid)[0] == "Z")
+        self.stale_gate(f"{proc.pid} {stat_fields(proc.pid)[19]}")
+        self.assertEqual(self.wait()[1]["status"], "failed")
+
+    def test_a_running_gate_still_reads_as_running_after_its_pid_file_is_reread(self):
+        self.blocked_gate()
+        self.detach()
+        pid, start = (self.logs / "gate-impl-1.pid").read_text().split()
+        self.assertEqual(start, stat_fields(int(pid))[19])
+        self.assertEqual(self.wait()[1], {"status": "running"})
+
+    def test_a_new_detach_kills_what_a_died_gate_left_running(self):
+        child = self.root / "child.pid"
+        self.cfg["commands"]["gate"] = [self.step(
+            "import os, subprocess, sys, pathlib\n"
+            "p = subprocess.Popen([sys.executable, '-c', 'import time\\nwhile True: time.sleep(1)'])\n"
+            f"pathlib.Path({str(child)!r}).write_text(str(p.pid))\n"
+            "os.kill(os.getppid(), 9)")]
+        self.detach()
+        slots.GATE_WAIT_SECONDS = 20
+        self.assertEqual(self.wait()[1]["status"], "failed")
+        until(child.exists)
+        orphan = int(child.read_text())
+        self.addCleanup(kill_quietly, orphan)
+        self.assertNotEqual((stat_fields(orphan) or ["Z"])[0], "Z")
+        self.cfg["commands"]["gate"] = [self.step("pass")]
+        self.detach()
+        until(lambda: stat_fields(orphan) is None or stat_fields(orphan)[0] == "Z")
+
+    def test_a_new_detach_clears_the_previous_log_and_exit(self):
+        self.logs.mkdir(parents=True)
+        (self.logs / "gate-impl-1.log").write_text("old result\n")
+        (self.logs / "gate-impl-1.exit").write_text("0\n")
+        self.blocked_gate()
+        self.detach()
+        self.assertEqual(self.wait()[1], {"status": "running"})
+        self.assertNotIn("old result", (self.logs / "gate-impl-1.log").read_text())
+
+    def test_detach_with_an_unknown_argument_refuses_and_starts_nothing(self):
+        code, _ = self.detach("--bogus")
+        self.assertIn("usage: factory gate [--train] [--detach]", str(code))
+        self.assertFalse((self.logs / "gate-impl-1.log").exists())
+
+    def test_detach_with_an_empty_gate_refuses(self):
+        self.cfg["commands"]["gate"] = []
+        code, _ = self.detach()
+        self.assertIn("gate", str(code))
+        self.assertFalse((self.logs / "gate-impl-1.log").exists())
 
 
 class SlotCleanup(unittest.TestCase):
