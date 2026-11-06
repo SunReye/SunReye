@@ -2,7 +2,7 @@
 
 The factory takes labelled GitHub tickets through implementation, review and integration. One Claude Code session runs `/loop /factory`; deterministic scripts own slots, tracker state and merges. It opens and merges real PRs when running. Copying or configuring it does not start it.
 
-SunReye's profile targets `v4` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot (about 5 minutes on a warm `target/`); the train gate adds the slow checks: coverage and its floors, budgets and the browser suite. `factory merge` trusts those green runs (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
+SunReye's profile targets `v4` (the 4.0 rework branch). There is no hosted CI: the gate is `scripts/ci`, run in the slot (about 5 minutes on a warm `target/`); the train gate adds the slow checks: coverage and its floors and the browser suite, plus budgets when dependencies or build config change. `factory merge` trusts those green runs (`require_ci` is false). Root and area `AGENTS.md` instructions govern TDD, required test layers, hardware safety and review. The factory does not relax those requirements.
 
 ## Configuration
 
@@ -88,25 +88,27 @@ Never deleted: your own checkouts and their `target/`. Budget about 15 GB free d
 | Mode | Runs |
 | --- | --- |
 | `scripts/ci` | the per-PR gate above |
-| `scripts/ci --train` | what the train adds, once per train: `test:coverage` and `test:floor`, `test:coverage:rust` and `test:floor:rust` (when `rust` is selected), `budgets`, and `e2e` (types, browser suite, and `e2e:core` when `e2e` or `rust` is selected) |
+| `scripts/ci --train` | what the train adds, once per train: `test:coverage` and `test:floor`, `test:coverage:rust` and `test:floor:rust` (when `rust` is selected), `budgets` (only when `budgets` is selected), and `e2e` (types, browser suite, and `e2e:core` when `e2e` or `rust` is selected) |
 | `scripts/ci --full` | both, with the tests run once, under coverage; every heavy step regardless of the diff |
 | `scripts/ci --e2e` | the per-PR gate plus the browser suite (`e2e`, then `e2e:core`, as in a train) |
 
 The factory's gate is `scripts/ci`; the train gate runs it, then `scripts/ci --train`. A coverage, floor, budget or browser failure fails the train and drops the responsible PR like any other train failure.
 
-The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), each step holding a heavy lock while it runs: budgets alone, and coverage, Rust coverage, `e2e`, `e2e:core` in order, so the browser suite starts after budgets' SPA build. Each step writes `<log dir>/<step>.log`; the console shows `start`/`done` lines. A failed step stops its lane, the other lane finishes, and every failed step is printed as `FAILED <step> (exit N), log <path>` with its log. The Android build (`scripts/target-gate`) is in no mode: run it by hand before a release.
+The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), each step holding a heavy lock while it runs: budgets alone, and coverage, Rust coverage, `e2e`, `e2e:core` in order, so the browser suite starts after budgets' SPA build when budgets run. Budgets run on a manifest, lockfile, toolchain or `.cargo/` change, a change to the budgets or ADR 0006, and `--full`; run them by hand before a release (`bun run test:budgets`). Each step writes `<log dir>/<step>.log`; the console shows `start`/`done` lines. A failed step stops its lane, the other lane finishes, and every failed step is printed as `FAILED <step> (exit N), log <path>` with its log. The Android build (`scripts/target-gate`) is a manual pre-release step, in no mode.
 
 `scripts/ci-scope.ts` maps the changed paths (`git diff --name-only <base>...HEAD` plus staged, unstaged and untracked files) to the steps `rust`, `build`, `budgets`, `components`, `db`, `routes` and `e2e`. Its rule table is the reference.
 
 | Changed path | Steps |
 | --- | --- |
 | docs, root `*.md`, `.claude/`, `.agents/`, `nixos/`, `sunreye*/`, `scripts/factory/` (not `config.json`), `scripts/oracle/` | none |
-| `crates/` | rust, budgets, routes |
-| `fixtures/` | rust, db, budgets, e2e |
-| `apps/web/` | build, budgets, components, e2e |
-| `apps/server/`, `packages/` | build, budgets, components, e2e, db |
+| `crates/` | rust, routes |
+| `crates/**/Cargo.toml`, `crates/**/build.rs` | rust, routes, budgets |
+| `fixtures/` | rust, db, e2e |
+| `apps/web/` | build, components, e2e |
+| `apps/server/`, `packages/` | build, components, e2e, db |
+| `scripts/budget*`, `docs/adr/0006-*` | budgets |
 | `crates/sunreye/openapi_snapshot.json` | the `crates/` steps and the web steps |
-| `scripts/ci`, the scope table and its helper, `scripts/factory/config.json`, root manifests, lockfiles, unknown paths, an empty diff | every step |
+| `scripts/ci`, the scope table and its helper, `scripts/factory/config.json`, root manifests, lockfiles, `.cargo/`, `rust-toolchain*`, unknown paths, an empty diff | every step |
 
 A skipped step prints `skip <step>: <rule>` and is absent from the timings. `CI_SCOPE_BASE` replaces the diff base for selection only. Add a path rule only with the step that reads it: a rule that skips a step something reads hides the break.
 

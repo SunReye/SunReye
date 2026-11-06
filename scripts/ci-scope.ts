@@ -45,9 +45,15 @@ const rootMarkdown = {
   matches: (p: string) => !p.includes("/") && p.endsWith(".md"),
 };
 
-const RUST: readonly Step[] = ["rust", "budgets", "routes"];
+const RUST: readonly Step[] = ["rust", "routes"];
 /** Everything built from or tested against the web app, the TypeScript server and the packages. */
-const WEB: readonly Step[] = ["build", "budgets", "components", "e2e"];
+const WEB: readonly Step[] = ["build", "components", "e2e"];
+/**
+ * Budgets are the release binary's size and resident memory (ADR 0006). Only a dependency or build
+ * configuration change moves them; source, web and fixture changes are checked by hand before a
+ * release (`bun run test:budgets`).
+ */
+const BUDGETS: readonly Step[] = ["budgets"];
 
 /**
  * First match wins, so a specific rule sits above the directory rule that contains it. A path is
@@ -68,15 +74,33 @@ const RULES: Rule[] = [
     "turbo.json",
     "Cargo.toml",
     "Cargo.lock",
+    "rust-toolchain",
     "rust-toolchain.toml",
   ].map((name) => ({ ...file(name), steps: "all" as const })),
+  { ...dir(".cargo"), steps: "all" as const },
+  // The manifests and build scripts of every crate set the release build's dependencies and size.
+  {
+    label: "crates/**/Cargo.toml",
+    matches: (p: string) => p.startsWith("crates/") && /(^|\/)(Cargo\.toml|build\.rs)$/.test(p),
+    steps: [...RUST, ...BUDGETS],
+  },
+  {
+    label: "scripts/budget*",
+    matches: (p: string) => /^scripts\/budget(s|-)[^/]*$/.test(p),
+    steps: BUDGETS,
+  },
+  {
+    label: "docs/adr/0006-*",
+    matches: (p: string) => /^docs\/adr\/0006-[^/]*$/.test(p),
+    steps: BUDGETS,
+  },
   // The web client is generated from this snapshot, so it moves the web steps too.
   { ...file("crates/sunreye/openapi_snapshot.json"), steps: [...RUST, ...WEB] },
   // The cargo workspace, its sqlx cache and the oracle corpus its tests, the TypeScript database
-  // tests, the simulator behind the budgets and the real-core browser run all read.
+  // tests and the real-core browser run all read.
   { ...dir("crates"), steps: RUST },
   { ...dir(".sqlx"), steps: RUST },
-  { ...dir("fixtures"), steps: ["rust", "db", "budgets", "e2e"] },
+  { ...dir("fixtures"), steps: ["rust", "db", "e2e"] },
   { ...dir("apps/web"), steps: WEB },
   // The web app imports the server's types, and the server builds on the packages.
   { ...dir("apps/server"), steps: [...WEB, "db"] },
