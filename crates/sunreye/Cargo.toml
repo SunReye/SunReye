@@ -27,6 +27,7 @@ sqlx = { version = "0.8", default-features = false, features = [
   "sqlite",
 ] }
 tokio = { version = "1", default-features = false, features = [
+  "io-util",
   "macros",
   "net",
   "rt",
@@ -35,6 +36,7 @@ tokio = { version = "1", default-features = false, features = [
   "time",
 ] }
 thiserror = "2"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 jiff = { version = "0.2", default-features = false, features = [
   "std",
   "tz-system",

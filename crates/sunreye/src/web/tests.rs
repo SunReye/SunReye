@@ -1209,6 +1209,7 @@ mod devices;
 mod forecast;
 mod import;
 mod kiosk;
+mod mqtt;
 mod plant;
 mod reads;
 mod rollup;

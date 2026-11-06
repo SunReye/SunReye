@@ -31,6 +31,7 @@ GET /api/profile kiosk
 GET /api/profile-status public
 GET /api/profiles admin
 GET /api/settings/inverter admin
+GET /api/settings/mqtt admin
 GET /api/settings/profile-sources admin
 GET /api/settings/time-zone admin
 GET /api/settings/weather admin
@@ -57,5 +58,6 @@ PUT /api/admin/users/{id}/role admin
 PUT /api/settings/active-profile admin
 PUT /api/settings/inverter admin
 PUT /api/settings/kiosk admin
+PUT /api/settings/mqtt admin
 PUT /api/settings/time-zone admin
 PUT /api/settings/weather admin
