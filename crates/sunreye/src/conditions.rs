@@ -1,6 +1,7 @@
 //! Current conditions for the dashboard tile (3.x `forecast/weather.ts`): Open-Meteo's current temperature
 //! and WMO code mapped to a coarse condition, and today's shortwave radiation sum, cached 15 minutes per
-//! location. A failed fetch keeps the last reading for the same location.
+//! location. A failed fetch keeps the last reading for the same location; a reading cut on an earlier plant
+//! day refetches and serves no radiation sum until a fetch lands (3.x served yesterday's sum past midnight).
 
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
 use crate::https::{GetError, Limits, get_with_roots};
+use crate::plant_zone::plant_zone;
 use crate::store::{Store, StoreError};
 use crate::weather;
 
@@ -127,7 +129,17 @@ pub struct Conditions {
 struct Cached {
     key: String,
     fetched_ms: i64,
+    /// The plant day the radiation sum belongs to.
+    day: jiff::civil::Date,
     reading: Reading,
+}
+
+impl Cached {
+    /// Same location, same plant day, fetched within the TTL; a fetch time ahead of `now_ms` (the wall
+    /// clock stepped back) is not fresh.
+    fn fresh(&self, key: &str, day: jiff::civil::Date, now_ms: i64) -> bool {
+        self.key == key && self.day == day && (0..TTL_MS).contains(&(now_ms - self.fetched_ms))
+    }
 }
 
 impl Conditions {
@@ -149,24 +161,35 @@ impl Conditions {
             return Ok(None);
         };
         let key = format!("{latitude},{longitude}");
+        let at = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+        let today = at.to_zoned(plant_zone(store).await?).date();
         let mut cache = self.cache.lock().await;
-        if cache.as_ref().filter(|c| c.key == key).is_none_or(|c| now_ms - c.fetched_ms >= TTL_MS) {
+        if !cache.as_ref().is_some_and(|c| c.fresh(&key, today, now_ms)) {
             let url = format!(
                 "{}?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code\
                  &daily=shortwave_radiation_sum&timezone=auto&forecast_days=1",
                 self.url
             );
-            refresh(&mut cache, key.clone(), fetch(&url, roots).await, now_ms);
+            refresh(&mut cache, key.clone(), fetch(&url, roots).await, now_ms, today);
         }
         let held = cache.as_ref().filter(|c| c.key == key);
-        Ok(held.map(|c| Reading { label: config.label, ..c.reading.clone() }))
+        Ok(held.map(|c| {
+            let solar_radiation_sum = c.reading.solar_radiation_sum.filter(|_| c.day == today);
+            Reading { label: config.label, solar_radiation_sum, ..c.reading.clone() }
+        }))
     }
 }
 
 /// A fetched reading replaces the cache; a failed fetch leaves it.
-fn refresh(cache: &mut Option<Cached>, key: String, fetched: Result<Reading, FetchError>, now_ms: i64) {
+fn refresh(
+    cache: &mut Option<Cached>,
+    key: String,
+    fetched: Result<Reading, FetchError>,
+    now_ms: i64,
+    day: jiff::civil::Date,
+) {
     match fetched {
-        Ok(reading) => *cache = Some(Cached { key, fetched_ms: now_ms, reading }),
+        Ok(reading) => *cache = Some(Cached { key, fetched_ms: now_ms, day, reading }),
         Err(error) => tracing::warn!(%error, "weather fetch failed"),
     }
 }
@@ -258,6 +281,13 @@ mod tests {
         let r =
             reading(&body(&json!({"current": {"temperature_2m": 0, "weather_code": 0}}))).expect("reading");
         assert_eq!((r.temperature, r.code), (0.0, 0));
+    }
+
+    #[test]
+    fn a_negative_temperature_is_a_reading() {
+        let r = reading(&body(&json!({"current": {"temperature_2m": -7.5, "weather_code": 71}})))
+            .expect("reading");
+        assert_eq!((r.temperature, r.icon), (-7.5, Icon::Snow));
     }
 
     #[test]

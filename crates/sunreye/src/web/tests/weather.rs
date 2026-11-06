@@ -126,6 +126,67 @@ async fn a_failed_refetch_keeps_the_last_reading_and_a_failed_first_fetch_answer
     core.stop().await;
 }
 
+/// 2026-07-24 23:50 Europe/Berlin (21:50 UTC).
+const BERLIN_23_50_MS: i64 = 1_784_929_800_000;
+/// 2026-07-25 00:00 Europe/Berlin, the plant day boundary; still 2026-07-24 in UTC.
+const BERLIN_MIDNIGHT_MS: i64 = 1_784_930_400_000;
+
+static MIDNIGHT_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_23_50_MS);
+
+fn midnight_clock() -> i64 {
+    MIDNIGHT_CLOCK.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_reading_from_the_previous_plant_day_refetches_and_serves_no_radiation_sum_until_a_fetch_lands() {
+    let (core, admin, standin) = forecasting("weather-midnight", midnight_clock).await;
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    let hits = || standin.hits.load(Ordering::SeqCst);
+    let first = get(&admin, "/api/weather").await.json();
+    assert_eq!(first["solarRadiationSum"], 12.5);
+    standin.failing.store(true, Ordering::SeqCst);
+    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS - 1, Ordering::SeqCst);
+    assert_eq!(
+        (get(&admin, "/api/weather").await.json(), hits()),
+        (first.clone(), 1),
+        "same day, inside 15 min"
+    );
+    let mut yesterdays = first.clone();
+    yesterdays["solarRadiationSum"] = Value::Null;
+    for (at, fetches) in [(BERLIN_MIDNIGHT_MS, 2), (BERLIN_MIDNIGHT_MS + 4 * 60_000, 3)] {
+        MIDNIGHT_CLOCK.store(at, Ordering::SeqCst);
+        assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (yesterdays.clone(), fetches), "{at}");
+    }
+    standin.failing.store(false, Ordering::SeqCst);
+    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS + 5 * 60_000, Ordering::SeqCst);
+    assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (first, 4), "a fetch landed");
+    drop(admin);
+    core.stop().await;
+}
+
+static BACKWARD_CLOCK: AtomicI64 = AtomicI64::new(NOW_MS);
+
+fn backward_clock() -> i64 {
+    BACKWARD_CLOCK.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_wall_clock_stepped_back_before_the_fetch_refetches() {
+    let (core, admin, standin) = forecasting("weather-clock-back", backward_clock).await;
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    get(&admin, "/api/weather").await;
+    BACKWARD_CLOCK.store(NOW_MS, Ordering::SeqCst);
+    get(&admin, "/api/weather").await;
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "fetched at now");
+    BACKWARD_CLOCK.store(NOW_MS - 1, Ordering::SeqCst);
+    get(&admin, "/api/weather").await;
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 2, "fetched in the future");
+    drop(admin);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn saving_an_inverter_s_arrays_changes_the_next_forecast_series() {
     let (core, admin, _) = forecasting("weather-device-arrays", fixed_now).await;
