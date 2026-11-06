@@ -1,5 +1,5 @@
 //! Current conditions for the dashboard tile (3.x `forecast/weather.ts`): Open-Meteo's current temperature
-//! and WMO code mapped to a coarse condition, and today's shortwave radiation sum, cached 15 minutes per
+//! and WMO code mapped to a coarse condition, and today's plant-zone shortwave radiation sum, cached 15 minutes per
 //! location. A failed fetch keeps the last reading for the same location; a reading cut on an earlier plant
 //! day refetches and serves no radiation sum until a fetch lands (3.x served yesterday's sum past midnight).
 
@@ -41,7 +41,8 @@ pub struct Reading {
     pub code: i64,
     pub condition: &'static str,
     pub icon: Icon,
-    /// Today's shortwave radiation sum, MJ/m².
+    /// Today's shortwave radiation sum in the plant zone, MJ/m²; null when no fetch has landed since the plant
+    /// day began.
     #[schema(required = true)]
     pub solar_radiation_sum: Option<f64>,
     pub label: String,
@@ -118,6 +119,9 @@ fn reading(body: &[u8]) -> Result<Reading, FetchError> {
     })
 }
 
+/// A date in a named plant zone: the same date in another zone is another day.
+type PlantDay = (String, jiff::civil::Date);
+
 /// The one cached reading.
 #[derive(Debug)]
 pub struct Conditions {
@@ -130,15 +134,15 @@ struct Cached {
     key: String,
     fetched_ms: i64,
     /// The plant day the radiation sum belongs to.
-    day: jiff::civil::Date,
+    day: PlantDay,
     reading: Reading,
 }
 
 impl Cached {
     /// Same location, same plant day, fetched within the TTL; a fetch time ahead of `now_ms` (the wall
     /// clock stepped back) is not fresh.
-    fn fresh(&self, key: &str, day: jiff::civil::Date, now_ms: i64) -> bool {
-        self.key == key && self.day == day && (0..TTL_MS).contains(&(now_ms - self.fetched_ms))
+    fn fresh(&self, key: &str, day: &PlantDay, now_ms: i64) -> bool {
+        self.key == key && self.day == *day && (0..TTL_MS).contains(&(now_ms - self.fetched_ms))
     }
 }
 
@@ -162,15 +166,18 @@ impl Conditions {
         };
         let key = format!("{latitude},{longitude}");
         let at = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
-        let today = at.to_zoned(plant_zone(store).await?).date();
+        let zone = plant_zone(store).await?;
+        // Open-Meteo cuts the daily sum in the zone it is asked for: the plant day keys it.
+        let tz = query_value(zone.iana_name().unwrap_or("UTC"));
+        let today = (tz.clone(), at.to_zoned(zone).date());
         let mut cache = self.cache.lock().await;
-        if !cache.as_ref().is_some_and(|c| c.fresh(&key, today, now_ms)) {
+        if !cache.as_ref().is_some_and(|c| c.fresh(&key, &today, now_ms)) {
             let url = format!(
                 "{}?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code\
-                 &daily=shortwave_radiation_sum&timezone=auto&forecast_days=1",
+                 &daily=shortwave_radiation_sum&timezone={tz}&forecast_days=1",
                 self.url
             );
-            refresh(&mut cache, key.clone(), fetch(&url, roots).await, now_ms, today);
+            refresh(&mut cache, key.clone(), fetch(&url, roots).await, now_ms, today.clone());
         }
         let held = cache.as_ref().filter(|c| c.key == key);
         Ok(held.map(|c| {
@@ -186,12 +193,22 @@ fn refresh(
     key: String,
     fetched: Result<Reading, FetchError>,
     now_ms: i64,
-    day: jiff::civil::Date,
+    day: PlantDay,
 ) {
     match fetched {
         Ok(reading) => *cache = Some(Cached { key, fetched_ms: now_ms, day, reading }),
         Err(error) => tracing::warn!(%error, "weather fetch failed"),
     }
+}
+
+/// `name` percent-encoded outside RFC 3986's unreserved set.
+fn query_value(name: &str) -> String {
+    name.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => char::from(b).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 async fn fetch(url: &str, roots: &[CertificateDer<'static>]) -> Result<Reading, FetchError> {
@@ -288,6 +305,19 @@ mod tests {
         let r = reading(&body(&json!({"current": {"temperature_2m": -7.5, "weather_code": 71}})))
             .expect("reading");
         assert_eq!((r.temperature, r.icon), (-7.5, Icon::Snow));
+    }
+
+    #[test]
+    fn a_zone_name_is_percent_encoded_for_the_query() {
+        for (name, want) in [
+            ("UTC", "UTC"),
+            ("Europe/Berlin", "Europe%2FBerlin"),
+            ("Etc/GMT+1", "Etc%2FGMT%2B1"),
+            ("America/Port-au-Prince", "America%2FPort-au-Prince"),
+            ("America/North_Dakota/New_Salem", "America%2FNorth_Dakota%2FNew_Salem"),
+        ] {
+            assert_eq!(query_value(name), want, "{name}");
+        }
     }
 
     #[test]

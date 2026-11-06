@@ -63,7 +63,8 @@ async fn the_weather_answers_the_reading_with_the_forecast_and_a_second_request_
     let asked = paths.iter().find(|p| p.contains("current=")).expect("conditions request");
     assert!(
         asked.contains(&format!("latitude={LAT}&longitude={LON}"))
-            && asked.contains("current=temperature_2m,weather_code&daily=shortwave_radiation_sum"),
+            && asked.contains("current=temperature_2m,weather_code&daily=shortwave_radiation_sum")
+            && asked.contains("&timezone=Europe%2FBerlin&"),
         "{asked}"
     );
     drop(admin);
@@ -161,6 +162,67 @@ async fn a_reading_from_the_previous_plant_day_refetches_and_serves_no_radiation
     standin.failing.store(false, Ordering::SeqCst);
     MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS + 5 * 60_000, Ordering::SeqCst);
     assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (first, 4), "a fetch landed");
+    drop(admin);
+    core.stop().await;
+}
+
+/// 2026-07-24 23:30 UTC, 01:30 Berlin on 07-25.
+const UTC_23_30_MS: i64 = 1_784_935_800_000;
+/// 2026-07-25 00:00 UTC.
+const UTC_MIDNIGHT_MS: i64 = 1_784_937_600_000;
+
+static UTC_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_23_50_MS);
+
+fn utc_clock() -> i64 {
+    UTC_CLOCK.load(Ordering::SeqCst)
+}
+
+fn last_conditions_request(standin: &super::forecast::StandIn) -> String {
+    let paths = standin.paths.lock().expect("paths");
+    paths.iter().rev().find(|p| p.contains("current=")).expect("conditions request").clone()
+}
+
+#[tokio::test]
+async fn the_radiation_sum_is_asked_for_and_expires_on_the_plant_day_not_the_location_s() {
+    let (core, admin, standin) = forecasting("weather-plant-zone", utc_clock).await;
+    let utc = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "UTC"})).await;
+    assert_eq!(utc.status, StatusCode::OK);
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    let hits = || standin.hits.load(Ordering::SeqCst);
+    let first = get(&admin, "/api/weather").await.json();
+    let asked = last_conditions_request(&standin);
+    assert!(asked.contains("&timezone=UTC&"), "{asked}");
+    standin.failing.store(true, Ordering::SeqCst);
+    UTC_CLOCK.store(UTC_23_30_MS, Ordering::SeqCst);
+    assert_eq!(
+        (get(&admin, "/api/weather").await.json(), hits()),
+        (first.clone(), 2),
+        "past Berlin midnight, still the UTC day the sum was asked for"
+    );
+    let mut yesterdays = first;
+    yesterdays["solarRadiationSum"] = Value::Null;
+    UTC_CLOCK.store(UTC_MIDNIGHT_MS, Ordering::SeqCst);
+    assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (yesterdays, 3), "UTC midnight");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_plant_zone_changed_after_the_fetch_refetches_in_the_new_zone_and_drops_the_old_sum() {
+    let (core, admin, standin) = forecasting("weather-zone-changed", fixed_now).await;
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    let mut other_day = get(&admin, "/api/weather").await.json();
+    standin.failing.store(true, Ordering::SeqCst);
+    // 2026-07-24 in both zones: the same date, another day.
+    let tokyo = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Asia/Tokyo"})).await;
+    assert_eq!(tokyo.status, StatusCode::OK);
+    other_day["solarRadiationSum"] = Value::Null;
+    assert_eq!(get(&admin, "/api/weather").await.json(), other_day);
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 2);
+    let asked = last_conditions_request(&standin);
+    assert!(asked.contains("&timezone=Asia%2FTokyo&"), "{asked}");
     drop(admin);
     core.stop().await;
 }

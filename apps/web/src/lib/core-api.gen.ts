@@ -1418,7 +1418,8 @@ export interface components {
             label: string;
             /**
              * Format: double
-             * @description Today's shortwave radiation sum, MJ/m².
+             * @description Today's shortwave radiation sum in the plant zone, MJ/m²; null when no fetch has landed since the plant
+             *     day began.
              */
             solarRadiationSum: number | null;
             /** Format: double */
