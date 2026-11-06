@@ -69,16 +69,8 @@ describe("scripts/ci", () => {
     expect(at("bun run test:coverage:rust")).toBeLessThan(at("bun run test:floor:rust"));
   });
 
-  // Coverage runs every Rust test and fails when one fails, so the bare run is only for the per-PR
-  // gate; scripts/ci-scope-gate.test.ts proves the two never both run in one mode.
-  test("runs the Rust tests bare for a PR and under coverage for a train, never anywhere else", () => {
-    const runsRustTests = (l: string) =>
-      /\bcargo (llvm-cov|test|nextest)\b/.test(l) ||
-      /\bbun run (test|test:rust|test:coverage:rust)(\s|$)/.test(l);
-    expect(ciCommands.filter(runsRustTests)).toEqual([
-      expect.stringContaining("bun run test:coverage:rust"),
-      expect.stringContaining("bun run test:rust"),
-    ]);
+  // Bare for a PR, under coverage for a train: ci-modes.test.ts.
+  test("the Rust gate runs no tests", () => {
     expect(readFileSync("scripts/rust-gate", "utf8")).not.toMatch(
       /\bcargo (llvm-cov|test|nextest)\b/,
     );
