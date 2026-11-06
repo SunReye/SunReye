@@ -43,15 +43,18 @@ test.afterAll(async ({ browser }, testInfo) => {
   const page = await context.newPage();
   await signIn(page);
   const headers = originOf(page);
-  await page.request.put("/api/settings/kiosk", { data: { enabled: false }, headers });
-  const roster = await (await page.request.get("/api/devices")).json();
-  const added = roster.devices.find(
-    (d: { name: string; retiredAt?: string | null }) => d.name === DEVICE && !d.retiredAt,
-  );
-  if (added) {
-    await page.request.patch(`/api/devices/${added.id}`, { data: { retired: true }, headers });
+  try {
+    await page.request.put("/api/settings/kiosk", { data: { enabled: false }, headers });
+    const roster = await (await page.request.get("/api/devices")).json();
+    const added = roster.devices.find(
+      (d: { name: string; retiredAt?: string | null }) => d.name === DEVICE && !d.retiredAt,
+    );
+    if (added) {
+      await page.request.patch(`/api/devices/${added.id}`, { data: { retired: true }, headers });
+    }
+  } finally {
+    await context.close();
   }
-  await context.close();
 });
 
 /** Points the first device at one simulator and adds the second on the other. Returns the second's slug. */
@@ -93,6 +96,25 @@ function historySources(page: Page): string[] {
   return seen;
 }
 
+/** One `/api/history/recent` answer: the source and width asked for, and the highest DC input in it. */
+type Recent = { source: string; seconds: number; peak: number };
+
+/** Every sparkline backfill the page reads, with what the core answered. */
+function recentReads(page: Page): Recent[] {
+  const seen: Recent[] = [];
+  page.on("response", async (response) => {
+    const url = new URL(response.url());
+    if (url.pathname !== "/api/history/recent") return;
+    const body = (await response.json()) as { metrics: Record<string, { v: number[] }> };
+    seen.push({
+      source: url.searchParams.get("source") ?? "",
+      seconds: Number(url.searchParams.get("seconds")),
+      peak: Math.max(...(body.metrics["dc.total_power"]?.v ?? [])),
+    });
+  });
+  return seen;
+}
+
 const menuButton = (page: Page) => page.locator("[data-source-switcher]");
 
 async function openMenu(page: Page) {
@@ -122,6 +144,7 @@ test("the menu switches the dashboard between the plant and a device, and a save
   await signIn(page);
   const slug = await twoDevices(page);
   const sources = historySources(page);
+  const recents = recentReads(page);
   await page.goto("/#/");
   await expect(heading(page)).toHaveText("Overview");
 
@@ -141,6 +164,11 @@ test("the menu switches the dashboard between the plant and a device, and a save
   await expect(powerFlow(page)).not.toContainText(BOTH);
   await expect.poll(() => sources.includes(slug)).toBe(true);
   expect(sources).not.toContain("plant");
+  // The sparklines restart from the device's own whole window: nothing of the plant's line is kept,
+  // and the device's figures are not summed.
+  await expect
+    .poll(() => recents.find((r) => r.source === slug))
+    .toEqual({ source: slug, seconds: 300, peak: dcTotal });
 
   // ── 3. The choice is saved: after a reload the device is still the source ──
   sources.length = 0;
