@@ -64,7 +64,13 @@
 				</Table.Root>
 			{/if}
 			<div class="flex items-center gap-2">
-				<Checkbox id="import-guard-confirm" bind:checked={confirmed} disabled={busy} />
+				<!-- Reach is -inset-4, not TAP's 3.5: the 1px border sits outside the inset box. -->
+				<Checkbox
+					id="import-guard-confirm"
+					class="after:-inset-4"
+					bind:checked={confirmed}
+					disabled={busy}
+				/>
 				<Label for="import-guard-confirm">{m.import_guard_confirm()}</Label>
 			</div>
 		{/if}

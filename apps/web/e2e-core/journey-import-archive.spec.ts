@@ -73,7 +73,7 @@ test("the admin imports an archive: the guard shows the held value, Cancel impor
   await page.getByRole("link", { name: "Import a 3.x archive instead" }).click();
   await expect(heading(page)).toHaveText("Import a 3.x archive");
 
-  // ── 2. The guard stops it with the saved values; Escape and Cancel import nothing ──
+  // ── 2. The guard stops it with the saved values; Cancel after a tick imports nothing and the next guard starts unticked ──
   await picker(page).setInputFiles(archive);
   await expect(dialog(page)).toBeVisible();
   for (const [key, saved] of held) {
@@ -84,13 +84,17 @@ test("the admin imports an archive: the guard shows the held value, Cancel impor
   await expect(dialog(page).getByRole("button", { name: "Continue" })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toBeVisible();
+  await dialog(page).getByRole("checkbox").click();
+  await expect(dialog(page).getByRole("button", { name: "Continue" })).toBeEnabled();
   await dialog(page).getByRole("button", { name: "Cancel" }).click();
   await expect(dialog(page)).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Import finished" })).toHaveCount(0);
   expect(await devices(page)).toEqual([]);
 
-  // ── 3. The same archive again, confirmed: it imports ─────────────────────
+  // ── 3. The same archive again: unticked again, confirmed, it imports ─────────────────────
   await picker(page).setInputFiles(archive);
+  await expect(dialog(page).getByRole("checkbox")).not.toBeChecked();
+  await expect(dialog(page).getByRole("button", { name: "Continue" })).toBeDisabled();
   await dialog(page).getByRole("checkbox").click();
   await dialog(page).getByRole("button", { name: "Continue" }).click();
   const result = page.getByRole("region", { name: "Import finished" });

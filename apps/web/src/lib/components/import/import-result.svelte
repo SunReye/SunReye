@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Section from '$lib/components/layout/section.svelte';
+	import { SECTION_GAP } from '$lib/layout/tokens';
 	import { Button } from '$lib/components/ui/button';
 	import type { ImportReport } from '$lib/archive-import/import-client';
 	import * as m from '$lib/paraglide/messages';
@@ -16,7 +17,7 @@
 </script>
 
 <Section title={m.import_result_title()}>
-	<dl class="grid gap-1 text-sm">
+	<dl class="grid {SECTION_GAP} text-sm">
 		{#each counts as count (count.label)}
 			<div class="flex justify-between gap-4">
 				<dt>{count.label}</dt>
@@ -25,7 +26,7 @@
 		{/each}
 	</dl>
 	{#if report.gaps.length > 0}
-		<div class="flex flex-col gap-1 text-sm">
+		<div class="flex flex-col {SECTION_GAP} text-sm">
 			<h3 class="font-medium">{m.import_result_gaps()}</h3>
 			<ul class="list-disc pl-5">
 				{#each report.gaps as gap (`${gap.device}${gap.start}`)}
@@ -37,7 +38,7 @@
 		</div>
 	{/if}
 	{#if report.conflicts > 0}
-		<div class="flex flex-col gap-1 text-sm">
+		<div class="flex flex-col {SECTION_GAP} text-sm">
 			<p>{m.import_result_conflicts({ count: report.conflicts })}</p>
 			{#if report.firstConflict}
 				{@const first = report.firstConflict}

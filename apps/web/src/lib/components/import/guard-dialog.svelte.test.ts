@@ -15,6 +15,11 @@ const GUARDED = {
   ],
 };
 
+/** Two frames: a dialog that were closing would have left `data-state="open"` by now. */
+const frames = async () => {
+  for (let i = 0; i < 2; i++) await new Promise((resolve) => requestAnimationFrame(resolve));
+};
+
 function open(guarded = GUARDED, busy = false) {
   const onContinue = vi.fn();
   const onCancel = vi.fn();
@@ -25,6 +30,13 @@ function open(guarded = GUARDED, busy = false) {
 const confirmation = () => page.getByRole("checkbox", { name: m.import_guard_confirm() });
 const proceed = () => page.getByRole("button", { name: m.action_continue() });
 const cancel = () => page.getByRole("button", { name: m.action_cancel() });
+
+test("the tick box has a 44px touch target", async () => {
+  open();
+  const after = getComputedStyle(confirmation().element(), "::after");
+  expect(Number.parseFloat(after.width)).toBeGreaterThanOrEqual(44);
+  expect(Number.parseFloat(after.height)).toBeGreaterThanOrEqual(44);
+});
 
 test("lists every saved value with its holder and when it was saved", async () => {
   open();
@@ -70,7 +82,8 @@ test("Cancel imports nothing", async () => {
 test("Escape does not dismiss it, and neither confirms nor cancels", async () => {
   const { onContinue, onCancel } = open();
   await userEvent.keyboard("{Escape}");
-  await expect.element(page.getByRole("dialog")).toBeVisible();
+  await frames();
+  await expect.element(page.getByRole("dialog")).toHaveAttribute("data-state", "open");
   await expect.element(confirmation()).not.toBeChecked();
   expect(onContinue).not.toHaveBeenCalled();
   expect(onCancel).not.toHaveBeenCalled();
@@ -80,7 +93,8 @@ test("a click on the backdrop does not dismiss it, and neither confirms nor canc
   const { onContinue, onCancel } = open();
   const overlay = document.querySelector('[data-slot="dialog-overlay"]')!;
   await page.elementLocator(overlay).click({ position: { x: 4, y: 4 } });
-  await expect.element(page.getByRole("dialog")).toBeVisible();
+  await frames();
+  await expect.element(page.getByRole("dialog")).toHaveAttribute("data-state", "open");
   expect(onContinue).not.toHaveBeenCalled();
   expect(onCancel).not.toHaveBeenCalled();
 });

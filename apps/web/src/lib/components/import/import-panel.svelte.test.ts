@@ -24,6 +24,11 @@ const GUARDED: Guarded = {
   held: [{ key: "1:peak-shaving", value: 60, capturedAt: "2026-05-01T10:00:00.000Z" }],
 };
 
+const GUARDED_B: Guarded = {
+  sha256: "5d2c1f0e8a7b4c3d9e6f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f",
+  held: [{ key: "2:evcc-boost", value: "pv", capturedAt: "2026-05-01T10:05:00.000Z" }],
+};
+
 const imported = (report = REPORT): Outcome => ({ kind: "imported", report });
 const guarded: Outcome = { kind: "guarded", guarded: GUARDED };
 
@@ -196,6 +201,26 @@ test("Cancel at the guard imports nothing, closes the dialog and clears the pick
   await choose();
   expect(upload).toHaveBeenCalledTimes(2);
   await expect.element(page.getByRole("dialog")).toBeVisible();
+});
+
+test("a tick given before Cancel does not carry over: the next guard needs its own, and confirms its own archive", async () => {
+  const upload = vi
+    .fn<Upload>()
+    .mockResolvedValueOnce(guarded)
+    .mockResolvedValueOnce({ kind: "guarded", guarded: GUARDED_B });
+  const { confirm } = mount(upload);
+  await choose();
+  await confirmation().click();
+  await expect.element(proceed()).toBeEnabled();
+  await page.getByRole("button", { name: m.action_cancel() }).click();
+  await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  await choose();
+  await expect.element(page.getByText("2:evcc-boost")).toBeVisible();
+  await expect.element(confirmation()).not.toBeChecked();
+  await expect.element(proceed()).toBeDisabled();
+  await confirmation().click();
+  await proceed().dblClick();
+  expect(confirm).toHaveBeenCalledExactlyOnceWith(GUARDED_B.sha256);
 });
 
 test("a confirmation the core refuses shows its sentence and closes the dialog", async () => {

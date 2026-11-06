@@ -3,6 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Progress } from '$lib/components/ui/progress';
+	import { SECTION_GAP } from '$lib/layout/tokens';
 	import type { Guarded, ImportReport, Outcome } from '$lib/archive-import/import-client';
 	import * as m from '$lib/paraglide/messages';
 	import GuardDialog from './guard-dialog.svelte';
@@ -69,7 +70,7 @@
 </script>
 
 <Section title={m.import_title()}>
-	<div class="flex flex-col gap-1.5">
+	<div class="flex flex-col {SECTION_GAP}">
 		<p class="text-sm text-muted-foreground">{m.import_intro()}</p>
 		<Label for="import-archive">{m.import_file_label()}</Label>
 		<Input
