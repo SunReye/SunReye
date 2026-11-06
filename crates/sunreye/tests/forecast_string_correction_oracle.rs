@@ -1,12 +1,15 @@
 //! Every case of `fixtures/oracle/forecast-string-correction.ndjson`: a string's hours folded into its array's
-//! correction must equal what the reference rule produced.
+//! correction, and the forecast scaled by the string and inverter grids, must equal what the reference rule
+//! produced.
 
 #![allow(clippy::expect_used, reason = "helpers outside #[test] fns may panic like the tests")]
 
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sunreye::forecast::{CorrectionCell, CorrectionModel, Observation, StringObservation};
+use sunreye::forecast::{
+    CorrectionCell, CorrectionModel, Observation, Run, SimInputs, StringObservation, build,
+};
 
 /// Relative, absolute below 1: the decay is `2^(-1/30)` from `pow`, and V8's may round an ulp apart.
 const TOLERANCE: f64 = 1e-12;
@@ -56,12 +59,20 @@ fn key((month, hour): (i8, i8)) -> String {
     format!("{month}:{hour}")
 }
 
-#[test]
-fn every_string_case_folds_into_the_recorded_model() {
+fn cases(producer: &str) -> Vec<Value> {
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/forecast-string-correction.ndjson");
-    let text = std::fs::read_to_string(path).expect("fixture");
-    let cases: Vec<Value> = text.lines().map(|line| serde_json::from_str(line).expect("case")).collect();
+    std::fs::read_to_string(path)
+        .expect("fixture")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("case"))
+        .filter(|case| case["producer"] == producer)
+        .collect()
+}
+
+#[test]
+fn every_string_case_folds_into_the_recorded_model() {
+    let cases = cases("learnString");
     assert_eq!(cases.len(), 13);
     let mut mismatches = Vec::new();
     for case in &cases {
@@ -99,6 +110,46 @@ fn every_string_case_folds_into_the_recorded_model() {
             ];
             if !pairs.iter().all(|&(g, w)| close(g, w)) {
                 mismatches.push(format!("{name}.{k}: {pairs:?}"));
+            }
+        }
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+#[test]
+fn every_apply_case_scales_each_array_by_its_string_grid_else_the_inverters() {
+    let cases = cases("applyStringCorrection");
+    assert_eq!(cases.len(), 5);
+    let mut mismatches = Vec::new();
+    for case in &cases {
+        let (name, input) = (case["case"].as_str().expect("case"), &case["input"]);
+        let config = serde_json::from_value(input["config"].clone()).expect("config");
+        let data = serde_json::from_value(input["data"].clone()).expect("data");
+        let inverter = input.get("correction").map(model);
+        let strings: Vec<Option<CorrectionModel>> = input["arrayCorrections"]
+            .as_array()
+            .expect("arrayCorrections")
+            .iter()
+            .map(|cells| (!cells.is_null()).then(|| model(cells)))
+            .collect();
+        let time_zone = jiff::tz::db().get(input["timeZone"].as_str().expect("timeZone")).expect("zone");
+        let run = Run {
+            time_zone: &time_zone,
+            now_ms: 0,
+            sim: SimInputs::default(),
+            correction: inverter.as_ref(),
+            array_corrections: &strings,
+        };
+        let got = build(&config, &data, "open-meteo", &run).expect("forecast").raw.series;
+        let want = case["output"]["series"].as_array().expect("series");
+        if got.len() != want.len() {
+            mismatches.push(format!("{name}: {} slots != {}", got.len(), want.len()));
+            continue;
+        }
+        for (point, w) in got.iter().zip(want) {
+            let want_w = number(&w["watts"]);
+            if point.time != w["time"].as_str().expect("time") || !close(point.watts, want_w) {
+                mismatches.push(format!("{name} {}: {} != {w}", point.time, point.watts));
             }
         }
     }
