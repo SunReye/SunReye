@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { CostSeriesPoint, PeriodEnergy } from "@SunReye/contracts/energy";
+import type { CostBreakdown, CostSeriesPoint, PeriodEnergy } from "@SunReye/contracts/energy";
 import type { SpotStats } from "@SunReye/contracts/prices";
+import type { ComparisonResponse } from "@SunReye/contracts/statistics";
 import type { ChartSpec, CostRange } from "$lib/cost/ranges";
 import {
   statisticsQuery,
@@ -33,6 +34,7 @@ function harness(opts: { maxEntries?: number } = {}) {
         });
       });
   const api: StatisticsApi = {
+    comparison: endpoint("comparison"),
     costSeries: endpoint("costSeries"),
     energySeries: endpoint("energySeries"),
     records: endpoint("records"),
@@ -50,6 +52,7 @@ function harness(opts: { maxEntries?: number } = {}) {
     api,
     live,
     source: scope,
+    now: () => new Date("2026-08-15T12:00:00Z"),
     ...opts,
   });
   return { calls, live, scope, query };
@@ -162,10 +165,37 @@ describe("fetching", () => {
     await flush();
     expect(got.seen).toHaveLength(1);
     expect(got.seen[0]).toMatchObject({
-      productionKwh: 10,
-      selfConsumption: 0.9,
-      selfSufficiency: null,
+      current: { productionKwh: 10, selfConsumption: 0.9, selfSufficiency: null },
+      previous: null,
     });
+  });
+
+  test("the comparison asks for the PRICED window, and drops a reference that predates recorded history", async () => {
+    const { calls, query } = harness();
+    // A month the clock (Aug 15) is standing in: the priced window ends now.
+    const range = {
+      from: new Date("2026-08-01T00:00:00Z"),
+      to: new Date("2026-09-01T00:00:00Z"),
+    } as CostRange;
+    const got = collect(query.comparison(range, "previous"));
+    expect(calls[0]!.query).toEqual({
+      from: "2026-08-01T00:00:00.000Z",
+      to: "2026-08-15T12:00:00.000Z",
+      mode: "previous",
+      source: "plant",
+    });
+    const current = { net: 1 } as CostBreakdown;
+    const previous = { net: 2 } as CostBreakdown;
+    const payload = {
+      current,
+      previous,
+      // The window the server priced the reference over: before recorded history.
+      reference: { from: "2026-07-17T12:00:00.000Z", to: "2026-08-01T00:00:00.000Z" },
+      coverage: { dataFrom: "2026-08-01T00:00:00.000Z" },
+    } as unknown as ComparisonResponse;
+    calls[0]!.settle({ data: payload });
+    await flush();
+    expect(got.seen).toEqual([{ current, previous: null }]);
   });
 
   test("the year-over-year read fetches both monthly series and folds each to one value per month", async () => {
@@ -301,6 +331,11 @@ describe("live invalidation", () => {
   const costSeries = (q: StatisticsQuery) => q.costSeries(spec("2026-08-01"));
   const energySeries = (q: StatisticsQuery) => q.energySeries(spec("2026-08-01"));
   const amortisation = (q: StatisticsQuery) => q.amortisation();
+  const comparison = (q: StatisticsQuery) =>
+    q.comparison(
+      { from: new Date("2026-07-01"), to: new Date("2026-08-01") } as CostRange,
+      "previous",
+    );
   const windowEnergy = (q: StatisticsQuery) =>
     q.windowEnergy({ detail: spec("2026-07-01") } as CostRange);
   const records = (q: StatisticsQuery) => q.records();
@@ -318,6 +353,7 @@ describe("live invalidation", () => {
     ["cost series", costSeries],
     ["energy series", energySeries],
     ["amortisation", amortisation],
+    ["comparison", comparison],
     ["window energy", windowEnergy],
     ["records", records],
     ["heatmap", heatmap],

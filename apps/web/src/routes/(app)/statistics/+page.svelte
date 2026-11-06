@@ -121,19 +121,24 @@
 		return windowDays(window.from, window.to, of.timeZone);
 	}
 
-	// Headline tiles: the energy the picked [from, to) holds, summed from its series. The core has no
-	// tariff, so there is no reference window to compare it with and nothing is priced.
+	// Headline tiles: a core with prices answers the picked [from, to) priced beside its reference
+	// window, in one request so a §51 spot-price load happens once per window server-side. One
+	// without a tariff has nothing to price or compare: the energy its series holds, summed.
 	// A live push on a wider now-inclusive range makes it stale (throttled to a minute by the store);
 	// the Day tab standing on today patches below instead and never bumps the signal. Every
 	// section's own charts read their own series, because only that section's scope switcher moves
 	// them.
 	const reads = provideStatisticsQuery();
-	const windowEnergy = queried(() => reads.windowEnergy(range), null);
-	const cost = $derived(windowEnergy.value);
-	const previous = null;
+	const comparison = queried(
+		() =>
+			coreCapabilities.has('pricesAndCosts') ? reads.comparison(range, mode) : reads.windowEnergy(range),
+		{ current: null, previous: null }
+	);
+	const cost = $derived(comparison.value.current);
+	const previous = $derived(comparison.value.previous);
 	// The loading panel stands until the first answer, as it did before any
 	// request had been issued.
-	const loading = $derived(windowEnergy.loading || !windowEnergy.loaded);
+	const loading = $derived(comparison.loading || !comparison.loaded);
 
 	// Live figures, but only while the picked window actually moves: a past-only
 	// range (a stepped-back month, a historical custom range) takes no lease, so
