@@ -7,8 +7,7 @@
  */
 
 import { browser } from "$app/environment";
-import { api } from "$lib/api";
-import { payloadOrNull } from "$lib/api-payload";
+import { core } from "$lib/core-api";
 import { browserTimeZone } from "$lib/time/browser-zone";
 import {
   PLANT,
@@ -32,10 +31,7 @@ class SourceStore {
 
   /** Fetch the source list once; concurrent callers share the request. */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.sources.get().then(({ data }) => {
-      this.sources = payloadOrNull<SourcesResponse>(data);
-      this.current = resolveSaved(this.#saved(), this.sources);
-    });
+    this.#loadPromise ??= this.#fetch();
     return this.#loadPromise;
   }
 
@@ -43,6 +39,16 @@ class SourceStore {
   async reload(): Promise<void> {
     this.#loadPromise = null;
     await this.load();
+  }
+
+  async #fetch(): Promise<void> {
+    try {
+      const { data } = await core.GET("/api/sources");
+      this.sources = data ?? null;
+    } catch {
+      this.sources = null;
+    }
+    this.current = resolveSaved(this.#saved(), this.sources);
   }
 
   select(id: SourceId): void {

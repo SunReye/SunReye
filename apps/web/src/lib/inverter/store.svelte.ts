@@ -135,6 +135,8 @@ class InverterStore {
     // rather than continuing one device's line into another's.
     const unwatch = source.onSelect(() => {
       this.latest = null;
+      // Nothing held means a full backfill rather than a gap merge onto the old source's points.
+      this.#series.clear();
       this.#feed.setHidden(true);
       this.#feed.setHidden(false);
     });
@@ -188,7 +190,9 @@ class InverterStore {
       untrack(() => this.#live.newestHeldMs()),
       Date.now(),
     );
-    const data = await fetchRecent(core, seconds);
+    // The saved device is only known once the list has loaded.
+    await source.load();
+    const data = await fetchRecent(core, seconds, source.current);
     if (!data) return;
     // A full-width request is authoritative about the window and replaces the
     // buffers; a gap request only describes the gap and merges. The predicate is

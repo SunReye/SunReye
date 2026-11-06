@@ -61,6 +61,16 @@ test("recent history asks for the window and bucket width, scoped to nothing els
   ]);
 });
 
+test("recent history under a source names it, the plant or a device's decimal id", async () => {
+  const { client, seen } = core(() => json(RECENT));
+  await fetchRecent(client, 300, "plant");
+  await fetchRecent(client, 60, "12");
+  expect(seen.map((u) => u.pathname + u.search)).toEqual([
+    "/api/history/recent?seconds=300&stepSeconds=1&source=plant",
+    "/api/history/recent?seconds=60&stepSeconds=1&source=12",
+  ]);
+});
+
 test("a refused window and an unreachable core both read as no backfill", async () => {
   const refused = core(() => json({ error: "seconds must be 1–3600" }, 400));
   expect(await fetchRecent(refused.client, 9999)).toBeNull();
