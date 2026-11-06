@@ -80,19 +80,10 @@ describe("scope helper", () => {
 
 describe("scripts/ci", () => {
   const ci = readFileSync(join(root, "scripts/ci"), "utf8");
-  const lines = ci.split("\n").map((l) => l.trim());
+  // The train-only steps are scheduled in the lanes helper.
+  const gate = ci + readFileSync(join(root, "scripts/lib/ci-parallel.sh"), "utf8");
+  const lines = gate.split("\n").map((l) => l.trim());
   const commands = lines.filter((l) => l && !l.startsWith("#"));
-
-  /** The lines of every top-level block that opens with `head` and closes with a bare `fi`. */
-  const blocks = (head: string) => {
-    const all = ci.split("\n");
-    const out: string[] = [];
-    for (let open = all.indexOf(head); open >= 0; open = all.indexOf(head, open + 1)) {
-      out.push(...all.slice(open + 1, all.indexOf("fi", open)).map((l) => l.trim()));
-    }
-    expect(out.length, head).toBeGreaterThan(0);
-    return out.join("\n");
-  };
 
   test("loads the scope after fetching the base, and passes --full through", () => {
     const load = commands.findIndex((l) => l.startsWith("scope_load"));
@@ -118,54 +109,7 @@ describe("scripts/ci", () => {
     expect(commands.join("\n")).not.toMatch(/target-gate|setup-targets|android/i);
   });
 
-  /** The `train-*` step functions: the checks that run once per train, each in a lane with its own log. */
-  const trainSteps = () => {
-    const all = ci.split("\n");
-    const first = all.findIndex((l) => l.startsWith("train-coverage() {"));
-    const last = all.findIndex((l) => l.startsWith("train-e2e-core() {"));
-    expect(first, "train-coverage").toBeGreaterThan(-1);
-    expect(last, "train-e2e-core").toBeGreaterThan(first);
-    return all.slice(first, all.indexOf("}", last) + 1).join("\n");
-  };
-
-  test("the per-PR checks sit under the per-PR switch, the train-only checks in the train steps", () => {
-    const pr = blocks("if ((pr)); then");
-    for (const check of [
-      "require-tests",
-      "oxlint",
-      "check-types",
-      "drizzle-kit check",
-      "test:factory",
-    ]) {
-      expect(pr, check).toContain(check);
-    }
-    const train = trainSteps();
-    for (const check of ["test:coverage", "test:floor", "test:budgets", "bun run e2e"]) {
-      expect(train, check).toContain(check);
-    }
-    expect(pr).not.toMatch(/test:coverage|test:floor|test:budgets|bun run e2e/);
-  });
-
-  test("the train steps run as two lanes: budgets alone, the coverage steps before the browser suite", () => {
-    const scheduling = blocks("if ((train || e2e)); then");
-    expect(scheduling).toContain('lane_budgets="train-budgets"');
-    expect(scheduling).toContain('lane_main="train-coverage"');
-    const main = [" train-rust-coverage", " train-e2e", " train-e2e-core"].map((step) =>
-      scheduling.indexOf(`lane_main+="${step}"`),
-    );
-    expect(main.every((at) => at > 0)).toBe(true);
-    expect(main).toEqual([...main].sort((a, b) => a - b));
-    expect(scheduling).toContain('parallel_lanes "$step_logs" "$lane_budgets" "$lane_main"');
-  });
-
-  test("plain tests run only without coverage: coverage replaces them, never repeats them", () => {
-    expect(trainSteps()).toContain("bun run test:coverage");
-    expect(lines).toContain("if ((!train && pr)); then");
-    expect(lines).toContain("if ((!train)); then");
-    const plain = commands.filter((l) => /\btest:(unit|rust)\b/.test(l));
-    expect(plain).toHaveLength(2);
-  });
-
+  // Which checks each mode runs, and that a failing train step fails the gate: ci-modes.test.ts.
   test("the train and full flags select the train-only checks, and --all is gone", () => {
     const run = (flag: string) =>
       Bun.spawnSync(["bash", join(root, "scripts/ci"), flag], { stdout: "pipe", stderr: "pipe" });

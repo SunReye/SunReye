@@ -1736,19 +1736,28 @@ class TrainCommands(unittest.TestCase):
         self.assertEqual(body["stopped"]["result"], "error")
         self.assertIn("409", body["stopped"]["error"])
 
-    def test_a_slow_github_merge_stays_merging_until_the_dispatcher_merges_it(self):
+    def test_a_slow_github_merge_of_the_last_pr_stays_merging_until_the_dispatcher_merges_it(self):
+        self.prs(1, 2, 3)
+        self.train()
+        self.forge.slow.add(3)
+        with mock.patch.object(factory.time, "sleep"):
+            body = self.land()
+        self.assertEqual(body["merged"], [1, 2])
+        self.assertEqual(body["stopped"], {"pr": 3, "result": "wait"})
+        status = run(factory.cmd_status, self.store, self.forge)[1]
+        self.assertEqual([p["pr"] for p in status["prs"]["merging"]], [3])
+        self.forge.slow.clear()
+        self.assertEqual(run(factory.cmd_merge, self.store, self.forge, "3")[1]["result"], "merged")
+        self.assertEqual(self.forge.merged, [1, 2, 3])
+
+    def test_a_slow_github_merge_before_the_last_pr_is_not_left_for_the_dispatcher(self):
         self.prs(1, 2, 3)
         self.train()
         self.forge.slow.add(2)
         with mock.patch.object(factory.time, "sleep"):
             body = self.land()
-        self.assertEqual(body["merged"], [1])
         self.assertEqual(body["stopped"], {"pr": 2, "result": "wait"})
-        status = run(factory.cmd_status, self.store, self.forge)[1]
-        self.assertEqual([p["pr"] for p in status["prs"]["merging"]], [2])
-        self.forge.slow.clear()
-        self.assertEqual(run(factory.cmd_merge, self.store, self.forge, "2")[1]["result"], "merged")
-        self.assertEqual(self.forge.merged, [1, 2])
+        self.assertEqual(self.forge.label(2), "factory:approved")
 
     def commands(self, **commands):
         patcher = mock.patch.dict(factory.CFG, {"commands": commands})
@@ -1830,15 +1839,54 @@ class TrainCommands(unittest.TestCase):
         self.assertEqual((self.forge.merged, self.forge.tip("factory/101")), ([], before))
         self.assertIn("merge-1", self.store.state["slots"])
 
-    def test_run_leaves_a_pr_github_is_slow_to_merge_to_the_dispatcher_and_frees_the_slot(self):
+    def test_run_leaves_a_last_pr_github_is_slow_to_merge_to_the_dispatcher_and_frees_the_slot(self):
+        self.prs(1, 2, 3)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        self.forge.slow.add(3)
+        with mock.patch.object(factory.time, "sleep"):
+            body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], body["stopped"]),
+                         ("merging", [1, 2], {"pr": 3, "result": "wait"}))
+        self.assertEqual(self.forge.label(3), "factory:merging")
+        self.assertEqual(self.store.state["slots"], {})
+
+    def test_run_stops_when_a_pr_before_the_last_is_slow_to_merge_and_keeps_the_slot(self):
         self.prs(1, 2, 3)
         self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
         self.forge.slow.add(2)
+        before = self.forge.tip("factory/103")
         with mock.patch.object(factory.time, "sleep"):
             body = self.run_train()
-        self.assertEqual((body["result"], body["merged"], body["stopped"]), ("merging", [1], {"pr": 2, "result": "wait"}))
-        self.assertEqual(self.forge.label(2), "factory:merging")
-        self.assertEqual(self.store.state["slots"], {})
+        self.assertEqual((body["result"], body["merged"], body["stopped"]),
+                         ("stopped", [1], {"pr": 2, "result": "wait"}))
+        self.assertEqual([self.forge.label(n) for n in (2, 3)], ["factory:approved"] * 2)
+        self.assertEqual(self.forge.tip("factory/103"), before)
+        self.assertIn("merge-1", self.store.state["slots"])
+
+    def test_run_reports_a_base_that_does_not_end_on_the_train_tree_and_keeps_the_slot(self):
+        self.prs(1, 2)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        merge = self.forge.merge
+
+        def merge_then_hotfix(pr, title, sha):
+            merge(pr, title, sha)
+            if pr == 2:
+                self.push_to_staging()
+        self.forge.merge = merge_then_hotfix
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], body["tree_match"]), ("tree-mismatch", [1, 2], False))
+        self.assertIn("merge-1", self.store.state["slots"])
+
+    def test_run_answers_with_json_and_keeps_the_slot_when_the_train_run_errors(self):
+        self.prs(1)
+        lock = self.origin.work / ".git" / "index.lock"
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[["sh", "-c", f"touch x.txt {lock}"]])
+        self.addCleanup(lambda: lock.unlink(missing_ok=True))
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], self.forge.merged), ("error", [], []))
+        self.assertIn("git add", body["error"])
+        self.assertTrue(Path(body["log"]).exists())
+        self.assertIn("merge-1", self.store.state["slots"])
 
     def test_train_refuses_an_unknown_argument_before_taking_a_slot(self):
         self.prs(1)

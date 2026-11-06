@@ -178,9 +178,8 @@ if ((pr)); then
   fi
 fi
 
-# The train-only steps. A step is a function so a lane can run it with its own log. Budgets rebuild the
-# SPA and the release binaries; the other lane starts with the cheap coverage steps, so the browser
-# suite begins after the SPA build and the two never share a dev server or a build directory.
+# The train-only steps, run by train_only_steps (lib/ci-parallel.sh). A step is a function so a lane can
+# run it with its own log.
 train-coverage() {
   heavy bun run test:coverage
   bun run test:floor
@@ -204,21 +203,7 @@ train-e2e-core() {
 
 if ((train || e2e)); then
   step "train-only steps"
-  lane_budgets="" lane_main=""
-  if ((train)); then
-    lane_main="train-coverage"
-    selected rust && lane_main+=" train-rust-coverage" || echo "skip rust coverage: ${scope_reason[rust]}"
-    selected budgets && lane_budgets="train-budgets" || echo "skip budgets: ${scope_reason[budgets]}"
-  fi
-  selected e2e && lane_main+=" train-e2e" || echo "skip e2e: ${scope_reason[e2e]}"
-  if selected e2e || selected rust; then
-    lane_main+=" train-e2e-core"
-  else
-    echo "skip e2e core: ${scope_reason[rust]}"
-  fi
-  step_logs=$(mktemp -d "${TMPDIR:-/tmp}/sunreye-ci-XXXXXX")
-  parallel_lanes "$step_logs" "$lane_budgets" "$lane_main"
-  rm -rf "$step_logs"
+  train_only_steps "$train"
 fi
 
 step "ci green"
