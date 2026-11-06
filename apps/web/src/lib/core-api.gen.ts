@@ -41,9 +41,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
-         *     still holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload
-         *     received whole replaces it.
+         * Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409
+         *     before the body is read. An archive whose automation is on, or still holds a register, stops at the guard
+         *     (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it; a
+         *     new upload received whole replaces it.
          */
         post: operations["importArchive"];
         delete?: never;
@@ -61,8 +62,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Imports the upload the guard stopped, once: the confirmation names its sha256. */
+        /**
+         * Imports the upload the guard stopped, once: the confirmation names its sha256. Only the admin who sent it
+         *     confirms it.
+         */
         post: operations["confirmArchiveImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/import/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drops the upload the guard stopped: deletes its file and clears the wait, which the confirmation can no
+         *     longer continue.
+         */
+        post: operations["discardArchiveImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1829,6 +1853,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ImportReport"];
                 };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    discardArchiveImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Confirmation"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: {
                 headers: {

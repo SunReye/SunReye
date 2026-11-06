@@ -82,6 +82,7 @@ pub async fn land(
 ) -> Result<Landed, ImportError> {
     let mut tx = store.begin().await?;
     let devices = graph(&mut tx, &checked.config, checked.zone.as_deref()).await?;
+    activate_first_profile(&mut tx, &checked.config).await?;
     let mut metrics = BTreeMap::new();
     let (conflicts, first_conflict) = stage(&mut tx, archive, &devices, &mut metrics).await?;
     let mut gaps = Vec::new();
@@ -92,6 +93,22 @@ pub async fn land(
     tx.commit().await.map_err(StoreError::from)?;
     gaps.sort_by_key(|g| g.start);
     Ok(Landed { gaps, conflicts, first_conflict })
+}
+
+/// The first-run gate reads the active profile; setting it directly keeps the archive's unit ids, which
+/// choosing the profile through the API would rewrite. A plant of retired devices only has none to pick.
+async fn activate_first_profile(conn: &mut SqliteConnection, config: &Config) -> Result<(), StoreError> {
+    let first = config.plant.devices.iter().find(|d| config::retired(d).ok().flatten().is_none());
+    if let Some(device) = first {
+        sqlx::query(
+            "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(crate::settings::PROFILE_KEY)
+        .bind(&device.profile_id)
+        .execute(conn)
+        .await?;
+    }
+    Ok(())
 }
 
 /// One device's readings into its tiers; returns its gaps.

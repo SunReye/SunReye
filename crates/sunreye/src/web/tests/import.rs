@@ -7,6 +7,7 @@ use futures_util::StreamExt as _;
 use futures_util::stream;
 use tokio::sync::oneshot;
 
+use super::users::signed_in_user;
 use super::*;
 use crate::archive::testing::{gz, tar};
 use crate::run::{Fault, Pause};
@@ -16,6 +17,7 @@ const CURRENT_SHA256: &str = "cc05db473ae491d3495ed10ad78c23625b85931404c2d34774
 const LEGACY_SHA256: &str = "85746cda38de3bb4ff57279fb70aa76a6243bf83c24bf5bc88c80481764a102e";
 const UPLOAD: &str = "/api/admin/import";
 const CONFIRM: &str = "/api/admin/import/confirm";
+const DISCARD: &str = "/api/admin/import/discard";
 
 fn archives() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/archives")
@@ -69,6 +71,10 @@ async fn upload(api: &Api, bytes: Vec<u8>) -> Answer {
 
 async fn confirm(api: &Api, sha256: &str) -> Answer {
     post(api, CONFIRM, &json!({"sha256": sha256})).await
+}
+
+async fn discard(api: &Api, sha256: &str) -> Answer {
+    post(api, DISCARD, &json!({"sha256": sha256})).await
 }
 
 async fn devices(core: &Core) -> usize {
@@ -646,4 +652,105 @@ async fn stopping_the_core_ends_the_retries_of_an_import_whose_polling_keeps_fai
     tokio::time::resume();
     assert_eq!(seams.apply_faults.lock().expect("faults").len(), 2, "no retry once stopping");
     assert_eq!(seams.events.lock().expect("events").last(), Some(&"store closed"));
+}
+
+fn error(answer: &Answer) -> (StatusCode, Value) {
+    (answer.status, answer.json()["error"].clone())
+}
+
+const NOT_EMPTY: &str = "the store already holds devices: import into a new store";
+
+#[tokio::test]
+async fn an_upload_into_a_store_holding_devices_is_a_409_before_any_guard_and_holds_nothing() {
+    let (core, admin) = importer("import-not-empty", UploadLimit::default()).await;
+    legacy_profile(&admin).await;
+    assert_eq!(upload(&admin, archive("legacy-1.2.0")).await.status, StatusCode::OK);
+    for bytes in [archive("current-2.x"), archive("legacy-1.2.0")] {
+        let refused = upload(&admin, bytes).await;
+        assert_eq!(error(&refused), (StatusCode::CONFLICT, json!(NOT_EMPTY)));
+        let part = core.upload.with_file_name(PART_FILE);
+        assert!(!core.upload.exists() && !part.exists(), "no file is held, no part is left");
+        assert!(core.imports.try_lock().expect("free").is_none(), "no guard is raised");
+    }
+    assert_eq!(error(&confirm(&admin, CURRENT_SHA256).await), (StatusCode::CONFLICT, json!(NOT_HELD)));
+    assert_eq!(devices(&core).await, 1);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn discarding_the_held_upload_removes_its_file_and_a_later_confirmation_finds_none() {
+    let (core, admin) = importer("import-discard", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    for other in [LEGACY_SHA256, "", &CURRENT_SHA256.to_uppercase()] {
+        let refused = discard(&admin, other).await;
+        assert_eq!(error(&refused), (StatusCode::CONFLICT, json!(NOT_HELD)));
+        assert!(core.upload.exists(), "another sha256 leaves the held upload");
+    }
+    assert_eq!(post(&admin, DISCARD, &json!({"confirmed": true})).await.status, StatusCode::BAD_REQUEST);
+    let discarded = discard(&admin, CURRENT_SHA256).await;
+    assert_eq!(discarded.status, StatusCode::NO_CONTENT);
+    assert!(!core.upload.exists(), "the held file is removed");
+    assert_eq!(error(&confirm(&admin, CURRENT_SHA256).await), (StatusCode::CONFLICT, json!(NOT_HELD)));
+    assert_eq!(error(&discard(&admin, CURRENT_SHA256).await), (StatusCode::CONFLICT, json!(NOT_HELD)));
+    assert_eq!(devices(&core).await, 0);
+    held(&admin, &core).await;
+    assert_eq!(
+        confirm(&admin, CURRENT_SHA256).await.status,
+        StatusCode::OK,
+        "the same archive uploads again"
+    );
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_discard_while_an_import_runs_is_a_409_that_leaves_the_import() {
+    let (core, admin) = importer("import-discard-running", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    let (reached, resume) = pause(&core.seams.import_pause);
+    let meanwhile = async {
+        reached.await.expect("the import runs");
+        let refused = discard(&admin, CURRENT_SHA256).await;
+        resume.send(()).expect("the import waits");
+        refused
+    };
+    let (confirmed, refused) = tokio::join!(confirm(&admin, CURRENT_SHA256), meanwhile);
+    assert_eq!(error(&refused), (StatusCode::CONFLICT, json!(RUNNING)));
+    assert_eq!(confirmed.status, StatusCode::OK);
+    assert_eq!(devices(&core).await, 1);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn discarding_is_for_admins_only() {
+    let (core, admin) = importer("import-discard-auth", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    let user = reads::plain_user(&admin).await;
+    for (who, status) in [(&user, StatusCode::FORBIDDEN), (&admin.anonymous(), StatusCode::UNAUTHORIZED)] {
+        assert_eq!(discard(who, CURRENT_SHA256).await.status, status);
+        assert!(core.upload.exists(), "refused: the held upload stays");
+    }
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK, "still held for the admin");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn another_admin_can_neither_confirm_nor_discard_the_held_upload() {
+    let (core, first) = importer("import-per-admin", UploadLimit::default()).await;
+    let (_, second) = signed_in_user(&first, "second@example.org", true).await;
+    held(&first, &core).await;
+    for refused in [confirm(&second, CURRENT_SHA256).await, discard(&second, CURRENT_SHA256).await] {
+        assert_eq!(
+            error(&refused),
+            (StatusCode::FORBIDDEN, json!("The held upload belongs to another admin"))
+        );
+        assert!(core.upload.exists(), "the held upload stays");
+    }
+    assert_eq!(devices(&core).await, 0);
+    assert_eq!(confirm(&first, CURRENT_SHA256).await.status, StatusCode::OK, "its uploader still confirms");
+    drop((first, second));
+    core.stop().await;
 }

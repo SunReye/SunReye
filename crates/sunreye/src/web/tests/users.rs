@@ -9,7 +9,7 @@ async fn create_user(admin: &Api, email: &str, is_admin: bool) -> Answer {
 }
 
 /// A created account, signed in in its own browser.
-async fn signed_in_user(admin: &Api, email: &str, is_admin: bool) -> (i64, Api) {
+pub(super) async fn signed_in_user(admin: &Api, email: &str, is_admin: bool) -> (i64, Api) {
     let created = create_user(admin, email, is_admin).await;
     assert_eq!(created.status, StatusCode::OK, "{:?}", created.json());
     let id = created.json()["id"].as_i64().expect("id");

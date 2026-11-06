@@ -190,7 +190,7 @@
     },
     "/api/admin/import": {
       "post": {
-        "summary": "Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or\nstill holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload\nreceived whole replaces it.",
+        "summary": "Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409\nbefore the body is read. An archive whose automation is on, or still holds a register, stops at the guard\n(202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it; a\nnew upload received whole replaces it.",
         "operationId": "importArchive",
         "requestBody": {
           "description": "The 3.x archive",
@@ -290,7 +290,7 @@
     },
     "/api/admin/import/confirm": {
       "post": {
-        "summary": "Imports the upload the guard stopped, once: the confirmation names its sha256.",
+        "summary": "Imports the upload the guard stopped, once: the confirmation names its sha256. Only the admin who sent it\nconfirms it.",
         "operationId": "confirmArchiveImport",
         "requestBody": {
           "content": {
@@ -312,6 +312,70 @@
               }
             }
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/import/discard": {
+      "post": {
+        "summary": "Drops the upload the guard stopped: deletes its file and clears the wait, which the confirmation can no\nlonger continue.",
+        "operationId": "discardArchiveImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
           "400": {
             "content": {
               "application/json": {
