@@ -224,22 +224,32 @@ async fn put(
     .map_err(store_error)
 }
 
-/// What each bucket tier holds for the device.
+/// What each bucket tier holds for the device, and on which UTC days.
 async fn windows(conn: &mut SqliteConnection, device: i64) -> Result<Vec<Window>, ImportError> {
     let rows = sqlx::query(
-        "SELECT tier, min(at_ms), max(at_ms) FROM temp.import_point WHERE device = ? AND tier > 0 GROUP BY tier",
+        "SELECT tier, (at_ms - ((at_ms % ?1) + ?1) % ?1) / ?1, min(at_ms), max(at_ms) FROM temp.import_point
+         WHERE device = ?2 AND tier > 0 GROUP BY 1, 2 ORDER BY 1, 2",
     )
+    .bind(DAY_MS)
     .bind(device)
     .fetch_all(&mut *conn)
     .await
     .map_err(store_error)?;
-    Ok(rows
-        .iter()
-        .filter_map(|row| {
-            let tier = bucketed(row.get(0))?;
-            Some(Window { tier, from: row.get(1), to: row.get::<i64, _>(2) + tier.width_ms() })
-        })
-        .collect())
+    let mut windows: Vec<Window> = Vec::new();
+    for row in &rows {
+        let Some(tier) = bucketed(row.get(0)) else { continue };
+        let (day, first, last): (i64, i64, i64) = (row.get(1), row.get(2), row.get(3));
+        match windows.last_mut().filter(|w| w.tier == tier) {
+            Some(w) => {
+                w.to = last + tier.width_ms();
+                w.days.insert(day);
+            }
+            None => {
+                windows.push(Window { tier, from: first, to: last + tier.width_ms(), days: [day].into() });
+            }
+        }
+    }
+    Ok(windows)
 }
 
 /// One metric's landing rows in time order into its minute, hour and day buckets.
@@ -351,21 +361,12 @@ impl Folder {
         Ok(closed)
     }
 
-    /// Stores every open bucket that ends by `at_us`, finest first, so an hour folds into its own day before
-    /// a later row opens another.
+    /// Closes the open hour once `at_us` reaches its end and folds it into its day, so a later row opening
+    /// another day finds it whole. A minute or day closes when the next one opens.
     async fn close_before(&mut self, conn: &mut SqliteConnection, at_us: i64) -> Result<(), ImportError> {
-        let ended =
-            |open: &Option<Partial>, tier: Tier| open.is_some_and(|p| p.start + tier.width_us() <= at_us);
-        if ended(&self.open[slot(Tier::Minute)], Tier::Minute) {
-            self.close(conn, Tier::Minute).await?;
-        }
-        if ended(&self.open[slot(Tier::Hour)], Tier::Hour)
-            && let Some(hour) = self.close(conn, Tier::Hour).await?
-        {
+        let ended = self.open[slot(Tier::Hour)].is_some_and(|p| p.start + Tier::Hour.width_us() <= at_us);
+        if ended && let Some(hour) = self.close(conn, Tier::Hour).await? {
             self.add(conn, Tier::Day, hour).await?;
-        }
-        if ended(&self.open[slot(Tier::Day)], Tier::Day) {
-            self.close(conn, Tier::Day).await?;
         }
         Ok(())
     }
@@ -472,6 +473,20 @@ mod tests {
         folder.push(&mut conn, code(SourceTier::Hourly), hour(5), 1.0).await.expect("first hour");
         let late = folder.push(&mut conn, code(SourceTier::Hourly), hour(4), 2.0).await;
         assert!(matches!(late, Err(ImportError::Store(StoreError::Corrupt(_)))), "{late:?}");
+    }
+
+    #[tokio::test]
+    async fn a_reading_in_the_last_microsecond_of_an_hour_stays_in_it() {
+        let store = Store::in_memory().await.expect("store");
+        let mut conn = store.hold().await;
+        let never = Some(i64::MAX / 1000);
+        let cut = Cutoffs { raw: 0, minute: never, hour: never, day: never };
+        let mut folder = Folder::new(1, 1, cut);
+        let hour = |h: i64| h * 3_600_000_000;
+        folder.push(&mut conn, code(SourceTier::Hourly), hour(5), 1.0).await.expect("hour");
+        let inside = folder.push(&mut conn, code(SourceTier::Minute), hour(6) - 1, 2.0).await;
+        assert!(inside.is_ok(), "{inside:?}");
+        folder.push(&mut conn, code(SourceTier::Minute), hour(6), 3.0).await.expect("next hour");
     }
 
     #[tokio::test]
