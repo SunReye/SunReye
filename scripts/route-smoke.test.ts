@@ -818,6 +818,7 @@ describe("the kiosk surface is a closed list", () => {
         "GET /api/history/rollup",
         "GET /api/profile",
         "GET /api/sources",
+        "GET /api/weather",
       ].sort(),
     );
   });

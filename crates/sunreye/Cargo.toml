@@ -67,6 +67,7 @@ async-trait = "0.1"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 ring = { version = "0.17", default-features = false }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [lints]
 workspace = true

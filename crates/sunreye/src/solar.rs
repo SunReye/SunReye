@@ -1,39 +1,44 @@
-//! The forecast served (3.x `fetchSolarForecast`): the settings composed, Open-Meteo irradiance cached
-//! 30 minutes per location and planes, the clipping sim's inputs read from the store, the model rebuilt
-//! per request, scaled by the learned correction while it is enabled. A failed fetch keeps the last irradiance
-//! for the same key and reports it stale.
+//! The forecast served (3.x `fetchSolarForecast`): the settings composed, Open-Meteo irradiance refreshed off
+//! the request path ([`crate::refresh`]) per location and planes, the clipping sim's inputs read from the store,
+//! the model rebuilt per request, scaled by the learned correction while it is enabled. A failed fetch keeps the
+//! last irradiance for the same key and reports it stale.
+
+use std::sync::Arc;
 
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
-use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
 use crate::open_meteo::{self, Plane};
 use crate::plant_zone;
+use crate::refresh::PERIOD;
 use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, StoreError, first_in_service};
 use crate::weather::{self, OPEN_METEO, WeatherConfig};
 
-const TTL_MS: i64 = 30 * 60_000;
 /// House load moves slowly: its median is read far less often than the irradiance.
 const LOAD_TTL_MS: i64 = 6 * 3_600_000;
 const LOAD_DAYS: i64 = 14;
 const HOUR_MS: i64 = 3_600_000;
 
-/// The one cached series and the house-load median.
+/// The series the last refresh landed, which requests only read, and the house-load median.
 #[derive(Debug)]
 pub struct Solar {
     url: String,
-    cache: Mutex<Option<Cached>>,
+    cache: std::sync::Mutex<Option<Cached>>,
     load: std::sync::Mutex<Option<(i64, Option<f64>)>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Cached {
     key: String,
     fetched_ms: i64,
-    data: Irradiance,
+    fetched: Instant,
+    data: Arc<Irradiance>,
+    /// The last fetch for the key failed.
+    stale: bool,
 }
 
 /// A forecast and the age of the irradiance it was built from.
@@ -43,22 +48,22 @@ pub struct Served {
     pub fetched_ms: i64,
     /// The last fetch failed; this is the irradiance from before it.
     pub stale: bool,
+    /// The plant zone the daily sums were cut in.
+    pub time_zone: String,
 }
 
 impl Solar {
     /// Fetching from `url`, Open-Meteo's forecast endpoint or a stand-in.
     pub fn new(url: String) -> Self {
-        Self { url, cache: Mutex::new(None), load: std::sync::Mutex::new(None) }
+        Self { url, cache: std::sync::Mutex::default(), load: std::sync::Mutex::new(None) }
     }
 
-    /// None while the forecast is off, unlocated or without arrays, and when no irradiance can be had.
+    /// None while the forecast is off, unlocated or without arrays, and until irradiance for the key landed.
     pub async fn serve(&self, core: &Core) -> Result<Option<Served>, StoreError> {
         let config = weather::read(&core.store).await?;
         let Some(wanted) = wanted(&config) else { return Ok(None) };
+        let Some(hit) = self.held().filter(|c| c.key == wanted.key) else { return Ok(None) };
         let now_ms = core.now_ms();
-        let mut cache = self.cache.lock().await;
-        let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
-        let Some(hit) = cache.as_ref() else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
         let (correction, arrays) = if config.forecast.correction.enabled {
             crate::learn::applied(&core.store, &config.forecast.arrays).await?
@@ -75,27 +80,38 @@ impl Solar {
         };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
-        Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale }))
+        let time_zone = zone.iana_name().unwrap_or("UTC").to_owned();
+        Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale: hit.stale, time_zone }))
     }
 
-    /// Fetches unless the cache holds `wanted` inside the TTL. `Some(stale)` when the cache now holds it.
-    async fn refresh(
-        &self,
-        cache: &mut Option<Cached>,
-        core: &Core,
-        wanted: Wanted,
-        now_ms: i64,
-    ) -> Option<bool> {
-        let held = cache.as_ref().filter(|c| c.key == wanted.key).map(|c| c.fetched_ms);
-        if held.is_some_and(|fetched_ms| now_ms - fetched_ms < TTL_MS) {
-            return Some(false);
+    /// Fetches the irradiance the settings ask for unless the same key landed inside the refresh period. False
+    /// when the fetch failed: the last irradiance is kept and reported stale.
+    pub async fn refresh(&self, core: &Core) -> Result<bool, StoreError> {
+        let config = weather::read(&core.store).await?;
+        let Some(wanted) = wanted(&config) else { return Ok(true) };
+        if self.held().is_some_and(|c| c.key == wanted.key && !c.stale && c.fetched.elapsed() < PERIOD) {
+            return Ok(true);
         }
         let fetched = open_meteo::fetch(&self.url, &core.roots, wanted.location, &wanted.planes).await;
-        let Ok(fetched) = fetched.inspect_err(|error| tracing::warn!(%error, "forecast fetch failed")) else {
-            return held.map(|_| true);
+        Ok(self.land(wanted.key, fetched, core.now_ms()))
+    }
+
+    /// A fetched series replaces the cache; a failed fetch marks the series held for `key` stale.
+    fn land(&self, key: String, fetched: Result<Irradiance, open_meteo::FetchError>, now_ms: i64) -> bool {
+        let mut cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Ok(data) = fetched.inspect_err(|error| tracing::warn!(%error, "forecast fetch failed")) else {
+            if let Some(held) = cache.as_mut().filter(|c| c.key == key) {
+                held.stale = true;
+            }
+            return false;
         };
-        *cache = Some(Cached { key: wanted.key, fetched_ms: now_ms, data: fetched });
-        Some(false)
+        let fetched = Instant::now();
+        *cache = Some(Cached { key, fetched_ms: now_ms, fetched, data: Arc::new(data), stale: false });
+        true
+    }
+
+    fn held(&self) -> Option<Cached> {
+        self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
     /// Live SOC, house load and day-start SOC from the first in-service device, read only when a feed-in

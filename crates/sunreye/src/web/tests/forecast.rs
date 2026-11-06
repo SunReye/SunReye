@@ -8,12 +8,13 @@ use tokio::io::AsyncWriteExt;
 
 use super::correction::archive_payload;
 use super::support::{acceptor, read_request};
+use super::weather::conditions_payload;
 use super::*;
 use crate::forecast::{self, CorrectionModel, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
 use crate::samples::{ClosedMinute, Sample};
 
 /// 2026-07-24T10:07:00Z: plant-local 12:07 in Berlin, inside the stand-in's series.
-const NOW_MS: i64 = 1_784_887_620_000;
+pub(super) const NOW_MS: i64 = 1_784_887_620_000;
 const HALF_HOUR_MS: i64 = 1_800_000;
 pub(super) const LAT: f64 = 50.5;
 pub(super) const LON: f64 = 8.25;
@@ -42,7 +43,7 @@ fn payload() -> Value {
     })
 }
 
-fn irradiance() -> Irradiance {
+pub(super) fn irradiance() -> Irradiance {
     Irradiance {
         times: TIMES.iter().map(|&t| t.to_owned()).collect(),
         utc_offset_seconds: 7200,
@@ -95,7 +96,7 @@ pub(super) fn string_corrected(
     )
 }
 
-fn zone(name: &str) -> jiff::tz::TimeZone {
+pub(super) fn zone(name: &str) -> jiff::tz::TimeZone {
     jiff::tz::db().get(name).expect("bundled zone")
 }
 
@@ -145,17 +146,22 @@ pub(super) struct StandIn {
     pub(super) hits: Arc<AtomicUsize>,
     pub(super) failing: Arc<AtomicBool>,
     pub(super) paths: Arc<Mutex<Vec<String>>>,
+    /// The date the conditions' daily row carries in place of the asked one.
+    pub(super) day: Arc<Mutex<Option<String>>>,
+    /// Requests are read and never answered.
+    pub(super) hanging: Arc<AtomicBool>,
 }
 
-type Seen = (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>);
+type Seen =
+    (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>, Arc<Mutex<Option<String>>>, Arc<AtomicBool>);
 
 async fn stand_in(ca: &Ca) -> StandIn {
     let tls = acceptor(ca.leaf("localhost"));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let (hits, failing, paths) =
-        (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)), Arc::default());
-    let seen: Seen = (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths));
+    let (hits, failing, paths, day, hanging): Seen = Default::default();
+    let seen: Seen =
+        (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths), Arc::clone(&day), Arc::clone(&hanging));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             tokio::spawn(answer_one(tls.clone(), tcp, seen.clone()));
@@ -163,21 +169,31 @@ async fn stand_in(ca: &Ca) -> StandIn {
     });
     let urls =
         (format!("https://localhost:{port}/v1/forecast"), format!("https://localhost:{port}/v1/archive"));
-    StandIn { urls, hits, failing, paths }
+    StandIn { urls, hits, failing, paths, day, hanging }
 }
 
 async fn answer_one(
     tls: tokio_rustls::TlsAcceptor,
     tcp: tokio::net::TcpStream,
-    (hits, failing, paths): Seen,
+    (hits, failing, paths, day, hanging): Seen,
 ) {
     let Ok(mut stream) = tls.accept(tcp).await else { return };
     let Some(head) = read_request(&mut stream).await else { return };
     let head = String::from_utf8_lossy(&head).into_owned();
     let path = head.split_whitespace().nth(1).unwrap_or_default().to_owned();
-    let body = if path.starts_with("/v1/archive") { archive_payload() } else { payload() }.to_string();
+    let body = if path.starts_with("/v1/archive") {
+        archive_payload()
+    } else if path.contains("current=") {
+        conditions_payload(&path, day.lock().expect("day").clone())
+    } else {
+        payload()
+    }
+    .to_string();
     paths.lock().expect("paths").push(path);
     hits.fetch_add(1, Ordering::SeqCst);
+    if hanging.load(Ordering::SeqCst) {
+        return std::future::pending().await;
+    }
     let wire = if failing.load(Ordering::SeqCst) {
         "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
     } else {
@@ -203,17 +219,82 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     (core, admin, standin)
 }
 
-async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
+pub(super) async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
     send(api, Method::PATCH, path, Some(&body.to_string())).await
 }
 
-pub(super) async fn configure(admin: &Api, max_output_w: Option<f64>) {
+impl StandIn {
+    /// The paths asked for so far that start with `prefix` and contain `part`.
+    fn asked(&self, prefix: &str, part: &str) -> Vec<String> {
+        let paths = self.paths.lock().expect("paths");
+        paths.iter().filter(|p| p.starts_with(prefix) && p.contains(part)).cloned().collect()
+    }
+
+    pub(super) fn archive_paths(&self) -> Vec<String> {
+        self.asked("/v1/archive", "")
+    }
+
+    /// Irradiance requests, one per panel orientation per refresh.
+    pub(super) fn forecast_paths(&self) -> Vec<String> {
+        self.asked("/v1/forecast", "minutely_15=")
+    }
+
+    pub(super) fn conditions_paths(&self) -> Vec<String> {
+        self.asked("/v1/forecast", "current=")
+    }
+}
+
+/// Polls until `done`, failing after 10 s: the refresh loops land on their own time.
+pub(super) async fn until(what: &str, done: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !done() {
+        assert!(Instant::now() < deadline, "never: {what}");
+        tokio::task::yield_now().await;
+    }
+}
+
+/// `path`'s answer once `done` holds for it, failing after 10 s.
+pub(super) async fn answer_once(api: &Api, path: &str, done: impl Fn(&Value) -> bool) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let answer = get(api, path).await.json();
+        if done(&answer) {
+            return answer;
+        }
+        assert!(Instant::now() < deadline, "{path} never answered as wanted: {answer}");
+        tokio::task::yield_now().await;
+    }
+}
+
+/// `path`'s first answer that is not null.
+pub(super) async fn landed(api: &Api, path: &str) -> Value {
+    answer_once(api, path, |answer| !answer.is_null()).await
+}
+
+/// Moves the monotonic clock the refresh loops wait on by `ms`; the core keeps running in real time.
+pub(super) async fn elapse(ms: u64) {
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_millis(ms)).await;
+    tokio::time::resume();
+}
+
+pub(super) const QUARTER_HOUR_MS: u64 = 900_000;
+pub(super) const MINUTE_MS: u64 = 60_000;
+
+/// Saves the stand-in plant's array and a located, enabled forecast.
+pub(super) async fn configure_settings(admin: &Api, max_output_w: Option<f64>) {
     let arrays = json!({"arrays": [{"kwp": 6.4, "tilt": 35, "azimuth": 10, "tempCoefficient": -0.34, "mppt": 1}],
         "systemLoss": 12});
     assert_eq!(patch(admin, "/api/devices/1", &arrays).await.status, StatusCode::OK);
     let plant = json!({"enabled": true, "latitude": LAT, "longitude": LON,
         "forecast": {"enabled": true, "maxOutputW": max_output_w, "houseLoadW": 400}});
     assert_eq!(put(admin, "/api/settings/weather", &plant).await.status, StatusCode::OK);
+}
+
+/// [`configure_settings`] once its irradiance landed.
+pub(super) async fn configure(admin: &Api, max_output_w: Option<f64>) {
+    configure_settings(admin, max_output_w).await;
+    landed(admin, "/api/forecast").await;
 }
 
 pub(super) fn fixed_now() -> i64 {
@@ -363,8 +444,8 @@ async fn the_forecast_answers_the_model_s_series_and_a_second_request_does_not_r
     assert_eq!(raw.json(), expected(&model(None), SimInputs::default(), Variant::Raw, &FRESH));
     let usable = get(&admin, "/api/forecast/usable").await;
     assert_eq!(usable.json(), expected(&model(None), SimInputs::default(), Variant::Usable, &FRESH));
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "the second request is served from the cache");
-    let path = standin.paths.lock().expect("paths")[0].clone();
+    assert_eq!(standin.forecast_paths().len(), 1, "the second request is served from the cache");
+    let path = standin.forecast_paths()[0].clone();
     assert!(path.contains("latitude=50.5&longitude=8.25") && path.contains("tilt=35&azimuth=10"), "{path}");
     drop(admin);
     core.stop().await;
@@ -394,12 +475,11 @@ async fn a_failed_refetch_keeps_the_last_irradiance_and_reports_it_stale() {
     configure(&admin, None).await;
     assert_eq!(get(&admin, "/api/forecast").await.json()["stale"], false);
     standin.failing.store(true, Ordering::SeqCst);
-    STALE_NOW.store(NOW_MS + HALF_HOUR_MS - 1, Ordering::SeqCst);
-    assert_eq!(get(&admin, "/api/forecast").await.json()["stale"], false, "inside 30 min: no refetch");
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1);
     STALE_NOW.store(NOW_MS + HALF_HOUR_MS, Ordering::SeqCst);
-    let stale = get(&admin, "/api/forecast").await.json();
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 2, "the cache expired");
+    assert_eq!(get(&admin, "/api/forecast").await.json()["stale"], false, "no refresh due");
+    elapse(QUARTER_HOUR_MS).await;
+    let stale = answer_once(&admin, "/api/forecast", |answer| answer["stale"] == true).await;
+    assert_eq!(standin.forecast_paths().len(), 2, "refreshed once");
     let want = expected(
         &model(None),
         SimInputs::default(),
@@ -414,8 +494,9 @@ async fn a_failed_refetch_keeps_the_last_irradiance_and_reports_it_stale() {
 #[tokio::test]
 async fn a_failed_first_fetch_answers_null() {
     let (core, admin, standin) = forecasting("forecast-unreachable", fixed_now).await;
-    configure(&admin, None).await;
     standin.failing.store(true, Ordering::SeqCst);
+    configure_settings(&admin, None).await;
+    until("a failed fetch", || !standin.forecast_paths().is_empty()).await;
     for path in ["/api/forecast", "/api/forecast/usable"] {
         let answer = get(&admin, path).await;
         assert_eq!((answer.status, answer.json()), (StatusCode::OK, Value::Null), "{path}");
@@ -425,12 +506,13 @@ async fn a_failed_first_fetch_answers_null() {
 }
 
 #[tokio::test]
-async fn disabled_unlocated_or_arrayless_answers_null_without_a_fetch() {
+async fn disabled_unlocated_or_arrayless_answers_null_and_asks_nothing_new() {
     let (core, admin, standin) = forecasting("forecast-unready", fixed_now).await;
     let null = |answer: Answer| (answer.status, answer.json()) == (StatusCode::OK, Value::Null);
     let located = json!({"enabled": true, "latitude": LAT, "longitude": LON, "forecast": {"enabled": true}});
     assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
     assert!(null(get(&admin, "/api/forecast").await), "no arrays");
+    assert!(standin.forecast_paths().is_empty(), "no arrays: nothing asked");
     configure(&admin, None).await;
     for unready in
         [json!({"enabled": false}), json!({"forecast": {"enabled": false}}), json!({"latitude": null})]
@@ -440,7 +522,7 @@ async fn disabled_unlocated_or_arrayless_answers_null_without_a_fetch() {
         assert!(null(get(&admin, "/api/forecast/usable").await), "{unready}");
         assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
     }
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 0);
+    assert_eq!(standin.forecast_paths().len(), 1, "the same key landed inside the period: not asked again");
     drop(admin);
     core.stop().await;
 }
@@ -515,7 +597,7 @@ async fn the_forecast_cuts_its_days_in_the_saved_plant_zone_not_the_provider_s()
         assert_eq!(raw, want, "{name}");
         assert_eq!(today_kwh(&raw) > 0.0, today_has_the_series, "{name}");
     }
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "a zone change does not refetch");
+    assert_eq!(standin.forecast_paths().len(), 1, "a zone change does not refetch");
     drop(admin);
     core.stop().await;
 }
