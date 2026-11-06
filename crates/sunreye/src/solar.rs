@@ -102,12 +102,12 @@ impl Solar {
         if last.is_some_and(|fetched_ms| now_ms - fetched_ms < TTL_MS) {
             return (held, Some(false));
         }
-        if held.failed.holds(&wanted.key, now_ms) {
+        if held.failed.holds(&wanted.key) {
             return (held, last.map(|_| true));
         }
         let fetched = fetch().await;
         let Ok(fetched) = fetched.inspect_err(|error| tracing::warn!(%error, "forecast fetch failed")) else {
-            held.failed.record(wanted.key.clone(), now_ms);
+            held.failed.record(wanted.key.clone());
             return (held, last.map(|_| true));
         };
         held.cached = Some(Cached { key: wanted.key.clone(), fetched_ms: now_ms, data: fetched });
@@ -276,8 +276,13 @@ mod tests {
 
         /// `n` requests at once for `key` at `now_ms`; their answers once all are in.
         async fn requests(&self, key: &str, now_ms: i64, n: usize) -> Vec<Option<bool>> {
+            self.queued(key, &vec![now_ms; n]).await
+        }
+
+        /// One request per clock reading in `stamps`, queued on the cache in that order.
+        async fn queued(&self, key: &str, stamps: &[i64]) -> Vec<Option<bool>> {
             let mut requests = tokio::task::JoinSet::new();
-            for _ in 0..n {
+            for &now_ms in stamps {
                 let shared = (Arc::clone(&self.solar), Arc::clone(&self.attempts));
                 requests.spawn(request(shared, key.to_owned(), now_ms));
             }
@@ -302,6 +307,7 @@ mod tests {
         let outage = Outage::new();
         assert_eq!(outage.requests("k", AT, 4).await, vec![None; 4]);
         assert_eq!(outage.attempts(), 1, "first fetch");
+        tokio::time::advance(Duration::from_secs(60)).await;
         assert_eq!(outage.land("k", AT + 60_000).await, Some(false));
         let expired = AT + 60_000 + TTL_MS;
         assert_eq!(outage.requests("k", expired, 4).await, vec![Some(true); 4]);
@@ -309,13 +315,30 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_failed_forecast_fetch_is_retried_after_the_retry_interval_not_before() {
+    async fn a_failed_forecast_fetch_is_retried_a_minute_after_it_failed_not_before() {
         let outage = Outage::new();
         outage.requests("k", AT, 1).await;
-        outage.requests("k", AT + 59_999, 1).await;
+        tokio::time::advance(Duration::from_millis(59_999)).await;
+        outage.requests("k", AT + 60_000, 1).await;
         assert_eq!(outage.attempts(), 1, "inside the retry interval");
+        tokio::time::advance(Duration::from_millis(1)).await;
         outage.requests("k", AT + 60_000, 1).await;
         assert_eq!(outage.attempts(), 2, "at the retry interval");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn forecast_requests_queued_out_of_clock_order_during_an_outage_pay_one_fetch() {
+        let outage = Outage::new();
+        assert_eq!(outage.queued("k", &[AT + 5, AT + 3, AT + 1, AT]).await, vec![None; 4]);
+        assert_eq!(outage.attempts(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_wall_clock_stepped_back_after_a_failed_forecast_fetch_does_not_refetch() {
+        let outage = Outage::new();
+        outage.requests("k", AT, 1).await;
+        outage.requests("k", AT - 3_600_000, 1).await;
+        assert_eq!(outage.attempts(), 1);
     }
 
     #[tokio::test(start_paused = true)]

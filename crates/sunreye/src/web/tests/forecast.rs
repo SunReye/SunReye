@@ -148,17 +148,20 @@ pub(super) struct StandIn {
     pub(super) paths: Arc<Mutex<Vec<String>>>,
     /// The date the conditions' daily row carries in place of the asked one.
     pub(super) day: Arc<Mutex<Option<String>>>,
+    /// Requests are read and never answered.
+    pub(super) hanging: Arc<AtomicBool>,
 }
 
-type Seen = (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>, Arc<Mutex<Option<String>>>);
+type Seen =
+    (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>, Arc<Mutex<Option<String>>>, Arc<AtomicBool>);
 
 async fn stand_in(ca: &Ca) -> StandIn {
     let tls = acceptor(ca.leaf("localhost"));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let (hits, failing, paths, day) =
-        (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)), Arc::default(), Arc::default());
-    let seen: Seen = (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths), Arc::clone(&day));
+    let (hits, failing, paths, day, hanging): Seen = Default::default();
+    let seen: Seen =
+        (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths), Arc::clone(&day), Arc::clone(&hanging));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             tokio::spawn(answer_one(tls.clone(), tcp, seen.clone()));
@@ -166,13 +169,13 @@ async fn stand_in(ca: &Ca) -> StandIn {
     });
     let urls =
         (format!("https://localhost:{port}/v1/forecast"), format!("https://localhost:{port}/v1/archive"));
-    StandIn { urls, hits, failing, paths, day }
+    StandIn { urls, hits, failing, paths, day, hanging }
 }
 
 async fn answer_one(
     tls: tokio_rustls::TlsAcceptor,
     tcp: tokio::net::TcpStream,
-    (hits, failing, paths, day): Seen,
+    (hits, failing, paths, day, hanging): Seen,
 ) {
     let Ok(mut stream) = tls.accept(tcp).await else { return };
     let Some(head) = read_request(&mut stream).await else { return };
@@ -188,6 +191,9 @@ async fn answer_one(
     .to_string();
     paths.lock().expect("paths").push(path);
     hits.fetch_add(1, Ordering::SeqCst);
+    if hanging.load(Ordering::SeqCst) {
+        return std::future::pending().await;
+    }
     let wire = if failing.load(Ordering::SeqCst) {
         "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
     } else {

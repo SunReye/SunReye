@@ -98,10 +98,11 @@ pub struct WeatherAnswer {
     )
 )]
 pub async fn weather(State(core): State<Arc<Core>>) -> Result<Json<Option<WeatherAnswer>>, ApiError> {
-    let Some(reading) = core.conditions.serve(&core.store, &core.roots, core.now_ms()).await? else {
-        return Ok(Json(None));
-    };
-    let forecast = core.solar.serve(&core).await?.map(|served| SolarForecast {
+    // Each cache holds its own lock across its fetch: asked together, an outage costs one timeout, not two.
+    let (reading, served) =
+        tokio::join!(core.conditions.serve(&core.store, &core.roots, core.now_ms()), core.solar.serve(&core));
+    let Some(reading) = reading? else { return Ok(Json(None)) };
+    let forecast = served?.map(|served| SolarForecast {
         provider: served.forecast.provider,
         step_minutes: served.forecast.step_minutes,
         utc_offset_seconds: served.forecast.utc_offset_seconds,

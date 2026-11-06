@@ -5,6 +5,7 @@
 
 use std::time::Duration;
 
+use futures_util::future::try_join_all;
 use jiff::Timestamp;
 use jiff::civil::Date;
 use reqwest::Url;
@@ -169,19 +170,19 @@ fn assemble(
     })
 }
 
-/// The series for `planes`, one per array, from `base`.
+/// The series for `planes`, one per array, from `base`; the planes are asked at once, so a refresh waits one
+/// timeout however many there are.
 pub async fn fetch(
     base: &str,
     roots: &[CertificateDer<'_>],
     location: Location,
     planes: &[Plane],
 ) -> Result<Irradiance, FetchError> {
-    let mut responses = Vec::new();
-    for (i, plane) in unique(planes).into_iter().enumerate() {
+    let asked = unique(planes).into_iter().enumerate().map(|(i, plane)| async move {
         let body = get_with_roots(&url(base, location, plane, i == 0), LIMITS, roots).await?;
-        responses.push((plane, decode(&body)?));
-    }
-    assemble(location, planes, &responses)
+        Ok::<_, FetchError>((plane, decode(&body)?))
+    });
+    assemble(location, planes, &try_join_all(asked).await?)
 }
 
 /// Hourly reanalysis for `planes` over the days `start` to `end` in the IANA zone `zone`, from `base`.
