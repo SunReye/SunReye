@@ -82,7 +82,7 @@ _Avoid_: TTL, expiry
 
 **Plant time zone**:
 The time zone statistics days are cut in, from hourly rollups; it labels rollup buckets, which are UTC,
-and the daily ones months and years read. An admin sets it; until then it is the host's zone, else UTC.
+and the daily ones months and years read. An admin sets it; until then it is the host's zone name when a valid IANA name, else UTC.
 _Avoid_: local time, server time
 
 **Display time zone**:

@@ -4,7 +4,8 @@ Status: accepted (2026-11-01); amended the same day: store from a custom append-
 ESP32 parts removed (ADR 0006); amended 2026-11-02: rollup buckets are UTC and counters
 keep high and low, reopening "bucketed in the plant time zone" and "counter deltas" (2.x evidence below);
 amended 2026-11-02: "retention defaults, set from measured bytes per day" gets its measurements and a raw
-retention (Retention below)
+retention (Retention below);
+amended 2026-11-05: the plant time zone defaults to the host's zone name, resolved in the compiled-in database (#453)
 
 ## Context
 
@@ -76,5 +77,6 @@ days appended. Rows per device per day: 1,440 raw, 72,000 minute, 1,200 hourly, 
 - Postgres leaves every edition, including the add-on's bundled server and its dump-based backups.
 - Backups leave the device automatically, in the archive format every target imports; the device's own
   storage is treated as disposable.
-- Time zones come from `jiff` with the IANA database compiled in, never the system's, so statistics days
-  agree across targets.
+- Zone rules come from `jiff` with the IANA database compiled in, never the system's database. The plant
+  time zone is a stored setting that defaults to the host's zone name when it is a valid IANA name, else
+  `UTC`, so statistics days agree across targets.
