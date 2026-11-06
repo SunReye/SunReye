@@ -6,6 +6,7 @@ pub mod decode;
 pub mod forecast;
 pub mod manifest;
 pub mod modbus;
+pub mod mqtt;
 pub mod open_meteo;
 #[cfg(test)]
 mod oracle;

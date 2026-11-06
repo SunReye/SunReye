@@ -112,6 +112,7 @@ pub enum Error {
     Calendar(#[from] jiff::Error),
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Point {
@@ -124,6 +125,7 @@ pub struct Point {
 }
 
 /// The 15 minutes after `now`; `avg_power_w × 0.25 h` equals `energy_kwh`.
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Next15 {
@@ -133,6 +135,7 @@ pub struct Next15 {
 }
 
 /// One power projection over the series and its sums.
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ForecastView {
