@@ -90,9 +90,11 @@ Never deleted: your own checkouts and their `target/`. Budget about 15 GB free d
 | `scripts/ci` | the per-PR gate above |
 | `scripts/ci --train` | what the train adds, once per train: `test:coverage` and `test:floor`, `test:coverage:rust` and `test:floor:rust` (when `rust` is selected), `budgets`, and `e2e` (types, browser suite, and `e2e:core` when `e2e` or `rust` is selected) |
 | `scripts/ci --full` | both, with the tests run once, under coverage; every heavy step regardless of the diff |
-| `scripts/ci --e2e` | the per-PR gate plus the browser suite |
+| `scripts/ci --e2e` | the per-PR gate plus the browser suite (`e2e`, then `e2e:core`, as in a train) |
 
-The factory's gate is `scripts/ci`; the train gate runs it, then `scripts/ci --train`. A coverage, floor, budget or browser failure fails the train and drops the responsible PR like any other train failure. The Android build (`scripts/target-gate`) is in no mode: run it by hand before a release.
+The factory's gate is `scripts/ci`; the train gate runs it, then `scripts/ci --train`. A coverage, floor, budget or browser failure fails the train and drops the responsible PR like any other train failure.
+
+The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), each step holding a heavy lock while it runs: budgets alone, and coverage, Rust coverage, `e2e`, `e2e:core` in order, so the browser suite starts after budgets' SPA build. Each step writes `<log dir>/<step>.log`; the console shows `start`/`done` lines. A failed step stops its lane, the other lane finishes, and every failed step is printed as `FAILED <step> (exit N), log <path>` with its log. The Android build (`scripts/target-gate`) is in no mode: run it by hand before a release.
 
 `scripts/ci-scope.ts` maps the changed paths (`git diff --name-only <base>...HEAD` plus staged, unstaged and untracked files) to the steps `rust`, `build`, `budgets`, `components`, `db`, `routes` and `e2e`. Its rule table is the reference.
 
@@ -111,8 +113,9 @@ A skipped step prints `skip <step>: <rule>` and is absent from the timings. `CI_
 ## Integration
 
 1. `factory train` selects up to `max_train_prs` approved PRs, largest first, and merges them onto `factory/train` from the configured base in the merge slot. Ordinary conflicts drop a PR with an integration note; only configured generated conflicts keep the train's version for regeneration.
-2. The integrator regenerates, commits any resulting changes, runs the configured train gate (`gate --train --detach`, then `gate-wait` until an exit code; it runs `scripts/ci`, then `scripts/ci --train`) and all other required checks. On failure it can drop the responsible PR and rebuild. No passing gate means no landing, regardless of elapsed time.
-3. `factory land` checks base-tree and PR-head freshness before each push. It pushes integrated PR branches normally and merges through the GitHub API with the exact head SHA. Hosted checks on the pushed head must be green when `require_ci` is true. Pending checks leave the PR in `factory:merging` for a later tick. The base tree must finally equal the verified train tree.
+2. `factory train --run` does the whole landing in the control plane: build, `commands.regenerate`, a commit of what regeneration changed (`chore: regenerate after train merge`, hooks skipped: the gate verifies it), the train gate (`commands.gate`, then `commands.train_gate`, read from the train tree, not the dispatcher checkout), and `factory land`. Output goes to `.factory/logs/train-<slot>.log`; the JSON answer ends the call (about 15 minutes: run it in the background). `landed` releases the slot and sends conflict and gate drops back to `changes`: no agent; so does `merging` (the train's last PR, slow for GitHub to accept, stays in `factory:merging` for the dispatcher; an earlier PR waiting is a `stopped`). `red`, `regenerate-failed`, `error` (an exception before landing, with its message), `stopped` (`stale-base`, `moved`, `push-rejected`, `conflict`, `error`) and `tree-mismatch` keep the slot and PR labels as they were and carry `step` (the failing command) and `log`: only these start the integrator.
+3. The integrator reads the log, repairs or drops the responsible PR (`train --drop`), reruns regeneration and the gate (`gate --train --detach`, then `gate-wait` until an exit code) and lands. No passing gate means no landing, regardless of elapsed time. `gate --train` takes `commands` from the tree it runs in.
+4. `factory land` checks base-tree and PR-head freshness before each push. It pushes integrated PR branches normally and merges through the GitHub API with the exact head SHA. Hosted checks on the pushed head must be green when `require_ci` is true. Pending checks leave the train's last PR in `factory:merging` for a later tick; an earlier PR stops the landing. The base tree must finally equal the verified train tree.
 
 The base must not move during a train. A moved base or head causes landing to stop; remaining PRs need fresh integration. Dropped PRs return to changes; unreached approved PRs wait for the next train. Existing `.gitattributes` union rules combine append-only app notes; root and package guides retain normal conflict handling.
 
@@ -144,7 +147,7 @@ bun run test:factory
 bun run test
 ```
 
-Agents run the gate detached so the turn stays open while it runs:
+The per-PR gate takes about 5 minutes: implementers run `scripts/factory/factory gate` as one foreground call. A gate the tool limit would cut off (cold `target/`, `--full`) and the train gate run detached so the turn stays open while it runs:
 
 - `scripts/factory/factory gate [--train] --detach` starts it, logs to `.factory/logs/gate-<slot>.log`, writes the exit code to `gate-<slot>.exit` and prints both paths. A second start in the slot is refused while the gate runs; otherwise it kills the previous gate's process group and clears its log and exit file.
 - `scripts/factory/factory gate-wait [--slot S]` blocks up to 9 minutes and prints `running`, or the exit code with the log tail on failure; loop it until it prints an exit code.

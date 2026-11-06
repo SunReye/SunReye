@@ -13,7 +13,9 @@ Setup, launch and tuning live in `docs/factory.md`. Read `scripts/factory/factor
 2. **Apply results.** For every agent completion since the last tick, apply its result line (the line starting `RESULT`, `VERDICT`, `ROUTE` or `SPLIT`; table below). Done when no completion is unapplied.
 3. **Disk.** `disk.level` `red`: run `scripts/factory/factory gc --aggressive` and dispatch no build work this tick (no claim, checkout or integrator). `amber`: run `scripts/factory/factory gc` and claim no new tickets.
 4. **Merge.** For each PR in `prs.merging` (a train PR GitHub was slow to accept): `scripts/factory/factory merge <pr>`.
-5. **Train.** If `free_slots.merge` and `prs.approved` are not empty and `prs.merging` is (a train built before that PR lands would stop on `stale-base`): run `scripts/factory/factory guard-golden <pr>` for each approved PR; where `ok` is false, write the touched paths to `.factory/reviews/<pr>-golden.md` and run `factory verdict <pr> changes`. Then `scripts/factory/factory train` (up to `max_train_prs` approved PRs, largest first; remaining PRs go in the next train) and spawn **factory-integrator** with that JSON.
+5. **Train.** If `free_slots.merge` and `prs.approved` are not empty and `prs.merging` is (a train built before that PR lands would stop on `stale-base`): run `scripts/factory/factory guard-golden <pr>` for each approved PR; where `ok` is false, write the touched paths to `.factory/reviews/<pr>-golden.md` and run `factory verdict <pr> changes`. Then run `scripts/factory/factory train --run` in the background (it builds, regenerates, commits, gates and lands in the control plane, ~15 minutes; a busy `merge-*` slot with role `train` means it runs). Its final JSON has `result`:
+   - `landed` or `merging` (the train's last PR GitHub was slow to accept; step 4 merges it): nothing to dispatch; conflict and gate drops are already back in `changes` and the slot is released.
+   - `red`, `regenerate-failed`, `error`, `stopped` or `tree-mismatch`: spawn **factory-integrator** with that JSON (`step` is the failing command, `log` its output; the slot stays held for the integrator).
 6. **Review.** For each PR in `prs.review` with no `review:<pr>` entry in `runs`, up to `max_parallel_reviews` running: `scripts/factory/factory run start review <pr>`, then spawn reviewers. The agent definitions carry the scratch, budget and gate rules; the prompt is `pr`, `issue`, `branch` plus ticket-specific points only:
    - `deep` PR: **factory-reviewer-spec** (pass `model: opus`, `effort: medium`) and **factory-reviewer-standards** in one message.
    - `std` PR: one **factory-reviewer-spec** that also covers the standards axis (prompt it to read `AGENTS.md`, the area guides and the smell baseline, and to write both `<pr>-spec.md` and `<pr>-standards.md`); its reply opens with one `VERDICT` line.
@@ -48,6 +50,8 @@ Spawn every agent in the background except triage, and pass the JSON the script 
 | implementer | `RESULT failed: …` | `factory fail <issue> <reason>`; `factory release <slot>` |
 | implementer | `RESULT human: …` | `factory human <issue> <question>`; `factory release <slot>` |
 | reviewers (all done) | `VERDICT …` (one per reviewer) | `factory verdict <pr> approve` when every reviewer approves, else `changes`; `factory run end review <pr>` |
+| `train --run` | `result` `landed` or `merging` | none |
+| `train --run` | `result` other than those | spawn the integrator with the JSON |
 | integrator | `RESULT train changes=<prs>` | `factory verdict <pr> changes --uncounted` for each listed PR; `factory release <slot>` |
 | integrator | `RESULT human: #<pr> …` | `factory human <pr> <question>`; `factory release <slot>` |
 | triage | `ROUTE <route>: …` | `factory route <issue> <route>` |
