@@ -16,7 +16,7 @@ use sqlx::{Row, SqliteConnection};
 use super::config::{self, Config};
 use super::container::{Container, Lines};
 use super::plan::{Bucketed, Plan, Window, plan};
-use super::{Checked, Gap, ImportError, READINGS, Reading, SourceTier};
+use super::{Checked, Conflict, Gap, ImportError, READINGS, Reading, SourceTier};
 use crate::rollup::{Partial, Tier};
 use crate::samples::{MINUTE_MS, Sample, encode, minute_of};
 use crate::store::tiers::append;
@@ -68,16 +68,22 @@ fn bucketed(code: i64) -> Option<Bucketed> {
     }
 }
 
+pub struct Landed {
+    pub gaps: Vec<Gap>,
+    pub conflicts: u64,
+    pub first_conflict: Option<Conflict>,
+}
+
 pub async fn land(
     store: &Store,
     checked: &Checked,
     archive: &mut Container,
     cut: Cutoffs,
-) -> Result<Vec<Gap>, ImportError> {
+) -> Result<Landed, ImportError> {
     let mut tx = store.begin().await?;
     let devices = graph(&mut tx, &checked.config, checked.zone.as_deref()).await?;
     let mut metrics = BTreeMap::new();
-    stage(&mut tx, archive, &devices, &mut metrics).await?;
+    let (conflicts, first_conflict) = stage(&mut tx, archive, &devices, &mut metrics).await?;
     let mut gaps = Vec::new();
     for (slug, &device) in &devices {
         gaps.extend(land_device(&mut tx, slug, device, &metrics, cut).await?);
@@ -85,7 +91,7 @@ pub async fn land(
     sqlx::query("DROP TABLE temp.import_point").execute(&mut *tx).await.map_err(StoreError::from)?;
     tx.commit().await.map_err(StoreError::from)?;
     gaps.sort_by_key(|g| g.start);
-    Ok(gaps)
+    Ok(Landed { gaps, conflicts, first_conflict })
 }
 
 /// One device's readings into its tiers; returns its gaps.
@@ -148,13 +154,14 @@ fn store_error(error: sqlx::Error) -> ImportError {
 }
 
 /// Every reading into `temp.import_point`, its metric interned; a second row at the same instant and tier
-/// is the same reading.
+/// is the same reading, and is counted when its value differs.
 async fn stage(
     conn: &mut SqliteConnection,
     archive: &mut Container,
     devices: &BTreeMap<String, i64>,
     metrics: &mut BTreeMap<String, u32>,
-) -> Result<(), ImportError> {
+) -> Result<(u64, Option<Conflict>), ImportError> {
+    let (mut conflicts, mut first) = (0, None);
     sqlx::query(
         "CREATE TEMP TABLE import_point (device INTEGER NOT NULL, metric INTEGER NOT NULL, at_ms INTEGER NOT NULL,
            tier INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY (device, metric, at_ms, tier)) WITHOUT ROWID",
@@ -177,22 +184,44 @@ async fn stage(
                 metrics.insert(reading.metric_key.clone(), id);
                 id
             };
-            sqlx::query("INSERT OR IGNORE INTO temp.import_point VALUES (?, ?, ?, ?, ?)")
-                .bind(device)
-                .bind(metric)
-                .bind(reading.at_ms)
-                .bind(code(reading.source_tier))
-                .bind(reading.value)
-                .execute(&mut *conn)
-                .await
-                .map_err(store_error)?;
+            let kept = put(conn, device, metric, &reading).await?;
+            if kept.to_bits() != reading.value.to_bits() {
+                conflicts += 1;
+                first.get_or_insert(Conflict {
+                    device: reading.device_slug,
+                    metric: reading.metric_key,
+                    at: instant(reading.at_ms)?,
+                    kept,
+                    dropped: reading.value,
+                });
+            }
         }
     }
     sqlx::query("CREATE INDEX temp.import_raw ON import_point (device, tier, at_ms, metric)")
         .execute(&mut *conn)
         .await
         .map_err(store_error)?;
-    Ok(())
+    Ok((conflicts, first))
+}
+
+/// Stages `reading`; returns the value staged at its key, the first line's.
+async fn put(
+    conn: &mut SqliteConnection,
+    device: i64,
+    metric: u32,
+    reading: &Reading,
+) -> Result<f64, ImportError> {
+    sqlx::query_scalar(
+        "INSERT INTO temp.import_point VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET value = value RETURNING value",
+    )
+    .bind(device)
+    .bind(metric)
+    .bind(reading.at_ms)
+    .bind(code(reading.source_tier))
+    .bind(reading.value)
+    .fetch_one(conn)
+    .await
+    .map_err(store_error)
 }
 
 /// What each bucket tier holds for the device.
@@ -221,7 +250,7 @@ async fn roll_up(
     planned: &Plan,
     cut: Cutoffs,
 ) -> Result<(), ImportError> {
-    let mut folder = Folder { device, metric, cut, open: [None; 3] };
+    let mut folder = Folder::new(device, metric, cut);
     let mut after = (i64::MIN, -1_i64);
     loop {
         let page = sqlx::query(
@@ -257,6 +286,8 @@ struct Folder {
     metric: u32,
     cut: Cutoffs,
     open: [Option<Partial>; 3],
+    /// Per tier, the start of the last bucket opened: storing a bucket at or before it would replace one.
+    latest: [i64; 3],
 }
 
 const TIERS: [Tier; 3] = [Tier::Minute, Tier::Hour, Tier::Day];
@@ -270,6 +301,10 @@ const fn slot(tier: Tier) -> usize {
 }
 
 impl Folder {
+    const fn new(device: i64, metric: u32, cut: Cutoffs) -> Self {
+        Self { device, metric, cut, open: [None; 3], latest: [i64::MIN; 3] }
+    }
+
     async fn push(
         &mut self,
         conn: &mut SqliteConnection,
@@ -277,6 +312,7 @@ impl Folder {
         at_us: i64,
         value: f64,
     ) -> Result<(), ImportError> {
+        self.close_before(conn, at_us).await?;
         let reading = Partial::new(at_us, at_us, value);
         if source <= code(SourceTier::Minute) {
             self.add(conn, Tier::Minute, reading).await?;
@@ -306,9 +342,32 @@ impl Folder {
             open.append(&part);
             return Ok(None);
         }
+        if start <= self.latest[slot(tier)] {
+            return Err(StoreError::Corrupt("archive bucket out of time order").into());
+        }
         let closed = self.close(conn, tier).await?;
         self.open[slot(tier)] = Some(Partial { start, ..part });
+        self.latest[slot(tier)] = start;
         Ok(closed)
+    }
+
+    /// Stores every open bucket that ends by `at_us`, finest first, so an hour folds into its own day before
+    /// a later row opens another.
+    async fn close_before(&mut self, conn: &mut SqliteConnection, at_us: i64) -> Result<(), ImportError> {
+        let ended =
+            |open: &Option<Partial>, tier: Tier| open.is_some_and(|p| p.start + tier.width_us() <= at_us);
+        if ended(&self.open[slot(Tier::Minute)], Tier::Minute) {
+            self.close(conn, Tier::Minute).await?;
+        }
+        if ended(&self.open[slot(Tier::Hour)], Tier::Hour)
+            && let Some(hour) = self.close(conn, Tier::Hour).await?
+        {
+            self.add(conn, Tier::Day, hour).await?;
+        }
+        if ended(&self.open[slot(Tier::Day)], Tier::Day) {
+            self.close(conn, Tier::Day).await?;
+        }
+        Ok(())
     }
 
     /// Stores the open `tier` bucket when retention keeps it, and returns it.
@@ -397,4 +456,35 @@ pub fn cutoffs(
         now.as_millisecond().saturating_sub(i64::try_from(days).unwrap_or(i64::MAX).saturating_mul(DAY_MS))
     };
     Cutoffs { raw: back(raw_days), minute: minute.map(back), hour: hour.map(back), day: day.map(back) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_bucket_before_one_already_open_is_refused_not_stored_over_it() {
+        let store = Store::in_memory().await.expect("store");
+        let mut conn = store.hold().await;
+        let cut = Cutoffs { raw: 0, minute: None, hour: None, day: None };
+        let mut folder = Folder::new(1, 1, cut);
+        let hour = |h: i64| h * 3_600_000_000;
+        folder.push(&mut conn, code(SourceTier::Hourly), hour(5), 1.0).await.expect("first hour");
+        let late = folder.push(&mut conn, code(SourceTier::Hourly), hour(4), 2.0).await;
+        assert!(matches!(late, Err(ImportError::Store(StoreError::Corrupt(_)))), "{late:?}");
+    }
+
+    #[tokio::test]
+    async fn a_bucket_already_stored_is_refused_not_stored_again() {
+        let store = Store::in_memory().await.expect("store");
+        let mut conn = store.hold().await;
+        let never = Some(i64::MAX / 1000);
+        let cut = Cutoffs { raw: 0, minute: never, hour: never, day: never };
+        let mut folder = Folder::new(1, 1, cut);
+        let hour = |h: i64| h * 3_600_000_000;
+        folder.push(&mut conn, code(SourceTier::Hourly), hour(5), 1.0).await.expect("hour");
+        folder.push(&mut conn, code(SourceTier::Daily), hour(48), 2.0).await.expect("a later day closes it");
+        let again = folder.push(&mut conn, code(SourceTier::Hourly), hour(5), 3.0).await;
+        assert!(matches!(again, Err(ImportError::Store(StoreError::Corrupt(_)))), "{again:?}");
+    }
 }

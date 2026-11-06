@@ -62,11 +62,24 @@ pub struct Gap {
     pub end: Timestamp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Two archive lines at one device, metric, instant and tier with different values; the first is kept.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Conflict {
+    pub device: String,
+    pub metric: String,
+    pub at: Timestamp,
+    pub kept: f64,
+    pub dropped: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Imported {
     /// Rows read; the configuration log is read and checked, but 4.0 keeps no register history.
     pub read: Streams,
     pub gaps: Vec<Gap>,
+    /// Lines dropped for a [`Conflict`].
+    pub conflicts: u64,
+    pub first_conflict: Option<Conflict>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,8 +266,13 @@ pub async fn import(
         kept(Tier::Hour).await?,
         kept(Tier::Day).await?,
     );
-    let gaps = land::land(store, &checked, &mut Container::open(path)?, cut).await?;
-    Ok(Imported { read: checked.read, gaps })
+    let landed = land::land(store, &checked, &mut Container::open(path)?, cut).await?;
+    Ok(Imported {
+        read: checked.read,
+        gaps: landed.gaps,
+        conflicts: landed.conflicts,
+        first_conflict: landed.first_conflict,
+    })
 }
 
 #[cfg(test)]
@@ -404,6 +422,106 @@ mod tests {
         assert_eq!(imported.expect("import").gaps, []);
         let days = store.buckets(Tier::Day, device(&store).await, "e").await.expect("days");
         assert_eq!((days.len(), days[0].max, days[0].min), (1, 2.0, 1.0));
+    }
+
+    fn hours(day: &str, values: impl IntoIterator<Item = f64>) -> String {
+        values
+            .into_iter()
+            .enumerate()
+            .map(|(h, v)| line("hourly", &format!("{day}T{h:02}:00:00Z"), "e", v))
+            .collect()
+    }
+
+    /// Each stored day of `e` as (start, min, max).
+    async fn days(store: &Store) -> Vec<(String, f64, f64)> {
+        let days = store.buckets(Tier::Day, device(store).await, "e").await.expect("days");
+        days.iter().map(|d| (d.start.to_string(), d.min, d.max)).collect()
+    }
+
+    #[tokio::test]
+    async fn a_daily_day_after_an_hourly_day_leaves_the_hourly_day_whole() {
+        let readings =
+            hours("2026-04-01", (1..=24).map(f64::from)) + &line("daily", "2026-04-02T00:00:00Z", "e", 100.0);
+        let (store, imported) = run(&archive(&readings, &streams(0, 0, 24, 1)), "2026-05-02T00:00:00Z").await;
+        assert_eq!(imported.expect("import").gaps, []);
+        assert_eq!(
+            days(&store).await,
+            [
+                ("2026-04-01T00:00:00Z".to_owned(), 1.0, 24.0),
+                ("2026-04-02T00:00:00Z".to_owned(), 100.0, 100.0)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_hourly_day_after_a_daily_day_keeps_both() {
+        let readings =
+            line("daily", "2026-04-01T00:00:00Z", "e", 100.0) + &hours("2026-04-02", (1..=24).map(f64::from));
+        let (store, imported) = run(&archive(&readings, &streams(0, 0, 24, 1)), "2026-05-02T00:00:00Z").await;
+        assert_eq!(imported.expect("import").gaps, []);
+        assert_eq!(
+            days(&store).await,
+            [
+                ("2026-04-01T00:00:00Z".to_owned(), 100.0, 100.0),
+                ("2026-04-02T00:00:00Z".to_owned(), 1.0, 24.0)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_daily_day_after_minute_or_raw_rows_leaves_their_day_whole() {
+        for (tier, counts) in [("minute", streams(0, 2, 0, 1)), ("raw", streams(2, 0, 0, 1))] {
+            let readings = [
+                line(tier, "2026-04-01T22:59:00Z", "e", 1.0),
+                line(tier, "2026-04-01T23:59:00Z", "e", 2.0),
+                line("daily", "2026-04-02T00:00:00Z", "e", 100.0),
+            ];
+            let (store, imported) = run(&archive(&readings.concat(), &counts), "2026-04-05T00:00:00Z").await;
+            assert_eq!(imported.expect("import").gaps, [], "{tier}");
+            assert_eq!(
+                days(&store).await,
+                [
+                    ("2026-04-01T00:00:00Z".to_owned(), 1.0, 2.0),
+                    ("2026-04-02T00:00:00Z".to_owned(), 100.0, 100.0)
+                ],
+                "{tier}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_daily_row_inside_an_hourly_day_does_not_land() {
+        let readings =
+            hours("2026-04-01", (1..=24).map(f64::from)) + &line("daily", "2026-04-01T00:00:00Z", "e", 100.0);
+        let (store, imported) = run(&archive(&readings, &streams(0, 0, 24, 1)), "2026-05-02T00:00:00Z").await;
+        imported.expect("import");
+        assert_eq!(days(&store).await, [("2026-04-01T00:00:00Z".to_owned(), 1.0, 24.0)]);
+    }
+
+    #[tokio::test]
+    async fn lines_at_one_instant_and_tier_with_other_values_are_counted_and_the_first_kept() {
+        let readings = [
+            line("hourly", "2026-04-01T10:00:00Z", "e", 1.0),
+            line("hourly", "2026-04-01T10:00:00Z", "e", 1.0),
+            line("hourly", "2026-04-01T10:00:00Z", "e", 2.0),
+            line("hourly", "2026-04-01T11:00:00Z", "e", 5.0),
+            line("hourly", "2026-04-01T11:00:00Z", "e", 6.0),
+            line("raw", "2026-04-01T11:00:00Z", "e", 7.0),
+        ];
+        let (store, imported) =
+            run(&archive(&readings.concat(), &streams(1, 0, 5, 0)), "2026-05-02T00:00:00Z").await;
+        let imported = imported.expect("import");
+        assert_eq!(imported.conflicts, 2);
+        let first = Conflict {
+            device: DEVICE.to_owned(),
+            metric: "e".to_owned(),
+            at: at("2026-04-01T10:00:00Z"),
+            kept: 1.0,
+            dropped: 2.0,
+        };
+        assert_eq!(imported.first_conflict, Some(first));
+        let hours = store.buckets(Tier::Hour, device(&store).await, "e").await.expect("hours");
+        assert_eq!(hours.iter().map(|h| (h.min, h.max)).collect::<Vec<_>>(), [(1.0, 1.0), (5.0, 7.0)]);
     }
 
     #[tokio::test]
