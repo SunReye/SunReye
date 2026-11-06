@@ -200,8 +200,14 @@ const recorded = (topic: string, payload: string, options: Record<string, unknow
   return { ...base, payload };
 };
 
+/** The members the bridge calls on its link; `status` and `update` belong to the pool's other callers. */
+type BridgeLink = Pick<
+  BrokerLink,
+  "connectionId" | "brokerUrl" | "connected" | "subscribe" | "publish" | "release"
+>;
+
 interface Wire {
-  link: BrokerLink;
+  link: BridgeLink;
   setConnected(connected: boolean): void;
   subscription(): BrokerSubscription | null;
   declareWill(will: unknown): void;
@@ -215,17 +221,15 @@ function createWire(): Wire {
   let subscription: BrokerSubscription | null = null;
   let will: unknown = null;
   const log: Publish[] = [];
-  const link: BrokerLink = {
+  const link: BridgeLink = {
     connectionId: 1,
     brokerUrl: "mqtt://broker.test:1883",
     get connected() {
       return connected;
     },
-    status: () => ({ connected, lastError: null }) as never,
     subscribe: (next) => {
       subscription = next;
     },
-    update: () => {},
     publish: (topic, payload, options, callback) => {
       log.push(recorded(topic, payload, { ...options }));
       callback?.();
@@ -349,23 +353,21 @@ const STEP_HANDLERS: StepHandlers = {
 const stepHandler = <K extends Step["do"]>(step: Extract<Step, { do: K }>): StepHandlers[K] =>
   STEP_HANDLERS[step.do as K];
 
+type BridgeDeps = Parameters<Modules["mqtt"]["startMqttBridge"]>[1];
+
 function startBridge(m: Modules, input: BridgeInput, wire: Wire): MqttBridge {
   const bridge = m.mqtt.startMqttBridge(input.config, {
     ctx: contextOf(m, input),
-    write: async () => {
-      throw new Error("the export writes nothing");
-    },
-    // A recorded sweep: the legacy clearing is a 2.0 upgrade step and publishes nothing here.
+    // The recorded bridge owns no command topic, so nothing calls `write`; and a sweep recorded
+    // as done today reads its state and stops, so `writeState` and `legacyProfileIds` stay unread.
     legacyRetirement: {
       readState: async () => ({ at: NOW, profileIds: [], topics: 0 }),
-      writeState: async () => {},
-      legacyProfileIds: async () => [],
     },
-    acquire: (options) => {
+    acquire: (options: Parameters<BridgeDeps["acquire"]>[0]) => {
       wire.declareWill(options.will);
       return wire.link;
     },
-  });
+  } as unknown as BridgeDeps);
   if (!bridge) throw new Error("the bridge did not start");
   return bridge;
 }
