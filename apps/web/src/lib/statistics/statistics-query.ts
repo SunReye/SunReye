@@ -14,16 +14,14 @@ import type {
 import type { SpotPriceView, SpotStats } from "@SunReye/contracts/prices";
 import type {
   AmortisationResponse,
-  CompareMode,
-  ComparisonResponse,
   HeatmapCell,
   RecordsResponse,
 } from "@SunReye/contracts/statistics";
 import { payloadOrNull } from "$lib/api-payload";
 import { specQuery, type ChartSpec, type CostBucket, type CostRange } from "$lib/cost/ranges";
 import type { SourceId } from "$lib/source";
-import { pricedWindow, usableComparison } from "./compare";
 import type { MonthlyValue } from "./yoy";
+import { energyBreakdown } from "./window-energy";
 
 /** An Eden answer, as far as this module reads one. */
 export type ApiResponse = { data: unknown; error?: unknown };
@@ -34,7 +32,6 @@ export type SeriesQuery = WindowQuery & { bucket: CostBucket };
 
 /** The endpoints behind the page — the Eden client in production, a fake in tests. */
 export interface StatisticsApi {
-  comparison(query: WindowQuery & { mode: CompareMode }): Promise<ApiResponse>;
   costSeries(query: SeriesQuery): Promise<ApiResponse>;
   energySeries(query: SeriesQuery): Promise<ApiResponse>;
   records(query: SourceQuery): Promise<ApiResponse>;
@@ -65,7 +62,6 @@ export interface StatisticsRead<T> {
 
 type CostSeries = { points: CostSeriesPoint[]; bucket: CostBucket };
 type EnergySeries = { periods: PeriodEnergy[]; bucket: CostBucket };
-type ComparisonPair = { current: CostBreakdown | null; previous: CostBreakdown | null };
 type YoySeries = { net: MonthlyValue[]; production: MonthlyValue[] };
 
 /** An answer, and whether the server gave it cleanly (only those are kept). */
@@ -155,7 +151,6 @@ export type StatisticsQueryDeps = {
   api: StatisticsApi;
   live: LiveSignals;
   source: { readonly query: SourceQuery };
-  now?: () => Date;
   maxEntries?: number;
 };
 
@@ -166,7 +161,6 @@ export type StatisticsQueryDeps = {
  */
 export function statisticsQuery(deps: StatisticsQueryDeps) {
   const { api, live, source } = deps;
-  const now = deps.now ?? (() => new Date());
   const cached = readCache(deps.maxEntries ?? MAX_ENTRIES);
 
   /**
@@ -181,27 +175,16 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
   }
 
   return {
-    /** The picked window beside its reference window, as the headline tiles read it. */
-    comparison(range: CostRange, mode: CompareMode): StatisticsRead<ComparisonPair> {
-      // The PRICED window, not the picked one: a period the reader is standing
-      // in ends in the future, and comparing this month so far against the
-      // whole of last month reads as a collapse that never happened.
-      const window = pricedWindow(range, now());
-      const query = {
-        from: window.from.toISOString(),
-        to: window.to.toISOString(),
-        mode,
-        ...source.query,
-      };
+    /** The picked window's energy, summed from the series that covers it. */
+    windowEnergy(range: CostRange): StatisticsRead<CostBreakdown> {
+      const query = { ...specQuery(range.detail), ...source.query };
       return read({
-        id: "comparison",
+        id: "windowEnergy",
         channels: ["revision"],
         query,
-        // Also drops a reference window that predates recorded history, so a
-        // first-month household never reads a fake −100%.
         fetch: one(
-          () => api.comparison(query),
-          (data) => usableComparison(payloadOrNull<ComparisonResponse>(data)),
+          () => api.energySeries(query),
+          (data) => energyBreakdown((data ?? []) as PeriodEnergy[], range),
         ),
       });
     },

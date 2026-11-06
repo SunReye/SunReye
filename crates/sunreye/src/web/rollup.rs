@@ -93,11 +93,11 @@ impl RollupQuery {
     }
 }
 
-fn non_empty(text: Option<&str>) -> Option<&str> {
+pub(super) fn non_empty(text: Option<&str>) -> Option<&str> {
     text.filter(|text| !text.is_empty())
 }
 
-fn instant(name: &str, text: &str) -> Result<Timestamp, ApiError> {
+pub(super) fn instant(name: &str, text: &str) -> Result<Timestamp, ApiError> {
     text.parse().map_err(|_| ApiError::bad_request(format!("{name} must be an RFC 3339 instant")))
 }
 

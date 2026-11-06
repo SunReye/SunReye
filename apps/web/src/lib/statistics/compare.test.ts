@@ -1,13 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ComparisonResponse } from "@SunReye/contracts/statistics";
-import {
-  baselineLabel,
-  deltaFor,
-  formatDelta,
-  pricedWindow,
-  usableComparison,
-  windowDays,
-} from "./compare";
+import { baselineLabel, deltaFor, formatDelta, pricedWindow, windowDays } from "./compare";
 
 describe("deltaFor", () => {
   test("signs the relative change", () => {
@@ -74,59 +66,6 @@ describe("baselineLabel", () => {
   test("names the calendar comparison, whatever the window length", () => {
     expect(baselineLabel("yearAgo", 1)).toBe("the same period a year ago");
     expect(baselineLabel("yearAgo", 365)).toBe("the same period a year ago");
-  });
-});
-
-describe("usableComparison", () => {
-  // The reference window is the one the SERVER priced, echoed in the payload:
-  // it shifts a year on the plant's calendar, which this browser cannot know.
-  const payload = (dataFrom: string | null, referenceFrom = "2026-06-01T00:00:00.000Z") =>
-    ({
-      mode: "previous",
-      current: { net: 20 },
-      previous: { net: 30 },
-      reference: { from: referenceFrom, to: "2026-06-08T00:00:00.000Z" },
-      coverage: { dataFrom },
-    }) as unknown as ComparisonResponse;
-
-  test("keeps the reference once history starts at or before it", () => {
-    expect(usableComparison(payload("2026-05-01T00:00:00.000Z")).previous).toMatchObject({
-      net: 30,
-    });
-    expect(usableComparison(payload("2026-06-01T00:00:00.000Z")).previous).not.toBeNull();
-  });
-
-  test("drops a reference window that predates recorded history", () => {
-    expect(usableComparison(payload("2026-06-15T00:00:00.000Z"))).toMatchObject({
-      current: { net: 20 },
-      previous: null,
-    });
-    expect(usableComparison(payload(null)).previous).toBeNull();
-  });
-
-  test("judges coverage by the window the server priced, not one the page derives", () => {
-    // A year-ago window on an Auckland plant starts at 12:00Z, an hour after
-    // what browser-local Date math gives. History starting at 11:30Z covers
-    // the server's window and must keep the chips.
-    const auckland = payload("2025-09-27T11:30:00.000Z", "2025-09-27T12:00:00.000Z");
-    expect(usableComparison(auckland).previous).not.toBeNull();
-  });
-
-  test("has nothing at all without a payload", () => {
-    expect(usableComparison(null)).toEqual({ current: null, previous: null });
-  });
-
-  test("drops the reference when history starts a single millisecond too late", () => {
-    expect(usableComparison(payload("2026-06-01T00:00:00.001Z")).previous).toBeNull();
-  });
-
-  test("keeps the current window even when the reference is unusable", () => {
-    // The window the reader picked is real data; only the chips go away.
-    expect(usableComparison(payload(null)).current).toMatchObject({ net: 20 });
-  });
-
-  test("suppresses the chips on an unreadable history start", () => {
-    expect(usableComparison(payload("not-a-date")).previous).toBeNull();
   });
 });
 

@@ -7,6 +7,7 @@
 
 import { getContext, setContext } from "svelte";
 import { api } from "$lib/api";
+import { core } from "$lib/core-api";
 import { source } from "$lib/source.svelte";
 import { statisticsLive } from "$lib/statistics-live.svelte";
 import {
@@ -18,11 +19,13 @@ import {
 
 const KEY = Symbol("statistics-query");
 
-/** The Eden client, as the seam the query module takes. */
+/** The core answers the energy series; the rest is still the Eden client's (prices and costs). */
 const edenApi: StatisticsApi = {
-  comparison: (query) => api.api.statistics.comparison.get({ query }),
   costSeries: (query) => api.api.cost.series.get({ query }),
-  energySeries: (query) => api.api.energy.series.get({ query }),
+  energySeries: async (query) => {
+    const { data, error } = await core.GET("/api/energy/series", { params: { query } });
+    return { data, error };
+  },
   records: (query) => api.api.statistics.records.get({ query }),
   amortisation: (query) => api.api.statistics.amortisation.get({ query }),
   heatmap: (query) => api.api.statistics.heatmap.get({ query }),

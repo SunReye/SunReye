@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SectionDef, SectionData, SectionId } from '$lib/statistics/sections';
 	import { rangeCaption } from '$lib/cost/labels';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
 	import StatisticsSection from './statistics-section.svelte';
 	import SectionBody from './section-body.svelte';
@@ -21,7 +22,10 @@
 	// The one read it needs is also the section's own payload, and the page's
 	// query module hands the body the same answer, so gating costs no extra request.
 	const reads = useStatisticsQuery();
-	const spot = queried(() => reads.spotStats(data.range.from, data.range.to), null);
+	const spot = queried(
+		() => (coreCapabilities.has('pricesAndCosts') ? reads.spotStats(data.range.from, data.range.to) : null),
+		null
+	);
 	// False until the first answer lands — the section stays away until then
 	// rather than appearing and vanishing.
 	const available = (id: SectionId): boolean => id !== 'prices' || (spot.loaded && spot.value !== null);

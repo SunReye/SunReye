@@ -19,6 +19,7 @@ GET /api/admin/users admin
 GET /api/auth/session session
 GET /api/capabilities kiosk
 GET /api/devices admin
+GET /api/energy/series session
 GET /api/forecast session
 GET /api/forecast/correction session
 GET /api/forecast/providers admin

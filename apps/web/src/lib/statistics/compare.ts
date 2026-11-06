@@ -3,8 +3,7 @@
 // the payload — its year-ago shift runs on the plant's calendar, which this
 // browser does not know) predates recorded history, making the delta fiction.
 
-import type { CostBreakdown } from "@SunReye/contracts/energy";
-import type { CompareMode, ComparisonResponse } from "@SunReye/contracts/statistics";
+import type { CompareMode } from "@SunReye/contracts/statistics";
 import { calendarDate } from "@SunReye/inverter-core/zoned-calendar";
 import * as m from "$lib/paraglide/messages";
 import { browserTimeZone } from "$lib/time/browser-zone";
@@ -62,31 +61,6 @@ export function pricedWindow(
 ): { from: Date; to: Date } {
   const clamp = now.getTime() > range.from.getTime() && now.getTime() < range.to.getTime();
   return clamp ? { from: range.from, to: now } : range;
-}
-
-/**
- * Whether the reference window is fully covered by recorded history. Without
- * this check a household's first month shows a fake −100% against a window
- * that simply has no data; `dataFrom` is the earliest daily rollup the server
- * reports.
- */
-function referenceCovered(reference: { from: string }, dataFrom: string | null): boolean {
-  if (!dataFrom) return false;
-  return new Date(reference.from).getTime() >= new Date(dataFrom).getTime();
-}
-
-/**
- * Split a comparison payload into the breakdown to show and the reference one
- * worth comparing against — the latter drops to null when its window predates
- * recorded history, which suppresses the delta chips instead of inventing one.
- */
-export function usableComparison(payload: ComparisonResponse | null): {
-  current: CostBreakdown | null;
-  previous: CostBreakdown | null;
-} {
-  if (!payload) return { current: null, previous: null };
-  const covered = referenceCovered(payload.reference, payload.coverage.dataFrom);
-  return { current: payload.current, previous: covered ? payload.previous : null };
 }
 
 /**
