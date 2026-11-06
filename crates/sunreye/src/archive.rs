@@ -260,6 +260,15 @@ pub async fn import(
     import_checked(store, bundle, path, checked, now).await
 }
 
+/// The first-run gate reads the active profile; setting it directly keeps the archive's unit ids, which
+/// choosing the profile through the API would rewrite.
+async fn activate_first_profile(store: &Store) -> Result<(), StoreError> {
+    if let Some(first) = store.devices().await?.first() {
+        store.set_setting(crate::settings::PROFILE_KEY, &first.profile_id).await?;
+    }
+    Ok(())
+}
+
 /// [`import`] of the archive at `path` that [`check`] read as `checked`.
 pub async fn import_checked(
     store: &Store,
@@ -287,10 +296,7 @@ pub async fn import_checked(
         kept(Tier::Day).await?,
     );
     let landed = land::land(store, &checked, &mut Container::open(path)?, cut).await?;
-    // The first-run gate reads the active profile; setting it directly keeps the archive's unit ids.
-    if let Some(first) = store.devices().await?.first() {
-        store.set_setting(crate::settings::PROFILE_KEY, &first.profile_id).await?;
-    }
+    activate_first_profile(store).await?;
     Ok(Imported {
         read: checked.read,
         gaps: landed.gaps,
