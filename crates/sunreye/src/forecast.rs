@@ -13,7 +13,7 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-pub use correction::{CorrectionCell, CorrectionModel, Learned, Observation, Skill};
+pub use correction::{CorrectionCell, CorrectionModel, Learned, Observation, Skill, StringObservation};
 pub use geometry::{SunPosition, cos_aoi, sun_position};
 pub use power::{PvSample, STC_CELL_TEMP_C, pv_power_w};
 
@@ -101,7 +101,11 @@ pub struct Run<'a> {
     pub time_zone: &'a TimeZone,
     pub now_ms: i64,
     pub sim: SimInputs,
+    /// The inverter's grid, for every array without a learned cell of its own.
     pub correction: Option<&'a CorrectionModel>,
+    /// Each array's own string grid by position in the config; a missing or unlearned cell falls back to
+    /// `correction`.
+    pub array_corrections: &'a [Option<CorrectionModel>],
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -255,14 +259,16 @@ impl Slots {
     }
 }
 
-/// Instantaneous plant AC power per sample, each array with its own coefficient and loss, scaled by the
-/// learned correction when one is given.
+/// Instantaneous plant AC power per sample, each array with its own coefficient and loss, scaled by its
+/// string's learned cell, else by the inverter's learned correction, when one is given.
 fn instant_power_w(config: &ForecastConfig, data: &Irradiance, slots: &Slots, run: &Run) -> Vec<f64> {
     let at = |series: Option<&Vec<f64>>, i: usize| series.and_then(|s| s.get(i)).copied();
     (0..data.times.len())
         .map(|i| {
             let sun = sun_position(data.location.latitude, data.location.longitude, slots.start_ms[i]);
-            let mut watts = 0.0;
+            let label = slots.labels[i];
+            let (month, hour) = (label.month(), label.hour());
+            let (mut watts, mut own_w) = (0.0, None);
             for (a, array) in config.arrays.iter().enumerate() {
                 let sample = PvSample {
                     gti_wm2: at(data.gti.get(a), i).unwrap_or(0.0),
@@ -271,15 +277,20 @@ fn instant_power_w(config: &ForecastConfig, data: &Irradiance, slots: &Slots, ru
                     cos_aoi: Some(cos_aoi(sun, array.tilt, array.azimuth)),
                     wind_ms: at(data.wind_speed.as_ref(), i),
                 };
-                watts += pv_power_w(
+                let w = pv_power_w(
                     &sample,
                     array.kwp,
                     array.temp_coefficient.unwrap_or(config.temp_coefficient),
                     array.system_loss.unwrap_or(config.system_loss),
                 );
+                let own = run.array_corrections.get(a).and_then(Option::as_ref);
+                match own.filter(|m| m.cell(month, hour).is_some()) {
+                    Some(model) => *own_w.get_or_insert(0.0) += w * model.factor(month, hour),
+                    None => watts += w,
+                }
             }
-            let label = slots.labels[i];
-            run.correction.map_or(watts, |model| watts * model.factor(label.month(), label.hour()))
+            let rest = run.correction.map_or(watts, |model| watts * model.factor(month, hour));
+            own_w.map_or(rest, |own| rest + own)
         })
         .collect()
 }
@@ -396,7 +407,13 @@ mod tests {
             max_output_w: None,
             battery: None,
         };
-        let run = Run { time_zone: &TimeZone::UTC, now_ms: 0, sim: SimInputs::default(), correction: None };
+        let run = Run {
+            time_zone: &TimeZone::UTC,
+            now_ms: 0,
+            sim: SimInputs::default(),
+            correction: None,
+            array_corrections: &[],
+        };
         let err = build(&config, &data(&["2026-07-24T10:00", "tomorrow"]), "p", &run).unwrap_err();
         assert_eq!(err.to_string(), "irradiance time \"tomorrow\" is not YYYY-MM-DDTHH:mm");
     }
@@ -439,6 +456,86 @@ mod tests {
         for (seconds, want) in [(0, "Z"), (7200, "+02:00"), (-12_600, "-03:30"), (20_700, "+05:45")] {
             assert_eq!(iso_offset(seconds), want);
         }
+    }
+
+    fn array(kwp: f64, azimuth: f64) -> PvArray {
+        PvArray { kwp, tilt: 30.0, azimuth, temp_coefficient: None, system_loss: None }
+    }
+
+    fn plant(arrays: Vec<PvArray>) -> ForecastConfig {
+        ForecastConfig {
+            arrays,
+            temp_coefficient: -0.4,
+            system_loss: 14.0,
+            max_output_w: None,
+            battery: None,
+        }
+    }
+
+    /// Four quarter hours of plant-local 11:00 in July, every plane at the same irradiance.
+    fn noon(planes: usize) -> Irradiance {
+        Irradiance {
+            temperature: vec![25.0; 4],
+            gti: vec![vec![600.0, 640.0, 680.0, 700.0]; planes],
+            ..data(&["2026-07-24T11:00", "2026-07-24T11:15", "2026-07-24T11:30", "2026-07-24T11:45"])
+        }
+    }
+
+    fn grid(month: i8, hour: i8, ratio: f64) -> CorrectionModel {
+        let mut model = CorrectionModel::default();
+        model.set(month, hour, CorrectionCell { ratio, weight: 30.0 });
+        model
+    }
+
+    /// The raw series' watts with `correction` and the per-array `arrays` applied.
+    fn corrected(
+        config: &ForecastConfig,
+        planes: usize,
+        correction: Option<&CorrectionModel>,
+        arrays: &[Option<CorrectionModel>],
+    ) -> Vec<f64> {
+        let utc = TimeZone::UTC;
+        let run = Run {
+            time_zone: &utc,
+            now_ms: 0,
+            sim: SimInputs::default(),
+            correction,
+            array_corrections: arrays,
+        };
+        build(config, &noon(planes), "p", &run)
+            .expect("forecast")
+            .raw
+            .series
+            .iter()
+            .map(|p| p.watts)
+            .collect()
+    }
+
+    fn assert_close(got: &[f64], want: &[f64]) {
+        assert_eq!(got.len(), want.len());
+        assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1e-9), "{got:?} != {want:?}");
+    }
+
+    #[test]
+    fn a_string_grid_scales_its_own_array_and_the_inverter_grid_the_rest() {
+        let (east, west) = (array(4.0, -80.0), array(2.4, 80.0));
+        let east_alone = corrected(&plant(vec![east.clone()]), 1, None, &[]);
+        let west_alone = corrected(&plant(vec![west.clone()]), 1, None, &[]);
+        let inverter = grid(7, 11, 0.8);
+        // Ratio 0.8 at weight 30 applies 1 - 0.2 * 30/35; 1.4 applies 1 + 0.4 * 30/35.
+        let (inverter_f, string_f) = (1.0 - 0.2 * 30.0 / 35.0, 1.0 + 0.4 * 30.0 / 35.0);
+        let both = plant(vec![east, west]);
+        let mixed = |e: &f64, w: f64| e * string_f + w;
+        let want: Vec<f64> =
+            east_alone.iter().zip(&west_alone).map(|(e, w)| mixed(e, w * inverter_f)).collect();
+        assert_close(&corrected(&both, 2, Some(&inverter), &[Some(grid(7, 11, 1.4)), None]), &want);
+        let want: Vec<f64> = east_alone.iter().zip(&west_alone).map(|(e, w)| mixed(e, *w)).collect();
+        assert_close(&corrected(&both, 2, None, &[Some(grid(7, 11, 1.4)), None]), &want);
+        assert_eq!(
+            corrected(&both, 2, Some(&inverter), &[Some(grid(7, 12, 1.4)), None]),
+            corrected(&both, 2, Some(&inverter), &[]),
+            "a string cell not yet learned falls back to the inverter's"
+        );
     }
 
     #[test]

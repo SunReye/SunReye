@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT mppt, month, hour, ratio, weight FROM forecast_correction_string_cell WHERE device_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "mppt",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "month",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "hour",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "ratio",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "weight",
+        "ordinal": 4,
+        "type_info": "Float"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "30d681ba217971e15b81214bce562fbddb9eba53cef4dc92a6e0797312323d00"
+}
