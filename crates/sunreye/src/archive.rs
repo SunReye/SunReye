@@ -7,7 +7,7 @@ mod container;
 mod land;
 mod plan;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -16,6 +16,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use self::config::Config;
+pub use self::config::{Held, Saved};
 use self::container::{CONTAINER, Container, Member};
 use crate::profile::Bundle;
 use crate::retention::{RAW_KEY, key, raw_days, retention_days};
@@ -44,7 +45,7 @@ pub enum ImportError {
 }
 
 /// Rows per stream, as `manifest.json` counts them.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Streams {
     pub raw: u64,
@@ -132,9 +133,9 @@ impl Reading {
     }
 }
 
-/// What reading every member found.
+/// What reading every member found: the one parse of `config.json` the guard and the import both read.
 #[derive(Debug)]
-struct Checked {
+pub struct Checked {
     config: Config,
     zone: Option<String>,
     read: Streams,
@@ -227,8 +228,16 @@ fn manifest(text: &str) -> Result<Manifest, ImportError> {
     Ok(parsed)
 }
 
-/// Reads every member front to back and refuses the first that is missing, truncated or unreadable.
-fn check(path: &Path) -> Result<Checked, ImportError> {
+impl Checked {
+    /// The automation guard: the saved user values when the archive's 3.x automation is on or still holds a
+    /// register, `None` when the archive imports without asking.
+    pub fn guard(&self) -> Result<Option<Vec<Held>>, ImportError> {
+        self.config.guard().map_err(|e| bad(config::MEMBER, e))
+    }
+}
+
+/// Reads every member front to back and refuses the first that is missing, truncated, unreadable or repeated.
+pub fn check(path: &Path) -> Result<Checked, ImportError> {
     let mut archive = Container::open(path)?;
     let mut found = Found::default();
     while let Some(member) = archive.next_member()? {
@@ -248,6 +257,17 @@ pub async fn import(
     let owned: PathBuf = path.to_owned();
     let checked =
         tokio::task::spawn_blocking(move || check(&owned)).await.map_err(|e| bad(CONTAINER, e))??;
+    import_checked(store, bundle, path, checked, now).await
+}
+
+/// [`import`] of the archive at `path` that [`check`] read as `checked`.
+pub async fn import_checked(
+    store: &Store,
+    bundle: &Bundle,
+    path: &Path,
+    checked: Checked,
+    now: Timestamp,
+) -> Result<Imported, ImportError> {
     if !store.devices().await?.is_empty() {
         return Err(ImportError::NotEmpty);
     }
@@ -332,6 +352,35 @@ mod tests {
 
     async fn device(store: &Store) -> i64 {
         store.devices().await.expect("devices")[0].id
+    }
+
+    #[test]
+    fn the_guard_reads_the_checked_config_json() {
+        let fixture = |case: &str| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/oracle/archives")
+                .join(case)
+                .join("archive.tar.gz")
+        };
+        let guard = |path: &Path| check(path).and_then(|checked| checked.guard());
+        let held = guard(&fixture("current-2.x")).expect("readable").expect("guarded");
+        assert_eq!(held.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["1:peak-shaving"]);
+        assert!(guard(&fixture("legacy-1.2.0")).expect("readable").is_none());
+        let unreadable = |path: &Path| guard(path).expect_err("refused").to_string();
+        assert_eq!(unreadable(&file(b"")), "archive: the archive is cut short");
+        let state = json!({"plant": {}, "appSettings": [{"key": "automationState", "value": 5}]});
+        let broken = file(&gz(&tar(&[
+            (
+                MANIFEST,
+                json!({"format": FORMAT, "formatVersion": 1, "streams": streams(0, 0, 0, 0)})
+                    .to_string()
+                    .into_bytes(),
+            ),
+            (config::MEMBER, state.to_string().into_bytes()),
+            (CONFIG_LOG, gz(b"")),
+            (READINGS, gz(b"")),
+        ])));
+        assert!(unreadable(&broken).starts_with("config.json: automationState: "), "{}", unreadable(&broken));
     }
 
     #[tokio::test]
