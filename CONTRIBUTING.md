@@ -246,8 +246,10 @@ bun run build          # only when you touched build config or shared packages
 `scripts/ci` is the per-PR gate and finishes in about 5 minutes on a warm `target/`: lint, typecheck,
 mock hygiene, unit and Rust tests without coverage, `cargo fmt`, the sqlx cache, clippy, factory
 tests, and the build, component tests, database tests and route smoke the change can affect. Coverage
-and its floors, budgets and the browser suite run once per train: `scripts/ci --train` after the
-per-PR gate, or `scripts/ci --full` for everything. A step the change cannot affect prints a `skip`
+and its floors and the browser suite run once per train: `scripts/ci --train` after the
+per-PR gate, or `scripts/ci --full` for everything. Budgets run in a train only when a Cargo manifest,
+`Cargo.lock`, `.cargo/`, the toolchain pin or the budgets change; run them by hand before a release
+(`bun run test:budgets`). A step the change cannot affect prints a `skip`
 line; the rule table is `scripts/ci-scope.ts`, listed in `docs/factory.md` "Gate scope". The Android
 build (`scripts/target-gate`, toolchain from `scripts/setup-targets`) is a manual pre-release step,
 not part of any mode.
