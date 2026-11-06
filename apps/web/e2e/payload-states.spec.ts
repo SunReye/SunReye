@@ -72,6 +72,24 @@ test("no price feed drops the whole spot-prices section", async ({ page }) => {
   expect(opened.backend.unhandled).toEqual([]);
 });
 
+test("a core without pricesAndCosts shows the energy section and nothing priced", async ({
+  page,
+}) => {
+  const opened = await openPage(page, "/#/statistics", { pricesAndCosts: false });
+
+  await expect(page.getByRole("heading", { level: 2, name: "Energy", exact: true })).toBeVisible();
+  for (const name of ["Costs & savings", "Spot prices", "Records", "Amortisation"]) {
+    await expect(page.getByRole("heading", { level: 2, name })).toBeHidden();
+  }
+  await expect(page.getByRole("group", { name: "Select comparison" })).toBeHidden();
+  await expect
+    .poll(() => opened.backend.requestCount(/\/api\/energy\/series\?/))
+    .toBeGreaterThan(0);
+  expect(opened.backend.requestCount(/\/api\/statistics\/comparison\?/)).toBe(0);
+  expect(opened.consoleErrors).toEqual([]);
+  expect(opened.backend.unhandled).toEqual([]);
+});
+
 test("a non-admin session is refused the admin topics by name", async ({ page }) => {
   // `TOPIC_POLICY` (routes/ws-topics.ts) gates `logs` and `automations` on an
   // admin session and never lets them ride the public-dashboard exemption. The

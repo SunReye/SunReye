@@ -15,6 +15,7 @@ const ABSENT = {
   profileSources: false,
   integrations: false,
   pvAndBattery: false,
+  pricesAndCosts: false,
 };
 
 afterEach(() => get.mockReset());

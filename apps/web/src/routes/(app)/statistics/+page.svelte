@@ -15,7 +15,8 @@
 	import { costRangeFor, customCostRange, resolveCostPreset } from '$lib/cost/ranges';
 	import type { CostRange } from '$lib/cost/ranges';
 	import { presetLabel, statisticsPresets } from '$lib/cost/labels';
-	import { SECTIONS, type SectionData } from '$lib/statistics/sections';
+	import { SECTIONS, servedSections, type SectionData } from '$lib/statistics/sections';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { pricedWindow, windowDays } from '$lib/statistics/compare';
 	import { compareModes } from '$lib/statistics/compare-modes';
 	import { statisticsPrefs } from '$lib/statistics-prefs.svelte';
@@ -120,18 +121,19 @@
 		return windowDays(window.from, window.to, of.timeZone);
 	}
 
-	// Headline tiles: the picked [from, to) priced beside its reference window,
-	// in one request so a §51 spot-price load happens once per window server-side.
-	// `current` is exactly the breakdown the old /api/cost call returned. A live
-	// push on a wider now-inclusive range makes it stale (throttled to a minute by
-	// the store); the Day tab standing on today patches below instead and never
-	// bumps the signal. Every section's own charts read their own series, because
-	// only that section's scope switcher moves them.
+	// Headline tiles: a core with prices answers the picked [from, to) priced beside its reference
+	// window, in one request so a §51 spot-price load happens once per window server-side. One
+	// without a tariff has nothing to price or compare: the energy its series holds, summed.
+	// A live push on a wider now-inclusive range makes it stale (throttled to a minute by the store);
+	// the Day tab standing on today patches below instead and never bumps the signal. Every
+	// section's own charts read their own series, because only that section's scope switcher moves
+	// them.
 	const reads = provideStatisticsQuery();
-	const comparison = queried(() => reads.comparison(range, mode), {
-		current: null,
-		previous: null
-	});
+	const comparison = queried(
+		() =>
+			coreCapabilities.has('pricesAndCosts') ? reads.comparison(range, mode) : reads.windowEnergy(range),
+		{ current: null, previous: null }
+	);
 	const cost = $derived(comparison.value.current);
 	const previous = $derived(comparison.value.previous);
 	// The loading panel stands until the first answer, as it did before any
@@ -173,7 +175,7 @@
 	// Every registered section now has a body. What a given system actually
 	// shows is decided further down: preferences hide sections here, and
 	// capability gating (a missing spot price feed) drops them in section-list.
-	const activeSections = SECTIONS;
+	const activeSections = $derived(servedSections(SECTIONS, (name) => coreCapabilities.has(name)));
 
 	// Instance-wide layout preferences. Only admins may edit them, so the gear
 	// (and the whole draft/save cycle) is admin-only; everyone else just gets
@@ -209,7 +211,9 @@
 		/>
 		<!-- Two options, so it stays a segmented row on a phone rather than
 		     offering a Select (`needsCompactSwitcher`). -->
-		<RangeSwitcher options={compareModes()} bind:value={() => mode, setMode} label={m.range_select_compare_aria()} />
+		{#if coreCapabilities.has('pricesAndCosts')}
+			<RangeSwitcher options={compareModes()} bind:value={() => mode, setMode} label={m.range_select_compare_aria()} />
+		{/if}
 		{#if canCustomize}
 			<Button
 				variant="ghost"

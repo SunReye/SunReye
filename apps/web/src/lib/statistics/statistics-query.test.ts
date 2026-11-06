@@ -123,6 +123,53 @@ describe("fetching", () => {
     expect(calls).toHaveLength(0);
   });
 
+  test("the window's energy is its detail series summed, read under the selected source", async () => {
+    const { calls, query } = harness();
+    const range = {
+      from: new Date("2026-08-01T00:00:00Z"),
+      to: new Date("2026-09-01T00:00:00Z"),
+      detail: {
+        ...spec("2026-08-01"),
+        from: new Date("2026-08-01T00:00:00Z"),
+        to: new Date("2026-09-01T00:00:00Z"),
+      },
+    } as CostRange;
+    const got = collect(query.windowEnergy(range));
+    expect(calls[0]).toMatchObject({
+      endpoint: "energySeries",
+      query: {
+        from: "2026-08-01T00:00:00.000Z",
+        to: "2026-09-01T00:00:00.000Z",
+        bucket: "day",
+        source: "plant",
+      },
+    });
+    calls[0]!.settle({
+      data: [
+        {
+          bucket: "2026-08-01",
+          productionKwh: 4,
+          loadKwh: 0,
+          solarToLoadKwh: 0,
+          selfConsumedKwh: 3,
+        },
+        {
+          bucket: "2026-08-02",
+          productionKwh: 6,
+          loadKwh: 0,
+          solarToLoadKwh: 0,
+          selfConsumedKwh: 6,
+        },
+      ],
+    });
+    await flush();
+    expect(got.seen).toHaveLength(1);
+    expect(got.seen[0]).toMatchObject({
+      current: { productionKwh: 10, selfConsumption: 0.9, selfSufficiency: null },
+      previous: null,
+    });
+  });
+
   test("the comparison asks for the PRICED window, and drops a reference that predates recorded history", async () => {
     const { calls, query } = harness();
     // A month the clock (Aug 15) is standing in: the priced window ends now.
@@ -289,6 +336,8 @@ describe("live invalidation", () => {
       { from: new Date("2026-07-01"), to: new Date("2026-08-01") } as CostRange,
       "previous",
     );
+  const windowEnergy = (q: StatisticsQuery) =>
+    q.windowEnergy({ detail: spec("2026-07-01") } as CostRange);
   const records = (q: StatisticsQuery) => q.records();
   const heatmap = (q: StatisticsQuery) => q.heatmap(new Date("2026-08-01"), new Date("2026-08-08"));
   const yoy = (q: StatisticsQuery) => q.yoy({ from: "2024-09-01", to: "2026-08-01" });
@@ -305,6 +354,7 @@ describe("live invalidation", () => {
     ["energy series", energySeries],
     ["amortisation", amortisation],
     ["comparison", comparison],
+    ["window energy", windowEnergy],
     ["records", records],
     ["heatmap", heatmap],
     ["year-over-year", yoy],

@@ -10,6 +10,7 @@ const NONE: Capabilities = {
   profileSources: false,
   integrations: false,
   pvAndBattery: false,
+  pricesAndCosts: false,
 };
 
 describe("hasCapability", () => {

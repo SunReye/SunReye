@@ -81,8 +81,8 @@ How long a tier is kept before its oldest buckets are dropped.
 _Avoid_: TTL, expiry
 
 **Plant time zone**:
-The time zone statistics days, months and years are cut in, from hourly rollups; it labels rollup buckets,
-which are UTC. An admin sets it; until then it is the host's zone, else UTC.
+The time zone statistics days are cut in, from hourly rollups; it labels rollup buckets, which are UTC,
+and the daily ones months and years read. An admin sets it; until then it is the host's zone, else UTC.
 _Avoid_: local time, server time
 
 **Display time zone**:

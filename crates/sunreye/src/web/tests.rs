@@ -189,8 +189,9 @@ async fn capabilities_report_only_history_and_profile_sources_served() {
     assert_eq!(
         answer.json(),
         json!({
-            "history": true, "statistics": false, "controls": false, "automations": false,
-            "restart": false, "profileSources": true, "integrations": false, "pvAndBattery": false
+            "history": true, "statistics": true, "controls": false, "automations": false,
+            "restart": false, "profileSources": true, "integrations": false, "pvAndBattery": false,
+            "pricesAndCosts": false
         })
     );
     drop(app);
@@ -1210,6 +1211,7 @@ mod kiosk;
 mod plant;
 mod reads;
 mod rollup;
+mod statistics;
 mod time_zone;
 mod users;
 mod ws;

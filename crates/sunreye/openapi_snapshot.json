@@ -1293,6 +1293,114 @@
         }
       }
     },
+    "/api/energy/series": {
+      "get": {
+        "summary": "Energy per period of the window, oldest first, zero-filled; the periods are the plant time zone's.",
+        "operationId": "energySeries",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start of the window, RFC 3339, inclusive.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End of the window, RFC 3339, exclusive.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "`plant`, or a device's decimal id, retired or not. Without it, the first device in service.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inverterId",
+            "in": "query",
+            "description": "As `source`, which wins when both are set.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PeriodEnergy"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/forecast": {
       "get": {
         "summary": "The uncurtailed PV potential; null while the forecast is off or unconfigured, or no irradiance was had.",
@@ -2922,7 +3030,8 @@
           "restart",
           "profileSources",
           "integrations",
-          "pvAndBattery"
+          "pvAndBattery",
+          "pricesAndCosts"
         ],
         "properties": {
           "automations": {
@@ -2937,6 +3046,10 @@
           "integrations": {
             "type": "boolean",
             "description": "Coded integrations and the MQTT connections they run over."
+          },
+          "pricesAndCosts": {
+            "type": "boolean",
+            "description": "Spot prices, tariffs and what they make of the energy: costs, records and amortisation."
           },
           "profileSources": {
             "type": "boolean"
@@ -4153,6 +4266,98 @@
             "format": "double"
           },
           "maxPowerW": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PeriodEnergy": {
+        "type": "object",
+        "description": "One period's energy and the splits derived from it.",
+        "required": [
+          "bucket",
+          "importKwh",
+          "exportKwh",
+          "loadKwh",
+          "productionKwh",
+          "batteryDischargeKwh",
+          "batteryChargeKwh",
+          "gridToLoadKwh",
+          "solarToLoadKwh",
+          "batteryToLoadKwh",
+          "solarDirectToLoadKwh",
+          "selfConsumedKwh",
+          "exportedKwh",
+          "selfSufficiency",
+          "selfConsumption"
+        ],
+        "properties": {
+          "batteryChargeKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "batteryDischargeKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "batteryToLoadKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "bucket": {
+            "type": "string",
+            "description": "Plant-local key: `YYYY-MM-DDTHH`, `YYYY-MM-DD`, `YYYY-MM` or `YYYY`."
+          },
+          "exportKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "exportedKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "gridToLoadKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "importKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "loadKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "productionKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "selfConsumedKwh": {
+            "type": "number",
+            "format": "double",
+            "description": "Production used on site: production less export, never below zero."
+          },
+          "selfConsumption": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Self-consumed over production, 0..1; null without production."
+          },
+          "selfSufficiency": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Solar to load over load, 0..1; null without load."
+          },
+          "solarDirectToLoadKwh": {
+            "type": "number",
+            "format": "double"
+          },
+          "solarToLoadKwh": {
             "type": "number",
             "format": "double"
           }

@@ -4,6 +4,7 @@
 
 import type { CostBreakdown } from "@SunReye/contracts/energy";
 import type { CompareMode } from "@SunReye/contracts/statistics";
+import type { CapabilityName } from "$lib/capabilities";
 import type { CostRange } from "$lib/cost/ranges";
 import * as m from "$lib/paraglide/messages";
 
@@ -14,15 +15,25 @@ export type SectionDef = {
   id: SectionId;
   /** Uppercase title of the section shell. */
   label: () => string;
+  /** The capability the core must report for the section to have anything to read. */
+  needs?: CapabilityName;
 };
 
 export const SECTIONS: readonly SectionDef[] = [
-  { id: "cost", label: m.statistics_section_costs },
+  { id: "cost", label: m.statistics_section_costs, needs: "pricesAndCosts" },
   { id: "energy", label: m.statistics_section_energy },
-  { id: "prices", label: m.statistics_section_prices },
-  { id: "records", label: m.statistics_section_records },
-  { id: "amortisation", label: m.statistics_section_amortisation },
+  { id: "prices", label: m.statistics_section_prices, needs: "pricesAndCosts" },
+  { id: "records", label: m.statistics_section_records, needs: "pricesAndCosts" },
+  { id: "amortisation", label: m.statistics_section_amortisation, needs: "pricesAndCosts" },
 ];
+
+/** The sections the connected core can fill. */
+export function servedSections(
+  sections: readonly SectionDef[],
+  serves: (name: CapabilityName) => boolean,
+): SectionDef[] {
+  return sections.filter((section) => section.needs === undefined || serves(section.needs));
+}
 
 /**
  * Everything the page has already fetched, handed to whichever section bodies
