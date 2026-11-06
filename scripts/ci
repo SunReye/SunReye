@@ -8,9 +8,10 @@
 #            without coverage, cargo fmt, sqlx cache and clippy, factory scripts, and the build,
 #            component tests, database tests and route smoke the change can affect.
 #   --train  only the checks that run once per train, after the per-PR gate: coverage and its
-#            floors (TypeScript and Rust), budgets and the browser suite. They run as two lanes at
-#            a time (scripts/lib/ci-parallel.sh), each step's output in its own log; a failing step
-#            is named with its log.
+#            floors (TypeScript and Rust), the browser suite, and budgets when dependencies or build
+#            config change (--full always). They run as two lanes at a time
+#            (scripts/lib/ci-parallel.sh), each step's output in its own log; a failing step is
+#            named with its log.
 #   --full   both: everything, with the tests run once, under coverage.
 #   --e2e    also run the Playwright browser suite (~10 min) in the per-PR gate.
 # A change can skip a heavy step it cannot affect (scripts/ci-scope.ts); --full runs them all.

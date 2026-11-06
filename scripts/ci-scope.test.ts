@@ -17,7 +17,7 @@ const sorted = (...steps: Step[]) => steps.sort();
 
 describe("scopeFor", () => {
   const cases: [string, string[], Step[]][] = [
-    ["docs only", ["docs/factory.md", "docs/adr/0006-budgets.md"], []],
+    ["docs only", ["docs/factory.md", "docs/adr/0007-x.md"], []],
     ["root markdown", ["README.md", "CONTRIBUTING.md"], []],
     [
       "agent and factory files",
@@ -30,41 +30,44 @@ describe("scopeFor", () => {
       [],
     ],
     ["the oracle generator", ["scripts/oracle/generate.ts"], []],
-    ["a fixture", ["fixtures/oracle/plant.ndjson"], sorted("rust", "db", "budgets", "e2e")],
-    ["a crate", ["crates/sunreye/src/live.rs"], sorted("rust", "budgets", "routes")],
-    ["a crate test", ["crates/sim/tests/simulator.rs"], sorted("rust", "budgets", "routes")],
-    ["the web app", ["apps/web/src/lib/a.ts"], sorted("build", "budgets", "components", "e2e")],
-    [
-      "the web app e2e",
-      ["apps/web/e2e/a.spec.ts"],
-      sorted("build", "budgets", "components", "e2e"),
-    ],
-    [
-      "a package",
-      ["packages/contracts/src/x.ts"],
-      sorted("build", "budgets", "components", "e2e", "db"),
-    ],
-    [
-      "the TypeScript server",
-      ["apps/server/src/a.ts"],
-      sorted("build", "budgets", "components", "e2e", "db"),
-    ],
+    ["a fixture", ["fixtures/oracle/plant.ndjson"], sorted("rust", "db", "e2e")],
+    ["a crate", ["crates/sunreye/src/live.rs"], sorted("rust", "routes")],
+    ["a crate test", ["crates/sim/tests/simulator.rs"], sorted("rust", "routes")],
+    ["the web app", ["apps/web/src/lib/a.ts"], sorted("build", "components", "e2e")],
+    ["the web app e2e", ["apps/web/e2e/a.spec.ts"], sorted("build", "components", "e2e")],
+    ["a package", ["packages/contracts/src/x.ts"], sorted("build", "components", "e2e", "db")],
+    ["the TypeScript server", ["apps/server/src/a.ts"], sorted("build", "components", "e2e", "db")],
     ["the docs site", ["apps/docs/src/content/a.md"], sorted("build")],
     [
       "the OpenAPI snapshot the web client is generated from",
       ["crates/sunreye/openapi_snapshot.json"],
-      sorted("rust", "budgets", "routes", "build", "components", "e2e"),
+      sorted("rust", "routes", "build", "components", "e2e"),
     ],
     [
       "a crate and a web file",
       ["crates/sunreye/src/a.rs", "apps/web/src/a.ts"],
-      sorted("rust", "budgets", "routes", "build", "components", "e2e"),
+      sorted("rust", "routes", "build", "components", "e2e"),
     ],
     [
       "docs next to a crate",
       ["docs/factory.md", "crates/sunreye/src/a.rs"],
-      sorted("rust", "budgets", "routes"),
+      sorted("rust", "routes"),
     ],
+    // Budgets read the release build: only a manifest, the lockfile, build config, the budgets
+    // themselves or the ADR that sets them can move them (#509).
+    ["a crate manifest", ["crates/sunreye/Cargo.toml"], sorted("rust", "routes", "budgets")],
+    ["a nested crate manifest", ["crates/a/b/Cargo.toml"], sorted("rust", "routes", "budgets")],
+    ["a crate build script", ["crates/sunreye/build.rs"], sorted("rust", "routes", "budgets")],
+    ["the cargo config", [".cargo/config.toml"], everything],
+    ["the toolchain pin", ["rust-toolchain.toml"], everything],
+    ["a bare toolchain pin", ["rust-toolchain"], everything],
+    ["the budgets file", ["scripts/budgets.json"], ["budgets"]],
+    ["the budget command", ["scripts/budget-gate.ts"], ["budgets"]],
+    ["the budget runner", ["scripts/budgets-run.ts"], ["budgets"]],
+    ["the budget plan test", ["scripts/budgets.test.ts"], ["budgets"]],
+    ["the budgets ADR", ["docs/adr/0006-one-dependency-set-for-every-target.md"], ["budgets"]],
+    ["the scope tests", ["scripts/ci-scope.test.ts"], everything],
+    ["the parallel lanes helper", ["scripts/lib/ci-parallel.sh"], everything],
     ["the gate itself", ["scripts/ci"], everything],
     ["the scope table itself", ["scripts/ci-scope.ts"], everything],
     ["the factory config", ["scripts/factory/config.json"], everything],
@@ -94,6 +97,15 @@ describe("scopeFor", () => {
     ]) {
       expect(selected([path]), path).toEqual(everything);
     }
+  });
+
+  test("budgets rules end at the file: a manifest lookalike or a script sibling is not one", () => {
+    expect(selected(["crates/sunreye/Cargo.toml.orig"])).toEqual(sorted("rust", "routes"));
+    expect(selected(["crates/sunreye/NotCargo.toml"])).toEqual(sorted("rust", "routes"));
+    expect(selected(["scripts/budgetary.ts"])).toEqual(everything);
+    expect(selected(["scripts/budgets/a.ts"])).toEqual(everything);
+    expect(selected(["docs/adr/0007-x.md"])).toEqual([]);
+    expect(selected([".cargo-old/config.toml"])).toEqual(everything);
   });
 
   test("a root markdown rule does not claim markdown in a directory no rule names", () => {
