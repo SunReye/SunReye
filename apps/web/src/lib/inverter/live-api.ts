@@ -1,5 +1,6 @@
 import type { Client } from "openapi-fetch";
 import type { paths } from "$lib/core-api.gen";
+import type { SourceId } from "$lib/source";
 import type { RecentBackfill } from "./live-metrics";
 import type { InverterManifest } from "./types";
 
@@ -17,14 +18,18 @@ export async function fetchManifest(core: Client<paths>): Promise<InverterManife
   }
 }
 
-/** The last `seconds` of every metric in one-second buckets; `null` when the core refuses or is unreachable. */
+/**
+ * The last `seconds` of every metric in one-second buckets, read under `source` (the core's first device
+ * in service without one); `null` when the core refuses or is unreachable.
+ */
 export async function fetchRecent(
   core: Client<paths>,
   seconds: number,
+  source?: SourceId,
 ): Promise<RecentBackfill | null> {
   try {
     const { data } = await core.GET("/api/history/recent", {
-      params: { query: { seconds, stepSeconds: 1 } },
+      params: { query: { seconds, stepSeconds: 1, source } },
     });
     return data ?? null;
   } catch {

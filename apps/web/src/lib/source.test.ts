@@ -19,6 +19,15 @@ const two: SourcesResponse = {
     { slug: "b", name: "West", profileId: "p", role: "inverter", retired: false, member: true },
   ],
 };
+/** The core's slugs are decimal ids: `"2"` is a device, `"12"` another, `"1"` a retired one. */
+const decimal: SourcesResponse = {
+  plant: { members: ["2", "12"], timeZone: "Europe/Berlin" },
+  devices: [
+    { slug: "1", name: "Old", profileId: "p", role: "inverter", retired: true, member: true },
+    { slug: "2", name: "East", profileId: "p", role: "inverter", retired: false, member: true },
+    { slug: "12", name: "Meter", profileId: "p", role: "meter", retired: false, member: true },
+  ],
+};
 const one: SourcesResponse = {
   plant: { members: ["a"], timeZone: "Europe/Berlin" },
   devices: [two.devices[0]!],
@@ -45,6 +54,10 @@ describe("offersChoice", () => {
     expect(offersChoice(retiredTwin)).toBe(false);
     expect(offersChoice(null)).toBe(false);
   });
+  test("decimal-id slugs: a retired device is not counted, the second in service is", () => {
+    expect(offersChoice(decimal)).toBe(true);
+    expect(offersChoice({ ...decimal, devices: decimal.devices.slice(0, 2) })).toBe(false);
+  });
 });
 
 describe("resolveSaved", () => {
@@ -56,6 +69,13 @@ describe("resolveSaved", () => {
     expect(resolveSaved("old", retiredTwin)).toBe(PLANT);
     expect(resolveSaved(null, two)).toBe(PLANT);
     expect(resolveSaved("a", null)).toBe(PLANT);
+  });
+  test("decimal-id slugs match whole, never as a prefix or a number", () => {
+    expect(resolveSaved("12", decimal)).toBe("12");
+    expect(resolveSaved("2", decimal)).toBe("2");
+    expect(resolveSaved("1", decimal)).toBe(PLANT);
+    expect(resolveSaved("02", decimal)).toBe(PLANT);
+    expect(resolveSaved("3", decimal)).toBe(PLANT);
   });
 });
 
