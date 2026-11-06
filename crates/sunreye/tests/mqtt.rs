@@ -13,9 +13,9 @@ use sunreye::forecast::Forecast;
 use sunreye::mqtt::bridge::Bridge;
 use sunreye::mqtt::config::Broker;
 use sunreye::mqtt::discovery::{HaDevice, Names, Namespace};
-use sunreye::mqtt::link::{self, Dial, Feeds, Link, Pause};
+use sunreye::mqtt::link::{self, Dial, Feeds, Link, Open, Pause};
 use sunreye::samples::Sample;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, mpsc, watch};
 use tokio_rustls::TlsAcceptor;
@@ -43,10 +43,13 @@ enum Seen {
 struct TestBroker {
     port: u16,
     seen: mpsc::UnboundedReceiver<Seen>,
+    saw: mpsc::UnboundedSender<Seen>,
     /// While false, a CONNECT is answered by closing the socket.
     up: Arc<AtomicBool>,
     /// Closes every open connection.
     kick: Arc<Notify>,
+    /// While true, PINGREQ goes unanswered: a half-open connection.
+    deaf: Arc<AtomicBool>,
 }
 
 async fn take<R: AsyncRead + Unpin>(input: &mut R) -> Option<(u8, Vec<u8>)> {
@@ -102,7 +105,7 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(
     mut stream: S,
     seen: mpsc::UnboundedSender<Seen>,
     up: bool,
-    kick: Arc<Notify>,
+    (kick, deaf): (Arc<Notify>, Arc<AtomicBool>),
 ) {
     let Some((0x10, body)) = take(&mut stream).await else { return };
     seen.send(connect(&body)).ok();
@@ -118,6 +121,7 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(
         let Some((first, body)) = packet else { return };
         let event = match first >> 4 {
             3 => publish(first, &body),
+            12 if deaf.load(Ordering::SeqCst) => continue,
             12 => {
                 stream.write_all(&[0xD0, 0]).await.ok();
                 continue;
@@ -134,7 +138,7 @@ async fn serve(
     tcp: TcpStream,
     seen: mpsc::UnboundedSender<Seen>,
     up: bool,
-    kick: Arc<Notify>,
+    kick: (Arc<Notify>, Arc<AtomicBool>),
 ) {
     match tls {
         None => session(tcp, seen, up, kick).await,
@@ -149,17 +153,20 @@ async fn serve(
 async fn start_broker(tls: Option<TlsAcceptor>) -> TestBroker {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let (tx, seen) = mpsc::unbounded_channel();
+    let (saw, seen) = mpsc::unbounded_channel();
+    let tx = saw.clone();
     let up = Arc::new(AtomicBool::new(true));
     let kick = Arc::new(Notify::new());
-    let (is_up, kicks) = (Arc::clone(&up), Arc::clone(&kick));
+    let deaf = Arc::new(AtomicBool::new(false));
+    let (is_up, kicks, deafened) = (Arc::clone(&up), Arc::clone(&kick), Arc::clone(&deaf));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
-            let (tx, up, kick) = (tx.clone(), is_up.load(Ordering::SeqCst), Arc::clone(&kicks));
+            let (tx, up) = (tx.clone(), is_up.load(Ordering::SeqCst));
+            let kick = (Arc::clone(&kicks), Arc::clone(&deafened));
             tokio::spawn(serve(tls.clone(), tcp, tx, up, kick));
         }
     });
-    TestBroker { port, seen, up, kick }
+    TestBroker { port, seen, saw, up, kick, deaf }
 }
 
 impl TestBroker {
@@ -190,6 +197,15 @@ impl TestBroker {
             got.push(self.next().await);
         }
         got
+    }
+
+    /// Connections over an in-memory pipe: paused time then waits on no socket.
+    fn piped(&self) -> Open {
+        let (saw, up) = (self.saw.clone(), Arc::clone(&self.up));
+        let kick = (Arc::clone(&self.kick), Arc::clone(&self.deaf));
+        pipe(move |far| {
+            drop(tokio::spawn(session(far, saw.clone(), up.load(Ordering::SeqCst), kick.clone())));
+        })
     }
 
     fn go_away(&self) {
@@ -229,12 +245,12 @@ struct Running {
     task: tokio::task::JoinHandle<()>,
 }
 
-fn spawn(dial: Dial, pause: Pause, bridge: Bridge) -> Running {
+fn spawn(dial: Dial, open: Open, pause: Pause, bridge: Bridge) -> Running {
     let (samples, samples_rx) = watch::channel(None);
     let (_forecast, forecast_rx) = watch::channel::<Option<Arc<Forecast>>>(None);
     let (stop, stop_rx) = watch::channel(false);
     let feeds = Feeds { samples: samples_rx, forecast: forecast_rx, stop: stop_rx };
-    let task = tokio::spawn(link::run(Link { dial, pause, jitter: || 0.5 }, bridge, feeds));
+    let task = tokio::spawn(link::run(Link { dial, open, pause, jitter: || 0.5 }, bridge, feeds));
     Running { samples, stop, task }
 }
 
@@ -253,7 +269,7 @@ fn reading(soc: f64, power: f64) -> Arc<Sample> {
 }
 
 async fn asked_for(asked: &mut mpsc::UnboundedReceiver<Duration>) -> Duration {
-    tokio::time::timeout(Duration::from_secs(20), asked.recv()).await.expect("backoff").expect("open")
+    tokio::time::timeout(Duration::from_secs(600), asked.recv()).await.expect("backoff").expect("open")
 }
 
 fn assert_first_connect(first: &[Seen]) {
@@ -277,10 +293,10 @@ fn publishes(seen: &[Seen]) -> Vec<(&str, &str)> {
 }
 
 #[tokio::test]
-async fn publishing_resumes_after_the_broker_goes_away_and_returns_with_only_the_latest_readings() {
+async fn mqtt_publishing_resumes_after_the_broker_goes_away_and_returns_with_only_the_latest_readings() {
     let mut broker = start_broker(None).await;
     let (pause, mut asked, gate) = gated_pause();
-    let link = spawn(dial(broker.port, false), pause, bridge(false));
+    let link = spawn(dial(broker.port, false), link::network(), pause, bridge(false));
 
     let first = broker.until_topic("sunreye/haus-sud/1/status").await;
     assert_first_connect(&first);
@@ -339,14 +355,14 @@ async fn mqtts_presents_the_credentials_over_a_verified_certificate() {
     let mut secured = dial(broker.port, true);
     secured.username = Some("mqtt".into());
     secured.password = Some("s3cret".into());
-    let untrusted = spawn(secured.clone(), Arc::clone(&pause), bridge(true));
+    let untrusted = spawn(secured.clone(), link::network(), Arc::clone(&pause), bridge(true));
     asked_for(&mut asked).await;
     assert!(broker.seen.try_recv().is_err(), "no CONNECT before the certificate is trusted");
     untrusted.stop.send_replace(true);
     untrusted.task.await.expect("link");
 
     secured.roots = vec![ca.root()];
-    let link = spawn(secured, pause, bridge(true));
+    let link = spawn(secured, link::network(), pause, bridge(true));
     let seen = broker.until_topic("homeassistant/sensor/sunreye_haus-sud_1/forecast_usable/config").await;
     let Seen::Connect { user, password, .. } = &seen[0] else { panic!("{seen:?}") };
     assert_eq!((user.as_deref(), password.as_deref()), (Some("mqtt"), Some("s3cret")));
@@ -357,7 +373,7 @@ async fn mqtts_presents_the_credentials_over_a_verified_certificate() {
 }
 
 #[tokio::test]
-async fn a_refused_connack_is_retried_after_a_backoff() {
+async fn mqtt_retries_a_refused_connack_after_a_backoff() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
     tokio::spawn(async move {
@@ -367,11 +383,166 @@ async fn a_refused_connack_is_retried_after_a_backoff() {
         }
     });
     let (pause, mut asked, gate) = gated_pause();
-    let link = spawn(dial(port, false), pause, bridge(false));
+    let link = spawn(dial(port, false), link::network(), pause, bridge(false));
     let first = asked_for(&mut asked).await;
     gate.notify_one();
     let second = asked_for(&mut asked).await;
     assert_eq!((first, second), (Duration::from_millis(750), Duration::from_millis(1_500)));
+    link.stop.send_replace(true);
+    link.task.await.expect("link");
+}
+
+/// How a scripted broker treats one connection.
+#[derive(Clone, Copy)]
+enum Script {
+    /// Reads the CONNECT and never answers.
+    Silent,
+    /// Accepts, then never reads again.
+    Stalled,
+    /// Accepts, answers PINGREQ, and closes after this long.
+    Open(Duration),
+}
+
+/// Dials that reach `serve` over an in-memory pipe holding 64 bytes, so a broker that stops reading
+/// blocks the next write.
+fn pipe(serve: impl Fn(DuplexStream) + Send + Sync + 'static) -> Open {
+    Arc::new(move |_| {
+        let (near, far) = tokio::io::duplex(64);
+        serve(far);
+        Box::pin(std::future::ready(Ok(Box::new(near) as Box<dyn link::Stream>)))
+    })
+}
+
+/// A broker treating its nth connection by `scripts[n]`, the last repeating.
+fn scripted(scripts: Vec<Script>) -> Open {
+    let dialled = std::sync::atomic::AtomicUsize::new(0);
+    pipe(move |far| {
+        let n = dialled.fetch_add(1, Ordering::SeqCst);
+        drop(tokio::spawn(play(far, scripts[n.min(scripts.len() - 1)])));
+    })
+}
+
+async fn play(mut far: DuplexStream, script: Script) {
+    take(&mut far).await;
+    let Script::Open(open) = script else {
+        if matches!(script, Script::Stalled) {
+            far.write_all(&[0x20, 2, 0, 0]).await.ok();
+        }
+        return std::future::pending().await;
+    };
+    far.write_all(&[0x20, 2, 0, 0]).await.ok();
+    let answering = async {
+        while let Some((first, _)) = take(&mut far).await {
+            if first >> 4 == 12 {
+                far.write_all(&[0xD0, 0]).await.ok();
+            }
+        }
+    };
+    tokio::time::timeout(open, answering).await.ok();
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_redials_when_the_broker_never_answers_the_connect() {
+    let (pause, mut asked, _gate) = gated_pause();
+    let started = tokio::time::Instant::now();
+    let link = spawn(dial(0, false), scripted(vec![Script::Silent]), pause, bridge(false));
+    asked_for(&mut asked).await;
+    let waited = started.elapsed();
+    assert!(waited >= Duration::from_secs(10) && waited < Duration::from_secs(11), "{waited:?}");
+    link.stop.send_replace(true);
+    link.task.await.expect("link");
+}
+
+/// More readings than the pipe holds, each given a turn to go out.
+async fn flood(link: &Running) {
+    for n in 0..20_000 {
+        link.samples.send_replace(Some(reading(50.0, f64::from(n))));
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_drops_a_stalled_broker_after_the_write_timeout_and_stops_while_writing() {
+    let (pause, mut asked, gate) = gated_pause();
+    let link = spawn(dial(0, false), scripted(vec![Script::Stalled]), pause, bridge(false));
+    flood(&link).await;
+    let stalled = tokio::time::Instant::now();
+    asked_for(&mut asked).await;
+    let waited = stalled.elapsed();
+    assert!(waited >= Duration::from_secs(60) && waited < Duration::from_secs(61), "{waited:?}");
+
+    gate.notify_one();
+    flood(&link).await;
+    link.stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(5), link.task)
+        .await
+        .expect("stopped while stalled")
+        .expect("link");
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_gives_up_saying_offline_to_a_stalled_broker_after_the_close_timeout() {
+    let (pause, _asked, _gate) = gated_pause();
+    let link = spawn(dial(0, false), scripted(vec![Script::Stalled]), pause, bridge(false));
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    let stopped = tokio::time::Instant::now();
+    link.stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(60), link.task).await.expect("closed").expect("link");
+    let waited = stopped.elapsed();
+    assert!(waited >= Duration::from_secs(5) && waited < Duration::from_secs(6), "{waited:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_backoff_resets_only_after_a_session_that_outlived_the_keep_alive() {
+    let flap = Script::Open(Duration::ZERO);
+    let secs = |s| Script::Open(Duration::from_secs(s));
+    let broker = scripted(vec![flap, flap, flap, secs(59), secs(60), flap]);
+    let (pause, mut asked, gate) = gated_pause();
+    let link = spawn(dial(0, false), broker, pause, bridge(false));
+    let mut delays = Vec::new();
+    for _ in 0..12 {
+        delays.push(asked_for(&mut asked).await.as_millis());
+        gate.notify_one();
+    }
+    assert_eq!(delays, [750, 1_500, 3_000, 6_000, 750, 1_500, 3_000, 6_000, 12_000, 24_000, 45_000, 45_000]);
+    link.stop.send_replace(true);
+    link.task.await.expect("link");
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_drops_a_session_whose_broker_stops_answering_and_republishes_its_latest_readings() {
+    let mut broker = start_broker(None).await;
+    broker.deaf.store(true, Ordering::SeqCst);
+    let (pause, mut asked, gate) = gated_pause();
+    let link = spawn(dial(broker.port, false), broker.piped(), pause, bridge(false));
+    broker.until_topic("sunreye/haus-sud/1/status").await;
+    let connected = tokio::time::Instant::now();
+    link.samples.send_replace(Some(reading(40.0, 100.0)));
+    broker.until_topic("sunreye/haus-sud/1/battery/soc").await;
+    asked_for(&mut asked).await;
+    let silent = connected.elapsed();
+    assert!(silent >= Duration::from_secs(90) && silent < Duration::from_secs(91), "{silent:?}");
+
+    let soc_only = Sample { at_ms: 0, values: vec![("battery.soc".into(), 50.0)] };
+    link.samples.send_replace(Some(Arc::new(soc_only)));
+    tokio::task::yield_now().await;
+    broker.deaf.store(false, Ordering::SeqCst);
+    gate.notify_one();
+    let resumed = broker.until_topic("sunreye/haus-sud/1/dc/pv1/power").await;
+    assert_eq!(
+        publishes(&resumed),
+        [
+            ("sunreye/haus-sud/1/status", "online"),
+            ("sunreye/haus-sud/1/battery/soc", "50"),
+            ("sunreye/haus-sud/1/dc/pv1/power", "100"),
+        ],
+        "what the dead session carried goes out again, latest per topic"
+    );
+
+    tokio::time::sleep(Duration::from_secs(300)).await;
+    assert!(asked.try_recv().is_err(), "a broker answering PINGREQ keeps the session");
     link.stop.send_replace(true);
     link.task.await.expect("link");
 }
@@ -409,7 +580,7 @@ async fn seed(dir: &std::path::Path, sim_port: u16, broker_port: u16) -> i64 {
 }
 
 #[tokio::test]
-async fn the_core_publishes_each_polled_device_under_the_plant_slug_and_offline_when_it_stops() {
+async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_offline_when_it_stops() {
     let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
     let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");

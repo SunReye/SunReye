@@ -32,13 +32,23 @@ pub struct Bridge {
     online: bool,
     /// Readings from while the broker was away, latest per state topic: never more than the catalog.
     queued: BTreeMap<String, String>,
+    /// Readings sent this connection, latest per state topic: a dead socket may have swallowed them.
+    sent: BTreeMap<String, String>,
     /// Restored on every connect, as 3.x does.
     forecast: Option<Arc<Forecast>>,
 }
 
 impl Bridge {
     pub fn new(names: Names, metrics: Vec<ManifestMetric>, discovery: bool) -> Self {
-        Self { names, metrics, discovery, online: false, queued: BTreeMap::new(), forecast: None }
+        Self {
+            names,
+            metrics,
+            discovery,
+            online: false,
+            queued: BTreeMap::new(),
+            sent: BTreeMap::new(),
+            forecast: None,
+        }
     }
 
     /// The last will: the broker marks the device unavailable when the connection dies.
@@ -64,8 +74,10 @@ impl Bridge {
         out
     }
 
+    /// Queues again what this connection sent: retained and latest per topic, so a repeat is harmless.
     pub fn dropped(&mut self) {
         self.online = false;
+        self.queued.extend(std::mem::take(&mut self.sent));
     }
 
     /// Each catalog metric the sample carries, in catalog order; queued while offline.
@@ -79,6 +91,7 @@ impl Bridge {
             })
             .collect();
         if self.online {
+            self.sent.extend(readings.iter().map(|p| (p.topic.clone(), p.payload.clone())));
             return readings;
         }
         self.queued.extend(readings.into_iter().map(|p| (p.topic, p.payload)));

@@ -44,6 +44,9 @@ pub fn plan(
     roots: &[CertificateDer<'static>],
 ) -> Vec<Planned> {
     let Some(broker) = config.broker() else { return Vec::new() };
+    if !broker.tls && config.password().is_some() {
+        tracing::warn!(host = %broker.host, "MQTT password sent in cleartext: use mqtts://");
+    }
     let known =
         devices.iter().filter(|d| d.in_service()).filter_map(|d| Some((d, profile_of(&d.profile_id)?)));
     known
@@ -124,7 +127,7 @@ impl Exports {
             let mut forecasts = if forecast { self.forecast.subscribe() } else { watch::channel(None).1 };
             forecasts.mark_changed();
             let feeds = Feeds { samples: readings, forecast: forecasts, stop: stopped.clone() };
-            let link = Link { dial, pause: link::sleep(), jitter: link::jitter };
+            let link = Link { dial, open: link::network(), pause: link::sleep(), jitter: link::jitter };
             tasks.spawn(link::run(link, bridge, feeds));
         }
         *self.samples.lock().unwrap_or_else(PoisonError::into_inner) = samples;
@@ -138,14 +141,22 @@ impl Exports {
     }
 }
 
+/// How long the links get to publish `offline` before they are aborted.
+const GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
 async fn stop(running: Option<Tasks>) {
     let Some((stop, mut tasks)) = running else { return };
     stop.send_replace(true);
-    while tasks.join_next().await.is_some() {}
+    let joined = async { while tasks.join_next().await.is_some() {} };
+    if tokio::time::timeout(GRACE, joined).await.is_err() {
+        tasks.shutdown().await;
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::modbus::Transport;
     use crate::profile::Bundle;
@@ -199,6 +210,17 @@ mod tests {
 
         let off = config(serde_json::json!({"brokerUrl": "mqtt://b"}));
         assert!(plan(&off, &devices, |id| bundle.profile(id).cloned(), &[]).is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stopping_aborts_an_mqtt_link_that_is_still_running_after_the_grace() {
+        let mut tasks = JoinSet::new();
+        tasks.spawn(std::future::pending::<()>());
+        let started = tokio::time::Instant::now();
+        let stopping = stop(Some((watch::channel(false).0, tasks)));
+        tokio::time::timeout(Duration::from_secs(60), stopping).await.expect("stopped");
+        let waited = started.elapsed();
+        assert!(waited >= Duration::from_secs(10) && waited < Duration::from_secs(11), "{waited:?}");
     }
 
     #[tokio::test]

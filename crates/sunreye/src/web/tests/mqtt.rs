@@ -46,6 +46,24 @@ async fn the_password_is_stored_and_no_read_route_returns_it() {
     core.stop().await;
 }
 
+#[test]
+fn a_password_over_plain_mqtt_warns_once_per_export_start() {
+    let with_password = |url: &str| {
+        let body = json!({"enabled": true, "brokerUrl": url, "username": "u", "password": SECRET});
+        crate::mqtt::config::MqttConfig::default()
+            .patched(&serde_json::from_value(body).expect("body"))
+            .expect("valid")
+    };
+    let warned = |url| busy::logged(|| crate::mqtt::plan(&with_password(url), &[], |_| None, &[])).1;
+    let plain = warned("mqtt://broker.lan");
+    assert_eq!(plain.len(), 1, "{plain:?}");
+    assert!(
+        plain[0].contains("WARN") && plain[0].contains("mqtts://") && !plain[0].contains(SECRET),
+        "{plain:?}"
+    );
+    assert_eq!(warned("mqtts://broker.lan"), Vec::<String>::new());
+}
+
 #[tokio::test]
 async fn a_refused_record_is_a_400_and_the_saved_one_stays() {
     let (core, admin) = open(&dir("mqtt-refused")).await;

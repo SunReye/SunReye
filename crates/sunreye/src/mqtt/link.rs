@@ -10,6 +10,7 @@ use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::watch;
+use tokio::time::Instant;
 use tokio::time::Interval;
 use tokio_rustls::TlsConnector;
 
@@ -21,11 +22,17 @@ use crate::samples::Sample;
 
 const BASE: Duration = Duration::from_secs(1);
 const CAP: Duration = Duration::from_secs(60);
-const KEEP_ALIVE_SECS: u16 = 60;
+const KEEP_ALIVE: Duration = Duration::from_secs(60);
+/// 1.5 × keep-alive without a packet from the broker: the connection is dead (PINGREQ goes every half).
+const SILENCE: Duration = Duration::from_secs(90);
 /// Bounds the dial, the TLS handshake and the CONNACK.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// A broker that stops reading fills the socket; past this the connection is dropped.
+const WRITE_TIMEOUT: Duration = KEEP_ALIVE;
+/// Bounds `offline` and DISCONNECT on stop.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// The delay before redial `attempt` (0 after a session that connected): doubling from 1 s, capped at 60 s,
+/// The delay before redial `attempt` (0 after a session that lasted a keep-alive): doubling from 1 s, capped at 60 s,
 /// then scaled into its upper half by `jitter` in [0, 1) so a broker restart is not met by every client at once.
 pub fn backoff(attempt: u32, jitter: f64) -> Duration {
     let doubled = BASE.saturating_mul(2u32.saturating_pow(attempt.min(31)));
@@ -59,8 +66,20 @@ pub struct Dial {
     pub roots: Vec<CertificateDer<'static>>,
 }
 
+/// Opens the byte stream to the broker; [`network`] outside tests.
+pub type Open =
+    Arc<dyn Fn(&Dial) -> Pin<Box<dyn Future<Output = Result<Box<dyn Stream>, String>> + Send>> + Send + Sync>;
+
+pub fn network() -> Open {
+    Arc::new(|dial| {
+        let dial = dial.clone();
+        Box::pin(async move { open(&dial).await })
+    })
+}
+
 pub struct Link {
     pub dial: Dial,
+    pub open: Open,
     pub pause: Pause,
     pub jitter: fn() -> f64,
 }
@@ -122,14 +141,14 @@ fn apply(bridge: &mut Bridge, event: Event) -> Option<Vec<Publish>> {
     }
 }
 
-trait Stream: AsyncRead + AsyncWrite + Send + Unpin {}
+pub trait Stream: AsyncRead + AsyncWrite + Send + Unpin {}
 impl<S: AsyncRead + AsyncWrite + Send + Unpin> Stream for S {}
 
 enum Ended {
     Stopped,
-    /// The connection failed or dropped; `connected` when the broker had accepted it.
+    /// The connection failed or dropped; `stable` when it had lasted a keep-alive.
     Lost {
-        connected: bool,
+        stable: bool,
     },
 }
 
@@ -137,10 +156,10 @@ enum Ended {
 pub async fn run(link: Link, mut bridge: Bridge, mut feeds: Feeds) {
     let mut failures = 0;
     loop {
-        match session(&link.dial, &mut bridge, &mut feeds).await {
+        match session(&link, &mut bridge, &mut feeds).await {
             Ended::Stopped => return,
-            Ended::Lost { connected: true } => failures = 0,
-            Ended::Lost { connected: false } => {}
+            Ended::Lost { stable: true } => failures = 0,
+            Ended::Lost { stable: false } => {}
         }
         bridge.dropped();
         let mut waited = (link.pause)(backoff(failures, (link.jitter)()));
@@ -167,11 +186,12 @@ async fn open(dial: &Dial) -> Result<Box<dyn Stream>, String> {
 }
 
 /// Dials and reads the CONNACK; the will goes with the CONNECT.
-async fn handshake(dial: &Dial, will: &Publish) -> Result<Box<dyn Stream>, String> {
-    let mut stream = open(dial).await?;
+async fn handshake(link: &Link, will: &Publish) -> Result<Box<dyn Stream>, String> {
+    let dial = &link.dial;
+    let mut stream = (link.open)(dial).await?;
     let connect = wire::connect(&wire::Connect {
         client_id: &dial.client_id,
-        keep_alive_secs: KEEP_ALIVE_SECS,
+        keep_alive_secs: u16::try_from(KEEP_ALIVE.as_secs()).unwrap_or(u16::MAX),
         username: dial.username.as_deref(),
         password: dial.password.as_deref(),
         will,
@@ -183,18 +203,35 @@ async fn handshake(dial: &Dial, will: &Publish) -> Result<Box<dyn Stream>, Strin
     }
 }
 
-async fn send(out: &mut WriteHalf<Box<dyn Stream>>, publishes: &[Publish]) -> std::io::Result<()> {
-    for p in publishes {
-        out.write_all(&wire::publish(p)).await?;
-    }
-    out.flush().await
+type Out = WriteHalf<Box<dyn Stream>>;
+
+fn encode(publishes: &[Publish]) -> Vec<u8> {
+    publishes.iter().flat_map(wire::publish).collect()
 }
 
-/// Reads until the connection fails: PINGRESP is all a publish-only client is sent.
+fn timed_out(what: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::TimedOut, what)
+}
+
+/// `None` once stopped, so a broker that stopped reading never holds up a stop.
+async fn write(out: &mut Out, bytes: &[u8], stop: &mut watch::Receiver<bool>) -> Option<std::io::Result<()>> {
+    let writing = tokio::time::timeout(WRITE_TIMEOUT, async {
+        out.write_all(bytes).await?;
+        out.flush().await
+    });
+    tokio::select! {
+        written = writing => Some(written.unwrap_or_else(|_| Err(timed_out("the broker stopped reading")))),
+        _ = stop.wait_for(|stopped| *stopped) => None,
+    }
+}
+
+/// Reads until the connection fails or falls silent: PINGRESP is all a publish-only client is sent.
 async fn drain(mut input: ReadHalf<Box<dyn Stream>>) -> std::io::Error {
     loop {
-        if let Err(error) = wire::read(&mut input).await {
-            return error;
+        match tokio::time::timeout(SILENCE, wire::read(&mut input)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => return error,
+            Err(_) => return timed_out("no PINGRESP from the broker"),
         }
     }
 }
@@ -206,22 +243,22 @@ async fn queue(bridge: &mut Bridge, feeds: &mut Feeds) {
 
 /// The stream once the broker accepted it; `None` when stopped while dialling.
 async fn dial_queueing(
-    dial: &Dial,
+    link: &Link,
     bridge: &mut Bridge,
     feeds: &mut Feeds,
 ) -> Option<Result<Box<dyn Stream>, String>> {
     let will = bridge.will();
     tokio::select! {
-        opened = tokio::time::timeout(CONNECT_TIMEOUT, handshake(dial, &will)) => {
+        opened = tokio::time::timeout(CONNECT_TIMEOUT, handshake(link, &will)) => {
             Some(opened.unwrap_or_else(|_| Err("no answer in time".into())))
         }
         () = queue(bridge, feeds) => None,
     }
 }
 
-async fn session(dial: &Dial, bridge: &mut Bridge, feeds: &mut Feeds) -> Ended {
-    let broker = &dial.broker;
-    match dial_queueing(dial, bridge, feeds).await {
+async fn session(link: &Link, bridge: &mut Bridge, feeds: &mut Feeds) -> Ended {
+    let broker = &link.dial.broker;
+    match dial_queueing(link, bridge, feeds).await {
         None => Ended::Stopped,
         Some(Ok(stream)) => {
             log_connected(broker);
@@ -230,17 +267,20 @@ async fn session(dial: &Dial, bridge: &mut Bridge, feeds: &mut Feeds) -> Ended {
         }
         Some(Err(error)) => {
             log_unreachable(broker, &error);
-            Ended::Lost { connected: false }
+            Ended::Lost { stable: false }
         }
     }
 }
 
 /// `offline`, then DISCONNECT, so the broker does not fire the will.
-async fn close(out: &mut WriteHalf<Box<dyn Stream>>, bridge: &mut Bridge) {
-    let closed = send(out, &bridge.close()).await;
-    if closed.is_ok() && out.write_all(&wire::DISCONNECT).await.is_ok() {
-        out.shutdown().await.ok();
-    }
+async fn close(out: &mut Out, bridge: &mut Bridge) {
+    let mut bytes = encode(&bridge.close());
+    bytes.extend_from_slice(&wire::DISCONNECT);
+    let closing = async {
+        out.write_all(&bytes).await?;
+        out.shutdown().await
+    };
+    tokio::time::timeout(CLOSE_TIMEOUT, closing).await.ok();
 }
 
 enum Step {
@@ -261,33 +301,46 @@ async fn step(
     }
 }
 
+/// What goes out next; `None` once stopped, after `offline`.
+async fn next(bridge: &mut Bridge, out: &mut Out, step: Step) -> Option<std::io::Result<Vec<u8>>> {
+    match step {
+        Step::Lost(error) => Some(Err(error)),
+        Step::Ping => Some(Ok(wire::PINGREQ.to_vec())),
+        Step::Event(event) => {
+            let Some(publishes) = apply(bridge, event) else {
+                close(out, bridge).await;
+                return None;
+            };
+            Some(Ok(encode(&publishes)))
+        }
+    }
+}
+
 async fn publishing(
     bridge: &mut Bridge,
     feeds: &mut Feeds,
-    out: &mut WriteHalf<Box<dyn Stream>>,
+    out: &mut Out,
     lost: impl Future<Output = std::io::Error>,
 ) -> Ended {
+    let started = Instant::now();
     let mut lost = std::pin::pin!(lost);
-    let mut ping = tokio::time::interval(Duration::from_secs(u64::from(KEEP_ALIVE_SECS) / 2));
+    let mut ping = tokio::time::interval(KEEP_ALIVE / 2);
     ping.tick().await;
-    let mut sent = send(out, &bridge.connected()).await;
-    while sent.is_ok() {
-        sent = match step(lost.as_mut(), &mut ping, feeds).await {
-            Step::Lost(error) => Err(error),
-            Step::Ping => out.write_all(&wire::PINGREQ).await,
-            Step::Event(event) => {
-                let Some(publishes) = apply(bridge, event) else {
-                    close(out, bridge).await;
-                    return Ended::Stopped;
-                };
-                send(out, &publishes).await
-            }
+    let mut bytes = encode(&bridge.connected());
+    let error = loop {
+        match write(out, &bytes, &mut feeds.stop).await {
+            None => return Ended::Stopped,
+            Some(Err(error)) => break error,
+            Some(Ok(())) => {}
+        }
+        bytes = match next(bridge, out, step(lost.as_mut(), &mut ping, feeds).await).await {
+            None => return Ended::Stopped,
+            Some(Err(error)) => break error,
+            Some(Ok(bytes)) => bytes,
         };
-    }
-    if let Err(error) = sent {
-        log_lost(&error);
-    }
-    Ended::Lost { connected: true }
+    };
+    log_lost(&error);
+    Ended::Lost { stable: started.elapsed() >= KEEP_ALIVE }
 }
 
 fn log_connected(broker: &Broker) {
@@ -323,8 +376,10 @@ mod tests {
             password: Some("s3cret".into()),
             roots: Vec::new(),
         };
-        let shown =
-            format!("{:?}", Link { dial, pause: Arc::new(|_| Box::pin(std::future::ready(()))), jitter });
+        let shown = format!(
+            "{:?}",
+            Link { dial, open: network(), pause: Arc::new(|_| Box::pin(std::future::ready(()))), jitter }
+        );
         assert!(shown.contains("1883") && shown.contains("\"u\"") && !shown.contains("s3cret"), "{shown}");
     }
 

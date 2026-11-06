@@ -56,6 +56,17 @@ impl std::fmt::Debug for MqttConfig {
     }
 }
 
+impl std::fmt::Debug for MqttPatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MqttPatch")
+            .field("enabled", &self.enabled)
+            .field("broker_url", &self.broker_url)
+            .field("username", &self.username)
+            .field("plant_slug", &self.plant_slug)
+            .finish_non_exhaustive()
+    }
+}
+
 /// The settings as read: the password only as whether one is set.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -74,7 +85,7 @@ pub struct MqttView {
 }
 
 /// A `PUT /api/settings/mqtt` body: absent keeps the stored value, `null` clears a nullable one.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::option_option, reason = "absent keeps the stored value, null clears it")]
 pub struct MqttPatch {
@@ -317,6 +328,8 @@ mod tests {
         let config = saved(json!({"username": "u", "password": "s3cret"})).expect("saved");
         assert!(!serde_json::to_string(&config.view()).expect("view").contains("s3cret"));
         assert!(!format!("{config:?}").contains("s3cret"));
+        let patch: MqttPatch = serde_json::from_value(json!({"password": "s3cret"})).expect("patch");
+        assert!(!format!("{patch:?}").contains("s3cret"), "{patch:?}");
         assert!(config.stored().contains("s3cret"), "the store keeps it");
         assert_eq!(MqttConfig::read(Some(&config.stored())), config);
     }

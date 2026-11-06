@@ -107,8 +107,8 @@ impl Write for Log {
     }
 }
 
-/// What a store failure answers, and the log lines it wrote.
-async fn answered(error: StoreError) -> (Answer, Vec<String>) {
+/// What `during` returns, and the log lines it wrote.
+pub(super) fn logged<T>(during: impl FnOnce() -> T) -> (T, Vec<String>) {
     let log = Log::default();
     let writer = log.clone();
     let subscriber = tracing_subscriber::fmt()
@@ -116,9 +116,15 @@ async fn answered(error: StoreError) -> (Answer, Vec<String>) {
         .with_ansi(false)
         .with_max_level(tracing::Level::TRACE)
         .finish();
-    let response = tracing::subscriber::with_default(subscriber, || ApiError::from(error).into_response());
+    let returned = tracing::subscriber::with_default(subscriber, during);
     let text = String::from_utf8(log.0.lock().expect("log").clone()).expect("utf8");
-    (answer(response).await, text.lines().map(str::to_owned).collect())
+    (returned, text.lines().map(str::to_owned).collect())
+}
+
+/// What a store failure answers, and the log lines it wrote.
+async fn answered(error: StoreError) -> (Answer, Vec<String>) {
+    let (response, lines) = logged(|| ApiError::from(error).into_response());
+    (answer(response).await, lines)
 }
 
 #[tokio::test]
