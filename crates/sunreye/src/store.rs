@@ -17,14 +17,17 @@ mod accounts;
 mod correction;
 mod forecast;
 mod roster;
-mod tiers;
+pub(crate) mod tiers;
 mod time_zone;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
+pub(crate) use self::forecast::{replace_device_pv, save_plant};
 pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
+pub(crate) use self::roster::{insert_connection, insert_device};
 pub use self::tiers::BucketWindow;
 #[cfg(test)]
 pub(crate) use self::tiers::CounterFill;
+pub(crate) use self::time_zone::save_time_zone;
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
@@ -233,6 +236,11 @@ impl Store {
         SqliteStore::new(self.pool.clone())
     }
 
+    /// The store's one connection in a transaction; every other use waits until it ends.
+    pub(crate) async fn begin(&self) -> Result<sqlx::Transaction<'_, Sqlite>, StoreError> {
+        Ok(self.pool.begin().await?)
+    }
+
     /// Closes the file; the last connection checkpoints the WAL.
     pub async fn close(self) {
         self.pool.close().await;
@@ -413,15 +421,7 @@ impl Store {
         samples.extend(closed.samples.iter().filter(|s| !stored_at.contains(&s.at_ms)).cloned());
         samples.sort_by_key(|sample| sample.at_ms);
         let blob = encode(closed.minute, &samples, &ids)?;
-        sqlx::query!(
-            "INSERT INTO reading_minute (device_id, minute, samples) VALUES (?, ?, ?)
-             ON CONFLICT (device_id, minute) DO UPDATE SET samples = excluded.samples",
-            device_id,
-            closed.minute,
-            blob
-        )
-        .execute(&mut *tx)
-        .await?;
+        put_minute(&mut *tx, device_id, closed.minute, &blob).await?;
         tiers::roll_up(&mut tx, device_id, closed.minute, &samples, &ids).await?;
         tx.commit().await?;
         Ok(())
@@ -497,7 +497,26 @@ async fn metric_ids<'e, E: Executor<'e, Database = Sqlite>>(
         .collect()
 }
 
-async fn intern_metric<'e, E: Executor<'e, Database = Sqlite>>(
+/// Stores one device minute's blob in place of any already there.
+pub(crate) async fn put_minute<'e, E: Executor<'e, Database = Sqlite>>(
+    executor: E,
+    device_id: i64,
+    minute: i64,
+    blob: &[u8],
+) -> Result<(), StoreError> {
+    sqlx::query!(
+        "INSERT INTO reading_minute (device_id, minute, samples) VALUES (?, ?, ?)
+             ON CONFLICT (device_id, minute) DO UPDATE SET samples = excluded.samples",
+        device_id,
+        minute,
+        blob
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
+pub(crate) async fn intern_metric<'e, E: Executor<'e, Database = Sqlite>>(
     executor: E,
     key: &str,
 ) -> Result<u32, StoreError> {

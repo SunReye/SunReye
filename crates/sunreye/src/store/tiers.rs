@@ -403,7 +403,7 @@ async fn carried_in(
 
 /// Closes each partial with the last reading of the metric's bucket before it, and stores it in place
 /// of any bucket already there.
-async fn append(
+pub(crate) async fn append(
     conn: &mut SqliteConnection,
     tier: Tier,
     device_id: i64,

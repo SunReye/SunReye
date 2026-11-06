@@ -1,6 +1,7 @@
 //! The core's library, run by the binary. Startup flags live here; everything else is a setting the core
 //! stores.
 
+pub mod archive;
 pub mod decode;
 pub mod forecast;
 pub mod manifest;
