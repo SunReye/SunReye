@@ -68,9 +68,9 @@ impl Bridge {
         if let Some(forecast) = &self.forecast {
             out.extend(self.forecast_publishes(forecast));
         }
-        out.extend(
-            std::mem::take(&mut self.queued).into_iter().map(|(topic, payload)| retained(topic, payload)),
-        );
+        let queued = std::mem::take(&mut self.queued);
+        out.extend(queued.iter().map(|(topic, payload)| retained(topic.clone(), payload.clone())));
+        self.sent.extend(queued);
         out
     }
 
@@ -300,7 +300,7 @@ mod tests {
             ]
         );
         assert_eq!(bridge.pending(), 0);
-        assert!(bridge.connected().len() == 1, "a queue goes out once");
+        assert!(bridge.connected().len() == 1, "a queue goes out once per connection");
     }
 
     #[test]

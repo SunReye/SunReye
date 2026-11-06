@@ -498,7 +498,8 @@ async fn mqtt_gives_up_saying_offline_to_a_stalled_broker_after_the_close_timeou
 async fn mqtt_backoff_resets_only_after_a_session_that_outlived_the_keep_alive() {
     let flap = Script::Open(Duration::ZERO);
     let secs = |s| Script::Open(Duration::from_secs(s));
-    let broker = scripted(vec![flap, flap, flap, secs(59), secs(60), flap]);
+    let broker =
+        scripted(vec![flap, flap, flap, Script::Open(Duration::from_millis(59_500)), secs(60), flap]);
     let (pause, mut asked, gate) = gated_pause();
     let link = spawn(dial(0, false), broker, pause, bridge(false));
     let mut delays = Vec::new();
@@ -545,6 +546,48 @@ async fn mqtt_drops_a_session_whose_broker_stops_answering_and_republishes_its_l
     assert!(asked.try_recv().is_err(), "a broker answering PINGREQ keeps the session");
     link.stop.send_replace(true);
     link.task.await.expect("link");
+}
+
+/// Each connection's publishes, split at its CONNECT.
+fn per_session(seen: &[Seen]) -> Vec<Vec<(&str, &str)>> {
+    seen.split(|s| matches!(s, Seen::Connect { .. })).skip(1).map(publishes).collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn mqtt_republishes_readings_queued_while_away_after_each_session_that_dies_silent() {
+    let mut broker = start_broker(None).await;
+    broker.up.store(false, Ordering::SeqCst);
+    let (pause, mut asked, gate) = gated_pause();
+    let link = spawn(dial(broker.port, false), broker.piped(), pause, bridge(false));
+    asked_for(&mut asked).await;
+    for n in 0..100 {
+        link.samples.send_replace(Some(reading(42.0, f64::from(n) + 24.0)));
+        tokio::task::yield_now().await;
+    }
+    broker.up.store(true, Ordering::SeqCst);
+    broker.deaf.store(true, Ordering::SeqCst);
+    for _ in 0..2 {
+        gate.notify_one();
+        asked_for(&mut asked).await;
+    }
+    broker.deaf.store(false, Ordering::SeqCst);
+    gate.notify_one();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    link.stop.send_replace(true);
+    link.task.await.expect("link");
+
+    let seen = broker.until_disconnect().await;
+    let carried = [
+        ("sunreye/haus-sud/1/status", "online"),
+        ("sunreye/haus-sud/1/battery/soc", "42"),
+        ("sunreye/haus-sud/1/dc/pv1/power", "123"),
+    ];
+    let offline = [("sunreye/haus-sud/1/status", "offline")];
+    assert_eq!(
+        per_session(&seen),
+        [vec![], carried.to_vec(), carried.to_vec(), [&carried[..], &offline[..]].concat()],
+        "refused, two silent sessions, a live one: the queue goes out once per session, latest per topic"
+    );
 }
 
 fn data_dir(name: &str) -> std::path::PathBuf {
