@@ -29,6 +29,8 @@ You review one PR on the **standards axis**: does the diff follow this repo's do
 
 `VERDICT changes` only for a defect with a concrete failing scenario (input or state → wrong behaviour) or a missing proof of an acceptance criterion. The scenario blocks, not its likelihood: any one blocks however rare, and any scenario on the register-writing or grid-tied path blocks. Every other note goes under a `Follow-up:` line and does not fail the verdict.
 
+When a previous review of the PR found a defect of the same class (same module, same failure mode), the blocking line asks for a redesign per `AGENTS.md` "Clean design" instead of another patch.
+
 ## Output
 
 Write `.factory/reviews/<pr>-standards.md` in the main checkout (path: `$(git rev-parse --path-format=absolute --git-common-dir)/../.factory/reviews/`): one line per blocking finding (the rule's file, the hunk, the fix), then `Follow-up:` lines. The file ends with the `VERDICT` line, then `Recommendation:`.
