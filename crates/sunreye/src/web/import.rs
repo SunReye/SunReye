@@ -27,7 +27,7 @@ use crate::run::Core;
 
 /// The held upload's file name in the data directory.
 pub const UPLOAD_FILE: &str = "import.tar.gz";
-/// An upload being received; it replaces the held upload only once received whole.
+/// An upload being received; it replaces its owner's held upload only once received whole.
 pub const PART_FILE: &str = "import.tar.gz.part";
 
 /// The largest archive accepted, in bytes. A full 3.x archive (~9 M rows) is about a tenth of it.
@@ -353,8 +353,9 @@ async fn import(
 
 /// Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409
 /// before the body is read. An archive whose automation is on, or still holds a register, stops at the guard
-/// (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it; a
-/// new upload received whole replaces it.
+/// (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it. Only
+/// that admin uploads meanwhile, and a new upload received whole replaces it; another admin's is a 403 before
+/// its body is read.
 #[utoipa::path(
     post,
     path = "/api/admin/import",
@@ -385,6 +386,9 @@ pub async fn upload(
     }
     let admin = admin_of(&auth)?;
     let mut held = no_import_running(&core)?;
+    if held.as_ref().is_some_and(|awaiting| awaiting.admin != admin) {
+        return Err(ApiError::forbidden("Another admin's upload is held: they confirm or discard it first"));
+    }
     if !core.store.devices().await?.is_empty() {
         return Err(ImportError::NotEmpty.into());
     }

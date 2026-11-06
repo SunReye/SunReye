@@ -190,7 +190,7 @@
     },
     "/api/admin/import": {
       "post": {
-        "summary": "Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409\nbefore the body is read. An archive whose automation is on, or still holds a register, stops at the guard\n(202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it; a\nnew upload received whole replaces it.",
+        "summary": "Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409\nbefore the body is read. An archive whose automation is on, or still holds a register, stops at the guard\n(202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it. Only\nthat admin uploads meanwhile, and a new upload received whole replaces it; another admin's is a 403 before\nits body is read.",
         "operationId": "importArchive",
         "requestBody": {
           "description": "The 3.x archive",

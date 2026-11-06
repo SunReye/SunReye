@@ -10,7 +10,9 @@ use tokio::sync::oneshot;
 use super::users::signed_in_user;
 use super::*;
 use crate::archive::testing::{gz, tar};
+use crate::modbus::Transport;
 use crate::run::{Fault, Pause};
+use crate::store::{NewConnection, NewDevice};
 use crate::web::import::{PART_FILE, REAPPLY, UPLOAD_FILE, UploadDeadline, UploadIdle, UploadLimit};
 
 const CURRENT_SHA256: &str = "cc05db473ae491d3495ed10ad78c23625b85931404c2d347742e428e06a4802d";
@@ -752,5 +754,86 @@ async fn another_admin_can_neither_confirm_nor_discard_the_held_upload() {
     assert_eq!(devices(&core).await, 0);
     assert_eq!(confirm(&first, CURRENT_SHA256).await.status, StatusCode::OK, "its uploader still confirms");
     drop((first, second));
+    core.stop().await;
+}
+
+const ANOTHER_ADMINS: &str = "Another admin's upload is held: they confirm or discard it first";
+
+/// The held upload's file still as uploaded and its owner's wait still raised.
+fn assert_held(core: &Core) {
+    assert_eq!(std::fs::read(&core.upload).expect("held"), archive("current-2.x"));
+    assert!(core.imports.try_lock().expect("free").is_some(), "the wait is raised");
+}
+
+#[tokio::test]
+async fn another_admins_upload_is_a_403_that_leaves_the_held_upload() {
+    let (core, first) = importer("import-held-refused", UploadLimit::default()).await;
+    let (_, second) = signed_in_user(&first, "second@example.org", true).await;
+    held(&first, &core).await;
+    for bytes in [b"not an archive".to_vec(), archive("current-2.x"), archive("legacy-1.2.0")] {
+        assert_eq!(error(&upload(&second, bytes).await), (StatusCode::FORBIDDEN, json!(ANOTHER_ADMINS)));
+        assert_held(&core);
+    }
+    assert_eq!(
+        error(&send_upload(&second, None, stalled()).await),
+        (StatusCode::FORBIDDEN, json!(ANOTHER_ADMINS)),
+        "refused before the body is read"
+    );
+    assert_eq!(error(&confirm(&second, CURRENT_SHA256).await).0, StatusCode::FORBIDDEN);
+    assert_eq!(confirm(&first, CURRENT_SHA256).await.status, StatusCode::OK, "its uploader still confirms");
+    drop((first, second));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_admin_replaces_their_own_held_upload_and_another_uploads_once_it_is_gone() {
+    let (core, first) = importer("import-held-replaced", UploadLimit::default()).await;
+    let (_, second) = signed_in_user(&first, "second@example.org", true).await;
+    held(&first, &core).await;
+    assert_eq!(upload(&first, archive("current-2.x")).await.status, StatusCode::ACCEPTED);
+    assert_held(&core);
+    assert_eq!(discard(&first, CURRENT_SHA256).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        upload(&second, archive("current-2.x")).await.status,
+        StatusCode::ACCEPTED,
+        "the slot is free"
+    );
+    assert_eq!(error(&confirm(&first, CURRENT_SHA256).await).0, StatusCode::FORBIDDEN, "now the second's");
+    assert_eq!(confirm(&second, CURRENT_SHA256).await.status, StatusCode::OK);
+    drop((first, second));
+    core.stop().await;
+}
+
+/// A device in the store, as a poll or another import would leave it.
+async fn fill(core: &Core) {
+    let connection =
+        NewConnection { transport: Transport::Tcp, host: "127.0.0.1".into(), port: 1, logger_serial: None };
+    let connection = core.store.add_connection(&connection).await.expect("connection");
+    let device = NewDevice { connection_id: connection, profile_id: "oracle".into(), unit_id: 1 };
+    core.store.add_device(&device).await.expect("device");
+}
+
+#[tokio::test]
+async fn an_upload_into_a_filled_store_is_a_409_that_leaves_the_held_upload() {
+    let (core, admin) = importer("import-held-not-empty", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    fill(&core).await;
+    assert_eq!(
+        error(&upload(&admin, archive("legacy-1.2.0")).await),
+        (StatusCode::CONFLICT, json!(NOT_EMPTY))
+    );
+    assert_held(&core);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_store_filled_after_the_upload_is_a_409_at_the_confirmation() {
+    let (core, admin) = importer("import-filled-after", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    fill(&core).await;
+    assert_eq!(error(&confirm(&admin, CURRENT_SHA256).await), (StatusCode::CONFLICT, json!(NOT_EMPTY)));
+    assert_eq!(devices(&core).await, 1, "nothing was added");
+    drop(admin);
     core.stop().await;
 }

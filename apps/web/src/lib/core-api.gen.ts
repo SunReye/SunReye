@@ -43,8 +43,9 @@ export interface paths {
         /**
          * Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409
          *     before the body is read. An archive whose automation is on, or still holds a register, stops at the guard
-         *     (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it; a
-         *     new upload received whole replaces it.
+         *     (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it. Only
+         *     that admin uploads meanwhile, and a new upload received whole replaces it; another admin's is a 403 before
+         *     its body is read.
          */
         post: operations["importArchive"];
         delete?: never;
