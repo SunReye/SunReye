@@ -2397,6 +2397,110 @@
         }
       }
     },
+    "/api/settings/mqtt": {
+      "get": {
+        "operationId": "readMqtt",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttView"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "A patch: absent keeps the stored value, `null` clears a nullable one. The export restarts on it.",
+        "operationId": "saveMqtt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MqttPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MqttView"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/profile-sources": {
       "get": {
         "operationId": "listProfileSources",
@@ -4464,6 +4568,117 @@
           },
           "transport": {
             "$ref": "#/components/schemas/Transport"
+          }
+        }
+      },
+      "MqttPatch": {
+        "type": "object",
+        "description": "A `PUT /api/settings/mqtt` body: absent keeps the stored value, `null` clears a nullable one.",
+        "properties": {
+          "brokerUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "haDiscoveryEnabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "haDiscoveryPrefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Write-only."
+          },
+          "plantSlug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "topicPrefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MqttView": {
+        "type": "object",
+        "description": "The settings as read: the password only as whether one is set.",
+        "required": [
+          "enabled",
+          "brokerUrl",
+          "username",
+          "passwordSet",
+          "clientId",
+          "topicPrefix",
+          "haDiscoveryEnabled",
+          "haDiscoveryPrefix",
+          "plantSlug"
+        ],
+        "properties": {
+          "brokerUrl": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "haDiscoveryEnabled": {
+            "type": "boolean"
+          },
+          "haDiscoveryPrefix": {
+            "type": "string"
+          },
+          "passwordSet": {
+            "type": "boolean"
+          },
+          "plantSlug": {
+            "type": "string"
+          },
+          "topicPrefix": {
+            "type": "string"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

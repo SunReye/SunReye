@@ -15,6 +15,7 @@ use tokio::time::MissedTickBehavior;
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
+use crate::mqtt::{self, Exports, config::MqttConfig};
 use crate::open_meteo;
 use crate::plant::{self, Aggregates};
 use crate::poll::DevicePoller;
@@ -58,6 +59,8 @@ pub struct Core {
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
     pub solar: Solar,
+    /// The MQTT export of every in-service device.
+    pub exports: Arc<Exports>,
     /// Open-Meteo's reanalysis archive, or a stand-in.
     pub archive_url: String,
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
@@ -68,6 +71,7 @@ pub struct Core {
     polling: Polling,
     retention: Mutex<Option<Running>>,
     learning: Mutex<Option<Running>>,
+    publishing_forecast: Mutex<Option<Running>>,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the sha256 of the upload awaiting the guard's
     /// confirmation. In memory: a restart drops it, and the held upload with it.
@@ -181,6 +185,7 @@ impl Core {
             live,
             unstored,
             solar: Solar::new(forecast_url),
+            exports: Arc::default(),
             archive_url,
             kiosk,
             stranger_reads,
@@ -188,6 +193,7 @@ impl Core {
             polling,
             retention,
             learning: Mutex::new(None),
+            publishing_forecast: Mutex::new(None),
             imports: Arc::default(),
             upload,
             polls,
@@ -195,6 +201,9 @@ impl Core {
             seams: Seams::default(),
         });
         *core.learning.lock().await = Some(spawn_learning(&core, learn));
+        if polls {
+            *core.publishing_forecast.lock().await = Some(spawn_forecast_export(&core));
+        }
         core.apply().await?;
         Ok(core)
     }
@@ -238,12 +247,35 @@ impl Core {
             self.seams.applied.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Ok(());
         }
-        self.polling.restart(&self.store, &self.bundle, &self.live, &self.unstored).await
+        let sinks = (&self.live, &self.unstored, &self.exports);
+        self.polling.restart(&self.store, &self.bundle, sinks).await?;
+        self.export().await
+    }
+
+    /// Restarts the MQTT export from the stored settings and devices.
+    pub async fn export(&self) -> Result<(), StoreError> {
+        if !self.polls {
+            return Ok(());
+        }
+        let config = MqttConfig::load(&self.store).await?;
+        let installed = installed(&self.store).await?;
+        let devices = self.store.devices().await?;
+        let planned =
+            mqtt::plan(&config, &devices, |id| find_profile(&self.bundle, &installed, id), &self.roots);
+        self.exports.restart(planned).await;
+        Ok(())
+    }
+
+    /// Stops the forecast feed, then each export, which publishes `offline`.
+    async fn stop_export(&self) {
+        stop(self.publishing_forecast.lock().await.take()).await;
+        self.exports.stop().await;
     }
 
     /// Stops the device tasks, each storing its open minute, and the retention pass, and closes the store.
     pub async fn stop(self: Arc<Self>) {
         self.polling.stop().await;
+        self.stop_export().await;
         stop(self.retention.lock().await.take()).await;
         stop(self.learning.lock().await.take()).await;
         if let Some(core) = Arc::into_inner(self)
@@ -319,12 +351,11 @@ impl Polling {
         &self,
         store: &Arc<Store>,
         bundle: &Bundle,
-        live: &Arc<Live>,
-        unstored: &Arc<Unstored>,
+        sinks: Sinks<'_>,
     ) -> Result<(), StoreError> {
         let mut running = self.running.lock().await;
         stop(running.take()).await;
-        *running = Some(spawn_devices(store, bundle, live, unstored).await?);
+        *running = Some(spawn_devices(store, bundle, sinks).await?);
         Ok(())
     }
 
@@ -340,11 +371,13 @@ async fn stop(running: Option<Running>) {
     while tasks.join_next().await.is_some() {}
 }
 
+/// Where each reading goes: the live feed, the open minute, the MQTT export.
+type Sinks<'a> = (&'a Arc<Live>, &'a Arc<Unstored>, &'a Arc<Exports>);
+
 async fn spawn_devices(
     store: &Arc<Store>,
     bundle: &Bundle,
-    live: &Arc<Live>,
-    unstored: &Arc<Unstored>,
+    (live, unstored, exports): Sinks<'_>,
 ) -> Result<Running, StoreError> {
     let interval = poll_interval(store.setting(INTERVAL_KEY).await?.as_deref());
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
@@ -364,6 +397,7 @@ async fn spawn_devices(
                     store: Arc::clone(store),
                     live: Arc::clone(live),
                     unstored: Arc::clone(unstored),
+                    exports: Arc::clone(exports),
                     poller: DevicePoller::new(profile, device.unit_id),
                     device,
                     client: None,
@@ -393,6 +427,37 @@ fn spawn_learning(core: &Arc<Core>, job: learn::Job) -> Running {
     Running { stop, tasks }
 }
 
+/// How often the plant forecast is published, as in 3.x.
+const FORECAST_EXPORT_EVERY: Duration = Duration::from_mins(5);
+
+/// Publishes the forecast while an export runs. Holds the core weakly, so the task never keeps it from stopping.
+fn spawn_forecast_export(core: &Arc<Core>) -> Running {
+    let (stop, mut stopped) = watch::channel(false);
+    let exports = Arc::clone(&core.exports);
+    let core = Arc::downgrade(core);
+    let mut tasks = JoinSet::new();
+    tasks.spawn(async move {
+        let mut ticker = tokio::time::interval(FORECAST_EXPORT_EVERY);
+        loop {
+            tokio::select! {
+                _ = stopped.changed() => return,
+                _ = ticker.tick() => {}
+                () = exports.restarted.notified() => {}
+            }
+            let Some(core) = core.upgrade() else { return };
+            if !core.exports.active() {
+                continue;
+            }
+            match core.solar.serve(&core).await {
+                Ok(Some(served)) => core.exports.forecast(served.forecast),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(%error, "forecast not exported"),
+            }
+        }
+    });
+    Running { stop, tasks }
+}
+
 fn log_unknown_profile(device: &DeviceRow) {
     tracing::error!(device = device.id, profile = %device.profile_id, "unknown profile, device not polled");
 }
@@ -404,6 +469,7 @@ struct DeviceTask {
     device: DeviceRow,
     poller: DevicePoller,
     unstored: Arc<Unstored>,
+    exports: Arc<Exports>,
     client: Option<Client>,
     timeout: Duration,
 }
@@ -435,6 +501,7 @@ impl DeviceTask {
 
     async fn record(&mut self, sample: Sample) {
         self.live.publish(self.device.id, &sample);
+        self.exports.sample(self.device.id, &sample);
         if let Some(closed) = self.unstored.push(self.device.id, sample) {
             self.save(&closed).await;
         }
@@ -820,6 +887,7 @@ mod tests {
             store: Arc::clone(&store),
             live: Arc::default(),
             unstored: Arc::default(),
+            exports: Arc::default(),
             poller: DevicePoller::new(profile, device.unit_id),
             device,
             client: None,

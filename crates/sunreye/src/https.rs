@@ -53,17 +53,21 @@ pub async fn get_with_roots(
     read_body(response, limits.max_bytes).await
 }
 
-fn client(timeout: Duration, extra_roots: &[CertificateDer<'_>]) -> Result<Client, GetError> {
+/// The TLS client every connection out uses: the built-in roots and `extra_roots`.
+pub fn tls_config(extra_roots: &[CertificateDer<'_>]) -> Result<ClientConfig, rustls::Error> {
     let mut roots = RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     for root in extra_roots {
-        roots.add(root.clone()).map_err(|e| GetError::Certificate(e.to_string()))?;
+        roots.add(root.clone())?;
     }
-    let tls = ClientConfig::builder_with_provider(Arc::new(default_provider()))
-        .with_safe_default_protocol_versions()
-        .map_err(|e| GetError::Connect(e.to_string()))?
+    Ok(ClientConfig::builder_with_provider(Arc::new(default_provider()))
+        .with_safe_default_protocol_versions()?
         .with_root_certificates(roots)
-        .with_no_client_auth();
+        .with_no_client_auth())
+}
+
+fn client(timeout: Duration, extra_roots: &[CertificateDer<'_>]) -> Result<Client, GetError> {
+    let tls = tls_config(extra_roots).map_err(|e| GetError::Certificate(e.to_string()))?;
     Client::builder()
         .use_preconfigured_tls(tls)
         .https_only(true)
