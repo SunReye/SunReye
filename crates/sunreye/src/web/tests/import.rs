@@ -3,12 +3,15 @@
 
 use std::collections::BTreeSet;
 
+use std::sync::atomic::Ordering;
+
 use futures_util::StreamExt as _;
 use futures_util::stream;
+use tokio::sync::oneshot;
 
 use super::*;
 use crate::archive::testing::{gz, tar};
-use crate::web::import::{PART_FILE, UPLOAD_FILE, UploadIdle, UploadLimit};
+use crate::web::import::{PART_FILE, UPLOAD_FILE, UploadDeadline, UploadIdle, UploadLimit};
 
 const CURRENT_SHA256: &str = "cc05db473ae491d3495ed10ad78c23625b85931404c2d347742e428e06a4802d";
 const LEGACY_SHA256: &str = "85746cda38de3bb4ff57279fb70aa76a6243bf83c24bf5bc88c80481764a102e";
@@ -370,7 +373,9 @@ async fn a_stalled_upload_is_a_408_that_frees_the_import_and_leaves_the_held_upl
         signed_in(core, &Config { upload_idle: UploadIdle(Duration::ZERO), ..Config::default() }).await;
     held(&admin, &core).await;
     let before = entries(&core);
-    let stalled = send_upload(&admin, None, stalled()).await;
+    let stalled = tokio::time::timeout(Duration::from_secs(30), send_upload(&admin, None, stalled()))
+        .await
+        .expect("the idle bound answers");
     assert_eq!(
         (stalled.status, stalled.json()["error"].clone()),
         (StatusCode::REQUEST_TIMEOUT, json!("The upload stalled: send the archive again"))
@@ -408,4 +413,96 @@ async fn a_dropped_upload_leaves_nothing_behind_and_frees_the_import() {
 #[test]
 fn an_upload_may_pause_a_minute_between_chunks() {
     assert_eq!(UploadIdle::default(), UploadIdle(Duration::from_secs(60)));
+}
+
+/// Sets the core's import pause: the receiver resolves once an import waits there; the sender resumes it.
+fn pause(core: &Core) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+    let (reached, at) = oneshot::channel();
+    let (resume, resumed) = oneshot::channel();
+    *core.seams.import_pause.lock().expect("pause") = Some((reached, resumed));
+    (at, resume)
+}
+
+fn applied(core: &Core) -> usize {
+    core.seams.applied.load(Ordering::SeqCst)
+}
+
+/// `legacy-1.2.0`'s profile, so the archive imports on upload.
+async fn legacy_profile(admin: &Api) {
+    let profile = json!({"id": "oracle-legacy-profile", "name": "Oracle legacy", "manufacturer": "Oracle",
+                         "version": "1.0.17", "metrics": []});
+    assert_eq!(import(admin, &profile).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_request_dropped_while_its_import_runs_still_lands_and_polls_what_it_added() {
+    let (core, admin) = importer("import-abandoned", UploadLimit::default()).await;
+    legacy_profile(&admin).await;
+    let before = applied(&core);
+    let (reached, resume) = pause(&core);
+    let request = upload_request(&admin, UPLOAD, None, Body::from(archive("legacy-1.2.0")));
+    let running = tokio::spawn(admin.router.clone().oneshot(request));
+    reached.await.expect("the import runs");
+    running.abort();
+    assert!(running.await.expect_err("dropped").is_cancelled());
+    resume.send(()).expect("the import waits");
+    drop(core.imports.lock().await);
+    assert_eq!(devices(&core).await, 1, "the import landed");
+    assert_eq!(applied(&core), before + 1, "what it added is polled");
+    assert!(!core.upload.exists(), "the upload is removed");
+    assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_import_that_panics_is_a_500_that_frees_the_import_and_removes_the_upload() {
+    let (core, admin) = importer("import-panics", UploadLimit::default()).await;
+    legacy_profile(&admin).await;
+    let (_reached, resume) = pause(&core);
+    drop(resume);
+    let failed = upload(&admin, archive("legacy-1.2.0")).await;
+    assert_eq!(failed.status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(devices(&core).await, 0);
+    assert!(!core.upload.exists(), "the upload is removed");
+    assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    assert_eq!(upload(&admin, archive("legacy-1.2.0")).await.status, StatusCode::OK, "the next import runs");
+    drop(admin);
+    core.stop().await;
+}
+
+/// Bytes that never stop and never stall: each 1 KiB chunk follows a yield.
+fn trickle() -> Body {
+    let chunks = stream::repeat_with(|| vec![0_u8; 1024]).then(|chunk| async {
+        tokio::task::yield_now().await;
+        Ok::<_, std::io::Error>(chunk)
+    });
+    Body::from_stream(chunks)
+}
+
+#[tokio::test]
+async fn an_upload_still_arriving_at_its_deadline_is_a_408_that_frees_the_import() {
+    let limit = UploadLimit(1 << 20);
+    let config = |deadline| Config { upload_limit: limit, upload_deadline: deadline, ..Config::default() };
+    let core = Core::open_unpolled(&dir("import-deadline"), created).await.expect("core");
+    let (core, admin) = signed_in(core, &config(UploadDeadline(Duration::ZERO))).await;
+    let late = send_upload(&admin, None, trickle()).await;
+    assert_eq!(
+        (late.status, late.json()["error"].clone()),
+        (StatusCode::REQUEST_TIMEOUT, json!("The upload is too slow: send the archive again"))
+    );
+    assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    drop(admin);
+    core.stop().await;
+
+    let core = Core::open_unpolled(&dir("import-in-time"), created).await.expect("core");
+    let (core, admin) = signed_in(core, &config(UploadDeadline::default())).await;
+    assert_413(&send_upload(&admin, None, trickle()).await, limit.0);
+    drop(admin);
+    core.stop().await;
+}
+
+#[test]
+fn an_upload_may_take_two_hours() {
+    assert_eq!(UploadDeadline::default(), UploadDeadline(Duration::from_hours(2)));
 }

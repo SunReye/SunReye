@@ -43,7 +43,7 @@ use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
 pub(crate) use self::import::{PART_FILE, UPLOAD_FILE};
-pub use self::import::{UploadIdle, UploadLimit};
+pub use self::import::{UploadDeadline, UploadIdle, UploadLimit};
 use self::kiosk::StrangerWait;
 pub use self::origin::origin_authority;
 pub use self::ws::Limits as LiveLimits;
@@ -69,6 +69,7 @@ pub struct Config {
     pub stranger_wait: StrangerWait,
     pub upload_limit: UploadLimit,
     pub upload_idle: UploadIdle,
+    pub upload_deadline: UploadDeadline,
 }
 
 /// The API routes with their `OpenAPI` document. Anonymous callers reach the setup gates, the sign-in
@@ -189,7 +190,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
         .layer(Extension(config.live))
         .layer(Extension(config.stranger_wait))
         .layer(Extension(config.upload_limit))
-        .layer(Extension(config.upload_idle))
+        .layer(Extension((config.upload_idle, config.upload_deadline)))
         .layer(accounts)
         .layer(middleware::from_fn(busy::surface))
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))

@@ -71,11 +71,27 @@ pub struct Core {
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the sha256 of the upload awaiting the guard's
     /// confirmation. In memory: a restart drops it, and the held upload with it.
-    pub imports: Mutex<Option<String>>,
+    pub imports: Arc<Mutex<Option<String>>>,
     /// Where an uploaded archive waits for its import.
     pub upload: PathBuf,
     /// Off in tests whose devices name hosts no test may reach.
     polls: bool,
+    #[cfg(test)]
+    pub(crate) seams: Seams,
+}
+
+/// What a test core observes and holds: `apply` calls while it polls nothing, and a pause each import waits
+/// at before it lands.
+#[cfg(test)]
+pub(crate) type Pause = (oneshot::Sender<()>, oneshot::Receiver<()>);
+
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub(crate) struct Seams {
+    pub applied: std::sync::atomic::AtomicUsize,
+    /// Signalled when an import reaches it; the import lands once the receiver resolves and panics when its
+    /// sender is dropped.
+    pub import_pause: std::sync::Mutex<Option<Pause>>,
 }
 
 impl Core {
@@ -172,9 +188,11 @@ impl Core {
             polling,
             retention,
             learning: Mutex::new(None),
-            imports: Mutex::new(None),
+            imports: Arc::default(),
             upload,
             polls,
+            #[cfg(test)]
+            seams: Seams::default(),
         });
         *core.learning.lock().await = Some(spawn_learning(&core, learn));
         core.apply().await?;
@@ -216,6 +234,8 @@ impl Core {
     /// Polls the in-service devices the store describes now; called after every settings or roster change.
     pub async fn apply(&self) -> Result<(), StoreError> {
         if !self.polls {
+            #[cfg(test)]
+            self.seams.applied.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Ok(());
         }
         self.polling.restart(&self.store, &self.bundle, &self.live, &self.unstored).await

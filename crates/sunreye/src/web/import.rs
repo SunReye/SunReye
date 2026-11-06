@@ -17,7 +17,7 @@ use axum::{Extension, Json};
 use jiff::Timestamp;
 use ring::digest::{Context, SHA256};
 use serde::{Deserialize, Serialize};
-use tokio::sync::MutexGuard;
+use tokio::sync::OwnedMutexGuard;
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
@@ -49,10 +49,21 @@ impl Default for UploadIdle {
     }
 }
 
+/// The longest an upload may take whole; a trickle within [`UploadIdle`] would hold the import lock. A
+/// [`UploadLimit`] archive at 1 Mbit/s takes about 70 minutes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadDeadline(pub Duration);
+
+impl Default for UploadDeadline {
+    fn default() -> Self {
+        Self(Duration::from_hours(2))
+    }
+}
+
 /// The import lock, or a 409 while an import holds it.
-pub(super) fn no_import_running(core: &Core) -> Result<MutexGuard<'_, Option<String>>, ApiError> {
-    core.imports
-        .try_lock()
+pub(super) fn no_import_running(core: &Core) -> Result<OwnedMutexGuard<Option<String>>, ApiError> {
+    Arc::clone(&core.imports)
+        .try_lock_owned()
         .map_err(|_| ApiError::conflict("An archive import is running: try again when it ends"))
 }
 
@@ -165,15 +176,25 @@ impl Drop for Discard {
     }
 }
 
-/// Streams `body` into `path`, hashing it; refuses it once it passes `limit` or waits longer than `idle`
-/// for its next bytes.
-async fn receive(mut body: Body, path: &Path, limit: u64, idle: Duration) -> Result<String, ApiError> {
+/// Streams `body` into `path`, hashing it; refuses it once it passes `limit`, waits longer than `idle` for
+/// its next bytes or is still arriving at `deadline`.
+async fn receive(
+    mut body: Body,
+    path: &Path,
+    limit: u64,
+    (idle, total): (Duration, Duration),
+) -> Result<String, ApiError> {
+    let deadline = tokio::time::Instant::now() + total;
     let mut file = std::fs::File::create(path).map_err(|e| unwritable(&e))?;
     let mut digest = Context::new(&SHA256);
     let mut size = 0_u64;
     loop {
         let next = std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx));
-        let Some(frame) = tokio::time::timeout(idle, next).await.map_err(|_| {
+        let waited =
+            tokio::time::timeout_at(deadline, tokio::time::timeout(idle, next)).await.map_err(|_| {
+                ApiError::new(StatusCode::REQUEST_TIMEOUT, "The upload is too slow: send the archive again")
+            })?;
+        let Some(frame) = waited.map_err(|_| {
             ApiError::new(StatusCode::REQUEST_TIMEOUT, "The upload stalled: send the archive again")
         })?
         else {
@@ -218,12 +239,39 @@ async fn check(core: &Core) -> Result<Checked, ApiError> {
     Ok(checked.await.map_err(|_| ApiError::internal())??)
 }
 
-/// Imports the held upload, then polls what it added.
-async fn import(core: &Core, checked: Checked) -> Result<Json<ImportReport>, ApiError> {
-    let now = Timestamp::from_millisecond(core.now_ms()).map_err(|_| ApiError::internal())?;
-    let imported = archive::import_checked(&core.store, &core.bundle, &core.upload, checked, now).await?;
-    core.apply().await?;
-    Ok(Json(imported.into()))
+/// Waits at the test core's import pause, if one is set.
+#[cfg(test)]
+async fn pause(core: &Core) {
+    let pause = core.seams.import_pause.lock().expect("pause").take();
+    if let Some((reached, resume)) = pause {
+        reached.send(()).expect("the test waits");
+        resume.await.expect("the test resumes the import");
+    }
+}
+
+/// Imports the held upload, then polls what it added. Runs as its own task: a dropped request does not
+/// stop it between the commit and the polling.
+async fn import(
+    core: &Arc<Core>,
+    held: OwnedMutexGuard<Option<String>>,
+    discard: Discard,
+    checked: Checked,
+) -> Result<Json<ImportReport>, ApiError> {
+    let core = Arc::clone(core);
+    let task = tokio::spawn(async move {
+        // Dropped in order on any end, a panic included: the files go before the lock frees.
+        let _importing = (discard, held);
+        #[cfg(test)]
+        pause(&core).await;
+        let now = Timestamp::from_millisecond(core.now_ms()).map_err(|_| ApiError::internal())?;
+        let imported = archive::import_checked(&core.store, &core.bundle, &core.upload, checked, now).await?;
+        core.apply().await?;
+        Ok(Json(imported.into()))
+    });
+    task.await.map_err(|error| {
+        tracing::error!(%error, "the archive import failed");
+        ApiError::internal()
+    })?
 }
 
 /// Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
@@ -249,7 +297,7 @@ async fn import(core: &Core, checked: Checked) -> Result<Json<ImportReport>, Api
 pub async fn upload(
     State(core): State<Arc<Core>>,
     Extension(limit): Extension<UploadLimit>,
-    Extension(idle): Extension<UploadIdle>,
+    Extension((idle, deadline)): Extension<(UploadIdle, UploadDeadline)>,
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, ApiError> {
@@ -260,7 +308,7 @@ pub async fn upload(
     let mut held = no_import_running(&core)?;
     let part = core.upload.with_file_name(PART_FILE);
     let mut discard = Discard(vec![part.clone()]);
-    let sha256 = receive(body, &part, limit.0, idle.0).await?;
+    let sha256 = receive(body, &part, limit.0, (idle.0, deadline.0)).await?;
     *held = None;
     discard.0.push(core.upload.clone());
     std::fs::rename(&part, &core.upload).map_err(|e| unwritable(&e))?;
@@ -270,7 +318,7 @@ pub async fn upload(
         discard.0.clear();
         return Ok((StatusCode::ACCEPTED, Json(Guarded { sha256, held: saved })).into_response());
     }
-    Ok(import(&core, checked).await?.into_response())
+    Ok(import(&core, held, discard, checked).await?.into_response())
 }
 
 /// Imports the upload the guard stopped, once: the confirmation names its sha256.
@@ -297,10 +345,10 @@ pub async fn confirm(
         return Err(ApiError::conflict("No upload awaits confirmation for that archive: upload it again"));
     }
     *held = None;
-    let _discard = Discard(vec![core.upload.clone()]);
+    let discard = Discard(vec![core.upload.clone()]);
     if sha256(&core.upload).await.ok().as_deref() != Some(confirmation.sha256.as_str()) {
         return Err(ApiError::conflict("The held upload changed: upload it again"));
     }
     let checked = check(&core).await?;
-    import(&core, checked).await
+    import(&core, held, discard, checked).await
 }
