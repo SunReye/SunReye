@@ -188,6 +188,178 @@
         }
       }
     },
+    "/api/admin/import": {
+      "post": {
+        "summary": "Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or\nstill holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload\nreceived whole replaces it.",
+        "operationId": "importArchive",
+        "requestBody": {
+          "description": "The 3.x archive",
+          "content": {
+            "application/gzip": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            }
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Guarded"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/import/confirm": {
+      "post": {
+        "summary": "Imports the upload the guard stopped, once: the confirmation names its sha256.",
+        "operationId": "confirmArchiveImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/users": {
       "get": {
         "operationId": "listUsers",
@@ -2993,6 +3165,11 @@
           }
         }
       },
+      "ArchiveFile": {
+        "type": "string",
+        "format": "binary",
+        "description": "The archive file's bytes."
+      },
       "Battery": {
         "type": "object",
         "description": "The battery the forecast's clipping sim models.",
@@ -3089,6 +3266,48 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Confirmation": {
+        "type": "object",
+        "required": [
+          "sha256"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "description": "The sha256 the guard answered with."
+          }
+        }
+      },
+      "Conflict": {
+        "type": "object",
+        "description": "The first of two archive lines at one device, metric and instant with different values.",
+        "required": [
+          "device",
+          "metric",
+          "at",
+          "kept",
+          "dropped"
+        ],
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "dropped": {
+            "type": "number",
+            "format": "double"
+          },
+          "kept": {
+            "type": "number",
+            "format": "double"
+          },
+          "metric": {
             "type": "string"
           }
         }
@@ -3801,6 +4020,102 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "Gap": {
+        "type": "object",
+        "description": "A device's span no tier covers whole: its bucket rows were not imported.",
+        "required": [
+          "device",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "device": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          }
+        }
+      },
+      "Guarded": {
+        "type": "object",
+        "description": "The archive turns on 3.x automation or still holds a register: it imports once the user confirms\nautomation is off in 3.x, which restores these values.",
+        "required": [
+          "sha256",
+          "held"
+        ],
+        "properties": {
+          "held": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Held"
+            }
+          },
+          "sha256": {
+            "type": "string",
+            "description": "The upload's sha256, hex: what the confirmation names."
+          }
+        }
+      },
+      "Held": {
+        "type": "object",
+        "description": "A user value 3.x automation holds a register away from: what the register read before automation took it.",
+        "required": [
+          "key",
+          "value",
+          "capturedAt"
+        ],
+        "properties": {
+          "capturedAt": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "3.x's `<device>:<automation>` key naming the register's holder."
+          },
+          "value": {
+            "$ref": "#/components/schemas/Saved"
+          }
+        }
+      },
+      "ImportReport": {
+        "type": "object",
+        "required": [
+          "read",
+          "gaps",
+          "conflicts"
+        ],
+        "properties": {
+          "conflicts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lines dropped because an earlier line at their device, metric and instant held another value.",
+            "minimum": 0
+          },
+          "firstConflict": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Conflict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Gap"
+            }
+          },
+          "read": {
+            "$ref": "#/components/schemas/Streams"
           }
         }
       },
@@ -4667,6 +4982,18 @@
           }
         }
       },
+      "Saved": {
+        "oneOf": [
+          {
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "A register value, or an EVCC loadpoint mode."
+      },
       "ScanRequest": {
         "type": "object",
         "required": [
@@ -4957,6 +5284,44 @@
           "config",
           "none"
         ]
+      },
+      "Streams": {
+        "type": "object",
+        "description": "Rows per stream, as `manifest.json` counts them.",
+        "required": [
+          "raw",
+          "minute",
+          "hourly",
+          "daily",
+          "configLog"
+        ],
+        "properties": {
+          "configLog": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "daily": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "hourly": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "minute": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "raw": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "TestRequest": {
         "allOf": [

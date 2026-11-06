@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use utoipa::ToSchema;
 
+use super::import::no_import_running;
 use super::{ApiError, ApiJson, ApiPath, ErrorBody};
 use crate::live::iso;
 use crate::profile::Profile;
@@ -472,6 +473,7 @@ pub async fn add(
     State(core): State<Arc<Core>>,
     ApiJson(request): ApiJson<NewDeviceRequest>,
 ) -> Result<Json<DeviceView>, ApiError> {
+    let _import = no_import_running(&core)?;
     if request.via.as_deref().is_some_and(|via| via != "profile") {
         return Err(refused("via", "this core adds devices by profile only"));
     }
