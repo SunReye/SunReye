@@ -1052,6 +1052,8 @@ export interface components {
             conflicts: number;
             firstConflict?: components["schemas"]["Conflict"] | null;
             gaps: components["schemas"]["Gap"][];
+            /** @description Why the imported devices are not polled yet; the core retries until they are. */
+            pollingError?: string | null;
             read: components["schemas"]["Streams"];
         };
         ImportedProfile: {

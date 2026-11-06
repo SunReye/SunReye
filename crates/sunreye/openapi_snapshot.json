@@ -4218,6 +4218,13 @@
               "$ref": "#/components/schemas/Gap"
             }
           },
+          "pollingError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the imported devices are not polled yet; the core retries until they are."
+          },
           "read": {
             "$ref": "#/components/schemas/Streams"
           }
