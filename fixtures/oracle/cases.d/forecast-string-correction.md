@@ -30,3 +30,17 @@ hours a string learns from. `input` `{model,observations,arrayNameplateW,inverte
 | `string/prior-model`                 | a stored cell decays and folds                                                        |
 | `string/dst-autumn-repeated-hour`    | local 02:00 twice on 2025-10-26: both fold into one cell                              |
 | `string/dst-spring-missing-hour`     | local 02:00 absent on 2026-03-29                                                      |
+
+`applyStringCorrection` (cases `apply/*`): `input` `{config,data,timeZone,correction?,arrayCorrections}`, `correction` the
+inverter's grid, `arrayCorrections` each array's string grid by position (`null` without one); `output` `{series}`, the
+raw `{time,watts}` per slot. Reference rule: an array takes its string's cell where learned, else the inverter's; each
+array is modelled alone through 3.x `buildSolarForecast` with that grid and the raw series are summed per slot. Cells
+are keyed by the plant-local label's month and hour. Ratios at weight 30: 0.8 inverter, 1.3 string.
+
+| case                                 | boundary                                                                                |
+| ------------------------------------ | --------------------------------------------------------------------------------------- |
+| `apply/string-over-total`            | string and inverter both learned at 12:00 and 13:00: the string's applies               |
+| `apply/two-arrays`                   | east wired to a string, west unwired: west takes the inverter's                         |
+| `apply/fallback-to-inverter`         | the string learned only 12:00: its other hours take the inverter's                      |
+| `apply/string-without-inverter-grid` | no inverter grid: the wired array is scaled, the other stays raw                        |
+| `apply/plant-zone`                   | Kolkata labels (+05:30): cells at the UTC hours 5 and 6 match no slot, 11:00 and 12:00 do |

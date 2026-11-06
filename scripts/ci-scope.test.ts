@@ -58,6 +58,11 @@ describe("scopeFor", () => {
     ["a crate manifest", ["crates/sunreye/Cargo.toml"], sorted("rust", "routes", "budgets")],
     ["a nested crate manifest", ["crates/a/b/Cargo.toml"], sorted("rust", "routes", "budgets")],
     ["a crate build script", ["crates/sunreye/build.rs"], sorted("rust", "routes", "budgets")],
+    [
+      "the SPA folder picker the build script compiles in",
+      ["crates/sunreye/spa_dir.rs"],
+      sorted("rust", "routes", "budgets"),
+    ],
     ["the cargo config", [".cargo/config.toml"], everything],
     ["the toolchain pin", ["rust-toolchain.toml"], everything],
     ["a bare toolchain pin", ["rust-toolchain"], everything],
