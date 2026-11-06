@@ -205,6 +205,10 @@ async fn every_bundled_profile_is_listed_and_the_chosen_one_is_active() {
     let listed = before.as_array().expect("array");
     assert_eq!(listed.len(), core.bundle.profiles.len());
     assert!(listed.iter().all(|p| p["active"] == false && p["builtin"] == true && p["installed"] == false));
+    assert!(
+        listed.iter().all(|p| p["version"].as_str().is_some_and(|v| !v.is_empty())),
+        "every entry has a version"
+    );
 
     let chosen = put(&app, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
     assert_eq!(chosen.status, StatusCode::OK);
@@ -857,6 +861,7 @@ fn third_party(id: &str, official: &str) -> (String, Value) {
     let mut profile = official_files().into_iter().find(|(name, _)| name == official).expect("official").1;
     profile["id"] = json!(id);
     profile["name"] = json!("Acme Hybrid");
+    profile["version"] = json!("7.3.1");
     (id.to_owned(), profile)
 }
 
@@ -896,7 +901,7 @@ async fn a_profile_source_is_added_listed_and_its_profiles_appear_beside_the_com
         fetched,
         &json!({
             "id": "acme-hybrid", "name": "Acme Hybrid", "manufacturer": "Deye", "active": false,
-            "installed": true, "builtin": false
+            "installed": true, "builtin": false, "version": "7.3.1"
         })
     );
     assert_eq!(profiles.iter().filter(|p| p["builtin"] == true).count(), core.bundle.profiles.len());

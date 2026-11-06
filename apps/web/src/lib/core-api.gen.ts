@@ -1313,6 +1313,7 @@ export interface components {
             installed: boolean;
             manufacturer: string;
             name: string;
+            version: string;
         };
         ProfileStatus: {
             activeProfileId: string | null;
