@@ -117,6 +117,7 @@ pub struct ProfileEntry {
     pub id: String,
     pub name: String,
     pub manufacturer: String,
+    pub version: String,
     pub active: bool,
     /// Downloaded from a profile source. The compiled-in profiles are not.
     pub installed: bool,
@@ -154,6 +155,7 @@ pub async fn list_profiles(State(core): State<Arc<Core>>) -> Result<Json<Vec<Pro
         id: profile.id.clone(),
         name: profile.name.clone(),
         manufacturer: profile.manufacturer.clone(),
+        version: profile.version.clone(),
         active: active.as_deref() == Some(profile.id.as_str()),
         installed: !builtin,
         builtin,

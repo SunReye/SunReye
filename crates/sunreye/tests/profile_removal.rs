@@ -223,3 +223,25 @@ async fn removing_a_source_that_is_unknown_malformed_or_supplies_the_active_prof
     close(core, api).await;
     drop(std::fs::remove_dir_all(&dir));
 }
+
+#[tokio::test]
+async fn the_profile_list_carries_the_version_of_a_compiled_in_and_of_an_imported_profile() {
+    let dir = dir("version");
+    let (core, api) = open(&dir).await;
+    let mut file = official_files().remove(0).1;
+    file["id"] = json!("acme-one");
+    file["version"] = json!("2.4.1");
+    import_profile(&core.store, &Installed::validate(file.to_string()).expect("valid profile"))
+        .await
+        .expect("import");
+
+    let listed = api.get("/api/profiles").await;
+    let listed = listed.as_array().expect("array");
+    let imported = listed.iter().find(|p| p["id"] == "acme-one").expect("listed");
+    assert_eq!(imported["version"], "2.4.1");
+    let compiled_in = &core.bundle.profiles[0].profile;
+    let builtin = listed.iter().find(|p| p["id"] == json!(compiled_in.id)).expect("listed");
+    assert_eq!(builtin["version"], json!(official_files().remove(0).1["version"]));
+    close(core, api).await;
+    drop(std::fs::remove_dir_all(&dir));
+}
