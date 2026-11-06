@@ -271,14 +271,14 @@ async fn a_learn_run_folds_the_measured_hours_and_a_second_run_for_the_day_is_a_
     );
     let (model, state) = learned();
     assert_eq!(core.store.correction(1).await.expect("read"), (model.clone(), Some(state)));
-    let path = standin.paths.lock().expect("paths")[0].clone();
+    let path = standin.archive_paths()[0].clone();
     assert!(
         path.starts_with("/v1/archive?") && path.contains("start_date=2026-04-21&end_date=2026-07-20"),
         "{path}"
     );
 
     assert_eq!(learn_once(&core).await.expect("learn"), Outcome::UpToDate);
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "nothing due: no fetch");
+    assert_eq!(standin.archive_paths().len(), 1, "nothing due: no fetch");
     assert_eq!(core.store.correction(1).await.expect("read"), (model, Some(state)));
     drop(admin);
     core.stop().await;
@@ -305,7 +305,7 @@ async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive
         );
         let (model, state) = learned_at(hours);
         assert_eq!(core.store.correction(1).await.expect("read"), (model, Some(state)), "{saved}");
-        let path = standin.paths.lock().expect("paths")[0].clone();
+        let path = standin.archive_paths()[0].clone();
         let url = reqwest::Url::parse(&format!("http://archive{path}")).expect("path");
         let zone = url.query_pairs().find(|(k, _)| k == "timezone").map(|(_, v)| v.into_owned());
         assert_eq!(zone.as_deref(), Some(name), "{saved}: {path}");
@@ -329,7 +329,7 @@ async fn a_failed_archive_fetch_leaves_the_stored_model_untouched() {
     standin.failing.store(true, Ordering::SeqCst);
     assert_eq!(learn_once(&core).await.expect("learn"), Outcome::FetchFailed);
     assert_eq!(core.store.correction(1).await.expect("read"), (stored, Some(state)));
-    let path = standin.paths.lock().expect("paths")[0].clone();
+    let path = standin.archive_paths()[0].clone();
     assert!(path.contains("start_date=2026-07-19&end_date=2026-07-20"), "{path}");
     drop(admin);
     core.stop().await;
@@ -341,7 +341,7 @@ async fn a_window_without_measured_hours_keeps_the_cursor_so_the_days_are_retrie
     configure(&admin, None).await;
     assert_eq!(learn_once(&core).await.expect("learn"), Outcome::NoMeasuredHours);
     assert_eq!(core.store.correction(1).await.expect("read"), (CorrectionModel::default(), None));
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1);
+    assert_eq!(standin.archive_paths().len(), 1);
     drop(admin);
     core.stop().await;
 }

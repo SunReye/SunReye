@@ -38,6 +38,7 @@ GET /api/settings/weather admin
 GET /api/setup-status public
 GET /api/sources kiosk
 GET /api/v1/entities key
+GET /api/weather kiosk
 PATCH /api/connections/{id} admin
 PATCH /api/devices/{id} admin
 POST /api/admin/api-keys admin

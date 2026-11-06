@@ -3,12 +3,13 @@ use tokio::sync::OwnedSemaphorePermit;
 use super::*;
 
 /// What the dashboard reads, each as a request that answers 200 to a session.
-const DASHBOARD_READS: [&str; 5] = [
+const DASHBOARD_READS: [&str; 6] = [
     "/api/capabilities",
     "/api/sources",
     "/api/profile",
     "/api/history/recent",
     "/api/history/rollup?metric=pv_power&bucket=minute",
+    "/api/weather",
 ];
 
 /// The listed operations a stranger may reach with the kiosk view on, beside the sign-in routes.

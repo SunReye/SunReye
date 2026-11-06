@@ -3209,6 +3209,48 @@
           }
         }
       }
+    },
+    "/api/weather": {
+      "get": {
+        "summary": "Null while weather is off or unlocated, or until a reading for the location landed. Reads only what the\nbackground refresh landed: no request waits on Open-Meteo.",
+        "operationId": "weather",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WeatherAnswer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4252,6 +4294,20 @@
           }
         }
       },
+      "Icon": {
+        "type": "string",
+        "description": "Coarse condition buckets the web maps to an icon.",
+        "enum": [
+          "clear",
+          "partly-cloudy",
+          "cloudy",
+          "fog",
+          "drizzle",
+          "rain",
+          "snow",
+          "thunder"
+        ]
+      },
       "ImportReport": {
         "type": "object",
         "required": [
@@ -5177,6 +5233,49 @@
           }
         }
       },
+      "Reading": {
+        "type": "object",
+        "required": [
+          "temperature",
+          "unit",
+          "code",
+          "condition",
+          "icon",
+          "solarRadiationSum",
+          "label"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int64",
+            "description": "WMO weather interpretation code."
+          },
+          "condition": {
+            "type": "string"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/Icon"
+          },
+          "label": {
+            "type": "string"
+          },
+          "solarRadiationSum": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Today's shortwave radiation sum in the plant zone, MJ/m²; null when no fetch has landed since the plant\nday began."
+          },
+          "temperature": {
+            "type": "number",
+            "format": "double"
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
+      },
       "Recent": {
         "type": "object",
         "description": "Every point is at `t0 + o[i] * step * 1000` milliseconds, so no timestamp repeats.",
@@ -5419,6 +5518,44 @@
             "format": "double"
           }
         }
+      },
+      "SolarForecast": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ForecastView"
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider",
+              "stepMinutes",
+              "utcOffsetSeconds",
+              "timeZone",
+              "raw"
+            ],
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "raw": {
+                "$ref": "#/components/schemas/ForecastView"
+              },
+              "stepMinutes": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "timeZone": {
+                "type": "string",
+                "description": "The plant zone the daily sums were cut in."
+              },
+              "utcOffsetSeconds": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          }
+        ],
+        "description": "3.x's `SolarForecast`: the usable view, its metadata and the raw view."
       },
       "SolarForecastConfig": {
         "type": "object",
@@ -5698,6 +5835,33 @@
             "description": "Every id asked, in order, so a miss names what was ruled out."
           }
         }
+      },
+      "WeatherAnswer": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Reading"
+          },
+          {
+            "type": "object",
+            "required": [
+              "forecast"
+            ],
+            "properties": {
+              "forecast": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SolarForecast",
+                    "description": "Null while the forecast is off or unconfigured, or no irradiance was had."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "The current conditions with the forecast."
       },
       "WeatherConfig": {
         "type": "object",
