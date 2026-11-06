@@ -17,7 +17,7 @@ use axum::{Extension, Json};
 use jiff::Timestamp;
 use ring::digest::{Context, SHA256};
 use serde::{Deserialize, Serialize};
-use tokio::sync::OwnedMutexGuard;
+use tokio::sync::{OwnedMutexGuard, oneshot, watch};
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
@@ -59,6 +59,9 @@ impl Default for UploadDeadline {
         Self(Duration::from_hours(2))
     }
 }
+
+/// How long an import waits before it polls again what it added, once polling it failed.
+pub const REAPPLY: Duration = Duration::from_secs(10);
 
 /// The import lock, or a 409 while an import holds it.
 pub(super) fn no_import_running(core: &Core) -> Result<OwnedMutexGuard<Option<String>>, ApiError> {
@@ -113,14 +116,16 @@ pub struct ImportReport {
     /// Lines dropped because an earlier line at their device, metric and instant held another value.
     conflicts: u64,
     first_conflict: Option<Conflict>,
+    /// Why the imported devices are not polled yet; the core retries until they are.
+    polling_error: Option<String>,
 }
 
 fn iso(at: Timestamp) -> String {
     format!("{at:.3}")
 }
 
-impl From<Imported> for ImportReport {
-    fn from(imported: Imported) -> Self {
+impl ImportReport {
+    fn new(imported: Imported, polling_error: Option<String>) -> Self {
         let gap = |g: archive::Gap| Gap { device: g.device, start: iso(g.start), end: iso(g.end) };
         let conflict = |c: archive::Conflict| Conflict {
             device: c.device,
@@ -134,6 +139,7 @@ impl From<Imported> for ImportReport {
             gaps: imported.gaps.into_iter().map(gap).collect(),
             conflicts: imported.conflicts,
             first_conflict: imported.first_conflict.map(conflict),
+            polling_error,
         }
     }
 }
@@ -239,37 +245,84 @@ async fn check(core: &Core) -> Result<Checked, ApiError> {
     Ok(checked.await.map_err(|_| ApiError::internal())??)
 }
 
-/// Waits at the test core's import pause, if one is set.
+/// Waits at a test core's pause, if one is set.
 #[cfg(test)]
-async fn pause(core: &Core) {
-    let pause = core.seams.import_pause.lock().expect("pause").take();
+async fn pause(at: &std::sync::Mutex<Option<crate::run::Pause>>) {
+    let pause = at.lock().expect("pause").take();
     if let Some((reached, resume)) = pause {
         reached.send(()).expect("the test waits");
         resume.await.expect("the test resumes the import");
     }
 }
 
-/// Imports the held upload, then polls what it added. Runs as its own task: a dropped request does not
-/// stop it between the commit and the polling.
+/// Polls what an import added; `Err` names why not, a panic included.
+async fn poll_imported(core: &Arc<Core>) -> Result<(), String> {
+    let applying = Arc::clone(core);
+    let error = match tokio::spawn(async move { applying.apply().await }).await {
+        Ok(Ok(())) => return Ok(()),
+        Ok(Err(error)) => error.to_string(),
+        Err(_) => "polling panicked".to_owned(),
+    };
+    tracing::error!(%error, "the imported devices are not polled: retrying");
+    Err(error)
+}
+
+/// Polls what an import added every [`REAPPLY`] until it is polled or the core stops.
+async fn retry_polling(core: &Arc<Core>, mut stopped: watch::Receiver<bool>) {
+    loop {
+        tokio::select! {
+            _ = stopped.wait_for(|stop| *stop) => return,
+            () = tokio::time::sleep(REAPPLY) => {}
+        }
+        if poll_imported(core).await.is_ok() {
+            return;
+        }
+    }
+}
+
+/// Commits the held upload to the store.
+async fn land(core: &Core, checked: Checked) -> Result<Imported, ApiError> {
+    let now = Timestamp::from_millisecond(core.now_ms()).map_err(|_| ApiError::internal())?;
+    Ok(archive::import_checked(&core.store, &core.bundle, &core.upload, checked, now).await?)
+}
+
+/// Imports the held upload, then polls what it added. Runs as a core task: a dropped request does not stop it
+/// between the commit and the polling, and the core stops only after it.
 async fn import(
     core: &Arc<Core>,
     held: OwnedMutexGuard<Option<String>>,
     discard: Discard,
     checked: Checked,
 ) -> Result<Json<ImportReport>, ApiError> {
-    let core = Arc::clone(core);
-    let task = tokio::spawn(async move {
+    let (answer, answered) = oneshot::channel();
+    let task = Arc::clone(core);
+    core.spawn_import(|stopped| async move {
+        let core = task;
         // Dropped in order on any end, a panic included: the files go before the lock frees.
-        let _importing = (discard, held);
+        let importing = (discard, held);
         #[cfg(test)]
-        pause(&core).await;
-        let now = Timestamp::from_millisecond(core.now_ms()).map_err(|_| ApiError::internal())?;
-        let imported = archive::import_checked(&core.store, &core.bundle, &core.upload, checked, now).await?;
-        core.apply().await?;
-        Ok(Json(imported.into()))
-    });
-    task.await.map_err(|error| {
-        tracing::error!(%error, "the archive import failed");
+        pause(&core.seams.import_pause).await;
+        let imported = match land(&core, checked).await {
+            Ok(imported) => imported,
+            Err(error) => {
+                drop(importing);
+                answer.send(Err(error)).ok();
+                return;
+            }
+        };
+        #[cfg(test)]
+        pause(&core.seams.apply_pause).await;
+        let polled = poll_imported(&core).await;
+        drop(importing);
+        let failed = polled.is_err();
+        answer.send(Ok(Json(ImportReport::new(imported, polled.err())))).ok();
+        if failed {
+            retry_polling(&core, stopped).await;
+        }
+    })
+    .await;
+    answered.await.map_err(|_| {
+        tracing::error!("the archive import failed");
         ApiError::internal()
     })?
 }

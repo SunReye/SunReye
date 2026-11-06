@@ -3,15 +3,14 @@
 
 use std::collections::BTreeSet;
 
-use std::sync::atomic::Ordering;
-
 use futures_util::StreamExt as _;
 use futures_util::stream;
 use tokio::sync::oneshot;
 
 use super::*;
 use crate::archive::testing::{gz, tar};
-use crate::web::import::{PART_FILE, UPLOAD_FILE, UploadDeadline, UploadIdle, UploadLimit};
+use crate::run::{Fault, Pause};
+use crate::web::import::{PART_FILE, REAPPLY, UPLOAD_FILE, UploadDeadline, UploadIdle, UploadLimit};
 
 const CURRENT_SHA256: &str = "cc05db473ae491d3495ed10ad78c23625b85931404c2d347742e428e06a4802d";
 const LEGACY_SHA256: &str = "85746cda38de3bb4ff57279fb70aa76a6243bf83c24bf5bc88c80481764a102e";
@@ -95,6 +94,7 @@ fn assert_imported(answer: &Answer, case: &str, device: &str) {
     let got = answer.json();
     assert_eq!((&got["read"], &got["gaps"]), (&read, &gaps));
     assert_eq!((&got["conflicts"], &got["firstConflict"]), (&json!(0), &Value::Null));
+    assert_eq!(got["pollingError"], Value::Null);
 }
 
 const NOT_HELD: &str = "No upload awaits confirmation for that archive: upload it again";
@@ -412,7 +412,7 @@ async fn a_stalled_upload_is_a_408_that_frees_the_import_and_leaves_the_held_upl
 }
 
 #[tokio::test]
-async fn a_dropped_upload_leaves_nothing_behind_and_frees_the_import() {
+async fn a_request_dropped_before_the_guard_check_leaves_nothing_behind_and_frees_the_import() {
     let (core, admin) = importer("import-dropped", UploadLimit::default()).await;
     held(&admin, &core).await;
     let before = entries(&core);
@@ -429,6 +429,7 @@ async fn a_dropped_upload_leaves_nothing_behind_and_frees_the_import() {
     assert!(running.await.expect_err("dropped").is_cancelled());
     assert_eq!(entries(&core), before, "nothing is left beside the held upload");
     assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    assert_eq!(devices(&core).await, 0);
     assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
     drop(admin);
     core.stop().await;
@@ -439,16 +440,16 @@ fn an_upload_may_pause_a_minute_between_chunks() {
     assert_eq!(UploadIdle::default(), UploadIdle(Duration::from_secs(60)));
 }
 
-/// Sets the core's import pause: the receiver resolves once an import waits there; the sender resumes it.
-fn pause(core: &Core) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
-    let (reached, at) = oneshot::channel();
+/// Sets a core's pause: the receiver resolves once an import waits there; the sender resumes it.
+fn pause(at: &std::sync::Mutex<Option<Pause>>) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+    let (reached, waiting) = oneshot::channel();
     let (resume, resumed) = oneshot::channel();
-    *core.seams.import_pause.lock().expect("pause") = Some((reached, resumed));
-    (at, resume)
+    *at.lock().expect("pause") = Some((reached, resumed));
+    (waiting, resume)
 }
 
 fn applied(core: &Core) -> usize {
-    core.seams.applied.load(Ordering::SeqCst)
+    core.seams.events.lock().expect("events").iter().filter(|e| **e == "apply").count()
 }
 
 /// `legacy-1.2.0`'s profile, so the archive imports on upload.
@@ -463,7 +464,7 @@ async fn a_request_dropped_while_its_import_runs_still_lands_and_polls_what_it_a
     let (core, admin) = importer("import-abandoned", UploadLimit::default()).await;
     legacy_profile(&admin).await;
     let before = applied(&core);
-    let (reached, resume) = pause(&core);
+    let (reached, resume) = pause(&core.seams.import_pause);
     let request = upload_request(&admin, UPLOAD, None, Body::from(archive("legacy-1.2.0")));
     let running = tokio::spawn(admin.router.clone().oneshot(request));
     reached.await.expect("the import runs");
@@ -483,7 +484,7 @@ async fn a_request_dropped_while_its_import_runs_still_lands_and_polls_what_it_a
 async fn an_import_that_panics_is_a_500_that_frees_the_import_and_removes_the_upload() {
     let (core, admin) = importer("import-panics", UploadLimit::default()).await;
     legacy_profile(&admin).await;
-    let (_reached, resume) = pause(&core);
+    let (_reached, resume) = pause(&core.seams.import_pause);
     drop(resume);
     let failed = upload(&admin, archive("legacy-1.2.0")).await;
     assert_eq!(failed.status, StatusCode::INTERNAL_SERVER_ERROR);
@@ -529,4 +530,120 @@ async fn an_upload_still_arriving_at_its_deadline_is_a_408_that_frees_the_import
 #[test]
 fn an_upload_may_take_two_hours() {
     assert_eq!(UploadDeadline::default(), UploadDeadline(Duration::from_hours(2)));
+}
+
+/// Starts a `legacy-1.2.0` upload, waits until its import reaches `at`, then drops the request.
+async fn drop_at(admin: &Api, at: &std::sync::Mutex<Option<Pause>>) -> oneshot::Sender<()> {
+    let (reached, resume) = pause(at);
+    let request = upload_request(admin, UPLOAD, None, Body::from(archive("legacy-1.2.0")));
+    let running = tokio::spawn(admin.router.clone().oneshot(request));
+    reached.await.expect("the import runs");
+    running.abort();
+    assert!(running.await.expect_err("dropped").is_cancelled());
+    resume
+}
+
+#[tokio::test]
+async fn a_second_upload_while_a_dropped_requests_import_runs_is_a_409() {
+    let (core, admin) = importer("import-dropped-busy", UploadLimit::default()).await;
+    legacy_profile(&admin).await;
+    let resume = drop_at(&admin, &core.seams.import_pause).await;
+    let busy = upload(&admin, archive("legacy-1.2.0")).await;
+    assert_eq!((busy.status, busy.json()["error"].clone()), (StatusCode::CONFLICT, json!(RUNNING)));
+    resume.send(()).expect("the import waits");
+    drop(core.imports.lock().await);
+    assert_eq!(devices(&core).await, 1, "the first import landed");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn stopping_the_core_waits_for_a_dropped_requests_import_then_stops_polling_and_closes_the_store() {
+    let path = dir("import-dropped-stop");
+    let core = Core::open_unpolled(&path, created).await.expect("core");
+    let (core, admin) = signed_in(core, &Config::default()).await;
+    legacy_profile(&admin).await;
+    let seams = Arc::clone(&core.seams);
+    let before = seams.events.lock().expect("events").len();
+    let resume = drop_at(&admin, &core.seams.apply_pause).await;
+    assert_eq!(devices(&core).await, 1, "the import committed");
+    drop(admin);
+
+    let stopping = tokio::spawn(core.stop());
+    settle().await;
+    assert!(!stopping.is_finished(), "stop waits for the import");
+    resume.send(()).expect("the import waits");
+    stopping.await.expect("stopped");
+
+    assert_eq!(seams.events.lock().expect("events")[before..], ["apply", "polling stopped", "store closed"]);
+    let store = Store::open(&path).await.expect("the store reopens");
+    assert_eq!(store.devices().await.expect("devices").len(), 1);
+    store.close().await;
+}
+
+/// Lets every task that can run, run.
+async fn settle() {
+    for _ in 0..1000 {
+        tokio::task::yield_now().await;
+    }
+}
+
+/// Uploads `legacy-1.2.0`, running `committed` once the import has committed, before it polls.
+async fn upload_then(core: &Core, admin: &Api, committed: impl FnOnce()) -> Answer {
+    let (reached, resume) = pause(&core.seams.apply_pause);
+    let request = upload_request(admin, UPLOAD, None, Body::from(archive("legacy-1.2.0")));
+    let answering = tokio::spawn(admin.router.clone().oneshot(request));
+    reached.await.expect("the import committed");
+    committed();
+    resume.send(()).expect("the import waits");
+    answer(answering.await.expect("answered").expect("response")).await
+}
+
+#[tokio::test]
+async fn an_import_whose_polling_fails_answers_the_failure_and_polls_on_the_next_try() {
+    for (fault, error) in
+        [(Fault::Fail, "stored setting is out of range"), (Fault::Panic, "polling panicked")]
+    {
+        let (core, admin) = importer("import-apply-fails", UploadLimit::default()).await;
+        legacy_profile(&admin).await;
+        let before = applied(&core);
+        core.seams.apply_faults.lock().expect("faults").push_back(fault);
+        // Paused before the retry is armed, time moves only while every task waits on a timer.
+        let answer = upload_then(&core, &admin, || tokio::time::pause()).await;
+        assert_eq!((answer.status, answer.json()["pollingError"].clone()), (StatusCode::OK, json!(error)));
+        assert_eq!(applied(&core), before, "not polled yet");
+
+        tokio::time::sleep(REAPPLY.checked_sub(Duration::from_secs(1)).expect("over a second")).await;
+        settle().await;
+        assert_eq!(applied(&core), before, "not polled again before {REAPPLY:?}");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        settle().await;
+        tokio::time::resume();
+        assert_eq!(applied(&core), before + 1, "polled without a restart");
+        assert_eq!(devices(&core).await, 1);
+        assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+        drop(admin);
+        core.stop().await;
+    }
+}
+
+#[test]
+fn polling_an_import_is_retried_every_ten_seconds() {
+    assert_eq!(REAPPLY, Duration::from_secs(10));
+}
+
+#[tokio::test]
+async fn stopping_the_core_ends_the_retries_of_an_import_whose_polling_keeps_failing() {
+    let (core, admin) = importer("import-apply-keeps-failing", UploadLimit::default()).await;
+    legacy_profile(&admin).await;
+    core.seams.apply_faults.lock().expect("faults").extend([Fault::Fail, Fault::Fail, Fault::Fail]);
+    // A retry that ignored the stop would run at once and take the next fault.
+    let answer = upload_then(&core, &admin, || tokio::time::pause()).await;
+    assert_eq!(answer.json()["pollingError"], json!("stored setting is out of range"));
+    let seams = Arc::clone(&core.seams);
+    drop(admin);
+    core.stop().await;
+    tokio::time::resume();
+    assert_eq!(seams.apply_faults.lock().expect("faults").len(), 2, "no retry once stopping");
+    assert_eq!(seams.events.lock().expect("events").last(), Some(&"store closed"));
 }

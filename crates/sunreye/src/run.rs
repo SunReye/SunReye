@@ -76,26 +76,63 @@ pub struct Core {
     /// import's empty-store check and its landing; holds the sha256 of the upload awaiting the guard's
     /// confirmation. In memory: a restart drops it, and the held upload with it.
     pub imports: Arc<Mutex<Option<String>>>,
+    /// Archive imports, each its own task so a dropped request does not stop it; [`Core::stop`] waits for them.
+    importing: Mutex<Option<Running>>,
     /// Where an uploaded archive waits for its import.
     pub upload: PathBuf,
-    /// Off in tests whose devices name hosts no test may reach.
-    polls: bool,
     #[cfg(test)]
-    pub(crate) seams: Seams,
+    pub(crate) seams: Arc<Seams>,
 }
 
-/// What a test core observes and holds: `apply` calls while it polls nothing, and a pause each import waits
-/// at before it lands.
+/// Signalled when an import reaches it; the import goes on once the receiver resolves and panics when its
+/// sender is dropped.
 #[cfg(test)]
 pub(crate) type Pause = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
+/// What `apply` does on a test core instead of its next restart.
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) enum Fault {
+    Fail,
+    Panic,
+}
+
+/// What a test core observes and holds; shared, so a test reads it after [`Core::stop`].
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct Seams {
-    pub applied: std::sync::atomic::AtomicUsize,
-    /// Signalled when an import reaches it; the import lands once the receiver resolves and panics when its
-    /// sender is dropped.
+    /// Set by [`Core::open_unpolled`]: `apply` records itself and polls nothing.
+    unpolled: std::sync::atomic::AtomicBool,
+    /// `"apply"` for each `apply` of an unpolled core; `"polling stopped"` and `"store closed"` as `stop` does
+    /// them.
+    pub events: std::sync::Mutex<Vec<&'static str>>,
+    /// Where an import waits before it lands.
     pub import_pause: std::sync::Mutex<Option<Pause>>,
+    /// Where an import waits after it lands, before it polls what it added.
+    pub apply_pause: std::sync::Mutex<Option<Pause>>,
+    /// Taken one per `apply`, before it polls.
+    pub apply_faults: std::sync::Mutex<std::collections::VecDeque<Fault>>,
+}
+
+#[cfg(test)]
+impl Seams {
+    fn record(&self, event: &'static str) {
+        self.events.lock().expect("events").push(event);
+    }
+
+    /// What `apply` answers instead of polling, if anything.
+    fn apply(&self) -> Option<Result<(), StoreError>> {
+        let fault = self.apply_faults.lock().expect("faults").pop_front();
+        match fault {
+            Some(Fault::Fail) => return Some(Err(StoreError::Corrupt("setting"))),
+            Some(Fault::Panic) => panic!("apply fault"),
+            None => {}
+        }
+        self.unpolled.load(std::sync::atomic::Ordering::SeqCst).then(|| {
+            self.record("apply");
+            Ok(())
+        })
+    }
 }
 
 impl Core {
@@ -146,14 +183,20 @@ impl Core {
         (forecast_url, archive_url): (String, String),
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        Self::start(data_dir, roots, now, (forecast_url, archive_url), (learn, true)).await
+        let core = Self::start(data_dir, roots, now, (forecast_url, archive_url), learn).await?;
+        *core.publishing_forecast.lock().await = Some(spawn_forecast_export(&core));
+        core.apply().await?;
+        Ok(core)
     }
 
     /// [`Core::open_at`] that polls no device.
     #[cfg(test)]
     pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
         let urls = (open_meteo::URL.into(), UNREACHABLE.into());
-        Self::start(data_dir, Vec::new(), now, urls, (learn::learn_logged, false)).await
+        let core = Self::start(data_dir, Vec::new(), now, urls, learn::learn_logged).await?;
+        core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
+        core.apply().await?;
+        Ok(core)
     }
 
     async fn start(
@@ -161,7 +204,7 @@ impl Core {
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
         (forecast_url, archive_url): (String, String),
-        (learn, polls): (learn::Job, bool),
+        learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let upload = data_dir.join(crate::web::UPLOAD_FILE);
@@ -175,7 +218,13 @@ impl Core {
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
-        let polling = Polling::default();
+        #[cfg(test)]
+        let seams = Arc::<Seams>::default();
+        let polling = Polling {
+            #[cfg(test)]
+            seams: Arc::clone(&seams),
+            ..Polling::default()
+        };
         let kiosk = watch::Sender::new(kiosk(&store).await?);
         let stranger_reads = Arc::new(Semaphore::new(STRANGER_READS));
         let core = Arc::new(Self {
@@ -195,16 +244,12 @@ impl Core {
             learning: Mutex::new(None),
             publishing_forecast: Mutex::new(None),
             imports: Arc::default(),
+            importing: Mutex::new(Some(Running { stop: watch::Sender::new(false), tasks: JoinSet::new() })),
             upload,
-            polls,
             #[cfg(test)]
-            seams: Seams::default(),
+            seams,
         });
         *core.learning.lock().await = Some(spawn_learning(&core, learn));
-        if polls {
-            *core.publishing_forecast.lock().await = Some(spawn_forecast_export(&core));
-        }
-        core.apply().await?;
         Ok(core)
     }
 
@@ -242,10 +287,9 @@ impl Core {
 
     /// Polls the in-service devices the store describes now; called after every settings or roster change.
     pub async fn apply(&self) -> Result<(), StoreError> {
-        if !self.polls {
-            #[cfg(test)]
-            self.seams.applied.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            return Ok(());
+        #[cfg(test)]
+        if let Some(applied) = self.seams.apply() {
+            return applied;
         }
         let sinks = (&self.live, &self.unstored, &self.exports);
         self.polling.restart(&self.store, &self.bundle, sinks).await?;
@@ -254,7 +298,8 @@ impl Core {
 
     /// Restarts the MQTT export from the stored settings and devices.
     pub async fn export(&self) -> Result<(), StoreError> {
-        if !self.polls {
+        #[cfg(test)]
+        if self.seams.unpolled.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(());
         }
         let config = MqttConfig::load(&self.store).await?;
@@ -272,16 +317,38 @@ impl Core {
         self.exports.stop().await;
     }
 
-    /// Stops the device tasks, each storing its open minute, and the retention pass, and closes the store.
+    /// Runs `import` as a task [`Core::stop`] waits for, handing it what turns true once the core stops. Once
+    /// stopped, `import` is dropped unrun.
+    pub async fn spawn_import<F>(&self, import: impl FnOnce(watch::Receiver<bool>) -> F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        if let Some(running) = self.importing.lock().await.as_mut() {
+            while running.tasks.try_join_next().is_some() {}
+            running.tasks.spawn(import(running.stop.subscribe()));
+        }
+    }
+
+    /// Waits for the imports, then stops the device tasks, each storing its open minute, and the retention
+    /// pass, and closes the store.
     pub async fn stop(self: Arc<Self>) {
+        // First: an import's last step restarts polling.
+        stop(self.importing.lock().await.take()).await;
         self.polling.stop().await;
         self.stop_export().await;
         stop(self.retention.lock().await.take()).await;
         stop(self.learning.lock().await.take()).await;
+        self.close().await;
+    }
+
+    /// Closes the store once this is its last holder.
+    async fn close(self: Arc<Self>) {
         if let Some(core) = Arc::into_inner(self)
             && let Some(store) = Arc::into_inner(core.store)
         {
             store.close().await;
+            #[cfg(test)]
+            core.seams.record("store closed");
         }
     }
 }
@@ -337,6 +404,8 @@ async fn serve(
 #[derive(Debug, Default)]
 pub struct Polling {
     running: Mutex<Option<Running>>,
+    #[cfg(test)]
+    seams: Arc<Seams>,
 }
 
 #[derive(Debug)]
@@ -362,6 +431,8 @@ impl Polling {
     /// Stops the tasks once each device's open minute is stored.
     pub async fn stop(&self) {
         stop(self.running.lock().await.take()).await;
+        #[cfg(test)]
+        self.seams.record("polling stopped");
     }
 }
 
