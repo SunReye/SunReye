@@ -260,15 +260,6 @@ pub async fn import(
     import_checked(store, bundle, path, checked, now).await
 }
 
-/// The first-run gate reads the active profile; setting it directly keeps the archive's unit ids, which
-/// choosing the profile through the API would rewrite.
-async fn activate_first_profile(store: &Store) -> Result<(), StoreError> {
-    if let Some(first) = store.devices().await?.first() {
-        store.set_setting(crate::settings::PROFILE_KEY, &first.profile_id).await?;
-    }
-    Ok(())
-}
-
 /// [`import`] of the archive at `path` that [`check`] read as `checked`.
 pub async fn import_checked(
     store: &Store,
@@ -296,7 +287,6 @@ pub async fn import_checked(
         kept(Tier::Day).await?,
     );
     let landed = land::land(store, &checked, &mut Container::open(path)?, cut).await?;
-    activate_first_profile(store).await?;
     Ok(Imported {
         read: checked.read,
         gaps: landed.gaps,
@@ -331,10 +321,14 @@ mod tests {
 
     /// An archive of `readings` (NDJSON text), its manifest counting `streams`.
     fn archive(readings: &str, streams: &serde_json::Value) -> PathBuf {
+        archive_of(config(), readings, streams)
+    }
+
+    fn archive_of(config: String, readings: &str, streams: &serde_json::Value) -> PathBuf {
         let manifest = json!({"format": FORMAT, "formatVersion": 1, "plantTimeZone": "Europe/Berlin", "streams": streams});
         file(&gz(&tar(&[
             (MANIFEST, manifest.to_string().into_bytes()),
-            (config::MEMBER, config().into_bytes()),
+            (config::MEMBER, config.into_bytes()),
             (CONFIG_LOG, gz(b"")),
             (READINGS, gz(readings.as_bytes())),
         ])))
@@ -362,6 +356,76 @@ mod tests {
 
     async fn device(store: &Store) -> i64 {
         store.devices().await.expect("devices")[0].id
+    }
+
+    /// A plant of the given devices (slug, profile, retired) on one connection.
+    fn plant_of(devices: &[(&str, &str, Option<&str>)]) -> String {
+        let devices: Vec<_> = devices
+            .iter()
+            .map(|(slug, profile, retired)| {
+                json!({"slug": slug, "profileId": profile, "role": "inverter", "unitId": 1,
+                       "connection": "Gateway", "retiredAt": retired})
+            })
+            .collect();
+        json!({"plant": {"timeZone": "Europe/Berlin", "connections": [
+                  {"name": "Gateway", "kind": "modbus", "params": {"host": "10.0.0.2", "port": 502}}],
+              "devices": devices}})
+        .to_string()
+    }
+
+    async fn active_profile(store: &Store) -> Option<String> {
+        store.setting(crate::settings::PROFILE_KEY).await.expect("setting")
+    }
+
+    #[tokio::test]
+    async fn the_active_profile_is_the_first_non_retired_devices() {
+        const RETIRED: Option<&str> = Some("2026-04-01T00:00:00Z");
+        for (devices, want) in [
+            (vec![("a", "deye-sg05lp3", None), ("b", "deye-sg01hp3", None)], Some("deye-sg05lp3")),
+            (vec![("a", "deye-sg05lp3", RETIRED), ("b", "deye-sg01hp3", None)], Some("deye-sg01hp3")),
+            (
+                vec![
+                    ("a", "deye-sg05lp3", RETIRED),
+                    ("b", "deye-sg01hp3", RETIRED),
+                    ("c", "deye-sg01hp3-5k", None),
+                ],
+                Some("deye-sg01hp3-5k"),
+            ),
+            (vec![("a", "deye-sg05lp3", RETIRED)], None),
+        ] {
+            let path = archive_of(plant_of(&devices), "", &streams(0, 0, 0, 0));
+            let (store, imported) = run(&path, "2026-05-02T00:00:00Z").await;
+            imported.expect("import");
+            assert_eq!(active_profile(&store).await.as_deref(), want, "{devices:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_write_that_fails_after_the_data_landed_leaves_neither_data_nor_profile_and_a_retry_imports() {
+        let path = archive(&line("raw", "2026-05-01T12:00:00Z", "p", 1.0), &streams(1, 0, 0, 0));
+        let store = Store::in_memory().await.expect("store");
+        let bundle = Bundle::official().expect("bundle");
+        let now = at("2026-05-02T00:00:00Z");
+        let mut conn = store.hold().await;
+        sqlx::query(
+            "CREATE TEMP TRIGGER no_profile BEFORE INSERT ON setting WHEN NEW.key = 'profile.active' \
+             BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        )
+        .execute(&mut *conn)
+        .await
+        .expect("trigger");
+        drop(conn);
+        let failed = import(&store, &bundle, &path, now).await.expect_err("the write fails");
+        assert!(failed.to_string().contains("disk full"), "{failed}");
+        assert_eq!(store.devices().await.expect("devices"), [], "no data");
+        assert_eq!(active_profile(&store).await, None, "no profile");
+        assert_eq!(store.plant_time_zone().await.expect("zone"), None, "no plant");
+        let mut conn = store.hold().await;
+        sqlx::query("DROP TRIGGER no_profile").execute(&mut *conn).await.expect("drop");
+        drop(conn);
+        import(&store, &bundle, &path, now).await.expect("a retry of the same archive imports");
+        assert_eq!(active_profile(&store).await.as_deref(), Some("deye-sg05lp3"));
+        assert_eq!(store.devices().await.expect("devices").len(), 1);
     }
 
     #[test]

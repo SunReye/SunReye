@@ -73,9 +73,9 @@ pub struct Core {
     learning: Mutex<Option<Running>>,
     publishing_forecast: Mutex<Option<Running>>,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
-    /// import's empty-store check and its landing; holds the sha256 of the upload awaiting the guard's
-    /// confirmation. In memory: a restart drops it, and the held upload with it.
-    pub imports: Arc<Mutex<Option<String>>>,
+    /// import's empty-store check and its landing; holds the upload awaiting the guard's confirmation,
+    /// with the admin who sent it. In memory: a restart drops it, and the held upload with it.
+    pub imports: Arc<Mutex<Option<crate::web::Awaiting>>>,
     /// Archive imports, each its own task so a dropped request does not stop it; [`Core::stop`] waits for them.
     importing: Mutex<Option<Running>>,
     /// Where an uploaded archive waits for its import.

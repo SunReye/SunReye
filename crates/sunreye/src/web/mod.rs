@@ -43,7 +43,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
-pub(crate) use self::import::{PART_FILE, UPLOAD_FILE};
+pub(crate) use self::import::{Awaiting, PART_FILE, UPLOAD_FILE};
 pub use self::import::{UploadDeadline, UploadIdle, UploadLimit};
 use self::kiosk::StrangerWait;
 pub use self::origin::origin_authority;
@@ -120,6 +120,7 @@ fn admin() -> OpenApiRouter<Arc<Core>> {
         .merge(accounts())
         .routes(routes!(import::upload))
         .routes(routes!(import::confirm))
+        .routes(routes!(import::discard))
         .route_layer(permission_required!(Accounts, Permission::Admin))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
@@ -191,8 +192,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
         .fallback(get(assets::serve))
         .layer(Extension(config.live))
         .layer(Extension(config.stranger_wait))
-        .layer(Extension(config.upload_limit))
-        .layer(Extension((config.upload_idle, config.upload_deadline)))
+        .layer(Extension((config.upload_limit, config.upload_idle, config.upload_deadline)))
         .layer(accounts)
         .layer(middleware::from_fn(busy::surface))
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))

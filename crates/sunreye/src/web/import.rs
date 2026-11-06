@@ -20,13 +20,14 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{OwnedMutexGuard, oneshot, watch};
 use utoipa::ToSchema;
 
+use super::auth::AuthSession;
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::archive::{self, Checked, Held, ImportError, Imported, Streams};
 use crate::run::Core;
 
 /// The held upload's file name in the data directory.
 pub const UPLOAD_FILE: &str = "import.tar.gz";
-/// An upload being received; it replaces the held upload only once received whole.
+/// An upload being received; it replaces its owner's held upload only once received whole.
 pub const PART_FILE: &str = "import.tar.gz.part";
 
 /// The largest archive accepted, in bytes. A full 3.x archive (~9 M rows) is about a tenth of it.
@@ -63,8 +64,15 @@ impl Default for UploadDeadline {
 /// How long an import waits before it polls again what it added, once polling it failed.
 pub const REAPPLY: Duration = Duration::from_secs(10);
 
+/// The upload the guard stopped: whose it is and its sha256, which the confirmation names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Awaiting {
+    admin: i64,
+    sha256: String,
+}
+
 /// The import lock, or a 409 while an import holds it.
-pub(super) fn no_import_running(core: &Core) -> Result<OwnedMutexGuard<Option<String>>, ApiError> {
+pub(super) fn no_import_running(core: &Core) -> Result<OwnedMutexGuard<Option<Awaiting>>, ApiError> {
     Arc::clone(&core.imports)
         .try_lock_owned()
         .map_err(|_| ApiError::conflict("An archive import is running: try again when it ends"))
@@ -245,6 +253,22 @@ async fn check(core: &Core) -> Result<Checked, ApiError> {
     Ok(checked.await.map_err(|_| ApiError::internal())??)
 }
 
+/// The admin a request is signed in as.
+fn admin_of(auth: &AuthSession) -> Result<i64, ApiError> {
+    auth.user.as_ref().map(|account| account.id).ok_or_else(|| ApiError::unauthorized("Not signed in"))
+}
+
+/// The upload `sha256` names, held by `admin`: a 409 when none awaits it, a 403 when it is another admin's.
+fn held_by(held: Option<&Awaiting>, admin: i64, sha256: &str) -> Result<(), ApiError> {
+    match held {
+        Some(awaiting) if awaiting.sha256 == sha256 && awaiting.admin == admin => Ok(()),
+        Some(awaiting) if awaiting.sha256 == sha256 => {
+            Err(ApiError::forbidden("The held upload belongs to another admin"))
+        }
+        _ => Err(ApiError::conflict("No upload awaits confirmation for that archive: upload it again")),
+    }
+}
+
 /// Waits at a test core's pause, if one is set.
 #[cfg(test)]
 async fn pause(at: &std::sync::Mutex<Option<crate::run::Pause>>) {
@@ -290,7 +314,7 @@ async fn land(core: &Core, checked: Checked) -> Result<Imported, ApiError> {
 /// between the commit and the polling, and the core stops only after it.
 async fn import(
     core: &Arc<Core>,
-    held: OwnedMutexGuard<Option<String>>,
+    held: OwnedMutexGuard<Option<Awaiting>>,
     discard: Discard,
     checked: Checked,
 ) -> Result<Json<ImportReport>, ApiError> {
@@ -327,9 +351,11 @@ async fn import(
     })?
 }
 
-/// Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
-/// still holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload
-/// received whole replaces it.
+/// Takes an archive (`.tar.gz` as 3.x exports it) into an empty store; a store holding devices answers 409
+/// before the body is read. An archive whose automation is on, or still holds a register, stops at the guard
+/// (202) and waits for `/api/admin/import/confirm` or `/api/admin/import/discard`, by the admin who sent it. Only
+/// that admin uploads meanwhile, and a new upload received whole replaces it; another admin's is a 403 before
+/// its body is read.
 #[utoipa::path(
     post,
     path = "/api/admin/import",
@@ -349,8 +375,8 @@ async fn import(
 )]
 pub async fn upload(
     State(core): State<Arc<Core>>,
-    Extension(limit): Extension<UploadLimit>,
-    Extension((idle, deadline)): Extension<(UploadIdle, UploadDeadline)>,
+    Extension((limit, idle, deadline)): Extension<(UploadLimit, UploadIdle, UploadDeadline)>,
+    auth: AuthSession,
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, ApiError> {
@@ -358,7 +384,14 @@ pub async fn upload(
     if declared.is_some_and(|length| length > limit.0) {
         return Err(too_large(limit.0));
     }
+    let admin = admin_of(&auth)?;
     let mut held = no_import_running(&core)?;
+    if held.as_ref().is_some_and(|awaiting| awaiting.admin != admin) {
+        return Err(ApiError::forbidden("Another admin's upload is held: they confirm or discard it first"));
+    }
+    if !core.store.devices().await?.is_empty() {
+        return Err(ImportError::NotEmpty.into());
+    }
     let part = core.upload.with_file_name(PART_FILE);
     let mut discard = Discard(vec![part.clone()]);
     let sha256 = receive(body, &part, limit.0, (idle.0, deadline.0)).await?;
@@ -367,14 +400,15 @@ pub async fn upload(
     std::fs::rename(&part, &core.upload).map_err(|e| unwritable(&e))?;
     let checked = check(&core).await?;
     if let Some(saved) = checked.guard()? {
-        *held = Some(sha256.clone());
+        *held = Some(Awaiting { admin, sha256: sha256.clone() });
         discard.0.clear();
         return Ok((StatusCode::ACCEPTED, Json(Guarded { sha256, held: saved })).into_response());
     }
     Ok(import(&core, held, discard, checked).await?.into_response())
 }
 
-/// Imports the upload the guard stopped, once: the confirmation names its sha256.
+/// Imports the upload the guard stopped, once: the confirmation names its sha256. Only the admin who sent it
+/// confirms it.
 #[utoipa::path(
     post,
     path = "/api/admin/import/confirm",
@@ -391,12 +425,12 @@ pub async fn upload(
 )]
 pub async fn confirm(
     State(core): State<Arc<Core>>,
+    auth: AuthSession,
     ApiJson(confirmation): ApiJson<Confirmation>,
 ) -> Result<Json<ImportReport>, ApiError> {
+    let admin = admin_of(&auth)?;
     let mut held = no_import_running(&core)?;
-    if held.as_deref() != Some(confirmation.sha256.as_str()) {
-        return Err(ApiError::conflict("No upload awaits confirmation for that archive: upload it again"));
-    }
+    held_by(held.as_ref(), admin, &confirmation.sha256)?;
     *held = None;
     let discard = Discard(vec![core.upload.clone()]);
     if sha256(&core.upload).await.ok().as_deref() != Some(confirmation.sha256.as_str()) {
@@ -404,4 +438,35 @@ pub async fn confirm(
     }
     let checked = check(&core).await?;
     import(&core, held, discard, checked).await
+}
+
+/// Drops the upload the guard stopped: deletes its file and clears the wait, which the confirmation can no
+/// longer continue.
+#[utoipa::path(
+    post,
+    path = "/api/admin/import/discard",
+    operation_id = "discardArchiveImport",
+    request_body = Confirmation,
+    responses(
+        (status = 204),
+        (status = 400, body = ErrorBody),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody),
+        (status = 409, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn discard(
+    State(core): State<Arc<Core>>,
+    auth: AuthSession,
+    ApiJson(confirmation): ApiJson<Confirmation>,
+) -> Result<StatusCode, ApiError> {
+    let admin = admin_of(&auth)?;
+    let mut held = no_import_running(&core)?;
+    held_by(held.as_ref(), admin, &confirmation.sha256)?;
+    *held = None;
+    match std::fs::remove_file(&core.upload) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(unwritable(&error)),
+        _ => Ok(StatusCode::NO_CONTENT),
+    }
 }
