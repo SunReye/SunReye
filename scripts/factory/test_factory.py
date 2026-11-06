@@ -1888,6 +1888,30 @@ class TrainCommands(unittest.TestCase):
         self.assertTrue(Path(body["log"]).exists())
         self.assertIn("merge-1", self.store.state["slots"])
 
+    def test_run_answers_with_json_when_a_regenerate_command_is_missing(self):
+        self.prs(1)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[["no-such-command-xyz"]])
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], self.forge.merged), ("error", [], []))
+        self.assertIn("no-such-command-xyz", body["error"])
+        self.assertIn("merge-1", self.store.state["slots"])
+
+    def test_run_answers_with_json_when_the_fetch_after_landing_fails(self):
+        self.prs(1, 2)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        merge = self.forge.merge
+
+        def merge_then_break_origin(pr, title, sha):
+            merge(pr, title, sha)
+            if pr == 2:
+                git(self.origin.work, "remote", "set-url", "origin", "/nonexistent/origin.git")
+        self.forge.merge = merge_then_break_origin
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"]), ("stopped", [1, 2]))
+        self.assertEqual(body["stopped"]["result"], "error")
+        self.assertIn("fetch", body["stopped"]["error"])
+        self.assertIn("merge-1", self.store.state["slots"])
+
     def test_train_refuses_an_unknown_argument_before_taking_a_slot(self):
         self.prs(1)
         with self.assertRaisesRegex(SystemExit, "usage: factory train"):

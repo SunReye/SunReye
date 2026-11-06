@@ -419,7 +419,11 @@ def land_train(path, forge, prs, base):
         if stopped:
             return {"merged": merged, "stopped": stopped, "tree_match": False}
         merged.append(p["pr"])
-    slots.sh("git", "fetch", "-q", "origin", CFG["base"], cwd=path)
+    try:
+        slots.sh("git", "fetch", "-q", "origin", CFG["base"], cwd=path)
+    except SystemExit as err:
+        return {"merged": merged, "stopped": {"pr": None, "result": "error", "error": str(err)[:300]},
+                "tree_match": False}
     trees = {slots.sh("git", "rev-parse", f"{ref}^{{tree}}", cwd=path) for ref in (f"origin/{CFG['base']}", head)}
     return {"merged": merged, "stopped": None, "tree_match": len(trees) == 1}
 
@@ -506,7 +510,7 @@ def run_train(store, forge, slot, info, entry):
     try:
         # The merged tree's commands: the dispatcher checkout may be a landing behind.
         failure = train_failure(slots.tree_config(CFG, path), path, log)
-    except SystemExit as err:
+    except (SystemExit, OSError) as err:
         failure = {"result": "error", "error": str(err)[:300]}
     if failure:
         return {**summary, **failure, "log": str(log), "merged": []}

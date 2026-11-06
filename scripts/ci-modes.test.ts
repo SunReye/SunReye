@@ -115,6 +115,18 @@ describe("scripts/ci modes", () => {
     expect(got.out).not.toContain("== ci green");
   });
 
+  // The first command of a step: a later command that passes must not mask it.
+  test.each([
+    ["bun run test:coverage", "train-coverage"],
+    ["bun run test:coverage:rust", "train-rust-coverage"],
+    ["bun run e2e:types", "train-e2e"],
+  ])("a failing %s fails the train gate as %s", (command, step) => {
+    const got = ci(["--train"], command);
+    expect(got.code).toBe(1);
+    expect(got.out).toContain(`FAILED ${step} (exit 9)`);
+    expect(got.out).not.toContain("== ci green");
+  });
+
   test("a failing budgets run fails the train gate", () => {
     const got = ci(["--train"], "bun run test:budgets");
     expect(got.code).not.toBe(0);

@@ -59,7 +59,7 @@ parallel_lanes() {
 # Budgets rebuild the SPA and the release binaries; the other lane starts with the cheap coverage steps,
 # so the browser suite begins after the SPA build and the two never share a dev server or a build directory.
 train_only_steps() {
-  local train=$1 lane_budgets="" lane_main="" logs code=0
+  local train=$1 lane_budgets="" lane_main="" logs code errexit=$-
   if ((train)); then
     lane_main="train-coverage"
     selected rust && lane_main+=" train-rust-coverage" || echo "skip rust coverage: ${scope_reason[rust]}"
@@ -72,7 +72,11 @@ train_only_steps() {
     echo "skip e2e core: ${scope_reason[rust]}"
   fi
   logs=$(mktemp -d "${TMPDIR:-/tmp}/sunreye-ci-XXXXXX")
-  parallel_lanes "$logs" "$lane_budgets" "$lane_main" || code=$?
+  # A plain call: under `||`, `&&`, `if` or `!` bash ignores `set -e` in every step the lanes run.
+  set +e
+  parallel_lanes "$logs" "$lane_budgets" "$lane_main"
+  code=$?
+  [[ $errexit == *e* ]] && set -e
   rm -rf "$logs"
   return "$code"
 }
