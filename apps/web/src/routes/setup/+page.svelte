@@ -3,6 +3,7 @@
 	import { resolve } from '$lib/resolve';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { Button } from '$lib/components/ui/button';
 	import { core } from '$lib/core-api';
 	import { apiErrorText } from '$lib/api-error';
 	import InverterForm from '$lib/components/settings/inverter-form.svelte';
@@ -12,25 +13,11 @@
 	import { keptSelection } from '$lib/components/setup/profile-selection';
 	import SetupFooter from '$lib/components/setup/setup-footer.svelte';
 	import SetupShell from '$lib/components/setup/setup-shell.svelte';
-	import { firstRunGate } from '$lib/setup';
+	import { useSetupGate } from '$lib/components/setup/use-setup-gate.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { useAppSession } from '$lib/session';
 
-	const sessionQuery = useAppSession();
-
-	// Gate the wizard (mirrors the app shell), same precedence: no session →
-	// `/login`; no admin yet → `/onboarding`; already configured → `/`. Only a
-	// logged-in, admin-created, profile-less instance stays here.
-	$effect(() => {
-		if (!$sessionQuery.isPending && !$sessionQuery.data) goto(resolve('/login'));
-	});
-	$effect(() => {
-		if ($sessionQuery.isPending || !$sessionQuery.data) return;
-		firstRunGate().then((g) => {
-			if (g === 'setup-account') goto(resolve('/onboarding'));
-			else if (g === 'ready') goto(resolve('/'));
-		});
-	});
+	// Only a logged-in, admin-created, profile-less instance stays here.
+	useSetupGate(true);
 
 	type Step = 'profile' | 'connect' | 'activate';
 	let step = $state<Step>('profile');
@@ -94,6 +81,11 @@
 <SetupShell title={m.setup_title()} subtitle={m.setup_subtitle()} {step}>
 	{#if step === 'profile'}
 		<ProfileStep profiles={registered} bind:selectedId {onExternalInstalled} {onExternalRemoved} />
+		<div>
+			<Button variant="link" class="h-9 px-0 sm:h-8" href={resolve('/setup/import')}>
+				{m.setup_import_link()}
+			</Button>
+		</div>
 	{:else if step === 'connect'}
 		<InverterForm bind:this={connectForm} profileId={testProfileId} wizard />
 	{:else}

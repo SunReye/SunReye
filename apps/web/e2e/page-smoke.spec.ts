@@ -596,6 +596,17 @@ const ROUTES: readonly SmokeRoute[] = [
       await heading(page, "Select a profile");
       await expect(page.getByText(MANIFEST.name).first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Select", exact: true }).first()).toBeVisible();
+      // The wizard's way into the archive import.
+      await expect(page.getByRole("link", { name: "Import a 3.x archive instead" })).toBeVisible();
+    },
+  },
+  {
+    file: "setup/import/+page.svelte",
+    // The wizard's gates: an admin exists, no profile chosen yet.
+    open: { live: false, needsProfile: true },
+    h1: "Import a 3.x archive",
+    surface: async (page) => {
+      await expect(page.getByLabel("Archive (.tar.gz)")).toBeVisible();
     },
   },
   // Logged-out routes LAST: the shell keeps the session it first read, so they would turn later routes into the visitor.
