@@ -1,5 +1,5 @@
 //! The forecast settings and the PV forecast on 3.x's paths and shapes (`apps/server/src/routes/settings.ts`).
-//! The forecast reads need a session, as in 3.x, but stay off the kiosk view's allow-list.
+//! As in 3.x, the forecast reads need a session; the dashboard's weather read is on the kiosk view's allow-list.
 
 use std::sync::Arc;
 

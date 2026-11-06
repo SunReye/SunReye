@@ -98,6 +98,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(plant::sources))
         .routes(routes!(history::recent))
         .routes(routes!(rollup::buckets))
+        .routes(routes!(forecast::weather))
         .route("/ws", get(ws::upgrade))
         .route_layer(middleware::from_fn(kiosk::session_or_kiosk))
 }
@@ -110,7 +111,6 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .routes(routes!(forecast::correction))
-        .routes(routes!(forecast::weather))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
