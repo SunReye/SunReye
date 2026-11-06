@@ -549,6 +549,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_day_between_hourly_days_lands_from_its_daily_row() {
+        let readings = hours("2026-04-01", (1..=24).map(f64::from))
+            + &line("daily", "2026-04-02T00:00:00Z", "e", 100.0)
+            + &hours("2026-04-03", (1..=24).map(f64::from));
+        let (store, imported) = run(&archive(&readings, &streams(0, 0, 48, 1)), "2026-05-02T00:00:00Z").await;
+        assert_eq!(imported.expect("import").gaps, []);
+        assert_eq!(
+            days(&store).await,
+            [
+                ("2026-04-01T00:00:00Z".to_owned(), 1.0, 24.0),
+                ("2026-04-02T00:00:00Z".to_owned(), 100.0, 100.0),
+                ("2026-04-03T00:00:00Z".to_owned(), 1.0, 24.0)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_day_between_hourly_days_without_a_daily_row_is_a_gap() {
+        let readings =
+            hours("2026-04-01", (1..=24).map(f64::from)) + &hours("2026-04-03", (1..=24).map(f64::from));
+        let (_, imported) = run(&archive(&readings, &streams(0, 0, 48, 0)), "2026-05-02T00:00:00Z").await;
+        let gaps: Vec<_> = imported.expect("import").gaps.iter().map(|g| (g.start, g.end)).collect();
+        assert_eq!(gaps, [(at("2026-04-02T00:00:00Z"), at("2026-04-03T00:00:00Z"))]);
+    }
+
+    #[tokio::test]
+    async fn days_before_the_epoch_are_held_by_their_own_rows() {
+        let readings = hours("1969-12-31", (1..=24).map(f64::from))
+            + &line("daily", "1970-01-01T00:00:00Z", "e", 100.0)
+            + &hours("1970-01-02", (1..=24).map(f64::from));
+        let (store, imported) = run(&archive(&readings, &streams(0, 0, 48, 1)), "1970-02-02T00:00:00Z").await;
+        assert_eq!(imported.expect("import").gaps, []);
+        let stored = days(&store).await;
+        assert_eq!(
+            stored.iter().map(|d| (d.1, d.2)).collect::<Vec<_>>(),
+            [(1.0, 24.0), (100.0, 100.0), (1.0, 24.0)]
+        );
+    }
+
+    #[tokio::test]
     async fn a_daily_row_inside_an_hourly_day_does_not_land() {
         let readings =
             hours("2026-04-01", (1..=24).map(f64::from)) + &line("daily", "2026-04-01T00:00:00Z", "e", 100.0);

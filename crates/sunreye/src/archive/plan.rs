@@ -1,7 +1,9 @@
 //! Which bucket tier answers each UTC day of one device, ported from 2.x `planReplay`
 //! (`packages/db/src/replay.ts`), which recorded `fixtures/oracle/archives`: the finest tier whose rows span
-//! the whole day; at the first and last day, a tier reaching the history's edge. A day no tier answers is a
-//! gap, reported and not imported. Raw readings are not planned: they all land.
+//! the whole day and holds a row in it; at the first and last day, a tier reaching the history's edge. A day
+//! no tier answers is a gap, reported and not imported. Raw readings are not planned: they all land.
+
+use std::collections::BTreeSet;
 
 const DAY_MS: i64 = 86_400_000;
 
@@ -23,12 +25,14 @@ impl Bucketed {
     }
 }
 
-/// What one tier holds: its first bucket's start to its last bucket's end, in Unix milliseconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What one tier holds: its first bucket's start to its last bucket's end, in Unix milliseconds, and the UTC
+/// days (`ms.div_euclid(DAY_MS)`) holding at least one of its buckets.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Window {
     pub tier: Bucketed,
     pub from: i64,
     pub to: i64,
+    pub days: BTreeSet<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,7 +94,8 @@ fn answer(windows: &[Window], start: i64, end: i64, first: bool, last: bool) -> 
     };
     let whole = |w: &Window| w.from <= start && w.to >= end;
     if !(first || last) {
-        return finest(&whole).map(|w| Chunk { tier: w.tier, start, end });
+        let held = |w: &Window| whole(w) && w.days.contains(&start.div_euclid(DAY_MS));
+        return finest(&held).map(|w| Chunk { tier: w.tier, start, end });
     }
     let at_edge = |w: &Window| {
         w.from.max(start) < w.to.min(end) && (whole(w) || (first && w.to >= end) || (last && w.from <= start))
@@ -106,9 +111,21 @@ mod tests {
         instant.parse::<jiff::Timestamp>().expect("instant").as_millisecond()
     }
 
-    /// Buckets of `tier` from the one starting at `first` through the one starting at `last`.
+    /// Buckets of `tier` from the one starting at `first` through the one starting at `last`, none missing.
     fn window(tier: Bucketed, first: &str, last: &str) -> Window {
-        Window { tier, from: ms(first), to: ms(last) + tier.width_ms() }
+        let (from, to) = (ms(first), ms(last) + tier.width_ms());
+        Window { tier, from, to, days: (from.div_euclid(DAY_MS)..=(to - 1).div_euclid(DAY_MS)).collect() }
+    }
+
+    /// One bucket of `tier` at each of `starts`.
+    fn buckets(tier: Bucketed, starts: &[&str]) -> Window {
+        let starts: Vec<i64> = starts.iter().map(|s| ms(s)).collect();
+        Window {
+            tier,
+            from: starts[0],
+            to: starts[starts.len() - 1] + tier.width_ms(),
+            days: starts.iter().map(|s| s.div_euclid(DAY_MS)).collect(),
+        }
     }
 
     fn chunk(tier: Bucketed, start: &str, end: &str) -> Chunk {
@@ -196,6 +213,22 @@ mod tests {
         let tiers: Vec<Bucketed> = planned.chunks.iter().map(|c| c.tier).collect();
         assert_eq!(tiers, [Bucketed::Daily, Bucketed::Daily, Bucketed::Hourly]);
         assert_eq!(planned.gaps, []);
+    }
+
+    #[test]
+    fn a_middle_day_a_tier_holds_no_bucket_in_falls_to_the_next_tier_or_is_a_gap() {
+        // Hourly 1 and 3 April around daily 2 April: the hourly span covers the 2nd, its rows do not.
+        let hourly = buckets(Bucketed::Hourly, &["2026-04-01T00:00:00Z", "2026-04-03T00:00:00Z"]);
+        let daily = buckets(Bucketed::Daily, &["2026-04-02T00:00:00Z"]);
+        let planned = plan(&[hourly.clone(), daily]);
+        assert_eq!(planned.chunks[1], chunk(Bucketed::Daily, "2026-04-02T00:00:00Z", "2026-04-03T00:00:00Z"));
+        assert_eq!(planned.gaps, []);
+        let alone = plan(&[hourly]);
+        assert_eq!(alone.gaps, [(ms("2026-04-02T00:00:00Z"), ms("2026-04-03T00:00:00Z"))]);
+        assert_eq!(
+            alone.chunks.iter().map(|c| c.start).collect::<Vec<_>>(),
+            [ms("2026-04-01T00:00:00Z"), ms("2026-04-03T00:00:00Z")]
+        );
     }
 
     #[test]
