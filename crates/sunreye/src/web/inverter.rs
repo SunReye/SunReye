@@ -7,6 +7,7 @@ use axum::extract::State;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
+use super::import::no_import_running;
 use super::{ApiError, ApiJson, ErrorBody};
 use crate::probe::{TestResult, test_connection};
 use crate::run::Core;
@@ -55,6 +56,7 @@ pub async fn save(
     ApiJson(config): ApiJson<InverterConfig>,
 ) -> Result<Json<InverterConfig>, ApiError> {
     config.validate().map_err(ApiError::bad_request)?;
+    let _import = no_import_running(&core)?;
     save_inverter(&core.store, &config).await?;
     core.apply().await?;
     Ok(Json(read_inverter(&core.store).await?))

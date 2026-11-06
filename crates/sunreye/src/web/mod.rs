@@ -7,6 +7,7 @@ mod busy;
 mod devices;
 mod forecast;
 mod history;
+mod import;
 mod inverter;
 mod kiosk;
 mod origin;
@@ -41,6 +42,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use self::auth::{Accounts, Permission};
+pub(crate) use self::import::UPLOAD_FILE;
+pub use self::import::UploadLimit;
 use self::kiosk::StrangerWait;
 pub use self::origin::origin_authority;
 pub use self::ws::Limits as LiveLimits;
@@ -64,6 +67,7 @@ pub struct Config {
     /// Fixed in the binary; tests shorten them.
     pub live: LiveLimits,
     pub stranger_wait: StrangerWait,
+    pub upload_limit: UploadLimit,
 }
 
 /// The API routes with their `OpenAPI` document. Anonymous callers reach the setup gates, the sign-in
@@ -111,6 +115,8 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
 fn admin() -> OpenApiRouter<Arc<Core>> {
     settings()
         .merge(accounts())
+        .routes(routes!(import::upload))
+        .routes(routes!(import::confirm))
         .route_layer(permission_required!(Accounts, Permission::Admin))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
@@ -181,6 +187,7 @@ pub fn router(core: Arc<Core>, config: &Config) -> Router {
         .fallback(get(assets::serve))
         .layer(Extension(config.live))
         .layer(Extension(config.stranger_wait))
+        .layer(Extension(config.upload_limit))
         .layer(accounts)
         .layer(middleware::from_fn(busy::surface))
         .layer(middleware::from_fn_with_state(trusted, origin::refuse_untrusted))

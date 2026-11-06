@@ -2,7 +2,7 @@
 //! server over them.
 
 use std::future::{Future, IntoFuture};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -34,6 +34,8 @@ pub enum RunError {
     Profiles(serde_json::Error),
     #[error("http server failed: {0}")]
     Serve(#[from] std::io::Error),
+    #[error("the held archive upload cannot be removed: {0}")]
+    Upload(std::io::Error),
 }
 
 /// The store serialises reads on one connection: strangers keep no more than this in flight, so a
@@ -66,6 +68,14 @@ pub struct Core {
     polling: Polling,
     retention: Mutex<Option<Running>>,
     learning: Mutex<Option<Running>>,
+    /// Held for a whole archive import and while a device is added, so a device cannot appear between the
+    /// import's empty-store check and its landing; holds the sha256 of the upload awaiting the guard's
+    /// confirmation. In memory: a restart drops it, and the held upload with it.
+    pub imports: Mutex<Option<String>>,
+    /// Where an uploaded archive waits for its import.
+    pub upload: PathBuf,
+    /// Off in tests whose devices name hosts no test may reach.
+    polls: bool,
 }
 
 impl Core {
@@ -116,17 +126,30 @@ impl Core {
         (forecast_url, archive_url): (String, String),
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        Self::start(Store::open(data_dir).await?, roots, now, (forecast_url, archive_url), learn).await
+        Self::start(data_dir, roots, now, (forecast_url, archive_url), (learn, true)).await
+    }
+
+    /// [`Core::open_at`] that polls no device.
+    #[cfg(test)]
+    pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        Self::start(data_dir, Vec::new(), now, urls, (learn::learn_logged, false)).await
     }
 
     async fn start(
-        store: Store,
+        data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
         (forecast_url, archive_url): (String, String),
-        learn: learn::Job,
+        (learn, polls): (learn::Job, bool),
     ) -> Result<Arc<Self>, RunError> {
-        let store = Arc::new(store);
+        let store = Arc::new(Store::open(data_dir).await?);
+        let upload = data_dir.join(crate::web::UPLOAD_FILE);
+        if let Err(error) = std::fs::remove_file(&upload)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(RunError::Upload(error));
+        }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
@@ -147,6 +170,9 @@ impl Core {
             polling,
             retention,
             learning: Mutex::new(None),
+            imports: Mutex::new(None),
+            upload,
+            polls,
         });
         *core.learning.lock().await = Some(spawn_learning(&core, learn));
         core.apply().await?;
@@ -187,6 +213,9 @@ impl Core {
 
     /// Polls the in-service devices the store describes now; called after every settings or roster change.
     pub async fn apply(&self) -> Result<(), StoreError> {
+        if !self.polls {
+            return Ok(());
+        }
         self.polling.restart(&self.store, &self.bundle, &self.live, &self.unstored).await
     }
 

@@ -16,6 +16,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use self::config::Config;
+pub use self::config::{Held, Saved};
 use self::container::{CONTAINER, Container, Member};
 use crate::profile::Bundle;
 use crate::retention::{RAW_KEY, key, raw_days, retention_days};
@@ -44,7 +45,7 @@ pub enum ImportError {
 }
 
 /// Rows per stream, as `manifest.json` counts them.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Streams {
     pub raw: u64,
@@ -237,6 +238,19 @@ fn check(path: &Path) -> Result<Checked, ImportError> {
     found.finish()
 }
 
+/// The automation guard: the saved user values when the archive's 3.x automation is on or still holds a
+/// register, `None` when the archive imports without asking. Reads up to `config.json` only.
+pub fn guard(path: &Path) -> Result<Option<Vec<Held>>, ImportError> {
+    let mut archive = Container::open(path)?;
+    while let Some(member) = archive.next_member()? {
+        if member.name == config::MEMBER {
+            let config = Config::parse(&member.text()?).map_err(|e| bad(config::MEMBER, e))?;
+            return config.guard().map_err(|e| bad(config::MEMBER, e));
+        }
+    }
+    Err(missing(config::MEMBER))
+}
+
 /// Imports the archive at `path` into `store`, which must hold no device. Raw readings and minute buckets
 /// are kept back to the store's retention from `now`; hours and days are kept to theirs.
 pub async fn import(
@@ -332,6 +346,26 @@ mod tests {
 
     async fn device(store: &Store) -> i64 {
         store.devices().await.expect("devices")[0].id
+    }
+
+    #[test]
+    fn the_guard_reads_config_json_from_the_container() {
+        let fixture = |case: &str| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/oracle/archives")
+                .join(case)
+                .join("archive.tar.gz")
+        };
+        let held = guard(&fixture("current-2.x")).expect("readable").expect("guarded");
+        assert_eq!(held.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["1:peak-shaving"]);
+        assert!(guard(&fixture("legacy-1.2.0")).expect("readable").is_none());
+        let unreadable = |path: &Path| guard(path).expect_err("refused").to_string();
+        assert_eq!(unreadable(&file(b"")), "archive: the archive is cut short");
+        let bare = file(&gz(&tar(&[(MANIFEST, b"{}".to_vec())])));
+        assert_eq!(unreadable(&bare), "config.json: missing");
+        let state = json!({"plant": {}, "appSettings": [{"key": "automationState", "value": 5}]});
+        let broken = file(&gz(&tar(&[(config::MEMBER, state.to_string().into_bytes())])));
+        assert!(unreadable(&broken).starts_with("config.json: automationState: "));
     }
 
     #[tokio::test]

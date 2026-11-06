@@ -31,6 +31,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
+         *     still holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload
+         *     replaces it.
+         */
+        post: operations["importArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/import/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Imports the upload the guard stopped, once: the confirmation names its sha256. */
+        post: operations["confirmArchiveImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -687,6 +725,11 @@ export interface components {
             userId: number;
             userName: string;
         };
+        /**
+         * Format: binary
+         * @description The archive file's bytes.
+         */
+        ArchiveFile: string;
         /** @description The battery the forecast's clipping sim models. */
         Battery: {
             /**
@@ -723,6 +766,20 @@ export interface components {
             id: string;
             manufacturer: string;
             name: string;
+        };
+        Confirmation: {
+            /** @description The sha256 the guard answered with. */
+            sha256: string;
+        };
+        /** @description The first of two archive lines at one device, metric and instant with different values. */
+        Conflict: {
+            at: string;
+            device: string;
+            /** Format: double */
+            dropped: number;
+            /** Format: double */
+            kept: number;
+            metric: string;
         };
         /** @description An existing connection by id, or one to create with the device. */
         ConnectionChoice: {
@@ -947,6 +1004,38 @@ export interface components {
             ms: number;
             /** Format: int32 */
             unitId: number;
+        };
+        /** @description A device's span no tier covers whole: its bucket rows were not imported. */
+        Gap: {
+            device: string;
+            end: string;
+            start: string;
+        };
+        /**
+         * @description The archive turns on 3.x automation or still holds a register: it imports once the user confirms
+         *     automation is off in 3.x, which restores these values.
+         */
+        Guarded: {
+            held: components["schemas"]["Held"][];
+            /** @description The upload's sha256, hex: what the confirmation names. */
+            sha256: string;
+        };
+        /** @description A user value 3.x automation holds a register away from: what the register read before automation took it. */
+        Held: {
+            capturedAt: string;
+            /** @description 3.x's `<device>:<automation>` key naming the register's holder. */
+            key: string;
+            value: components["schemas"]["Saved"];
+        };
+        ImportReport: {
+            /**
+             * Format: int64
+             * @description Lines dropped because an earlier line at their device, metric and instant held another value.
+             */
+            conflicts: number;
+            firstConflict?: components["schemas"]["Conflict"] | null;
+            gaps: components["schemas"]["Gap"][];
+            read: components["schemas"]["Streams"];
         };
         ImportedProfile: {
             id: string;
@@ -1258,6 +1347,8 @@ export interface components {
             /** @description UTC start of the bucket. */
             time: string;
         };
+        /** @description A register value, or an EVCC loadpoint mode. */
+        Saved: number | string;
         ScanRequest: {
             /** @description The ids to ask, in order, at most 16; by default 1, 0, 2, 3, 4, 5. */
             candidates?: number[] | null;
@@ -1354,6 +1445,19 @@ export interface components {
          * @enum {string}
          */
         Storage: "series" | "config" | "none";
+        /** @description Rows per stream, as `manifest.json` counts them. */
+        Streams: {
+            /** Format: int64 */
+            configLog: number;
+            /** Format: int64 */
+            daily: number;
+            /** Format: int64 */
+            hourly: number;
+            /** Format: int64 */
+            minute: number;
+            /** Format: int64 */
+            raw: number;
+        };
         /** @description A connection to test, with the profile to read it with. Without one the active profile is used. */
         TestRequest: components["schemas"]["InverterConfig"] & {
             profileId?: string | null;
@@ -1556,6 +1660,149 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    importArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The 3.x archive */
+        requestBody: {
+            content: {
+                "application/gzip": components["schemas"]["ArchiveFile"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guarded"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    confirmArchiveImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Confirmation"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
