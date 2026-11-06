@@ -1,24 +1,22 @@
 //! Current conditions for the dashboard tile (3.x `forecast/weather.ts`): Open-Meteo's current temperature
-//! and WMO code mapped to a coarse condition, and today's plant-zone shortwave radiation sum, cached 15 minutes per
-//! location. A failed fetch keeps the last reading for the same location and is not retried for a minute; a
-//! reading cut on an earlier plant day refetches and serves no radiation sum until a fetch lands (3.x served
+//! and WMO code mapped to a coarse condition, and today's plant-zone shortwave radiation sum, refreshed off the
+//! request path ([`crate::refresh`]) per location and plant day. A failed fetch keeps the last reading for the
+//! same location; a reading cut on an earlier plant day serves no radiation sum until a fetch lands (3.x served
 //! yesterday's sum past midnight).
 
 use std::time::Duration;
 
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 use utoipa::ToSchema;
 
-use crate::fetch_retry::Failed;
 use crate::https::{GetError, Limits, get_with_roots};
 use crate::plant_zone::plant_zone;
+use crate::refresh::PERIOD;
 use crate::store::{Store, StoreError};
 use crate::weather;
 
-const TTL: Duration = Duration::from_mins(15);
 const LIMITS: Limits = Limits { timeout: Duration::from_secs(8), max_bytes: 64 << 10 };
 
 /// Coarse condition buckets the web maps to an icon.
@@ -128,105 +126,92 @@ fn reading(body: &[u8], today: jiff::civil::Date) -> Result<Reading, FetchError>
 /// A date in a named plant zone: the same date in another zone is another day.
 type PlantDay = (String, jiff::civil::Date);
 
-/// The one cached reading.
+/// The reading the last refresh landed; requests only read it.
 #[derive(Debug)]
 pub struct Conditions {
     url: String,
-    cache: Mutex<Held>,
-}
-
-#[derive(Debug, Default)]
-struct Held {
-    reading: Option<Cached>,
-    /// Keyed by location and plant day; a landed fetch clears it.
-    failed: Failed<(String, PlantDay)>,
+    cache: std::sync::Mutex<Option<Cached>>,
 }
 
 #[derive(Debug)]
 struct Cached {
     key: String,
-    /// Monotonic: requests that read the wall clock out of queue order, or a wall clock stepped back, cannot
-    /// expire it early or keep it late.
     fetched: Instant,
     /// The plant day the radiation sum belongs to.
     day: PlantDay,
     reading: Reading,
 }
 
-impl Cached {
-    /// Same location, same plant day, fetched within the TTL.
-    fn fresh(&self, key: &str, day: &PlantDay) -> bool {
-        self.key == key && self.day == *day && self.fetched.elapsed() < TTL
-    }
+/// What the stored settings ask for at one instant.
+struct Wanted {
+    label: String,
+    key: String,
+    today: PlantDay,
+    url: String,
 }
 
 impl Conditions {
     /// Fetching from `url`, Open-Meteo's forecast endpoint or a stand-in.
     pub fn new(url: String) -> Self {
-        Self { url, cache: Mutex::default() }
+        Self { url, cache: std::sync::Mutex::default() }
     }
 
-    /// None while weather is off or unlocated, and when no reading can be had for the location.
-    pub async fn serve(
+    /// None while weather is off or unlocated, and until a reading for the location landed.
+    pub async fn serve(&self, store: &Store, now_ms: i64) -> Result<Option<Reading>, StoreError> {
+        let Some(wanted) = self.wanted(store, || now_ms).await? else { return Ok(None) };
+        let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(cache.as_ref().filter(|c| c.key == wanted.key).map(|c| Reading {
+            solar_radiation_sum: c.reading.solar_radiation_sum.filter(|_| c.day == wanted.today),
+            label: wanted.label,
+            ..c.reading.clone()
+        }))
+    }
+
+    /// Fetches the reading the settings ask for unless one for the same location and plant day landed inside
+    /// the refresh period. False when the fetch failed: the last reading is kept.
+    pub async fn refresh(
         &self,
         store: &Store,
         roots: &[CertificateDer<'static>],
-        now_ms: i64,
-    ) -> Result<Option<Reading>, StoreError> {
+        now: impl FnOnce() -> i64,
+    ) -> Result<bool, StoreError> {
+        let Some(Wanted { key, today, url, .. }) = self.wanted(store, now).await? else { return Ok(true) };
+        let fresh = |c: &Cached| c.key == key && c.day == today && c.fetched.elapsed() < PERIOD;
+        if self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().is_some_and(fresh) {
+            return Ok(true);
+        }
+        match fetch(&url, roots, today.1).await {
+            Ok(reading) => {
+                let landed = Cached { key, fetched: Instant::now(), day: today, reading };
+                *self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(landed);
+                Ok(true)
+            }
+            Err(error) => {
+                tracing::warn!(%error, "weather fetch failed");
+                Ok(false)
+            }
+        }
+    }
+
+    /// Reads the clock only once weather is on and located.
+    async fn wanted(&self, store: &Store, now: impl FnOnce() -> i64) -> Result<Option<Wanted>, StoreError> {
         let config = weather::read(store).await?;
         let (true, Some(latitude), Some(longitude)) = (config.enabled, config.latitude, config.longitude)
         else {
             return Ok(None);
         };
-        let key = format!("{latitude},{longitude}");
-        let at = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+        let at = jiff::Timestamp::from_millisecond(now()).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
         let zone = plant_zone(store).await?;
         // Open-Meteo cuts the daily sum in the zone it is asked for, on its own clock unless the day is pinned.
         let tz = query_value(zone.iana_name().unwrap_or("UTC"));
-        let today = (tz.clone(), at.to_zoned(zone).date());
-        let date = today.1;
+        let date = at.to_zoned(zone).date();
         let url = format!(
             "{}?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code\
              &daily=shortwave_radiation_sum&timezone={tz}&start_date={date}&end_date={date}",
             self.url
         );
-        let held = self.current(&key, &today, || fetch(&url, roots, date)).await;
-        Ok(held.map(|r| Reading { label: config.label, ..r }))
-    }
-
-    /// The reading held for `key` on `today`, unlabelled; fetched with `fetch` when not fresh.
-    async fn current<F: Future<Output = Result<Reading, FetchError>>>(
-        &self,
-        key: &str,
-        today: &PlantDay,
-        fetch: impl FnOnce() -> F,
-    ) -> Option<Reading> {
-        let mut held = self.cache.lock().await;
-        let fresh = held.reading.as_ref().is_some_and(|c| c.fresh(key, today));
-        if !fresh && !held.failed.holds(&(key.to_owned(), today.clone())) {
-            refresh(&mut held, key.to_owned(), fetch().await, today.clone());
-        }
-        let held = held.reading.as_ref().filter(|c| c.key == key);
-        held.map(|c| {
-            let solar_radiation_sum = c.reading.solar_radiation_sum.filter(|_| c.day == *today);
-            Reading { solar_radiation_sum, ..c.reading.clone() }
-        })
-    }
-}
-
-/// A fetched reading replaces the cache; a failed fetch leaves it and is recorded.
-fn refresh(held: &mut Held, key: String, fetched: Result<Reading, FetchError>, day: PlantDay) {
-    match fetched {
-        Ok(reading) => {
-            *held = Held {
-                reading: Some(Cached { key, fetched: Instant::now(), day, reading }),
-                failed: Failed::default(),
-            }
-        }
-        Err(error) => {
-            tracing::warn!(%error, "weather fetch failed");
-            held.failed.record((key, day));
-        }
+        let key = format!("{latitude},{longitude}");
+        Ok(Some(Wanted { label: config.label, key, today: (tz, date), url }))
     }
 }
 
@@ -250,9 +235,6 @@ async fn fetch(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
     use serde_json::{Value, json};
 
     use super::*;
@@ -369,132 +351,6 @@ mod tests {
         ] {
             assert_eq!(query_value(name), want, "{name}");
         }
-    }
-
-    fn berlin_today() -> PlantDay {
-        ("Europe%2FBerlin".into(), TODAY)
-    }
-
-    fn sunny() -> Reading {
-        reading(&body(&json!({})), TODAY).expect("reading")
-    }
-
-    /// The conditions cache with Open-Meteo accepting and never answering: a fetch ends only at its timeout.
-    /// Once `slow` is set, a fetch lands half a timeout after it was asked.
-    struct Outage {
-        conditions: Arc<Conditions>,
-        attempts: Arc<AtomicUsize>,
-        slow: Arc<AtomicBool>,
-    }
-
-    type Upstream = (Arc<Conditions>, Arc<AtomicUsize>, Arc<AtomicBool>);
-
-    async fn hanging(attempts: Arc<AtomicUsize>, slow: Arc<AtomicBool>) -> Result<Reading, FetchError> {
-        attempts.fetch_add(1, Ordering::SeqCst);
-        if slow.load(Ordering::SeqCst) {
-            let _ = tokio::time::timeout(LIMITS.timeout / 2, std::future::pending::<()>()).await;
-            return Ok(sunny());
-        }
-        let _ = tokio::time::timeout(LIMITS.timeout, std::future::pending::<()>()).await;
-        Err(FetchError::Fields)
-    }
-
-    async fn request(upstream: Upstream, key: String, today: PlantDay) -> Option<Reading> {
-        let (conditions, attempts, slow) = upstream;
-        conditions.current(&key, &today, || hanging(attempts, slow)).await
-    }
-
-    impl Outage {
-        fn new() -> Self {
-            Self {
-                conditions: Arc::new(Conditions::new(String::new())),
-                attempts: Arc::default(),
-                slow: Arc::default(),
-            }
-        }
-
-        /// `n` requests queued at once for `key`; their answers once all are in.
-        async fn requests(&self, key: &str, today: &PlantDay, n: usize) -> Vec<Option<Reading>> {
-            let mut requests = tokio::task::JoinSet::new();
-            for _ in 0..n {
-                let shared =
-                    (Arc::clone(&self.conditions), Arc::clone(&self.attempts), Arc::clone(&self.slow));
-                requests.spawn(request(shared, key.to_owned(), today.clone()));
-            }
-            // One timeout is the most any request may wait; a second sequential one ends this bound first.
-            tokio::time::timeout(LIMITS.timeout + LIMITS.timeout / 2, requests.join_all())
-                .await
-                .expect("waited on more than one fetch")
-        }
-
-        /// A fetch for `key` that lands.
-        async fn land(&self, key: &str, today: &PlantDay) -> Option<Reading> {
-            self.conditions.current(key, today, || async { Ok(sunny()) }).await
-        }
-
-        fn attempts(&self) -> usize {
-            self.attempts.load(Ordering::SeqCst)
-        }
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn requests_during_an_outage_pay_one_fetch_and_answer_null_or_the_last_reading() {
-        let outage = Outage::new();
-        assert_eq!(outage.requests("k", &berlin_today(), 4).await, vec![None; 4]);
-        assert_eq!(outage.attempts(), 1, "first fetch");
-        tokio::time::advance(Duration::from_secs(60)).await;
-        assert_eq!(outage.land("k", &berlin_today()).await, Some(sunny()));
-        tokio::time::advance(TTL).await;
-        assert_eq!(outage.requests("k", &berlin_today(), 4).await, vec![Some(sunny()); 4]);
-        assert_eq!(outage.attempts(), 2, "refetch past the TTL");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_reading_is_fresh_for_fifteen_minutes_after_it_landed() {
-        let outage = Outage::new();
-        outage.land("k", &berlin_today()).await;
-        tokio::time::advance(TTL.saturating_sub(Duration::from_millis(1))).await;
-        outage.requests("k", &berlin_today(), 1).await;
-        assert_eq!(outage.attempts(), 0, "inside the TTL");
-        tokio::time::advance(Duration::from_millis(1)).await;
-        outage.requests("k", &berlin_today(), 1).await;
-        assert_eq!(outage.attempts(), 1, "at the TTL");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn requests_queued_on_an_expired_reading_pay_one_slow_fetch() {
-        let outage = Outage::new();
-        outage.land("k", &berlin_today()).await;
-        tokio::time::advance(TTL).await;
-        outage.slow.store(true, Ordering::SeqCst);
-        assert_eq!(outage.requests("k", &berlin_today(), 4).await, vec![Some(sunny()); 4]);
-        assert_eq!(outage.attempts(), 1);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_failed_fetch_is_retried_a_minute_after_it_failed_not_before() {
-        let outage = Outage::new();
-        outage.requests("k", &berlin_today(), 1).await;
-        tokio::time::advance(Duration::from_millis(59_999)).await;
-        outage.requests("k", &berlin_today(), 1).await;
-        assert_eq!(outage.attempts(), 1, "inside the retry interval");
-        tokio::time::advance(Duration::from_millis(1)).await;
-        outage.requests("k", &berlin_today(), 1).await;
-        assert_eq!(outage.attempts(), 2, "at the retry interval");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_location_or_plant_zone_change_bypasses_a_failure_and_a_landed_fetch_clears_it() {
-        let outage = Outage::new();
-        outage.requests("k", &berlin_today(), 1).await;
-        outage.requests("elsewhere", &berlin_today(), 1).await;
-        assert_eq!(outage.attempts(), 2, "another location");
-        let tokyo = ("Asia%2FTokyo".to_owned(), TODAY);
-        outage.requests("elsewhere", &tokyo, 1).await;
-        assert_eq!(outage.attempts(), 3, "another plant zone");
-        outage.land("other", &berlin_today()).await;
-        outage.requests("elsewhere", &tokyo, 1).await;
-        assert_eq!(outage.attempts(), 4, "a landed fetch cleared the failure");
     }
 
     #[test]

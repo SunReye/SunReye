@@ -3212,7 +3212,7 @@
     },
     "/api/weather": {
       "get": {
-        "summary": "Null while weather is off or unlocated, or no reading was had for the location.",
+        "summary": "Null while weather is off or unlocated, or until a reading for the location landed. Reads only what the\nbackground refresh landed: no request waits on Open-Meteo.",
         "operationId": "weather",
         "responses": {
           "200": {

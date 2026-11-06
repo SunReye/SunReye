@@ -5,11 +5,12 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
-use super::forecast::{LAT, LON, NOW_MS, configure, fixed_now, forecasting, irradiance, model, zone};
+use super::forecast::{
+    LAT, LON, MINUTE_MS, NOW_MS, QUARTER_HOUR_MS, StandIn, answer_once, configure, configure_settings,
+    elapse, fixed_now, forecasting, irradiance, landed, model, until, zone,
+};
 use super::*;
 use crate::forecast::{self, Run, SimInputs};
-
-const QUARTER_HOUR_MS: u64 = 900_000;
 
 /// Open-Meteo's answer for `path`: the daily row is dated `day`, else the asked `start_date`.
 pub(super) fn conditions_payload(path: &str, day: Option<String>) -> Value {
@@ -47,8 +48,13 @@ fn solar_forecast() -> Value {
     value
 }
 
-fn conditions_hits(paths: &[String]) -> usize {
-    paths.iter().filter(|p| p.contains("current=")).count()
+fn located() -> Value {
+    json!({"enabled": true, "latitude": LAT, "longitude": LON})
+}
+
+/// Conditions requests so far reached `n`.
+async fn conditions_asked(standin: &StandIn, n: usize) {
+    until(&format!("{n} conditions requests"), || standin.conditions_paths().len() >= n).await;
 }
 
 #[tokio::test]
@@ -56,15 +62,13 @@ async fn the_weather_answers_the_reading_with_the_forecast_and_a_second_request_
     let (core, admin, standin) = forecasting("weather-served", fixed_now).await;
     configure(&admin, None).await;
     assert_eq!(put(&admin, "/api/settings/weather", &json!({"label": "Home"})).await.status, StatusCode::OK);
-    let answer = get(&admin, "/api/weather").await;
-    assert_eq!(answer.status, StatusCode::OK);
     let mut want = reading("Home");
     want["forecast"] = solar_forecast();
-    assert_eq!(answer.json(), want);
+    assert_eq!(answer_once(&admin, "/api/weather", |answer| answer["label"] == "Home").await, want);
     assert_eq!(get(&admin, "/api/weather").await.json(), want);
     let paths = standin.paths.lock().expect("paths").clone();
-    assert_eq!((conditions_hits(&paths), paths.len()), (1, 2), "{paths:?}");
-    let asked = paths.iter().find(|p| p.contains("current=")).expect("conditions request");
+    assert_eq!((standin.conditions_paths().len(), paths.len()), (1, 2), "{paths:?}");
+    let asked = &standin.conditions_paths()[0];
     assert!(
         asked.contains(&format!("latitude={LAT}&longitude={LON}"))
             && asked.contains("current=temperature_2m,weather_code&daily=shortwave_radiation_sum")
@@ -78,11 +82,10 @@ async fn the_weather_answers_the_reading_with_the_forecast_and_a_second_request_
 #[tokio::test]
 async fn the_weather_without_the_forecast_answers_the_reading_with_a_null_forecast() {
     let (core, admin, standin) = forecasting("weather-no-forecast", fixed_now).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     let mut want = reading("");
     want["forecast"] = Value::Null;
-    assert_eq!(get(&admin, "/api/weather").await.json(), want);
+    assert_eq!(landed(&admin, "/api/weather").await, want);
     assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "no irradiance fetched");
     drop(admin);
     core.stop().await;
@@ -93,9 +96,11 @@ async fn disabled_or_unlocated_weather_answers_null_without_a_fetch() {
     let (core, admin, standin) = forecasting("weather-unready", fixed_now).await;
     let null = |answer: Answer| (answer.status, answer.json()) == (StatusCode::OK, Value::Null);
     assert!(null(get(&admin, "/api/weather").await), "defaults");
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    for unready in [json!({"enabled": false}), json!({"latitude": null}), json!({"longitude": null})] {
-        assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    for unready in [
+        json!({"enabled": false, "latitude": LAT, "longitude": LON}),
+        json!({"enabled": true, "latitude": null}),
+        json!({"latitude": LAT, "longitude": null}),
+    ] {
         assert_eq!(put(&admin, "/api/settings/weather", &unready).await.status, StatusCode::OK);
         assert!(null(get(&admin, "/api/weather").await), "{unready}");
     }
@@ -104,30 +109,22 @@ async fn disabled_or_unlocated_weather_answers_null_without_a_fetch() {
     core.stop().await;
 }
 
-/// Moves the monotonic clock the caches time their TTL and retry interval on by `ms`; the core keeps running
-/// in real time.
-async fn elapse(ms: u64) {
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_millis(ms)).await;
-    tokio::time::resume();
-}
-
 #[tokio::test]
-async fn a_failed_refetch_keeps_the_last_reading_and_a_failed_first_fetch_answers_null() {
+async fn a_failed_refresh_keeps_the_last_reading_and_another_place_answers_null() {
     let (core, admin, standin) = forecasting("weather-kept", fixed_now).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    let first = get(&admin, "/api/weather").await.json();
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    let first = landed(&admin, "/api/weather").await;
     standin.failing.store(true, Ordering::SeqCst);
     assert_eq!(get(&admin, "/api/weather").await.json(), first);
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "inside 15 min: no refetch");
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 1, "no refresh due");
     elapse(QUARTER_HOUR_MS).await;
+    conditions_asked(&standin, 2).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), first, "the last reading is kept");
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 2, "the cache expired");
     let elsewhere = json!({"latitude": LAT + 1.0});
     assert_eq!(put(&admin, "/api/settings/weather", &elsewhere).await.status, StatusCode::OK);
     let answer = get(&admin, "/api/weather").await;
     assert_eq!((answer.status, answer.json()), (StatusCode::OK, Value::Null), "another place keeps nothing");
+    conditions_asked(&standin, 3).await;
     drop(admin);
     core.stop().await;
 }
@@ -144,30 +141,29 @@ fn midnight_clock() -> i64 {
 }
 
 #[tokio::test]
-async fn a_reading_from_the_previous_plant_day_refetches_and_serves_no_radiation_sum_until_a_fetch_lands() {
+async fn a_reading_from_the_previous_plant_day_serves_no_radiation_sum_until_a_refresh_lands() {
     let (core, admin, standin) = forecasting("weather-midnight", midnight_clock).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    let hits = || standin.hits.load(Ordering::SeqCst);
-    let first = get(&admin, "/api/weather").await.json();
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    let first = landed(&admin, "/api/weather").await;
     assert_eq!(first["solarRadiationSum"], 12.5);
     standin.failing.store(true, Ordering::SeqCst);
     MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS - 1, Ordering::SeqCst);
-    assert_eq!(
-        (get(&admin, "/api/weather").await.json(), hits()),
-        (first.clone(), 1),
-        "same day, inside 15 min"
-    );
+    assert_eq!(get(&admin, "/api/weather").await.json(), first, "the same plant day");
     let mut yesterdays = first.clone();
     yesterdays["solarRadiationSum"] = Value::Null;
-    for (at, fetches) in [(BERLIN_MIDNIGHT_MS, 2), (BERLIN_MIDNIGHT_MS + 4 * 60_000, 3)] {
-        MIDNIGHT_CLOCK.store(at, Ordering::SeqCst);
-        assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (yesterdays.clone(), fetches), "{at}");
-        elapse(60_000).await;
-    }
+    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS, Ordering::SeqCst);
+    assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "the plant day is over");
+    elapse(QUARTER_HOUR_MS).await;
+    conditions_asked(&standin, 2).await;
+    assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "a failed refresh");
     standin.failing.store(false, Ordering::SeqCst);
-    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS + 5 * 60_000, Ordering::SeqCst);
-    assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (first, 4), "a fetch landed");
+    elapse(MINUTE_MS).await;
+    assert_eq!(
+        answer_once(&admin, "/api/weather", |answer| *answer == first).await,
+        first,
+        "a refresh landed"
+    );
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 3);
     drop(admin);
     core.stop().await;
 }
@@ -183,52 +179,39 @@ fn utc_clock() -> i64 {
     UTC_CLOCK.load(Ordering::SeqCst)
 }
 
-fn last_conditions_request(standin: &super::forecast::StandIn) -> String {
-    let paths = standin.paths.lock().expect("paths");
-    paths.iter().rev().find(|p| p.contains("current=")).expect("conditions request").clone()
-}
-
 #[tokio::test]
 async fn the_radiation_sum_is_asked_for_and_expires_on_the_plant_day_not_the_location_s() {
     let (core, admin, standin) = forecasting("weather-plant-zone", utc_clock).await;
     let utc = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "UTC"})).await;
     assert_eq!(utc.status, StatusCode::OK);
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    let hits = || standin.hits.load(Ordering::SeqCst);
-    let first = get(&admin, "/api/weather").await.json();
-    let asked = last_conditions_request(&standin);
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    let first = landed(&admin, "/api/weather").await;
+    let asked = standin.conditions_paths()[0].clone();
     assert!(asked.contains("&timezone=UTC&"), "{asked}");
     standin.failing.store(true, Ordering::SeqCst);
     UTC_CLOCK.store(UTC_23_30_MS, Ordering::SeqCst);
-    elapse(QUARTER_HOUR_MS).await;
-    assert_eq!(
-        (get(&admin, "/api/weather").await.json(), hits()),
-        (first.clone(), 2),
-        "past Berlin midnight, still the UTC day the sum was asked for"
-    );
+    assert_eq!(get(&admin, "/api/weather").await.json(), first, "past Berlin midnight, still the UTC day");
     let mut yesterdays = first;
     yesterdays["solarRadiationSum"] = Value::Null;
     UTC_CLOCK.store(UTC_MIDNIGHT_MS, Ordering::SeqCst);
-    assert_eq!((get(&admin, "/api/weather").await.json(), hits()), (yesterdays, 3), "UTC midnight");
+    assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "UTC midnight");
     drop(admin);
     core.stop().await;
 }
 
 #[tokio::test]
-async fn a_plant_zone_changed_after_the_fetch_refetches_in_the_new_zone_and_drops_the_old_sum() {
+async fn a_plant_zone_change_refreshes_at_once_in_the_new_zone_and_drops_the_old_sum() {
     let (core, admin, standin) = forecasting("weather-zone-changed", fixed_now).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    let mut other_day = get(&admin, "/api/weather").await.json();
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    let mut other_day = landed(&admin, "/api/weather").await;
     standin.failing.store(true, Ordering::SeqCst);
     // 2026-07-24 in both zones: the same date, another day.
     let tokyo = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Asia/Tokyo"})).await;
     assert_eq!(tokyo.status, StatusCode::OK);
     other_day["solarRadiationSum"] = Value::Null;
     assert_eq!(get(&admin, "/api/weather").await.json(), other_day);
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 2);
-    let asked = last_conditions_request(&standin);
+    conditions_asked(&standin, 2).await;
+    let asked = standin.conditions_paths()[1].clone();
     assert!(asked.contains("&timezone=Asia%2FTokyo&"), "{asked}");
     drop(admin);
     core.stop().await;
@@ -237,17 +220,16 @@ async fn a_plant_zone_changed_after_the_fetch_refetches_in_the_new_zone_and_drop
 #[tokio::test]
 async fn a_daily_row_dated_another_day_serves_no_radiation_sum_and_keeps_the_conditions() {
     let (core, admin, standin) = forecasting("weather-other-date", fixed_now).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
     let mut want = reading("");
     want["solarRadiationSum"] = Value::Null;
     want["forecast"] = Value::Null;
-    for other in ["2026-07-23", "2026-07-25"] {
-        *standin.day.lock().expect("day") = Some(other.into());
-        elapse(QUARTER_HOUR_MS).await;
-        assert_eq!(get(&admin, "/api/weather").await.json(), want, "{other}");
-    }
-    assert_eq!(standin.hits.load(Ordering::SeqCst), 2);
+    *standin.day.lock().expect("day") = Some("2026-07-23".into());
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    assert_eq!(landed(&admin, "/api/weather").await, want, "2026-07-23");
+    *standin.day.lock().expect("day") = Some("2026-07-25".into());
+    elapse(QUARTER_HOUR_MS).await;
+    conditions_asked(&standin, 2).await;
+    assert_eq!(get(&admin, "/api/weather").await.json(), want, "2026-07-25");
     drop(admin);
     core.stop().await;
 }
@@ -261,10 +243,9 @@ fn plant_day_clock() -> i64 {
 #[tokio::test]
 async fn the_conditions_request_pins_the_plant_day_not_the_utc_day() {
     let (core, admin, standin) = forecasting("weather-pinned-day", plant_day_clock).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    assert_eq!(get(&admin, "/api/weather").await.json()["solarRadiationSum"], 12.5);
-    let asked = last_conditions_request(&standin);
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    assert_eq!(landed(&admin, "/api/weather").await["solarRadiationSum"], 12.5);
+    let asked = standin.conditions_paths()[0].clone();
     assert!(
         asked.contains("&start_date=2026-07-25&end_date=2026-07-25") && !asked.contains("forecast_days"),
         "{asked}"
@@ -273,110 +254,86 @@ async fn the_conditions_request_pins_the_plant_day_not_the_utc_day() {
     core.stop().await;
 }
 
-static BACKWARD_CLOCK: AtomicI64 = AtomicI64::new(NOW_MS);
-
-fn backward_clock() -> i64 {
-    BACKWARD_CLOCK.load(Ordering::SeqCst)
-}
-
 #[tokio::test]
-async fn a_wall_clock_stepped_back_neither_expires_a_reading_nor_reopens_a_failed_fetch() {
-    let (core, admin, standin) = forecasting("weather-clock-back", backward_clock).await;
-    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
-    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
-    let first = get(&admin, "/api/weather").await.json();
-    BACKWARD_CLOCK.store(NOW_MS - 60_000, Ordering::SeqCst);
-    assert_eq!(
-        (get(&admin, "/api/weather").await.json(), standin.hits.load(Ordering::SeqCst)),
-        (first.clone(), 1)
-    );
-    standin.failing.store(true, Ordering::SeqCst);
-    elapse(QUARTER_HOUR_MS).await;
-    get(&admin, "/api/weather").await;
-    BACKWARD_CLOCK.store(NOW_MS - 120_000, Ordering::SeqCst);
-    assert_eq!((get(&admin, "/api/weather").await.json(), standin.hits.load(Ordering::SeqCst)), (first, 2));
-    drop(admin);
-    core.stop().await;
-}
-
-static HANGING_CLOCK: AtomicI64 = AtomicI64::new(NOW_MS);
-
-fn hanging_clock() -> i64 {
-    HANGING_CLOCK.load(Ordering::SeqCst)
-}
-
-/// Open-Meteo requests the stand-in read after the first `skip`; the archive the correction learns from aside.
-fn forecast_requests(standin: &super::forecast::StandIn, skip: usize) -> Vec<String> {
-    let paths = standin.paths.lock().expect("paths");
-    paths[skip..].iter().filter(|p| p.starts_with("/v1/forecast")).cloned().collect()
-}
-
-#[tokio::test]
-async fn with_both_caches_expired_the_weather_asks_for_the_conditions_and_the_forecast_at_once() {
-    let (core, admin, standin) = forecasting("weather-hanging", hanging_clock).await;
-    configure(&admin, None).await;
-    assert!(get(&admin, "/api/weather").await.json()["forecast"].is_object());
-    let landed = standin.paths.lock().expect("paths").len();
+async fn a_request_never_asks_open_meteo_and_a_kiosk_flood_answers_at_once() {
+    let (core, admin, standin) = forecasting("weather-flood", fixed_now).await;
+    let kiosk = put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    assert_eq!(kiosk.status, StatusCode::OK);
     standin.hanging.store(true, Ordering::SeqCst);
-    HANGING_CLOCK.store(NOW_MS + 2 * QUARTER_HOUR_MS.cast_signed(), Ordering::SeqCst);
-    elapse(2 * QUARTER_HOUR_MS).await;
-    // Asked one after the other, the second request reaches Open-Meteo only once the first timed out.
-    let both_asked = async {
-        while forecast_requests(&standin, landed).len() < 2 {
-            tokio::task::yield_now().await;
-        }
-    };
-    tokio::select! {
-        answer = get(&admin, "/api/weather") => panic!("answered with Open-Meteo hanging: {}", answer.json()),
-        asked = tokio::time::timeout(Duration::from_secs(4), both_asked) => {
-            asked.unwrap_or_else(|_| panic!("asked one at a time: {:?}", forecast_requests(&standin, landed)));
-        }
+    configure_settings(&admin, None).await;
+    // The refresh loops' own requests, each held until its 8 s timeout.
+    until("both refreshes asked", || standin.hits.load(Ordering::SeqCst) == 2).await;
+    let stranger = admin.anonymous();
+    let mut asked: Vec<_> = (0..20).map(|_| get(&stranger, "/api/weather")).collect();
+    asked.push(get(&admin, "/api/weather"));
+    let answers = tokio::time::timeout(Duration::from_secs(4), futures_util::future::join_all(asked))
+        .await
+        .expect("a request waited on Open-Meteo");
+    for answer in answers {
+        assert_eq!((answer.status, answer.json()), (StatusCode::OK, Value::Null));
     }
-    drop(admin);
+    for path in ["/api/forecast", "/api/forecast/usable"] {
+        assert_eq!(get(&admin, path).await.json(), Value::Null, "{path}");
+    }
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 2, "no request asked Open-Meteo");
+    drop((stranger, admin));
     core.stop().await;
+}
+
+#[tokio::test]
+async fn stopping_the_core_drops_a_refresh_in_flight_and_closes_the_store() {
+    let (core, admin, standin) = forecasting("weather-stop", fixed_now).await;
+    standin.hanging.store(true, Ordering::SeqCst);
+    configure_settings(&admin, None).await;
+    until("both refreshes asked", || standin.hits.load(Ordering::SeqCst) == 2).await;
+    let seams = Arc::clone(&core.seams);
+    drop(admin);
+    tokio::time::timeout(Duration::from_secs(4), core.stop()).await.expect("stop waited on Open-Meteo");
+    assert_eq!(seams.events.lock().expect("events").last(), Some(&"store closed"));
 }
 
 #[tokio::test]
 async fn the_forecast_asks_for_every_panel_orientation_at_once() {
     let (core, admin, standin) = forecasting("forecast-planes-at-once", fixed_now).await;
-    configure(&admin, None).await;
+    standin.hanging.store(true, Ordering::SeqCst);
     let east_west = json!({"arrays": [{"kwp": 3.2, "tilt": 20, "azimuth": -90, "tempCoefficient": -0.34, "mppt": 1},
         {"kwp": 3.2, "tilt": 20, "azimuth": 90, "tempCoefficient": -0.34, "mppt": 2}]});
     assert_eq!(super::forecast::patch(&admin, "/api/devices/1", &east_west).await.status, StatusCode::OK);
-    standin.hanging.store(true, Ordering::SeqCst);
+    let plant = json!({"enabled": true, "latitude": LAT, "longitude": LON, "forecast": {"enabled": true}});
+    assert_eq!(put(&admin, "/api/settings/weather", &plant).await.status, StatusCode::OK);
     // Asked one after the other, the second plane reaches Open-Meteo only once the first timed out.
-    let both_asked = async {
-        while forecast_requests(&standin, 0).len() < 2 {
-            tokio::task::yield_now().await;
-        }
-    };
-    tokio::select! {
-        answer = get(&admin, "/api/forecast") => panic!("answered with Open-Meteo hanging: {}", answer.json()),
-        asked = tokio::time::timeout(Duration::from_secs(4), both_asked) => {
-            asked.unwrap_or_else(|_| panic!("asked one at a time: {:?}", forecast_requests(&standin, 0)));
-        }
-    }
+    let both_asked = until("both planes asked", || standin.forecast_paths().len() == 2);
+    tokio::time::timeout(Duration::from_secs(4), both_asked)
+        .await
+        .unwrap_or_else(|_| panic!("asked one at a time: {:?}", standin.forecast_paths()));
     drop(admin);
     core.stop().await;
 }
 
 #[tokio::test]
-async fn saving_an_inverter_s_arrays_changes_the_next_forecast_series() {
-    let (core, admin, _) = forecasting("weather-device-arrays", fixed_now).await;
+async fn saving_an_inverter_s_arrays_refreshes_the_forecast_series_at_once() {
+    let (core, admin, standin) = forecasting("weather-device-arrays", fixed_now).await;
     configure(&admin, None).await;
     let before = get(&admin, "/api/forecast").await.json();
     let doubled =
         json!({"arrays": [{"kwp": 12.8, "tilt": 35, "azimuth": 10, "tempCoefficient": -0.34, "mppt": 1}]});
     assert_eq!(super::forecast::patch(&admin, "/api/devices/1", &doubled).await.status, StatusCode::OK);
-    let after = get(&admin, "/api/forecast").await.json();
     let watts = |answer: &Value, i: usize| answer["series"][i]["watts"].as_f64().expect("watts");
     assert!(watts(&before, 4) > 0.0);
+    let after = get(&admin, "/api/forecast").await.json();
     assert!(
         (watts(&after, 4) - 2.0 * watts(&before, 4)).abs() < 1e-6,
         "{} vs {}",
         watts(&after, 4),
         watts(&before, 4)
     );
+    assert_eq!(standin.forecast_paths().len(), 1, "the same planes: the irradiance is kept");
+    let turned =
+        json!({"arrays": [{"kwp": 6.4, "tilt": 20, "azimuth": 10, "tempCoefficient": -0.34, "mppt": 1}]});
+    assert_eq!(super::forecast::patch(&admin, "/api/devices/1", &turned).await.status, StatusCode::OK);
+    until("the turned plane asked", || standin.forecast_paths().len() == 2).await;
+    assert!(standin.forecast_paths()[1].contains("tilt=20&azimuth=10"));
+    landed(&admin, "/api/forecast").await;
     drop(admin);
     core.stop().await;
 }

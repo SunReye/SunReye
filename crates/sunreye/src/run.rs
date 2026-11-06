@@ -21,6 +21,7 @@ use crate::open_meteo;
 use crate::plant::{self, Aggregates};
 use crate::poll::DevicePoller;
 use crate::profile::{Bundle, Profile};
+use crate::refresh;
 use crate::retention::hourly;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
@@ -73,6 +74,10 @@ pub struct Core {
     polling: Polling,
     retention: Mutex<Option<Running>>,
     learning: Mutex<Option<Running>>,
+    /// The conditions and forecast refresh loops.
+    refreshing: Mutex<Option<Running>>,
+    /// Fired when a setting the weather or forecast is fetched for may have changed.
+    weather_changed: watch::Sender<()>,
     publishing_forecast: Mutex<Option<Running>>,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the upload awaiting the guard's confirmation,
@@ -245,6 +250,8 @@ impl Core {
             polling,
             retention,
             learning: Mutex::new(None),
+            refreshing: Mutex::new(None),
+            weather_changed: watch::Sender::new(()),
             publishing_forecast: Mutex::new(None),
             imports: Arc::default(),
             importing: Mutex::new(Some(Running { stop: watch::Sender::new(false), tasks: JoinSet::new() })),
@@ -252,8 +259,14 @@ impl Core {
             #[cfg(test)]
             seams,
         });
-        *core.learning.lock().await = Some(spawn_learning(&core, learn));
+        core.spawn_background(learn).await;
         Ok(core)
+    }
+
+    /// The correction's learn runs and the weather refresh loops.
+    async fn spawn_background(self: &Arc<Self>, learn: learn::Job) {
+        *self.learning.lock().await = Some(spawn_learning(self, learn));
+        *self.refreshing.lock().await = Some(spawn_refreshing(self));
     }
 
     pub async fn switch_kiosk(&self, on: bool) -> Result<(), StoreError> {
@@ -288,8 +301,14 @@ impl Core {
         Ok(find_profile(&self.bundle, &installed, id))
     }
 
+    /// Refreshes the weather and the forecast now, for whatever the settings ask for.
+    pub fn weather_changed(&self) {
+        self.weather_changed.send_replace(());
+    }
+
     /// Polls the in-service devices the store describes now; called after every settings or roster change.
     pub async fn apply(&self) -> Result<(), StoreError> {
+        self.weather_changed();
         #[cfg(test)]
         if let Some(applied) = self.seams.apply() {
             return applied;
@@ -339,9 +358,15 @@ impl Core {
         stop(self.importing.lock().await.take()).await;
         self.polling.stop().await;
         self.stop_export().await;
+        self.stop_background().await;
+        self.close().await;
+    }
+
+    /// The retention pass, the learn runs and the refresh loops, none of which holds the core once stopped.
+    async fn stop_background(&self) {
         stop(self.retention.lock().await.take()).await;
         stop(self.learning.lock().await.take()).await;
-        self.close().await;
+        stop(self.refreshing.lock().await.take()).await;
     }
 
     /// Closes the store once this is its last holder.
@@ -498,6 +523,37 @@ fn spawn_learning(core: &Arc<Core>, job: learn::Job) -> Running {
     let core = Arc::downgrade(core);
     let mut tasks = JoinSet::new();
     tasks.spawn(learn::schedule(move || core.upgrade().map(|core| async move { job(&core).await }), stopped));
+    Running { stop, tasks }
+}
+
+/// One loop per cache, so a dead conditions fetch never delays the forecast. Holds the core weakly, so a loop
+/// never keeps it from stopping.
+fn spawn_refreshing(core: &Arc<Core>) -> Running {
+    let (stop, stopped) = watch::channel(false);
+    let mut tasks = JoinSet::new();
+    let weak = Arc::downgrade(core);
+    let conditions = move || {
+        let core = weak.upgrade()?;
+        Some(async move {
+            let refreshed = core.conditions.refresh(&core.store, &core.roots, || core.now_ms()).await;
+            refreshed.unwrap_or_else(|error| {
+                tracing::warn!(%error, "weather not refreshed");
+                false
+            })
+        })
+    };
+    tasks.spawn(refresh::keep_fresh(conditions, core.weather_changed.subscribe(), stopped.clone()));
+    let weak = Arc::downgrade(core);
+    let solar = move || {
+        let core = weak.upgrade()?;
+        Some(async move {
+            core.solar.refresh(&core).await.unwrap_or_else(|error| {
+                tracing::warn!(%error, "forecast not refreshed");
+                false
+            })
+        })
+    };
+    tasks.spawn(refresh::keep_fresh(solar, core.weather_changed.subscribe(), stopped));
     Running { stop, tasks }
 }
 

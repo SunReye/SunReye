@@ -4,7 +4,6 @@
 pub mod archive;
 pub mod conditions;
 pub mod decode;
-mod fetch_retry;
 pub mod forecast;
 pub mod manifest;
 pub mod modbus;
@@ -18,6 +17,7 @@ pub mod poll;
 pub mod probe;
 pub mod profile;
 pub mod recent;
+mod refresh;
 pub mod retention;
 pub mod rollup;
 pub mod run;

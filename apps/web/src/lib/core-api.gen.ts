@@ -736,7 +736,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Null while weather is off or unlocated, or no reading was had for the location. */
+        /**
+         * Null while weather is off or unlocated, or until a reading for the location landed. Reads only what the
+         *     background refresh landed: no request waits on Open-Meteo.
+         */
         get: operations["weather"];
         put?: never;
         post?: never;

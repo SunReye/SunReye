@@ -86,7 +86,8 @@ pub struct WeatherAnswer {
     forecast: Option<SolarForecast>,
 }
 
-/// Null while weather is off or unlocated, or no reading was had for the location.
+/// Null while weather is off or unlocated, or until a reading for the location landed. Reads only what the
+/// background refresh landed: no request waits on Open-Meteo.
 #[utoipa::path(
     get,
     path = "/api/weather",
@@ -98,11 +99,10 @@ pub struct WeatherAnswer {
     )
 )]
 pub async fn weather(State(core): State<Arc<Core>>) -> Result<Json<Option<WeatherAnswer>>, ApiError> {
-    // Each cache holds its own lock across its fetch: asked together, an outage costs one timeout, not two.
-    let (reading, served) =
-        tokio::join!(core.conditions.serve(&core.store, &core.roots, core.now_ms()), core.solar.serve(&core));
-    let Some(reading) = reading? else { return Ok(Json(None)) };
-    let forecast = served?.map(|served| SolarForecast {
+    let Some(reading) = core.conditions.serve(&core.store, core.now_ms()).await? else {
+        return Ok(Json(None));
+    };
+    let forecast = core.solar.serve(&core).await?.map(|served| SolarForecast {
         provider: served.forecast.provider,
         step_minutes: served.forecast.step_minutes,
         utc_offset_seconds: served.forecast.utc_offset_seconds,
@@ -149,6 +149,7 @@ pub async fn save(
     let current = core.store.plant_settings().await?.unwrap_or_default();
     let next = current.patched(&body).map_err(ApiError::bad_request)?;
     core.store.save_plant_settings(&next).await?;
+    core.weather_changed();
     Ok(Json(weather::read(&core.store).await?))
 }
 
