@@ -2,6 +2,7 @@
 //! stores.
 
 pub mod archive;
+pub mod conditions;
 pub mod decode;
 pub mod forecast;
 pub mod manifest;

@@ -12,6 +12,7 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
+use crate::conditions::Conditions;
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
@@ -59,6 +60,7 @@ pub struct Core {
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
     pub solar: Solar,
+    pub conditions: Conditions,
     /// The MQTT export of every in-service device.
     pub exports: Arc<Exports>,
     /// Open-Meteo's reanalysis archive, or a stand-in.
@@ -233,6 +235,7 @@ impl Core {
             roots,
             live,
             unstored,
+            conditions: Conditions::new(forecast_url.clone()),
             solar: Solar::new(forecast_url),
             exports: Arc::default(),
             archive_url,

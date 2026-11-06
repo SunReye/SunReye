@@ -8,12 +8,13 @@ use tokio::io::AsyncWriteExt;
 
 use super::correction::archive_payload;
 use super::support::{acceptor, read_request};
+use super::weather::conditions_payload;
 use super::*;
 use crate::forecast::{self, CorrectionModel, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
 use crate::samples::{ClosedMinute, Sample};
 
 /// 2026-07-24T10:07:00Z: plant-local 12:07 in Berlin, inside the stand-in's series.
-const NOW_MS: i64 = 1_784_887_620_000;
+pub(super) const NOW_MS: i64 = 1_784_887_620_000;
 const HALF_HOUR_MS: i64 = 1_800_000;
 pub(super) const LAT: f64 = 50.5;
 pub(super) const LON: f64 = 8.25;
@@ -42,7 +43,7 @@ fn payload() -> Value {
     })
 }
 
-fn irradiance() -> Irradiance {
+pub(super) fn irradiance() -> Irradiance {
     Irradiance {
         times: TIMES.iter().map(|&t| t.to_owned()).collect(),
         utc_offset_seconds: 7200,
@@ -95,7 +96,7 @@ pub(super) fn string_corrected(
     )
 }
 
-fn zone(name: &str) -> jiff::tz::TimeZone {
+pub(super) fn zone(name: &str) -> jiff::tz::TimeZone {
     jiff::tz::db().get(name).expect("bundled zone")
 }
 
@@ -175,7 +176,14 @@ async fn answer_one(
     let Some(head) = read_request(&mut stream).await else { return };
     let head = String::from_utf8_lossy(&head).into_owned();
     let path = head.split_whitespace().nth(1).unwrap_or_default().to_owned();
-    let body = if path.starts_with("/v1/archive") { archive_payload() } else { payload() }.to_string();
+    let body = if path.starts_with("/v1/archive") {
+        archive_payload()
+    } else if path.contains("current=") {
+        conditions_payload()
+    } else {
+        payload()
+    }
+    .to_string();
     paths.lock().expect("paths").push(path);
     hits.fetch_add(1, Ordering::SeqCst);
     let wire = if failing.load(Ordering::SeqCst) {
@@ -203,7 +211,7 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     (core, admin, standin)
 }
 
-async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
+pub(super) async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
     send(api, Method::PATCH, path, Some(&body.to_string())).await
 }
 

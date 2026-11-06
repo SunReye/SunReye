@@ -1221,4 +1221,5 @@ mod rollup;
 mod statistics;
 mod time_zone;
 mod users;
+mod weather;
 mod ws;

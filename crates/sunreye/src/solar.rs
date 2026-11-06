@@ -43,6 +43,8 @@ pub struct Served {
     pub fetched_ms: i64,
     /// The last fetch failed; this is the irradiance from before it.
     pub stale: bool,
+    /// The plant zone the daily sums were cut in.
+    pub time_zone: String,
 }
 
 impl Solar {
@@ -75,7 +77,8 @@ impl Solar {
         };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
-        Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale }))
+        let time_zone = zone.iana_name().unwrap_or("UTC").to_owned();
+        Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale, time_zone }))
     }
 
     /// Fetches unless the cache holds `wanted` inside the TTL. `Some(stale)` when the cache now holds it.

@@ -729,6 +729,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Null while weather is off or unlocated, or no reading was had for the location. */
+        get: operations["weather"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1069,6 +1086,11 @@ export interface components {
             key: string;
             value: components["schemas"]["Saved"];
         };
+        /**
+         * @description Coarse condition buckets the web maps to an icon.
+         * @enum {string}
+         */
+        Icon: "clear" | "partly-cloudy" | "cloudy" | "fog" | "drizzle" | "rain" | "snow" | "thunder";
         ImportReport: {
             /**
              * Format: int64
@@ -1385,6 +1407,24 @@ export interface components {
             /** Format: double */
             min: number;
         };
+        Reading: {
+            /**
+             * Format: int64
+             * @description WMO weather interpretation code.
+             */
+            code: number;
+            condition: string;
+            icon: components["schemas"]["Icon"];
+            label: string;
+            /**
+             * Format: double
+             * @description Today's shortwave radiation sum, MJ/m².
+             */
+            solarRadiationSum: number | null;
+            /** Format: double */
+            temperature: number;
+            unit: string;
+        };
         /** @description Every point is at `t0 + o[i] * step * 1000` milliseconds, so no timestamp repeats. */
         Recent: {
             metrics: {
@@ -1455,6 +1495,17 @@ export interface components {
             unit: string | null;
             /** Format: double */
             value: number;
+        };
+        /** @description 3.x's `SolarForecast`: the usable view, its metadata and the raw view. */
+        SolarForecast: components["schemas"]["ForecastView"] & {
+            provider: string;
+            raw: components["schemas"]["ForecastView"];
+            /** Format: int64 */
+            stepMinutes: number;
+            /** @description The plant zone the daily sums were cut in. */
+            timeZone: string;
+            /** Format: int32 */
+            utcOffsetSeconds: number;
         };
         SolarForecastConfig: {
             /** @description Every in-service inverter's, in roster order. */
@@ -1550,6 +1601,10 @@ export interface components {
             found: components["schemas"]["FoundUnit"] | null;
             /** @description Every id asked, in order, so a miss names what was ruled out. */
             scanned: number[];
+        };
+        /** @description The current conditions with the forecast. */
+        WeatherAnswer: components["schemas"]["Reading"] & {
+            forecast: components["schemas"]["SolarForecast"] | null;
         };
         /** @description The composed record. */
         WeatherConfig: {
@@ -4360,6 +4415,41 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    weather: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeatherAnswer"] | null;
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

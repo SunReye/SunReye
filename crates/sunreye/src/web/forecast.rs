@@ -10,6 +10,7 @@ use serde_json::Value;
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::conditions::Reading;
 use crate::forecast::{DetailedPoint, ForecastView, Variant};
 use crate::learn;
 use crate::live::iso;
@@ -59,6 +60,56 @@ fn export(served: &Served, variant: Variant) -> ForecastExport {
         fetched_at: iso(served.fetched_ms),
         stale: served.stale,
     }
+}
+
+/// 3.x's `SolarForecast`: the usable view, its metadata and the raw view.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SolarForecast {
+    provider: String,
+    step_minutes: i64,
+    utc_offset_seconds: i32,
+    /// The plant zone the daily sums were cut in.
+    time_zone: String,
+    #[serde(flatten)]
+    usable: ForecastView,
+    raw: ForecastView,
+}
+
+/// The current conditions with the forecast.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WeatherAnswer {
+    #[serde(flatten)]
+    reading: Reading,
+    /// Null while the forecast is off or unconfigured, or no irradiance was had.
+    #[schema(required = true)]
+    forecast: Option<SolarForecast>,
+}
+
+/// Null while weather is off or unlocated, or no reading was had for the location.
+#[utoipa::path(
+    get,
+    path = "/api/weather",
+    operation_id = "weather",
+    responses(
+        (status = 200, body = Option<WeatherAnswer>),
+        (status = 401, body = ErrorBody),
+        (status = 500, body = ErrorBody)
+    )
+)]
+pub async fn weather(State(core): State<Arc<Core>>) -> Result<Json<Option<WeatherAnswer>>, ApiError> {
+    let Some(reading) = core.conditions.serve(&core.store, &core.roots, core.now_ms()).await? else {
+        return Ok(Json(None));
+    };
+    let forecast = core.solar.serve(&core).await?.map(|served| SolarForecast {
+        provider: served.forecast.provider,
+        step_minutes: served.forecast.step_minutes,
+        utc_offset_seconds: served.forecast.utc_offset_seconds,
+        time_zone: served.time_zone,
+        usable: served.forecast.usable,
+        raw: served.forecast.raw,
+    });
+    Ok(Json(Some(WeatherAnswer { reading, forecast })))
 }
 
 #[utoipa::path(

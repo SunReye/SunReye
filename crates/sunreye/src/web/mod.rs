@@ -110,6 +110,7 @@ fn signed_in() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .routes(routes!(forecast::correction))
+        .routes(routes!(forecast::weather))
         .route_layer(login_required!(Accounts))
         .route_layer(middleware::map_response(auth::guard_body))
 }
