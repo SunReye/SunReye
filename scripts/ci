@@ -8,7 +8,9 @@
 #            without coverage, cargo fmt, sqlx cache and clippy, factory scripts, and the build,
 #            component tests, database tests and route smoke the change can affect.
 #   --train  only the checks that run once per train, after the per-PR gate: coverage and its
-#            floors (TypeScript and Rust), budgets and the browser suite.
+#            floors (TypeScript and Rust), budgets and the browser suite. They run as two lanes at
+#            a time (scripts/lib/ci-parallel.sh), each step's output in its own log; a failing step
+#            is named with its log.
 #   --full   both: everything, with the tests run once, under coverage.
 #   --e2e    also run the Playwright browser suite (~10 min) in the per-PR gate.
 # A change can skip a heavy step it cannot affect (scripts/ci-scope.ts); --full runs them all.
@@ -59,6 +61,8 @@ step() { finish; current=$*; started=$SECONDS; printf '\n== %s\n' "$*"; }
 
 # shellcheck source=lib/ci-scope.sh
 source scripts/lib/ci-scope.sh
+# shellcheck source=lib/ci-parallel.sh
+source scripts/lib/ci-parallel.sh
 
 # db_tests: TimescaleDB on $db_port (host network: bridged containers fail on the LXC host), then the
 # database suite with CI=1 so an unreachable database fails instead of skipping.
@@ -139,23 +143,15 @@ if ((pr)); then
 fi
 
 # Coverage runs every test, so a train run never repeats them; the per-PR gate runs them bare.
-if ((train)); then
-  step "unit tests and coverage"
-  heavy bun run test:coverage
-  bun run test:floor
-elif ((pr)); then
+if ((!train && pr)); then
   step "unit tests"
   heavy bun run test:unit
 fi
 
-if scoped rust "rust"; then
-  if ((pr)); then
-    heavy scripts/rust-gate
-  fi
-  if ((train)); then
-    heavy bun run test:coverage:rust
-    bun run test:floor:rust
-  elif ((pr)); then
+# A train run does the Rust tests under coverage, in its lanes.
+if ((pr)) && scoped rust "rust"; then
+  heavy scripts/rust-gate
+  if ((!train)); then
     heavy bun run test:rust
   fi
 fi
@@ -182,25 +178,32 @@ if ((pr)); then
   fi
 fi
 
-if ((train)); then
-  if scoped budgets "budgets"; then
-    # Release binary with the real SPA, then repeated logins against the simulator (docs/adr/0006).
-    heavy bun run test:budgets
-  fi
-fi
+# The train-only steps, run by train_only_steps (lib/ci-parallel.sh). A step is a function so a lane can
+# run it with its own log.
+train-coverage() {
+  heavy bun run test:coverage
+  bun run test:floor
+}
+train-rust-coverage() {
+  heavy bun run test:coverage:rust
+  bun run test:floor:rust
+}
+train-budgets() {
+  # Release binary with the real SPA, then repeated logins against the simulator (docs/adr/0006).
+  heavy bun run test:budgets
+}
+train-e2e() {
+  bun run e2e:types
+  heavy bun run e2e
+}
+# The real core binary and the simulator, no faked backend: a core change moves it too.
+train-e2e-core() {
+  heavy bun run --cwd apps/web e2e:core
+}
 
 if ((train || e2e)); then
-  if scoped e2e "e2e"; then
-    bun run e2e:types
-    heavy bun run e2e
-  fi
-  # The real core binary and the simulator, no faked backend: a core change moves it too.
-  if selected e2e || selected rust; then
-    step "e2e core"
-    heavy bun run --cwd apps/web e2e:core
-  else
-    echo "skip e2e core: ${scope_reason[rust]}"
-  fi
+  step "train-only steps"
+  train_only_steps "$train"
 fi
 
 step "ci green"
