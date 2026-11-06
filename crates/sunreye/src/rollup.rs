@@ -50,11 +50,11 @@ pub struct Partial {
 }
 
 impl Partial {
-    fn new(start: i64, at: i64, value: f64) -> Self {
+    pub(crate) fn new(start: i64, at: i64, value: f64) -> Self {
         Self { start, first: (at, value), last: (at, value), weighted: 0.0, max: value, min: value }
     }
 
-    fn append(&mut self, other: &Self) {
+    pub(crate) fn append(&mut self, other: &Self) {
         self.weighted = self.weighted + other.weighted + held(self.last, other.first.0);
         self.last = other.last;
         self.max = self.max.max(other.max);

@@ -11,9 +11,16 @@ impl Store {
     }
 
     pub async fn save_plant_time_zone(&self, name: &str) -> Result<(), StoreError> {
-        sqlx::query!("INSERT OR REPLACE INTO plant_time_zone (id, name) VALUES (1, ?)", name)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+        save_time_zone(&self.pool, name).await
     }
+}
+
+pub(crate) async fn save_time_zone<'e, E: sqlx::Executor<'e, Database = sqlx::Sqlite>>(
+    executor: E,
+    name: &str,
+) -> Result<(), StoreError> {
+    sqlx::query!("INSERT OR REPLACE INTO plant_time_zone (id, name) VALUES (1, ?)", name)
+        .execute(executor)
+        .await?;
+    Ok(())
 }
