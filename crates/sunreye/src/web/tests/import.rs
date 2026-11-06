@@ -117,6 +117,30 @@ async fn an_archive_with_automation_stops_at_the_guard_and_its_sha256_continues_
 }
 
 #[tokio::test]
+async fn an_imported_plant_is_set_up_with_its_first_devices_profile() {
+    let (core, admin) = importer("import-profile", UploadLimit::default()).await;
+    assert_eq!(
+        get(&admin, "/api/profile-status").await.json(),
+        json!({"needsProfile": true, "activeProfileId": null})
+    );
+    assert_eq!(upload(&admin, archive("current-2.x")).await.status, StatusCode::ACCEPTED);
+    assert_eq!(
+        get(&admin, "/api/profile-status").await.json()["needsProfile"],
+        true,
+        "the guard writes nothing"
+    );
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
+    assert_eq!(
+        get(&admin, "/api/profile-status").await.json(),
+        json!({"needsProfile": false, "activeProfileId": "deye-sg05lp3"})
+    );
+    let roster = get(&admin, "/api/devices").await.json();
+    assert_eq!(roster["devices"][0]["unitId"], 1, "the archive's unit id stands");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn a_flag_a_second_upload_or_another_archives_sha256_does_not_pass_the_guard() {
     let (core, admin) = importer("import-guard-skips", UploadLimit::default()).await;
     let flagged = format!("{UPLOAD}?confirm=true&confirmed=true&sha256={CURRENT_SHA256}");
