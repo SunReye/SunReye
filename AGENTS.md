@@ -73,6 +73,17 @@ Load the relevant one when matching work:
 - No abstraction until the second real use. Delete unused code instead of keeping it around.
 - A spec item not yet scheduled is not a reason to add code now.
 
+## Clean design
+
+- Pick the design that removes a failure class over the patch that guards it. A review finding
+  that returns in a second round means the design is wrong: redesign, then delete what the redesign
+  makes dead in the same change.
+- A request handler reads state. Network calls, retries and refresh timers live in a task the core
+  owns and stops; the handler serves the last good value.
+- Fewest moving parts wins: a plain read or one owned task before locks, caches with retry logic,
+  or shared helpers.
+- A PR past three review rounds or its ticket's size limit is split or redesigned, not extended.
+
 ## Prose: docs, diagnostics, UI copy, code comments, reports
 
 - Minimum words. No subtext, no restating what the name or code already says, no reassurance or
