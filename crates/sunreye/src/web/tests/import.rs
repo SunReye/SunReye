@@ -559,7 +559,9 @@ async fn a_second_upload_while_a_dropped_requests_import_runs_is_a_409() {
 
 #[tokio::test]
 async fn stopping_the_core_waits_for_a_dropped_requests_import_then_stops_polling_and_closes_the_store() {
-    let (core, admin) = importer("import-dropped-stop", UploadLimit::default()).await;
+    let path = dir("import-dropped-stop");
+    let core = Core::open_unpolled(&path, created).await.expect("core");
+    let (core, admin) = signed_in(core, &Config::default()).await;
     legacy_profile(&admin).await;
     let seams = Arc::clone(&core.seams);
     let before = seams.events.lock().expect("events").len();
@@ -568,10 +570,15 @@ async fn stopping_the_core_waits_for_a_dropped_requests_import_then_stops_pollin
     drop(admin);
 
     let stopping = tokio::spawn(core.stop());
+    settle().await;
+    assert!(!stopping.is_finished(), "stop waits for the import");
     resume.send(()).expect("the import waits");
     stopping.await.expect("stopped");
 
     assert_eq!(seams.events.lock().expect("events")[before..], ["apply", "polling stopped", "store closed"]);
+    let store = Store::open(&path).await.expect("the store reopens");
+    assert_eq!(store.devices().await.expect("devices").len(), 1);
+    store.close().await;
 }
 
 /// Lets every task that can run, run.
@@ -579,6 +586,17 @@ async fn settle() {
     for _ in 0..1000 {
         tokio::task::yield_now().await;
     }
+}
+
+/// Uploads `legacy-1.2.0`, running `committed` once the import has committed, before it polls.
+async fn upload_then(core: &Core, admin: &Api, committed: impl FnOnce()) -> Answer {
+    let (reached, resume) = pause(&core.seams.apply_pause);
+    let request = upload_request(admin, UPLOAD, None, Body::from(archive("legacy-1.2.0")));
+    let answering = tokio::spawn(admin.router.clone().oneshot(request));
+    reached.await.expect("the import committed");
+    committed();
+    resume.send(()).expect("the import waits");
+    answer(answering.await.expect("answered").expect("response")).await
 }
 
 #[tokio::test]
@@ -590,13 +608,11 @@ async fn an_import_whose_polling_fails_answers_the_failure_and_polls_on_the_next
         legacy_profile(&admin).await;
         let before = applied(&core);
         core.seams.apply_faults.lock().expect("faults").push_back(fault);
-        let answer = upload(&admin, archive("legacy-1.2.0")).await;
+        // Paused before the retry is armed, time moves only while every task waits on a timer.
+        let answer = upload_then(&core, &admin, || tokio::time::pause()).await;
         assert_eq!((answer.status, answer.json()["pollingError"].clone()), (StatusCode::OK, json!(error)));
-        assert_eq!(devices(&core).await, 1);
         assert_eq!(applied(&core), before, "not polled yet");
 
-        // Paused, time moves only while every task waits on a timer.
-        tokio::time::pause();
         tokio::time::sleep(REAPPLY.checked_sub(Duration::from_secs(1)).expect("over a second")).await;
         settle().await;
         assert_eq!(applied(&core), before, "not polled again before {REAPPLY:?}");
@@ -604,10 +620,16 @@ async fn an_import_whose_polling_fails_answers_the_failure_and_polls_on_the_next
         settle().await;
         tokio::time::resume();
         assert_eq!(applied(&core), before + 1, "polled without a restart");
+        assert_eq!(devices(&core).await, 1);
         assert!(core.imports.try_lock().is_ok(), "the import lock is free");
         drop(admin);
         core.stop().await;
     }
+}
+
+#[test]
+fn polling_an_import_is_retried_every_ten_seconds() {
+    assert_eq!(REAPPLY, Duration::from_secs(10));
 }
 
 #[tokio::test]
@@ -615,12 +637,11 @@ async fn stopping_the_core_ends_the_retries_of_an_import_whose_polling_keeps_fai
     let (core, admin) = importer("import-apply-keeps-failing", UploadLimit::default()).await;
     legacy_profile(&admin).await;
     core.seams.apply_faults.lock().expect("faults").extend([Fault::Fail, Fault::Fail, Fault::Fail]);
-    let answer = upload(&admin, archive("legacy-1.2.0")).await;
+    // A retry that ignored the stop would run at once and take the next fault.
+    let answer = upload_then(&core, &admin, || tokio::time::pause()).await;
     assert_eq!(answer.json()["pollingError"], json!("stored setting is out of range"));
     let seams = Arc::clone(&core.seams);
     drop(admin);
-    // Paused, a retry that ignored the stop would run at once and take the next fault.
-    tokio::time::pause();
     core.stop().await;
     tokio::time::resume();
     assert_eq!(seams.apply_faults.lock().expect("faults").len(), 2, "no retry once stopping");

@@ -218,7 +218,13 @@ impl Core {
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let (live, unstored) = (Arc::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
-        let polling = Polling::default();
+        #[cfg(test)]
+        let seams = Arc::<Seams>::default();
+        let polling = Polling {
+            #[cfg(test)]
+            seams: Arc::clone(&seams),
+            ..Polling::default()
+        };
         let kiosk = watch::Sender::new(kiosk(&store).await?);
         let stranger_reads = Arc::new(Semaphore::new(STRANGER_READS));
         let core = Arc::new(Self {
@@ -241,7 +247,7 @@ impl Core {
             importing: Mutex::new(Some(Running { stop: watch::Sender::new(false), tasks: JoinSet::new() })),
             upload,
             #[cfg(test)]
-            seams: Arc::default(),
+            seams,
         });
         *core.learning.lock().await = Some(spawn_learning(&core, learn));
         Ok(core)
@@ -329,11 +335,14 @@ impl Core {
         // First: an import's last step restarts polling.
         stop(self.importing.lock().await.take()).await;
         self.polling.stop().await;
-        #[cfg(test)]
-        self.seams.record("polling stopped");
         self.stop_export().await;
         stop(self.retention.lock().await.take()).await;
         stop(self.learning.lock().await.take()).await;
+        self.close().await;
+    }
+
+    /// Closes the store once this is its last holder.
+    async fn close(self: Arc<Self>) {
         if let Some(core) = Arc::into_inner(self)
             && let Some(store) = Arc::into_inner(core.store)
         {
@@ -395,6 +404,8 @@ async fn serve(
 #[derive(Debug, Default)]
 pub struct Polling {
     running: Mutex<Option<Running>>,
+    #[cfg(test)]
+    seams: Arc<Seams>,
 }
 
 #[derive(Debug)]
@@ -420,6 +431,8 @@ impl Polling {
     /// Stops the tasks once each device's open minute is stored.
     pub async fn stop(&self) {
         stop(self.running.lock().await.take()).await;
+        #[cfg(test)]
+        self.seams.record("polling stopped");
     }
 }
 
