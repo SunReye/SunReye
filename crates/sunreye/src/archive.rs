@@ -287,6 +287,10 @@ pub async fn import_checked(
         kept(Tier::Day).await?,
     );
     let landed = land::land(store, &checked, &mut Container::open(path)?, cut).await?;
+    // The first-run gate reads the active profile; setting it directly keeps the archive's unit ids.
+    if let Some(first) = store.devices().await?.first() {
+        store.set_setting(crate::settings::PROFILE_KEY, &first.profile_id).await?;
+    }
     Ok(Imported {
         read: checked.read,
         gaps: landed.gaps,
