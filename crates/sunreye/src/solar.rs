@@ -1,12 +1,13 @@
 //! The forecast served (3.x `fetchSolarForecast`): the settings composed, Open-Meteo irradiance cached
 //! 30 minutes per location and planes, the clipping sim's inputs read from the store, the model rebuilt
 //! per request, scaled by the learned correction while it is enabled. A failed fetch keeps the last irradiance
-//! for the same key and reports it stale.
+//! for the same key, reports it stale and is not retried for a minute.
 
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
+use crate::fetch_retry::Failed;
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
 use crate::open_meteo::{self, Plane};
 use crate::plant_zone;
@@ -25,8 +26,15 @@ const HOUR_MS: i64 = 3_600_000;
 #[derive(Debug)]
 pub struct Solar {
     url: String,
-    cache: Mutex<Option<Cached>>,
+    cache: Mutex<Held>,
     load: std::sync::Mutex<Option<(i64, Option<f64>)>>,
+}
+
+#[derive(Debug, Default)]
+struct Held {
+    cached: Option<Cached>,
+    /// Keyed as the cache; a landed fetch clears it.
+    failed: Failed<String>,
 }
 
 #[derive(Debug)]
@@ -50,7 +58,7 @@ pub struct Served {
 impl Solar {
     /// Fetching from `url`, Open-Meteo's forecast endpoint or a stand-in.
     pub fn new(url: String) -> Self {
-        Self { url, cache: Mutex::new(None), load: std::sync::Mutex::new(None) }
+        Self { url, cache: Mutex::default(), load: std::sync::Mutex::new(None) }
     }
 
     /// None while the forecast is off, unlocated or without arrays, and when no irradiance can be had.
@@ -58,9 +66,9 @@ impl Solar {
         let config = weather::read(&core.store).await?;
         let Some(wanted) = wanted(&config) else { return Ok(None) };
         let now_ms = core.now_ms();
-        let mut cache = self.cache.lock().await;
-        let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
-        let Some(hit) = cache.as_ref() else { return Ok(None) };
+        let fetch = || open_meteo::fetch(&self.url, &core.roots, wanted.location, &wanted.planes);
+        let (held, stale) = self.current(&wanted, now_ms, fetch).await;
+        let (Some(stale), Some(hit)) = (stale, held.cached.as_ref()) else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
         let (correction, arrays) = if config.forecast.correction.enabled {
             crate::learn::applied(&core.store, &config.forecast.arrays).await?
@@ -81,24 +89,30 @@ impl Solar {
         Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale, time_zone }))
     }
 
-    /// Fetches unless the cache holds `wanted` inside the TTL. `Some(stale)` when the cache now holds it.
-    async fn refresh(
+    /// The cache, fetched with `fetch` unless it holds `wanted` inside the TTL. `Some(stale)` when it holds
+    /// `wanted`.
+    async fn current<F: Future<Output = Result<Irradiance, open_meteo::FetchError>>>(
         &self,
-        cache: &mut Option<Cached>,
-        core: &Core,
-        wanted: Wanted,
+        wanted: &Wanted,
         now_ms: i64,
-    ) -> Option<bool> {
-        let held = cache.as_ref().filter(|c| c.key == wanted.key).map(|c| c.fetched_ms);
-        if held.is_some_and(|fetched_ms| now_ms - fetched_ms < TTL_MS) {
-            return Some(false);
+        fetch: impl FnOnce() -> F,
+    ) -> (MutexGuard<'_, Held>, Option<bool>) {
+        let mut held = self.cache.lock().await;
+        let last = held.cached.as_ref().filter(|c| c.key == wanted.key).map(|c| c.fetched_ms);
+        if last.is_some_and(|fetched_ms| now_ms - fetched_ms < TTL_MS) {
+            return (held, Some(false));
         }
-        let fetched = open_meteo::fetch(&self.url, &core.roots, wanted.location, &wanted.planes).await;
+        if held.failed.holds(&wanted.key, now_ms) {
+            return (held, last.map(|_| true));
+        }
+        let fetched = fetch().await;
         let Ok(fetched) = fetched.inspect_err(|error| tracing::warn!(%error, "forecast fetch failed")) else {
-            return held.map(|_| true);
+            held.failed.record(wanted.key.clone(), now_ms);
+            return (held, last.map(|_| true));
         };
-        *cache = Some(Cached { key: wanted.key, fetched_ms: now_ms, data: fetched });
-        Some(false)
+        held.cached = Some(Cached { key: wanted.key.clone(), fetched_ms: now_ms, data: fetched });
+        held.failed.clear();
+        (held, Some(false))
     }
 
     /// Live SOC, house load and day-start SOC from the first in-service device, read only when a feed-in
@@ -212,7 +226,108 @@ fn median(mut values: Vec<f64>) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
     use super::*;
+
+    const AT: i64 = 1_784_900_000_000;
+
+    fn wanted(key: &str) -> Wanted {
+        Wanted { key: key.into(), location: Location { latitude: 52.5, longitude: 13.4 }, planes: Vec::new() }
+    }
+
+    fn irradiance() -> Irradiance {
+        Irradiance {
+            times: vec!["2026-07-24T12:00".into()],
+            utc_offset_seconds: 7200,
+            location: Location { latitude: 52.5, longitude: 13.4 },
+            temperature: vec![20.0],
+            gti: vec![vec![800.0]],
+            dni: None,
+            wind_speed: None,
+        }
+    }
+
+    /// The forecast cache with Open-Meteo accepting and never answering: a fetch ends only at its timeout.
+    struct Outage {
+        solar: Arc<Solar>,
+        attempts: Arc<AtomicUsize>,
+    }
+
+    async fn hanging(attempts: Arc<AtomicUsize>) -> Result<Irradiance, open_meteo::FetchError> {
+        attempts.fetch_add(1, Ordering::SeqCst);
+        let _ = tokio::time::timeout(Duration::from_secs(8), std::future::pending::<()>()).await;
+        Err(open_meteo::FetchError::Fields)
+    }
+
+    /// Whether the cache held a series, and whether it was stale.
+    async fn request(outage: (Arc<Solar>, Arc<AtomicUsize>), key: String, now_ms: i64) -> Option<bool> {
+        let (solar, attempts) = outage;
+        let (held, stale) = solar.current(&wanted(&key), now_ms, || hanging(attempts)).await;
+        stale.filter(|_| held.cached.is_some())
+    }
+
+    impl Outage {
+        fn new() -> Self {
+            Self { solar: Arc::new(Solar::new(String::new())), attempts: Arc::default() }
+        }
+
+        /// `n` requests at once for `key` at `now_ms`; their answers once all are in.
+        async fn requests(&self, key: &str, now_ms: i64, n: usize) -> Vec<Option<bool>> {
+            let mut requests = tokio::task::JoinSet::new();
+            for _ in 0..n {
+                let shared = (Arc::clone(&self.solar), Arc::clone(&self.attempts));
+                requests.spawn(request(shared, key.to_owned(), now_ms));
+            }
+            // One fetch timeout is the most any request may wait; a second sequential one ends this bound first.
+            tokio::time::timeout(Duration::from_secs(12), requests.join_all())
+                .await
+                .expect("waited on more than one fetch")
+        }
+
+        /// A fetch for `key` that lands.
+        async fn land(&self, key: &str, now_ms: i64) -> Option<bool> {
+            self.solar.current(&wanted(key), now_ms, || async { Ok(irradiance()) }).await.1
+        }
+
+        fn attempts(&self) -> usize {
+            self.attempts.load(Ordering::SeqCst)
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn requests_during_an_outage_pay_one_fetch_and_answer_nothing_or_the_stale_series() {
+        let outage = Outage::new();
+        assert_eq!(outage.requests("k", AT, 4).await, vec![None; 4]);
+        assert_eq!(outage.attempts(), 1, "first fetch");
+        assert_eq!(outage.land("k", AT + 60_000).await, Some(false));
+        let expired = AT + 60_000 + TTL_MS;
+        assert_eq!(outage.requests("k", expired, 4).await, vec![Some(true); 4]);
+        assert_eq!(outage.attempts(), 2, "refetch past the TTL");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_forecast_fetch_is_retried_after_the_retry_interval_not_before() {
+        let outage = Outage::new();
+        outage.requests("k", AT, 1).await;
+        outage.requests("k", AT + 59_999, 1).await;
+        assert_eq!(outage.attempts(), 1, "inside the retry interval");
+        outage.requests("k", AT + 60_000, 1).await;
+        assert_eq!(outage.attempts(), 2, "at the retry interval");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn another_location_or_planes_bypass_a_failure_and_a_landed_fetch_clears_it() {
+        let outage = Outage::new();
+        outage.requests("k", AT, 1).await;
+        outage.requests("elsewhere", AT + 1, 1).await;
+        assert_eq!(outage.attempts(), 2, "another key");
+        outage.land("other", AT + 2).await;
+        outage.requests("elsewhere", AT + 3, 1).await;
+        assert_eq!(outage.attempts(), 3, "a landed fetch cleared the failure");
+    }
 
     #[test]
     fn the_median_interpolates_an_even_count_and_none_has_none() {

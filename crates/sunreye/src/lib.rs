@@ -4,6 +4,7 @@
 pub mod archive;
 pub mod conditions;
 pub mod decode;
+mod fetch_retry;
 pub mod forecast;
 pub mod manifest;
 pub mod modbus;

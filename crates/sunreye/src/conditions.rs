@@ -11,14 +11,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
+use crate::fetch_retry::Failed;
 use crate::https::{GetError, Limits, get_with_roots};
 use crate::plant_zone::plant_zone;
 use crate::store::{Store, StoreError};
 use crate::weather;
 
 const TTL_MS: i64 = 15 * 60_000;
-// Bounds an outage to one 8 s fetch a minute however many requests queue on the cache.
-const RETRY_MS: i64 = 60_000;
 const LIMITS: Limits = Limits { timeout: Duration::from_secs(8), max_bytes: 64 << 10 };
 
 /// Coarse condition buckets the web maps to an icon.
@@ -138,8 +137,8 @@ pub struct Conditions {
 #[derive(Debug, Default)]
 struct Held {
     reading: Option<Cached>,
-    /// The last failed fetch's location, plant day and request time; a landed fetch clears it.
-    failed: Option<(String, PlantDay, i64)>,
+    /// Keyed by location and plant day; a landed fetch clears it.
+    failed: Failed<(String, PlantDay)>,
 }
 
 #[derive(Debug)]
@@ -203,11 +202,7 @@ impl Conditions {
     ) -> Option<Reading> {
         let mut held = self.cache.lock().await;
         let fresh = held.reading.as_ref().is_some_and(|c| c.fresh(key, today, now_ms));
-        let retrying = held
-            .failed
-            .as_ref()
-            .is_some_and(|(k, day, at)| k == key && day == today && (0..RETRY_MS).contains(&(now_ms - at)));
-        if !fresh && !retrying {
+        if !fresh && !held.failed.holds(&(key.to_owned(), today.clone()), now_ms) {
             refresh(&mut held, key.to_owned(), fetch().await, now_ms, today.clone());
         }
         let held = held.reading.as_ref().filter(|c| c.key == key);
@@ -222,11 +217,14 @@ impl Conditions {
 fn refresh(held: &mut Held, key: String, fetched: Result<Reading, FetchError>, now_ms: i64, day: PlantDay) {
     match fetched {
         Ok(reading) => {
-            *held = Held { reading: Some(Cached { key, fetched_ms: now_ms, day, reading }), failed: None }
+            *held = Held {
+                reading: Some(Cached { key, fetched_ms: now_ms, day, reading }),
+                failed: Failed::default(),
+            }
         }
         Err(error) => {
             tracing::warn!(%error, "weather fetch failed");
-            held.failed = Some((key, day, now_ms));
+            held.failed.record((key, day), now_ms);
         }
     }
 }
@@ -437,8 +435,8 @@ mod tests {
         let outage = Outage::new();
         assert_eq!(outage.requests("k", &berlin_today(), AT, 4).await, vec![None; 4]);
         assert_eq!(outage.attempts(), 1, "first fetch");
-        assert_eq!(outage.land("k", &berlin_today(), AT + RETRY_MS).await, Some(sunny()));
-        let expired = AT + RETRY_MS + TTL_MS;
+        assert_eq!(outage.land("k", &berlin_today(), AT + 60_000).await, Some(sunny()));
+        let expired = AT + 60_000 + TTL_MS;
         assert_eq!(outage.requests("k", &berlin_today(), expired, 4).await, vec![Some(sunny()); 4]);
         assert_eq!(outage.attempts(), 2, "refetch past the TTL");
     }
