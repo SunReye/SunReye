@@ -4,9 +4,12 @@
 //! applies the grid only while `forecast.correction.enabled`.
 //!
 //! The learning target is the primary inverter: its own arrays against its total PV power. 3.x models every
-//! plant array against it, which overstates a multi-inverter plant.
+//! plant array against it, which overstates a multi-inverter plant. An array wired to a string that reports
+//! `pv.string.power` also learns a grid of its own from that string, held to
+//! `fixtures/oracle/forecast-string-correction.ndjson`; the forecast scales it by that grid where learned. No
+//! string voltage rule: no recorded data supports one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
@@ -17,13 +20,14 @@ use tokio::sync::watch;
 use tokio::time::MissedTickBehavior;
 
 use crate::forecast::{
-    self, CorrectionModel, ForecastConfig, Location, Observation, Point, Run, SimInputs, Skill,
+    self, CorrectionModel, ForecastConfig, Irradiance, Learned, Location, Observation, Point, Run, SimInputs,
+    Skill, StringObservation,
 };
 use crate::open_meteo;
 use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
-use crate::store::{BucketWindow, DeviceRow, Store, StoreError};
+use crate::store::{BucketWindow, DeviceRow, Store, StoreError, StringGrid};
 use crate::weather::{self, OPEN_METEO, WeatherConfig};
 
 /// The first run waits for the core to settle; later runs retry days the archive had not settled.
@@ -67,6 +71,7 @@ where
 }
 
 const PV_ROLE: &str = "pv.total.power";
+const STRING_ROLE: &str = "pv.string.power";
 const HOUR_MS: i64 = 3_600_000;
 
 /// How far one inverter's correction has learned.
@@ -106,53 +111,133 @@ pub async fn stored(store: &Store) -> Result<Option<(CorrectionModel, Option<Lea
     Ok(Some(store.correction(device.id).await?))
 }
 
-/// What a run learns for: the primary inverter, its arrays as the model reads them and its total PV metric.
+/// What the forecast applies: the primary inverter's grid, none while empty, and each plant array's string
+/// grid in `arrays` order.
+pub async fn applied(
+    store: &Store,
+    arrays: &[weather::PvArray],
+) -> Result<(Option<CorrectionModel>, Vec<Option<CorrectionModel>>), StoreError> {
+    let devices = store.devices().await?;
+    let Some(device) = primary(&devices) else { return Ok((None, Vec::new())) };
+    let (model, _) = store.correction(device.id).await?;
+    let strings = store.string_corrections(device.id).await?;
+    let model = Some(model).filter(|m| !m.is_empty());
+    Ok((model, string_grids(arrays, &device.id.to_string(), &strings)))
+}
+
+/// The grid of the string each array is wired to on the inverter `slug`; none for an array of another inverter,
+/// without a string, or on a string with no grid.
+fn string_grids(
+    arrays: &[weather::PvArray],
+    slug: &str,
+    strings: &BTreeMap<u32, CorrectionModel>,
+) -> Vec<Option<CorrectionModel>> {
+    arrays
+        .iter()
+        .map(|a| {
+            let own = a.device_slug.as_deref() == Some(slug);
+            a.mppt.filter(|_| own).and_then(|mppt| strings.get(&mppt).cloned())
+        })
+        .collect()
+}
+
+/// What a run learns for: the primary inverter, its arrays as the model reads them, its total PV metric and the
+/// arrays that learn from their own string.
 struct Target {
     device: i64,
     model: ForecastConfig,
     pv_key: String,
+    strings: Vec<Wired>,
 }
 
-/// The model over only the arrays wired into the inverter `slug`, its nameplate theirs alone.
-fn own_model(config: &WeatherConfig, slug: &str) -> ForecastConfig {
+/// An array of the target's model wired to a string that reports `pv.string.power`.
+#[derive(Debug)]
+struct Wired {
+    /// Position in the target's model.
+    array: usize,
+    mppt: u32,
+    /// The string's `pv.string.power` metric.
+    key: String,
+}
+
+/// The record over only the arrays wired into the inverter `slug`: its model's nameplate is theirs alone.
+fn own_arrays(config: &WeatherConfig, slug: &str) -> WeatherConfig {
     let mut own = config.clone();
     own.forecast.arrays.retain(|a| a.device_slug.as_deref() == Some(slug));
-    own.model()
+    own
+}
+
+/// Each array whose `mppt` names a string in `power` (`index`, `pv.string.power` key), in array order.
+fn wired(arrays: &[weather::PvArray], power: &[(u32, &str)]) -> Vec<Wired> {
+    arrays
+        .iter()
+        .enumerate()
+        .filter_map(|(array, a)| {
+            let mppt = a.mppt?;
+            let &(_, key) = power.iter().find(|(index, _)| *index == mppt)?;
+            Some(Wired { array, mppt, key: key.to_owned() })
+        })
+        .collect()
 }
 
 /// None while the primary inverter has no arrays or no total PV power.
 async fn target(core: &Core, config: &WeatherConfig) -> Result<Option<Target>, StoreError> {
     let devices = core.store.devices().await?;
     let Some(device) = primary(&devices) else { return Ok(None) };
-    let model = own_model(config, &device.id.to_string());
+    let own = own_arrays(config, &device.id.to_string());
+    let model = own.model();
     let profile = core.profile(&device.profile_id).await?;
-    let pv = profile.as_ref().and_then(|p| p.metrics.iter().find(|m| m.role.as_deref() == Some(PV_ROLE)));
+    let metrics = profile.as_ref().map(|p| p.metrics.as_slice()).unwrap_or_default();
+    let pv = metrics.iter().find(|m| m.role.as_deref() == Some(PV_ROLE));
+    let power: Vec<(u32, &str)> = metrics
+        .iter()
+        .filter(|m| m.role.as_deref() == Some(STRING_ROLE))
+        .filter_map(|m| Some((m.index?, m.key.as_str())))
+        .collect();
+    let strings = wired(&own.forecast.arrays, &power);
     Ok(pv.filter(|_| !model.arrays.is_empty()).map(|pv| Target {
         device: device.id,
         model,
         pv_key: pv.key.clone(),
+        strings,
     }))
 }
 
-/// The modelled hours (UTC labels) over `days` in the plant `zone`; none when they cannot be had, logged.
+/// The modelled hours (UTC labels) over `days` in the plant `zone`: the inverter's total, then each wired
+/// array's own; none when they cannot be had, logged.
 async fn modelled(
     core: &Core,
     target: &Target,
     location: Location,
     (start, end): (Date, Date),
     zone: &TimeZone,
-) -> Option<Vec<Point>> {
+) -> Option<(Vec<Point>, Vec<Vec<Point>>)> {
     let planes: Vec<open_meteo::Plane> = target.model.arrays.iter().map(|a| (a.tilt, a.azimuth)).collect();
     let days = (start, end, zone.iana_name().unwrap_or("UTC"));
     let fetched = open_meteo::fetch_archive(&core.archive_url, &core.roots, location, &planes, days).await;
     let fetched = fetched
         .inspect_err(|error| tracing::warn!(%error, %start, %end, "correction archive fetch failed"))
         .ok()?;
-    let run = Run { time_zone: &TimeZone::UTC, now_ms: 0, sim: SimInputs::default(), correction: None };
-    let built = forecast::build(&target.model, &fetched, OPEN_METEO, &run);
-    let built =
-        built.inspect_err(|error| tracing::warn!(%error, "correction archive series unusable")).ok()?;
-    Some(built.raw.series)
+    let run = Run {
+        time_zone: &TimeZone::UTC,
+        now_ms: 0,
+        sim: SimInputs::default(),
+        correction: None,
+        array_corrections: &[],
+    };
+    let series = |model: &ForecastConfig, data: &Irradiance| {
+        let built = forecast::build(model, data, OPEN_METEO, &run);
+        built.inspect_err(|error| tracing::warn!(%error, "correction archive series unusable")).ok()
+    };
+    let total = series(&target.model, &fetched)?.raw.series;
+    let mut arrays = Vec::with_capacity(target.strings.len());
+    for wired in &target.strings {
+        let model =
+            ForecastConfig { arrays: vec![target.model.arrays[wired.array].clone()], ..target.model.clone() };
+        let gti = fetched.gti.get(wired.array).cloned().unwrap_or_default();
+        arrays.push(series(&model, &Irradiance { gti: vec![gti], ..fetched.clone() })?.raw.series);
+    }
+    Some((total, arrays))
 }
 
 /// One learn run over the days due at the core's clock.
@@ -165,20 +250,68 @@ pub async fn learn_once(core: &Core) -> Result<Outcome, StoreError> {
         return Ok(Outcome::UpToDate);
     };
     let zone = plant_zone::plant_zone(&core.store).await?;
-    let Some(series) = modelled(core, &target, location, days, &zone).await else {
+    let Some((series, arrays)) = modelled(core, &target, location, days, &zone).await else {
         return Ok(Outcome::FetchFailed);
     };
-    let measured = measured(&core.store, target.device, &target.pv_key, &series).await?;
+    let measured = measured_hours(&core.store, target.device, &target.pv_key, &series).await?;
     let paired = observations(&series, &measured, &zone, days);
     let Some(&(through, _)) = paired.last() else { return Ok(Outcome::NoMeasuredHours) };
     let hours: Vec<Observation> = paired.into_iter().map(|(_, o)| o).collect();
     let nameplate_w = target.model.arrays.iter().map(|a| a.kwp).sum::<f64>() * 1000.0;
     let skill = state.map(|s| s.skill).unwrap_or_default();
     let fold = model.learn(skill, &hours, nameplate_w, target.model.max_output_w);
-    let state = LearnState { learned_through: through, skill: fold.skill };
-    core.store.save_correction(target.device, &model, &fold.touched, &state).await?;
+    let modelled = Modelled { total: &series, arrays: &arrays, zone: &zone, days };
+    save_with_strings(&core.store, &target, &modelled, &measured, (&model, &fold, through)).await?;
     tracing::info!(hours = hours.len(), %through, cells = fold.touched.len(), "forecast correction learned");
     Ok(Outcome::Learned { hours: hours.len(), through })
+}
+
+/// A run's modelled hours: the inverter's total and each wired array's, cut to `days` in `zone`.
+struct Modelled<'a> {
+    total: &'a [Point],
+    arrays: &'a [Vec<Point>],
+    zone: &'a TimeZone,
+    days: (Date, Date),
+}
+
+/// Folds each wired string's measured hours into its stored grid and saves them with the inverter's fold.
+async fn save_with_strings(
+    store: &Store,
+    target: &Target,
+    modelled: &Modelled<'_>,
+    total_w: &BTreeMap<i64, f64>,
+    (model, fold, through): (&CorrectionModel, &Learned, Date),
+) -> Result<(), StoreError> {
+    let state = LearnState { learned_through: through, skill: fold.skill };
+    let mut grids = store.string_corrections(target.device).await?;
+    let touched = fold_strings(store, target, modelled, total_w, &mut grids).await?;
+    let strings: Vec<StringGrid> = touched
+        .iter()
+        .filter_map(|(mppt, cells)| Some(StringGrid { mppt: *mppt, model: grids.get(mppt)?, touched: cells }))
+        .collect();
+    store.save_correction(target.device, (model, &fold.touched), &strings, &state).await
+}
+
+/// Folds each wired string's measured hours into its grid in `grids`; the cells each string wrote, by `mppt`.
+async fn fold_strings(
+    store: &Store,
+    target: &Target,
+    modelled: &Modelled<'_>,
+    total_w: &BTreeMap<i64, f64>,
+    grids: &mut BTreeMap<u32, CorrectionModel>,
+) -> Result<Vec<(u32, BTreeSet<(i8, i8)>)>, StoreError> {
+    let nameplate_w = target.model.arrays.iter().map(|a| a.kwp).sum::<f64>() * 1000.0;
+    let mut touched = Vec::with_capacity(target.strings.len());
+    for (wired, array) in target.strings.iter().zip(modelled.arrays) {
+        let string_w = measured_hours(store, target.device, &wired.key, array).await?;
+        let paired =
+            string_observations((array, modelled.total), (&string_w, total_w), modelled.zone, modelled.days);
+        let array_w = target.model.arrays[wired.array].kwp * 1000.0;
+        let grid = grids.entry(wired.mppt).or_default();
+        touched
+            .push((wired.mppt, grid.learn_string(&paired, array_w, nameplate_w, target.model.max_output_w)));
+    }
+    Ok(touched)
 }
 
 /// The UTC instant a series label (UTC) starts at.
@@ -188,7 +321,7 @@ fn slot_ms(label: &str) -> Option<i64> {
 }
 
 /// Measured hourly averages over the series, by bucket start.
-async fn measured(
+async fn measured_hours(
     store: &Store,
     device: i64,
     metric: &str,
@@ -223,27 +356,56 @@ fn window(learned_through: Option<Date>, now_ms: i64) -> Option<(Date, Date)> {
     (start <= end).then_some((start, end))
 }
 
+/// Each hour of `series` (UTC labels) on its plant-local day within `days`: its position, UTC start, plant-local
+/// day, month and hour.
+fn local_hours<'a>(
+    series: &'a [Point],
+    zone: &'a TimeZone,
+    (start, end): (Date, Date),
+) -> impl Iterator<Item = (usize, i64, Date, i8, i8)> + 'a {
+    series.iter().enumerate().filter_map(move |(i, point)| {
+        let start_ms = slot_ms(&point.time)?;
+        let local = jiff::Timestamp::from_millisecond(start_ms).ok()?.to_zoned(zone.clone());
+        (start..=end)
+            .contains(&local.date())
+            .then(|| (i, start_ms, local.date(), local.month(), local.hour()))
+    })
+}
+
 /// Each modelled hour of `series` (UTC labels) with a measured hourly average starting at the same instant,
 /// on its plant-local day within `days`.
 fn observations(
     series: &[Point],
     measured: &BTreeMap<i64, f64>,
     zone: &TimeZone,
-    (start, end): (Date, Date),
+    days: (Date, Date),
 ) -> Vec<(Date, Observation)> {
-    let mut out = Vec::new();
-    for point in series {
-        let Some(start_ms) = slot_ms(&point.time) else { continue };
-        let Some(&actual_w) = measured.get(&start_ms) else { continue };
-        let Ok(local) = jiff::Timestamp::from_millisecond(start_ms).map(|t| t.to_zoned(zone.clone())) else {
-            continue;
-        };
-        if (start..=end).contains(&local.date()) {
-            let (month, hour) = (local.month(), local.hour());
-            out.push((local.date(), Observation { month, hour, expected_w: point.watts, actual_w }));
-        }
-    }
-    out
+    local_hours(series, zone, days)
+        .filter_map(|(i, start_ms, day, month, hour)| {
+            let &actual_w = measured.get(&start_ms)?;
+            Some((day, Observation { month, hour, expected_w: series[i].watts, actual_w }))
+        })
+        .collect()
+}
+
+/// Each hour of a wired array's modelled `array` series with its string measured, beside the inverter's
+/// modelled `total` and measured total of the same instant.
+fn string_observations(
+    (array, total): (&[Point], &[Point]),
+    (string_w, total_w): (&BTreeMap<i64, f64>, &BTreeMap<i64, f64>),
+    zone: &TimeZone,
+    days: (Date, Date),
+) -> Vec<StringObservation> {
+    local_hours(array, zone, days)
+        .filter_map(|(i, start_ms, _, month, hour)| {
+            let &actual_w = string_w.get(&start_ms)?;
+            Some(StringObservation {
+                array: Observation { month, hour, expected_w: array[i].watts, actual_w },
+                inverter_expected_w: total.get(i)?.watts,
+                inverter_actual_w: total_w.get(&start_ms).copied(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -375,10 +537,10 @@ mod tests {
     fn a_run_models_only_the_arrays_wired_into_its_inverter() {
         let mut config = weather::compose(weather::PlantSettings::default(), &[], &BTreeMap::new());
         config.forecast.arrays = vec![array("2", 3.0, -90.0), array("1", 5.0, 0.0), array("1", 2.0, 90.0)];
-        let model = own_model(&config, "1");
+        let model = own_arrays(&config, "1").model();
         let own: Vec<_> = model.arrays.iter().map(|a| (a.kwp, a.azimuth)).collect();
         assert_eq!(own, [(5.0, 0.0), (2.0, 90.0)]);
-        assert_eq!(own_model(&config, "3").arrays, []);
+        assert_eq!(own_arrays(&config, "3").model().arrays, []);
     }
 
     #[test]
@@ -483,6 +645,64 @@ mod tests {
             let hours = day_cut(zone, "2026-07-19T18:00:00Z", 26, date(2026, 7, 20));
             assert_eq!(hours, (0..24).collect::<Vec<i8>>(), "{zone}");
         }
+    }
+
+    fn wired_array(mppt: Option<u32>) -> weather::PvArray {
+        weather::PvArray { mppt, ..array("1", 2.0, 0.0) }
+    }
+
+    #[test]
+    fn only_an_array_on_a_string_that_reports_power_learns_from_that_string() {
+        let arrays = [None, Some(2), Some(3), Some(1), Some(9)].map(wired_array);
+        let power = [(1, "dc.pv1.power"), (2, "dc.pv2.power")];
+        let got: Vec<_> = wired(&arrays, &power).into_iter().map(|w| (w.array, w.mppt, w.key)).collect();
+        assert_eq!(got, [(1, 2, "dc.pv2.power".to_owned()), (3, 1, "dc.pv1.power".to_owned())]);
+        assert!(wired(&arrays, &[]).is_empty(), "no string power: every array learns from the total");
+    }
+
+    #[test]
+    fn a_string_hour_pairs_with_the_inverter_total_of_the_same_instant_and_lacks_it_when_unmeasured() {
+        let array = [
+            point("2026-07-20T10:00", 2000.0),
+            point("2026-07-20T11:00", 2100.0),
+            point("2026-07-20T12:00", 2200.0),
+        ];
+        let total = [
+            point("2026-07-20T10:00", 5000.0),
+            point("2026-07-20T11:00", 5100.0),
+            point("2026-07-20T12:00", 5200.0),
+        ];
+        let string_w =
+            BTreeMap::from([(at("2026-07-20T10:00:00Z"), 1500.0), (at("2026-07-20T11:00:00Z"), 0.0)]);
+        let total_w =
+            BTreeMap::from([(at("2026-07-20T10:00:00Z"), 4000.0), (at("2026-07-20T12:00:00Z"), 4100.0)]);
+        let days = (date(2026, 7, 20), date(2026, 7, 20));
+        let hour = |hour, expected_w, actual_w| Observation { month: 7, hour, expected_w, actual_w };
+        assert_eq!(
+            string_observations((&array, &total), (&string_w, &total_w), &berlin(), days),
+            [
+                StringObservation {
+                    array: hour(12, 2000.0, 1500.0),
+                    inverter_expected_w: 5000.0,
+                    inverter_actual_w: Some(4000.0),
+                },
+                StringObservation {
+                    array: hour(13, 2100.0, 0.0),
+                    inverter_expected_w: 5100.0,
+                    inverter_actual_w: None
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn each_array_takes_the_grid_of_its_own_string_on_the_primary_inverter_only() {
+        let mut one = CorrectionModel::default();
+        one.set(7, 12, forecast::CorrectionCell { ratio: 0.8, weight: 3.0 });
+        let strings = BTreeMap::from([(1, one.clone())]);
+        let on = |slug, mppt| weather::PvArray { mppt, ..array(slug, 1.0, 0.0) };
+        let arrays = [on("1", Some(1)), on("2", Some(1)), on("1", None), on("1", Some(2))];
+        assert_eq!(string_grids(&arrays, "1", &strings), vec![Some(one), None, None, None]);
     }
 
     #[test]

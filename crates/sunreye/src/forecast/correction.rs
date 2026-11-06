@@ -67,6 +67,17 @@ pub struct Observation {
     pub actual_w: f64,
 }
 
+/// One hour of an array wired to its own MPPT string, beside its inverter's total.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StringObservation {
+    /// The array's modelled hour against the string's measured `pv.string.power`.
+    pub array: Observation,
+    /// The inverter's modelled total, W.
+    pub inverter_expected_w: f64,
+    /// The inverter's measured total, W; none without a reading.
+    pub inverter_actual_w: Option<f64>,
+}
+
 /// What one fold changed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Learned {
@@ -144,6 +155,25 @@ impl CorrectionModel {
             learned.touched.insert((obs.month, obs.hour));
         }
         learned
+    }
+
+    /// Folds a string's hours against its array's nameplate, skipping every hour the inverter is likely
+    /// curtailed in: a curtailed inverter holds each string below its maximum power point. Returns the cells
+    /// written; the string keeps no skill.
+    pub fn learn_string(
+        &mut self,
+        observations: &[StringObservation],
+        array_nameplate_w: f64,
+        inverter_nameplate_w: f64,
+        export_cap_w: Option<f64>,
+    ) -> BTreeSet<(i8, i8)> {
+        let ceiling = (inverter_nameplate_w * SATURATION_FRAC).min(export_cap_w.unwrap_or(f64::INFINITY));
+        let fit: Vec<Observation> = observations
+            .iter()
+            .filter(|o| o.inverter_expected_w < ceiling && o.inverter_actual_w.is_none_or(|w| w < ceiling))
+            .map(|o| o.array)
+            .collect();
+        self.learn(Skill::default(), &fit, array_nameplate_w, None).touched
     }
 
     fn slot(&mut self, month: i8, hour: i8) -> Option<&mut Option<CorrectionCell>> {

@@ -21,6 +21,7 @@ pub(crate) mod tiers;
 mod time_zone;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
+pub use self::correction::StringGrid;
 pub(crate) use self::forecast::{replace_device_pv, save_plant};
 pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
 pub(crate) use self::roster::{insert_connection, insert_device};
