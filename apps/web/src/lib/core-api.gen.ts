@@ -540,6 +540,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/mqtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readMqtt"];
+        /** A patch: absent keeps the stored value, `null` clears a nullable one. The export restarts on it. */
+        put: operations["saveMqtt"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/profile-sources": {
         parameters: {
             query?: never;
@@ -1152,6 +1169,31 @@ export interface components {
             /** Format: int64 */
             timeoutMs?: number;
             transport?: components["schemas"]["Transport"];
+        };
+        /** @description A `PUT /api/settings/mqtt` body: absent keeps the stored value, `null` clears a nullable one. */
+        MqttPatch: {
+            brokerUrl?: string | null;
+            clientId?: string | null;
+            enabled?: boolean | null;
+            haDiscoveryEnabled?: boolean | null;
+            haDiscoveryPrefix?: string | null;
+            /** @description Write-only. */
+            password?: string | null;
+            plantSlug?: string | null;
+            topicPrefix?: string | null;
+            username?: string | null;
+        };
+        /** @description The settings as read: the password only as whether one is set. */
+        MqttView: {
+            brokerUrl: string;
+            clientId: string | null;
+            enabled: boolean;
+            haDiscoveryEnabled: boolean;
+            haDiscoveryPrefix: string;
+            passwordSet: boolean;
+            plantSlug: string;
+            topicPrefix: string;
+            username: string | null;
         };
         NewApiKeyRequest: {
             name: string;
@@ -3514,6 +3556,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Kiosk"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    readMqtt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MqttView"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    saveMqtt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MqttPatch"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MqttView"];
                 };
             };
             400: {

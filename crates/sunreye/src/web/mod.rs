@@ -10,6 +10,7 @@ mod history;
 mod import;
 mod inverter;
 mod kiosk;
+mod mqtt;
 mod origin;
 mod password;
 mod plant;
@@ -141,6 +142,7 @@ fn plant_settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(forecast::read, forecast::save))
         .routes(routes!(forecast::providers))
         .routes(routes!(time_zone::read, time_zone::save))
+        .routes(routes!(mqtt::read, mqtt::save))
 }
 
 fn roster() -> OpenApiRouter<Arc<Core>> {

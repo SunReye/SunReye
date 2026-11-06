@@ -136,6 +136,7 @@ pub struct InverterCapabilities {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "camelCase")]
 pub struct ManifestMetric {
     pub key: String,
