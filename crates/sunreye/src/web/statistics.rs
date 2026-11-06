@@ -12,11 +12,10 @@ use serde::Deserialize;
 use super::history::{Source, source};
 use super::rollup::{instant, non_empty};
 use super::{ApiError, ApiQuery, ErrorBody};
-use crate::plant::{self, Aggregate};
 use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
-use crate::statistics::{self, Cut, Period, PeriodEnergy, Roles, Source as Counter, View};
+use crate::statistics::{self, Cut, Period, PeriodEnergy, Rises, Roles, Source as Counter, View};
 use crate::store::{BucketWindow, StoreError};
 
 /// Most rollup buckets one counter read takes: five years of hours fit, as `limit` caps a history read.
@@ -110,24 +109,22 @@ struct Read<'a> {
 }
 
 impl Read<'_> {
-    /// The rise of one counter in each bucket of the window: the members' buckets summed per start, the
-    /// way a plant's counter level is, chained from the last bucket before the window.
-    async fn rises(&self, counter: &Counter) -> Result<Vec<(Timestamp, f64)>, StoreError> {
+    /// The rise of one counter in each bucket of the window, per member, each chained from that member's
+    /// last bucket before the window: a member joining, falling silent or restarting books only its own.
+    async fn rises(&self, counter: &Counter) -> Result<Vec<Rises>, StoreError> {
         let tier = tier(self.view);
         let window = BucketWindow {
             from: self.from,
             to: self.to,
             limit: MAX_BUCKETS.unsigned_abs().try_into().unwrap_or(u32::MAX),
         };
-        let (mut before, mut within) = (Vec::new(), Vec::new());
+        let mut rises = Vec::with_capacity(self.members.len());
         for device in self.members {
-            let last = self.core.store.bucket_before(tier, *device, &counter.key, self.from).await?;
-            before.push(last.into_iter().collect());
-            within.push(self.core.store.buckets_between(tier, *device, &counter.key, window).await?);
+            let before = self.core.store.bucket_before(tier, *device, &counter.key, self.from).await?;
+            let within = self.core.store.buckets_between(tier, *device, &counter.key, window).await?;
+            rises.push(statistics::rises(counter, self.view, self.zone, before.as_ref(), &within));
         }
-        let before = plant::fold_buckets(before, Aggregate::Sum).pop();
-        let within = plant::fold_buckets(within, Aggregate::Sum);
-        Ok(statistics::rises(counter, self.view, self.zone, before.as_ref(), &within))
+        Ok(rises)
     }
 }
 
@@ -159,7 +156,7 @@ pub async fn energy_series(
     let read = Read { core: &core, members: &members, zone: &zone, view, from, to };
     let mut rises = Vec::new();
     for counter in statistics::sources(&roles, view) {
-        rises.push((counter.field, read.rises(&counter).await?));
+        rises.extend(read.rises(&counter).await?.into_iter().map(|member| (counter.field, member)));
     }
     let buckets = statistics::totals_by_bucket(rises);
     let cut = Cut { period, zone: &zone, from, to };

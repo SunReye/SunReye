@@ -158,6 +158,74 @@ async fn the_plant_sums_its_members_and_a_retired_member_keeps_its_history() {
     finish(core, admin).await;
 }
 
+/// A member reading lifetime production at noon UTC on the given days.
+async fn member(core: &Core, host: &str, noon: &[(&str, f64)]) -> i64 {
+    let device = add_device(core, host).await;
+    let readings: Vec<_> = noon.iter().map(|(date, kwh)| (format!("{date}T12:00:00Z"), *kwh)).collect();
+    let readings: Vec<_> = readings.iter().map(|(at, kwh)| (at.as_str(), *kwh)).collect();
+    store(core, device, &series(TOTAL_PRODUCTION, &readings)).await;
+    device
+}
+
+const WINTER: &str = "from=2025-12-31T23:00:00Z&to=2026-02-28T23:00:00Z&bucket=month&source=plant";
+
+#[tokio::test]
+async fn a_member_joining_inside_the_window_books_only_its_own_rises() {
+    let (core, admin) = clocked("energy-plant-joins").await;
+    berlin(&core).await;
+    lifetime(&core, "10.0.0.5", 100.0).await;
+    member(&core, "10.0.0.6", &[("2026-02-01", 5000.0), ("2026-02-02", 5001.0)]).await;
+    // The first: 10 in January, 20 in February; the second: nothing on its first day, 1 on the 2nd.
+    assert_eq!(
+        figures(&energy(&admin, WINTER).await),
+        [day("2026-01", 10.0, 0.0), day("2026-02", 21.0, 0.0)]
+    );
+    finish(core, admin).await;
+}
+
+#[tokio::test]
+async fn a_member_that_stops_reading_lends_no_base_to_another() {
+    let (core, admin) = clocked("energy-plant-stops").await;
+    berlin(&core).await;
+    member(&core, "10.0.0.5", &[("2026-01-01", 100.0), ("2026-01-02", 110.0)]).await;
+    member(&core, "10.0.0.6", &[("2025-12-31", 50.0)]).await;
+    let window = "from=2025-11-30T23:00:00Z&to=2026-01-31T23:00:00Z&bucket=month&source=plant";
+    // The second's one reading and the first's first have no predecessor of their own; then 10.
+    assert_eq!(figures(&energy(&admin, window).await), [day("2025-12", 0.0, 0.0), day("2026-01", 10.0, 0.0)]);
+    finish(core, admin).await;
+}
+
+#[tokio::test]
+async fn a_members_counter_restart_hides_no_other_members_rise() {
+    let (core, admin) = clocked("energy-plant-restart").await;
+    berlin(&core).await;
+    let days = ["2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13"];
+    let restarts: Vec<_> = days.into_iter().zip([100.0, 110.0, 2.0, 7.0]).collect();
+    let steady: Vec<_> = days.into_iter().zip([1000.0, 1001.0, 1002.0, 1003.0]).collect();
+    member(&core, "10.0.0.5", &restarts).await;
+    member(&core, "10.0.0.6", &steady).await;
+    // The restarting member: 10 on the 11th, nothing on the 12th, 5 on the 13th; the steady one 1 a day.
+    assert_eq!(figures(&energy(&admin, WINTER).await), [day("2026-01", 18.0, 0.0), day("2026-02", 0.0, 0.0)]);
+    finish(core, admin).await;
+}
+
+#[tokio::test]
+async fn a_member_retired_inside_the_window_keeps_the_rest_of_the_plant_whole() {
+    let (core, admin) = clocked("energy-plant-retired-within").await;
+    berlin(&core).await;
+    lifetime(&core, "10.0.0.5", 100.0).await;
+    let retired = member(&core, "10.0.0.6", &[("2026-01-30", 50.0), ("2026-01-31", 60.0)]).await;
+    let retire =
+        DeviceEdit { retired_at: Some(Some("2026-02-01T00:00:00Z".into())), ..DeviceEdit::default() };
+    assert!(core.store.edit_device(retired, &retire).await.expect("retire"));
+    // January: 10 from each; February: the first's 15 and 5.
+    assert_eq!(
+        figures(&energy(&admin, WINTER).await),
+        [day("2026-01", 20.0, 0.0), day("2026-02", 20.0, 0.0)]
+    );
+    finish(core, admin).await;
+}
+
 #[tokio::test]
 async fn an_unknown_device_and_an_empty_window_answer_what_they_hold() {
     let (core, admin) = clocked("energy-empty").await;
