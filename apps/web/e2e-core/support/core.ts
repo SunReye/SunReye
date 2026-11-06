@@ -69,3 +69,56 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(heading(page)).toHaveText("Overview");
 }
+
+/** The core refuses a write without its own origin. */
+export const originOf = (page: Page) => ({ origin: new URL(page.url()).origin });
+
+/**
+ * Points the first device at `sims[0]`, adds a second named `name` on `sims[1]`, and returns the second's
+ * slug. The signed-in `page` is the admin.
+ */
+export async function twoDevices(
+  page: Page,
+  sims: { port: number }[],
+  name: string,
+): Promise<string> {
+  const headers = originOf(page);
+  const inverter = await (await page.request.get("/api/settings/inverter")).json();
+  const pointed = await page.request.put("/api/settings/inverter", {
+    data: { ...inverter, port: sims[0]!.port },
+    headers,
+  });
+  expect(pointed.status()).toBe(200);
+  const added = await page.request.post("/api/devices", {
+    headers,
+    data: {
+      connection: {
+        create: {
+          name: "Second",
+          kind: "modbus",
+          params: { host: "127.0.0.1", port: sims[1]!.port },
+        },
+      },
+      role: "inverter",
+      name,
+      profileId: PROFILE,
+      unitId: 1,
+    },
+  });
+  expect(added.status()).toBe(200);
+  return (await added.json()).slug;
+}
+
+/** Retires the device named `name` if it is in service, as `afterAll` does when a journey broke first. */
+export async function retireDevice(page: Page, name: string): Promise<void> {
+  const roster = await (await page.request.get("/api/devices")).json();
+  const added = roster.devices.find(
+    (d: { name: string; retiredAt?: string | null }) => d.name === name && !d.retiredAt,
+  );
+  if (added) {
+    await page.request.patch(`/api/devices/${added.id}`, {
+      data: { retired: true },
+      headers: originOf(page),
+    });
+  }
+}

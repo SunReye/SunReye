@@ -26,7 +26,7 @@ fn fixed_clock() -> i64 {
     NOW
 }
 
-async fn add_device(core: &Core, host: &str) -> i64 {
+pub(super) async fn add_device(core: &Core, host: &str) -> i64 {
     let connection =
         NewConnection { transport: Transport::Tcp, host: host.into(), port: 502, logger_serial: None };
     let connection = core.store.add_connection(&connection).await.expect("connection");
@@ -35,7 +35,7 @@ async fn add_device(core: &Core, host: &str) -> i64 {
 }
 
 /// Stores one reading per `(at_ms, metric, value)`, a minute at a time as the poller closes them.
-async fn store(core: &Core, device: i64, readings: &[(i64, &str, f64)]) {
+pub(super) async fn store(core: &Core, device: i64, readings: &[(i64, &str, f64)]) {
     let mut minutes: BTreeMap<i64, Instants> = BTreeMap::new();
     for (at_ms, key, value) in readings {
         let minute = minutes.entry(minute_of(*at_ms)).or_default();
@@ -47,12 +47,12 @@ async fn store(core: &Core, device: i64, readings: &[(i64, &str, f64)]) {
     }
 }
 
-async fn clocked(name: &str) -> (Arc<Core>, Api) {
+pub(super) async fn clocked(name: &str) -> (Arc<Core>, Api) {
     let core = Core::open_at(&dir(name), fixed_clock).await.expect("core");
     signed_in(core, &Config::default()).await
 }
 
-async fn finish(core: Arc<Core>, api: Api) {
+pub(super) async fn finish(core: Arc<Core>, api: Api) {
     drop(api);
     core.stop().await;
 }

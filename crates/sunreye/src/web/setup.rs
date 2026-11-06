@@ -45,19 +45,22 @@ pub struct Capabilities {
     pub integrations: bool,
     /// An inverter's PV arrays and battery pack, kept per device.
     pub pv_and_battery: bool,
+    /// Spot prices, tariffs and what they make of the energy: costs, records and amortisation.
+    pub prices_and_costs: bool,
 }
 
 impl Capabilities {
     /// Monitoring only (ADR 0005): nothing writes, and nothing here restarts the core.
     pub const SERVED: Self = Self {
         history: true,
-        statistics: false,
+        statistics: true,
         controls: false,
         automations: false,
         restart: false,
         profile_sources: true,
         integrations: false,
         pv_and_battery: false,
+        prices_and_costs: false,
     };
 }
 

@@ -253,6 +253,23 @@ export interface paths {
         patch: operations["patchDevice"];
         trace?: never;
     };
+    "/api/energy/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Energy per period of the window, oldest first, zero-filled; the periods are the plant time zone's. */
+        get: operations["energySeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/forecast": {
         parameters: {
             query?: never;
@@ -692,6 +709,8 @@ export interface components {
             history: boolean;
             /** @description Coded integrations and the MQTT connections they run over. */
             integrations: boolean;
+            /** @description Spot prices, tariffs and what they make of the energy: costs, records and amortisation. */
+            pricesAndCosts: boolean;
             profileSources: boolean;
             /** @description An inverter's PV arrays and battery pack, kept per device. */
             pvAndBattery: boolean;
@@ -1080,6 +1099,48 @@ export interface components {
             energyKwh: number;
             /** Format: double */
             maxPowerW: number;
+        };
+        /** @description One period's energy and the splits derived from it. */
+        PeriodEnergy: {
+            /** Format: double */
+            batteryChargeKwh: number;
+            /** Format: double */
+            batteryDischargeKwh: number;
+            /** Format: double */
+            batteryToLoadKwh: number;
+            /** @description Plant-local key: `YYYY-MM-DDTHH`, `YYYY-MM-DD`, `YYYY-MM` or `YYYY`. */
+            bucket: string;
+            /** Format: double */
+            exportKwh: number;
+            /** Format: double */
+            exportedKwh: number;
+            /** Format: double */
+            gridToLoadKwh: number;
+            /** Format: double */
+            importKwh: number;
+            /** Format: double */
+            loadKwh: number;
+            /** Format: double */
+            productionKwh: number;
+            /**
+             * Format: double
+             * @description Production used on site: production less export, never below zero.
+             */
+            selfConsumedKwh: number;
+            /**
+             * Format: double
+             * @description Self-consumed over production, 0..1; null without production.
+             */
+            selfConsumption: number | null;
+            /**
+             * Format: double
+             * @description Solar to load over load, 0..1; null without load.
+             */
+            selfSufficiency: number | null;
+            /** Format: double */
+            solarDirectToLoadKwh: number;
+            /** Format: double */
+            solarToLoadKwh: number;
         };
         PlantSource: {
             /** @description The `plant` source's history members by slug; empty when nothing can be summed. */
@@ -2485,6 +2546,67 @@ export interface operations {
                 };
             };
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    energySeries: {
+        parameters: {
+            query: {
+                /** @description Start of the window, RFC 3339, inclusive. */
+                from: string;
+                /** @description End of the window, RFC 3339, exclusive. */
+                to: string;
+                bucket: "hour" | "day" | "month" | "year";
+                /** @description `plant`, or a device's decimal id, retired or not. Without it, the first device in service. */
+                source?: string;
+                /** @description As `source`, which wins when both are set. */
+                inverterId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeriodEnergy"][];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

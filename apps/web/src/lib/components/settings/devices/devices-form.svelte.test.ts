@@ -25,13 +25,14 @@ const { default: DevicesForm } = await import("./devices-form.svelte");
 /** What the core reports: no integrations, no per-device PV arrays or pack. */
 const CORE = {
   history: true,
-  statistics: false,
+  statistics: true,
   controls: false,
   automations: false,
   restart: false,
   profileSources: true,
   integrations: false,
   pvAndBattery: false,
+  pricesAndCosts: false,
 };
 
 const connection = (id: number, name: string, port: number): Connection => ({

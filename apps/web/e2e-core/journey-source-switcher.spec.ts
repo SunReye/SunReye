@@ -13,12 +13,14 @@
 import type { ChildProcess } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import {
-  PROFILE,
   heading,
   oracleReadings,
+  originOf,
   powerFlow,
+  retireDevice,
   signIn,
   startSimulator,
+  twoDevices,
 } from "./support/core";
 
 const DEVICE = "West roof";
@@ -34,57 +36,21 @@ test.beforeAll(async () => {
   sims = [await startSimulator(), await startSimulator()];
 });
 
-/** The core refuses a write without its own origin. */
-const originOf = (page: Page) => ({ origin: new URL(page.url()).origin });
-
 test.afterAll(async ({ browser }, testInfo) => {
   sims.forEach((s) => s.child.kill());
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
   const page = await context.newPage();
   await signIn(page);
-  const headers = originOf(page);
   try {
-    await page.request.put("/api/settings/kiosk", { data: { enabled: false }, headers });
-    const roster = await (await page.request.get("/api/devices")).json();
-    const added = roster.devices.find(
-      (d: { name: string; retiredAt?: string | null }) => d.name === DEVICE && !d.retiredAt,
-    );
-    if (added) {
-      await page.request.patch(`/api/devices/${added.id}`, { data: { retired: true }, headers });
-    }
+    await page.request.put("/api/settings/kiosk", {
+      data: { enabled: false },
+      headers: originOf(page),
+    });
+    await retireDevice(page, DEVICE);
   } finally {
     await context.close();
   }
 });
-
-/** Points the first device at one simulator and adds the second on the other. Returns the second's slug. */
-async function twoDevices(page: Page): Promise<string> {
-  const headers = originOf(page);
-  const inverter = await (await page.request.get("/api/settings/inverter")).json();
-  const pointed = await page.request.put("/api/settings/inverter", {
-    data: { ...inverter, port: sims[0]!.port },
-    headers,
-  });
-  expect(pointed.status()).toBe(200);
-  const added = await page.request.post("/api/devices", {
-    headers,
-    data: {
-      connection: {
-        create: {
-          name: "Second",
-          kind: "modbus",
-          params: { host: "127.0.0.1", port: sims[1]!.port },
-        },
-      },
-      role: "inverter",
-      name: DEVICE,
-      profileId: PROFILE,
-      unitId: 1,
-    },
-  });
-  expect(added.status()).toBe(200);
-  return (await added.json()).slug;
-}
 
 /** The `source` of every history read the page makes, in order. */
 function historySources(page: Page): string[] {
@@ -142,7 +108,7 @@ test("the menu switches the dashboard between the plant and a device, and a save
   page,
 }) => {
   await signIn(page);
-  const slug = await twoDevices(page);
+  const slug = await twoDevices(page, sims, DEVICE);
   const sources = historySources(page);
   const recents = recentReads(page);
   await page.goto("/#/");

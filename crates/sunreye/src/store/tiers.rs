@@ -96,6 +96,30 @@ impl Store {
         Ok(buckets)
     }
 
+    /// The newest stored `tier` bucket of `metric` on the device that starts before `before`: the bucket a
+    /// counter's first rise in a window chains from. An unstored open bucket is never one.
+    pub async fn bucket_before(
+        &self,
+        tier: Tier,
+        device_id: i64,
+        metric: &str,
+        before: Timestamp,
+    ) -> Result<Option<Bucket>, StoreError> {
+        let (tier, before) = (code(tier), before.as_microsecond());
+        let row = sqlx::query!(
+            r#"SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
+               WHERE tier = ? AND device_id = ? AND metric.key = ? AND start_us < ?
+               ORDER BY start_us DESC LIMIT 1"#,
+            tier,
+            device_id,
+            metric,
+            before
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|row| bucket(row.start_us, row.avg, row.max, row.min)).transpose()
+    }
+
     /// Drops every `tier` bucket that ended at or before `ended_by`, for every device; returns how many.
     /// Deletes in batches and frees the connection between them, so a poll waits for one batch only.
     pub async fn drop_buckets(&self, tier: Tier, ended_by: Timestamp) -> Result<u64, StoreError> {
@@ -415,6 +439,60 @@ async fn append(
     Ok(())
 }
 
+/// A counter's stored buckets, for a read test that needs years of them: bucket `i` holds the rise
+/// `step` from `min = (i % resets_every) * step`.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CounterFill {
+    pub tier: Tier,
+    pub from: Timestamp,
+    pub count: i64,
+    pub step: f64,
+    pub resets_every: i64,
+}
+
+#[cfg(test)]
+impl Store {
+    pub(crate) async fn fill_counter(&self, device_id: i64, metric: &str, fill: CounterFill) {
+        sqlx::query("INSERT OR IGNORE INTO metric (key) VALUES (?)")
+            .bind(metric)
+            .execute(&self.pool)
+            .await
+            .expect("metric");
+        let width = fill.tier.width_us();
+        sqlx::query(
+            "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i + 1 < ?)
+             INSERT INTO rollup (tier, start_us, device_id, metric_id, avg, max, min, first_us, first, last_us, last, weighted)
+             SELECT ?, ? + i * ?, ?, metric.id, (i % ? + 1) * ?, (i % ? + 1) * ?, (i % ?) * ?,
+                    ? + i * ?, (i % ?) * ?, ? + i * ?, (i % ? + 1) * ?, 0
+             FROM n, metric WHERE metric.key = ?",
+        )
+        .bind(fill.count)
+        .bind(code(fill.tier))
+        .bind(fill.from.as_microsecond())
+        .bind(width)
+        .bind(device_id)
+        .bind(fill.resets_every)
+        .bind(fill.step)
+        .bind(fill.resets_every)
+        .bind(fill.step)
+        .bind(fill.resets_every)
+        .bind(fill.step)
+        .bind(fill.from.as_microsecond())
+        .bind(width)
+        .bind(fill.resets_every)
+        .bind(fill.step)
+        .bind(fill.from.as_microsecond())
+        .bind(width)
+        .bind(fill.resets_every)
+        .bind(fill.step)
+        .bind(metric)
+        .execute(&self.pool)
+        .await
+        .expect("fill");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,6 +610,12 @@ mod tests {
             (
                 "SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
                  WHERE tier = ? AND device_id = ? AND metric.key = ? ORDER BY start_us",
+                device_metric,
+            ),
+            (
+                "SELECT start_us, avg, max, min FROM rollup JOIN metric ON metric.id = rollup.metric_id
+                 WHERE tier = ? AND device_id = ? AND metric.key = ? AND start_us < ?
+                 ORDER BY start_us DESC LIMIT 1",
                 device_metric,
             ),
             (
@@ -720,6 +804,23 @@ mod tests {
         append(&store, device, &[("2026-05-10T13:05:00Z", 2.0)]).await;
         assert_eq!(power(&store, Tier::Hour, device).await, [bucket("2026-05-10T12:00:00Z", 4.4, 6.0, 2.0)]);
         assert_eq!(power(&store, Tier::Day, device).await, []);
+    }
+
+    #[tokio::test]
+    async fn the_bucket_before_an_instant_is_the_newest_that_starts_strictly_earlier() {
+        let (store, device) = with_device().await;
+        append(&store, device, &[("2026-05-10T10:10:00Z", 1.0)]).await;
+        append(&store, device, &[("2026-05-10T12:10:00Z", 6.0)]).await;
+        append(&store, device, &[("2026-05-10T14:10:00Z", 3.0)]).await;
+        let before = |instant: &str| store.bucket_before(Tier::Hour, device, "power", at(instant));
+        assert_eq!(before("2026-05-10T10:00:00Z").await.expect("read"), None);
+        let ten = Some(bucket("2026-05-10T10:00:00Z", 1.0, 1.0, 1.0));
+        assert_eq!(before("2026-05-10T10:00:00.001Z").await.expect("read"), ten);
+        assert_eq!(before("2026-05-10T12:00:00Z").await.expect("read"), ten);
+        let twelve = before("2026-05-10T13:00:00Z").await.expect("read").map(|b| b.start);
+        assert_eq!(twelve, Some(at("2026-05-10T12:00:00Z")));
+        let day = store.bucket_before(Tier::Day, device, "power", at("2026-05-11T00:00:00Z")).await;
+        assert_eq!(day.expect("read"), None, "the day is not stored until the next one starts");
     }
 
     #[tokio::test]

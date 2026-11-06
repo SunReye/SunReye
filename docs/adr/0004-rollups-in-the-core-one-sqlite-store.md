@@ -30,8 +30,9 @@ One SQLite database file per install (`sqlx` with its SQLite driver), in WAL mod
   A read rolls up the open hour and day, not stored yet, from the readings.
 - Rollup buckets are UTC: a day bucket sits at `00:00Z` on both DST days, as 2.x's `daily_rollups`, which
   carry no zone (`fixtures/oracle/README.md` §3).
-- The plant time zone enters only when statistics cut days, months and years from hourly rollups. Counter
-  deltas, with restart and midnight handling, are computed there, when statistics are read (#316).
+- The plant time zone enters only when statistics cut periods: days from hourly rollups, months and years
+  from daily ones as 2.x does (a UTC day belongs to the month its start falls in). Counter deltas, with
+  restart and midnight handling, are computed there, when statistics are read (#316).
 - Plant days cut from UTC hours are exact only for whole-hour offsets; 2.x has the same limit.
 - Plain SQL through `sqlx`, no ORM. Queries use `query!` / `query_as!`, checked against the schema at
   compile time from the committed `.sqlx` cache; `scripts/ci` runs `cargo sqlx prepare --check`.

@@ -23,6 +23,7 @@ import { payloadOrNull } from "$lib/api-payload";
 import { specQuery, type ChartSpec, type CostBucket, type CostRange } from "$lib/cost/ranges";
 import type { SourceId } from "$lib/source";
 import { pricedWindow, usableComparison } from "./compare";
+import { energyBreakdown } from "./window-energy";
 import type { MonthlyValue } from "./yoy";
 
 /** An Eden answer, as far as this module reads one. */
@@ -63,9 +64,9 @@ export interface StatisticsRead<T> {
   subscribe(onValue: (value: T) => void): () => void;
 }
 
+type ComparisonPair = { current: CostBreakdown | null; previous: CostBreakdown | null };
 type CostSeries = { points: CostSeriesPoint[]; bucket: CostBucket };
 type EnergySeries = { periods: PeriodEnergy[]; bucket: CostBucket };
-type ComparisonPair = { current: CostBreakdown | null; previous: CostBreakdown | null };
 type YoySeries = { net: MonthlyValue[]; production: MonthlyValue[] };
 
 /** An answer, and whether the server gave it cleanly (only those are kept). */
@@ -198,10 +199,27 @@ export function statisticsQuery(deps: StatisticsQueryDeps) {
         channels: ["revision"],
         query,
         // Also drops a reference window that predates recorded history, so a
-        // first-month household never reads a fake −100%.
+        // first-month household never reads a fake -100%.
         fetch: one(
           () => api.comparison(query),
           (data) => usableComparison(payloadOrNull<ComparisonResponse>(data)),
+        ),
+      });
+    },
+
+    /** The picked window's energy, summed from the series that covers it: no tariff, no reference. */
+    windowEnergy(range: CostRange): StatisticsRead<ComparisonPair> {
+      const query = { ...specQuery(range.detail), ...source.query };
+      return read({
+        id: "windowEnergy",
+        channels: ["revision"],
+        query,
+        fetch: one(
+          () => api.energySeries(query),
+          (data) => ({
+            current: energyBreakdown((data ?? []) as PeriodEnergy[], range),
+            previous: null,
+          }),
         ),
       });
     },

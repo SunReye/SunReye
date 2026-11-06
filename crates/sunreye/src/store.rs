@@ -23,6 +23,8 @@ mod time_zone;
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
 pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
 pub use self::tiers::BucketWindow;
+#[cfg(test)]
+pub(crate) use self::tiers::CounterFill;
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};

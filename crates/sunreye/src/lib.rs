@@ -21,6 +21,7 @@ pub mod samples;
 pub mod settings;
 pub mod solar;
 pub mod sources;
+pub mod statistics;
 pub mod store;
 #[cfg(test)]
 mod test_net;

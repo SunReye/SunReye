@@ -16,6 +16,7 @@ mod profile_sources;
 mod reachability;
 mod rollup;
 mod setup;
+mod statistics;
 mod time_zone;
 mod users;
 mod v1;
@@ -98,6 +99,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
 fn signed_in() -> OpenApiRouter<Arc<Core>> {
     OpenApiRouter::new()
         .routes(routes!(auth::current, auth::logout))
+        .routes(routes!(statistics::energy_series))
         .routes(routes!(forecast::raw))
         .routes(routes!(forecast::usable))
         .routes(routes!(forecast::correction))

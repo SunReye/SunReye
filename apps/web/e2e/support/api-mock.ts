@@ -158,6 +158,12 @@ export interface BackendOptions {
    * disappears.
    */
   prices?: "view" | null;
+  /**
+   * The core's `pricesAndCosts` capability. Default `true`: the fake stands for a core with price
+   * support, so the cost, price, record and amortisation sections stay covered. `false` is the core
+   * as shipped, which serves the energy section alone.
+   */
+  pricesAndCosts?: boolean;
   /** `evcc` topic payload. `null` is ingest disabled — the EV card self-hides. */
   evcc?: "state" | null;
   /**
@@ -750,6 +756,7 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         profileSources: true,
         integrations: true,
         pvAndBattery: true,
+        pricesAndCosts: options.pricesAndCosts ?? true,
       });
     }
     if (at("kiosk")) return json(route, { enabled: options.kiosk ?? false });
