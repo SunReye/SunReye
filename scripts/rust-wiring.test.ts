@@ -76,8 +76,8 @@ describe("scripts/ci", () => {
       /\bcargo (llvm-cov|test|nextest)\b/.test(l) ||
       /\bbun run (test|test:rust|test:coverage:rust)(\s|$)/.test(l);
     expect(ciCommands.filter(runsRustTests)).toEqual([
-      expect.stringContaining("bun run test:coverage:rust"),
       expect.stringContaining("bun run test:rust"),
+      expect.stringContaining("bun run test:coverage:rust"),
     ]);
     expect(readFileSync("scripts/rust-gate", "utf8")).not.toMatch(
       /\bcargo (llvm-cov|test|nextest)\b/,

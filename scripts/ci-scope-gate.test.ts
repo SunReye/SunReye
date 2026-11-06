@@ -118,7 +118,17 @@ describe("scripts/ci", () => {
     expect(commands.join("\n")).not.toMatch(/target-gate|setup-targets|android/i);
   });
 
-  test("the per-PR checks sit under the per-PR switch, the train-only checks under the train switch", () => {
+  /** The `train-*` step functions: the checks that run once per train, each in a lane with its own log. */
+  const trainSteps = () => {
+    const all = ci.split("\n");
+    const first = all.findIndex((l) => l.startsWith("train-coverage() {"));
+    const last = all.findIndex((l) => l.startsWith("train-e2e-core() {"));
+    expect(first, "train-coverage").toBeGreaterThan(-1);
+    expect(last, "train-e2e-core").toBeGreaterThan(first);
+    return all.slice(first, all.indexOf("}", last) + 1).join("\n");
+  };
+
+  test("the per-PR checks sit under the per-PR switch, the train-only checks in the train steps", () => {
     const pr = blocks("if ((pr)); then");
     for (const check of [
       "require-tests",
@@ -129,16 +139,29 @@ describe("scripts/ci", () => {
     ]) {
       expect(pr, check).toContain(check);
     }
-    const train = blocks("if ((train)); then") + blocks("if ((train || e2e)); then");
+    const train = trainSteps();
     for (const check of ["test:coverage", "test:floor", "test:budgets", "bun run e2e"]) {
       expect(train, check).toContain(check);
     }
     expect(pr).not.toMatch(/test:coverage|test:floor|test:budgets|bun run e2e/);
   });
 
+  test("the train steps run as two lanes: budgets alone, the coverage steps before the browser suite", () => {
+    const scheduling = blocks("if ((train || e2e)); then");
+    expect(scheduling).toContain('lane_budgets="train-budgets"');
+    expect(scheduling).toContain('lane_main="train-coverage"');
+    const main = [" train-rust-coverage", " train-e2e", " train-e2e-core"].map((step) =>
+      scheduling.indexOf(`lane_main+="${step}"`),
+    );
+    expect(main.every((at) => at > 0)).toBe(true);
+    expect(main).toEqual([...main].sort((a, b) => a - b));
+    expect(scheduling).toContain('parallel_lanes "$step_logs" "$lane_budgets" "$lane_main"');
+  });
+
   test("plain tests run only without coverage: coverage replaces them, never repeats them", () => {
-    expect(blocks("if ((train)); then")).toContain("bun run test:coverage");
-    expect(lines).toContain("elif ((pr)); then");
+    expect(trainSteps()).toContain("bun run test:coverage");
+    expect(lines).toContain("if ((!train && pr)); then");
+    expect(lines).toContain("if ((!train)); then");
     const plain = commands.filter((l) => /\btest:(unit|rust)\b/.test(l));
     expect(plain).toHaveLength(2);
   });

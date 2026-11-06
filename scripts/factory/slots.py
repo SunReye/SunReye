@@ -100,6 +100,19 @@ def run_commands(cfg, phase, path):
         subprocess.run(command, cwd=path, check=True)
 
 
+def tree_config(cfg, path):
+    """cfg with `commands` read from the tree at path, the merged result a train gate verifies; a tree
+    without that file or key keeps cfg's. The dispatcher checkout may be a landing behind."""
+    file = Path(path) / "scripts" / "factory" / "config.json"
+    if not file.exists():
+        return cfg
+    try:
+        commands = json.loads(file.read_text()).get("commands")
+    except (json.JSONDecodeError, AttributeError) as err:
+        raise SystemExit(f"{file}: not a JSON object ({err})") from None
+    return {**cfg, "commands": commands} if commands else cfg
+
+
 def gate_files(slot):
     logs = main_root() / ".factory" / "logs"
     return {name: logs / f"gate-{slot}.{name}" for name in ("log", "exit", "pid")}
@@ -186,36 +199,49 @@ def reusable_record(cfg, path, sha, dirty):
     return next((r for r in candidates if r["base_tip"] == tip), None)
 
 
-def run_gate(cfg, path, train=False):
-    """Run steps in order, stop at the first failure, record the result for HEAD; returns the exit code.
+def run_gate(cfg, path, train=False, log=None):
+    """The gate's exit code; see gate_outcome."""
+    return gate_outcome(cfg, path, train, log)[0]
+
+
+def gate_outcome(cfg, path, train=False, log=None):
+    """Run steps in order, stop at the first failure, record the result for HEAD; returns (exit code, steps).
 
     A train gate on a tree a reusable record covers runs only the train steps.
-    A tree that was dirty or moved during the run proves nothing about a SHA: no record."""
-    before = tree_state(path)
-    reused = reusable_record(cfg, path, *before) if train else None
-    if reused:
-        commands = phase_commands(cfg, "train_gate")
-        print(f"train gate: reusing green gate record {reused['sha']} (same tree, same {cfg['base']} tip): "
-              "running train_gate only", file=sys.stderr)
-    else:
-        commands = gate_steps(cfg, train)
-    steps, code = [], 0
-    for command in commands:
-        began = time.monotonic()
-        code = subprocess.run(command, cwd=path).returncode
-        steps.append({"command": shlex.join(command), "ok": code == 0,
-                      "seconds": round(time.monotonic() - began, 1)})
-        if code:
-            break
-    if before != tree_state(path) or before[1]:
-        print("tree was dirty or changed during the gate: no gate record written", file=sys.stderr)
-        return code
-    record = {"sha": before[0], "tree": sh("git", "rev-parse", "HEAD^{tree}", cwd=path),
-              "base_tip": base_tip(path, cfg), "ok": code == 0, "train": train, "steps": steps,
-              **({"reused": reused["sha"]} if reused else {}),
-              "finished_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
-    write_atomic(gates_dir() / f"{before[0]}.json", json.dumps(record, indent=2))
-    return code
+    A tree that was dirty or moved during the run proves nothing about a SHA: no record.
+    With a log path, step output and notes append there instead of this process's stdout and stderr."""
+    sink = open(log, "a") if log else None
+    stdout, stderr = (sink, subprocess.STDOUT) if sink else (None, None)
+    try:
+        before = tree_state(path)
+        reused = reusable_record(cfg, path, *before) if train else None
+        if reused:
+            commands = phase_commands(cfg, "train_gate")
+            print(f"train gate: reusing green gate record {reused['sha']} (same tree, same {cfg['base']} tip): "
+                  "running train_gate only", file=sink or sys.stderr, flush=True)
+        else:
+            commands = gate_steps(cfg, train)
+        steps, code = [], 0
+        for command in commands:
+            began = time.monotonic()
+            code = subprocess.run(command, cwd=path, stdout=stdout, stderr=stderr).returncode
+            steps.append({"command": shlex.join(command), "ok": code == 0,
+                          "seconds": round(time.monotonic() - began, 1)})
+            if code:
+                break
+        if before != tree_state(path) or before[1]:
+            print("tree was dirty or changed during the gate: no gate record written",
+                  file=sink or sys.stderr, flush=True)
+            return code, steps
+        record = {"sha": before[0], "tree": sh("git", "rev-parse", "HEAD^{tree}", cwd=path),
+                  "base_tip": base_tip(path, cfg), "ok": code == 0, "train": train, "steps": steps,
+                  **({"reused": reused["sha"]} if reused else {}),
+                  "finished_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        write_atomic(gates_dir() / f"{before[0]}.json", json.dumps(record, indent=2))
+        return code, steps
+    finally:
+        if sink:
+            sink.close()
 
 
 def write_atomic(target, text):

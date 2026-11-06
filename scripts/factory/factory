@@ -19,8 +19,11 @@
                                 reviewers finished; posts .factory/reviews/<pr>-*.md;
                                 --uncounted: integration failure, no attempt used
   retry <pr>                    one more fix round for a PR parked after max_attempts
-  train [--drop <pr>]           build factory/train from the max_train_prs largest approved PRs in the merge slot;
-                                --drop: rebuild it without a PR that failed the gate
+  train [--drop <pr> | --run]   build factory/train from the max_train_prs largest approved PRs in the merge slot;
+                                --drop: rebuild it without a PR that failed the gate;
+                                --run: also regenerate, commit, run the train gate and land; only a failure
+                                (result red, regenerate-failed, stopped, tree-mismatch) needs an agent; merging: a PR waits for GitHub,
+                                the dispatcher merges it
   land                          merge a green train's PRs one by one; the base must end on the train tree
   merge <pr>                    merge if CI allows and the branch contains the base tip; closes the issue
   fail <issue> <reason>         count a failed attempt; human after max_attempts
@@ -34,6 +37,7 @@
 import fnmatch
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -172,7 +176,7 @@ def prepare_or_free(store, slot, **kw):
         raise
 
 
-def cmd_release(store, forge, slot):
+def release_slot(store, forge, slot):
     with store.locked() as state:
         entry = state["slots"].pop(slot, None) or {}
     # A train that stopped or crashed must not retry its dropped PRs; a new head means it was fixed and approved again.
@@ -184,9 +188,12 @@ def cmd_release(store, forge, slot):
     if path.exists():
         slots.sh("git", "switch", "-q", "--detach", cwd=path, check=False)
         # A warm cargo target saves the next ticket a cold build; only a tight disk pays for it.
-        out(slots.clean_slot(store, slot, keep_clean_paths=slots.disk(store)["level"] == "green"))
-    else:
-        out({"slot": slot, "action": "none"})
+        return slots.clean_slot(store, slot, keep_clean_paths=slots.disk(store)["level"] == "green")
+    return {"slot": slot, "action": "none"}
+
+
+def cmd_release(store, forge, slot):
+    out(release_slot(store, forge, slot))
 
 
 def attempts(store, issue):
@@ -259,27 +266,28 @@ def cmd_opened(store, forge, issue, pr):
     out({"issue": int(issue), "pr": int(pr), "lane": "review", "files": files, "lines": lines})
 
 
-def cmd_verdict(store, forge, pr, verdict, *flags):
+def apply_verdict(store, forge, pr, verdict, uncounted=False):
     pr_obj = forge.call("GET", f"/pulls/{pr}")
     issue = issue_of_branch(pr_obj["head"]["ref"])
     parts = [p.read_text() for p in sorted((store.dir / "reviews").glob(f"{pr}-*.md"))]
     forge.comment(int(pr), f"**Factory review: {verdict}**\n\n" + "\n\n---\n\n".join(parts))
     if verdict == "approve":
         forge.set_state(int(pr), "factory:approved")
-        out({"pr": int(pr), "lane": "approved"})
-        return
-    if "--uncounted" in flags:
+        return {"pr": int(pr), "lane": "approved"}
+    if uncounted:
         forge.set_state(int(pr), "factory:changes")
-        out({"pr": int(pr), "lane": "changes", "attempts": attempts(store, issue) - 1})
-        return
+        return {"pr": int(pr), "lane": "changes", "attempts": attempts(store, issue) - 1}
     n = bump_attempt(store, issue)
     if n >= CFG["max_attempts"]:
         forge.set_state(int(pr), "factory:human")
         forge.set_state(issue, "factory:human")
-        out({"pr": int(pr), "lane": "human", "attempts": n})
-        return
+        return {"pr": int(pr), "lane": "human", "attempts": n}
     forge.set_state(int(pr), "factory:changes")
-    out({"pr": int(pr), "lane": "changes", "attempts": n})
+    return {"pr": int(pr), "lane": "changes", "attempts": n}
+
+
+def cmd_verdict(store, forge, pr, verdict, *flags):
+    out(apply_verdict(store, forge, pr, verdict, "--uncounted" in flags))
 
 
 def cmd_retry(store, forge, pr):
@@ -421,38 +429,104 @@ def train_slot(state):
     return slot
 
 
-def cmd_train(store, forge, *args):
-    if args[:1] == ("--drop",):
-        drop = int(args[1])
-        with store.locked() as state:
-            slot = train_slot(state)
-            entry = state["slots"][slot]
-        info = {"slot": slot, "path": str(store.slot_path(slot)), "env": str(store.dir / "slots" / f"{slot}.env"),
-                "branch": TRAIN}
-        prs = [p for p in entry["prs"] if p["pr"] != drop]
-        dropped = entry["dropped"] + [{**p, "reason": "gate"} for p in entry["prs"] if p["pr"] == drop]
-    else:
-        approved = pr_pipeline(forge.open_pulls(), {})["approved"]
-        lines = {p["pr"]: pr_size(p["branch"])[1] for p in approved}
-        approved.sort(key=lambda p: (-lines[p["pr"]], p["pr"]))
-        prs, dropped = approved[:CFG["max_train_prs"]], []
-        if not prs:
-            raise SystemExit("no approved PRs")
-        with store.locked() as state:
-            slot = take_slot(store, state, "merge")
-            state["slots"][slot] = {"role": "train", "since": int(time.time()), "branch": TRAIN}
-        info = prepare_or_free(store, slot, branch=TRAIN, new_branch=True)
+TRAIN_USAGE = "usage: factory train [--drop <pr> | --run]"
+
+
+def new_train(store, forge):
+    approved = pr_pipeline(forge.open_pulls(), {})["approved"]
+    lines = {p["pr"]: pr_size(p["branch"])[1] for p in approved}
+    approved.sort(key=lambda p: (-lines[p["pr"]], p["pr"]))
+    prs = approved[:CFG["max_train_prs"]]
+    if not prs:
+        raise SystemExit("no approved PRs")
+    with store.locked() as state:
+        slot = take_slot(store, state, "merge")
+        state["slots"][slot] = {"role": "train", "since": int(time.time()), "branch": TRAIN}
+    return slot, prepare_or_free(store, slot, branch=TRAIN, new_branch=True), prs, []
+
+
+def rebuilt_train(store, drop):
+    with store.locked() as state:
+        slot = train_slot(state)
+        entry = state["slots"][slot]
+    info = {"slot": slot, "path": str(store.slot_path(slot)), "env": str(store.dir / "slots" / f"{slot}.env"),
+            "branch": TRAIN}
+    prs = [p for p in entry["prs"] if p["pr"] != drop]
+    dropped = entry["dropped"] + [{**p, "reason": "gate"} for p in entry["prs"] if p["pr"] == drop]
+    return slot, info, prs, dropped
+
+
+def build_recorded_train(store, slot, info, prs, dropped):
+    """Build the train in the slot and record it; returns the state entry."""
     train = build_train(info["path"], prs)
     for d in train["dropped"]:
         others = ", ".join(f"#{p['pr']}" for p in train["prs"]) or "none"
         (store.dir / "reviews" / f"{d['pr']}-integration.md").write_text(
             f"## Integration\n\nConflicts with `{CFG['base']}` or an earlier PR in the train ({others}): "
             + ", ".join(f"`{f}`" for f in d["files"]) + f". Merge `{CFG['base']}` in and resolve.\n")
-    dropped += train["dropped"]
+    dropped = dropped + train["dropped"]
     with store.locked() as state:
         state["slots"][slot].update({"prs": train["prs"], "dropped": dropped, "base": train["base"]})
-    out({**info, "prs": [p["pr"] for p in train["prs"]],
-         "dropped": [{"pr": d["pr"], "reason": d["reason"]} for d in dropped]})
+        return dict(state["slots"][slot])
+
+
+def train_summary(info, entry):
+    return {**info, "prs": [p["pr"] for p in entry["prs"]],
+            "dropped": [{"pr": d["pr"], "reason": d["reason"]} for d in entry["dropped"]]}
+
+
+def run_logged(command, path, log):
+    with open(log, "a") as sink:
+        return subprocess.run(command, cwd=path, stdout=sink, stderr=subprocess.STDOUT).returncode
+
+
+def train_failure(cfg, path, log):
+    """Regenerate, commit what it changed, run the train gate; the failing step as a dict, or None when green."""
+    for command in slots.phase_commands(cfg, "regenerate"):
+        if run_logged(command, path, log):
+            return {"result": "regenerate-failed", "step": shlex.join(command)}
+    if slots.sh("git", "status", "--porcelain", cwd=path):
+        slots.sh("git", "add", "-A", cwd=path)
+        # --no-verify: the pre-commit hook runs the whole suite; the train gate verifies this tree.
+        slots.sh("git", "commit", "-q", "--no-verify", "-m", "chore: regenerate after train merge", cwd=path)
+    code, steps = slots.gate_outcome(cfg, path, train=True, log=log)
+    if code:
+        return {"result": "red", "step": steps[-1]["command"] if steps else "gate"}
+    return None
+
+
+def run_train(store, forge, slot, info, entry):
+    """Regenerate, gate and land a built train; only a failure needs an agent. The slot stays held then."""
+    path = Path(info["path"])
+    log = store.dir / "logs" / f"train-{slot}.log"
+    log.write_text("")
+    summary = train_summary(info, entry)
+    # The merged tree's commands: the dispatcher checkout may be a landing behind.
+    failure = train_failure(slots.tree_config(CFG, path), path, log)
+    if failure:
+        return {**summary, **failure, "log": str(log), "merged": []}
+    landed = land_train(path, forge, entry["prs"], entry["base"])
+    changes = [d["pr"] for d in entry["dropped"]]
+    slow = (landed["stopped"] or {}).get("result") == "wait"  # the dispatcher merges it once GitHub is ready
+    if landed["stopped"] and not slow:
+        return {**summary, "result": "stopped", **landed, "changes": changes, "log": str(log)}
+    if not landed["stopped"] and not landed["tree_match"]:
+        return {**summary, "result": "tree-mismatch", **landed, "changes": changes, "log": str(log)}
+    for pr in changes:
+        apply_verdict(store, forge, pr, "changes", uncounted=True)
+    release_slot(store, forge, slot)
+    return {**summary, "result": "merging" if slow else "landed", **landed, "changes": changes}
+
+
+def cmd_train(store, forge, *args):
+    if args[:1] == ("--drop",) and len(args) == 2 and args[1].isdigit():
+        slot, info, prs, dropped = rebuilt_train(store, int(args[1]))
+    elif args in ((), ("--run",)):
+        slot, info, prs, dropped = new_train(store, forge)
+    else:
+        raise SystemExit(TRAIN_USAGE)
+    entry = build_recorded_train(store, slot, info, prs, dropped)
+    out(run_train(store, forge, slot, info, entry) if args == ("--run",) else train_summary(info, entry))
 
 
 def cmd_land(store, forge):
@@ -557,6 +631,7 @@ def main(argv):
             raise SystemExit(1)
         return
     if cmd in ("gate", "regenerate"):
+        cfg = slots.tree_config(CFG, Path.cwd()) if "--train" in args else CFG
         detach = cmd == "gate" and "--detach" in args
         args = [a for a in args if a != "--detach"] if detach else args
         if args not in ([], ["--train"]) or (cmd == "regenerate" and args):
@@ -564,10 +639,10 @@ def main(argv):
         if detach:
             if not os.environ.get("FACTORY_SLOT"):
                 raise SystemExit("gate --detach needs a slot: source the slot env (FACTORY_SLOT)")
-            out(slots.start_gate(CFG, os.environ["FACTORY_SLOT"], Path.cwd(), train=bool(args)))
+            out(slots.start_gate(cfg, os.environ["FACTORY_SLOT"], Path.cwd(), train=bool(args)))
             return
         if cmd == "gate":
-            code = slots.run_gate(CFG, Path.cwd(), train=bool(args))
+            code = slots.run_gate(cfg, Path.cwd(), train=bool(args))
             if code:
                 raise SystemExit(code)
         else:

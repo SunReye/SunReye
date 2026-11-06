@@ -687,6 +687,31 @@ class LocalCommands(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "gate"):
                     factory.main(["gate"])
 
+    def tree_config(self, commands):
+        path = self.root / "scripts" / "factory" / "config.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"commands": commands}))
+
+    def test_the_train_gate_runs_the_commands_of_the_tree_it_runs_in(self):
+        self.tree_config({"gate": [self.record("tree-gate")], "train_gate": [self.record("tree-train")]})
+        run(factory.main, ["gate", "--train"])
+        self.assertEqual((self.root / "steps").read_text(), "tree-gate\ntree-train\n")
+
+    def test_a_tree_config_that_is_not_json_refuses_before_any_command_runs(self):
+        path = self.root / "scripts" / "factory" / "config.json"
+        path.parent.mkdir(parents=True)
+        path.write_text("{")
+        with self.assertRaisesRegex(SystemExit, "config.json"):
+            factory.main(["gate", "--train"])
+        self.assertFalse((self.root / "steps").exists())
+
+    def test_a_tree_config_without_commands_keeps_the_dispatchers(self):
+        path = self.root / "scripts" / "factory" / "config.json"
+        path.parent.mkdir(parents=True)
+        path.write_text("{}")
+        run(factory.main, ["gate", "--train"])
+        self.assertEqual((self.root / "steps").read_text(), "gate\ntrain\n")
+
     def test_regeneration_runs_only_configured_commands(self):
         run(factory.main, ["regenerate"])
         self.assertEqual((self.root / "steps").read_text(), "regenerate\n")
@@ -1144,6 +1169,18 @@ class DetachedGate(unittest.TestCase):
         log = (self.logs / "gate-impl-1.log").read_text()
         self.assertLess(log.index("ran gate"), log.index("ran train"))
 
+    def test_a_detached_train_gate_runs_the_commands_of_its_tree(self):
+        path = self.root / "scripts" / "factory" / "config.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"commands": {"gate": [self.step("print('tree gate')")],
+                                                 "train_gate": [self.step("print('tree train')")]}}))
+        self.detach("--train")
+        slots.GATE_WAIT_SECONDS = 20
+        self.wait()
+        log = (self.logs / "gate-impl-1.log").read_text()
+        self.assertIn("tree train", log)
+        self.assertNotIn("ran train", log)
+
     def test_a_train_step_is_skipped_after_a_failing_gate_step(self):
         self.cfg["commands"]["gate"] = [self.step("raise SystemExit(5)")]
         self.detach("--train")
@@ -1535,6 +1572,7 @@ class StateStore:
         self.cfg, self.root, self.work = factory.CFG, origin.work.parent, origin.work
         self.dir = self.root / ".factory"
         (self.dir / "reviews").mkdir(parents=True)
+        (self.dir / "logs").mkdir()
         self.state = {"slots": {}, "attempts": {}, "runs": {}, "routes": {}}
 
     @contextlib.contextmanager
@@ -1711,6 +1749,102 @@ class TrainCommands(unittest.TestCase):
         self.forge.slow.clear()
         self.assertEqual(run(factory.cmd_merge, self.store, self.forge, "2")[1]["result"], "merged")
         self.assertEqual(self.forge.merged, [1, 2])
+
+    def commands(self, **commands):
+        patcher = mock.patch.dict(factory.CFG, {"commands": commands})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_train(self):
+        (self.origin.work / ".git" / "info" / "exclude").write_text(".factory/\n")
+        code, body = run(factory.cmd_train, self.store, self.forge, "--run")
+        self.assertEqual(code, 0)
+        return body
+
+    def moves_staging_command(self):
+        late = self.origin.work.parent / "late-clone"
+        return ["sh", "-c", f"git clone -q {self.origin.bare} {late} && cd {late} && "
+                "touch moved.txt && git add moved.txt && git -c user.name=t -c user.email=t@t commit -q -m moved && "
+                "git push -q origin HEAD:staging"]
+
+    def test_run_lands_a_green_train_without_an_agent_and_frees_the_slot(self):
+        self.prs(1, 2)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], body["changes"]), ("landed", [1, 2], []))
+        self.assertEqual(self.forge.merged, [1, 2])
+        self.assertEqual(self.store.state["slots"], {})
+
+    def test_run_sends_conflict_drops_back_to_changes_with_their_integration_note(self):
+        self.prs(1, 2, 3, files={1: {"README": "one\n"}, 2: {"README": "two\n"}})
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], body["changes"]), ("landed", [1, 3], [2]))
+        self.assertEqual(self.forge.label(2), "factory:changes")
+        self.assertEqual(self.store.state["slots"], {})
+
+    def test_run_commits_what_regeneration_changes_before_the_gate_and_lands_it(self):
+        self.prs(1)
+        self.commands(gate=[["sh", "-c", "test -z \"$(git status --porcelain)\""]], train_gate=[["true"]],
+                      regenerate=[["sh", "-c", "echo x > regen.txt"]])
+        body = self.run_train()
+        self.assertEqual((body["result"], body["tree_match"]), ("landed", True))
+        self.assertEqual(git(self.origin.work, "show", "origin/staging:regen.txt"), "x")
+        self.assertIn("chore: regenerate", git(self.origin.work, "log", "origin/staging", "--format=%s"))
+
+    def test_run_reads_the_gate_commands_from_the_train_tree(self):
+        tree = {"commands": {"gate": [["true"]], "train_gate": [["true"]]}}
+        self.prs(1, files={1: {"scripts/factory/config.json": json.dumps(tree)}})
+        self.commands(gate=[["true"]], train_gate=[["false"]], regenerate=[])
+        self.assertEqual(self.run_train()["result"], "landed")
+
+    def test_run_with_a_red_gate_lands_nothing_and_names_the_step_and_log(self):
+        self.prs(1, 2)
+        red = ["sh", "-c", "echo boom; exit 3"]
+        self.commands(gate=[["true"]], train_gate=[red], regenerate=[])
+        before = self.forge.tip("factory/101")
+        body = self.run_train()
+        self.assertEqual((body["result"], body["step"]), ("red", "sh -c 'echo boom; exit 3'"))
+        self.assertIn("boom", Path(body["log"]).read_text())
+        self.assertEqual((body["merged"], self.forge.merged, self.forge.tip("factory/101")), ([], [], before))
+        self.assertEqual([self.forge.label(n) for n in (1, 2)], ["factory:approved"] * 2)
+        self.assertEqual([p["pr"] for p in self.store.state["slots"]["merge-1"]["prs"]], [1, 2])
+
+    def test_run_with_failing_regeneration_stops_before_the_gate(self):
+        self.prs(1)
+        marker = self.origin.work.parent / "gate-ran"
+        self.commands(gate=[["touch", str(marker)]], train_gate=[], regenerate=[["sh", "-c", "echo nope; exit 4"]])
+        body = self.run_train()
+        self.assertEqual((body["result"], body["step"]), ("regenerate-failed", "sh -c 'echo nope; exit 4'"))
+        self.assertIn("nope", Path(body["log"]).read_text())
+        self.assertFalse(marker.exists())
+        self.assertEqual((body["merged"], self.forge.merged), ([], []))
+
+    def test_run_stops_before_landing_when_the_base_moved_during_the_gate(self):
+        self.prs(1, 2)
+        self.commands(gate=[["true"]], train_gate=[self.moves_staging_command()], regenerate=[])
+        before = self.forge.tip("factory/101")
+        body = self.run_train()
+        self.assertEqual((body["result"], body["merged"]), ("stopped", []))
+        self.assertEqual(body["stopped"], {"pr": 1, "result": "stale-base"})
+        self.assertEqual((self.forge.merged, self.forge.tip("factory/101")), ([], before))
+        self.assertIn("merge-1", self.store.state["slots"])
+
+    def test_run_leaves_a_pr_github_is_slow_to_merge_to_the_dispatcher_and_frees_the_slot(self):
+        self.prs(1, 2, 3)
+        self.commands(gate=[["true"]], train_gate=[["true"]], regenerate=[])
+        self.forge.slow.add(2)
+        with mock.patch.object(factory.time, "sleep"):
+            body = self.run_train()
+        self.assertEqual((body["result"], body["merged"], body["stopped"]), ("merging", [1], {"pr": 2, "result": "wait"}))
+        self.assertEqual(self.forge.label(2), "factory:merging")
+        self.assertEqual(self.store.state["slots"], {})
+
+    def test_train_refuses_an_unknown_argument_before_taking_a_slot(self):
+        self.prs(1)
+        with self.assertRaisesRegex(SystemExit, "usage: factory train"):
+            factory.cmd_train(self.store, self.forge, "--help")
+        self.assertEqual(self.store.state["slots"], {})
 
     def push_to(self, branch):
         git(self.origin.work, "fetch", "-q", "origin")
