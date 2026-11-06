@@ -53,19 +53,7 @@ impl Store {
     }
 
     pub async fn create_connection(&self, name: &str, connection: &NewConnection) -> Result<i64, StoreError> {
-        let transport = connection.transport.as_str();
-        let row = sqlx::query!(
-            r#"INSERT INTO connection (name, transport, host, port, logger_serial) VALUES (?, ?, ?, ?, ?)
-               RETURNING id AS "id!""#,
-            name,
-            transport,
-            connection.host,
-            connection.port,
-            connection.logger_serial
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        Ok(row.id)
+        insert_connection(&self.pool, name, connection).await
     }
 
     /// False when no connection has `id`.
@@ -185,6 +173,50 @@ impl Store {
         tx.commit().await?;
         Ok(removal)
     }
+}
+
+/// Adds a connection on `executor`, inside a caller's transaction or not.
+pub(crate) async fn insert_connection<'e, E: sqlx::Executor<'e, Database = sqlx::Sqlite>>(
+    executor: E,
+    name: &str,
+    connection: &NewConnection,
+) -> Result<i64, StoreError> {
+    let transport = connection.transport.as_str();
+    let row = sqlx::query!(
+        r#"INSERT INTO connection (name, transport, host, port, logger_serial) VALUES (?, ?, ?, ?, ?)
+               RETURNING id AS "id!""#,
+        name,
+        transport,
+        connection.host,
+        connection.port,
+        connection.logger_serial
+    )
+    .fetch_one(executor)
+    .await?;
+    Ok(row.id)
+}
+
+/// Adds a device on `executor`, retired when `retired_at` is some.
+pub(crate) async fn insert_device<'e, E: sqlx::Executor<'e, Database = sqlx::Sqlite>>(
+    executor: E,
+    device: &NewDevice,
+    name: Option<&str>,
+    role: &str,
+    retired_at: Option<&str>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query!(
+        r#"INSERT INTO device (connection_id, profile_id, unit_id, name, role, retired_at) VALUES (?, ?, ?, ?, ?, ?)
+           RETURNING id AS "id!""#,
+        device.connection_id,
+        device.profile_id,
+        device.unit_id,
+        name,
+        role,
+        retired_at
+    )
+    .fetch_one(executor)
+    .await?;
+    Ok(row.id)
 }
 
 #[cfg(test)]

@@ -12,10 +12,10 @@ use crate::settings::positive;
 use crate::store::{Store, StoreError};
 
 const TIERS: [Tier; 3] = [Tier::Minute, Tier::Hour, Tier::Day];
-const RAW_KEY: &str = "retention.raw_days";
+pub(crate) const RAW_KEY: &str = "retention.raw_days";
 const RAW_DAYS: u64 = 7;
 
-fn key(tier: Tier) -> &'static str {
+pub(crate) fn key(tier: Tier) -> &'static str {
     match tier {
         Tier::Minute => "retention.minute_days",
         Tier::Hour => "retention.hour_days",

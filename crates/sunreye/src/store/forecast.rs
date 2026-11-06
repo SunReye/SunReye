@@ -31,24 +31,7 @@ impl Store {
     }
 
     pub async fn save_plant_settings(&self, s: &PlantSettings) -> Result<(), StoreError> {
-        sqlx::query!(
-            "INSERT OR REPLACE INTO plant_forecast (id, enabled, latitude, longitude, label, forecast_enabled, provider,
-                                                   max_output_w, house_load_w, smart_meter_since, correction_enabled)
-             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            s.enabled,
-            s.latitude,
-            s.longitude,
-            s.label,
-            s.forecast_enabled,
-            s.provider,
-            s.max_output_w,
-            s.house_load_w,
-            s.smart_meter_since,
-            s.correction.enabled
-        )
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+        save_plant(&self.pool, s).await
     }
 
     /// Every device's PV description that was ever saved, by device id.
@@ -99,26 +82,61 @@ impl Store {
 
     /// Replaces the device's PV description whole.
     pub async fn save_device_pv(&self, device_id: i64, pv: &DevicePv) -> Result<(), StoreError> {
-        let mut tx = self.pool.begin().await?;
-        let battery = pv.battery.as_ref();
-        let (usable, charge, floor) =
-            (battery.map(|b| b.usable_kwh), battery.and_then(|b| b.max_charge_w), battery.map(|b| b.min_soc));
-        sqlx::query!(
-            "INSERT OR REPLACE INTO device_pv (device_id, temp_coefficient, system_loss, battery_usable_kwh,
+        let mut conn = self.pool.acquire().await?;
+        replace_device_pv(&mut conn, device_id, pv).await
+    }
+}
+
+pub(crate) async fn save_plant<'e, E: sqlx::Executor<'e, Database = sqlx::Sqlite>>(
+    executor: E,
+    s: &PlantSettings,
+) -> Result<(), StoreError> {
+    sqlx::query!(
+            "INSERT OR REPLACE INTO plant_forecast (id, enabled, latitude, longitude, label, forecast_enabled, provider,
+                                                   max_output_w, house_load_w, smart_meter_since, correction_enabled)
+             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            s.enabled,
+            s.latitude,
+            s.longitude,
+            s.label,
+            s.forecast_enabled,
+            s.provider,
+            s.max_output_w,
+            s.house_load_w,
+            s.smart_meter_since,
+            s.correction.enabled
+        )
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
+/// Replaces the device's PV description whole, in a transaction of its own or nested in the caller's.
+pub(crate) async fn replace_device_pv(
+    conn: &mut sqlx::SqliteConnection,
+    device_id: i64,
+    pv: &DevicePv,
+) -> Result<(), StoreError> {
+    let mut tx = sqlx::Connection::begin(conn).await?;
+    let battery = pv.battery.as_ref();
+    let (usable, charge, floor) =
+        (battery.map(|b| b.usable_kwh), battery.and_then(|b| b.max_charge_w), battery.map(|b| b.min_soc));
+    sqlx::query!(
+        "INSERT OR REPLACE INTO device_pv (device_id, temp_coefficient, system_loss, battery_usable_kwh,
                                               battery_max_charge_w, battery_min_soc)
              VALUES (?, ?, ?, ?, ?, ?)",
-            device_id,
-            pv.temp_coefficient,
-            pv.system_loss,
-            usable,
-            charge,
-            floor
-        )
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query!("DELETE FROM pv_array WHERE device_id = ?", device_id).execute(&mut *tx).await?;
-        for (position, a) in (0_i64..).zip(&pv.arrays) {
-            sqlx::query!(
+        device_id,
+        pv.temp_coefficient,
+        pv.system_loss,
+        usable,
+        charge,
+        floor
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query!("DELETE FROM pv_array WHERE device_id = ?", device_id).execute(&mut *tx).await?;
+    for (position, a) in (0_i64..).zip(&pv.arrays) {
+        sqlx::query!(
                 "INSERT INTO pv_array (device_id, position, kwp, tilt, azimuth, temp_coefficient, system_loss, mppt)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 device_id,
@@ -132,10 +150,9 @@ impl Store {
             )
             .execute(&mut *tx)
             .await?;
-        }
-        tx.commit().await?;
-        Ok(())
     }
+    tx.commit().await?;
+    Ok(())
 }
 
 #[cfg(test)]
