@@ -210,6 +210,24 @@ async fn of_two_arrays_on_one_inverter_only_the_wired_one_learns_from_its_string
     core.stop().await;
 }
 
+#[tokio::test]
+async fn a_string_saturates_against_its_own_arrays_nameplate_not_the_inverters() {
+    let (core, admin, _) = forecasting("correction-string-ceiling", learn_now).await;
+    configure(&admin, None).await;
+    let two_arrays = json!({"arrays": [
+        {"kwp": 4, "tilt": 35, "azimuth": -80, "tempCoefficient": -0.34, "mppt": 2},
+        {"kwp": 2.4, "tilt": 35, "azimuth": 80, "tempCoefficient": -0.34}
+    ]});
+    let patched = send(&admin, Method::PATCH, "/api/devices/1", Some(&two_arrays.to_string())).await;
+    assert_eq!(patched.status, StatusCode::OK, "{}", patched.json());
+    // 3500 W is at or above 85 % of the 4 kWp array (3400 W), below 85 % of the 6.4 kWp inverter (5440 W).
+    seed(&core, &[(TOTAL_KEY, 4000.0), (PV2_KEY, 3500.0)]).await;
+    assert!(matches!(learn_once(&core).await.expect("learn"), Outcome::Learned { hours: 4, .. }));
+    assert_eq!(core.store.string_corrections(1).await.expect("read"), BTreeMap::new());
+    drop(admin);
+    core.stop().await;
+}
+
 /// What learning the seeded hours folds in Berlin, where they start at 11:00.
 fn learned() -> (CorrectionModel, LearnState) {
     learned_at([11, 12, 13, 14])
