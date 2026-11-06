@@ -71,6 +71,7 @@ struct Units {
 
 #[derive(Debug, Default, Deserialize)]
 struct Daily {
+    time: Option<Vec<String>>,
     shortwave_radiation_sum: Option<Vec<Option<f64>>>,
 }
 
@@ -99,15 +100,17 @@ fn interpret(code: i64) -> (&'static str, Icon) {
     }
 }
 
-/// The reading in `body`, unlabelled.
-fn reading(body: &[u8]) -> Result<Reading, FetchError> {
+/// The reading in `body`, unlabelled; the radiation sum only when its row is dated `today`.
+fn reading(body: &[u8], today: jiff::civil::Date) -> Result<Reading, FetchError> {
     let response: Response = serde_json::from_slice(body)?;
     let current = response.current.unwrap_or_default();
     let (Some(temperature), Some(code)) = (current.temperature_2m, current.weather_code) else {
         return Err(FetchError::Fields);
     };
     let (condition, icon) = interpret(code);
-    let sums = response.daily.and_then(|d| d.shortwave_radiation_sum).unwrap_or_default();
+    let daily = response.daily.unwrap_or_default();
+    let dated_today = daily.time.unwrap_or_default().first().is_some_and(|t| *t == today.to_string());
+    let sums = daily.shortwave_radiation_sum.filter(|_| dated_today).unwrap_or_default();
     Ok(Reading {
         temperature,
         unit: response.current_units.and_then(|u| u.temperature_2m).unwrap_or_else(|| "°C".into()),
@@ -167,17 +170,18 @@ impl Conditions {
         let key = format!("{latitude},{longitude}");
         let at = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
         let zone = plant_zone(store).await?;
-        // Open-Meteo cuts the daily sum in the zone it is asked for: the plant day keys it.
+        // Open-Meteo cuts the daily sum in the zone it is asked for, on its own clock unless the day is pinned.
         let tz = query_value(zone.iana_name().unwrap_or("UTC"));
         let today = (tz.clone(), at.to_zoned(zone).date());
         let mut cache = self.cache.lock().await;
         if !cache.as_ref().is_some_and(|c| c.fresh(&key, &today, now_ms)) {
             let url = format!(
                 "{}?latitude={latitude}&longitude={longitude}&current=temperature_2m,weather_code\
-                 &daily=shortwave_radiation_sum&timezone={tz}&forecast_days=1",
-                self.url
+                 &daily=shortwave_radiation_sum&timezone={tz}&start_date={date}&end_date={date}",
+                self.url,
+                date = today.1
             );
-            refresh(&mut cache, key.clone(), fetch(&url, roots).await, now_ms, today.clone());
+            refresh(&mut cache, key.clone(), fetch(&url, roots, today.1).await, now_ms, today.clone());
         }
         let held = cache.as_ref().filter(|c| c.key == key);
         Ok(held.map(|c| {
@@ -211,8 +215,12 @@ fn query_value(name: &str) -> String {
         .collect()
 }
 
-async fn fetch(url: &str, roots: &[CertificateDer<'static>]) -> Result<Reading, FetchError> {
-    reading(&get_with_roots(url, LIMITS, roots).await?)
+async fn fetch(
+    url: &str,
+    roots: &[CertificateDer<'static>],
+    today: jiff::civil::Date,
+) -> Result<Reading, FetchError> {
+    reading(&get_with_roots(url, LIMITS, roots).await?, today)
 }
 
 #[cfg(test)]
@@ -221,11 +229,13 @@ mod tests {
 
     use super::*;
 
+    const TODAY: jiff::civil::Date = jiff::civil::date(2026, 7, 24);
+
     fn body(over: &Value) -> Vec<u8> {
         let mut body = json!({
             "current": {"temperature_2m": 18.4, "weather_code": 61},
             "current_units": {"temperature_2m": "°C"},
-            "daily": {"shortwave_radiation_sum": [12.5]}
+            "daily": {"time": ["2026-07-24"], "shortwave_radiation_sum": [12.5]}
         });
         for (key, value) in over.as_object().expect("object") {
             body[key] = value.clone();
@@ -234,13 +244,14 @@ mod tests {
     }
 
     fn code(code: i64) -> Reading {
-        reading(&body(&json!({"current": {"temperature_2m": 1, "weather_code": code}}))).expect("reading")
+        reading(&body(&json!({"current": {"temperature_2m": 1, "weather_code": code}})), TODAY)
+            .expect("reading")
     }
 
     #[test]
     fn an_open_meteo_answer_maps_to_a_reading() {
         assert_eq!(
-            reading(&body(&json!({}))).expect("reading"),
+            reading(&body(&json!({})), TODAY).expect("reading"),
             Reading {
                 temperature: 18.4,
                 unit: "°C".into(),
@@ -283,26 +294,38 @@ mod tests {
 
     #[test]
     fn a_missing_unit_and_an_absent_null_or_empty_radiation_sum_fall_back() {
-        let missing_unit = reading(&body(&json!({"current_units": null}))).expect("reading");
+        let missing_unit = reading(&body(&json!({"current_units": null})), TODAY).expect("reading");
         assert_eq!(missing_unit.unit, "°C");
-        for daily in
-            [json!(null), json!({"shortwave_radiation_sum": [null]}), json!({"shortwave_radiation_sum": []})]
-        {
-            let r = reading(&body(&json!({"daily": daily}))).expect("reading");
+        for daily in [
+            json!(null),
+            json!({"time": ["2026-07-24"], "shortwave_radiation_sum": [null]}),
+            json!({"time": ["2026-07-24"], "shortwave_radiation_sum": []}),
+        ] {
+            let r = reading(&body(&json!({"daily": daily})), TODAY).expect("reading");
             assert_eq!(r.solar_radiation_sum, None, "{daily}");
         }
     }
 
     #[test]
+    fn a_radiation_sum_dated_another_day_or_undated_is_no_sum() {
+        for time in [json!(["2026-07-23"]), json!(["2026-07-25"]), json!([]), json!(null)] {
+            let r =
+                reading(&body(&json!({"daily": {"time": time, "shortwave_radiation_sum": [12.5]}})), TODAY)
+                    .expect("reading");
+            assert_eq!((r.solar_radiation_sum, r.temperature, r.icon), (None, 18.4, Icon::Rain), "{time}");
+        }
+    }
+
+    #[test]
     fn zero_degrees_and_code_zero_are_a_reading() {
-        let r =
-            reading(&body(&json!({"current": {"temperature_2m": 0, "weather_code": 0}}))).expect("reading");
+        let r = reading(&body(&json!({"current": {"temperature_2m": 0, "weather_code": 0}})), TODAY)
+            .expect("reading");
         assert_eq!((r.temperature, r.code), (0.0, 0));
     }
 
     #[test]
     fn a_negative_temperature_is_a_reading() {
-        let r = reading(&body(&json!({"current": {"temperature_2m": -7.5, "weather_code": 71}})))
+        let r = reading(&body(&json!({"current": {"temperature_2m": -7.5, "weather_code": 71}})), TODAY)
             .expect("reading");
         assert_eq!((r.temperature, r.icon), (-7.5, Icon::Snow));
     }
@@ -324,10 +347,10 @@ mod tests {
     fn an_answer_without_the_current_temperature_or_code_is_refused() {
         for current in [json!(null), json!({"temperature_2m": 1}), json!({"weather_code": 1})] {
             assert!(
-                matches!(reading(&body(&json!({"current": current}))), Err(FetchError::Fields)),
+                matches!(reading(&body(&json!({"current": current})), TODAY), Err(FetchError::Fields)),
                 "{current}"
             );
         }
-        assert!(matches!(reading(b"not json"), Err(FetchError::Json(_))));
+        assert!(matches!(reading(b"not json", TODAY), Err(FetchError::Json(_))));
     }
 }

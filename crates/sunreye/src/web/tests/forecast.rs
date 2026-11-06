@@ -146,17 +146,19 @@ pub(super) struct StandIn {
     pub(super) hits: Arc<AtomicUsize>,
     pub(super) failing: Arc<AtomicBool>,
     pub(super) paths: Arc<Mutex<Vec<String>>>,
+    /// The date the conditions' daily row carries in place of the asked one.
+    pub(super) day: Arc<Mutex<Option<String>>>,
 }
 
-type Seen = (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>);
+type Seen = (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>, Arc<Mutex<Option<String>>>);
 
 async fn stand_in(ca: &Ca) -> StandIn {
     let tls = acceptor(ca.leaf("localhost"));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let (hits, failing, paths) =
-        (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)), Arc::default());
-    let seen: Seen = (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths));
+    let (hits, failing, paths, day) =
+        (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)), Arc::default(), Arc::default());
+    let seen: Seen = (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths), Arc::clone(&day));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             tokio::spawn(answer_one(tls.clone(), tcp, seen.clone()));
@@ -164,13 +166,13 @@ async fn stand_in(ca: &Ca) -> StandIn {
     });
     let urls =
         (format!("https://localhost:{port}/v1/forecast"), format!("https://localhost:{port}/v1/archive"));
-    StandIn { urls, hits, failing, paths }
+    StandIn { urls, hits, failing, paths, day }
 }
 
 async fn answer_one(
     tls: tokio_rustls::TlsAcceptor,
     tcp: tokio::net::TcpStream,
-    (hits, failing, paths): Seen,
+    (hits, failing, paths, day): Seen,
 ) {
     let Ok(mut stream) = tls.accept(tcp).await else { return };
     let Some(head) = read_request(&mut stream).await else { return };
@@ -179,7 +181,7 @@ async fn answer_one(
     let body = if path.starts_with("/v1/archive") {
         archive_payload()
     } else if path.contains("current=") {
-        conditions_payload()
+        conditions_payload(&path, day.lock().expect("day").clone())
     } else {
         payload()
     }

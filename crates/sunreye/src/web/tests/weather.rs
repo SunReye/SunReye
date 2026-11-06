@@ -10,11 +10,14 @@ use crate::forecast::{self, Run, SimInputs};
 
 const QUARTER_HOUR_MS: i64 = 900_000;
 
-pub(super) fn conditions_payload() -> Value {
+/// Open-Meteo's answer for `path`: the daily row is dated `day`, else the asked `start_date`.
+pub(super) fn conditions_payload(path: &str, day: Option<String>) -> Value {
+    let asked = path.split_once("start_date=").map(|(_, rest)| rest.split('&').next().unwrap_or_default());
+    let time: Vec<String> = day.or(asked.map(str::to_owned)).into_iter().collect();
     json!({
         "current": {"temperature_2m": 18.4, "weather_code": 61},
         "current_units": {"temperature_2m": "°C"},
-        "daily": {"shortwave_radiation_sum": [12.5]}
+        "daily": {"time": time, "shortwave_radiation_sum": [12.5]}
     })
 }
 
@@ -223,6 +226,51 @@ async fn a_plant_zone_changed_after_the_fetch_refetches_in_the_new_zone_and_drop
     assert_eq!(standin.hits.load(Ordering::SeqCst), 2);
     let asked = last_conditions_request(&standin);
     assert!(asked.contains("&timezone=Asia%2FTokyo&"), "{asked}");
+    drop(admin);
+    core.stop().await;
+}
+
+static OTHER_DATE_CLOCK: AtomicI64 = AtomicI64::new(NOW_MS);
+
+fn other_date_clock() -> i64 {
+    OTHER_DATE_CLOCK.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_daily_row_dated_another_day_serves_no_radiation_sum_and_keeps_the_conditions() {
+    let (core, admin, standin) = forecasting("weather-other-date", other_date_clock).await;
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    let mut want = reading("");
+    want["solarRadiationSum"] = Value::Null;
+    want["forecast"] = Value::Null;
+    for other in ["2026-07-23", "2026-07-25"] {
+        *standin.day.lock().expect("day") = Some(other.into());
+        OTHER_DATE_CLOCK.fetch_add(QUARTER_HOUR_MS, Ordering::SeqCst);
+        assert_eq!(get(&admin, "/api/weather").await.json(), want, "{other}");
+    }
+    assert_eq!(standin.hits.load(Ordering::SeqCst), 2);
+    drop(admin);
+    core.stop().await;
+}
+
+static PLANT_DAY_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_MIDNIGHT_MS);
+
+fn plant_day_clock() -> i64 {
+    PLANT_DAY_CLOCK.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn the_conditions_request_pins_the_plant_day_not_the_utc_day() {
+    let (core, admin, standin) = forecasting("weather-pinned-day", plant_day_clock).await;
+    let located = json!({"enabled": true, "latitude": LAT, "longitude": LON});
+    assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
+    assert_eq!(get(&admin, "/api/weather").await.json()["solarRadiationSum"], 12.5);
+    let asked = last_conditions_request(&standin);
+    assert!(
+        asked.contains("&start_date=2026-07-25&end_date=2026-07-25") && !asked.contains("forecast_days"),
+        "{asked}"
+    );
     drop(admin);
     core.stop().await;
 }
