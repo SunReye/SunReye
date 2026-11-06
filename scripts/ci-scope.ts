@@ -74,16 +74,16 @@ const RULES: Rule[] = [
     "turbo.json",
     "Cargo.toml",
     "Cargo.lock",
-    "rust-toolchain",
     "rust-toolchain.toml",
   ].map((name) => ({ ...file(name), steps: "all" as const })),
-  { ...dir(".cargo"), steps: "all" as const },
   // The manifests and build scripts of every crate set the release build's dependencies and size.
   {
     label: "crates/**/Cargo.toml",
     matches: (p: string) => p.startsWith("crates/") && /(^|\/)(Cargo\.toml|build\.rs)$/.test(p),
     steps: [...RUST, ...BUDGETS],
   },
+  // `build.rs` compiles it in: it picks the SPA folder the release binary embeds.
+  { ...file("crates/sunreye/spa_dir.rs"), steps: [...RUST, ...BUDGETS] },
   {
     label: "scripts/budget*",
     matches: (p: string) => /^scripts\/budget(s|-)[^/]*$/.test(p),

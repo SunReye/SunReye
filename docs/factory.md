@@ -94,7 +94,7 @@ Never deleted: your own checkouts and their `target/`. Budget about 15 GB free d
 
 The factory's gate is `scripts/ci`; the train gate runs it, then `scripts/ci --train`. A coverage, floor, budget or browser failure fails the train and drops the responsible PR like any other train failure.
 
-The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), each step holding a heavy lock while it runs: budgets alone, and coverage, Rust coverage, `e2e`, `e2e:core` in order, so the browser suite starts after budgets' SPA build when budgets run. Budgets run on a manifest, lockfile, toolchain or `.cargo/` change, a change to the budgets or ADR 0006, and `--full`; run them by hand before a release (`bun run test:budgets`). Each step writes `<log dir>/<step>.log`; the console shows `start`/`done` lines. A failed step stops its lane, the other lane finishes, and every failed step is printed as `FAILED <step> (exit N), log <path>` with its log. The Android build (`scripts/target-gate`) is a manual pre-release step, in no mode.
+The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), each step holding a heavy lock while it runs: budgets alone, and coverage, Rust coverage, `e2e`, `e2e:core` in order. Budgets run on a manifest, lockfile, toolchain or `.cargo/` change, a change to the budgets or ADR 0006, and `--full`; run them by hand before a release (`bun run test:budgets`). Each step writes `<log dir>/<step>.log`; the console shows `start`/`done` lines. A failed step stops its lane, the other lane finishes, and every failed step is printed as `FAILED <step> (exit N), log <path>` with its log. The Android build (`scripts/target-gate`) is a manual pre-release step, in no mode.
 
 `scripts/ci-scope.ts` maps the changed paths (`git diff --name-only <base>...HEAD` plus staged, unstaged and untracked files) to the steps `rust`, `build`, `budgets`, `components`, `db`, `routes` and `e2e`. Its rule table is the reference.
 
@@ -102,13 +102,13 @@ The train-only steps run as two lanes at a time (`scripts/lib/ci-parallel.sh`), 
 | --- | --- |
 | docs, root `*.md`, `.claude/`, `.agents/`, `nixos/`, `sunreye*/`, `scripts/factory/` (not `config.json`), `scripts/oracle/` | none |
 | `crates/` | rust, routes |
-| `crates/**/Cargo.toml`, `crates/**/build.rs` | rust, routes, budgets |
+| `crates/**/Cargo.toml`, `crates/**/build.rs`, `crates/sunreye/spa_dir.rs` | rust, routes, budgets |
 | `fixtures/` | rust, db, e2e |
 | `apps/web/` | build, components, e2e |
 | `apps/server/`, `packages/` | build, components, e2e, db |
 | `scripts/budget*`, `docs/adr/0006-*` | budgets |
 | `crates/sunreye/openapi_snapshot.json` | the `crates/` steps and the web steps |
-| `scripts/ci`, the scope table and its helper, `scripts/factory/config.json`, root manifests, lockfiles, `.cargo/`, `rust-toolchain*`, unknown paths, an empty diff | every step |
+| `scripts/ci`, the scope table and its helper, `scripts/factory/config.json`, root manifests, lockfiles, `rust-toolchain.toml`, unknown paths (`.cargo/` among them), an empty diff | every step |
 
 A skipped step prints `skip <step>: <rule>` and is absent from the timings. `CI_SCOPE_BASE` replaces the diff base for selection only. Add a path rule only with the step that reads it: a rule that skips a step something reads hides the break.
 
