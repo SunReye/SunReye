@@ -133,6 +133,7 @@ fn every_forecast_case_exports_the_recorded_raw_and_usable_views() {
             now_ms: input["nowMs"].as_i64().expect("nowMs"),
             sim: sim.unwrap_or_default(),
             correction: model.as_ref(),
+            array_corrections: &[],
         };
         let forecast =
             build(&config, &data, input["provider"].as_str().expect("provider"), &run).expect("forecast");

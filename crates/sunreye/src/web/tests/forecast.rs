@@ -75,8 +75,24 @@ pub(super) fn corrected(
     at: &Expected,
     correction: Option<&CorrectionModel>,
 ) -> Value {
+    string_corrected(config, (sim, variant), at, correction, &[])
+}
+
+/// [`corrected`] with each array's own string grid besides.
+pub(super) fn string_corrected(
+    config: &ForecastConfig,
+    (sim, variant): (SimInputs, Variant),
+    at: &Expected,
+    correction: Option<&CorrectionModel>,
+    array_corrections: &[Option<CorrectionModel>],
+) -> Value {
     let zone = zone("Europe/Berlin");
-    exported(config, variant, at, &Run { time_zone: &zone, now_ms: at.now_ms, sim, correction })
+    exported(
+        config,
+        variant,
+        at,
+        &Run { time_zone: &zone, now_ms: at.now_ms, sim, correction, array_corrections },
+    )
 }
 
 fn zone(name: &str) -> jiff::tz::TimeZone {
@@ -90,7 +106,12 @@ fn expected_in(
     variant: Variant,
     at: &Expected,
 ) -> Value {
-    exported(config, variant, at, &Run { time_zone: zone, now_ms: at.now_ms, sim, correction: None })
+    exported(
+        config,
+        variant,
+        at,
+        &Run { time_zone: zone, now_ms: at.now_ms, sim, correction: None, array_corrections: &[] },
+    )
 }
 
 fn exported(config: &ForecastConfig, variant: Variant, at: &Expected, run: &Run) -> Value {

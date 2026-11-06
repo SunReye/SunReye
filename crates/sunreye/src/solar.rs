@@ -60,13 +60,19 @@ impl Solar {
         let Some(stale) = self.refresh(&mut cache, core, wanted, now_ms).await else { return Ok(None) };
         let Some(hit) = cache.as_ref() else { return Ok(None) };
         let sim = self.sim_inputs(core, &config, &hit.data, now_ms).await?;
-        let correction = if config.forecast.correction.enabled {
-            crate::learn::stored(&core.store).await?.map(|(model, _)| model).filter(|m| !m.is_empty())
+        let (correction, arrays) = if config.forecast.correction.enabled {
+            crate::learn::applied(&core.store, &config.forecast.arrays).await?
         } else {
-            None
+            (None, Vec::new())
         };
         let zone = plant_zone::plant_zone(&core.store).await?;
-        let run = Run { time_zone: &zone, now_ms, sim, correction: correction.as_ref() };
+        let run = Run {
+            time_zone: &zone,
+            now_ms,
+            sim,
+            correction: correction.as_ref(),
+            array_corrections: &arrays,
+        };
         let built = forecast::build(&config.model(), &hit.data, OPEN_METEO, &run);
         let built = built.inspect_err(|error| tracing::warn!(%error, "forecast series unusable")).ok();
         Ok(built.map(|forecast| Served { forecast, fetched_ms: hit.fetched_ms, stale }))
