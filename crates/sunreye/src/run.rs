@@ -145,10 +145,12 @@ impl Core {
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let upload = data_dir.join(crate::web::UPLOAD_FILE);
-        if let Err(error) = std::fs::remove_file(&upload)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            return Err(RunError::Upload(error));
+        for left in [&upload, &data_dir.join(crate::web::PART_FILE)] {
+            if let Err(error) = std::fs::remove_file(left)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                return Err(RunError::Upload(error));
+            }
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let (live, unstored) = (Arc::default(), Arc::default());

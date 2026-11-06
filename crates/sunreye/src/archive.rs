@@ -7,7 +7,7 @@ mod container;
 mod land;
 mod plan;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -133,9 +133,9 @@ impl Reading {
     }
 }
 
-/// What reading every member found.
+/// What reading every member found: the one parse of `config.json` the guard and the import both read.
 #[derive(Debug)]
-struct Checked {
+pub struct Checked {
     config: Config,
     zone: Option<String>,
     read: Streams,
@@ -228,27 +228,22 @@ fn manifest(text: &str) -> Result<Manifest, ImportError> {
     Ok(parsed)
 }
 
-/// Reads every member front to back and refuses the first that is missing, truncated or unreadable.
-fn check(path: &Path) -> Result<Checked, ImportError> {
+impl Checked {
+    /// The automation guard: the saved user values when the archive's 3.x automation is on or still holds a
+    /// register, `None` when the archive imports without asking.
+    pub fn guard(&self) -> Result<Option<Vec<Held>>, ImportError> {
+        self.config.guard().map_err(|e| bad(config::MEMBER, e))
+    }
+}
+
+/// Reads every member front to back and refuses the first that is missing, truncated, unreadable or repeated.
+pub fn check(path: &Path) -> Result<Checked, ImportError> {
     let mut archive = Container::open(path)?;
     let mut found = Found::default();
     while let Some(member) = archive.next_member()? {
         found.read_member(member)?;
     }
     found.finish()
-}
-
-/// The automation guard: the saved user values when the archive's 3.x automation is on or still holds a
-/// register, `None` when the archive imports without asking. Reads up to `config.json` only.
-pub fn guard(path: &Path) -> Result<Option<Vec<Held>>, ImportError> {
-    let mut archive = Container::open(path)?;
-    while let Some(member) = archive.next_member()? {
-        if member.name == config::MEMBER {
-            let config = Config::parse(&member.text()?).map_err(|e| bad(config::MEMBER, e))?;
-            return config.guard().map_err(|e| bad(config::MEMBER, e));
-        }
-    }
-    Err(missing(config::MEMBER))
 }
 
 /// Imports the archive at `path` into `store`, which must hold no device. Raw readings and minute buckets
@@ -262,6 +257,17 @@ pub async fn import(
     let owned: PathBuf = path.to_owned();
     let checked =
         tokio::task::spawn_blocking(move || check(&owned)).await.map_err(|e| bad(CONTAINER, e))??;
+    import_checked(store, bundle, path, checked, now).await
+}
+
+/// [`import`] of the archive at `path` that [`check`] read as `checked`.
+pub async fn import_checked(
+    store: &Store,
+    bundle: &Bundle,
+    path: &Path,
+    checked: Checked,
+    now: Timestamp,
+) -> Result<Imported, ImportError> {
     if !store.devices().await?.is_empty() {
         return Err(ImportError::NotEmpty);
     }
@@ -349,23 +355,32 @@ mod tests {
     }
 
     #[test]
-    fn the_guard_reads_config_json_from_the_container() {
+    fn the_guard_reads_the_checked_config_json() {
         let fixture = |case: &str| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../fixtures/oracle/archives")
                 .join(case)
                 .join("archive.tar.gz")
         };
+        let guard = |path: &Path| check(path).and_then(|checked| checked.guard());
         let held = guard(&fixture("current-2.x")).expect("readable").expect("guarded");
         assert_eq!(held.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["1:peak-shaving"]);
         assert!(guard(&fixture("legacy-1.2.0")).expect("readable").is_none());
         let unreadable = |path: &Path| guard(path).expect_err("refused").to_string();
         assert_eq!(unreadable(&file(b"")), "archive: the archive is cut short");
-        let bare = file(&gz(&tar(&[(MANIFEST, b"{}".to_vec())])));
-        assert_eq!(unreadable(&bare), "config.json: missing");
         let state = json!({"plant": {}, "appSettings": [{"key": "automationState", "value": 5}]});
-        let broken = file(&gz(&tar(&[(config::MEMBER, state.to_string().into_bytes())])));
-        assert!(unreadable(&broken).starts_with("config.json: automationState: "));
+        let broken = file(&gz(&tar(&[
+            (
+                MANIFEST,
+                json!({"format": FORMAT, "formatVersion": 1, "streams": streams(0, 0, 0, 0)})
+                    .to_string()
+                    .into_bytes(),
+            ),
+            (config::MEMBER, state.to_string().into_bytes()),
+            (CONFIG_LOG, gz(b"")),
+            (READINGS, gz(b"")),
+        ])));
+        assert!(unreadable(&broken).starts_with("config.json: automationState: "), "{}", unreadable(&broken));
     }
 
     #[tokio::test]

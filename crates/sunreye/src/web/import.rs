@@ -3,14 +3,15 @@
 //! register.
 
 use std::fmt::Write as _;
-use std::io::Write;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::{Body, HttpBody};
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use jiff::Timestamp;
@@ -20,11 +21,13 @@ use tokio::sync::MutexGuard;
 use utoipa::ToSchema;
 
 use super::{ApiError, ApiJson, ErrorBody};
-use crate::archive::{self, Held, ImportError, Imported, Streams};
+use crate::archive::{self, Checked, Held, ImportError, Imported, Streams};
 use crate::run::Core;
 
 /// The held upload's file name in the data directory.
 pub const UPLOAD_FILE: &str = "import.tar.gz";
+/// An upload being received; it replaces the held upload only once received whole.
+pub const PART_FILE: &str = "import.tar.gz.part";
 
 /// The largest archive accepted, in bytes. A full 3.x archive (~9 M rows) is about a tenth of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +36,16 @@ pub struct UploadLimit(pub u64);
 impl Default for UploadLimit {
     fn default() -> Self {
         Self(512 << 20)
+    }
+}
+
+/// The longest wait for an upload's next bytes; a stalled client would hold the import lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadIdle(pub Duration);
+
+impl Default for UploadIdle {
+    fn default() -> Self {
+        Self(Duration::from_secs(60))
     }
 }
 
@@ -129,42 +142,93 @@ fn unwritable(error: &std::io::Error) -> ApiError {
     ApiError::internal()
 }
 
-/// Streams `body` into `path`, hashing it; refuses it once it passes `limit`, removing what was written.
-async fn receive(mut body: Body, path: &Path, limit: u64) -> Result<String, ApiError> {
+fn too_large(limit: u64) -> ApiError {
+    ApiError::payload_too_large(format!("An archive is at most {limit} bytes"))
+}
+
+fn hex(digest: Context) -> String {
+    digest.finish().as_ref().iter().fold(String::with_capacity(64), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    })
+}
+
+/// Files removed when the request ends, however it ends: a cancelled request runs no other cleanup. Dropped
+/// before the import lock, so no other upload sees them.
+struct Discard(Vec<PathBuf>);
+
+impl Drop for Discard {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            drop(std::fs::remove_file(path));
+        }
+    }
+}
+
+/// Streams `body` into `path`, hashing it; refuses it once it passes `limit` or waits longer than `idle`
+/// for its next bytes.
+async fn receive(mut body: Body, path: &Path, limit: u64, idle: Duration) -> Result<String, ApiError> {
     let mut file = std::fs::File::create(path).map_err(|e| unwritable(&e))?;
     let mut digest = Context::new(&SHA256);
     let mut size = 0_u64;
-    while let Some(frame) = std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)).await {
+    loop {
+        let next = std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx));
+        let Some(frame) = tokio::time::timeout(idle, next).await.map_err(|_| {
+            ApiError::new(StatusCode::REQUEST_TIMEOUT, "The upload stalled: send the archive again")
+        })?
+        else {
+            break;
+        };
         let frame =
             frame.map_err(|e| ApiError::bad_request(format!("archive: the upload broke off: {e}")))?;
         let Ok(chunk) = frame.into_data() else { continue };
         size += chunk.len() as u64;
         if size > limit {
-            return Err(ApiError::payload_too_large(format!("An archive is at most {limit} bytes")));
+            return Err(too_large(limit));
         }
         digest.update(&chunk);
         file.write_all(&chunk).map_err(|e| unwritable(&e))?;
     }
     file.sync_all().map_err(|e| unwritable(&e))?;
-    Ok(digest.finish().as_ref().iter().fold(String::with_capacity(64), |mut hex, b| {
-        let _ = write!(hex, "{b:02x}");
-        hex
-    }))
+    Ok(hex(digest))
 }
 
-/// Imports the held upload, then polls what it added. The upload is removed either way.
-async fn import(core: &Core) -> Result<Json<ImportReport>, ApiError> {
+/// The sha256 of the file at `path`, hex.
+async fn sha256(path: &Path) -> std::io::Result<String> {
+    let path = path.to_owned();
+    let hashed = tokio::task::spawn_blocking(move || {
+        let mut file = std::fs::File::open(path)?;
+        let mut digest = Context::new(&SHA256);
+        let mut buf = vec![0; 64 << 10];
+        loop {
+            let read = file.read(&mut buf)?;
+            if read == 0 {
+                return Ok(hex(digest));
+            }
+            digest.update(&buf[..read]);
+        }
+    });
+    hashed.await.map_err(std::io::Error::other)?
+}
+
+/// Reads the held upload whole: what both the guard and the import read.
+async fn check(core: &Core) -> Result<Checked, ApiError> {
+    let path = core.upload.clone();
+    let checked = tokio::task::spawn_blocking(move || archive::check(&path));
+    Ok(checked.await.map_err(|_| ApiError::internal())??)
+}
+
+/// Imports the held upload, then polls what it added.
+async fn import(core: &Core, checked: Checked) -> Result<Json<ImportReport>, ApiError> {
     let now = Timestamp::from_millisecond(core.now_ms()).map_err(|_| ApiError::internal())?;
-    let imported = archive::import(&core.store, &core.bundle, &core.upload, now).await;
-    drop(std::fs::remove_file(&core.upload));
-    let imported = imported?;
+    let imported = archive::import_checked(&core.store, &core.bundle, &core.upload, checked, now).await?;
     core.apply().await?;
     Ok(Json(imported.into()))
 }
 
 /// Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
 /// still holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload
-/// replaces it.
+/// received whole replaces it.
 #[utoipa::path(
     post,
     path = "/api/admin/import",
@@ -176,6 +240,7 @@ async fn import(core: &Core) -> Result<Json<ImportReport>, ApiError> {
         (status = 400, body = ErrorBody),
         (status = 401, body = ErrorBody),
         (status = 403, body = ErrorBody),
+        (status = 408, body = ErrorBody),
         (status = 409, body = ErrorBody),
         (status = 413, body = ErrorBody),
         (status = 500, body = ErrorBody)
@@ -184,32 +249,28 @@ async fn import(core: &Core) -> Result<Json<ImportReport>, ApiError> {
 pub async fn upload(
     State(core): State<Arc<Core>>,
     Extension(limit): Extension<UploadLimit>,
+    Extension(idle): Extension<UploadIdle>,
+    headers: HeaderMap,
     body: Body,
 ) -> Result<Response, ApiError> {
-    let mut held = no_import_running(&core)?;
-    *held = None;
-    let received = receive(body, &core.upload, limit.0).await;
-    let guard = match received {
-        Ok(sha256) => {
-            let path = core.upload.clone();
-            let guard = tokio::task::spawn_blocking(move || archive::guard(&path))
-                .await
-                .map_err(|_| ApiError::internal())?;
-            guard.map(|g| g.map(|held| Guarded { sha256, held })).map_err(ApiError::from)
-        }
-        Err(error) => Err(error),
-    };
-    match guard {
-        Ok(Some(guarded)) => {
-            *held = Some(guarded.sha256.clone());
-            Ok((StatusCode::ACCEPTED, Json(guarded)).into_response())
-        }
-        Ok(None) => Ok(import(&core).await?.into_response()),
-        Err(error) => {
-            drop(std::fs::remove_file(&core.upload));
-            Err(error)
-        }
+    let declared = headers.get(header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
+    if declared.is_some_and(|length| length > limit.0) {
+        return Err(too_large(limit.0));
     }
+    let mut held = no_import_running(&core)?;
+    let part = core.upload.with_file_name(PART_FILE);
+    let mut discard = Discard(vec![part.clone()]);
+    let sha256 = receive(body, &part, limit.0, idle.0).await?;
+    *held = None;
+    discard.0.push(core.upload.clone());
+    std::fs::rename(&part, &core.upload).map_err(|e| unwritable(&e))?;
+    let checked = check(&core).await?;
+    if let Some(saved) = checked.guard()? {
+        *held = Some(sha256.clone());
+        discard.0.clear();
+        return Ok((StatusCode::ACCEPTED, Json(Guarded { sha256, held: saved })).into_response());
+    }
+    Ok(import(&core, checked).await?.into_response())
 }
 
 /// Imports the upload the guard stopped, once: the confirmation names its sha256.
@@ -236,5 +297,10 @@ pub async fn confirm(
         return Err(ApiError::conflict("No upload awaits confirmation for that archive: upload it again"));
     }
     *held = None;
-    import(&core).await
+    let _discard = Discard(vec![core.upload.clone()]);
+    if sha256(&core.upload).await.ok().as_deref() != Some(confirmation.sha256.as_str()) {
+        return Err(ApiError::conflict("The held upload changed: upload it again"));
+    }
+    let checked = check(&core).await?;
+    import(&core, checked).await
 }

@@ -43,7 +43,7 @@ export interface paths {
         /**
          * Takes an archive (`.tar.gz` as 3.x exports it) into an empty store. An archive whose automation is on, or
          *     still holds a register, stops at the guard (202) and waits for `/api/admin/import/confirm`; a new upload
-         *     replaces it.
+         *     received whole replaces it.
          */
         post: operations["importArchive"];
         delete?: never;
@@ -1724,6 +1724,14 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            408: {
                 headers: {
                     [name: string]: unknown;
                 };

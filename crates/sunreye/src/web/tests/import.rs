@@ -1,8 +1,14 @@
 //! Archive import over HTTP: the upload bound, the automation guard and one import at a time. Golden values
 //! are the oracle archives' (`fixtures/oracle/archives`); the sha256 is `sha256sum archive.tar.gz`.
 
+use std::collections::BTreeSet;
+
+use futures_util::StreamExt as _;
+use futures_util::stream;
+
 use super::*;
-use crate::web::import::{UPLOAD_FILE, UploadLimit};
+use crate::archive::testing::{gz, tar};
+use crate::web::import::{PART_FILE, UPLOAD_FILE, UploadIdle, UploadLimit};
 
 const CURRENT_SHA256: &str = "cc05db473ae491d3495ed10ad78c23625b85931404c2d347742e428e06a4802d";
 const LEGACY_SHA256: &str = "85746cda38de3bb4ff57279fb70aa76a6243bf83c24bf5bc88c80481764a102e";
@@ -28,7 +34,7 @@ async fn importer(name: &str, limit: UploadLimit) -> (Arc<Core>, Api) {
     signed_in(core, &Config { upload_limit: limit, ..Config::default() }).await
 }
 
-async fn upload_to(api: &Api, path: &str, bytes: Vec<u8>) -> Answer {
+fn upload_request(api: &Api, path: &str, length: Option<u64>, body: Body) -> Request<Body> {
     let mut request = Request::builder()
         .method(Method::POST)
         .uri(path)
@@ -39,14 +45,20 @@ async fn upload_to(api: &Api, path: &str, bytes: Vec<u8>) -> Answer {
     if let Some(cookie) = &api.cookie {
         request = request.header(header::COOKIE, cookie);
     }
-    answer(
-        api.router
-            .clone()
-            .oneshot(request.body(Body::from(bytes)).expect("request"))
-            .await
-            .expect("response"),
-    )
-    .await
+    if let Some(length) = length {
+        request = request.header(header::CONTENT_LENGTH, length);
+    }
+    request.body(body).expect("request")
+}
+
+async fn send_upload(api: &Api, length: Option<u64>, body: Body) -> Answer {
+    let request = upload_request(api, UPLOAD, length, body);
+    answer(api.router.clone().oneshot(request).await.expect("response")).await
+}
+
+async fn upload_to(api: &Api, path: &str, bytes: Vec<u8>) -> Answer {
+    let request = upload_request(api, path, None, Body::from(bytes));
+    answer(api.router.clone().oneshot(request).await.expect("response")).await
 }
 
 async fn upload(api: &Api, bytes: Vec<u8>) -> Answer {
@@ -135,15 +147,17 @@ async fn a_confirmation_is_single_use() {
 
 #[tokio::test]
 async fn a_confirmation_held_in_memory_does_not_survive_a_restart() {
-    let dir = dir("import-restart");
+    let dir = dir("import-guard-restart");
     let core = Core::open_unpolled(&dir, created).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     assert_eq!(upload(&admin, archive("current-2.x")).await.status, StatusCode::ACCEPTED);
     drop(admin);
     core.stop().await;
+    std::fs::write(dir.join(PART_FILE), b"cut off by a crash").expect("part");
     let core = Core::open_unpolled(&dir, created).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     assert!(!dir.join(UPLOAD_FILE).exists(), "the held upload is removed at start");
+    assert!(!dir.join(PART_FILE).exists(), "an upload a crash cut off is removed at start");
     assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::CONFLICT);
     assert_eq!(devices(&core).await, 0);
     drop(admin);
@@ -194,7 +208,7 @@ fn the_upload_limit_is_512_mib() {
 
 #[tokio::test]
 async fn an_upload_past_the_default_body_limit_is_read_whole() {
-    let (core, admin) = importer("import-large", UploadLimit::default()).await;
+    let (core, admin) = importer("import-archive-large", UploadLimit::default()).await;
     let refused = upload(&admin, vec![0; 3 << 20]).await;
     assert_eq!(refused.status, StatusCode::BAD_REQUEST, "read to the end, not cut at 2 MiB");
     assert!(refused.json()["error"].as_str().expect("error").starts_with("archive: "));
@@ -225,3 +239,173 @@ async fn while_an_import_runs_no_other_import_starts_and_no_device_is_added() {
 }
 
 const RUNNING: &str = "An archive import is running: try again when it ends";
+
+/// `current-2.x`'s members with `config` as `config.json` and `then` after it.
+fn crafted(config: &[u8], then: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    let loose = |name: &str| std::fs::read(archives().join("current-2.x").join(name)).expect("member");
+    let mut members = vec![("manifest.json", loose("manifest.json")), ("config.json", config.to_vec())];
+    members.extend(then.iter().cloned());
+    members.push(("config-log.ndjson.gz", gz(&loose("config-log.ndjson"))));
+    members.push(("readings.ndjson.gz", gz(&loose("readings.ndjson"))));
+    gz(&tar(&members))
+}
+
+#[tokio::test]
+async fn an_archive_repeating_config_json_is_refused_whichever_copy_holds_automation() {
+    let (core, admin) = importer("import-repeated", UploadLimit::default()).await;
+    let on = std::fs::read(archives().join("current-2.x").join("config.json")).expect("config");
+    let mut off: Value = serde_json::from_slice(&on).expect("json");
+    off.as_object_mut().expect("object").remove("appSettings");
+    let off = off.to_string().into_bytes();
+    let refused = |answer: &Answer, name: &str| {
+        assert_eq!(
+            (answer.status, answer.json()["error"].clone()),
+            (StatusCode::BAD_REQUEST, json!(format!("{name}: repeated in the archive")))
+        );
+    };
+    refused(&upload(&admin, crafted(&off, &[("config.json", on.clone())])).await, "config.json");
+    refused(&upload(&admin, crafted(&on, &[("config.json", off.clone())])).await, "config.json");
+    refused(&upload(&admin, crafted(&off, &[("./config.json", on.clone())])).await, "./config.json");
+    refused(&upload(&admin, crafted(&off, &[("Config.JSON", on.clone())])).await, "Config.JSON");
+    let whole = tar(&[("config.json", off.clone()), ("config.json", on.clone())]);
+    let cut = gz(&whole[..whole.len() - 1024 - 512]);
+    refused(&upload(&admin, cut).await, "config.json");
+    assert_eq!(devices(&core).await, 0);
+    assert!(!core.upload.exists());
+    assert_eq!(upload(&admin, crafted(&off, &[])).await.status, StatusCode::OK, "one copy imports");
+    drop(admin);
+    core.stop().await;
+}
+
+/// `current-2.x` held at the guard, its file as uploaded.
+async fn held(api: &Api, core: &Core) {
+    assert_eq!(upload(api, archive("current-2.x")).await.status, StatusCode::ACCEPTED);
+    assert_eq!(std::fs::read(&core.upload).expect("held"), archive("current-2.x"));
+}
+
+fn assert_413(answer: &Answer, limit: u64) {
+    assert_eq!(
+        (answer.status, answer.json()),
+        (StatusCode::PAYLOAD_TOO_LARGE, json!({"error": format!("An archive is at most {limit} bytes")}))
+    );
+}
+
+#[tokio::test]
+async fn a_declared_length_over_the_limit_is_a_413_that_leaves_the_held_upload() {
+    let limit = archive("current-2.x").len() as u64;
+    let (core, admin) = importer("import-declared", UploadLimit(limit)).await;
+    held(&admin, &core).await;
+    let small = Body::from(archive("legacy-1.2.0")[..10].to_vec());
+    assert_413(&send_upload(&admin, Some(limit + 1), small).await, limit);
+    assert_eq!(std::fs::read(&core.upload).expect("held"), archive("current-2.x"));
+    assert_eq!(
+        send_upload(&admin, Some(limit), Body::from(archive("current-2.x"))).await.status,
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_body_longer_than_its_declared_length_is_a_413_that_leaves_the_held_upload() {
+    let limit = archive("current-2.x").len() as u64;
+    let (core, admin) = importer("import-lying", UploadLimit(limit)).await;
+    held(&admin, &core).await;
+    let longer = Body::from(vec![0; usize::try_from(limit).expect("size") + 1]);
+    let before = entries(&core);
+    assert_413(&send_upload(&admin, Some(10), longer).await, limit);
+    assert_eq!(std::fs::read(&core.upload).expect("held"), archive("current-2.x"));
+    assert_eq!(entries(&core), before, "nothing is left beside the held upload");
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}
+
+/// The names in the data directory.
+fn entries(core: &Core) -> BTreeSet<String> {
+    let dir = std::fs::read_dir(core.upload.parent().expect("dir")).expect("dir");
+    dir.map(|e| e.expect("entry").file_name().to_string_lossy().into_owned()).collect()
+}
+
+#[tokio::test]
+async fn a_new_upload_that_is_refused_ends_the_wait_of_the_one_before() {
+    let (core, admin) = importer("import-replaced", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    assert_eq!(upload(&admin, vec![0; 64]).await.status, StatusCode::BAD_REQUEST);
+    let ended = confirm(&admin, CURRENT_SHA256).await;
+    assert_eq!((ended.status, ended.json()["error"].clone()), (StatusCode::CONFLICT, json!(NOT_HELD)));
+    assert!(!core.upload.exists());
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_held_upload_changed_on_disk_is_not_imported() {
+    let (core, admin) = importer("import-changed", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    std::fs::write(&core.upload, archive("legacy-1.2.0")).expect("overwrite");
+    let changed = confirm(&admin, CURRENT_SHA256).await;
+    assert_eq!(
+        (changed.status, changed.json()["error"].clone()),
+        (StatusCode::CONFLICT, json!("The held upload changed: upload it again"))
+    );
+    assert!(!core.upload.exists());
+    assert_eq!(devices(&core).await, 0);
+    drop(admin);
+    core.stop().await;
+}
+
+/// The first 100 bytes of `current-2.x`, then nothing: a client that stopped sending.
+fn stalled() -> Body {
+    let first = archive("current-2.x")[..100].to_vec();
+    let chunks = stream::iter([Ok::<_, std::io::Error>(first)]).chain(stream::pending());
+    Body::from_stream(chunks)
+}
+
+#[tokio::test]
+async fn a_stalled_upload_is_a_408_that_frees_the_import_and_leaves_the_held_upload() {
+    let core = Core::open_unpolled(&dir("import-stalled"), created).await.expect("core");
+    let (core, admin) =
+        signed_in(core, &Config { upload_idle: UploadIdle(Duration::ZERO), ..Config::default() }).await;
+    held(&admin, &core).await;
+    let before = entries(&core);
+    let stalled = send_upload(&admin, None, stalled()).await;
+    assert_eq!(
+        (stalled.status, stalled.json()["error"].clone()),
+        (StatusCode::REQUEST_TIMEOUT, json!("The upload stalled: send the archive again"))
+    );
+    assert_eq!(entries(&core), before, "nothing is left beside the held upload");
+    assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_dropped_upload_leaves_nothing_behind_and_frees_the_import() {
+    let (core, admin) = importer("import-dropped", UploadLimit::default()).await;
+    held(&admin, &core).await;
+    let before = entries(&core);
+    let request = upload_request(&admin, UPLOAD, None, stalled());
+    let running = tokio::spawn(admin.router.clone().oneshot(request));
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while core.imports.try_lock().is_ok() || entries(&core) == before {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the upload is being received");
+    running.abort();
+    assert!(running.await.expect_err("dropped").is_cancelled());
+    assert_eq!(entries(&core), before, "nothing is left beside the held upload");
+    assert!(core.imports.try_lock().is_ok(), "the import lock is free");
+    assert_eq!(confirm(&admin, CURRENT_SHA256).await.status, StatusCode::OK);
+    drop(admin);
+    core.stop().await;
+}
+
+#[test]
+fn an_upload_may_pause_a_minute_between_chunks() {
+    assert_eq!(UploadIdle::default(), UploadIdle(Duration::from_secs(60)));
+}

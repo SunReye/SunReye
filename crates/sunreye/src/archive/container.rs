@@ -1,6 +1,7 @@
 //! The archive container: a ustar stream inside gzip, its NDJSON members gzipped again. Read front to back,
 //! one member at a time, so memory never holds more than one line.
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::Path;
@@ -20,6 +21,8 @@ pub struct Container {
     /// Body bytes of the current member not yet read, then its padding.
     left: u64,
     pad: u64,
+    /// Member names read so far, as [`same`] compares them.
+    seen: BTreeSet<String>,
 }
 
 fn broken(member: &str, reason: impl std::fmt::Display) -> ImportError {
@@ -29,10 +32,11 @@ fn broken(member: &str, reason: impl std::fmt::Display) -> ImportError {
 impl Container {
     pub fn open(path: &Path) -> Result<Self, ImportError> {
         let file = File::open(path).map_err(|e| broken(CONTAINER, e))?;
-        Ok(Self { tar: GzDecoder::new(BufReader::new(file)), left: 0, pad: 0 })
+        Ok(Self { tar: GzDecoder::new(BufReader::new(file)), left: 0, pad: 0, seen: BTreeSet::new() })
     }
 
-    /// The next member's name, its body ready to read; none after the end marker.
+    /// The next member's name, its body ready to read; none after the end marker. A name read before is
+    /// refused: readers that stop at the first copy and readers that keep the last would disagree.
     pub fn next_member(&mut self) -> Result<Option<Member<'_>>, ImportError> {
         let skip = self.left + self.pad;
         let skipped =
@@ -49,10 +53,22 @@ impl Container {
             return Ok(None);
         }
         let (name, size) = header(&block)?;
+        if !self.seen.insert(same(&name)) {
+            return Err(broken(&name, "repeated in the archive"));
+        }
         self.left = size;
         self.pad = size.next_multiple_of(BLOCK) - size;
         Ok(Some(Member { name, body: Body(self) }))
     }
+}
+
+/// `name` as an extractor resolves it: without `./`, `/` at either end, or case.
+fn same(name: &str) -> String {
+    let mut name = name.trim_matches('/');
+    while let Some(rest) = name.strip_prefix("./") {
+        name = rest.trim_start_matches('/');
+    }
+    name.to_ascii_lowercase()
 }
 
 /// A ustar header's name and size, its checksum held.
@@ -225,6 +241,27 @@ mod tests {
         let mut whole = tar(&[("manifest.json", b"{}".to_vec())]);
         whole[0] = b'X';
         assert_eq!(refusal(&gz(&whole)), "archive: a member header is corrupt");
+    }
+
+    #[test]
+    fn a_repeated_member_is_refused_by_name_in_any_path_form() {
+        fn one(name: &str) -> (&str, Vec<u8>) {
+            (name, b"{}".to_vec())
+        }
+        for second in
+            ["manifest.json", "./manifest.json", "manifest.json/", "MANIFEST.json", "/manifest.json"]
+        {
+            let archive = gz(&tar(&[one("manifest.json"), one("config.json"), one(second)]));
+            assert_eq!(refusal(&archive), format!("{second}: repeated in the archive"));
+            let archive = gz(&tar(&[one(second), one("manifest.json")]));
+            assert_eq!(refusal(&archive), "manifest.json: repeated in the archive", "{second} first");
+        }
+    }
+
+    #[test]
+    fn a_repeated_member_cut_short_is_refused_by_name() {
+        let whole = tar(&[("config.json", b"{}".to_vec()), ("config.json", vec![b' '; 2000])]);
+        assert_eq!(refusal(&gz(&whole[..1536])), "config.json: repeated in the archive");
     }
 
     #[test]
