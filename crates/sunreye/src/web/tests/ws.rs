@@ -133,10 +133,11 @@ async fn published(
     next.expect("published within 2 s").expect("bus open")
 }
 
-/// A socket on every topic.
+/// A socket on every topic, past the `statistics` snapshot it is sent on subscribing.
 async fn on_every_topic(addr: std::net::SocketAddr, api: &Api) -> Socket {
     let mut socket = connect(addr, api).await;
     subscribe(&mut socket, r#"["metrics","plant","evcc","events","statistics"]"#).await;
+    assert_eq!(next_json(&mut socket).await["topic"], "statistics");
     socket
 }
 
@@ -1201,20 +1202,69 @@ fn every_topic_has_the_access_of_its_rest_read() {
     }
 }
 
+/// 2026-08-14T12:00:00Z: the clock the statistics tests open at, mid-day in the UTC plant day.
+const NOON: i64 = 1_786_708_800_000;
+const TODAY: &str = "from=2026-08-14T00:00:00Z&to=2026-08-15T00:00:00Z&bucket=day";
+
+/// A core at [`NOON`] with a UTC plant day, and one device.
+async fn at_noon(name: &str) -> (Arc<Core>, Api, i64) {
+    let core = Core::open_at(&dir(name), crate::run::Clock::at(NOON)).await.expect("core");
+    core.store.save_plant_time_zone("UTC").await.expect("zone");
+    let (core, admin) = signed_in(core, &Config::default()).await;
+    let device = rollup::add_device(&core, "10.0.0.5").await;
+    (core, admin, device)
+}
+
+/// Two `day_energy` readings in the minute starting `ago_ms` before [`NOON`].
+async fn produce(core: &Core, device: i64, ago_ms: i64) {
+    let at = NOON - ago_ms;
+    rollup::store(core, device, &[(at, "day_energy", 0.5), (at + 20_000, "day_energy", 1.5)]).await;
+}
+
+/// Today's energy as `GET /api/energy/series` answers it.
+async fn todays_energy(admin: &Api) -> Value {
+    let answer = get(admin, &format!("/api/energy/series?{TODAY}")).await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.json());
+    answer.json()[0].clone()
+}
+
+#[tokio::test]
+async fn a_new_statistics_subscriber_is_sent_todays_figures_before_any_rollup_and_again_after_a_reconnect() {
+    let (core, admin, device) = at_noon("ws-statistics-snapshot").await;
+    let addr = serve(&core, &Config::default()).await;
+    produce(&core, device, 3_600_000).await;
+    let read = todays_energy(&admin).await;
+    for _ in 0..2 {
+        let mut session = connect(addr, &admin).await;
+        send_text(&mut session, r#"{"t":"sub","topics":["statistics"]}"#).await;
+        assert_eq!(next_json(&mut session).await["data"]["subscribed"], json!(["statistics"]));
+        let frame = next_json(&mut session).await;
+        assert_eq!(
+            (frame["topic"].clone(), frame["data"]["type"].clone()),
+            (json!("statistics"), json!("today"))
+        );
+        assert_eq!(frame["data"]["energy"], read);
+        assert!(read["productionKwh"].as_f64() > Some(0.0), "{read}");
+        silent(&mut session).await;
+    }
+    drop(admin);
+    core.stop().await;
+}
+
 #[tokio::test]
 async fn a_rollup_of_today_reaches_a_sessions_statistics_and_a_stranger_is_denied_it_by_name() {
-    let (core, admin) = open(&dir("ws-statistics")).await;
+    let (core, admin, device) = at_noon("ws-statistics").await;
     let addr = serve(&core, &Config::default()).await;
     put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
-    let device = rollup::add_device(&core, "10.0.0.5").await;
     let mut stranger = connect(addr, &admin.anonymous()).await;
     let ack = subscribe(&mut stranger, r#"["metrics","statistics"]"#).await;
     assert_eq!(ack["data"], json!({"subscribed": ["metrics"], "denied": ["statistics"]}));
     let mut session = connect(addr, &admin).await;
     let ack = subscribe(&mut session, r#"["statistics"]"#).await;
     assert_eq!(ack["data"], json!({"subscribed": ["statistics"], "denied": []}));
+    assert_eq!(next_json(&mut session).await["data"]["type"], "today", "the snapshot");
 
-    rollup::store(&core, device, &[(core.now_ms(), "day_energy", 1.5)]).await;
+    produce(&core, device, 3_600_000).await;
     let frame = next_json(&mut session).await;
     assert_eq!(
         (frame["topic"].clone(), frame["data"]["type"].clone()),

@@ -1,6 +1,6 @@
 //! `/ws`: the live feed, multiplexed over one socket in the 3.x contract.
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::task::Poll;
 use std::time::Duration;
 
@@ -63,6 +63,7 @@ pub async fn upgrade(
         events: core.bus.changed.subscribe(),
         evcc: core.bus.evcc.subscribe(),
         statistics: core.bus.statistics.subscribe(),
+        core: Arc::downgrade(&core),
     };
     let ends = core.bus.sessions.subscribe();
     let holder = match holder(&core, &auth, ends).await {
@@ -290,6 +291,8 @@ struct Feed {
     events: Events<Changed>,
     evcc: watch::Receiver<Option<EvccState>>,
     statistics: Events<StatisticsFrame>,
+    /// Weak, so a socket never keeps the core from stopping; read only for a `statistics` snapshot.
+    core: Weak<Core>,
 }
 
 impl Feed {
@@ -387,7 +390,7 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
             }
             let fresh: Vec<Topic> = decision.subscribe.into_iter().filter(|t| !held.contains(t)).collect();
             held.extend(&fresh);
-            for snapshot in snapshots(feed, &fresh) {
+            for snapshot in snapshots(feed, &fresh).await {
                 if !peer.send(Message::Text(snapshot)).await {
                     return false;
                 }
@@ -403,14 +406,30 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
     }
 }
 
-/// The last value of each state topic in `fresh`, so a new subscriber starts from the current state.
-fn snapshots(feed: &mut Feed, fresh: &[Topic]) -> Vec<Utf8Bytes> {
+/// Today's `statistics` frame; none once the core is gone, or when the read fails.
+async fn today(core: &Weak<Core>) -> Option<Utf8Bytes> {
+    let core = core.upgrade()?;
+    let minute = crate::samples::minute_of(core.now_ms());
+    match super::today_frame(&core, minute).await {
+        Ok(frame) => frame.map(|frame| frame.0),
+        Err(error) => {
+            tracing::warn!(%error, "today's statistics not sent");
+            None
+        }
+    }
+}
+
+/// The current state of each state topic in `fresh`: the last value, or for `statistics` today's read.
+async fn snapshots(feed: &mut Feed, fresh: &[Topic]) -> Vec<Utf8Bytes> {
     let mut frames = Vec::new();
     if fresh.contains(&Topic::Plant) {
         frames.extend(feed.plant.borrow_and_update().clone().map(|plant| plant.0));
     }
     if fresh.contains(&Topic::Evcc) {
         frames.extend(feed.evcc.borrow_and_update().as_ref().map(|state| evcc_frame(state).into()));
+    }
+    if fresh.contains(&Topic::Statistics) {
+        frames.extend(today(&feed.core).await);
     }
     frames
 }
