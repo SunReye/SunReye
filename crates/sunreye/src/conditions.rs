@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 
 use crate::https::{GetError, Limits, get_with_roots};
 use crate::plant_zone::plant_zone;
-use crate::refresh::within_period;
+use crate::refresh::{PERIOD, within};
 use crate::store::{Store, StoreError};
 use crate::weather;
 
@@ -175,7 +175,7 @@ impl Conditions {
         now_ms: i64,
     ) -> Result<bool, StoreError> {
         let Some(Wanted { key, today, url, .. }) = self.wanted(store, now_ms).await? else { return Ok(true) };
-        let fresh = |c: &Cached| c.key == key && c.day == today && within_period(c.fetched_ms, now_ms);
+        let fresh = |c: &Cached| c.key == key && c.day == today && within(PERIOD, c.fetched_ms, now_ms);
         if self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().is_some_and(fresh) {
             return Ok(true);
         }
