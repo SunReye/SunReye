@@ -179,10 +179,19 @@ impl TestBroker {
 
     /// Everything up to and including the publish to `topic`.
     async fn until_topic(&mut self, topic: &str) -> Vec<Seen> {
-        let mut got = Vec::new();
+        self.until(|t, _| t == topic).await
+    }
+
+    /// Everything up to and including the first publish whose topic and payload `wanted` accepts; the deadline
+    /// fails a wait that other publishes keep alive.
+    async fn until(&mut self, wanted: impl Fn(&str, &str) -> bool) -> Vec<Seen> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        let mut got: Vec<Seen> = Vec::new();
         loop {
-            let seen = self.next().await;
-            let done = matches!(&seen, Seen::Publish { topic: t, .. } if t == topic);
+            let Ok(seen) = tokio::time::timeout_at(deadline, self.next()).await else {
+                panic!("never published; last seen: {:?}", &got[got.len().saturating_sub(5)..])
+            };
+            let done = matches!(&seen, Seen::Publish { topic, payload, .. } if wanted(topic, payload));
             got.push(seen);
             if done {
                 return got;
@@ -679,5 +688,85 @@ async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_
     let offline = Seen::Publish { topic: format!("{base}/status"), payload: "offline".into(), retain: true };
     assert!(rest.contains(&offline), "{rest:?}");
     assert!(![seen, rest].concat().iter().any(|s| matches!(s, Seen::Other(_))), "nothing subscribed");
+    drop(std::fs::remove_dir_all(&dir));
+}
+
+fn client_ids(seen: &[Seen]) -> Vec<&str> {
+    seen.iter()
+        .filter_map(|s| match s {
+            Seen::Connect { client_id, .. } => Some(client_id.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// No route in the way: the export re-plans from the roster the store holds after each device write.
+#[tokio::test]
+async fn the_export_starts_a_device_added_through_the_store_and_stops_one_retired() {
+    use sunreye::store::{DeviceEdit, NewDevice};
+
+    let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+    let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
+    let sim = sunreye_sim::Simulator::start(case.registers, &[1, 2]).await.expect("sim");
+    let mut broker = start_broker(None).await;
+    let dir = data_dir("roster");
+    let first = seed(&dir, sim.addr.port(), broker.port).await;
+    let core = sunreye::run::Core::open(&dir).await.expect("core");
+    broker.until_topic(&format!("sunreye/haus-sud/{first}/battery/soc")).await;
+
+    let connection_id = core.store.devices().await.expect("devices")[0].connection_id;
+    let added = NewDevice { connection_id, profile_id: "deye-sg05lp3".into(), unit_id: 2 };
+    let added = core.store.add_device(&added).await.expect("add");
+    let seen = broker
+        .until_topic(&format!("homeassistant/sensor/sunreye_haus-sud_{added}/battery_soc/config"))
+        .await;
+    assert!(client_ids(&seen).contains(&format!("sunreye-haus-sud-{added}").as_str()), "{seen:?}");
+
+    let retire =
+        DeviceEdit { retired_at: Some(Some("2026-11-07T00:00:00Z".into())), ..DeviceEdit::default() };
+    assert!(core.store.edit_device(added, &retire).await.expect("retire"));
+    let status = format!("sunreye/haus-sud/{added}/status");
+    broker.until(|topic, payload| topic == status && payload == "offline").await;
+    let rest = broker.until_topic(&format!("sunreye/haus-sud/{first}/battery/soc")).await;
+    assert_eq!(client_ids(&rest), [format!("sunreye-haus-sud-{first}")], "{rest:?}");
+
+    core.stop().await;
+    drop(std::fs::remove_dir_all(&dir));
+}
+
+/// An official profile's file under the id `acme-deye`, named `name`.
+fn acme_deye(name: &str) -> sunreye::sources::Installed {
+    let (_, mut file) =
+        support::official_files().into_iter().find(|(id, _)| id == "deye-sg05lp3").expect("official");
+    file["id"] = serde_json::json!("acme-deye");
+    file["name"] = serde_json::json!(name);
+    sunreye::sources::Installed::validate(file.to_string()).expect("valid profile")
+}
+
+/// A re-import changes no setting and no device row, only the installed text the export plans from.
+#[tokio::test]
+async fn the_export_re_plans_a_device_whose_installed_profile_is_re_imported() {
+    use sunreye::sources::import_profile;
+    use sunreye::store::DeviceEdit;
+
+    let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+    let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
+    let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");
+    let mut broker = start_broker(None).await;
+    let dir = data_dir("reimport");
+    let device = seed(&dir, sim.addr.port(), broker.port).await;
+    let core = sunreye::run::Core::open(&dir).await.expect("core");
+    let config = format!("homeassistant/sensor/sunreye_haus-sud_{device}/battery_soc/config");
+    broker.until_topic(&config).await;
+
+    import_profile(&core.store, &acme_deye("Acme One")).await.expect("import");
+    let edit = DeviceEdit { profile_id: Some("acme-deye".into()), ..DeviceEdit::default() };
+    assert!(core.store.edit_device(device, &edit).await.expect("re-profile"));
+    broker.until(|topic, payload| topic == config && payload.contains("\"Acme One\"")).await;
+
+    import_profile(&core.store, &acme_deye("Acme Two")).await.expect("re-import");
+    broker.until(|topic, payload| topic == config && payload.contains("\"Acme Two\"")).await;
+
+    core.stop().await;
     drop(std::fs::remove_dir_all(&dir));
 }

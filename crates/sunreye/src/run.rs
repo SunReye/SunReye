@@ -79,7 +79,7 @@ pub struct Core {
     learning: Mutex<Option<Running>>,
     /// The conditions and forecast refresh loops.
     refreshing: Mutex<Option<Running>>,
-    /// Restarts the MQTT export on each store change and feeds it the forecast.
+    /// Restarts the MQTT export when a store change alters what it plans from, and feeds it the forecast.
     exporting: Mutex<Option<Running>>,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the upload awaiting the guard's confirmation,
