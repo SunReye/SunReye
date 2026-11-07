@@ -10,10 +10,10 @@ use crate::events::Events;
 /// How often a landed refresh is repeated.
 pub const PERIOD: Duration = Duration::from_mins(15);
 
-/// Whether a fetch that landed at `fetched_ms` is inside [`PERIOD`] at `now_ms`; one landed after `now_ms`
+/// Whether a value that landed at `landed_ms` is younger than `ttl` at `now_ms`; one landed after `now_ms`
 /// (the wall clock stepped back) is not.
-pub(crate) fn within_period(fetched_ms: i64, now_ms: i64) -> bool {
-    u128::try_from(now_ms.saturating_sub(fetched_ms)).is_ok_and(|age| age < PERIOD.as_millis())
+pub(crate) fn within(ttl: Duration, landed_ms: i64, now_ms: i64) -> bool {
+    u128::try_from(now_ms.saturating_sub(landed_ms)).is_ok_and(|age| age < ttl.as_millis())
 }
 
 /// How soon a failed refresh is retried.
@@ -110,10 +110,10 @@ mod tests {
     #[test]
     fn a_fetch_is_fresh_from_its_landing_until_the_period_and_not_once_the_clock_stepped_back() {
         const LANDED: i64 = 1_774_745_999_000;
-        assert!(within_period(LANDED, LANDED), "at landing");
-        assert!(within_period(LANDED, LANDED + 899_999), "inside the period");
-        assert!(!within_period(LANDED, LANDED + 900_000), "at the period");
-        assert!(!within_period(LANDED, LANDED - 1), "landed after now: the wall clock stepped back");
+        assert!(within(PERIOD, LANDED, LANDED), "at landing");
+        assert!(within(PERIOD, LANDED, LANDED + 899_999), "inside the period");
+        assert!(!within(PERIOD, LANDED, LANDED + 900_000), "at the period");
+        assert!(!within(PERIOD, LANDED, LANDED - 1), "landed after now: the wall clock stepped back");
     }
 
     #[tokio::test(start_paused = true)]
