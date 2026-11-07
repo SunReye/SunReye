@@ -13,6 +13,7 @@ use utoipa::ToSchema;
 use crate::https::{GetError, Limits, get_with_roots};
 use crate::plant_zone::plant_zone;
 use crate::refresh::{PERIOD, within};
+use crate::run::Clock;
 use crate::store::{Store, StoreError};
 use crate::weather;
 
@@ -156,8 +157,8 @@ impl Conditions {
     }
 
     /// None while weather is off or unlocated, and until a reading for the location landed.
-    pub async fn serve(&self, store: &Store, now_ms: i64) -> Result<Option<Reading>, StoreError> {
-        let Some(wanted) = self.wanted(store, now_ms).await? else { return Ok(None) };
+    pub async fn serve(&self, store: &Store, clock: &Clock) -> Result<Option<Reading>, StoreError> {
+        let Some(wanted) = self.wanted(store, clock.now_ms()).await? else { return Ok(None) };
         let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         Ok(cache.as_ref().filter(|c| c.key == wanted.key).map(|c| Reading {
             solar_radiation_sum: c.reading.solar_radiation_sum.filter(|_| c.day == wanted.today),
@@ -171,9 +172,10 @@ impl Conditions {
     pub async fn refresh(
         &self,
         store: &Store,
+        clock: &Clock,
         roots: &[CertificateDer<'static>],
-        now_ms: i64,
     ) -> Result<bool, StoreError> {
+        let now_ms = clock.now_ms();
         let Some(Wanted { key, today, url, .. }) = self.wanted(store, now_ms).await? else { return Ok(true) };
         let fresh = |c: &Cached| c.key == key && c.day == today && within(PERIOD, c.fetched_ms, now_ms);
         if self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().is_some_and(fresh) {
@@ -236,6 +238,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
+    use crate::store::PlantSettings;
+    use crate::test_net::closed_port;
 
     const TODAY: jiff::civil::Date = jiff::civil::date(2026, 7, 24);
 
@@ -360,5 +364,26 @@ mod tests {
             );
         }
         assert!(matches!(reading(b"not json", TODAY), Err(FetchError::Json(_))));
+    }
+
+    #[tokio::test]
+    async fn located_weather_over_a_store_and_a_clock_reports_a_dead_fetch_and_serves_nothing() {
+        let store = Store::in_memory().await.expect("store");
+        // 2026-07-24T10:00:00Z.
+        let clock = Clock::at(1_784_887_200_000);
+        let (_closed, port) = closed_port();
+        let conditions = Conditions::new(format!("https://127.0.0.1:{port}/v1/forecast"));
+        assert!(conditions.refresh(&store, &clock, &[]).await.expect("refresh"), "off: nothing to fetch");
+        assert_eq!(conditions.serve(&store, &clock).await.expect("serve"), None);
+
+        let located = PlantSettings {
+            enabled: true,
+            latitude: Some(52.5),
+            longitude: Some(13.4),
+            ..PlantSettings::default()
+        };
+        store.save_plant_settings(&located).await.expect("plant");
+        assert!(!conditions.refresh(&store, &clock, &[]).await.expect("refresh"), "nothing answers");
+        assert_eq!(conditions.serve(&store, &clock).await.expect("serve"), None, "no reading landed");
     }
 }

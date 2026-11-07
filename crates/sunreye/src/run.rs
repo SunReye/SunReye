@@ -12,7 +12,7 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
-use crate::conditions::Conditions;
+use crate::conditions::{Conditions, Reading};
 use crate::events::{Bus, Changed, Events};
 use crate::learn;
 use crate::live::Live;
@@ -26,7 +26,7 @@ use crate::refresh;
 use crate::retention::hourly;
 use crate::samples::{ClosedMinute, Sample, Unstored};
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, kiosk, poll_interval, poll_timeout, set_kiosk};
-use crate::solar::Solar;
+use crate::solar::{Served, Solar};
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
@@ -316,6 +316,16 @@ impl Core {
         self.clock.now_ms()
     }
 
+    /// The forecast from the irradiance the last refresh landed.
+    pub async fn forecast(&self) -> Result<Option<Served>, StoreError> {
+        self.solar.serve(&self.store, &self.clock, &self.bundle, &self.unstored).await
+    }
+
+    /// The conditions the last refresh landed.
+    pub async fn weather(&self) -> Result<Option<Reading>, StoreError> {
+        self.conditions.serve(&self.store, &self.clock).await
+    }
+
     /// The compiled-in profile `id`, else the one a profile source supplied.
     pub async fn profile(&self, id: &str) -> Result<Option<Arc<Profile>>, StoreError> {
         let installed = installed(&self.store).await?;
@@ -567,7 +577,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
     let conditions = move || {
         let core = weak.upgrade()?;
         Some(async move {
-            let refreshed = core.conditions.refresh(&core.store, &core.roots, core.now_ms()).await;
+            let refreshed = core.conditions.refresh(&core.store, &core.clock, &core.roots).await;
             refreshed.unwrap_or_else(|error| {
                 tracing::warn!(%error, "weather not refreshed");
                 false
@@ -579,7 +589,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
     let solar = move || {
         let core = weak.upgrade()?;
         Some(async move {
-            core.solar.refresh(&core).await.unwrap_or_else(|error| {
+            core.solar.refresh(&core.store, &core.clock, &core.roots).await.unwrap_or_else(|error| {
                 tracing::warn!(%error, "forecast not refreshed");
                 false
             })
@@ -652,7 +662,7 @@ fn publish_forecast(
             if !core.exports.active() {
                 continue;
             }
-            match core.solar.serve(&core).await {
+            match core.forecast().await {
                 Ok(Some(served)) => core.exports.forecast(served.forecast),
                 Ok(None) => {}
                 Err(error) => tracing::warn!(%error, "forecast not exported"),

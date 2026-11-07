@@ -100,10 +100,10 @@ pub struct WeatherAnswer {
     )
 )]
 pub async fn weather(State(core): State<Arc<Core>>) -> Result<Json<Option<WeatherAnswer>>, ApiError> {
-    let Some(reading) = core.conditions.serve(&core.store, core.now_ms()).await? else {
+    let Some(reading) = core.weather().await? else {
         return Ok(Json(None));
     };
-    let forecast = core.solar.serve(&core).await?.map(|served| SolarForecast {
+    let forecast = core.forecast().await?.map(|served| SolarForecast {
         provider: served.forecast.provider,
         step_minutes: served.forecast.step_minutes,
         utc_offset_seconds: served.forecast.utc_offset_seconds,
@@ -180,7 +180,7 @@ pub async fn providers() -> Json<[Provider; 1]> {
     )
 )]
 pub async fn raw(State(core): State<Arc<Core>>) -> Result<Json<Option<ForecastExport>>, ApiError> {
-    Ok(Json(core.solar.serve(&core).await?.map(|served| export(&served, Variant::Raw))))
+    Ok(Json(core.forecast().await?.map(|served| export(&served, Variant::Raw))))
 }
 
 /// What the feed-in cap and the battery leave of it; null as for the raw forecast.
@@ -195,7 +195,7 @@ pub async fn raw(State(core): State<Arc<Core>>) -> Result<Json<Option<ForecastEx
     )
 )]
 pub async fn usable(State(core): State<Arc<Core>>) -> Result<Json<Option<ForecastExport>>, ApiError> {
-    Ok(Json(core.solar.serve(&core).await?.map(|served| export(&served, Variant::Usable))))
+    Ok(Json(core.forecast().await?.map(|served| export(&served, Variant::Usable))))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
