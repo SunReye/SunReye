@@ -30,6 +30,10 @@ use crate::solar::Solar;
 use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
+mod clock;
+
+use clock::Clock;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
     #[error(transparent)]
@@ -77,6 +81,8 @@ pub struct Core {
     stranger_reads: Arc<Semaphore>,
     /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
     now: fn() -> i64,
+    /// Stamps every poll.
+    clock: Clock,
     polling: Polling,
     retention: Mutex<Option<Running>>,
     learning: Mutex<Option<Running>>,
@@ -159,21 +165,28 @@ impl Core {
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
         let urls = (open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into());
-        Self::open_clocked(data_dir, roots, now_ms, urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, roots, (now_ms, Clock::new(now_ms())), urls, learn::learn_logged).await
     }
 
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        Self::open_clocked(data_dir, Vec::new(), now, urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, Vec::new(), (now, Clock::new(now_ms())), urls, learn::learn_logged).await
+    }
+
+    /// [`Core::open`] with polls stamped by `clock`.
+    #[cfg(test)]
+    pub(crate) async fn open_on(data_dir: &Path, clock: Clock) -> Result<Arc<Self>, RunError> {
+        let urls = offline();
+        Self::open_clocked(data_dir, Vec::new(), (now_ms, clock), urls, learn::learn_logged).await
     }
 
     /// [`Core::open_at`] on the wall clock, learning with `job`.
     #[cfg(test)]
     pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        Self::open_clocked(data_dir, Vec::new(), now_ms, urls, job).await
+        Self::open_clocked(data_dir, Vec::new(), (now_ms, Clock::new(now_ms())), urls, job).await
     }
 
     /// [`Core::open`] fetching the forecast and the archive from `urls`, trusting `roots`, the clock where `now`
@@ -185,17 +198,17 @@ impl Core {
         urls: (String, String),
         now: fn() -> i64,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, now, urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, roots, (now, Clock::new(now_ms())), urls, learn::learn_logged).await
     }
 
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        now: fn() -> i64,
+        clocks: Clocks,
         (forecast_url, archive_url): (String, String),
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        let core = Self::start(data_dir, roots, now, (forecast_url, archive_url)).await?;
+        let core = Self::start(data_dir, roots, clocks, (forecast_url, archive_url)).await?;
         core.spawn_background(learn).await;
         *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
@@ -206,7 +219,8 @@ impl Core {
     #[cfg(test)]
     pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        let core = Self::start(data_dir, Vec::new(), now, urls).await?;
+        let clocks = (now, Clock::new(now_ms()));
+        let core = Self::start(data_dir, Vec::new(), clocks, urls).await?;
         core.spawn_background(learn::learn_logged).await;
         core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
         core.apply().await?;
@@ -221,7 +235,8 @@ impl Core {
         url: String,
         now: fn() -> i64,
     ) -> Result<Arc<Self>, RunError> {
-        let core = Self::start(data_dir, Vec::new(), now, (url.clone(), url)).await?;
+        let clocks = (now, Clock::new(now_ms()));
+        let core = Self::start(data_dir, Vec::new(), clocks, (url.clone(), url)).await?;
         *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
         Ok(core)
@@ -230,7 +245,7 @@ impl Core {
     async fn start(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        now: fn() -> i64,
+        (now, clock): Clocks,
         (forecast_url, archive_url): (String, String),
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
@@ -244,7 +259,6 @@ impl Core {
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let bus = Arc::new(Bus { changed: store.changed().clone(), ..Bus::default() });
-        let unstored = Arc::default();
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         #[cfg(test)]
         let seams = Arc::<Seams>::default();
@@ -260,7 +274,7 @@ impl Core {
             roots,
             live: Arc::new(Live::new(Arc::clone(&bus))),
             bus,
-            unstored,
+            unstored: Arc::default(),
             conditions: Conditions::new(forecast_url.clone()),
             solar: Solar::new(forecast_url),
             exports: Arc::default(),
@@ -268,6 +282,7 @@ impl Core {
             kiosk,
             stranger_reads: Arc::new(Semaphore::new(STRANGER_READS)),
             now,
+            clock,
             polling,
             retention,
             learning: Mutex::new(None),
@@ -327,7 +342,7 @@ impl Core {
             return applied;
         }
         let sinks = (&self.live, &self.unstored, &self.exports);
-        self.polling.restart(&self.store, &self.bundle, sinks).await
+        self.polling.restart(&self.store, &self.bundle, sinks, self.clock).await
     }
 
     /// Restarts the MQTT export from the stored settings and devices unless they are what it was `last` planned
@@ -455,6 +470,9 @@ async fn serve(
     }
 }
 
+/// The core's `now` and the clock its polls are stamped with.
+type Clocks = (fn() -> i64, Clock);
+
 /// The running device tasks. [`Polling::restart`] replaces them with the ones the store describes.
 #[derive(Debug, Default)]
 pub struct Polling {
@@ -476,10 +494,11 @@ impl Polling {
         store: &Arc<Store>,
         bundle: &Bundle,
         sinks: Sinks<'_>,
+        clock: Clock,
     ) -> Result<(), StoreError> {
         let mut running = self.running.lock().await;
         stop(running.take()).await;
-        *running = Some(spawn_devices(store, bundle, sinks).await?);
+        *running = Some(spawn_devices(store, bundle, sinks, clock).await?);
         Ok(())
     }
 
@@ -504,6 +523,7 @@ async fn spawn_devices(
     store: &Arc<Store>,
     bundle: &Bundle,
     (live, unstored, exports): Sinks<'_>,
+    clock: Clock,
 ) -> Result<Running, StoreError> {
     let interval = poll_interval(store.setting(INTERVAL_KEY).await?.as_deref());
     let timeout = poll_timeout(store.setting(TIMEOUT_KEY).await?.as_deref());
@@ -528,6 +548,7 @@ async fn spawn_devices(
                     device,
                     client: None,
                     timeout,
+                    clock,
                 };
                 tasks.spawn(task.run(interval, stopped.clone()));
             }
@@ -670,6 +691,7 @@ struct DeviceTask {
     exports: Arc<Exports>,
     client: Option<Client>,
     timeout: Duration,
+    clock: Clock,
 }
 
 impl DeviceTask {
@@ -690,7 +712,7 @@ impl DeviceTask {
     }
 
     async fn tick(&mut self) {
-        let at_ms = now_ms();
+        let at_ms = self.clock.now_ms();
         match self.poll_once().await {
             Ok(values) => self.record(Sample { at_ms, values }).await,
             Err(error) => self.lost(&error),
@@ -1138,6 +1160,7 @@ mod tests {
             client: None,
             // Only a refusal ends the dial: a hang never reaches this timeout within the deadline below.
             timeout: Duration::from_hours(1),
+            clock: Clock::new(now_ms()),
         };
         let polled = tokio::time::timeout(Duration::from_secs(20), task.poll_once()).await;
         match polled.expect("the dial hung") {
@@ -1313,6 +1336,57 @@ mod tests {
         let kept = core.store.readings(device, 0, i64::MAX).await.expect("readings");
         assert_eq!(kept.iter().map(|s| s.at_ms).collect::<Vec<_>>(), [PAST_MS - 6 * DAY_MS]);
         core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn the_core_stamps_its_polls_with_its_clock_not_the_wall_clock() {
+        let sim = Sim::start(oracle_case("deye-sg05lp3").registers, &[1]).await;
+        let dir = dir("core-poll-clock");
+        let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "3600000").await;
+
+        let core = Core::open_on(&dir, Clock::new(PAST_MS)).await.expect("open");
+        until_polled(&core, device, 1).await;
+
+        let at_ms = core.unstored.held(device)[0].at_ms;
+        assert!((PAST_MS..PAST_MS + 20_000).contains(&at_ms), "stamped {at_ms}");
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn a_device_task_stamps_each_poll_with_the_paused_core_clock() {
+        let sim = Sim::start(oracle_case("deye-sg05lp3").registers, &[1]).await;
+        let dir = dir("task-poll-clock");
+        let id = seed(&dir, sim.addr.port(), "deye-sg05lp3", "1000").await;
+        let store = Arc::new(Store::open(&dir).await.expect("store"));
+        let device =
+            store.devices().await.expect("devices").into_iter().find(|d| d.id == id).expect("device");
+        let profile =
+            find_profile(&Bundle::official().expect("bundle"), &[], &device.profile_id).expect("profile");
+        // After the store opened: a paused clock times its pool out.
+        tokio::time::pause();
+        let mut task = DeviceTask {
+            store: Arc::clone(&store),
+            live: Arc::default(),
+            unstored: Arc::default(),
+            exports: Arc::default(),
+            poller: DevicePoller::new(profile, device.unit_id),
+            device,
+            client: None,
+            timeout: Duration::from_secs(3),
+            clock: Clock::new(PAST_MS),
+        };
+
+        task.tick().await;
+        tokio::time::advance(Duration::from_millis(1500)).await;
+        task.tick().await;
+
+        let stamps: Vec<i64> = task.unstored.held(id).iter().map(|s| s.at_ms).collect();
+        assert_eq!(stamps, [PAST_MS, PAST_MS + 1500]);
+        tokio::time::resume();
+        drop(task);
+        Arc::into_inner(store).expect("one owner").close().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 }
