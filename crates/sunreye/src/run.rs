@@ -287,6 +287,7 @@ impl Core {
 
     /// Started last, so stopped first: an import's last step restarts polling, and polling feeds the rest.
     async fn poll(self: Arc<Self>) -> Result<Arc<Self>, RunError> {
+        self.tasks.start("statistics", spawn_statistics(&self)).await;
         self.tasks.start("polling", Running::default()).await;
         self.tasks.start("importing", Running::default()).await;
         self.apply().await?;
@@ -620,6 +621,29 @@ async fn next_wake(
         _ = stopped.changed() => None,
         change = changes.newest() => change.map(|_| Wake::Changed),
         _ = ticker.tick() => Some(Wake::Tick),
+    }
+}
+
+/// Publishes today's `statistics` frame after each rollup of a minute of today. Holds the core weakly, so it never
+/// keeps it from stopping.
+fn spawn_statistics(core: &Arc<Core>) -> Running {
+    let (rolled, core) = (core.store.rolled().subscribe(), Arc::downgrade(core));
+    Running::one(move |stopped| publish_statistics(core, rolled, stopped))
+}
+
+async fn publish_statistics(core: Weak<Core>, mut rolled: Events<i64>, mut stopped: watch::Receiver<bool>) {
+    loop {
+        let minute = tokio::select! {
+            biased;
+            _ = stopped.changed() => return,
+            minute = rolled.next() => minute,
+        };
+        let (Some(minute), Some(core)) = (minute, core.upgrade()) else { return };
+        match crate::web::today_frame(&core, minute).await {
+            Ok(Some(frame)) => core.bus.statistics.publish(frame),
+            Ok(None) => {}
+            Err(error) => tracing::warn!(%error, "today's statistics not published"),
+        }
     }
 }
 
@@ -1284,8 +1308,16 @@ mod tests {
         core.stop().await;
 
         let events = seams.events.lock().expect("events").clone();
-        let want =
-            ["importing", "polling", "exporting", "refreshing", "learning", "retention", "store closed"];
+        let want = [
+            "importing",
+            "polling",
+            "statistics",
+            "exporting",
+            "refreshing",
+            "learning",
+            "retention",
+            "store closed",
+        ];
         assert_eq!(events, want);
         drop(std::fs::remove_dir_all(&dir));
     }

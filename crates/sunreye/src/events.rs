@@ -4,7 +4,7 @@
 use tokio::sync::{broadcast, watch};
 
 use crate::evcc::EvccState;
-use crate::live::{MetricsFrame, PlantFrame};
+use crate::live::{MetricsFrame, PlantFrame, StatisticsFrame};
 
 /// Events held for the slowest subscriber. Publishing never waits: a subscriber that falls further
 /// behind skips to the oldest event still held, so memory is bounded by this ring, not per subscriber.
@@ -21,6 +21,8 @@ pub struct Bus {
     pub changed: Event<Changed>,
     /// EVCC's last state; the ingest publishes it.
     pub evcc: State<EvccState>,
+    /// Today's figures, after each rollup of a minute of today.
+    pub statistics: Event<StatisticsFrame>,
     /// Published once an account's session ended or its access changed: logout, a sign-in over it, account
     /// removal, role change.
     pub sessions: Event<SessionEnded>,

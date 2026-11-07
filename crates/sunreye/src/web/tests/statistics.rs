@@ -363,3 +363,48 @@ async fn five_year_report() {
     }
     finish(core, admin).await;
 }
+
+/// 00:00:30 in Berlin on 15 August 2026: the plant day began at 2026-08-14T22:00:00Z.
+const BERLIN_JUST_PAST_MIDNIGHT: &str = "2026-08-14T22:00:30Z";
+
+/// The `statistics` frame a rollup of the minute starting at `minute_at` publishes, parsed; none for a
+/// minute outside today.
+async fn frame_of(core: &Core, minute_at: &str) -> Option<Value> {
+    let minute = crate::samples::minute_of(ms(minute_at));
+    let frame = today_frame(core, minute).await.expect("read");
+    frame.map(|frame| serde_json::from_str(frame.0.as_str()).expect("json"))
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rollup_of_a_minute_of_today_frames_todays_figures_and_one_of_another_day_none() {
+    let core =
+        crate::support::core_at(&dir("statistics-today"), BERLIN_JUST_PAST_MIDNIGHT, "Europe/Berlin").await;
+    let device = add_device(&core, "10.0.0.5").await;
+    store(
+        &core,
+        device,
+        &series(
+            DAY_PRODUCTION,
+            &[("2026-08-14T21:59:10Z", 7.0), ("2026-08-14T22:00:00Z", 0.5), ("2026-08-14T22:00:20Z", 1.5)],
+        ),
+    )
+    .await;
+    assert_eq!(frame_of(&core, "2026-08-14T21:59:00Z").await, None, "23:59 local is yesterday");
+    assert_eq!(frame_of(&core, "2026-08-15T22:00:00Z").await, None, "the next midnight is tomorrow");
+    let frame = frame_of(&core, "2026-08-14T22:00:00Z").await.expect("00:00 local is today");
+    let (core, admin) = signed_in(core, &Config::default()).await;
+    let read = energy(&admin, "from=2026-08-14T22:00:00Z&to=2026-08-15T22:00:00Z&bucket=day").await;
+    assert_eq!(frame["topic"], "statistics");
+    assert_eq!(frame["data"]["type"], "today");
+    assert_eq!(frame["data"]["at"], "2026-08-14T22:00:30.000Z");
+    assert_eq!(frame["data"]["energy"], read[0], "today's energy as the statistics read answers it");
+    assert_eq!(frame["data"]["energy"]["bucket"], "2026-08-15");
+    assert!(frame["data"]["energy"]["productionKwh"].as_f64() > Some(0.0), "{frame}");
+    let cost = &frame["data"]["cost"];
+    assert_eq!(
+        (cost["from"].clone(), cost["to"].clone()),
+        (json!("2026-08-14T22:00:00.000Z"), json!("2026-08-15T22:00:00.000Z"))
+    );
+    assert_eq!(cost["productionKwh"], frame["data"]["energy"]["productionKwh"]);
+    finish(core, admin).await;
+}

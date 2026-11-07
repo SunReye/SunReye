@@ -19,8 +19,8 @@ use super::auth::AuthSession;
 use crate::evcc::EvccState;
 use crate::events::{Changed, Events, SessionEnded};
 use crate::live::{
-    ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, evcc_frame, events_frame, parse_client_frame,
-    resolve_subscribe, resolve_unsubscribe,
+    ClientFrame, MetricsFrame, PlantFrame, StatisticsFrame, Topic, ack_frame, evcc_frame, events_frame,
+    parse_client_frame, resolve_subscribe, resolve_unsubscribe,
 };
 use crate::run::{Clock, Core};
 use crate::store::{Store, StoreError};
@@ -62,6 +62,7 @@ pub async fn upgrade(
         plant: core.bus.plant.subscribe(),
         events: core.bus.changed.subscribe(),
         evcc: core.bus.evcc.subscribe(),
+        statistics: core.bus.statistics.subscribe(),
     };
     let ends = core.bus.sessions.subscribe();
     let holder = match holder(&core, &auth, ends).await {
@@ -288,6 +289,7 @@ struct Feed {
     plant: watch::Receiver<Option<PlantFrame>>,
     events: Events<Changed>,
     evcc: watch::Receiver<Option<EvccState>>,
+    statistics: Events<StatisticsFrame>,
 }
 
 impl Feed {
@@ -299,6 +301,7 @@ impl Feed {
             state = latest(&mut self.plant) => Step::Plant(state),
             changed = self.events.next() => Step::Events(changed),
             state = latest(&mut self.evcc) => Step::Evcc(state),
+            frame = self.statistics.next() => Step::Statistics(frame),
         }
     }
 }
@@ -338,6 +341,7 @@ enum Step {
     Plant(Option<PlantFrame>),
     Events(Option<Changed>),
     Evcc(Option<EvccState>),
+    Statistics(Option<StatisticsFrame>),
     Ping,
     Idle,
     Revoked,
@@ -357,6 +361,7 @@ async fn take(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, step: Ste
         Step::Evcc(state) => {
             forward(peer, held, Topic::Evcc, state.map(|state| evcc_frame(&state).into())).await
         }
+        Step::Statistics(frame) => forward(peer, held, Topic::Statistics, frame.map(|frame| frame.0)).await,
         Step::Ping => peer.ping().await,
         Step::Revoked => peer.close().await,
         Step::Recheck => peer.recheck().await,

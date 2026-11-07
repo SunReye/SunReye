@@ -13,6 +13,7 @@ use crate::evcc::EvccState;
 use crate::events::{Bus, Changed};
 use crate::plant::{Aggregate, Aggregates, Fold};
 use crate::samples::Sample;
+use crate::statistics::PeriodEnergy;
 
 /// One reading as its `metrics` frame, serialised once for every connection.
 #[derive(Debug, Clone)]
@@ -21,6 +22,10 @@ pub struct MetricsFrame(pub Utf8Bytes);
 /// The plant's fold as its `plant` frame, serialised once for every connection.
 #[derive(Debug, Clone)]
 pub struct PlantFrame(pub Utf8Bytes);
+
+/// Today's figures as their `statistics` frame, serialised once for every connection.
+#[derive(Debug, Clone)]
+pub struct StatisticsFrame(pub Utf8Bytes);
 
 /// Folds each reading into the plant and publishes both on the bus.
 #[derive(Debug, Default)]
@@ -151,10 +156,46 @@ pub fn evcc_frame(state: &EvccState) -> String {
     frame("evcc", state)
 }
 
+/// `{"topic":"statistics","data":StatisticsTodayMessage}` for the plant day `[from, to)`. The core has no
+/// tariff, so `cost` carries the energy and every money figure is zero, as the SPA builds it
+/// (`apps/web/src/lib/statistics/window-energy.ts`).
+pub fn statistics_frame(
+    at_ms: i64,
+    (from, to): (jiff::Timestamp, jiff::Timestamp),
+    energy: &PeriodEnergy,
+) -> String {
+    let cost = json!({
+        "importKwh": energy.import_kwh,
+        "exportKwh": energy.export_kwh,
+        "loadKwh": energy.load_kwh,
+        "productionKwh": energy.production_kwh,
+        "batteryDischargeKwh": energy.battery_discharge_kwh,
+        "batteryChargeKwh": energy.battery_charge_kwh,
+        "importCost": 0,
+        "exportEarnings": 0,
+        "zeroValueExportKwh": 0,
+        "zeroValueExportEur": 0,
+        "standingCharge": 0,
+        "net": 0,
+        "gridOnlyCost": 0,
+        "savings": 0,
+        "solarSavings": 0,
+        "solarToLoadKwh": energy.solar_to_load_kwh,
+        "selfSufficiency": energy.self_sufficiency,
+        "selfConsumption": energy.self_consumption,
+        "byDay": [],
+        "byBand": [],
+        "currency": "EUR",
+        "from": iso(from.as_millisecond()),
+        "to": iso(to.as_millisecond()),
+    });
+    frame("statistics", json!({ "type": "today", "at": iso(at_ms), "cost": cost, "energy": energy }))
+}
+
 /// Declares [`Topic`] and its test-only `ALL` from one list, so no variant escapes `ALL`.
 macro_rules! topics {
     ($($variant:ident),+) => {
-        /// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
+        /// The topics the core publishes. `logs` and `automations` are 3.x topics it does not,
         /// so a subscribe to them is denied by name.
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Topic {
@@ -168,14 +209,14 @@ macro_rules! topics {
     };
 }
 
-topics!(Metrics, Plant, Evcc, Events);
+topics!(Metrics, Plant, Evcc, Events, Statistics);
 
 /// Who may hold a topic: the access of its REST read in `route-access.txt`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Access {
     /// A session, or a stranger while the kiosk view is on.
     Kiosk,
-    /// A session only: it names what an admin just changed.
+    /// A session only.
     Session,
 }
 
@@ -194,7 +235,7 @@ impl Topic {
     pub(crate) const fn access(self) -> Access {
         match self {
             Self::Metrics | Self::Plant | Self::Evcc => Access::Kiosk,
-            Self::Events => Access::Session,
+            Self::Events | Self::Statistics => Access::Session,
         }
     }
 
@@ -204,6 +245,7 @@ impl Topic {
             "plant" => Some(Self::Plant),
             "evcc" => Some(Self::Evcc),
             "events" => Some(Self::Events),
+            "statistics" => Some(Self::Statistics),
             _ => None,
         }
     }
@@ -214,6 +256,7 @@ impl Topic {
             Self::Plant => "plant",
             Self::Evcc => "evcc",
             Self::Events => "events",
+            Self::Statistics => "statistics",
         }
     }
 }
@@ -335,6 +378,7 @@ mod tests {
     use crate::oracle::{as_floats, oracle};
     use crate::plant::Aggregates;
     use crate::samples::Sample;
+    use crate::statistics::PeriodEnergy;
 
     /// 2026-08-15T10:00:00.123Z
     const AT_MS: i64 = 1_786_788_000_123;
@@ -480,23 +524,65 @@ mod tests {
         assert_eq!(
             ack,
             parsed(
-                r#"{"topic":"__ack","data":{"subscribed":["metrics","plant","evcc","events"],
-                    "denied":["statistics","logs","automations","nope"]}}"#
+                r#"{"topic":"__ack","data":{"subscribed":["metrics","plant","evcc","events","statistics"],
+                    "denied":["logs","automations","nope"]}}"#
             )
         );
     }
 
     #[test]
-    fn a_stranger_is_denied_events_by_name_and_keeps_the_dashboard_topics() {
+    fn a_stranger_is_denied_events_and_statistics_by_name_and_keeps_the_dashboard_topics() {
         let Some(ClientFrame::Sub(topics)) =
-            parse_client_frame(r#"{"t":"sub","topics":["metrics","events","evcc"]}"#)
+            parse_client_frame(r#"{"t":"sub","topics":["metrics","events","statistics","evcc"]}"#)
         else {
             panic!("a sub frame")
         };
         let stranger = resolve_subscribe(&topics, false);
         assert_eq!(stranger.subscribe, [Topic::Metrics, Topic::Evcc]);
-        assert_eq!(stranger.denied, ["events"]);
-        assert_eq!(resolve_subscribe(&topics, true).subscribe, [Topic::Metrics, Topic::Events, Topic::Evcc]);
+        assert_eq!(stranger.denied, ["events", "statistics"]);
+        assert_eq!(
+            resolve_subscribe(&topics, true).subscribe,
+            [Topic::Metrics, Topic::Events, Topic::Statistics, Topic::Evcc]
+        );
+    }
+
+    #[test]
+    fn a_statistics_frame_is_the_3x_today_message_with_no_money() {
+        let energy = PeriodEnergy {
+            bucket: "2026-08-15".into(),
+            import_kwh: 1.5,
+            export_kwh: 2.0,
+            load_kwh: 4.0,
+            production_kwh: 6.0,
+            battery_discharge_kwh: 0.5,
+            battery_charge_kwh: 1.0,
+            grid_to_load_kwh: 1.5,
+            solar_to_load_kwh: 2.5,
+            battery_to_load_kwh: 0.5,
+            solar_direct_to_load_kwh: 2.0,
+            self_consumed_kwh: 4.0,
+            exported_kwh: 2.0,
+            self_sufficiency: Some(0.625),
+            self_consumption: None,
+        };
+        let day = ("2026-08-14T22:00:00Z".parse().unwrap(), "2026-08-15T22:00:00Z".parse().unwrap());
+        assert_eq!(
+            parsed(&statistics_frame(AT_MS, day, &energy)),
+            parsed(
+                r#"{"topic":"statistics","data":{"type":"today","at":"2026-08-15T10:00:00.123Z",
+                    "cost":{"importKwh":1.5,"exportKwh":2.0,"loadKwh":4.0,"productionKwh":6.0,
+                        "batteryDischargeKwh":0.5,"batteryChargeKwh":1.0,"importCost":0,"exportEarnings":0,
+                        "zeroValueExportKwh":0,"zeroValueExportEur":0,"standingCharge":0,"net":0,
+                        "gridOnlyCost":0,"savings":0,"solarSavings":0,"solarToLoadKwh":2.5,
+                        "selfSufficiency":0.625,"selfConsumption":null,"byDay":[],"byBand":[],
+                        "currency":"EUR","from":"2026-08-14T22:00:00.000Z","to":"2026-08-15T22:00:00.000Z"},
+                    "energy":{"bucket":"2026-08-15","importKwh":1.5,"exportKwh":2.0,"loadKwh":4.0,
+                        "productionKwh":6.0,"batteryDischargeKwh":0.5,"batteryChargeKwh":1.0,
+                        "gridToLoadKwh":1.5,"solarToLoadKwh":2.5,"batteryToLoadKwh":0.5,
+                        "solarDirectToLoadKwh":2.0,"selfConsumedKwh":4.0,"exportedKwh":2.0,
+                        "selfSufficiency":0.625,"selfConsumption":null}}}"#
+            )
+        );
     }
 
     #[test]

@@ -136,8 +136,13 @@ async fn published(
 /// A socket on every topic.
 async fn on_every_topic(addr: std::net::SocketAddr, api: &Api) -> Socket {
     let mut socket = connect(addr, api).await;
-    subscribe(&mut socket, r#"["metrics","plant","evcc","events"]"#).await;
+    subscribe(&mut socket, r#"["metrics","plant","evcc","events","statistics"]"#).await;
     socket
+}
+
+/// A `statistics` frame; its content is the topic's own tests' business.
+fn statistics_frame() -> crate::live::StatisticsFrame {
+    crate::live::StatisticsFrame(r#"{"topic":"statistics","data":{"type":"prices"}}"#.into())
 }
 
 /// One frame ready on each topic.
@@ -145,6 +150,7 @@ fn flood(core: &Core) {
     core.live.publish(7, &reading(1_786_788_000_123, 42.0));
     core.bus.evcc.publish(evcc_state(1.0));
     core.bus.changed.publish(crate::events::Changed::Settings);
+    core.bus.statistics.publish(statistics_frame());
 }
 
 #[tokio::test]
@@ -203,14 +209,14 @@ async fn a_role_change_is_published_and_the_demoted_socket_keeps_its_session_top
     }
     flood(&core);
     let mut topics = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..5 {
         topics.push(next_json(&mut socket).await["topic"].as_str().expect("topic").to_owned());
     }
     topics.sort();
     assert_eq!(
         topics,
-        ["evcc", "events", "metrics", "plant"],
-        "events follows GET /api/auth/session: any session"
+        ["evcc", "events", "metrics", "plant", "statistics"],
+        "events and statistics follow session reads: any session"
     );
     drop((user, admin));
     core.stop().await;
@@ -1149,6 +1155,9 @@ async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
     core.switch_kiosk(false).await.expect("kiosk off");
     core.live.publish(7, &reading(0, 1.0));
     core.bus.evcc.publish(evcc_state(1.0));
+    for _ in 0..100 {
+        core.bus.statistics.publish(statistics_frame());
+    }
     ended(&mut socket, "kiosk off").await;
     drop(admin);
     core.stop().await;
@@ -1160,10 +1169,11 @@ async fn next_message(socket: &mut Socket) -> Option<Result<Message, tungstenite
 }
 
 /// The REST read whose access each topic follows; a topic with no data read follows the session read.
-const TOPIC_READS: [(&str, &str); 3] = [
+const TOPIC_READS: [(&str, &str); 4] = [
     ("metrics", "GET /api/history/recent"),
     ("plant", "GET /api/history/recent"),
     ("events", "GET /api/auth/session"),
+    ("statistics", "GET /api/energy/series"),
 ];
 
 /// A topic whose read is not built yet, with the access that read will have. #327 adds `GET /api/evcc` and
@@ -1189,4 +1199,29 @@ fn every_topic_has_the_access_of_its_rest_read() {
             panic!("topic {name} has no REST read");
         }
     }
+}
+
+#[tokio::test]
+async fn a_rollup_of_today_reaches_a_sessions_statistics_and_a_stranger_is_denied_it_by_name() {
+    let (core, admin) = open(&dir("ws-statistics")).await;
+    let addr = serve(&core, &Config::default()).await;
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let device = rollup::add_device(&core, "10.0.0.5").await;
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    let ack = subscribe(&mut stranger, r#"["metrics","statistics"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["metrics"], "denied": ["statistics"]}));
+    let mut session = connect(addr, &admin).await;
+    let ack = subscribe(&mut session, r#"["statistics"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["statistics"], "denied": []}));
+
+    rollup::store(&core, device, &[(core.now_ms(), "day_energy", 1.5)]).await;
+    let frame = next_json(&mut session).await;
+    assert_eq!(
+        (frame["topic"].clone(), frame["data"]["type"].clone()),
+        (json!("statistics"), json!("today"))
+    );
+    silent(&mut session).await;
+    silent(&mut stranger).await;
+    drop((stranger, session, admin));
+    core.stop().await;
 }
