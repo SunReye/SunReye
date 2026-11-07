@@ -14,9 +14,9 @@ use crate::forecast::{
     self, CorrectionCell, CorrectionModel, ForecastConfig, Irradiance, Location, Observation, Run, SimInputs,
     Skill, StringObservation, Variant,
 };
-use crate::learn::{LearnState, Outcome, learn_once};
+use crate::learn::{Outcome, learn_once};
 use crate::samples::{ClosedMinute, Sample};
-use crate::store::StringGrid;
+use crate::store::{LearnState, StringGrid};
 
 /// 2026-07-20 is the last settled day.
 const LEARN_NOW: &str = "2026-07-23T10:00:00Z";
