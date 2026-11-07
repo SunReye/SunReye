@@ -576,7 +576,6 @@ async fn patched_pv(
 async fn save_patch(core: &Core, id: i64, edit: &DeviceEdit, pv: Option<&DevicePv>) -> Result<(), ApiError> {
     if let Some(pv) = pv {
         core.store.save_device_pv(id, pv).await?;
-        core.weather_changed();
     }
     if *edit != DeviceEdit::default() {
         core.store.edit_device(id, edit).await?;

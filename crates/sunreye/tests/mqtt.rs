@@ -613,13 +613,41 @@ async fn seed(dir: &std::path::Path, sim_port: u16, broker_port: u16) -> i64 {
     let connection = store.add_connection(&connection).await.expect("connection");
     let device = NewDevice { connection_id: connection, profile_id: "deye-sg05lp3".into(), unit_id: 1 };
     let device = store.add_device(&device).await.expect("device");
+    store.set_setting("mqtt", &exporting_to(broker_port)).await.expect("mqtt");
+    store.close().await;
+    device
+}
+
+/// The export settings sending to `broker_port`.
+fn exporting_to(broker_port: u16) -> String {
     let settings = serde_json::json!({
         "enabled": true, "brokerUrl": format!("mqtt://127.0.0.1:{broker_port}"), "plantSlug": "haus-sud",
         "haDiscoveryEnabled": true, "username": "mqtt", "password": "s3cret"
     });
-    store.set_setting("mqtt", &settings.to_string()).await.expect("mqtt");
-    store.close().await;
-    device
+    settings.to_string()
+}
+
+/// No route in the way: the store publishes each write, and the export re-reads the store on any burst of them.
+#[tokio::test]
+async fn the_export_follows_a_burst_of_store_writes_past_the_ring_to_the_last_broker_written() {
+    let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
+    let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
+    let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");
+    let mut broker = start_broker(None).await;
+    let dir = data_dir("follows");
+    let device = seed(&dir, sim.addr.port(), 1).await;
+    let core = sunreye::run::Core::open(&dir).await.expect("core");
+
+    for n in 0..40 {
+        core.store.set_setting("burst", &n.to_string()).await.expect("burst");
+    }
+    core.store.set_setting("mqtt", &exporting_to(broker.port)).await.expect("mqtt");
+    let seen = broker.until_topic(&format!("sunreye/haus-sud/{device}/battery/soc")).await;
+    let Seen::Connect { client_id, .. } = &seen[0] else { panic!("{seen:?}") };
+    assert_eq!(client_id, &format!("sunreye-haus-sud-{device}"));
+    core.stop().await;
+    broker.until_disconnect().await;
+    drop(std::fs::remove_dir_all(&dir));
 }
 
 #[tokio::test]

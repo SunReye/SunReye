@@ -3,7 +3,7 @@
 
 use std::future::{Future, IntoFuture};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustls::pki_types::CertificateDer;
@@ -13,7 +13,7 @@ use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
 use crate::conditions::Conditions;
-use crate::events::Bus;
+use crate::events::{Bus, Change, Events};
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
@@ -79,9 +79,8 @@ pub struct Core {
     learning: Mutex<Option<Running>>,
     /// The conditions and forecast refresh loops.
     refreshing: Mutex<Option<Running>>,
-    /// Fired when a setting the weather or forecast is fetched for may have changed.
-    weather_changed: watch::Sender<()>,
-    publishing_forecast: Mutex<Option<Running>>,
+    /// Restarts the MQTT export on each store change and feeds it the forecast.
+    exporting: Mutex<Option<Running>>,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the upload awaiting the guard's confirmation,
     /// with the admin who sent it. In memory: a restart drops it, and the held upload with it.
@@ -194,7 +193,7 @@ impl Core {
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
         let core = Self::start(data_dir, roots, now, (forecast_url, archive_url), learn).await?;
-        *core.publishing_forecast.lock().await = Some(spawn_forecast_export(&core));
+        *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
         Ok(core)
     }
@@ -226,7 +225,7 @@ impl Core {
             }
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let (bus, unstored) = (Arc::<Bus>::default(), Arc::default());
+        let (bus, unstored) = (Arc::clone(store.bus()), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         #[cfg(test)]
         let seams = Arc::<Seams>::default();
@@ -254,8 +253,7 @@ impl Core {
             retention,
             learning: Mutex::new(None),
             refreshing: Mutex::new(None),
-            weather_changed: watch::Sender::new(()),
-            publishing_forecast: Mutex::new(None),
+            exporting: Mutex::new(None),
             imports: Arc::default(),
             importing: Mutex::new(Some(Running { stop: watch::Sender::new(false), tasks: JoinSet::new() })),
             upload,
@@ -304,41 +302,49 @@ impl Core {
         Ok(find_profile(&self.bundle, &installed, id))
     }
 
-    /// Refreshes the weather and the forecast now, for whatever the settings ask for.
-    pub fn weather_changed(&self) {
-        self.weather_changed.send_replace(());
-    }
-
-    /// Polls the in-service devices the store describes now; called after every settings or roster change.
+    /// Polls the in-service devices the store describes now; called after a roster or polling settings change.
     pub async fn apply(&self) -> Result<(), StoreError> {
-        self.weather_changed();
         #[cfg(test)]
         if let Some(applied) = self.seams.apply() {
             return applied;
         }
         let sinks = (&self.live, &self.unstored, &self.exports);
-        self.polling.restart(&self.store, &self.bundle, sinks).await?;
-        self.export().await
+        self.polling.restart(&self.store, &self.bundle, sinks).await
     }
 
-    /// Restarts the MQTT export from the stored settings and devices.
-    pub async fn export(&self) -> Result<(), StoreError> {
-        #[cfg(test)]
-        if self.seams.unpolled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Ok(());
-        }
+    /// Restarts the MQTT export from the stored settings and devices unless they are what it was `last` planned
+    /// from, so a write it does not read never bounces its connections.
+    async fn export(&self, last: &mut Option<ExportInputs>) -> Result<(), StoreError> {
         let config = MqttConfig::load(&self.store).await?;
         let installed = installed(&self.store).await?;
         let devices = self.store.devices().await?;
+        let inputs = ExportInputs {
+            config: config.clone(),
+            devices: devices
+                .iter()
+                .filter(|device| device.in_service())
+                .map(|device| {
+                    let text =
+                        installed.iter().find(|p| p.id == device.profile_id).map(|p| Arc::clone(&p.text));
+                    (device.id, device.profile_id.clone(), text)
+                })
+                .collect(),
+        };
+        if last.as_ref() == Some(&inputs) {
+            #[cfg(test)]
+            self.seams.record("export kept");
+            return Ok(());
+        }
         let planned =
             mqtt::plan(&config, &devices, |id| find_profile(&self.bundle, &installed, id), &self.roots);
         self.exports.restart(planned).await;
+        *last = Some(inputs);
         Ok(())
     }
 
-    /// Stops the forecast feed, then each export, which publishes `offline`.
+    /// Stops what restarts the export and the forecast feed, then each export, which publishes `offline`.
     async fn stop_export(&self) {
-        stop(self.publishing_forecast.lock().await.take()).await;
+        stop(self.exporting.lock().await.take()).await;
         self.exports.stop().await;
     }
 
@@ -545,7 +551,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
             })
         })
     };
-    tasks.spawn(refresh::keep_fresh(conditions, core.weather_changed.subscribe(), stopped.clone()));
+    tasks.spawn(refresh::keep_fresh(conditions, core.bus.changes.subscribe(), stopped.clone()));
     let weak = Arc::downgrade(core);
     let solar = move || {
         let core = weak.upgrade()?;
@@ -556,20 +562,62 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
             })
         })
     };
-    tasks.spawn(refresh::keep_fresh(solar, core.weather_changed.subscribe(), stopped));
+    tasks.spawn(refresh::keep_fresh(solar, core.bus.changes.subscribe(), stopped));
     Running { stop, tasks }
 }
+
+/// What an export plan reads: the export settings and each in-service device's profile, with the installed
+/// text it parses from.
+#[derive(PartialEq)]
+struct ExportInputs {
+    config: MqttConfig,
+    devices: Vec<ExportedDevice>,
+}
+
+/// A device's id, its profile id and that profile's installed text, if any.
+type ExportedDevice = (i64, String, Option<Arc<str>>);
 
 /// How often the plant forecast is published, as in 3.x.
 const FORECAST_EXPORT_EVERY: Duration = Duration::from_mins(5);
 
-/// Publishes the forecast while an export runs. Holds the core weakly, so the task never keeps it from stopping.
-fn spawn_forecast_export(core: &Arc<Core>) -> Running {
-    let (stop, mut stopped) = watch::channel(false);
+/// Restarts the export now and once for each burst of store changes, and publishes the forecast while an export
+/// runs. Holds the core weakly, so neither task keeps it from stopping.
+fn spawn_export(core: &Arc<Core>) -> Running {
+    let (stop, stopped) = watch::channel(false);
+    let mut tasks = JoinSet::new();
+    tasks.spawn(follow_changes(Arc::downgrade(core), core.bus.changes.subscribe(), stopped.clone()));
+    tasks.spawn(publish_forecast(core, stopped));
+    Running { stop, tasks }
+}
+
+/// A burst that outruns the ring still restarts the export once more: it re-reads the store.
+async fn follow_changes(core: Weak<Core>, mut changes: Events<Change>, mut stopped: watch::Receiver<bool>) {
+    let mut last = None;
+    while export_logged(&core, &mut last).await {
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => return,
+            change = changes.newest() => if change.is_none() { return },
+        }
+    }
+}
+
+/// False once the core is gone.
+async fn export_logged(core: &Weak<Core>, last: &mut Option<ExportInputs>) -> bool {
+    let Some(core) = core.upgrade() else { return false };
+    if let Err(error) = core.export(last).await {
+        tracing::warn!(%error, "MQTT export not restarted");
+    }
+    true
+}
+
+fn publish_forecast(
+    core: &Arc<Core>,
+    mut stopped: watch::Receiver<bool>,
+) -> impl Future<Output = ()> + use<> {
     let exports = Arc::clone(&core.exports);
     let core = Arc::downgrade(core);
-    let mut tasks = JoinSet::new();
-    tasks.spawn(async move {
+    async move {
         let mut ticker = tokio::time::interval(FORECAST_EXPORT_EVERY);
         loop {
             tokio::select! {
@@ -587,8 +635,7 @@ fn spawn_forecast_export(core: &Arc<Core>) -> Running {
                 Err(error) => tracing::warn!(%error, "forecast not exported"),
             }
         }
-    });
-    Running { stop, tasks }
+    }
 }
 
 fn log_unknown_profile(device: &DeviceRow) {
@@ -690,10 +737,12 @@ mod tests {
     use jiff::Timestamp;
 
     use super::*;
+    use crate::events::Change;
     use crate::modbus::Transport;
     use crate::rollup::Tier;
     use crate::samples::{MINUTE_MS, Sample, minute_of};
     use crate::settings::INTERVAL_KEY;
+    use crate::store::tests::published;
     use crate::store::{DeviceEdit, NewConnection, NewDevice};
     use crate::test_net::closed_port;
     use crate::web::Config;
@@ -954,6 +1003,51 @@ mod tests {
         core.store.edit_device(retired, &restore).await.expect("restore");
         core.apply().await.expect("apply");
         until_polled(&core, retired, asked + 2).await;
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn the_bus_carries_a_poll_a_settings_write_and_a_retire_and_stop_leaves_no_subscriber_behind() {
+        let case = oracle_case("deye-sg05lp3");
+        let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("sim");
+        let dir = dir("bus");
+        let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let (bus, seams) = (Arc::clone(&core.bus), Arc::clone(&core.seams));
+        let (mut metrics, mut changes) = (bus.metrics.subscribe(), bus.changes.subscribe());
+
+        let polled = tokio::time::timeout(Duration::from_secs(20), metrics.next()).await.expect("no poll");
+        let frame: serde_json::Value = serde_json::from_str(&polled.expect("a frame").0).expect("json");
+        assert_eq!(frame["data"]["inverterId"], device.to_string(), "{frame}");
+        core.store.set_setting(INTERVAL_KEY, "60").await.expect("interval");
+        let retire =
+            DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
+        core.store.edit_device(device, &retire).await.expect("retire");
+        assert_eq!(published(&mut changes), [Change::Settings, Change::DeviceRetired(device)]);
+
+        core.stop().await;
+        let subscribers = (bus.metrics.subscribers(), bus.changes.subscribers());
+        assert_eq!(subscribers, (1, 1), "only this test's own: every core task ended");
+        let closed = seams.events.lock().expect("events").iter().filter(|e| **e == "store closed").count();
+        assert_eq!(closed, 1);
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test]
+    async fn a_store_write_the_export_does_not_read_keeps_the_running_export() {
+        let dir = dir("export-kept");
+        let (_closed, broker) = closed_port();
+        seed(&dir, 1, "deye-sg05lp3", "50").await;
+        let store = Store::open(&dir).await.expect("store");
+        let on = serde_json::json!({"enabled": true, "brokerUrl": format!("mqtt://127.0.0.1:{broker}")});
+        store.set_setting(mqtt::config::KEY, &on.to_string()).await.expect("mqtt");
+        store.close().await;
+        let core = Core::open_at(&dir, now_ms).await.expect("core");
+
+        core.switch_kiosk(true).await.expect("kiosk");
+        let seams = Arc::clone(&core.seams);
+        until(|| seams.events.lock().expect("events").contains(&"export kept")).await;
         core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }

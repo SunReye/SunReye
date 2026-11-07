@@ -16,6 +16,22 @@ pub struct Bus {
     pub metrics: Event<MetricsFrame>,
     /// The plant's last fold.
     pub plant: State<PlantFrame>,
+    /// Published by the store once a write commits.
+    pub changes: Event<Change>,
+}
+
+/// What a store write changed. A hint: a subscriber re-reads the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    /// A setting, the plant's forecast settings or its time zone.
+    Settings,
+    DeviceAdded(i64),
+    /// Anything but a retire, a restore and the device's PV description included.
+    DeviceEdited(i64),
+    DeviceRetired(i64),
+    DeviceRemoved(i64),
+    /// An archive import landed its devices and settings.
+    Imported,
 }
 
 /// A topic whose payloads are hints: a subscriber hears those published after it subscribed.
@@ -56,6 +72,19 @@ impl<T: Clone> Events<T> {
                     tracing::debug!(missed, "slow subscriber skipped events");
                 }
                 Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    }
+
+    /// Waits for a payload, then answers the last one already queued: for a subscriber that re-reads state on
+    /// any hint, so a burst costs it one re-read.
+    pub async fn newest(&mut self) -> Option<T> {
+        let mut newest = self.next().await?;
+        loop {
+            match self.0.try_recv() {
+                Ok(payload) => newest = payload,
+                Err(broadcast::error::TryRecvError::Lagged(_)) => {}
+                Err(_) => return Some(newest),
             }
         }
     }
@@ -138,6 +167,22 @@ mod tests {
         let topic = Event::<Tracked>::default();
         topic.publish(Tracked { seq: 0, _alive: Arc::clone(&alive) });
         assert_eq!(copies(&alive), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn newest_waits_for_one_then_answers_the_last_queued_even_past_the_ring() {
+        let topic = Event::<u32>::default();
+        let mut hints = topic.subscribe();
+        assert_eq!(hints.newest().now_or_never(), None, "nothing queued");
+        for n in 1..=40 {
+            topic.publish(n);
+        }
+        assert_eq!(hints.newest().await, Some(40));
+        assert_eq!(hints.newest().now_or_never(), None, "the queue was drained");
+        topic.publish(41);
+        drop(topic);
+        assert_eq!(hints.newest().await, Some(41));
+        assert_eq!(hints.newest().await, None);
     }
 
     #[tokio::test(start_paused = true)]

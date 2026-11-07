@@ -415,7 +415,9 @@ mod tests {
         .await
         .expect("trigger");
         drop(conn);
+        let mut hints = store.bus().changes.subscribe();
         let failed = import(&store, &bundle, &path, now).await.expect_err("the write fails");
+        assert_eq!(crate::store::tests::published(&mut hints), [], "nothing committed");
         assert!(failed.to_string().contains("disk full"), "{failed}");
         assert_eq!(store.devices().await.expect("devices"), [], "no data");
         assert_eq!(active_profile(&store).await, None, "no profile");
@@ -424,6 +426,7 @@ mod tests {
         sqlx::query("DROP TRIGGER no_profile").execute(&mut *conn).await.expect("drop");
         drop(conn);
         import(&store, &bundle, &path, now).await.expect("a retry of the same archive imports");
+        assert_eq!(crate::store::tests::published(&mut hints), [crate::events::Change::Imported]);
         assert_eq!(active_profile(&store).await.as_deref(), Some("deye-sg05lp3"));
         assert_eq!(store.devices().await.expect("devices").len(), 1);
     }
