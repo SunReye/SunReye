@@ -213,13 +213,14 @@ pub(crate) fn parse_pdu(pdu: &[u8], count: u16) -> Result<Vec<u16>, Error> {
 
 #[cfg(test)]
 mod tests {
-    use sunreye_sim::{Framing, Registers, Simulator};
+    use sunreye_sim::{Framing, Registers};
     use tokio::net::TcpListener;
 
     use super::*;
+    use crate::support::Sim;
 
-    async fn rtu_client(registers: Registers, units: &[u8]) -> (Simulator, Client) {
-        let sim = Simulator::start_with(Framing::RtuOverTcp, registers, units).await.expect("sim");
+    async fn rtu_client(registers: Registers, units: &[u8]) -> (Sim, Client) {
+        let sim = Sim::start_with(Framing::RtuOverTcp, registers, units).await;
         let client = Client::connect(
             Transport::RtuOverTcp,
             "127.0.0.1",
@@ -246,12 +247,11 @@ mod tests {
 
     #[tokio::test]
     async fn an_rtu_read_returns_the_words_and_survives_a_refusal() {
-        let (sim, mut client) = rtu_client(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await;
+        let (_sim, mut client) = rtu_client(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await;
         assert_eq!(client.read_holding(1, 10, 3).await, Ok(vec![1, 2, 3]));
         assert_eq!(client.read_holding(1, 11, 1).await, Ok(vec![2]));
         assert_eq!(client.read_holding(1, 99, 1).await, Err(Error::Exception(2)), "the stream stays usable");
         assert_eq!(client.read_holding(1, 12, 1).await, Ok(vec![3]));
-        assert!(sim.requests().iter().all(|r| r.function == 3), "reads only");
     }
 
     #[tokio::test]
@@ -345,7 +345,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_read_returns_the_words_and_numbers_transactions_from_one() {
-        let sim = Simulator::start(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await.expect("sim");
+        let sim = Sim::start(Registers::from_runs([(10, vec![1, 2, 3])]), &[1]).await;
         let mut client =
             Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
@@ -358,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_count_outside_one_to_125_is_refused_before_anything_is_sent() {
-        let sim = Simulator::start(Registers::default(), &[1]).await.expect("sim");
+        let sim = Sim::start(Registers::default(), &[1]).await;
         let mut client =
             Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
@@ -372,14 +372,12 @@ mod tests {
     #[tokio::test]
     async fn only_a_solarman_client_names_a_logger_serial_and_it_is_the_sticks_own() {
         let timeout = Duration::from_millis(300);
-        let stick = Simulator::start_with(Framing::SolarmanV5(3_168_930_341), Registers::default(), &[1])
-            .await
-            .expect("sim");
+        let stick = Sim::start_with(Framing::SolarmanV5(3_168_930_341), Registers::default(), &[1]).await;
         let client = Client::connect(Transport::SolarmanV5, "127.0.0.1", stick.addr.port(), Some(7), timeout)
             .await
             .expect("connect");
         assert_eq!(client.logger_serial(), Some(3_168_930_341));
-        let gateway = Simulator::start(Registers::default(), &[1]).await.expect("sim");
+        let gateway = Sim::start(Registers::default(), &[1]).await;
         let client = Client::connect(Transport::Tcp, "127.0.0.1", gateway.addr.port(), Some(7), timeout)
             .await
             .expect("tcp");

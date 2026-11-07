@@ -11,7 +11,10 @@ use jiff::Timestamp;
 use sunreye::modbus::Transport;
 use sunreye::rollup::{Tier, rollup};
 use sunreye::store::{NewConnection, NewDevice, Sample, Store};
-use sunreye_sim::{FC_READ_HOLDING, Framing, Simulator, profile_case};
+use sunreye_sim::{Framing, profile_case};
+
+mod support;
+use support::Sim;
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const PROFILE: &str = "deye-sg01hp3";
@@ -46,7 +49,7 @@ fn stop(mut child: Child) {
     assert!(child.wait().expect("wait").success(), "SIGTERM is a clean exit");
 }
 
-async fn wait_for_requests(sim: &Simulator, at_least: usize) {
+async fn wait_for_requests(sim: &Sim, at_least: usize) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while sim.requests().len() < at_least {
         assert!(Instant::now() < deadline, "the simulator saw {} requests", sim.requests().len());
@@ -125,7 +128,7 @@ async fn assert_minutes_rolled_up(dir: &Path, samples: &[Sample]) {
 }
 
 /// Runs the core until the simulator has seen `requests` more requests, stops it and reads the store.
-async fn run_for(dir: &Path, sim: &Simulator, requests: usize) -> Vec<Sample> {
+async fn run_for(dir: &Path, sim: &Sim, requests: usize) -> Vec<Sample> {
     let child = start(dir);
     wait_for_requests(sim, sim.requests().len() + requests).await;
     stop(child);
@@ -134,7 +137,7 @@ async fn run_for(dir: &Path, sim: &Simulator, requests: usize) -> Vec<Sample> {
 
 async fn survives_a_restart(transport: Transport, framing: Framing, logger_serial: Option<u32>) {
     let case = profile_case(&oracle(), PROFILE, "ramp").expect("fixture case");
-    let sim = Simulator::start_with(framing, case.registers.clone(), &[1]).await.expect("simulator");
+    let sim = Sim::start_with(framing, case.registers.clone(), &[1]).await;
     let dir = data_dir(&format!("{}-{logger_serial:?}", transport.as_str()));
     seed(&dir, transport, sim.addr.port(), logger_serial).await;
 
@@ -146,6 +149,5 @@ async fn survives_a_restart(transport: Transport, framing: Framing, logger_seria
     assert_eq!(second[..first.len()], first[..], "every reading of the first run reads back unchanged");
     assert_oracle_readings(&second, &case.readings);
     assert_minutes_rolled_up(&dir, &second).await;
-    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "the core sent nothing but reads");
     drop(std::fs::remove_dir_all(&dir));
 }
