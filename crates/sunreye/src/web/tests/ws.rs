@@ -1262,7 +1262,8 @@ async fn a_rollup_of_today_reaches_a_sessions_statistics_and_a_stranger_is_denie
     let mut session = connect(addr, &admin).await;
     let ack = subscribe(&mut session, r#"["statistics"]"#).await;
     assert_eq!(ack["data"], json!({"subscribed": ["statistics"], "denied": []}));
-    assert_eq!(next_json(&mut session).await["data"]["type"], "today", "the snapshot");
+    let snapshot = next_json(&mut session).await;
+    assert_eq!(snapshot["data"]["type"], "today");
 
     produce(&core, device, 3_600_000).await;
     let frame = next_json(&mut session).await;
@@ -1270,6 +1271,8 @@ async fn a_rollup_of_today_reaches_a_sessions_statistics_and_a_stranger_is_denie
         (frame["topic"].clone(), frame["data"]["type"].clone()),
         (json!("statistics"), json!("today"))
     );
+    assert_eq!(frame["data"]["energy"], todays_energy(&admin).await, "the frame holds the committed write");
+    assert_ne!(frame["data"]["energy"], snapshot["data"]["energy"], "the write moved today's figures");
     silent(&mut session).await;
     silent(&mut stranger).await;
     drop((stranger, session, admin));
