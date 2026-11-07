@@ -1,8 +1,9 @@
 //! A request path never fetches: the refresh loops do, and a handler only serves what they kept.
 
-use super::forecast::{configure_settings, fixed_now, onboarded};
+use super::forecast::{NOW, configure_settings, onboarded};
 use super::*;
 use crate::support::Offline;
+use crate::support::paused_at;
 
 /// The query each swept GET needs to reach its handler body; a GET absent here is requested bare.
 const QUERIES: [(&str, &str); 2] = [
@@ -22,7 +23,7 @@ fn gets(accesses: &[Access]) -> Vec<String> {
 /// An onboarded core with the forecast configured, every fetch URL at `offline` and no refresh loop or learn
 /// run: only a request path can dial `offline`.
 async fn still(name: &str, offline: &Offline) -> (Arc<Core>, Api) {
-    let core = Core::open_still(&dir(name), offline.url.clone(), fixed_now).await.expect("core");
+    let core = Core::open_still(&dir(name), offline.url.clone(), paused_at(NOW)).await.expect("core");
     let (core, admin) = onboarded(core).await;
     configure_settings(&admin, None).await;
     assert_eq!(put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await.status, StatusCode::OK);
@@ -40,7 +41,7 @@ async fn answers_without_fetching(api: &Api, path: &str, offline: &Offline) {
     assert_eq!(offline.dials(), 0, "GET {path} fetched");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn no_kiosk_or_session_read_fetches_in_its_request_path() {
     let offline = Offline::start();
     let (core, admin) = still("sweep-fetch", &offline).await;
@@ -59,7 +60,7 @@ async fn no_kiosk_or_session_read_fetches_in_its_request_path() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_fetch_of_a_still_core_dials_the_offline_address() {
     let offline = Offline::start();
     let (core, admin) = still("sweep-dial", &offline).await;

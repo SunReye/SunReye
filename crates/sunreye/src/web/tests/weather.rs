@@ -2,15 +2,16 @@
 //! The reading's numbers are the stand-in's payload; the forecast is the model's own output for its
 //! irradiance, the model held to the 3.x oracle.
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::forecast::{
-    LAT, LON, MINUTE_MS, NOW_MS, QUARTER_HOUR_MS, StandIn, answer_once, configure, configure_settings,
-    elapse, fixed_now, forecasting, irradiance, landed, model, until, zone,
+    LAT, LON, MINUTE_MS, NOW, NOW_MS, QUARTER_HOUR_MS, StandIn, answer_once, configure, configure_settings,
+    elapse, forecasting, irradiance, landed, model, until, zone,
 };
 use super::*;
 use crate::forecast::{self, Run, SimInputs};
+use crate::samples::{ClosedMinute, Sample, minute_of};
 use crate::store::{DeviceEdit, NewDevice, Removal};
 use crate::weather::{DevicePv, PvArray};
 
@@ -59,9 +60,9 @@ async fn conditions_asked(standin: &StandIn, n: usize) {
     until(&format!("{n} conditions requests"), || standin.conditions_paths().len() >= n).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_weather_answers_the_reading_with_the_forecast_and_a_second_request_does_not_refetch() {
-    let (core, admin, standin) = forecasting("weather-served", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-served", NOW).await;
     configure(&admin, None).await;
     assert_eq!(put(&admin, "/api/settings/weather", &json!({"label": "Home"})).await.status, StatusCode::OK);
     let mut want = reading("Home");
@@ -81,9 +82,9 @@ async fn the_weather_answers_the_reading_with_the_forecast_and_a_second_request_
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_weather_without_the_forecast_answers_the_reading_with_a_null_forecast() {
-    let (core, admin, standin) = forecasting("weather-no-forecast", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-no-forecast", NOW).await;
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     let mut want = reading("");
     want["forecast"] = Value::Null;
@@ -93,9 +94,9 @@ async fn the_weather_without_the_forecast_answers_the_reading_with_a_null_foreca
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn disabled_or_unlocated_weather_answers_null_without_a_fetch() {
-    let (core, admin, standin) = forecasting("weather-unready", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-unready", NOW).await;
     let null = |answer: Answer| (answer.status, answer.json()) == (StatusCode::OK, Value::Null);
     assert!(null(get(&admin, "/api/weather").await), "defaults");
     for unready in [
@@ -111,9 +112,9 @@ async fn disabled_or_unlocated_weather_answers_null_without_a_fetch() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_refresh_keeps_the_last_reading_and_another_place_answers_null() {
-    let (core, admin, standin) = forecasting("weather-kept", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-kept", NOW).await;
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     let first = landed(&admin, "/api/weather").await;
     standin.failing.store(true, Ordering::SeqCst);
@@ -133,9 +134,9 @@ async fn a_failed_refresh_keeps_the_last_reading_and_another_place_answers_null(
 
 /// Written past every route: the store publishes, so no write path can forget the refresh. The forecast answers
 /// null until irradiance for what the store now holds landed.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_store_write_of_what_the_weather_reads_refetches_it_at_once_whatever_wrote_it() {
-    let (core, admin, standin) = forecasting("weather-any-write", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-any-write", NOW).await;
     let store = &core.store;
     let mut plant = store.plant_settings().await.expect("plant").unwrap_or_default();
     (plant.enabled, plant.latitude, plant.longitude, plant.forecast_enabled) =
@@ -183,31 +184,25 @@ async fn a_store_write_of_what_the_weather_reads_refetches_it_at_once_whatever_w
     core.stop().await;
 }
 
-/// 2026-07-24 23:50 Europe/Berlin (21:50 UTC).
-const BERLIN_23_50_MS: i64 = 1_784_929_800_000;
+/// 2026-07-24 23:50 Europe/Berlin.
+const BERLIN_23_50: &str = "2026-07-24T21:50:00Z";
 /// 2026-07-25 00:00 Europe/Berlin, the plant day boundary; still 2026-07-24 in UTC.
-const BERLIN_MIDNIGHT_MS: i64 = 1_784_930_400_000;
+const BERLIN_MIDNIGHT: &str = "2026-07-24T22:00:00Z";
 
-static MIDNIGHT_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_23_50_MS);
-
-fn midnight_clock() -> i64 {
-    MIDNIGHT_CLOCK.load(Ordering::SeqCst)
-}
-
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_reading_from_the_previous_plant_day_serves_no_radiation_sum_until_a_refresh_lands() {
-    let (core, admin, standin) = forecasting("weather-midnight", midnight_clock).await;
+    let (core, admin, standin) = forecasting("weather-midnight", BERLIN_23_50).await;
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     let first = landed(&admin, "/api/weather").await;
     assert_eq!(first["solarRadiationSum"], 12.5);
     standin.failing.store(true, Ordering::SeqCst);
-    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS - 1, Ordering::SeqCst);
+    elapse(10 * MINUTE_MS - 1).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), first, "the same plant day");
     let mut yesterdays = first.clone();
     yesterdays["solarRadiationSum"] = Value::Null;
-    MIDNIGHT_CLOCK.store(BERLIN_MIDNIGHT_MS, Ordering::SeqCst);
+    elapse(1).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "the plant day is over");
-    elapse(QUARTER_HOUR_MS).await;
+    elapse(QUARTER_HOUR_MS - 10 * MINUTE_MS).await;
     conditions_asked(&standin, 2).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "a failed refresh");
     standin.failing.store(false, Ordering::SeqCst);
@@ -222,20 +217,9 @@ async fn a_reading_from_the_previous_plant_day_serves_no_radiation_sum_until_a_r
     core.stop().await;
 }
 
-/// 2026-07-24 23:30 UTC, 01:30 Berlin on 07-25.
-const UTC_23_30_MS: i64 = 1_784_935_800_000;
-/// 2026-07-25 00:00 UTC.
-const UTC_MIDNIGHT_MS: i64 = 1_784_937_600_000;
-
-static UTC_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_23_50_MS);
-
-fn utc_clock() -> i64 {
-    UTC_CLOCK.load(Ordering::SeqCst)
-}
-
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_radiation_sum_is_asked_for_and_expires_on_the_plant_day_not_the_location_s() {
-    let (core, admin, standin) = forecasting("weather-plant-zone", utc_clock).await;
+    let (core, admin, standin) = forecasting("weather-plant-zone", BERLIN_23_50).await;
     let utc = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "UTC"})).await;
     assert_eq!(utc.status, StatusCode::OK);
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
@@ -243,19 +227,20 @@ async fn the_radiation_sum_is_asked_for_and_expires_on_the_plant_day_not_the_loc
     let asked = standin.conditions_paths()[0].clone();
     assert!(asked.contains("&timezone=UTC&"), "{asked}");
     standin.failing.store(true, Ordering::SeqCst);
-    UTC_CLOCK.store(UTC_23_30_MS, Ordering::SeqCst);
+    // 23:59:59.999 UTC, 01:59 Berlin on 07-25.
+    elapse(130 * MINUTE_MS - 1).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), first, "past Berlin midnight, still the UTC day");
     let mut yesterdays = first;
     yesterdays["solarRadiationSum"] = Value::Null;
-    UTC_CLOCK.store(UTC_MIDNIGHT_MS, Ordering::SeqCst);
+    elapse(1).await;
     assert_eq!(get(&admin, "/api/weather").await.json(), yesterdays, "UTC midnight");
     drop(admin);
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_plant_zone_change_refreshes_at_once_in_the_new_zone_and_drops_the_old_sum() {
-    let (core, admin, standin) = forecasting("weather-zone-changed", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-zone-changed", NOW).await;
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     let mut other_day = landed(&admin, "/api/weather").await;
     standin.failing.store(true, Ordering::SeqCst);
@@ -271,9 +256,9 @@ async fn a_plant_zone_change_refreshes_at_once_in_the_new_zone_and_drops_the_old
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_daily_row_dated_another_day_serves_no_radiation_sum_and_keeps_the_conditions() {
-    let (core, admin, standin) = forecasting("weather-other-date", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-other-date", NOW).await;
     let mut want = reading("");
     want["solarRadiationSum"] = Value::Null;
     want["forecast"] = Value::Null;
@@ -288,15 +273,9 @@ async fn a_daily_row_dated_another_day_serves_no_radiation_sum_and_keeps_the_con
     core.stop().await;
 }
 
-static PLANT_DAY_CLOCK: AtomicI64 = AtomicI64::new(BERLIN_MIDNIGHT_MS);
-
-fn plant_day_clock() -> i64 {
-    PLANT_DAY_CLOCK.load(Ordering::SeqCst)
-}
-
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_conditions_request_pins_the_plant_day_not_the_utc_day() {
-    let (core, admin, standin) = forecasting("weather-pinned-day", plant_day_clock).await;
+    let (core, admin, standin) = forecasting("weather-pinned-day", BERLIN_MIDNIGHT).await;
     assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
     assert_eq!(landed(&admin, "/api/weather").await["solarRadiationSum"], 12.5);
     let asked = standin.conditions_paths()[0].clone();
@@ -308,9 +287,9 @@ async fn the_conditions_request_pins_the_plant_day_not_the_utc_day() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_request_never_asks_open_meteo_and_a_kiosk_flood_answers_at_once() {
-    let (core, admin, standin) = forecasting("weather-flood", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-flood", NOW).await;
     let kiosk = put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
     assert_eq!(kiosk.status, StatusCode::OK);
     standin.hanging.store(true, Ordering::SeqCst);
@@ -334,9 +313,9 @@ async fn a_request_never_asks_open_meteo_and_a_kiosk_flood_answers_at_once() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn stopping_the_core_drops_a_refresh_in_flight_and_closes_the_store() {
-    let (core, admin, standin) = forecasting("weather-stop", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-stop", NOW).await;
     standin.hanging.store(true, Ordering::SeqCst);
     configure_settings(&admin, None).await;
     until("both refreshes asked", || standin.hits.load(Ordering::SeqCst) == 2).await;
@@ -346,9 +325,9 @@ async fn stopping_the_core_drops_a_refresh_in_flight_and_closes_the_store() {
     assert_eq!(seams.events.lock().expect("events").last(), Some(&"store closed"));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_forecast_asks_for_every_panel_orientation_at_once() {
-    let (core, admin, standin) = forecasting("forecast-planes-at-once", fixed_now).await;
+    let (core, admin, standin) = forecasting("forecast-planes-at-once", NOW).await;
     standin.hanging.store(true, Ordering::SeqCst);
     let east_west = json!({"arrays": [{"kwp": 3.2, "tilt": 20, "azimuth": -90, "tempCoefficient": -0.34, "mppt": 1},
         {"kwp": 3.2, "tilt": 20, "azimuth": 90, "tempCoefficient": -0.34, "mppt": 2}]});
@@ -364,9 +343,9 @@ async fn the_forecast_asks_for_every_panel_orientation_at_once() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn saving_an_inverter_s_arrays_refreshes_the_forecast_series_at_once() {
-    let (core, admin, standin) = forecasting("weather-device-arrays", fixed_now).await;
+    let (core, admin, standin) = forecasting("weather-device-arrays", NOW).await;
     configure(&admin, None).await;
     let before = get(&admin, "/api/forecast").await.json();
     let doubled =
@@ -392,9 +371,9 @@ async fn saving_an_inverter_s_arrays_refreshes_the_forecast_series_at_once() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_out_of_bound_array_through_the_device_route_is_a_400_and_saves_nothing() {
-    let (core, admin, _) = forecasting("weather-device-bounds", fixed_now).await;
+    let (core, admin, _) = forecasting("weather-device-bounds", NOW).await;
     configure(&admin, None).await;
     let array = |kwp: f64, tilt: f64, azimuth: f64| json!({"arrays": [{"kwp": kwp, "tilt": tilt, "azimuth": azimuth}]});
     for (body, error) in [
@@ -417,6 +396,70 @@ async fn an_out_of_bound_array_through_the_device_route_is_a_400_and_saves_nothi
     let arrays = &get(&admin, "/api/settings/weather").await.json()["forecast"]["arrays"];
     assert_eq!(arrays[0]["kwp"], 6.4);
     assert_eq!(arrays.as_array().map(Vec::len), Some(1));
+    drop(admin);
+    core.stop().await;
+}
+
+/// 23:59:59 in Berlin on the night summer time begins.
+const BEFORE_MIDNIGHT: &str = "2026-03-28T22:59:59Z";
+const BEFORE_MIDNIGHT_MS: i64 = 1_774_738_799_000;
+const HOUR_MS: i64 = 3_600_000;
+
+/// Stamps of device 1's readings, stored or held.
+async fn stamps(core: &Core) -> Vec<i64> {
+    let stored = core.store.readings(1, 0, i64::MAX).await.expect("readings");
+    let mut stamps: Vec<i64> = stored.iter().chain(&core.unstored.held(1)).map(|s| s.at_ms).collect();
+    stamps.sort_unstable();
+    stamps.dedup();
+    stamps
+}
+
+/// Waits until `done` holds for what `read` answers, failing after 10 s.
+async fn until_read<T: std::fmt::Debug>(
+    what: &str,
+    mut read: impl AsyncFnMut() -> T,
+    done: impl Fn(&T) -> bool,
+) -> T {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let value = read().await;
+        if done(&value) {
+            return value;
+        }
+        assert!(Instant::now() < deadline, "never: {what}: {value:?}");
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn one_advance_moves_a_poll_a_refresh_loop_retention_and_today_together() {
+    let (sim, _) = simulator().await;
+    let (core, admin, standin) = forecasting("one-advance", BEFORE_MIDNIGHT).await;
+    let hourly = json!({"host": "127.0.0.1", "port": sim.addr.port(), "transport": "tcp", "unitId": 1,
+        "timeoutMs": 500, "pollIntervalMs": HOUR_MS, "simulate": false, "loggerSerial": null});
+    assert_eq!(put(&admin, "/api/settings/inverter", &hourly).await.status, StatusCode::OK);
+    // Raw readings are kept 7 days: the first ages out within the hour. The last is stored, so retention never
+    // waits on the device's open hour.
+    let (aging_ms, last_ms) =
+        (BEFORE_MIDNIGHT_MS - 7 * 24 * HOUR_MS + HOUR_MS / 2, BEFORE_MIDNIGHT_MS - 60_000);
+    for at_ms in [aging_ms, last_ms] {
+        let sample = Sample { at_ms, values: vec![("pv".into(), 1.0)] };
+        let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
+        core.store.append_minute(1, &minute).await.expect("append");
+    }
+    assert_eq!(put(&admin, "/api/settings/weather", &located()).await.status, StatusCode::OK);
+    conditions_asked(&standin, 1).await;
+    let first = [aging_ms, last_ms, BEFORE_MIDNIGHT_MS];
+    until_read("the first poll", async || stamps(&core).await, |s| *s == first).await;
+
+    elapse(60 * MINUTE_MS).await;
+
+    let next = [last_ms, BEFORE_MIDNIGHT_MS, BEFORE_MIDNIGHT_MS + HOUR_MS];
+    until_read("aged out and polled again", async || stamps(&core).await, |s| *s == next).await;
+    conditions_asked(&standin, 2).await;
+    let days: Vec<_> =
+        standin.conditions_paths().iter().map(|p| p.contains("start_date=2026-03-29")).collect();
+    assert_eq!(days, [false, true], "refreshed for the new plant day");
     drop(admin);
     core.stop().await;
 }

@@ -4,8 +4,10 @@ use super::*;
 pub(super) use crate::oracle::oracle;
 use crate::samples::{MINUTE_MS, Sample, minute_of};
 use crate::store::{NewConnection, NewDevice};
+use crate::support::core_at;
 
-/// 2026-03-01T00:02:30Z: the window of 300 s opens at 23:57:30 the day before.
+/// The window of 300 s opens at 23:57:30 the day before.
+const AT: &str = "2026-03-01T00:02:30Z";
 const NOW: i64 = 1_772_323_350_000;
 const MIDNIGHT: i64 = 1_772_323_200_000;
 
@@ -18,13 +20,9 @@ pub(super) async fn plain_user(admin: &Api) -> Api {
     admin.with_cookie(&signed_in.session_cookie())
 }
 
-fn fixed_clock() -> i64 {
-    NOW
-}
-
-/// A core whose clock stands at [`NOW`], with one stored device and its readings.
+/// A core paused at [`NOW`], with one stored device and its readings.
 async fn clocked(name: &str, minutes: &[(i64, Vec<Sample>)]) -> (Arc<Core>, Api) {
-    let core = Core::open_at(&dir(name), fixed_clock).await.expect("core");
+    let core = core_at(&dir(name), AT, "UTC").await;
     let connection = NewConnection {
         transport: crate::modbus::Transport::Tcp,
         host: "10.0.0.5".into(),
@@ -191,7 +189,7 @@ async fn polled_simulator_readings_come_back_as_the_compact_series() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_window_across_midnight_answers_one_run_of_offsets() {
     let readings = [
         reading(MIDNIGHT - 10_000, "pv", 100.0),
@@ -233,7 +231,7 @@ async fn a_window_across_midnight_answers_one_run_of_offsets() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_open_minute_is_served_before_it_is_stored() {
     let minute_start = minute_of(NOW) * MINUTE_MS;
     let (core, admin) = clocked("recent-open", &[reading(minute_start - 5_000, "pv", 1.0)]).await;
@@ -254,7 +252,7 @@ async fn the_open_minute_is_served_before_it_is_stored() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 #[expect(clippy::await_holding_lock, reason = "the held lock stops the read between its two steps")]
 async fn a_minute_written_and_released_while_the_window_is_read_is_served() {
     let minute_start = minute_of(NOW) * MINUTE_MS;
@@ -289,7 +287,7 @@ async fn a_minute_written_and_released_while_the_window_is_read_is_served() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_reads_nothing() {
     let (core, admin) = clocked("recent-source", &[reading(NOW - 10_000, "pv", 1.0)]).await;
     let first = core.store.devices().await.expect("devices")[0].id;
@@ -327,7 +325,7 @@ async fn the_source_names_the_device_read_retired_or_not_and_an_unknown_one_read
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_window_with_no_query_reaches_back_300_seconds() {
     let readings = [
         reading(NOW - 301_000, "pv", 1.0),
