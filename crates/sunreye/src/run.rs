@@ -17,7 +17,7 @@ use crate::events::{Bus, Changed, Events};
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
-use crate::mqtt::{self, Exports, config::MqttConfig};
+use crate::mqtt::{self, Exports, Links, config::MqttConfig};
 use crate::open_meteo;
 use crate::plant::{self, Aggregates};
 use crate::poll::DevicePoller;
@@ -31,8 +31,10 @@ use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
 mod clock;
+mod tasks;
 
 pub(crate) use clock::Clock;
+use tasks::{Running, Tasks};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -81,19 +83,11 @@ pub struct Core {
     stranger_reads: Arc<Semaphore>,
     /// Stamps every poll and decides "now" for retention, the refreshes and the requests.
     clock: Clock,
-    polling: Polling,
-    retention: Mutex<Option<Running>>,
-    learning: Mutex<Option<Running>>,
-    /// The conditions and forecast refresh loops.
-    refreshing: Mutex<Option<Running>>,
-    /// Restarts the MQTT export when a store change alters what it plans from, and feeds it the forecast.
-    exporting: Mutex<Option<Running>>,
+    tasks: Tasks,
     /// Held for a whole archive import and while a device is added, so a device cannot appear between the
     /// import's empty-store check and its landing; holds the upload awaiting the guard's confirmation,
     /// with the admin who sent it. In memory: a restart drops it, and the held upload with it.
     pub imports: Arc<Mutex<Option<crate::web::Awaiting>>>,
-    /// Archive imports, each its own task so a dropped request does not stop it; [`Core::stop`] waits for them.
-    importing: Mutex<Option<Running>>,
     /// Where an uploaded archive waits for its import.
     pub upload: PathBuf,
     #[cfg(test)]
@@ -119,8 +113,7 @@ pub(crate) enum Fault {
 pub(crate) struct Seams {
     /// Set by [`Core::open_unpolled`]: `apply` records itself and polls nothing.
     unpolled: std::sync::atomic::AtomicBool,
-    /// `"apply"` for each `apply` of an unpolled core; `"polling stopped"` and `"store closed"` as `stop` does
-    /// them.
+    /// `"apply"` for each `apply` of an unpolled core; each task's name as `stop` stops it, then `"store closed"`.
     pub events: std::sync::Mutex<Vec<&'static str>>,
     /// Where an import waits before it lands.
     pub import_pause: std::sync::Mutex<Option<Pause>>,
@@ -200,9 +193,8 @@ impl Core {
     ) -> Result<Arc<Self>, RunError> {
         let core = Self::start(data_dir, roots, clock, (forecast_url, archive_url)).await?;
         core.spawn_background(learn).await;
-        *core.exporting.lock().await = Some(spawn_export(&core));
-        core.apply().await?;
-        Ok(core)
+        core.tasks.start("exporting", spawn_export(&core)).await;
+        core.poll().await
     }
 
     /// [`Core::open_at`] that polls no device.
@@ -212,8 +204,7 @@ impl Core {
         let core = Self::start(data_dir, Vec::new(), clock, urls).await?;
         core.spawn_background(learn::learn_logged).await;
         core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
-        core.apply().await?;
-        Ok(core)
+        core.poll().await
     }
 
     /// [`Core::open_at`] fetching everything from `url`, with no refresh loop or learn run: only a request
@@ -225,9 +216,8 @@ impl Core {
         clock: Clock,
     ) -> Result<Arc<Self>, RunError> {
         let core = Self::start(data_dir, Vec::new(), clock, (url.clone(), url)).await?;
-        *core.exporting.lock().await = Some(spawn_export(&core));
-        core.apply().await?;
-        Ok(core)
+        core.tasks.start("exporting", spawn_export(&core)).await;
+        core.poll().await
     }
 
     async fn start(
@@ -247,14 +237,9 @@ impl Core {
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let bus = Arc::new(Bus { changed: store.changed().clone(), ..Bus::default() });
-        let retention = Mutex::new(Some(spawn_retention(&store, clock)));
+        let tasks = Tasks::default();
         #[cfg(test)]
-        let seams = Arc::<Seams>::default();
-        let polling = Polling {
-            #[cfg(test)]
-            seams: Arc::clone(&seams),
-            ..Polling::default()
-        };
+        let seams = Arc::clone(&tasks.seams);
         let kiosk = watch::Sender::new(kiosk(&store).await?);
         let core = Arc::new(Self {
             store,
@@ -270,24 +255,30 @@ impl Core {
             kiosk,
             stranger_reads: Arc::new(Semaphore::new(STRANGER_READS)),
             clock,
-            polling,
-            retention,
-            learning: Mutex::new(None),
-            refreshing: Mutex::new(None),
-            exporting: Mutex::new(None),
+            tasks,
             imports: Arc::default(),
-            importing: Mutex::new(Some(Running { stop: watch::Sender::new(false), tasks: JoinSet::new() })),
             upload,
             #[cfg(test)]
             seams,
         });
+        core.tasks
+            .start("retention", Running::one(|stopped| hourly(Arc::clone(&core.store), clock, stopped)))
+            .await;
         Ok(core)
     }
 
     /// The correction's learn runs and the weather refresh loops.
     async fn spawn_background(self: &Arc<Self>, learn: learn::Job) {
-        *self.learning.lock().await = Some(spawn_learning(self, learn));
-        *self.refreshing.lock().await = Some(spawn_refreshing(self));
+        self.tasks.start("learning", spawn_learning(self, learn)).await;
+        self.tasks.start("refreshing", spawn_refreshing(self)).await;
+    }
+
+    /// Started last, so stopped first: an import's last step restarts polling, and polling feeds the rest.
+    async fn poll(self: Arc<Self>) -> Result<Arc<Self>, RunError> {
+        self.tasks.start("polling", Running::default()).await;
+        self.tasks.start("importing", Running::default()).await;
+        self.apply().await?;
+        Ok(self)
     }
 
     pub async fn switch_kiosk(&self, on: bool) -> Result<(), StoreError> {
@@ -329,12 +320,13 @@ impl Core {
             return applied;
         }
         let sinks = (&self.live, &self.unstored, &self.exports);
-        self.polling.restart(&self.store, &self.bundle, sinks, self.clock).await
+        let devices = spawn_devices(&self.store, &self.bundle, sinks, self.clock);
+        self.tasks.restart("polling", devices).await
     }
 
-    /// Restarts the MQTT export from the stored settings and devices unless they are what it was `last` planned
-    /// from, so a write it does not read never bounces its connections.
-    async fn export(&self, last: &mut Option<ExportInputs>) -> Result<(), StoreError> {
+    /// Restarts the MQTT export from the stored settings and devices unless they are what it was planned from,
+    /// so a write it does not read never bounces its connections. True once restarted.
+    async fn export(&self, exported: &mut Exported) -> Result<bool, StoreError> {
         let config = MqttConfig::load(&self.store).await?;
         let installed = installed(&self.store).await?;
         let devices = self.store.devices().await?;
@@ -350,22 +342,37 @@ impl Core {
                 })
                 .collect(),
         };
-        if last.as_ref() == Some(&inputs) {
+        if exported.inputs.as_ref() == Some(&inputs) {
             #[cfg(test)]
             self.seams.record("export kept");
-            return Ok(());
+            return Ok(false);
         }
         let planned =
             mqtt::plan(&config, &devices, |id| find_profile(&self.bundle, &installed, id), &self.roots);
-        self.exports.restart(planned).await;
-        *last = Some(inputs);
-        Ok(())
+        if let Some(links) = exported.links.take() {
+            self.exports.stop(links).await;
+        }
+        exported.links = Some(self.exports.start(planned));
+        exported.inputs = Some(inputs);
+        Ok(true)
     }
 
-    /// Stops what restarts the export and the forecast feed, then each export, which publishes `offline`.
-    async fn stop_export(&self) {
-        stop(self.exporting.lock().await.take()).await;
-        self.exports.stop().await;
+    async fn export_logged(&self, exported: &mut Exported) -> bool {
+        self.export(exported).await.unwrap_or_else(|error| {
+            tracing::warn!(%error, "MQTT export not restarted");
+            false
+        })
+    }
+
+    async fn publish_forecast(&self) {
+        if !self.exports.active() {
+            return;
+        }
+        let served =
+            self.solar.serve(self).await.inspect_err(|error| tracing::warn!(%error, "forecast not exported"));
+        if let Ok(Some(served)) = served {
+            self.exports.forecast(served.forecast);
+        }
     }
 
     /// Runs `import` as a task [`Core::stop`] waits for, handing it what turns true once the core stops. Once
@@ -374,28 +381,13 @@ impl Core {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        if let Some(running) = self.importing.lock().await.as_mut() {
-            while running.tasks.try_join_next().is_some() {}
-            running.tasks.spawn(import(running.stop.subscribe()));
-        }
+        self.tasks.spawn("importing", import).await;
     }
 
-    /// Waits for the imports, then stops the device tasks, each storing its open minute, and the retention
-    /// pass, and closes the store.
+    /// Stops every task, the last started first, then closes the store.
     pub async fn stop(self: Arc<Self>) {
-        // First: an import's last step restarts polling.
-        stop(self.importing.lock().await.take()).await;
-        self.polling.stop().await;
-        self.stop_export().await;
-        self.stop_background().await;
+        self.tasks.stop_all().await;
         self.close().await;
-    }
-
-    /// The retention pass, the learn runs and the refresh loops, none of which holds the core once stopped.
-    async fn stop_background(&self) {
-        stop(self.retention.lock().await.take()).await;
-        stop(self.learning.lock().await.take()).await;
-        stop(self.refreshing.lock().await.take()).await;
     }
 
     /// Closes the store once this is its last holder.
@@ -457,49 +449,6 @@ async fn serve(
     }
 }
 
-/// The running device tasks. [`Polling::restart`] replaces them with the ones the store describes.
-#[derive(Debug, Default)]
-pub struct Polling {
-    running: Mutex<Option<Running>>,
-    #[cfg(test)]
-    seams: Arc<Seams>,
-}
-
-#[derive(Debug)]
-struct Running {
-    stop: watch::Sender<bool>,
-    tasks: JoinSet<()>,
-}
-
-impl Polling {
-    /// Stops the running tasks, each storing its open minute, then polls every device in the store.
-    pub async fn restart(
-        &self,
-        store: &Arc<Store>,
-        bundle: &Bundle,
-        sinks: Sinks<'_>,
-        clock: Clock,
-    ) -> Result<(), StoreError> {
-        let mut running = self.running.lock().await;
-        stop(running.take()).await;
-        *running = Some(spawn_devices(store, bundle, sinks, clock).await?);
-        Ok(())
-    }
-
-    /// Stops the tasks once each device's open minute is stored.
-    pub async fn stop(&self) {
-        stop(self.running.lock().await.take()).await;
-        #[cfg(test)]
-        self.seams.record("polling stopped");
-    }
-}
-
-async fn stop(running: Option<Running>) {
-    let Some(Running { stop, mut tasks }) = running else { return };
-    stop.send_replace(true);
-    while tasks.join_next().await.is_some() {}
-}
-
 /// Where each reading goes: the live feed, the open minute, the MQTT export.
 type Sinks<'a> = (&'a Arc<Live>, &'a Arc<Unstored>, &'a Arc<Exports>);
 
@@ -540,13 +489,6 @@ async fn spawn_devices(
         }
     }
     Ok(Running { stop, tasks })
-}
-
-fn spawn_retention(store: &Arc<Store>, clock: Clock) -> Running {
-    let (stop, stopped) = watch::channel(false);
-    let mut tasks = JoinSet::new();
-    tasks.spawn(hourly(Arc::clone(store), clock, stopped));
-    Running { stop, tasks }
 }
 
 /// Holds the core weakly, so the task never keeps it from stopping.
@@ -600,64 +542,68 @@ struct ExportInputs {
 /// A device's id, its profile id and that profile's installed text, if any.
 type ExportedDevice = (i64, String, Option<Arc<str>>);
 
+/// The running export and what it was planned from.
+#[derive(Default)]
+struct Exported {
+    inputs: Option<ExportInputs>,
+    links: Option<Links>,
+}
+
 /// How often the plant forecast is published, as in 3.x.
 const FORECAST_EXPORT_EVERY: Duration = Duration::from_mins(5);
 
-/// Restarts the export now and once for each burst of store changes, and publishes the forecast while an export
-/// runs. Holds the core weakly, so neither task keeps it from stopping.
+/// Runs the export until stopped, then stops its links, each publishing `offline`.
 fn spawn_export(core: &Arc<Core>) -> Running {
-    let (stop, stopped) = watch::channel(false);
-    let mut tasks = JoinSet::new();
-    tasks.spawn(follow_changes(Arc::downgrade(core), core.bus.changed.subscribe(), stopped.clone()));
-    tasks.spawn(publish_forecast(core, stopped));
-    Running { stop, tasks }
-}
-
-/// A burst that outruns the ring still restarts the export once more: it re-reads the store.
-async fn follow_changes(core: Weak<Core>, mut changes: Events<Changed>, mut stopped: watch::Receiver<bool>) {
-    let mut last = None;
-    while export_logged(&core, &mut last).await {
-        tokio::select! {
-            biased;
-            _ = stopped.changed() => return,
-            change = changes.newest() => if change.is_none() { return },
+    let (exports, changes, core) =
+        (Arc::clone(&core.exports), core.bus.changed.subscribe(), Arc::downgrade(core));
+    Running::one(move |stopped| async move {
+        let mut exported = Exported::default();
+        follow_changes(core, changes, stopped, &mut exported).await;
+        if let Some(links) = exported.links {
+            exports.stop(links).await;
         }
-    }
+    })
 }
 
-/// False once the core is gone.
-async fn export_logged(core: &Weak<Core>, last: &mut Option<ExportInputs>) -> bool {
-    let Some(core) = core.upgrade() else { return false };
-    if let Err(error) = core.export(last).await {
-        tracing::warn!(%error, "MQTT export not restarted");
-    }
-    true
+enum Wake {
+    Changed,
+    Tick,
 }
 
-fn publish_forecast(
-    core: &Arc<Core>,
+/// Restarts the export now and once for each burst of store changes, and publishes the forecast after each
+/// restart and every [`FORECAST_EXPORT_EVERY`]. A burst that outruns the ring still restarts the export once
+/// more: it re-reads the store. Holds the core weakly, so it never keeps it from stopping.
+async fn follow_changes(
+    core: Weak<Core>,
+    mut changes: Events<Changed>,
     mut stopped: watch::Receiver<bool>,
-) -> impl Future<Output = ()> + use<> {
-    let exports = Arc::clone(&core.exports);
-    let core = Arc::downgrade(core);
-    async move {
-        let mut ticker = tokio::time::interval(FORECAST_EXPORT_EVERY);
-        loop {
-            tokio::select! {
-                _ = stopped.changed() => return,
-                _ = ticker.tick() => {}
-                () = exports.restarted.notified() => {}
-            }
-            let Some(core) = core.upgrade() else { return };
-            if !core.exports.active() {
-                continue;
-            }
-            match core.solar.serve(&core).await {
-                Ok(Some(served)) => core.exports.forecast(served.forecast),
-                Ok(None) => {}
-                Err(error) => tracing::warn!(%error, "forecast not exported"),
-            }
+    exported: &mut Exported,
+) {
+    let mut ticker = tokio::time::interval(FORECAST_EXPORT_EVERY);
+    let mut wake = Wake::Changed;
+    while let Some(core) = core.upgrade() {
+        match wake {
+            Wake::Changed if core.export_logged(exported).await => ticker.reset_immediately(),
+            Wake::Changed => {}
+            Wake::Tick => core.publish_forecast().await,
         }
+        drop(core);
+        let Some(next) = next_wake(&mut stopped, &mut changes, &mut ticker).await else { return };
+        wake = next;
+    }
+}
+
+/// `None` once stopped or the bus is gone.
+async fn next_wake(
+    stopped: &mut watch::Receiver<bool>,
+    changes: &mut Events<Changed>,
+    ticker: &mut tokio::time::Interval,
+) -> Option<Wake> {
+    tokio::select! {
+        biased;
+        _ = stopped.changed() => None,
+        change = changes.newest() => change.map(|_| Wake::Changed),
+        _ = ticker.tick() => Some(Wake::Tick),
     }
 }
 
@@ -1307,6 +1253,24 @@ mod tests {
         tokio::time::advance(Duration::from_millis(1)).await;
         until_raw(&core, device, &[]).await;
         core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_core_stops_imports_then_polling_then_the_rest_in_reverse_start_order_and_closes_the_store_once()
+     {
+        hold_still();
+        let dir = dir("stop-order");
+        seed(&dir, 1, "no-such-profile", "20").await;
+        let core = core_at(&dir, PAST, "UTC").await;
+        let seams = Arc::clone(&core.seams);
+
+        core.stop().await;
+
+        let events = seams.events.lock().expect("events").clone();
+        let want =
+            ["importing", "polling", "exporting", "refreshing", "learning", "retention", "store closed"];
+        assert_eq!(events, want);
         drop(std::fs::remove_dir_all(&dir));
     }
 
