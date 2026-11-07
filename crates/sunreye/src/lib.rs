@@ -4,6 +4,7 @@
 pub mod archive;
 pub mod conditions;
 pub mod decode;
+pub mod evcc;
 pub mod events;
 pub mod forecast;
 pub mod manifest;

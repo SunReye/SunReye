@@ -3,6 +3,7 @@
 
 use tokio::sync::{broadcast, watch};
 
+use crate::evcc::EvccState;
 use crate::live::{MetricsFrame, PlantFrame};
 
 /// Events held for the slowest subscriber. Publishing never waits: a subscriber that falls further
@@ -16,6 +17,19 @@ pub struct Bus {
     pub metrics: Event<MetricsFrame>,
     /// The plant's last fold.
     pub plant: State<PlantFrame>,
+    /// Stored state changed; a subscriber re-reads it.
+    pub changed: Event<Changed>,
+    /// EVCC's last state; the ingest publishes it.
+    pub evcc: State<EvccState>,
+}
+
+/// What a write changed, for the `/ws` `events` topic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Changed {
+    Settings,
+    Devices,
+    Archive,
 }
 
 /// A topic whose payloads are hints: a subscriber hears those published after it subscribed.
