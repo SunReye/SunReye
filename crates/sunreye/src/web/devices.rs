@@ -20,9 +20,9 @@ use crate::run::Core;
 use crate::settings::{INTERVAL_KEY, TIMEOUT_KEY, Transport, poll_interval, poll_timeout};
 use crate::sources::{find_profile, installed};
 use crate::store::{
-    ConnectionEdit, ConnectionRow, DeviceEdit, DeviceRow, NewConnection, NewDevice, Removal, first_in_service,
+    Battery, ConnectionEdit, ConnectionRow, DeviceEdit, DevicePv, DeviceRow, NewConnection, NewDevice,
+    PvArray, Removal, first_in_service,
 };
-use crate::weather::{Battery, DevicePv, PvArray};
 
 /// The roles an operator may add, as 3.x lists them.
 const ROLES: [&str; 4] = ["inverter", "meter", "charger", "controller"];
