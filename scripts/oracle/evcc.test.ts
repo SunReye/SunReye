@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CORPUS_DIR } from "./corpus";
+import { createWire } from "./evcc";
 
 type Row = Record<string, any>;
 
@@ -20,6 +21,18 @@ const loadpoint = (name: string, index: number): Row =>
   finalState(name).loadpoints.find((l: Row) => l.index === index);
 const parsedTopic = (name: string, topic: string): Row =>
   byName(name).output.find((t: Row) => t.topic === topic);
+
+describe("the recording link", () => {
+  test("records what is published and the connection state it is told", () => {
+    const wire = createWire();
+    expect(wire.link.connected).toBe(false);
+    wire.setConnected(true);
+    expect(wire.link.connected).toBe(true);
+    wire.link.publish("evcc/loadpoints/1/mode/set", "pv");
+    expect(wire.published).toEqual([{ topic: "evcc/loadpoints/1/mode/set", payload: "pv" }]);
+    expect(wire.publishedTopics()).toEqual(["evcc/loadpoints/1/mode/set"]);
+  });
+});
 
 describe("the evcc oracle fixture", () => {
   test("case names are unique and cover the five groups", () => {

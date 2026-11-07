@@ -127,23 +127,22 @@ interface IngestInput {
   steps: IngestStep[];
 }
 
-interface Wire {
+export interface Wire {
   link: BrokerLink;
   subscription(): BrokerSubscription | null;
   setConnected(connected: boolean): void;
   published: Array<{ topic: string; payload: string }>;
+  publishedTopics(): string[];
 }
 
-function createWire(): Wire {
-  let connected = false;
+// fallow-ignore-next-line unused-export -- the recording link ./evcc.test.ts drives directly, so the no-command proof (an empty `published`) rests on a recorder shown to record.
+export function createWire(): Wire {
   let subscription: BrokerSubscription | null = null;
   const published: Wire["published"] = [];
   const link = {
     connectionId: 3,
     brokerUrl: "mqtt://broker.test:1883",
-    get connected() {
-      return connected;
-    },
+    connected: false,
     subscribe: (next: BrokerSubscription) => {
       subscription = next;
     },
@@ -151,14 +150,15 @@ function createWire(): Wire {
       published.push({ topic, payload });
     },
     release: async () => {},
-  } as unknown as BrokerLink;
+  };
   return {
-    link,
+    link: link as unknown as BrokerLink,
     subscription: () => subscription,
     setConnected: (next) => {
-      connected = next;
+      link.connected = next;
     },
     published,
+    publishedTopics: () => published.map((p) => p.topic),
   };
 }
 
@@ -192,12 +192,12 @@ const applyStep = <K extends IngestStep["do"]>(
   step: Extract<IngestStep, { do: K }>,
 ): void => (STEP_HANDLERS[step.do as K] as StepHandlers[K])(wire, ingest, step);
 
-const silent = { info: () => {}, error: () => {}, warn: () => {} };
+const noop = () => {};
+const silent = { info: noop, error: noop, warn: noop };
 
-async function runIngest(input: IngestInput) {
-  const wire = createWire();
+async function runIngest(input: IngestInput, wire: Wire = createWire()) {
   const ingest = createEvccIngest({
-    streams: { emit: () => {} },
+    streams: { emit: noop },
     readConfig: async () => input.config,
     readBroker: async (id) =>
       id === null ? null : ({ brokerUrl: "mqtt://broker.test:1883" } as MqttParams),
@@ -836,8 +836,9 @@ async function noCommandRow(): Promise<unknown> {
     { do: "drop" },
     CONNECT,
   ]);
-  const out = await runIngest(input);
-  const topics = [...out.subscribed, ...out.published.map((p) => p.topic)];
+  const wire = createWire();
+  const out = await runIngest(input, wire);
+  const topics = [...out.subscribed, ...wire.publishedTopics()];
   return {
     case: "commands/no-command-topic",
     input,
