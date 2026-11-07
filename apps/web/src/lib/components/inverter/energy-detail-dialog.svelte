@@ -4,7 +4,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import HourlyBarChart from './hourly-bar-chart.svelte';
 	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
 	import { periodKeyLabel, COST_X_TICKS } from '$lib/cost/ranges';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as m from '$lib/paraglide/messages';
@@ -51,12 +51,14 @@
 		const now = new Date();
 		const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		let cancelled = false;
-		api.api.energy.series
-			.get({
-				query: { from: from.toISOString(), to: now.toISOString(), bucket: 'hour', ...source.query }
+		core
+			.GET('/api/energy/series', {
+				params: {
+					query: { from: from.toISOString(), to: now.toISOString(), bucket: 'hour', ...source.query }
+				}
 			})
 			.then(({ data }) => {
-				if (!cancelled) periods = (data ?? []) as Period[];
+				if (!cancelled) periods = data ?? [];
 			});
 		return () => {
 			cancelled = true;

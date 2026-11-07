@@ -47,6 +47,10 @@ pub struct Capabilities {
     pub pv_and_battery: bool,
     /// Spot prices, tariffs and what they make of the energy: costs, records and amortisation.
     pub prices_and_costs: bool,
+    /// The dashboard's EVCC charge mode and limit commands, which write to EVCC.
+    pub evcc_commands: bool,
+    /// User-defined charts on the history page, saved server-side.
+    pub custom_charts: bool,
 }
 
 impl Capabilities {
@@ -61,6 +65,8 @@ impl Capabilities {
         integrations: false,
         pv_and_battery: false,
         prices_and_costs: false,
+        evcc_commands: false,
+        custom_charts: false,
     };
 }
 

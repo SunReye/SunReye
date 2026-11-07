@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
+	import { postSetting } from '$lib/engine-only';
 	import * as m from '$lib/paraglide/messages';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import ControlEnum from './_shared/control-enum.svelte';
@@ -41,8 +42,7 @@
 		busy = true;
 		pending = v;
 		try {
-			const { error } = await api.api.commands.setting.post({ key: metric.key, value: v });
-			if (error) throw error;
+			if (!(await postSetting(metric.key, v))) throw new Error('setting refused');
 			toast.success(`${metric.label} → ${valueLabel(v)}`);
 		} catch {
 			toast.error(m.controls_toast_update_failed({ name: metric.label }));
@@ -53,22 +53,24 @@
 	}
 </script>
 
-<div class="flex flex-col gap-2 border-b border-border/40 py-3 last:border-b-0">
-	<div class="flex items-center justify-between gap-4">
-		<span class="text-sm font-medium">{metric.label}</span>
-		<span class="text-xs tabular-nums text-muted-foreground">{readout}</span>
-	</div>
+{#if coreCapabilities.has('controls')}
+	<div class="flex flex-col gap-2 border-b border-border/40 py-3 last:border-b-0">
+		<div class="flex items-center justify-between gap-4">
+			<span class="text-sm font-medium">{metric.label}</span>
+			<span class="text-xs tabular-nums text-muted-foreground">{readout}</span>
+		</div>
 
-	{#if metric.enumLabels}
-		<ControlEnum enumLabels={metric.enumLabels} {enumKeys} {value} {busy} onWrite={write} />
-	{:else}
-		<ControlNumeric
-			range={metric.range}
-			{value}
-			bind:inputValue
-			{busy}
-			onWrite={write}
-			onDrag={(v) => (pending = v)}
-		/>
-	{/if}
-</div>
+		{#if metric.enumLabels}
+			<ControlEnum enumLabels={metric.enumLabels} {enumKeys} {value} {busy} onWrite={write} />
+		{:else}
+			<ControlNumeric
+				range={metric.range}
+				{value}
+				bind:inputValue
+				{busy}
+				onWrite={write}
+				onDrag={(v) => (pending = v)}
+			/>
+		{/if}
+	</div>
+{/if}
