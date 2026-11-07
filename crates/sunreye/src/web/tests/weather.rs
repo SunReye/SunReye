@@ -11,6 +11,8 @@ use super::forecast::{
 };
 use super::*;
 use crate::forecast::{self, Run, SimInputs};
+use crate::store::{DeviceEdit, NewDevice, Removal};
+use crate::weather::{DevicePv, PvArray};
 
 /// Open-Meteo's answer for `path`: the daily row is dated `day`, else the asked `start_date`.
 pub(super) fn conditions_payload(path: &str, day: Option<String>) -> Value {
@@ -125,6 +127,58 @@ async fn a_failed_refresh_keeps_the_last_reading_and_another_place_answers_null(
     let answer = get(&admin, "/api/weather").await;
     assert_eq!((answer.status, answer.json()), (StatusCode::OK, Value::Null), "another place keeps nothing");
     conditions_asked(&standin, 3).await;
+    drop(admin);
+    core.stop().await;
+}
+
+/// Written past every route: the store publishes, so no write path can forget the refresh. The forecast answers
+/// null until irradiance for what the store now holds landed.
+#[tokio::test]
+async fn a_store_write_of_what_the_weather_reads_refetches_it_at_once_whatever_wrote_it() {
+    let (core, admin, standin) = forecasting("weather-any-write", fixed_now).await;
+    let store = &core.store;
+    let mut plant = store.plant_settings().await.expect("plant").unwrap_or_default();
+    (plant.enabled, plant.latitude, plant.longitude, plant.forecast_enabled) =
+        (true, Some(LAT), Some(LON), true);
+    store.save_plant_settings(&plant).await.expect("plant");
+    conditions_asked(&standin, 1).await;
+    store.save_plant_time_zone("Asia/Tokyo").await.expect("zone");
+    let in_tokyo = || standin.conditions_paths().iter().any(|path| path.contains("&timezone=Asia%2FTokyo&"));
+    until("asked in the new zone", in_tokyo).await;
+
+    let array = |tilt: f64| PvArray {
+        kwp: 3.2,
+        tilt,
+        azimuth: -90.0,
+        device_slug: None,
+        temp_coefficient: None,
+        system_loss: None,
+        mppt: None,
+    };
+    store
+        .save_device_pv(1, &DevicePv { arrays: vec![array(35.0)], ..DevicePv::default() })
+        .await
+        .expect("pv");
+    landed(&admin, "/api/forecast").await;
+    let connection = store.connections().await.expect("connections")[0].id;
+    let second = NewDevice { connection_id: connection, profile_id: PROFILE.into(), unit_id: 7 };
+    let second = store.create_device(&second, None, "inverter").await.expect("device");
+    store
+        .save_device_pv(second, &DevicePv { arrays: vec![array(20.0)], ..DevicePv::default() })
+        .await
+        .expect("pv");
+    landed(&admin, "/api/forecast").await;
+    let retire =
+        DeviceEdit { retired_at: Some(Some("2026-07-24T10:00:00.000Z".into())), ..DeviceEdit::default() };
+    store.edit_device(second, &retire).await.expect("retire");
+    landed(&admin, "/api/forecast").await;
+    store
+        .edit_device(second, &DeviceEdit { retired_at: Some(None), ..DeviceEdit::default() })
+        .await
+        .expect("restore");
+    landed(&admin, "/api/forecast").await;
+    assert_eq!(store.remove_device(second).await.expect("remove"), Removal::Removed);
+    landed(&admin, "/api/forecast").await;
     drop(admin);
     core.stop().await;
 }

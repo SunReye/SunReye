@@ -149,7 +149,6 @@ pub async fn save(
     let current = core.store.plant_settings().await?.unwrap_or_default();
     let next = current.patched(&body).map_err(ApiError::bad_request)?;
     core.store.save_plant_settings(&next).await?;
-    core.weather_changed();
     Ok(Json(weather::read(&core.store).await?))
 }
 

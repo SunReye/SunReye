@@ -2,6 +2,7 @@
 //! with history is retired, never deleted: its readings and rollups refuse the delete (migration 0007).
 
 use super::{ConnectionRow, NewConnection, NewDevice, Store, StoreError};
+use crate::events::Changed;
 
 /// What a connection edit changes; `None` leaves the field as stored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -123,6 +124,7 @@ impl Store {
         )
         .fetch_one(&self.pool)
         .await?;
+        self.changed.publish(Changed::Devices);
         Ok(row.id)
     }
 
@@ -146,7 +148,11 @@ impl Store {
         )
         .execute(&self.pool)
         .await?;
-        Ok(done.rows_affected() == 1)
+        let found = done.rows_affected() == 1;
+        if found {
+            self.changed.publish(Changed::Devices);
+        }
+        Ok(found)
     }
 
     /// Deletes a device that never stored a reading; one with history is kept whole.
@@ -171,6 +177,9 @@ impl Store {
             }
         };
         tx.commit().await?;
+        if removal == Removal::Removed {
+            self.changed.publish(Changed::Devices);
+        }
         Ok(removal)
     }
 }
@@ -224,6 +233,7 @@ mod tests {
     use super::*;
     use crate::modbus::Transport;
     use crate::samples::{ClosedMinute, Sample};
+    use crate::store::tests::published;
 
     fn endpoint(host: &str, port: u16) -> NewConnection {
         NewConnection { transport: Transport::Tcp, host: host.into(), port, logger_serial: None }
@@ -246,6 +256,34 @@ mod tests {
             .append_minute(device, &ClosedMinute { minute: 100, samples: vec![sample] })
             .await
             .expect("append");
+    }
+
+    #[tokio::test]
+    async fn a_device_write_publishes_once_it_commits_and_a_write_that_changed_nothing_publishes_nothing() {
+        let (store, first, _) = two_connections().await;
+        let mut hints = store.changed().subscribe();
+        let id = store.create_device(&device(first, 1), None, "inverter").await.expect("device");
+        let renamed = DeviceEdit { name: Some("Roof".into()), ..DeviceEdit::default() };
+        store.edit_device(id, &renamed).await.expect("rename");
+        let retire =
+            DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
+        store.edit_device(id, &retire).await.expect("retire");
+        store
+            .edit_device(id, &DeviceEdit { retired_at: Some(None), ..DeviceEdit::default() })
+            .await
+            .expect("restore");
+        assert_eq!(published(&mut hints), [Changed::Devices; 4]);
+
+        assert!(!store.edit_device(id + 1, &renamed).await.expect("edit"), "no such device");
+        assert!(store.create_device(&device(99, 1), None, "inverter").await.is_err(), "no such connection");
+        let kept = store.create_device(&device(first, 2), None, "inverter").await.expect("device");
+        store_a_reading(&store, kept).await;
+        assert_eq!(store.remove_device(kept).await.expect("remove"), Removal::Kept);
+        assert_eq!(published(&mut hints), [Changed::Devices], "only the add changed anything");
+
+        assert_eq!(store.remove_device(id).await.expect("remove"), Removal::Removed);
+        assert_eq!(store.remove_device(id).await.expect("remove"), Removal::Missing);
+        assert_eq!(published(&mut hints), [Changed::Devices]);
     }
 
     #[tokio::test]

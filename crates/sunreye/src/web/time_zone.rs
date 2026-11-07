@@ -54,10 +54,7 @@ pub async fn save(
     ApiJson(body): ApiJson<PlantTimeZone>,
 ) -> Result<Json<PlantTimeZone>, ApiError> {
     match plant_zone::save(&core.store, &body.time_zone).await {
-        Ok(time_zone) => {
-            core.weather_changed();
-            Ok(Json(PlantTimeZone { time_zone }))
-        }
+        Ok(time_zone) => Ok(Json(PlantTimeZone { time_zone })),
         Err(SaveError::Unknown(refused)) => Err(ApiError::bad_request(refused.to_string())),
         Err(SaveError::Store(error)) => Err(error.into()),
     }

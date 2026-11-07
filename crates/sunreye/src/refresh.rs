@@ -5,16 +5,19 @@ use std::time::Duration;
 
 use tokio::sync::watch;
 
+use crate::events::Events;
+
 /// How often a landed refresh is repeated.
 pub const PERIOD: Duration = Duration::from_mins(15);
 /// How soon a failed refresh is retried.
 const RETRY: Duration = Duration::from_mins(1);
 
-/// Runs `refresh` now, [`PERIOD`] after it landed, [`RETRY`] after it failed, and at once when `changed`
-/// fires, until `stopped` changes, which also drops a refresh in flight, or until `refresh` has nothing to run.
-pub(crate) async fn keep_fresh<F, R>(
+/// Runs `refresh` now, [`PERIOD`] after it landed, [`RETRY`] after it failed, and at once on a `changed` hint,
+/// once for any burst of them, until `stopped` changes, which also drops a refresh in flight, or until
+/// `refresh` has nothing to run.
+pub(crate) async fn keep_fresh<F, R, T: Clone>(
     mut refresh: F,
-    mut changed: watch::Receiver<()>,
+    mut changed: Events<T>,
     mut stopped: watch::Receiver<bool>,
 ) where
     F: FnMut() -> Option<R>,
@@ -30,7 +33,7 @@ pub(crate) async fn keep_fresh<F, R>(
         tokio::select! {
             biased;
             _ = stopped.changed() => return,
-            Ok(()) = changed.changed() => {}
+            Some(_) = changed.newest() => {}
             () = tokio::time::sleep(if landed { PERIOD } else { RETRY }) => {}
         }
     }
@@ -41,15 +44,17 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use tokio::sync::Semaphore;
     use tokio::task::JoinSet;
 
     use super::*;
+    use crate::events::Event;
 
     /// A loop over a refresh that lands while `lands` says so; counts its runs.
     struct Looping {
         runs: Arc<AtomicUsize>,
         lands: Arc<std::sync::atomic::AtomicBool>,
-        changed: watch::Sender<()>,
+        changed: Event<u32>,
         stop: watch::Sender<bool>,
         task: JoinSet<()>,
     }
@@ -62,11 +67,16 @@ mod tests {
         lands
     }
 
+    /// Lands once `gate` has a permit.
+    async fn gated(gate: Arc<Semaphore>) -> bool {
+        gate.acquire().await.is_ok()
+    }
+
     impl Looping {
         fn start(hangs: bool) -> Self {
             let (runs, lands) =
                 (Arc::new(AtomicUsize::new(0)), Arc::new(std::sync::atomic::AtomicBool::new(true)));
-            let (changed, stop) = (watch::Sender::new(()), watch::Sender::new(false));
+            let (changed, stop) = (Event::default(), watch::Sender::new(false));
             let (counted, landing) = (Arc::clone(&runs), Arc::clone(&lands));
             let refresh = move || {
                 counted.fetch_add(1, Ordering::SeqCst);
@@ -111,8 +121,35 @@ mod tests {
     async fn a_settings_change_refreshes_at_once() {
         let looping = Looping::start(false);
         assert_eq!(looping.runs_after(Duration::ZERO).await, 1);
-        looping.changed.send_replace(());
+        looping.changed.publish(1);
         assert_eq!(looping.runs_after(MS).await, 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refresh_that_falls_behind_a_burst_of_changes_runs_once_more_and_reads_the_last() {
+        let (state, read) = (Arc::new(AtomicUsize::new(0)), Arc::new(std::sync::Mutex::new(Vec::new())));
+        let gate = Arc::new(Semaphore::new(0));
+        let (reading, landing, seen) = (Arc::clone(&state), Arc::clone(&gate), Arc::clone(&read));
+        let refresh = move || {
+            seen.lock().expect("read").push(reading.load(Ordering::SeqCst));
+            Some(gated(Arc::clone(&landing)))
+        };
+        let (changed, stop) = (Event::<u32>::default(), watch::Sender::new(false));
+        let mut task = JoinSet::new();
+        task.spawn(keep_fresh(refresh, changed.subscribe(), stop.subscribe()));
+        tokio::task::yield_now().await;
+        for n in 1..=300 {
+            state.store(n, Ordering::SeqCst);
+            changed.publish(u32::try_from(n).expect("small"));
+        }
+        gate.add_permits(1);
+        tokio::time::advance(MS).await;
+        for _ in 0..3 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(*read.lock().expect("read"), [0, 300], "one refresh for the burst, of the latest state");
+        stop.send_replace(true);
+        task.join_next().await.expect("the loop").expect("ended");
     }
 
     #[tokio::test(start_paused = true)]
