@@ -269,16 +269,6 @@ fn held_by(held: Option<&Awaiting>, admin: i64, sha256: &str) -> Result<(), ApiE
     }
 }
 
-/// Waits at a test core's pause, if one is set.
-#[cfg(test)]
-async fn pause(at: &std::sync::Mutex<Option<crate::run::Pause>>) {
-    let pause = at.lock().expect("pause").take();
-    if let Some((reached, resume)) = pause {
-        reached.send(()).expect("the test waits");
-        resume.await.expect("the test resumes the import");
-    }
-}
-
 /// Polls what an import added; `Err` names why not, a panic included.
 async fn poll_imported(core: &Arc<Core>) -> Result<(), String> {
     let applying = Arc::clone(core);
@@ -325,7 +315,7 @@ async fn import(
         // Dropped in order on any end, a panic included: the files go before the lock frees.
         let importing = (discard, held);
         #[cfg(test)]
-        pause(&core.seams.import_pause).await;
+        crate::run::pause(&core.seams.import_pause).await;
         let imported = match land(&core, checked).await {
             Ok(imported) => imported,
             Err(error) => {
@@ -335,7 +325,7 @@ async fn import(
             }
         };
         #[cfg(test)]
-        pause(&core.seams.apply_pause).await;
+        crate::run::pause(&core.seams.apply_pause).await;
         let polled = poll_imported(&core).await;
         drop(importing);
         let failed = polled.is_err();

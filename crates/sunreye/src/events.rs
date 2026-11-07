@@ -21,7 +21,8 @@ pub struct Bus {
     pub changed: Event<Changed>,
     /// EVCC's last state; the ingest publishes it.
     pub evcc: State<EvccState>,
-    /// Published once an account's session ended or its access changed: logout, account removal, role change.
+    /// Published once an account's session ended or its access changed: logout, a sign-in over it, account
+    /// removal, role change.
     pub sessions: Event<SessionEnded>,
 }
 

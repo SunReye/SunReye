@@ -216,39 +216,59 @@ async fn a_role_change_is_published_and_the_demoted_socket_keeps_its_session_top
     core.stop().await;
 }
 
-/// Sets the stored expiry of the session behind `api`'s cookie `in_` from now.
-async fn expire_in(core: &Core, api: &Api, in_: tower_sessions::cookie::time::Duration) {
+/// The session id behind `api`'s cookie.
+fn session_id(api: &Api) -> tower_sessions::session::Id {
+    let cookie = api.cookie.clone().expect("cookie");
+    cookie.split_once('=').expect("name=value").1.parse().expect("session id")
+}
+
+/// A core whose clock moves with tokio's, served pinging hourly, with device 7 on its roster.
+async fn on_tokio_time(name: &str) -> (Arc<Core>, Api, std::net::SocketAddr) {
+    let since_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("after 1970");
+    let clock = crate::run::Clock::at(i64::try_from(since_epoch.as_millis()).expect("in range"));
+    let core = Core::open_at(&dir(name), clock).await.expect("core");
+    let (core, admin) = signed_in(core, &unpinged()).await;
+    let addr = serve(&core, &unpinged()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    (core, admin, addr)
+}
+
+/// Stores the session behind `api`'s cookie as expiring `in_` past the core clock; the instant it did.
+async fn expire_in(core: &Core, api: &Api, in_: Duration) -> tokio::time::Instant {
     use tower_sessions::SessionStore;
     use tower_sessions::cookie::time::OffsetDateTime;
-    use tower_sessions::session::Id;
 
-    let cookie = api.cookie.clone().expect("cookie");
-    let id: Id = cookie.split_once('=').expect("name=value").1.parse().expect("session id");
     let sessions = core.store.sessions();
-    let mut record = sessions.load(&id).await.expect("load").expect("a stored session");
-    record.expiry_date = OffsetDateTime::now_utc() + in_;
+    let mut record = sessions.load(&session_id(api)).await.expect("load").expect("a stored session");
+    let at_ms = core.now_ms() + i64::try_from(in_.as_millis()).expect("in range");
+    record.expiry_date =
+        OffsetDateTime::from_unix_timestamp_nanos(i128::from(at_ms) * 1_000_000).expect("date");
     sessions.save(&record).await.expect("save");
+    tokio::time::Instant::now()
+}
+
+/// Moves paused time to `at`, then lets it run again.
+async fn advance_to(at: tokio::time::Instant) {
+    tokio::time::pause();
+    tokio::time::advance(at.saturating_duration_since(tokio::time::Instant::now())).await;
+    tokio::time::resume();
 }
 
 #[tokio::test]
 async fn a_socket_closes_when_its_stored_session_expires_and_not_a_second_before() {
-    use tower_sessions::cookie::time::Duration as Span;
-    let (core, admin) = open(&dir("ws-expiry")).await;
-    let addr = serve(&core, &unpinged()).await;
-    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let (core, admin, addr) = on_tokio_time("ws-expiry").await;
+    let (other, _) = signed_in_user(&core, &admin, "other@example.org").await;
     let user = plain_user(&core, &admin).await;
-    expire_in(&core, &user, Span::seconds(60)).await;
+    let set = expire_in(&core, &user, Duration::from_secs(60)).await;
     let mut socket = connect(addr, &user).await;
     subscribe(&mut socket, r#"["metrics"]"#).await;
 
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(58)).await;
-    tokio::time::resume();
+    advance_to(set + Duration::from_secs(59)).await;
+    // A re-check a second before the expiry re-arms on the core clock: one second left, not sixty.
+    core.bus.sessions.publish(crate::events::SessionEnded(other));
     core.live.publish(7, &reading(1_786_788_000_000, 1.0));
     assert_eq!(next_json(&mut socket).await["data"]["metrics"]["pv_power"], 1.0, "open before its expiry");
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(2)).await;
-    tokio::time::resume();
+    advance_to(set + Duration::from_millis(60_010)).await;
     core.live.publish(7, &reading(1_786_788_001_000, 2.0));
     closed_by_policy(&mut socket, "expiry").await;
     drop((user, admin));
@@ -257,19 +277,14 @@ async fn a_socket_closes_when_its_stored_session_expires_and_not_a_second_before
 
 #[tokio::test]
 async fn a_socket_whose_session_was_extended_outlives_the_expiry_it_started_with() {
-    use tower_sessions::cookie::time::Duration as Span;
-    let (core, admin) = open(&dir("ws-extended")).await;
-    let addr = serve(&core, &unpinged()).await;
-    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let (core, admin, addr) = on_tokio_time("ws-extended").await;
     let user = plain_user(&core, &admin).await;
-    expire_in(&core, &user, Span::seconds(60)).await;
+    let set = expire_in(&core, &user, Duration::from_secs(60)).await;
     let mut socket = connect(addr, &user).await;
     subscribe(&mut socket, r#"["metrics"]"#).await;
-    expire_in(&core, &user, Span::seconds(600)).await;
+    expire_in(&core, &user, Duration::from_secs(600)).await;
 
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(120)).await;
-    tokio::time::resume();
+    advance_to(set + Duration::from_secs(120)).await;
     core.live.publish(7, &reading(1_786_788_000_000, 1.0));
     assert_eq!(
         next_json(&mut socket).await["data"]["metrics"]["pv_power"],
@@ -277,6 +292,131 @@ async fn a_socket_whose_session_was_extended_outlives_the_expiry_it_started_with
         "open past the first expiry"
     );
     drop((user, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_flood_on_every_topic_cannot_hold_back_the_expiry_close() {
+    let (core, admin, addr) = on_tokio_time("ws-flood-expiry").await;
+    let user = plain_user(&core, &admin).await;
+    let set = expire_in(&core, &user, Duration::from_secs(60)).await;
+    let mut socket = on_every_topic(addr, &user).await;
+    // One thread: the frames are ready and the expiry is past before the connection is polled again.
+    tokio::time::pause();
+    flood(&core);
+    tokio::time::advance(
+        (set + Duration::from_secs(61)).saturating_duration_since(tokio::time::Instant::now()),
+    )
+    .await;
+    tokio::time::resume();
+    closed_by_policy(&mut socket, "expiry behind a flood").await;
+    drop((user, admin));
+    core.stop().await;
+}
+
+/// The first message on an admin socket on every topic once `by` has passed with a frame ready on each.
+async fn after_a_flood(
+    name: &str,
+    live: LiveLimits,
+    by: Duration,
+) -> Option<Result<Message, tungstenite::Error>> {
+    let (core, admin) = open(&dir(name)).await;
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let opened = tokio::time::Instant::now();
+    let mut socket = on_every_topic(addr, &admin).await;
+    // One thread: the frames are ready and the deadline is past before the connection is polled again.
+    tokio::time::pause();
+    flood(&core);
+    tokio::time::advance((opened + by).saturating_duration_since(tokio::time::Instant::now())).await;
+    tokio::time::resume();
+    let after = next_message(&mut socket).await;
+    drop(admin);
+    core.stop().await;
+    after
+}
+
+#[tokio::test]
+async fn a_flood_on_every_topic_cannot_hold_back_the_idle_close() {
+    let live = LiveLimits {
+        ping: Duration::from_secs(3600),
+        idle: Duration::from_secs(20),
+        ..LiveLimits::default()
+    };
+    let after = after_a_flood("ws-flood-idle", live, live.idle + Duration::from_secs(1)).await;
+    assert!(matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))), "{after:?}");
+}
+
+#[tokio::test]
+async fn a_flood_on_every_topic_cannot_hold_back_the_ping() {
+    let live =
+        LiveLimits { ping: Duration::from_secs(5), idle: Duration::from_secs(7200), ..LiveLimits::default() };
+    let after = after_a_flood("ws-flood-ping", live, live.ping + Duration::from_secs(1)).await;
+    assert!(matches!(after, Some(Ok(Message::Ping(_)))), "{after:?}");
+}
+
+#[tokio::test]
+async fn signing_in_again_ends_the_browsers_old_session_and_closes_its_socket() {
+    let (core, admin) = open(&dir("ws-relogin")).await;
+    let addr = serve(&core, &unpinged()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let (id, user) = signed_in_user(&core, &admin, "viewer@example.org").await;
+    let (_, other) = signed_in_user(&core, &admin, "other@example.org").await;
+    let mut socket = on_every_topic(addr, &user).await;
+    let mut staying = on_every_topic(addr, &other).await;
+    let mut ended = core.bus.sessions.subscribe();
+
+    let fresh = login(&admin.anonymous(), "other@example.org", ADMIN_PASSWORD, false).await;
+    assert_eq!(fresh.status, StatusCode::OK);
+    let again = login(&user, ADMIN_EMAIL, ADMIN_PASSWORD, false).await;
+    assert_eq!(again.status, StatusCode::OK);
+    assert_eq!(published(&mut ended).await, crate::events::SessionEnded(id), "a fresh browser ends nothing");
+    flood(&core);
+    closed_by_policy(&mut socket, "signed in again").await;
+    assert_eq!(next_json(&mut staying).await["topic"], "metrics", "another browser's session stays");
+    drop((user, other, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_session_that_ends_while_the_upgrade_reads_it_closes_the_socket() {
+    use tower_sessions::SessionStore;
+    let (core, admin) = open(&dir("ws-upgrade-race")).await;
+    let addr = serve(&core, &unpinged()).await;
+    let (id, user) = signed_in_user(&core, &admin, "viewer@example.org").await;
+    let (reached, resume) = pause(&core.seams.session_read);
+    let browser = user.clone();
+    let upgrading = tokio::spawn(async move { connect(addr, &browser).await });
+    tokio::time::timeout(Duration::from_secs(2), reached)
+        .await
+        .expect("within 2 s")
+        .expect("the upgrade reads the session");
+    core.store.sessions().delete(&session_id(&user)).await.expect("delete");
+    core.bus.sessions.publish(crate::events::SessionEnded(id));
+    resume.send(()).expect("resume");
+    let mut socket = upgrading.await.expect("upgraded");
+    closed_by_policy(&mut socket, "ended during the upgrade's read").await;
+    drop((user, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_store_error_while_the_upgrade_reads_the_session_is_a_500() {
+    let (core, admin) = open(&dir("ws-upgrade-error")).await;
+    let addr = serve(&core, &unpinged()).await;
+    let (reached, resume) = pause(&core.seams.session_read);
+    let browser = admin.clone();
+    let upgrading = tokio::spawn(async move { upgrade(addr, &browser, SAME_ORIGIN).await.err() });
+    tokio::time::timeout(Duration::from_secs(2), reached)
+        .await
+        .expect("within 2 s")
+        .expect("the upgrade reads the session");
+    let mut held = core.store.hold().await;
+    sqlx::query("ALTER TABLE account RENAME TO unreadable").execute(&mut *held).await.expect("rename");
+    drop(held);
+    resume.send(()).expect("resume");
+    assert_eq!(upgrading.await.expect("answered"), Some(StatusCode::INTERNAL_SERVER_ERROR));
+    drop(admin);
     core.stop().await;
 }
 
@@ -305,10 +445,7 @@ async fn a_ready_flood_on_every_topic_cannot_hold_back_a_session_end() {
     core.live.roster(&[7], crate::plant::Aggregates::default());
     let (id, user) = signed_in_user(&core, &admin, "viewer@example.org").await;
     let mut socket = on_every_topic(addr, &user).await;
-    let cookie = user.cookie.clone().expect("cookie");
-    let session: tower_sessions::session::Id =
-        cookie.split_once('=').expect("name=value").1.parse().expect("id");
-    core.store.sessions().delete(&session).await.expect("delete");
+    core.store.sessions().delete(&session_id(&user)).await.expect("delete");
     // One thread: the session end and a frame on every topic are ready before the connection is polled again.
     core.bus.sessions.publish(crate::events::SessionEnded(id));
     flood(&core);
@@ -1020,65 +1157,6 @@ async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
 /// The next message of any kind; fails after two seconds of silence.
 async fn next_message(socket: &mut Socket) -> Option<Result<Message, tungstenite::Error>> {
     tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("an answer within 2 s")
-}
-
-/// The message after a stalled session re-check of a session socket on `topics`. The re-check waits on a held
-/// store while time moves `by` and `publish` readies a frame, so the connection next polls with a control step and
-/// a feed frame both ready.
-async fn after_a_stalled_tick(
-    name: &str,
-    live: LiveLimits,
-    topics: &str,
-    by: Duration,
-    publish: impl FnOnce(&Core),
-) -> Option<Result<Message, tungstenite::Error>> {
-    let (core, admin, mut socket) = session_on(name, live, topics).await;
-    stall_recheck(&core, by, publish).await;
-    let after = next_message(&mut socket).await;
-    drop(admin);
-    core.stop().await;
-    after
-}
-
-/// A core with device 7 on its roster and the admin's socket on `topics`.
-async fn session_on(name: &str, live: LiveLimits, topics: &str) -> (Arc<Core>, Api, Socket) {
-    let (core, admin) = open(&dir(name)).await;
-    let addr = serve(&core, &Config { live, ..Config::default() }).await;
-    core.live.roster(&[7], crate::plant::Aggregates::default());
-    let mut socket = connect(addr, &admin).await;
-    subscribe(&mut socket, topics).await;
-    (core, admin, socket)
-}
-
-/// Holds the store across a re-check of the admin's session, then moves time `by` and runs `publish` before
-/// letting go.
-async fn stall_recheck(core: &Core, by: Duration, publish: impl FnOnce(&Core)) {
-    let admin = core.store.accounts().await.expect("accounts")[0].id;
-    let held = core.store.hold().await;
-    core.bus.sessions.publish(crate::events::SessionEnded(admin));
-    tokio::time::pause();
-    tokio::task::yield_now().await;
-    publish(core);
-    tokio::time::advance(by).await;
-    tokio::time::resume();
-    drop(held);
-}
-
-#[tokio::test]
-async fn a_ready_feed_cannot_hold_back_the_ping() {
-    let live = LiveLimits { ping: Duration::from_secs(5), ..LiveLimits::default() };
-    let publish = |core: &Core| core.live.publish(7, &reading(0, 1.0));
-    let after = after_a_stalled_tick("ws-first-ping", live, r#"["metrics"]"#, live.ping, publish).await;
-    assert!(matches!(after, Some(Ok(Message::Ping(_)))), "{after:?}");
-}
-
-#[tokio::test]
-async fn a_ready_feed_cannot_hold_back_the_idle_close() {
-    let live =
-        LiveLimits { ping: Duration::from_secs(5), idle: Duration::from_secs(20), ..LiveLimits::default() };
-    let publish = |core: &Core| core.bus.evcc.publish(evcc_state(1.0));
-    let after = after_a_stalled_tick("ws-first-idle", live, r#"["evcc"]"#, live.idle, publish).await;
-    assert!(matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))), "{after:?}");
 }
 
 /// The REST read whose access each topic follows; a topic with no data read follows the session read.

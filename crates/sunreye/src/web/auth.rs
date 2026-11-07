@@ -183,13 +183,18 @@ pub fn validate_account(email: &str, name: &str, password: &str) -> Result<(), A
     unhashable(password).map_or(Ok(()), |why| Err(ApiError::bad_request(why)))
 }
 
-/// Always under a fresh session id, whatever id the browser arrived with.
+/// Always under a fresh session id, whatever id the browser arrived with; the session that id held ends.
 async fn start_session(
+    core: &Core,
     auth: &mut AuthSession,
     account: &AccountRow,
     remember_me: bool,
 ) -> Result<(), ApiError> {
+    let previous = auth.user.as_ref().map(|account| account.id);
     auth.session.cycle_id().await.map_err(|e| StoreError::Sessions(e.to_string()))?;
+    if let Some(previous) = previous {
+        core.bus.sessions.publish(SessionEnded(previous));
+    }
     auth.login(account).await?;
     auth.session.set_expiry(Some(if remember_me {
         Expiry::OnInactivity(REMEMBERED)
@@ -230,7 +235,7 @@ pub async fn sign_up(
     };
     let Some(id) = core.store.create_first_account(&new).await? else { return Err(closed()) };
     let account = core.store.account(id).await?.ok_or_else(ApiError::internal)?;
-    start_session(&mut auth, &account, false).await?;
+    start_session(&core, &mut auth, &account, false).await?;
     Ok(Json(Account::from(&account)))
 }
 
@@ -247,6 +252,7 @@ pub async fn sign_up(
     )
 )]
 pub async fn login(
+    State(core): State<Arc<Core>>,
     mut auth: AuthSession,
     peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
@@ -258,7 +264,7 @@ pub async fn login(
         tracing::warn!(client = ?client, "login refused");
         return Err(ApiError::unauthorized("Invalid email or password"));
     };
-    start_session(&mut auth, &account, request.remember_me).await?;
+    start_session(&core, &mut auth, &account, request.remember_me).await?;
     Ok(Json(Account::from(&account)))
 }
 

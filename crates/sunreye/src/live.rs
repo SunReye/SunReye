@@ -151,15 +151,24 @@ pub fn evcc_frame(state: &EvccState) -> String {
     frame("evcc", state)
 }
 
-/// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
-/// so a subscribe to them is denied by name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Topic {
-    Metrics,
-    Plant,
-    Evcc,
-    Events,
+/// Declares [`Topic`] and its test-only `ALL` from one list, so no variant escapes `ALL`.
+macro_rules! topics {
+    ($($variant:ident),+) => {
+        /// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
+        /// so a subscribe to them is denied by name.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Topic {
+            $($variant),+
+        }
+
+        impl Topic {
+            #[cfg(test)]
+            pub(crate) const ALL: &[Self] = &[$(Self::$variant),+];
+        }
+    };
 }
+
+topics!(Metrics, Plant, Evcc, Events);
 
 /// Who may hold a topic: the access of its REST read in `route-access.txt`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,9 +191,6 @@ impl Access {
 }
 
 impl Topic {
-    #[cfg(test)]
-    pub(crate) const ALL: [Self; 4] = [Self::Metrics, Self::Plant, Self::Evcc, Self::Events];
-
     pub(crate) const fn access(self) -> Access {
         match self {
             Self::Metrics | Self::Plant | Self::Evcc => Access::Kiosk,
