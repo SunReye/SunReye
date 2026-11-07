@@ -5,8 +5,9 @@
 
 mod support;
 
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use sunreye::forecast::Forecast;
@@ -20,7 +21,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, mpsc, watch};
 use tokio_rustls::TlsAcceptor;
 
-/// What the broker saw, in order.
+/// What the broker saw on one connection, in order.
 #[derive(Debug, Clone, PartialEq)]
 enum Seen {
     Connect {
@@ -40,10 +41,20 @@ enum Seen {
     Other(u8),
 }
 
+/// An event and the connection it came in on, numbered in accept order.
+type Tagged = (usize, Seen);
+
+/// Records each connection apart: sockets reach the broker in no fixed order, so a test reads one client's
+/// connections and never compares the order of events from two of them.
 struct TestBroker {
     port: u16,
-    seen: mpsc::UnboundedReceiver<Seen>,
-    saw: mpsc::UnboundedSender<Seen>,
+    seen: mpsc::UnboundedReceiver<Tagged>,
+    saw: mpsc::UnboundedSender<Tagged>,
+    accepted: Arc<AtomicUsize>,
+    /// Each connection's events, by accept number; a connection's first event is its CONNECT.
+    connections: BTreeMap<usize, Vec<Seen>>,
+    /// Per client id: the connection and event count a test has read up to.
+    read: HashMap<String, (usize, usize)>,
     /// While false, a CONNECT is answered by closing the socket.
     up: Arc<AtomicBool>,
     /// Closes every open connection.
@@ -103,12 +114,12 @@ fn publish(first: u8, body: &[u8]) -> Seen {
 
 async fn session<S: AsyncRead + AsyncWrite + Unpin>(
     mut stream: S,
-    seen: mpsc::UnboundedSender<Seen>,
+    (n, seen): (usize, mpsc::UnboundedSender<Tagged>),
     up: bool,
     (kick, deaf): (Arc<Notify>, Arc<AtomicBool>),
 ) {
     let Some((0x10, body)) = take(&mut stream).await else { return };
-    seen.send(connect(&body)).ok();
+    seen.send((n, connect(&body))).ok();
     if !up {
         return;
     }
@@ -129,14 +140,14 @@ async fn session<S: AsyncRead + AsyncWrite + Unpin>(
             14 => Seen::Disconnect,
             other => Seen::Other(other),
         };
-        seen.send(event).ok();
+        seen.send((n, event)).ok();
     }
 }
 
 async fn serve(
     tls: Option<TlsAcceptor>,
     tcp: TcpStream,
-    seen: mpsc::UnboundedSender<Seen>,
+    seen: (usize, mpsc::UnboundedSender<Tagged>),
     up: bool,
     kick: (Arc<Notify>, Arc<AtomicBool>),
 ) {
@@ -158,75 +169,105 @@ async fn start_broker(tls: Option<TlsAcceptor>) -> TestBroker {
     let up = Arc::new(AtomicBool::new(true));
     let kick = Arc::new(Notify::new());
     let deaf = Arc::new(AtomicBool::new(false));
-    let (is_up, kicks, deafened) = (Arc::clone(&up), Arc::clone(&kick), Arc::clone(&deaf));
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let (is_up, kicks, deafened, counter) =
+        (Arc::clone(&up), Arc::clone(&kick), Arc::clone(&deaf), Arc::clone(&accepted));
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
-            let (tx, up) = (tx.clone(), is_up.load(Ordering::SeqCst));
+            let (tx, up) =
+                ((counter.fetch_add(1, Ordering::SeqCst), tx.clone()), is_up.load(Ordering::SeqCst));
             let kick = (Arc::clone(&kicks), Arc::clone(&deafened));
             tokio::spawn(serve(tls.clone(), tcp, tx, up, kick));
         }
     });
-    TestBroker { port, seen, saw, up, kick, deaf }
+    let (connections, read) = (BTreeMap::new(), HashMap::new());
+    TestBroker { port, seen, saw, accepted, connections, read, up, kick, deaf }
 }
 
-/// A wait's condition on the events, in queue order.
-type Wanted<'a> = dyn FnMut(&Seen) -> bool + 'a;
+/// A publish to `topic`.
+fn to(topic: &str) -> impl Fn(&Seen) -> bool + '_ {
+    move |seen| matches!(seen, Seen::Publish { topic: t, .. } if t == topic)
+}
+
+fn is_connect(seen: &Seen) -> bool {
+    matches!(seen, Seen::Connect { .. })
+}
 
 impl TestBroker {
-    async fn next(&mut self) -> Seen {
-        tokio::time::timeout(Duration::from_secs(20), self.seen.recv())
-            .await
-            .expect("broker idle")
-            .expect("open")
+    fn client_of(events: &[Seen]) -> Option<&str> {
+        match events.first() {
+            Some(Seen::Connect { client_id, .. }) => Some(client_id),
+            _ => None,
+        }
     }
 
-    /// Everything up to and including the publish to `topic`.
-    async fn until_topic(&mut self, topic: &str) -> Vec<Seen> {
-        self.until(|t, _| t == topic).await
-    }
-
-    /// Everything up to and including the first publish whose topic and payload `wanted` accepts; the deadline
-    /// fails a wait that other publishes keep alive.
-    async fn until(&mut self, wanted: impl Fn(&str, &str) -> bool) -> Vec<Seen> {
-        self.until_all(&mut [
-            &mut |seen| matches!(seen, Seen::Publish { topic, payload, .. } if wanted(topic, payload)),
-        ])
-        .await
-    }
-
-    /// Everything up to the point each of `wanted` has accepted an event, in whatever order: sockets share one
-    /// queue, so no order across connections is fixed. A predicate sees events in queue order and may keep state.
-    async fn until_all(&mut self, wanted: &mut [&mut Wanted<'_>]) -> Vec<Seen> {
+    /// `client`'s events since the last read, up to and including the first `wanted` accepts, across its
+    /// connections in accept order; the 20 s deadline only fails the wait.
+    async fn wait_for(&mut self, client: &str, wanted: impl Fn(&Seen) -> bool) -> Vec<Seen> {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-        let mut got: Vec<Seen> = Vec::new();
-        let mut pending = vec![true; wanted.len()];
-        while pending.contains(&true) {
-            let Ok(seen) = tokio::time::timeout_at(deadline, self.next()).await else {
-                panic!("never published; last seen: {:?}", brief(&got[got.len().saturating_sub(5)..]))
-            };
-            for (left, accepts) in pending.iter_mut().zip(wanted.iter_mut()) {
-                *left = *left && !accepts(&seen);
+        loop {
+            if let Some(got) = self.find(client, &wanted) {
+                return got;
             }
-            got.push(seen);
+            let Ok(Some((n, seen))) = tokio::time::timeout_at(deadline, self.seen.recv()).await else {
+                panic!("{client}: never seen; unread: {:?}", brief(&self.unread(client)))
+            };
+            self.connections.entry(n).or_default().push(seen);
         }
-        got
     }
 
-    /// Everything up to and including the DISCONNECT.
-    async fn until_disconnect(&mut self) -> Vec<Seen> {
-        let mut got = Vec::new();
-        while got.last() != Some(&Seen::Disconnect) {
-            got.push(self.next().await);
+    /// From here on, read only connections `client` opens after the one last read: what is left of earlier
+    /// sessions belongs to an earlier phase.
+    fn next_session(&mut self, client: &str) {
+        let (n, _) = self.read.get(client).copied().expect("a session read before");
+        self.read.insert(client.into(), (n + 1, 0));
+    }
+
+    /// How many connections `client` has opened that the broker has seen so far.
+    fn sessions(&mut self, client: &str) -> usize {
+        while let Ok((n, seen)) = self.seen.try_recv() {
+            self.connections.entry(n).or_default().push(seen);
         }
-        got
+        self.connections.values().filter(|events| Self::client_of(events) == Some(client)).count()
+    }
+
+    /// `client`'s events after the read point, each tagged with where it sits.
+    fn after_read(&self, client: &str) -> impl Iterator<Item = ((usize, usize), &Seen)> {
+        let (from, at) = self.read.get(client).copied().unwrap_or_default();
+        self.connections
+            .range(from..)
+            .filter(move |(_, events)| Self::client_of(events) == Some(client))
+            .flat_map(move |(&n, events)| {
+                let skip = if n == from { at } else { 0 };
+                events.iter().enumerate().skip(skip).map(move |(i, seen)| ((n, i), seen))
+            })
+    }
+
+    fn unread(&self, client: &str) -> Vec<Seen> {
+        self.after_read(client).map(|(_, seen)| seen.clone()).collect()
+    }
+
+    fn find(&mut self, client: &str, wanted: &impl Fn(&Seen) -> bool) -> Option<Vec<Seen>> {
+        let mut got = Vec::new();
+        let mut found = None;
+        for ((n, i), seen) in self.after_read(client) {
+            got.push(seen.clone());
+            if wanted(seen) {
+                found = Some((n, i + 1));
+                break;
+            }
+        }
+        self.read.insert(client.into(), found?);
+        Some(got)
     }
 
     /// Connections over an in-memory pipe: paused time then waits on no socket.
     fn piped(&self) -> Open {
-        let (saw, up) = (self.saw.clone(), Arc::clone(&self.up));
+        let (saw, up, accepted) = (self.saw.clone(), Arc::clone(&self.up), Arc::clone(&self.accepted));
         let kick = (Arc::clone(&self.kick), Arc::clone(&self.deaf));
         pipe(move |far| {
-            drop(tokio::spawn(session(far, saw.clone(), up.load(Ordering::SeqCst), kick.clone())));
+            let tagged = (accepted.fetch_add(1, Ordering::SeqCst), saw.clone());
+            drop(tokio::spawn(session(far, tagged, up.load(Ordering::SeqCst), kick.clone())));
         })
     }
 
@@ -276,10 +317,13 @@ fn spawn(dial: Dial, open: Open, pause: Pause, bridge: Bridge) -> Running {
     Running { samples, stop, task }
 }
 
+/// The client id of the link `dial` plans.
+const CLIENT: &str = "sunreye-haus-sud-1";
+
 fn dial(port: u16, tls: bool) -> Dial {
     Dial {
         broker: Broker { tls, host: "localhost".into(), port },
-        client_id: "sunreye-haus-sud-1".into(),
+        client_id: CLIENT.into(),
         username: None,
         password: None,
         roots: Vec::new(),
@@ -296,9 +340,9 @@ async fn asked_for(asked: &mut mpsc::UnboundedReceiver<Duration>) -> Duration {
 
 fn assert_first_connect(first: &[Seen]) {
     let Seen::Connect { client_id, keep_alive, will, user, password } = &first[0] else {
-        panic!("{first:?}")
+        panic!("{:?}", brief(first))
     };
-    assert_eq!(client_id, "sunreye-haus-sud-1");
+    assert_eq!(client_id, CLIENT);
     assert!(*keep_alive > 0);
     assert_eq!(will, &("sunreye/haus-sud/1/status".into(), "offline".into(), true));
     assert_eq!((user, password), (&None, &None));
@@ -320,11 +364,11 @@ async fn mqtt_publishing_resumes_after_the_broker_goes_away_and_returns_with_onl
     let (pause, mut asked, gate) = gated_pause();
     let link = spawn(dial(broker.port, false), link::network(), pause, bridge(false));
 
-    let first = broker.until_topic("sunreye/haus-sud/1/status").await;
+    let first = broker.wait_for(CLIENT, to("sunreye/haus-sud/1/status")).await;
     assert_first_connect(&first);
 
     link.samples.send_replace(Some(reading(40.0, 100.0)));
-    let live = broker.until_topic("sunreye/haus-sud/1/battery/soc").await;
+    let live = broker.wait_for(CLIENT, to("sunreye/haus-sud/1/battery/soc")).await;
     assert_eq!(
         publishes(&live),
         [("sunreye/haus-sud/1/dc/pv1/power", "100"), ("sunreye/haus-sud/1/battery/soc", "40")],
@@ -338,14 +382,16 @@ async fn mqtt_publishing_resumes_after_the_broker_goes_away_and_returns_with_onl
         tokio::task::yield_now().await;
     }
     gate.notify_one();
-    assert!(matches!(broker.next().await, Seen::Connect { .. }), "a refused redial");
+    broker.next_session(CLIENT);
+    assert_eq!(broker.wait_for(CLIENT, is_connect).await.len(), 1, "a refused redial");
     let second_wait = asked_for(&mut asked).await;
     assert!(second_wait > first_wait, "{first_wait:?} then {second_wait:?}");
 
     broker.up.store(true, Ordering::SeqCst);
     gate.notify_one();
-    assert!(matches!(broker.next().await, Seen::Connect { .. }));
-    let resumed = broker.until_topic("sunreye/haus-sud/1/dc/pv1/power").await;
+    broker.next_session(CLIENT);
+    let resumed = broker.wait_for(CLIENT, to("sunreye/haus-sud/1/dc/pv1/power")).await;
+    assert!(is_connect(&resumed[0]), "{:?}", brief(&resumed));
     assert_eq!(
         publishes(&resumed),
         [
@@ -358,14 +404,15 @@ async fn mqtt_publishing_resumes_after_the_broker_goes_away_and_returns_with_onl
 
     link.stop.send_replace(true);
     link.task.await.expect("link");
-    let closing = broker.until_disconnect().await;
+    let closing = broker.wait_for(CLIENT, |seen| *seen == Seen::Disconnect).await;
     let offline =
         Seen::Publish { topic: "sunreye/haus-sud/1/status".into(), payload: "offline".into(), retain: true };
     assert_eq!(closing, [offline, Seen::Disconnect]);
     let everything = [first, live, resumed, closing].concat();
     assert!(
         !everything.iter().any(|s| matches!(s, Seen::Other(_))),
-        "no SUBSCRIBE or other packet: {everything:?}"
+        "no SUBSCRIBE or other packet: {:?}",
+        brief(&everything)
     );
 }
 
@@ -379,14 +426,15 @@ async fn mqtts_presents_the_credentials_over_a_verified_certificate() {
     secured.password = Some("s3cret".into());
     let untrusted = spawn(secured.clone(), link::network(), Arc::clone(&pause), bridge(true));
     asked_for(&mut asked).await;
-    assert!(broker.seen.try_recv().is_err(), "no CONNECT before the certificate is trusted");
+    assert_eq!(broker.sessions(CLIENT), 0, "no CONNECT before the certificate is trusted");
     untrusted.stop.send_replace(true);
     untrusted.task.await.expect("link");
 
     secured.roots = vec![ca.root()];
     let link = spawn(secured, link::network(), pause, bridge(true));
-    let seen = broker.until_topic("homeassistant/sensor/sunreye_haus-sud_1/forecast_usable/config").await;
-    let Seen::Connect { user, password, .. } = &seen[0] else { panic!("{seen:?}") };
+    let seen =
+        broker.wait_for(CLIENT, to("homeassistant/sensor/sunreye_haus-sud_1/forecast_usable/config")).await;
+    let Seen::Connect { user, password, .. } = &seen[0] else { panic!("{:?}", brief(&seen)) };
     assert_eq!((user.as_deref(), password.as_deref()), (Some("mqtt"), Some("s3cret")));
     assert_eq!(publishes(&seen)[0], ("sunreye/haus-sud/1/status", "online"));
     assert_eq!(publishes(&seen).len(), 2 + catalog().len() + 1, "online, every sensor, both forecasts");
@@ -437,7 +485,7 @@ fn pipe(serve: impl Fn(DuplexStream) + Send + Sync + 'static) -> Open {
 
 /// A broker treating its nth connection by `scripts[n]`, the last repeating.
 fn scripted(scripts: Vec<Script>) -> Open {
-    let dialled = std::sync::atomic::AtomicUsize::new(0);
+    let dialled = AtomicUsize::new(0);
     pipe(move |far| {
         let n = dialled.fetch_add(1, Ordering::SeqCst);
         drop(tokio::spawn(play(far, scripts[n.min(scripts.len() - 1)])));
@@ -540,10 +588,10 @@ async fn mqtt_drops_a_session_whose_broker_stops_answering_and_republishes_its_l
     broker.deaf.store(true, Ordering::SeqCst);
     let (pause, mut asked, gate) = gated_pause();
     let link = spawn(dial(broker.port, false), broker.piped(), pause, bridge(false));
-    broker.until_topic("sunreye/haus-sud/1/status").await;
+    broker.wait_for(CLIENT, to("sunreye/haus-sud/1/status")).await;
     let connected = tokio::time::Instant::now();
     link.samples.send_replace(Some(reading(40.0, 100.0)));
-    broker.until_topic("sunreye/haus-sud/1/battery/soc").await;
+    broker.wait_for(CLIENT, to("sunreye/haus-sud/1/battery/soc")).await;
     asked_for(&mut asked).await;
     let silent = connected.elapsed();
     assert!(silent >= Duration::from_secs(90) && silent < Duration::from_secs(91), "{silent:?}");
@@ -553,7 +601,8 @@ async fn mqtt_drops_a_session_whose_broker_stops_answering_and_republishes_its_l
     tokio::task::yield_now().await;
     broker.deaf.store(false, Ordering::SeqCst);
     gate.notify_one();
-    let resumed = broker.until_topic("sunreye/haus-sud/1/dc/pv1/power").await;
+    broker.next_session(CLIENT);
+    let resumed = broker.wait_for(CLIENT, to("sunreye/haus-sud/1/dc/pv1/power")).await;
     assert_eq!(
         publishes(&resumed),
         [
@@ -598,7 +647,7 @@ async fn mqtt_republishes_readings_queued_while_away_after_each_session_that_die
     link.stop.send_replace(true);
     link.task.await.expect("link");
 
-    let seen = broker.until_disconnect().await;
+    let seen = broker.wait_for(CLIENT, |seen| *seen == Seen::Disconnect).await;
     let carried = [
         ("sunreye/haus-sud/1/status", "online"),
         ("sunreye/haus-sud/1/battery/soc", "42"),
@@ -664,11 +713,10 @@ async fn the_export_follows_a_burst_of_store_writes_past_the_ring_to_the_last_br
         core.store.set_setting("burst", &n.to_string()).await.expect("burst");
     }
     core.store.set_setting("mqtt", &exporting_to(broker.port)).await.expect("mqtt");
-    let seen = broker.until_topic(&format!("sunreye/haus-sud/{device}/battery/soc")).await;
-    let Seen::Connect { client_id, .. } = &seen[0] else { panic!("{seen:?}") };
-    assert_eq!(client_id, &format!("sunreye-haus-sud-{device}"));
+    let client = format!("sunreye-haus-sud-{device}");
+    broker.wait_for(&client, to(&format!("sunreye/haus-sud/{device}/battery/soc"))).await;
     core.stop().await;
-    broker.until_disconnect().await;
+    broker.wait_for(&client, |seen| *seen == Seen::Disconnect).await;
     drop(std::fs::remove_dir_all(&dir));
 }
 
@@ -684,12 +732,10 @@ async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_
     let core = sunreye::run::Core::open(&dir).await.expect("core");
     let base = format!("sunreye/haus-sud/{device}");
     let soc = case.readings["battery.soc"];
-    let seen = broker.until_topic(&format!("{base}/battery/soc")).await;
-    let Seen::Connect { client_id, password, .. } = &seen[0] else { panic!("{seen:?}") };
-    assert_eq!(
-        (client_id.clone(), password.as_deref()),
-        (format!("sunreye-haus-sud-{device}"), Some("s3cret"))
-    );
+    let client = format!("sunreye-haus-sud-{device}");
+    let seen = broker.wait_for(&client, to(&format!("{base}/battery/soc"))).await;
+    let Seen::Connect { password, .. } = &seen[0] else { panic!("{:?}", brief(&seen)) };
+    assert_eq!(password.as_deref(), Some("s3cret"));
     let published = publishes(&seen);
     assert_eq!(published[0], (format!("{base}/status").as_str(), "online"));
     let config = format!("homeassistant/sensor/sunreye_haus-sud_{device}/battery_soc/config");
@@ -697,9 +743,9 @@ async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_
     assert_eq!(published.last().expect("state").1.parse::<f64>().expect("number"), soc);
 
     core.stop().await;
-    let rest = broker.until_disconnect().await;
+    let rest = broker.wait_for(&client, |seen| *seen == Seen::Disconnect).await;
     let offline = Seen::Publish { topic: format!("{base}/status"), payload: "offline".into(), retain: true };
-    assert!(rest.contains(&offline), "{rest:?}");
+    assert!(rest.contains(&offline), "{:?}", brief(&rest));
     assert!(![seen, rest].concat().iter().any(|s| matches!(s, Seen::Other(_))), "nothing subscribed");
     drop(std::fs::remove_dir_all(&dir));
 }
@@ -711,15 +757,6 @@ fn brief(seen: &[Seen]) -> Vec<String> {
             Seen::Publish { topic, .. } => format!("publish {topic}"),
             Seen::Connect { client_id, .. } => format!("connect {client_id}"),
             other => format!("{other:?}"),
-        })
-        .collect()
-}
-
-fn client_ids(seen: &[Seen]) -> Vec<&str> {
-    seen.iter()
-        .filter_map(|s| match s {
-            Seen::Connect { client_id, .. } => Some(client_id.as_str()),
-            _ => None,
         })
         .collect()
 }
@@ -736,38 +773,29 @@ async fn the_export_starts_a_device_added_through_the_store_and_stops_one_retire
     let dir = data_dir("roster");
     let first = seed(&dir, sim.addr.port(), broker.port).await;
     let core = sunreye::run::Core::open(&dir).await.expect("core");
-    broker.until_topic(&format!("sunreye/haus-sud/{first}/battery/soc")).await;
+    let (survivor, soc) =
+        (format!("sunreye-haus-sud-{first}"), format!("sunreye/haus-sud/{first}/battery/soc"));
+    broker.wait_for(&survivor, to(&soc)).await;
 
     let connection_id = core.store.devices().await.expect("devices")[0].connection_id;
     let added = NewDevice { connection_id, profile_id: "deye-sg05lp3".into(), unit_id: 2 };
     let added = core.store.add_device(&added).await.expect("add");
-    let seen = broker
-        .until_topic(&format!("homeassistant/sensor/sunreye_haus-sud_{added}/battery_soc/config"))
+    let client = format!("sunreye-haus-sud-{added}");
+    broker
+        .wait_for(&client, to(&format!("homeassistant/sensor/sunreye_haus-sud_{added}/battery_soc/config")))
         .await;
-    assert!(client_ids(&seen).contains(&format!("sunreye-haus-sud-{added}").as_str()), "{:?}", brief(&seen));
+    // An add re-plans every export: the survivor's add-phase session must be read before the retire's.
+    broker.next_session(&survivor);
+    broker.wait_for(&survivor, to(&soc)).await;
 
     let retire =
         DeviceEdit { retired_at: Some(Some("2026-11-07T00:00:00Z".into())), ..DeviceEdit::default() };
     assert!(core.store.edit_device(added, &retire).await.expect("retire"));
     let status = format!("sunreye/haus-sud/{added}/status");
-    let (first_client, soc) =
-        (format!("sunreye-haus-sud-{first}"), format!("sunreye/haus-sud/{first}/battery/soc"));
-    let mut connected = false;
-    let rest = broker
-        .until_all(&mut [
-            &mut |seen| matches!(seen, Seen::Publish { topic, payload, .. } if *topic == status && payload == "offline"),
-            // Only a reading after the surviving device's reconnect proves the restart; one already queued does not.
-            &mut |seen| match seen {
-                Seen::Connect { client_id, .. } => {
-                    connected |= *client_id == first_client;
-                    false
-                }
-                Seen::Publish { topic, .. } => connected && *topic == soc,
-                _ => false,
-            },
-        ])
-        .await;
-    assert_eq!(client_ids(&rest), [first_client.as_str()], "{:?}", brief(&rest));
+    broker.wait_for(&client, |seen| matches!(seen, Seen::Publish { topic, payload, .. } if *topic == status && payload == "offline")).await;
+    broker.next_session(&survivor);
+    broker.wait_for(&survivor, to(&soc)).await;
+    assert_eq!(broker.sessions(&client), 1, "a retired device never reconnects");
 
     core.stop().await;
     drop(std::fs::remove_dir_all(&dir));
@@ -780,6 +808,11 @@ fn acme_deye(name: &str) -> sunreye::sources::Installed {
     file["id"] = serde_json::json!("acme-deye");
     file["name"] = serde_json::json!(name);
     sunreye::sources::Installed::validate(file.to_string()).expect("valid profile")
+}
+
+/// A publish to `topic` naming the profile `name`.
+fn names(seen: &Seen, topic: &str, name: &str) -> bool {
+    matches!(seen, Seen::Publish { topic: t, payload, .. } if t == topic && payload.contains(&format!("\"{name}\"")))
 }
 
 /// A re-import changes no setting and no device row, only the installed text the export plans from.
@@ -795,16 +828,19 @@ async fn the_export_re_plans_a_device_whose_installed_profile_is_re_imported() {
     let dir = data_dir("reimport");
     let device = seed(&dir, sim.addr.port(), broker.port).await;
     let core = sunreye::run::Core::open(&dir).await.expect("core");
-    let config = format!("homeassistant/sensor/sunreye_haus-sud_{device}/battery_soc/config");
-    broker.until_topic(&config).await;
+    let (client, config) = (
+        format!("sunreye-haus-sud-{device}"),
+        format!("homeassistant/sensor/sunreye_haus-sud_{device}/battery_soc/config"),
+    );
+    broker.wait_for(&client, to(&config)).await;
 
     import_profile(&core.store, &acme_deye("Acme One")).await.expect("import");
     let edit = DeviceEdit { profile_id: Some("acme-deye".into()), ..DeviceEdit::default() };
     assert!(core.store.edit_device(device, &edit).await.expect("re-profile"));
-    broker.until(|topic, payload| topic == config && payload.contains("\"Acme One\"")).await;
+    broker.wait_for(&client, |seen| names(seen, &config, "Acme One")).await;
 
     import_profile(&core.store, &acme_deye("Acme Two")).await.expect("re-import");
-    broker.until(|topic, payload| topic == config && payload.contains("\"Acme Two\"")).await;
+    broker.wait_for(&client, |seen| names(seen, &config, "Acme Two")).await;
 
     core.stop().await;
     drop(std::fs::remove_dir_all(&dir));
