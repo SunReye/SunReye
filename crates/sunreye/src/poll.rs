@@ -79,18 +79,19 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use sunreye_sim::{Simulator, profile_case};
+    use sunreye_sim::profile_case;
 
     use super::*;
     use crate::modbus::Transport;
     use crate::profile::Bundle;
+    use crate::support::Sim;
 
     const PROFILES: [&str; 3] = ["deye-sg01hp3", "deye-sg05lp3", "deye-sun20k-sg05lp3"];
 
     async fn poll_case(profile_id: &str, case: &str) -> (BTreeMap<String, f64>, BTreeMap<String, f64>) {
         let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
         let fixture = profile_case(&oracle, profile_id, case).expect("fixture");
-        let sim = Simulator::start(fixture.registers, &[1]).await.expect("sim");
+        let sim = Sim::start(fixture.registers, &[1]).await;
         let mut client =
             Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_secs(5))
                 .await
@@ -116,7 +117,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_silent_device_ends_the_poll_with_a_timeout() {
-        let sim = Simulator::start(sunreye_sim::Registers::default(), &[]).await.expect("sim");
+        let sim = Sim::start(sunreye_sim::Registers::default(), &[]).await;
         let mut client =
             Client::connect(Transport::Tcp, "127.0.0.1", sim.addr.port(), None, Duration::from_millis(100))
                 .await

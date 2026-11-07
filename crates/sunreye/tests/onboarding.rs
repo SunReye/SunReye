@@ -11,7 +11,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use sunreye::store::Store;
-use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
+use sunreye_sim::profile_case;
+
+mod support;
+use support::Sim;
 
 const BIN: &str = env!("CARGO_BIN_EXE_sunreye");
 const PROFILE: &str = "deye-sg01hp3";
@@ -128,7 +131,7 @@ async fn sign_up_admin(addr: SocketAddr, test_body: &Value) -> String {
 async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
     let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = profile_case(&oracle, PROFILE, "ramp").expect("fixture case");
-    let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("simulator");
+    let sim = Sim::start(case.registers.clone(), &[1]).await;
     let dir = data_dir();
     let connection = json!({
         "host": "127.0.0.1", "port": sim.addr.port(), "transport": "tcp", "unitId": 1,
@@ -177,7 +180,6 @@ async fn an_onboarded_device_is_polled_and_everything_survives_a_restart() {
         got.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(got, want);
     }
-    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "onboarding only reads");
     drop(std::fs::remove_dir_all(&dir));
 }
 

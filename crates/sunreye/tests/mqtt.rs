@@ -703,7 +703,7 @@ fn exporting_to(broker_port: u16) -> String {
 async fn the_export_follows_a_burst_of_store_writes_past_the_ring_to_the_last_broker_written() {
     let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-    let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");
+    let sim = support::Sim::start(case.registers, &[1]).await;
     let mut broker = start_broker(None).await;
     let dir = data_dir("follows");
     let device = seed(&dir, sim.addr.port(), 1).await;
@@ -724,7 +724,7 @@ async fn the_export_follows_a_burst_of_store_writes_past_the_ring_to_the_last_br
 async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_offline_when_it_stops() {
     let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-    let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");
+    let sim = support::Sim::start(case.registers, &[1]).await;
     let mut broker = start_broker(None).await;
     let dir = data_dir("core");
     let device = seed(&dir, sim.addr.port(), broker.port).await;
@@ -768,7 +768,7 @@ async fn the_export_starts_a_device_added_through_the_store_and_stops_one_retire
 
     let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-    let sim = sunreye_sim::Simulator::start(case.registers, &[1, 2]).await.expect("sim");
+    let sim = support::Sim::start(case.registers, &[1, 2]).await;
     let mut broker = start_broker(None).await;
     let dir = data_dir("roster");
     let first = seed(&dir, sim.addr.port(), broker.port).await;
@@ -823,7 +823,7 @@ async fn the_export_re_plans_a_device_whose_installed_profile_is_re_imported() {
 
     let oracle = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = sunreye_sim::profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-    let sim = sunreye_sim::Simulator::start(case.registers, &[1]).await.expect("sim");
+    let sim = support::Sim::start(case.registers, &[1]).await;
     let mut broker = start_broker(None).await;
     let dir = data_dir("reimport");
     let device = seed(&dir, sim.addr.port(), broker.port).await;

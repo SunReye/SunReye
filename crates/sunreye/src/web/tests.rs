@@ -5,15 +5,14 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode, header};
 use serde_json::{Value, json};
-use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
+use sunreye_sim::{FC_READ_HOLDING, profile_case};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tower::ServiceExt;
 
 use super::*;
 use crate::store::{NewAccount, Store};
 
-#[path = "../../tests/support/mod.rs"]
-mod support;
-use support::{Ca, Site, official_files, serve_site, site};
+use crate::support::{Ca, Sim, Site, official_files, serve_site, site};
 
 const PROFILE: &str = "deye-sg05lp3";
 
@@ -150,14 +149,25 @@ fn connection(port: u16) -> Value {
     })
 }
 
-async fn simulator() -> (Simulator, sunreye_sim::ProfileCase) {
+async fn simulator() -> (Sim, sunreye_sim::ProfileCase) {
     let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
     let case = profile_case(&oracle, PROFILE, "ramp").expect("case");
-    let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("sim");
+    let sim = Sim::start(case.registers.clone(), &[1]).await;
     (sim, case)
 }
 
-async fn wait_until_polled(sim: &Simulator) {
+#[tokio::test]
+#[should_panic(expected = "the core wrote to the simulator")]
+async fn a_sim_written_to_fails_the_test_that_owns_it() {
+    let (sim, _) = simulator().await;
+    let mut stream = tokio::net::TcpStream::connect(sim.addr).await.expect("connect");
+    // Modbus TCP, unit 1, function 16: write one register.
+    stream.write_all(&[0, 1, 0, 0, 0, 9, 1, 16, 0, 1, 0, 1, 2, 0, 5]).await.expect("send");
+    let mut reply = [0_u8; 9];
+    stream.read_exact(&mut reply).await.expect("the sim answers, so it has logged the write");
+}
+
+async fn wait_until_polled(sim: &Sim) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while sim.requests().is_empty() {
         assert!(Instant::now() < deadline, "the simulator was never polled");
@@ -336,7 +346,6 @@ async fn a_saved_connection_and_profile_survive_a_restart_and_are_polled_again()
         got.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(got, want);
     }
-    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "onboarding only reads");
     drop(std::fs::remove_dir_all(&dir));
 }
 
@@ -951,7 +960,6 @@ async fn a_device_is_polled_with_a_profile_from_a_source() {
     put(&app, "/api/settings/active-profile", &json!({"id": "acme-hybrid"})).await;
     put(&app, "/api/settings/inverter", &connection(sim.addr.port())).await;
     wait_until_polled(&sim).await;
-    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "a source only supplies reads");
     drop(app);
     core.stop().await;
 }
@@ -964,7 +972,7 @@ fn idle(id: &str) -> crate::sources::Installed {
 }
 
 /// Polls `sim` with the profile `id`, which must already be stored, until a poll has been recorded.
-async fn poll_with(core: &Core, app: &Api, sim: &Simulator, id: &str) {
+async fn poll_with(core: &Core, app: &Api, sim: &Sim, id: &str) {
     put(app, "/api/settings/active-profile", &json!({"id": id})).await;
     let saved = put(app, "/api/settings/inverter", &connection(sim.addr.port())).await;
     assert_eq!(saved.status, StatusCode::OK);
@@ -1113,7 +1121,6 @@ async fn importing_again_replaces_the_definition_the_running_poll_uses() {
     let (_, profile) = third_party("acme-hybrid", PROFILE);
     assert_eq!(import(&app, &profile).await.status, StatusCode::OK);
     wait_until_polled(&sim).await;
-    assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "an import only supplies reads");
     drop(app);
     core.stop().await;
 }
@@ -1219,6 +1226,7 @@ mod plant;
 mod reads;
 mod rollup;
 mod statistics;
+mod sweep;
 mod time_zone;
 mod users;
 mod weather;

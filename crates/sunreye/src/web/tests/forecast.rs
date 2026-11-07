@@ -7,11 +7,11 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use tokio::io::AsyncWriteExt;
 
 use super::correction::archive_payload;
-use super::support::{acceptor, read_request};
 use super::weather::conditions_payload;
 use super::*;
 use crate::forecast::{self, CorrectionModel, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
 use crate::samples::{ClosedMinute, Sample};
+use crate::support::{acceptor, read_request};
 
 /// 2026-07-24T10:07:00Z: plant-local 12:07 in Berlin, inside the stand-in's series.
 pub(super) const NOW_MS: i64 = 1_784_887_620_000;
@@ -209,6 +209,12 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     let standin = stand_in(&ca).await;
     let core =
         Core::open_forecasting(&dir(name), vec![ca.root()], standin.urls.clone(), now).await.expect("core");
+    let (core, admin) = onboarded(core).await;
+    (core, admin, standin)
+}
+
+/// `core` with its admin signed in, the plant's zone saved, a profile active and one inverter.
+pub(super) async fn onboarded(core: Arc<Core>) -> (Arc<Core>, Api) {
     let (core, admin) = signed_in(core, &Config::default()).await;
     // Expectations are Berlin days: save the zone first.
     let berlin = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
@@ -216,7 +222,7 @@ pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
     let port = unused_port().await;
     assert_eq!(put(&admin, "/api/settings/inverter", &connection(port)).await.status, StatusCode::OK);
-    (core, admin, standin)
+    (core, admin)
 }
 
 pub(super) async fn patch(api: &Api, path: &str, body: &Value) -> Answer {
