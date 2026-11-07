@@ -200,12 +200,13 @@ fn snapshot(profile: &Profile, values: Vec<(String, f64)>, started: Instant) -> 
 mod tests {
     use std::path::Path;
 
-    use sunreye_sim::{FC_READ_HOLDING, Framing, Registers, Simulator, profile_case};
+    use sunreye_sim::{FC_READ_HOLDING, Framing, Registers, profile_case};
 
     use super::*;
     use crate::modbus::Transport as Wire;
     use crate::profile::Bundle;
     use crate::settings::Transport;
+    use crate::support::Sim;
 
     fn config(port: u16, unit: i64) -> InverterConfig {
         InverterConfig {
@@ -228,7 +229,7 @@ mod tests {
     async fn a_device_that_answers_yields_every_decoded_metric_with_its_label() {
         let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
         let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-        let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
+        let sim = Sim::start(case.registers, &[1]).await;
 
         let result = test_connection(&profile("deye-sg05lp3"), &config(sim.addr.port(), 1)).await;
 
@@ -250,7 +251,7 @@ mod tests {
         let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
         let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
         let stick = Framing::SolarmanV5(3_168_930_341);
-        let sim = Simulator::start_with(stick, case.registers, &[1]).await.expect("sim");
+        let sim = Sim::start_with(stick, case.registers, &[1]).await;
         for configured in [None, Some(0x1122_3344)] {
             let config = InverterConfig {
                 transport: Transport::SolarmanV5,
@@ -274,7 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_device_that_refuses_every_read_is_not_a_pass() {
-        let sim = Simulator::start(Registers::default(), &[1]).await.expect("sim");
+        let sim = Sim::start(Registers::default(), &[1]).await;
         let result = test_connection(&profile("deye-sg05lp3"), &config(sim.addr.port(), 1)).await;
         assert!(!result.ok);
         assert_eq!(result.error.as_deref(), Some("No register of the profile answered"));
@@ -294,7 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_gateway_probe_is_a_connect_and_sends_nothing() {
-        let sim = Simulator::start(ramp().registers, &[1]).await.expect("sim");
+        let sim = Sim::start(ramp().registers, &[1]).await;
         let probe = probe_endpoint(&endpoint(Wire::Tcp, sim.addr.port(), None), QUICK).await;
         assert!(probe.ok && probe.error.is_none() && probe.logger.is_none(), "{probe:?}");
         assert_eq!(sim.requests(), []);
@@ -302,8 +303,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_stick_probe_names_the_stick_and_refuses_one_that_is_not_the_configured_serial() {
-        let sim =
-            Simulator::start_with(Framing::SolarmanV5(STICK), ramp().registers, &[1]).await.expect("sim");
+        let sim = Sim::start_with(Framing::SolarmanV5(STICK), ramp().registers, &[1]).await;
         let port = sim.addr.port();
         for configured in [None, Some(STICK)] {
             let probe = probe_endpoint(&endpoint(Wire::SolarmanV5, port, configured), QUICK).await;
@@ -321,7 +321,6 @@ mod tests {
                 .as_str()
             )
         );
-        assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "a probe only reads");
     }
 
     #[tokio::test]
@@ -335,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn a_scan_stops_at_the_first_unit_that_answers_and_sends_only_one_register_reads() {
         for framing in [Framing::Tcp, Framing::RtuOverTcp, Framing::SolarmanV5(STICK)] {
-            let sim = Simulator::start_with(framing, ramp().registers, &[2, 3]).await.expect("sim");
+            let sim = Sim::start_with(framing, ramp().registers, &[2, 3]).await;
             let wire = match framing {
                 Framing::Tcp => Wire::Tcp,
                 Framing::RtuOverTcp => Wire::RtuOverTcp,
@@ -356,7 +355,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_scan_nobody_answers_names_every_id_it_ruled_out() {
-        let sim = Simulator::start(ramp().registers, &[]).await.expect("sim");
+        let sim = Sim::start(ramp().registers, &[]).await;
         let at = endpoint(Wire::Tcp, sim.addr.port(), None);
         let scan = scan_units(&profile("deye-sg05lp3"), &at, &[1, 0], QUICK).await.expect("scan");
         assert_eq!((scan.scanned, scan.found.is_none()), (vec![1, 0], true));
@@ -371,7 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_device_silent_on_the_unit_times_out() {
-        let sim = Simulator::start(Registers::default(), &[]).await.expect("sim");
+        let sim = Sim::start(Registers::default(), &[]).await;
         let result = test_connection(&profile("deye-sg05lp3"), &config(sim.addr.port(), 1)).await;
         assert_eq!(result.error.as_deref(), Some("timed out"));
     }

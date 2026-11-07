@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose};
 use serde_json::{Value, json};
@@ -17,32 +18,37 @@ use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::{ServerConfig, crypto::ring::default_provider};
 
-/// A fetch URL no test core may reach: every dial is refused, so nothing leaves the host.
-pub const UNREACHABLE: &str = "https://127.0.0.1:9/";
-
-/// A loopback address that accepts a connection and never answers: a fetch to it hangs until its own timeout.
-pub struct Stalled {
+/// The fetch address of a test core: accepts, counts and closes every connection, so nothing leaves the host,
+/// a fetch fails at once and a test reads how often one was dialled. Its thread lives until the process ends.
+pub struct Offline {
     pub url: String,
-    task: tokio::task::JoinHandle<()>,
+    dials: Arc<AtomicUsize>,
 }
 
-impl Stalled {
-    pub async fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+impl Offline {
+    pub fn start() -> Self {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let url = format!("https://{}/", listener.local_addr().expect("addr"));
-        let task = tokio::spawn(async move {
-            let mut held = Vec::new();
-            while let Ok((tcp, _)) = listener.accept().await {
-                held.push(tcp);
+        let dials = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&dials);
+        std::thread::spawn(move || {
+            for tcp in listener.incoming() {
+                // Counted before the close the dialling fetch waits on.
+                counted.fetch_add(1, Ordering::SeqCst);
+                drop(tcp);
             }
         });
-        Self { url, task }
+        Self { url, dials }
     }
-}
 
-impl Drop for Stalled {
-    fn drop(&mut self) {
-        self.task.abort();
+    /// The one address every test core without its own stand-in fetches from.
+    pub fn shared() -> &'static Self {
+        static SHARED: std::sync::OnceLock<Offline> = std::sync::OnceLock::new();
+        SHARED.get_or_init(Self::start)
+    }
+
+    pub fn dials(&self) -> usize {
+        self.dials.load(Ordering::SeqCst)
     }
 }
 

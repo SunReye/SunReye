@@ -46,10 +46,11 @@ pub enum RunError {
 /// session's read never queues behind a crowd of them.
 const STRANGER_READS: usize = 6;
 
-/// The fetch URLs of a test core that is not given a stand-in: every dial is refused.
+/// The fetch URLs of a test core that is not given a stand-in.
 #[cfg(test)]
-fn unreachable() -> (String, String) {
-    (crate::support::UNREACHABLE.into(), crate::support::UNREACHABLE.into())
+fn offline() -> (String, String) {
+    let url = &crate::support::Offline::shared().url;
+    (url.clone(), url.clone())
 }
 
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
@@ -164,14 +165,14 @@ impl Core {
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        let urls = unreachable();
+        let urls = offline();
         Self::open_clocked(data_dir, Vec::new(), now, urls, learn::learn_logged).await
     }
 
     /// [`Core::open_at`] on the wall clock, learning with `job`.
     #[cfg(test)]
     pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
-        let urls = unreachable();
+        let urls = offline();
         Self::open_clocked(data_dir, Vec::new(), now_ms, urls, job).await
     }
 
@@ -194,7 +195,8 @@ impl Core {
         (forecast_url, archive_url): (String, String),
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        let core = Self::start(data_dir, roots, now, (forecast_url, archive_url), learn).await?;
+        let core = Self::start(data_dir, roots, now, (forecast_url, archive_url)).await?;
+        core.spawn_background(learn).await;
         *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
         Ok(core)
@@ -203,9 +205,24 @@ impl Core {
     /// [`Core::open_at`] that polls no device.
     #[cfg(test)]
     pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        let urls = unreachable();
-        let core = Self::start(data_dir, Vec::new(), now, urls, learn::learn_logged).await?;
+        let urls = offline();
+        let core = Self::start(data_dir, Vec::new(), now, urls).await?;
+        core.spawn_background(learn::learn_logged).await;
         core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
+        core.apply().await?;
+        Ok(core)
+    }
+
+    /// [`Core::open_at`] fetching everything from `url`, with no refresh loop or learn run: only a request
+    /// path fetches.
+    #[cfg(test)]
+    pub(crate) async fn open_still(
+        data_dir: &Path,
+        url: String,
+        now: fn() -> i64,
+    ) -> Result<Arc<Self>, RunError> {
+        let core = Self::start(data_dir, Vec::new(), now, (url.clone(), url)).await?;
+        *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
         Ok(core)
     }
@@ -215,7 +232,6 @@ impl Core {
         roots: Vec<CertificateDer<'static>>,
         now: fn() -> i64,
         (forecast_url, archive_url): (String, String),
-        learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
         let upload = data_dir.join(crate::web::UPLOAD_FILE);
@@ -263,7 +279,6 @@ impl Core {
             #[cfg(test)]
             seams,
         });
-        core.spawn_background(learn).await;
         Ok(core)
     }
 
