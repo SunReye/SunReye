@@ -169,6 +169,9 @@ async fn start_broker(tls: Option<TlsAcceptor>) -> TestBroker {
     TestBroker { port, seen, saw, up, kick, deaf }
 }
 
+/// A wait's condition on the events, in queue order.
+type Wanted<'a> = dyn FnMut(&Seen) -> bool + 'a;
+
 impl TestBroker {
     async fn next(&mut self) -> Seen {
         tokio::time::timeout(Duration::from_secs(20), self.seen.recv())
@@ -185,18 +188,28 @@ impl TestBroker {
     /// Everything up to and including the first publish whose topic and payload `wanted` accepts; the deadline
     /// fails a wait that other publishes keep alive.
     async fn until(&mut self, wanted: impl Fn(&str, &str) -> bool) -> Vec<Seen> {
+        self.until_all(&mut [
+            &mut |seen| matches!(seen, Seen::Publish { topic, payload, .. } if wanted(topic, payload)),
+        ])
+        .await
+    }
+
+    /// Everything up to the point each of `wanted` has accepted an event, in whatever order: sockets share one
+    /// queue, so no order across connections is fixed. A predicate sees events in queue order and may keep state.
+    async fn until_all(&mut self, wanted: &mut [&mut Wanted<'_>]) -> Vec<Seen> {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
         let mut got: Vec<Seen> = Vec::new();
-        loop {
+        let mut pending = vec![true; wanted.len()];
+        while pending.contains(&true) {
             let Ok(seen) = tokio::time::timeout_at(deadline, self.next()).await else {
-                panic!("never published; last seen: {:?}", &got[got.len().saturating_sub(5)..])
+                panic!("never published; last seen: {:?}", brief(&got[got.len().saturating_sub(5)..]))
             };
-            let done = matches!(&seen, Seen::Publish { topic, payload, .. } if wanted(topic, payload));
-            got.push(seen);
-            if done {
-                return got;
+            for (left, accepts) in pending.iter_mut().zip(wanted.iter_mut()) {
+                *left = *left && !accepts(&seen);
             }
+            got.push(seen);
         }
+        got
     }
 
     /// Everything up to and including the DISCONNECT.
@@ -691,6 +704,17 @@ async fn the_core_publishes_each_polled_device_to_mqtt_under_the_plant_slug_and_
     drop(std::fs::remove_dir_all(&dir));
 }
 
+/// Topics and client ids only: discovery payloads run to kilobytes.
+fn brief(seen: &[Seen]) -> Vec<String> {
+    seen.iter()
+        .map(|s| match s {
+            Seen::Publish { topic, .. } => format!("publish {topic}"),
+            Seen::Connect { client_id, .. } => format!("connect {client_id}"),
+            other => format!("{other:?}"),
+        })
+        .collect()
+}
+
 fn client_ids(seen: &[Seen]) -> Vec<&str> {
     seen.iter()
         .filter_map(|s| match s {
@@ -720,15 +744,30 @@ async fn the_export_starts_a_device_added_through_the_store_and_stops_one_retire
     let seen = broker
         .until_topic(&format!("homeassistant/sensor/sunreye_haus-sud_{added}/battery_soc/config"))
         .await;
-    assert!(client_ids(&seen).contains(&format!("sunreye-haus-sud-{added}").as_str()), "{seen:?}");
+    assert!(client_ids(&seen).contains(&format!("sunreye-haus-sud-{added}").as_str()), "{:?}", brief(&seen));
 
     let retire =
         DeviceEdit { retired_at: Some(Some("2026-11-07T00:00:00Z".into())), ..DeviceEdit::default() };
     assert!(core.store.edit_device(added, &retire).await.expect("retire"));
     let status = format!("sunreye/haus-sud/{added}/status");
-    broker.until(|topic, payload| topic == status && payload == "offline").await;
-    let rest = broker.until_topic(&format!("sunreye/haus-sud/{first}/battery/soc")).await;
-    assert_eq!(client_ids(&rest), [format!("sunreye-haus-sud-{first}")], "{rest:?}");
+    let (first_client, soc) =
+        (format!("sunreye-haus-sud-{first}"), format!("sunreye/haus-sud/{first}/battery/soc"));
+    let mut connected = false;
+    let rest = broker
+        .until_all(&mut [
+            &mut |seen| matches!(seen, Seen::Publish { topic, payload, .. } if *topic == status && payload == "offline"),
+            // Only a reading after the surviving device's reconnect proves the restart; one already queued does not.
+            &mut |seen| match seen {
+                Seen::Connect { client_id, .. } => {
+                    connected |= *client_id == first_client;
+                    false
+                }
+                Seen::Publish { topic, .. } => connected && *topic == soc,
+                _ => false,
+            },
+        ])
+        .await;
+    assert_eq!(client_ids(&rest), [first_client.as_str()], "{:?}", brief(&rest));
 
     core.stop().await;
     drop(std::fs::remove_dir_all(&dir));
