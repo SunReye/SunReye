@@ -8,12 +8,11 @@ use std::time::Duration;
 
 use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
-use tokio::time::Instant;
 use utoipa::ToSchema;
 
 use crate::https::{GetError, Limits, get_with_roots};
 use crate::plant_zone::plant_zone;
-use crate::refresh::PERIOD;
+use crate::refresh::within_period;
 use crate::store::{Store, StoreError};
 use crate::weather;
 
@@ -136,7 +135,7 @@ pub struct Conditions {
 #[derive(Debug)]
 struct Cached {
     key: String,
-    fetched: Instant,
+    fetched_ms: i64,
     /// The plant day the radiation sum belongs to.
     day: PlantDay,
     reading: Reading,
@@ -158,7 +157,7 @@ impl Conditions {
 
     /// None while weather is off or unlocated, and until a reading for the location landed.
     pub async fn serve(&self, store: &Store, now_ms: i64) -> Result<Option<Reading>, StoreError> {
-        let Some(wanted) = self.wanted(store, || now_ms).await? else { return Ok(None) };
+        let Some(wanted) = self.wanted(store, now_ms).await? else { return Ok(None) };
         let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         Ok(cache.as_ref().filter(|c| c.key == wanted.key).map(|c| Reading {
             solar_radiation_sum: c.reading.solar_radiation_sum.filter(|_| c.day == wanted.today),
@@ -173,16 +172,16 @@ impl Conditions {
         &self,
         store: &Store,
         roots: &[CertificateDer<'static>],
-        now: impl FnOnce() -> i64,
+        now_ms: i64,
     ) -> Result<bool, StoreError> {
-        let Some(Wanted { key, today, url, .. }) = self.wanted(store, now).await? else { return Ok(true) };
-        let fresh = |c: &Cached| c.key == key && c.day == today && c.fetched.elapsed() < PERIOD;
+        let Some(Wanted { key, today, url, .. }) = self.wanted(store, now_ms).await? else { return Ok(true) };
+        let fresh = |c: &Cached| c.key == key && c.day == today && within_period(c.fetched_ms, now_ms);
         if self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().is_some_and(fresh) {
             return Ok(true);
         }
         match fetch(&url, roots, today.1).await {
             Ok(reading) => {
-                let landed = Cached { key, fetched: Instant::now(), day: today, reading };
+                let landed = Cached { key, fetched_ms: now_ms, day: today, reading };
                 *self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(landed);
                 Ok(true)
             }
@@ -193,14 +192,13 @@ impl Conditions {
         }
     }
 
-    /// Reads the clock only once weather is on and located.
-    async fn wanted(&self, store: &Store, now: impl FnOnce() -> i64) -> Result<Option<Wanted>, StoreError> {
+    async fn wanted(&self, store: &Store, now_ms: i64) -> Result<Option<Wanted>, StoreError> {
         let config = weather::read(store).await?;
         let (true, Some(latitude), Some(longitude)) = (config.enabled, config.latitude, config.longitude)
         else {
             return Ok(None);
         };
-        let at = jiff::Timestamp::from_millisecond(now()).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+        let at = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
         let zone = plant_zone(store).await?;
         // Open-Meteo cuts the daily sum in the zone it is asked for, on its own clock unless the day is pinned.
         let tz = query_value(zone.iana_name().unwrap_or("UTC"));

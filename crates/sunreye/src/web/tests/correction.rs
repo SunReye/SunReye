@@ -8,9 +8,7 @@ use std::sync::atomic::Ordering;
 use jiff::civil::date;
 use jiff::tz::TimeZone;
 
-use super::forecast::{
-    FRESH, LAT, LON, configure, corrected, fixed_now, forecasting, model, string_corrected,
-};
+use super::forecast::{FRESH, LAT, LON, NOW, configure, corrected, forecasting, model, string_corrected};
 use super::*;
 use crate::forecast::{
     self, CorrectionCell, CorrectionModel, ForecastConfig, Irradiance, Location, Observation, Run, SimInputs,
@@ -20,7 +18,8 @@ use crate::learn::{LearnState, Outcome, learn_once};
 use crate::samples::{ClosedMinute, Sample};
 use crate::store::StringGrid;
 
-/// 2026-07-23T10:00:00Z: 2026-07-20 is the last settled day.
+/// 2026-07-20 is the last settled day.
+const LEARN_NOW: &str = "2026-07-23T10:00:00Z";
 const LEARN_NOW_MS: i64 = 1_784_800_800_000;
 /// 2026-07-19T22:00:00Z, plant-local midnight of 2026-07-20 in Berlin.
 const DAY_START_S: i64 = 1_784_498_400;
@@ -30,10 +29,6 @@ const GTI: [f64; 24] = [
     410.0, 270.0, 140.0, 45.0, 5.0, 0.0, 0.0,
 ];
 const MEASURED_W: f64 = 3000.0;
-
-fn learn_now() -> i64 {
-    LEARN_NOW_MS
-}
 
 fn hours() -> impl Iterator<Item = i64> {
     (0..24).map(|h| DAY_START_S + h * 3600)
@@ -84,9 +79,9 @@ async fn seed(core: &Core, values: &[(&str, f64)]) {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_profile_names_the_seeded_metrics_by_role_and_string() {
-    let (core, admin, _) = forecasting("correction-keys", learn_now).await;
+    let (core, admin, _) = forecasting("correction-keys", LEARN_NOW).await;
     let profile = core.profile(PROFILE).await.expect("profile").expect("known profile");
     let key = |role: &str, index: Option<u32>| {
         profile
@@ -139,9 +134,9 @@ fn string_learned(array: &ForecastConfig, total: &ForecastConfig, string_w: f64)
     grid
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_array_on_a_reporting_string_learns_its_own_grid_and_the_inverter_grid_stays_the_total_s() {
-    let (core, admin, _) = forecasting("correction-string", learn_now).await;
+    let (core, admin, _) = forecasting("correction-string", LEARN_NOW).await;
     configure(&admin, None).await;
     seed(&core, &[(TOTAL_KEY, MEASURED_W), (PV1_KEY, 2400.0), (PV2_KEY, 600.0)]).await;
     assert_eq!(
@@ -156,9 +151,9 @@ async fn an_array_on_a_reporting_string_learns_its_own_grid_and_the_inverter_gri
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn without_string_power_every_array_learns_from_the_total_alone() {
-    let (core, admin, _) = forecasting("correction-no-string", learn_now).await;
+    let (core, admin, _) = forecasting("correction-no-string", LEARN_NOW).await;
     configure(&admin, None).await;
     seed(&core, &[(TOTAL_KEY, MEASURED_W), (PV2_KEY, 600.0)]).await;
     learn_once(&core).await.expect("learn");
@@ -178,9 +173,9 @@ fn plant(arrays: Vec<forecast::PvArray>) -> ForecastConfig {
     ForecastConfig { arrays, ..model(None) }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn of_two_arrays_on_one_inverter_only_the_wired_one_learns_from_its_string() {
-    let (core, admin, _) = forecasting("correction-two-arrays", learn_now).await;
+    let (core, admin, _) = forecasting("correction-two-arrays", LEARN_NOW).await;
     configure(&admin, None).await;
     let two_arrays = json!({"arrays": [
         {"kwp": 4, "tilt": 35, "azimuth": -80, "tempCoefficient": -0.34, "mppt": 2},
@@ -210,9 +205,9 @@ async fn of_two_arrays_on_one_inverter_only_the_wired_one_learns_from_its_string
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_string_saturates_against_its_own_arrays_nameplate_not_the_inverters() {
-    let (core, admin, _) = forecasting("correction-string-ceiling", learn_now).await;
+    let (core, admin, _) = forecasting("correction-string-ceiling", LEARN_NOW).await;
     configure(&admin, None).await;
     let two_arrays = json!({"arrays": [
         {"kwp": 4, "tilt": 35, "azimuth": -80, "tempCoefficient": -0.34, "mppt": 2},
@@ -260,9 +255,9 @@ fn learned_at(hours: [i8; 4]) -> (CorrectionModel, LearnState) {
     (model, LearnState { learned_through: date(2026, 7, 20), skill: fold.skill })
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_learn_run_folds_the_measured_hours_and_a_second_run_for_the_day_is_a_no_op() {
-    let (core, admin, standin) = forecasting("correction-learn", learn_now).await;
+    let (core, admin, standin) = forecasting("correction-learn", LEARN_NOW).await;
     configure(&admin, None).await;
     seed_measured(&core).await;
     assert_eq!(
@@ -284,7 +279,7 @@ async fn a_learn_run_folds_the_measured_hours_and_a_second_run_for_the_day_is_a_
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive_names() {
     // The archive names Europe/Berlin; the seeded hours are 09:00Z to 12:59Z.
     for (saved, name, hours) in [
@@ -294,7 +289,7 @@ async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive
         ("Gone/Zone", "UTC", [9, 10, 11, 12]),
     ] {
         let (core, admin, standin) =
-            forecasting(&format!("correction-zone-{}", saved.replace('/', "-")), learn_now).await;
+            forecasting(&format!("correction-zone-{}", saved.replace('/', "-")), LEARN_NOW).await;
         configure(&admin, None).await;
         core.store.save_plant_time_zone(saved).await.expect("zone");
         seed_measured(&core).await;
@@ -314,9 +309,9 @@ async fn a_learn_run_cuts_hours_in_the_saved_plant_zone_not_the_zone_the_archive
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_archive_fetch_leaves_the_stored_model_untouched() {
-    let (core, admin, standin) = forecasting("correction-fetch-failed", learn_now).await;
+    let (core, admin, standin) = forecasting("correction-fetch-failed", LEARN_NOW).await;
     configure(&admin, None).await;
     seed_measured(&core).await;
     let mut stored = CorrectionModel::default();
@@ -335,9 +330,9 @@ async fn a_failed_archive_fetch_leaves_the_stored_model_untouched() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_window_without_measured_hours_keeps_the_cursor_so_the_days_are_retried() {
-    let (core, admin, standin) = forecasting("correction-no-history", learn_now).await;
+    let (core, admin, standin) = forecasting("correction-no-history", LEARN_NOW).await;
     configure(&admin, None).await;
     assert_eq!(learn_once(&core).await.expect("learn"), Outcome::NoMeasuredHours);
     assert_eq!(core.store.correction(1).await.expect("read"), (CorrectionModel::default(), None));
@@ -346,9 +341,9 @@ async fn a_window_without_measured_hours_keeps_the_cursor_so_the_days_are_retrie
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_unconfigured_forecast_learns_nothing_and_fetches_nothing() {
-    let (core, admin, standin) = forecasting("correction-unconfigured", learn_now).await;
+    let (core, admin, standin) = forecasting("correction-unconfigured", LEARN_NOW).await;
     seed_measured(&core).await;
     assert_eq!(learn_once(&core).await.expect("learn"), Outcome::Idle);
     assert_eq!(standin.hits.load(Ordering::SeqCst), 0);
@@ -364,9 +359,9 @@ fn stored_grid() -> CorrectionModel {
     model
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_forecast_carries_the_learned_factor_only_while_the_correction_is_enabled() {
-    let (core, admin, _) = forecasting("correction-applied", fixed_now).await;
+    let (core, admin, _) = forecasting("correction-applied", NOW).await;
     configure(&admin, None).await;
     let state = LearnState { learned_through: date(2026, 7, 20), skill: Skill::default() };
     core.store
@@ -385,9 +380,9 @@ async fn the_forecast_carries_the_learned_factor_only_while_the_correction_is_en
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_enabled_correction_scales_a_wired_array_by_its_string_grid_where_learned() {
-    let (core, admin, _) = forecasting("correction-string-applied", fixed_now).await;
+    let (core, admin, _) = forecasting("correction-string-applied", NOW).await;
     configure(&admin, None).await;
     let state = LearnState { learned_through: date(2026, 7, 20), skill: Skill::default() };
     let mut string = CorrectionModel::default();
@@ -416,9 +411,9 @@ async fn an_enabled_correction_scales_a_wired_array_by_its_string_grid_where_lea
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_correction_view_names_the_applied_factors_and_the_skill() {
-    let (core, admin, _) = forecasting("correction-view", fixed_now).await;
+    let (core, admin, _) = forecasting("correction-view", NOW).await;
     let empty = json!({"enabled": false, "learnedThrough": null,
         "skill": {"maeRaw": 0.0, "maeCorrected": 0.0, "improvementPct": 0.0, "samples": 0.0}, "cells": []});
     assert_eq!(get(&admin, "/api/forecast/correction").await.json(), empty);

@@ -8,6 +8,7 @@ use tokio::sync::watch;
 use tokio::time::MissedTickBehavior;
 
 use crate::rollup::Tier;
+use crate::run::Clock;
 use crate::settings::positive;
 use crate::store::{Store, StoreError};
 
@@ -60,14 +61,14 @@ fn days_before(now: Timestamp, days: u64) -> Timestamp {
 const RETENTION_EVERY: Duration = Duration::from_hours(1);
 
 /// Runs the retention pass at start and hourly until `stopped` changes.
-pub(crate) async fn hourly(store: Arc<Store>, now: fn() -> i64, mut stopped: watch::Receiver<bool>) {
+pub(crate) async fn hourly(store: Arc<Store>, clock: Clock, mut stopped: watch::Receiver<bool>) {
     let mut ticker = tokio::time::interval(RETENTION_EVERY);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             biased;
             _ = stopped.changed() => break,
-            _ = ticker.tick() => retain_now(&store, now()).await,
+            _ = ticker.tick() => retain_now(&store, clock.now_ms()).await,
         }
     }
 }

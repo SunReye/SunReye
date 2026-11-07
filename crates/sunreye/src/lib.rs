@@ -29,9 +29,16 @@ pub mod solar;
 pub mod sources;
 pub mod statistics;
 pub mod store;
+/// The integration tests' helpers, and the harness only a unit test can open a core with.
 #[cfg(test)]
-#[path = "../tests/support/mod.rs"]
-mod support;
+#[path = "../tests/support"]
+mod support {
+    #[path = "mod.rs"]
+    mod shared;
+    pub use shared::*;
+    mod core_at;
+    pub use core_at::{core_at, hold_still, paused_at};
+}
 #[cfg(test)]
 mod test_net;
 pub mod weather;

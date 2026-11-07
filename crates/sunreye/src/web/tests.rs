@@ -50,7 +50,7 @@ async fn open(dir: &Path) -> (Arc<Core>, Api) {
 }
 
 async fn open_with(dir: &Path, config: &Config) -> (Arc<Core>, Api) {
-    signed_in(Core::open_at(dir, crate::run::now_ms).await.expect("core"), config).await
+    signed_in(Core::open_at(dir, crate::run::Clock::wall()).await.expect("core"), config).await
 }
 
 /// A core that also trusts `ca`, as its profile sources are served by a local HTTPS server.
@@ -589,7 +589,7 @@ async fn call_for_answer(api: &Api, (method, path): (&str, &str)) -> Answer {
 
 #[tokio::test]
 async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
-    let core = Core::open_at(&dir("sign-up"), crate::run::now_ms).await.expect("core");
+    let core = Core::open_at(&dir("sign-up"), crate::run::Clock::wall()).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
     assert_eq!(get(&api, "/api/setup-status").await.json(), json!({"needsSetup": true}));
 
@@ -622,7 +622,7 @@ async fn the_first_sign_up_creates_the_admin_signs_it_in_and_closes_sign_up() {
 
 #[tokio::test]
 async fn a_sign_up_without_an_email_or_a_name_is_a_400() {
-    let core = Core::open_at(&dir("sign-up-invalid"), crate::run::now_ms).await.expect("core");
+    let core = Core::open_at(&dir("sign-up-invalid"), crate::run::Clock::wall()).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
     for body in [
         json!({"email": "", "name": "A", "password": ADMIN_PASSWORD}),
@@ -657,8 +657,9 @@ async fn a_password_of_8_characters_to_72_bytes_signs_up_and_one_outside_is_a_40
         ("72 ending in NUL", format!("{}\0", "x".repeat(71)), nul),
     ];
     for (name, password, refusal) in cases {
-        let core =
-            Core::open_at(&dir(&format!("password-length-{name}")), crate::run::now_ms).await.expect("core");
+        let core = Core::open_at(&dir(&format!("password-length-{name}")), crate::run::Clock::wall())
+            .await
+            .expect("core");
         let api = Api { router: router(Arc::clone(&core), &Config::default()), cookie: None };
         let answer = sign_up(&api, ADMIN_EMAIL, &password).await;
         if let Some(message) = refusal {
@@ -857,7 +858,7 @@ async fn a_state_changing_request_from_an_untrusted_origin_is_refused() {
 #[tokio::test]
 async fn the_session_cookie_is_secure_when_configured() {
     let config = Config { secure_cookies: true, ..Config::default() };
-    let core = Core::open_at(&dir("secure"), crate::run::now_ms).await.expect("core");
+    let core = Core::open_at(&dir("secure"), crate::run::Clock::wall()).await.expect("core");
     let api = Api { router: router(Arc::clone(&core), &config), cookie: None };
     let header = sign_up(&api, ADMIN_EMAIL, ADMIN_PASSWORD).await.set_cookie.expect("cookie");
     assert!(header.contains("Secure"), "{header}");
