@@ -1,6 +1,6 @@
 //! `/ws`: the live feed, multiplexed over one socket in the 3.x contract.
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::task::Poll;
 use std::time::Duration;
 
@@ -19,8 +19,8 @@ use super::auth::AuthSession;
 use crate::evcc::EvccState;
 use crate::events::{Changed, Events, SessionEnded};
 use crate::live::{
-    ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, evcc_frame, events_frame, parse_client_frame,
-    resolve_subscribe, resolve_unsubscribe,
+    ClientFrame, MetricsFrame, PlantFrame, StatisticsFrame, Topic, ack_frame, evcc_frame, events_frame,
+    parse_client_frame, resolve_subscribe, resolve_unsubscribe,
 };
 use crate::run::{Clock, Core};
 use crate::store::{Store, StoreError};
@@ -62,6 +62,8 @@ pub async fn upgrade(
         plant: core.bus.plant.subscribe(),
         events: core.bus.changed.subscribe(),
         evcc: core.bus.evcc.subscribe(),
+        statistics: core.bus.statistics.subscribe(),
+        core: Arc::downgrade(&core),
     };
     let ends = core.bus.sessions.subscribe();
     let holder = match holder(&core, &auth, ends).await {
@@ -288,18 +290,23 @@ struct Feed {
     plant: watch::Receiver<Option<PlantFrame>>,
     events: Events<Changed>,
     evcc: watch::Receiver<Option<EvccState>>,
+    statistics: Events<StatisticsFrame>,
+    /// Weak, so a socket never keeps the core from stopping; read only for a `statistics` snapshot.
+    core: Weak<Core>,
 }
 
 impl Feed {
     /// Biased: a reading's `metrics` frame is published before its `plant` fold and goes out first.
     async fn next(&mut self) -> Step {
-        tokio::select! {
+        let (topic, frame) = tokio::select! {
             biased;
-            frame = self.metrics.next() => Step::Metrics(frame),
-            state = latest(&mut self.plant) => Step::Plant(state),
-            changed = self.events.next() => Step::Events(changed),
-            state = latest(&mut self.evcc) => Step::Evcc(state),
-        }
+            frame = self.metrics.next() => (Topic::Metrics, frame.map(|frame| frame.0)),
+            state = latest(&mut self.plant) => (Topic::Plant, state.map(|frame| frame.0)),
+            changed = self.events.next() => (Topic::Events, changed.map(|changed| events_frame(changed).into())),
+            state = latest(&mut self.evcc) => (Topic::Evcc, state.map(|state| evcc_frame(&state).into())),
+            frame = self.statistics.next() => (Topic::Statistics, frame.map(|frame| frame.0)),
+        };
+        Step::Frame(topic, frame)
     }
 }
 
@@ -334,10 +341,8 @@ async fn latest<T: Clone>(topic: &mut watch::Receiver<Option<T>>) -> Option<T> {
 
 enum Step {
     Client(Option<Result<Message, axum::Error>>),
-    Metrics(Option<MetricsFrame>),
-    Plant(Option<PlantFrame>),
-    Events(Option<Changed>),
-    Evcc(Option<EvccState>),
+    /// A topic's next frame; `None` once the bus is gone.
+    Frame(Topic, Option<Utf8Bytes>),
     Ping,
     Idle,
     Revoked,
@@ -349,14 +354,7 @@ async fn take(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, step: Ste
     match step {
         Step::Client(Some(Ok(message))) => receive(peer, feed, held, message).await,
         Step::Client(Some(Err(_)) | None) | Step::Idle => false,
-        Step::Metrics(frame) => forward(peer, held, Topic::Metrics, frame.map(|frame| frame.0)).await,
-        Step::Plant(frame) => forward(peer, held, Topic::Plant, frame.map(|frame| frame.0)).await,
-        Step::Events(changed) => {
-            forward(peer, held, Topic::Events, changed.map(|changed| events_frame(changed).into())).await
-        }
-        Step::Evcc(state) => {
-            forward(peer, held, Topic::Evcc, state.map(|state| evcc_frame(&state).into())).await
-        }
+        Step::Frame(topic, frame) => forward(peer, held, topic, frame).await,
         Step::Ping => peer.ping().await,
         Step::Revoked => peer.close().await,
         Step::Recheck => peer.recheck().await,
@@ -392,7 +390,7 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
             }
             let fresh: Vec<Topic> = decision.subscribe.into_iter().filter(|t| !held.contains(t)).collect();
             held.extend(&fresh);
-            for snapshot in snapshots(feed, &fresh) {
+            for snapshot in snapshots(feed, &fresh).await {
                 if !peer.send(Message::Text(snapshot)).await {
                     return false;
                 }
@@ -408,14 +406,26 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
     }
 }
 
-/// The last value of each state topic in `fresh`, so a new subscriber starts from the current state.
-fn snapshots(feed: &mut Feed, fresh: &[Topic]) -> Vec<Utf8Bytes> {
+/// Today's `statistics` frame; none once the core is gone, or when the read fails.
+async fn today(core: &Weak<Core>) -> Option<Utf8Bytes> {
+    let core = core.upgrade()?;
+    let minute = crate::samples::minute_of(core.now_ms());
+    let read = super::today_frame(&core, minute).await;
+    let frame = read.inspect_err(|error| tracing::warn!(%error, "today's statistics not sent")).ok()?;
+    frame.map(|frame| frame.0)
+}
+
+/// The current state of each state topic in `fresh`: the last value, or for `statistics` today's read.
+async fn snapshots(feed: &mut Feed, fresh: &[Topic]) -> Vec<Utf8Bytes> {
     let mut frames = Vec::new();
     if fresh.contains(&Topic::Plant) {
         frames.extend(feed.plant.borrow_and_update().clone().map(|plant| plant.0));
     }
     if fresh.contains(&Topic::Evcc) {
         frames.extend(feed.evcc.borrow_and_update().as_ref().map(|state| evcc_frame(state).into()));
+    }
+    if fresh.contains(&Topic::Statistics) {
+        frames.extend(today(&feed.core).await);
     }
     frames
 }

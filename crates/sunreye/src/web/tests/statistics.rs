@@ -363,3 +363,75 @@ async fn five_year_report() {
     }
     finish(core, admin).await;
 }
+
+/// 00:00:30 in Berlin on 15 August 2026: the plant day began at 2026-08-14T22:00:00Z.
+const BERLIN_JUST_PAST_MIDNIGHT: &str = "2026-08-14T22:00:30Z";
+
+/// The `statistics` frame a rollup of the minute starting at `minute_at` publishes, parsed; none for a
+/// minute outside today.
+async fn frame_of(core: &Core, minute_at: &str) -> Option<Value> {
+    let minute = crate::samples::minute_of(ms(minute_at));
+    let frame = today_frame(core, minute).await.expect("read");
+    frame.map(|frame| serde_json::from_str(frame.0.as_str()).expect("json"))
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rollup_of_a_minute_of_today_frames_todays_figures_and_one_of_another_day_none() {
+    let core =
+        crate::support::core_at(&dir("statistics-today"), BERLIN_JUST_PAST_MIDNIGHT, "Europe/Berlin").await;
+    let device = add_device(&core, "10.0.0.5").await;
+    store(
+        &core,
+        device,
+        &series(
+            DAY_PRODUCTION,
+            &[("2026-08-14T21:59:10Z", 7.0), ("2026-08-14T22:00:00Z", 0.5), ("2026-08-14T22:00:20Z", 1.5)],
+        ),
+    )
+    .await;
+    assert_eq!(frame_of(&core, "2026-08-14T21:59:00Z").await, None, "23:59 local is yesterday");
+    assert_eq!(frame_of(&core, "2026-08-15T22:00:00Z").await, None, "the next midnight is tomorrow");
+    let frame = frame_of(&core, "2026-08-14T22:00:00Z").await.expect("00:00 local is today");
+    let (core, admin) = signed_in(core, &Config::default()).await;
+    let read = energy(&admin, "from=2026-08-14T22:00:00Z&to=2026-08-15T22:00:00Z&bucket=day").await;
+    assert_eq!(frame["topic"], "statistics");
+    assert_eq!(frame["data"]["type"], "today");
+    assert_eq!(frame["data"]["at"], "2026-08-14T22:00:30.000Z");
+    assert_eq!(frame["data"]["energy"], read[0], "today's energy as the statistics read answers it");
+    assert_eq!(frame["data"]["energy"]["bucket"], "2026-08-15");
+    assert!(frame["data"]["energy"]["productionKwh"].as_f64() > Some(0.0), "{frame}");
+    let cost = &frame["data"]["cost"];
+    assert_eq!(
+        (cost["from"].clone(), cost["to"].clone()),
+        (json!("2026-08-14T22:00:00.000Z"), json!("2026-08-15T22:00:00.000Z"))
+    );
+    assert_eq!(cost["productionKwh"], frame["data"]["energy"]["productionKwh"]);
+    finish(core, admin).await;
+}
+
+/// `(now, [(minute starting at, whether it is of today)])`: a plant day in Berlin whose length is not 24 h.
+type DayCase = (&'static str, [(&'static str, bool); 3]);
+
+const SPRING_23_H: DayCase = (
+    "2026-03-29T21:59:30Z",
+    [("2026-03-28T22:59:00Z", false), ("2026-03-29T21:59:00Z", true), ("2026-03-29T22:00:00Z", false)],
+);
+const AUTUMN_25_H: DayCase = (
+    "2026-10-25T22:59:30Z",
+    [("2026-10-24T21:59:00Z", false), ("2026-10-25T22:59:00Z", true), ("2026-10-25T23:00:00Z", false)],
+);
+
+#[tokio::test(start_paused = true)]
+async fn the_plant_day_ends_with_the_23_h_and_the_25_h_day_not_24_h_after_it_began() {
+    for (case, (now, minutes)) in [("spring", SPRING_23_H), ("autumn", AUTUMN_25_H)] {
+        let core =
+            crate::support::core_at(&dir(&format!("statistics-dst-{case}")), now, "Europe/Berlin").await;
+        let device = add_device(&core, "10.0.0.5").await;
+        store(&core, device, &series(DAY_PRODUCTION, &[(now, 1.0)])).await;
+        for (minute, today) in minutes {
+            let framed = frame_of(&core, minute).await.is_some();
+            assert_eq!(framed, today, "{case}: the minute starting {minute}");
+        }
+        core.stop().await;
+    }
+}

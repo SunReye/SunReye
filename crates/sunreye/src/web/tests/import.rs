@@ -577,7 +577,16 @@ async fn stopping_the_core_waits_for_a_dropped_requests_import_then_stops_pollin
 
     assert_eq!(
         seams.events.lock().expect("events")[before..],
-        ["apply", "importing", "polling", "refreshing", "learning", "retention", "store closed"]
+        [
+            "apply",
+            "importing",
+            "polling",
+            "statistics",
+            "refreshing",
+            "learning",
+            "retention",
+            "store closed"
+        ]
     );
     let store = Store::open(&path).await.expect("the store reopens");
     assert_eq!(store.devices().await.expect("devices").len(), 1);
