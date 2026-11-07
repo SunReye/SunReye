@@ -4,11 +4,10 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import ForecastChart, { type ForecastSlot } from './forecast-chart.svelte';
 	import ChartFullscreen from '$lib/components/layout/chart-fullscreen.svelte';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import {
 		type MeasuredDay,
-		type MinuteRollup,
 		measuredFromHourlyEnergy,
 		measuredFromRollups,
 		measuredTotal,
@@ -18,10 +17,8 @@
 	} from './_shared/measured-day';
 	import * as m from '$lib/paraglide/messages';
 
-	// One slot of the provider-agnostic solar forecast (apps/server/src/forecast/solar-forecast.ts).
+	// One slot of the provider-agnostic solar forecast.
 	type ForecastPoint = { time: string; watts: number; peakWatts: number };
-	// The one field of today's hourly energy the fallback path reads (server PeriodEnergy).
-	type Period = { bucket: string; productionKwh: number };
 
 	let {
 		series,
@@ -99,24 +96,35 @@
 	const pvKey = $derived(inverter.allMetrics.find((mt) => mt.role === 'pv.total.power')?.key);
 
 	async function fetchRollups(metric: string, from: Date, to: Date): Promise<MeasuredDay> {
-		const { data } = await api.api.history.rollup.get({
-			query: {
-				metric,
-				from: from.toISOString(),
-				to: to.toISOString(),
-				bucket: 'minute',
-				limit: 1600,
-				...source.query
-			}
-		});
-		return measuredFromRollups((data ?? []) as MinuteRollup[], step);
+		// A refusal or an unreachable core is a day nobody measured, not a thrown error.
+		const data = await core
+			.GET('/api/history/rollup', {
+				params: {
+					query: {
+						metric,
+						from: from.toISOString(),
+						to: to.toISOString(),
+						bucket: 'minute',
+						limit: 1600,
+						...source.query
+					}
+				}
+			})
+			.then((r) => r.data)
+			.catch(() => undefined);
+		return measuredFromRollups(data ?? [], step);
 	}
 
 	async function fetchHourlyEnergy(from: Date, to: Date, nowIdx: number): Promise<MeasuredDay> {
-		const { data } = await api.api.energy.series.get({
-			query: { from: from.toISOString(), to: to.toISOString(), bucket: 'hour', ...source.query }
-		});
-		return measuredFromHourlyEnergy((data ?? []) as Period[], step, nowIdx);
+		const data = await core
+			.GET('/api/energy/series', {
+				params: {
+					query: { from: from.toISOString(), to: to.toISOString(), bucket: 'hour', ...source.query }
+				}
+			})
+			.then((r) => r.data)
+			.catch(() => undefined);
+		return measuredFromHourlyEnergy(data ?? [], step, nowIdx);
 	}
 
 	// Guards against out-of-order responses: only the latest request may land.
