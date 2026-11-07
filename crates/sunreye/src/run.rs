@@ -46,9 +46,11 @@ pub enum RunError {
 /// session's read never queues behind a crowd of them.
 const STRANGER_READS: usize = 6;
 
-/// An archive no test core may reach: the learn task never leaves the host.
+/// The fetch URLs of a test core that is not given a stand-in: every dial is refused.
 #[cfg(test)]
-const UNREACHABLE: &str = "https://127.0.0.1:9/v1/archive";
+fn unreachable() -> (String, String) {
+    (crate::support::UNREACHABLE.into(), crate::support::UNREACHABLE.into())
+}
 
 /// What the HTTP handlers act on: the store, the profiles this binary ships and the device tasks.
 #[derive(Debug)]
@@ -162,14 +164,14 @@ impl Core {
     /// [`Core::open`] with the clock standing where `now` says.
     #[cfg(test)]
     pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        let urls = unreachable();
         Self::open_clocked(data_dir, Vec::new(), now, urls, learn::learn_logged).await
     }
 
     /// [`Core::open_at`] on the wall clock, learning with `job`.
     #[cfg(test)]
     pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
-        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        let urls = unreachable();
         Self::open_clocked(data_dir, Vec::new(), now_ms, urls, job).await
     }
 
@@ -201,7 +203,7 @@ impl Core {
     /// [`Core::open_at`] that polls no device.
     #[cfg(test)]
     pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
-        let urls = (open_meteo::URL.into(), UNREACHABLE.into());
+        let urls = unreachable();
         let core = Self::start(data_dir, Vec::new(), now, urls, learn::learn_logged).await?;
         core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
         core.apply().await?;
@@ -732,7 +734,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
-    use sunreye_sim::{FC_READ_HOLDING, Simulator, profile_case};
+    use sunreye_sim::profile_case;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use jiff::Timestamp;
@@ -746,6 +748,8 @@ mod tests {
     use crate::store::{DeviceEdit, NewConnection, NewDevice};
     use crate::test_net::closed_port;
     use crate::web::Config;
+
+    use crate::support::Sim;
 
     fn dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sunreye-run-{name}-{}", std::process::id()));
@@ -777,7 +781,7 @@ mod tests {
         samples
     }
 
-    async fn wait_for_requests(sim: &Simulator, at_least: usize) {
+    async fn wait_for_requests(sim: &Sim, at_least: usize) {
         let deadline = Instant::now() + Duration::from_secs(20);
         while sim.requests().len() < at_least {
             assert!(Instant::now() < deadline, "the simulator was not polled");
@@ -806,13 +810,12 @@ mod tests {
     async fn a_polled_device_is_stored_when_the_core_stops() {
         let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
         let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-        let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
+        let sim = Sim::start(case.registers, &[1]).await;
         let dir = dir("stop");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
 
         run(&dir, &Config::default(), listener().await, wait_for_requests(&sim, 40)).await.expect("run");
 
-        assert!(sim.requests().iter().all(|r| r.function == FC_READ_HOLDING), "the core only reads");
         let samples = stored(&dir, device).await;
         assert!(samples.len() >= 2, "{} samples", samples.len());
         let mut want: Vec<(String, f64)> = case.readings.into_iter().collect();
@@ -891,8 +894,8 @@ mod tests {
     #[tokio::test]
     async fn two_devices_on_two_connections_poll_store_and_roll_up_independently() {
         let (low, high) = (oracle_case("deye-sg05lp3"), oracle_case("deye-sg01hp3"));
-        let low_sim = Simulator::start(low.registers.clone(), &[1]).await.expect("sim");
-        let high_sim = Simulator::start(high.registers.clone(), &[1]).await.expect("sim");
+        let low_sim = Sim::start(low.registers.clone(), &[1]).await;
+        let high_sim = Sim::start(high.registers.clone(), &[1]).await;
         let dir = dir("two-devices");
         let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
         let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
@@ -947,7 +950,7 @@ mod tests {
     #[tokio::test]
     async fn the_live_plant_is_its_inverters_folded_by_the_first_members_profile_and_never_a_meter() {
         let case = oracle_case("deye-sg05lp3");
-        let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("sim");
+        let sim = Sim::start(case.registers.clone(), &[1]).await;
         let dir = dir("live-roster");
         // The meter comes first in the roster: its profile must not decide how the plant folds.
         let meter = seed_role(&dir, 1, "acme-meter", "meter").await;
@@ -976,10 +979,8 @@ mod tests {
     #[tokio::test]
     async fn a_retired_device_is_not_polled_and_leaves_the_plant_and_a_restored_one_returns() {
         let case = oracle_case("deye-sg05lp3");
-        let (kept_sim, retired_sim) = (
-            Simulator::start(case.registers.clone(), &[1]).await.expect("sim"),
-            Simulator::start(case.registers.clone(), &[1]).await.expect("sim"),
-        );
+        let (kept_sim, retired_sim) =
+            (Sim::start(case.registers.clone(), &[1]).await, Sim::start(case.registers.clone(), &[1]).await);
         let dir = dir("retired");
         let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
         let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
@@ -1010,7 +1011,7 @@ mod tests {
     #[tokio::test]
     async fn the_bus_carries_a_poll_a_settings_write_and_a_retire_and_stop_leaves_no_subscriber_behind() {
         let case = oracle_case("deye-sg05lp3");
-        let sim = Simulator::start(case.registers.clone(), &[1]).await.expect("sim");
+        let sim = Sim::start(case.registers.clone(), &[1]).await;
         let dir = dir("bus");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
         let core = Core::open_at(&dir, now_ms).await.expect("core");
@@ -1056,7 +1057,7 @@ mod tests {
     async fn a_restart_mid_minute_stores_the_held_minute_once_and_holds_only_what_follows() {
         let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle");
         let case = profile_case(&oracle, "deye-sg05lp3", "ramp").expect("case");
-        let sim = Simulator::start(case.registers, &[1]).await.expect("sim");
+        let sim = Sim::start(case.registers, &[1]).await;
         let dir = dir("restart-held");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "20").await;
         let core = Core::open_at(&dir, now_ms).await.expect("core");

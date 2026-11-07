@@ -5,15 +5,46 @@
 #![allow(dead_code, reason = "each test file uses a part of this module")]
 
 use std::collections::BTreeMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose};
 use serde_json::{Value, json};
+use sunreye_sim::{FC_READ_HOLDING, Framing, Registers, Simulator};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio_rustls::rustls::{ServerConfig, crypto::ring::default_provider};
+
+/// A fetch URL no test core may reach: every dial is refused, so nothing leaves the host.
+pub const UNREACHABLE: &str = "https://127.0.0.1:9/";
+
+/// A loopback address that accepts a connection and never answers: a fetch to it hangs until its own timeout.
+pub struct Stalled {
+    pub url: String,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Stalled {
+    pub async fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let url = format!("https://{}/", listener.local_addr().expect("addr"));
+        let task = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((tcp, _)) = listener.accept().await {
+                held.push(tcp);
+            }
+        });
+        Self { url, task }
+    }
+}
+
+impl Drop for Stalled {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
 
 pub struct Ca {
     params: CertificateParams,
@@ -160,4 +191,36 @@ async fn answer(acceptor: TlsAcceptor, tcp: TcpStream, site: Arc<(Site, BTreeMap
 
 async fn stall() {
     std::future::pending::<()>().await;
+}
+
+/// A [`Simulator`] that fails the test owning it, when dropped, if the core wrote to it: ADR 0005, the core
+/// only reads.
+#[derive(Debug)]
+pub struct Sim(Simulator);
+
+impl Sim {
+    pub async fn start(registers: Registers, units: &[u8]) -> Self {
+        Self::start_with(Framing::Tcp, registers, units).await
+    }
+
+    pub async fn start_with(framing: Framing, registers: Registers, units: &[u8]) -> Self {
+        Self(Simulator::start_with(framing, registers, units).await.expect("simulator"))
+    }
+}
+
+impl Deref for Sim {
+    type Target = Simulator;
+
+    fn deref(&self) -> &Simulator {
+        &self.0
+    }
+}
+
+impl Drop for Sim {
+    fn drop(&mut self) {
+        let writes: Vec<_> = self.requests().into_iter().filter(|r| r.function != FC_READ_HOLDING).collect();
+        if !std::thread::panicking() {
+            assert!(writes.is_empty(), "the core wrote to the simulator (ADR 0005): {writes:?}");
+        }
+    }
 }
