@@ -96,8 +96,8 @@ async fn plain_user(core: &Core, admin: &Api) -> Api {
 /// Waits until the core holds `count` live connections.
 async fn connections(core: &Core, count: usize) {
     let deadline = Instant::now() + Duration::from_secs(5);
-    while core.live.connections() != count {
-        assert!(Instant::now() < deadline, "{} connections, want {count}", core.live.connections());
+    while core.bus.metrics.subscribers() != count {
+        assert!(Instant::now() < deadline, "{} connections, want {count}", core.bus.metrics.subscribers());
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
@@ -251,7 +251,7 @@ async fn a_client_that_stops_answering_is_closed_after_the_idle_timeout() {
     // The connection is up and nothing else touches the store: the server's timers run on virtual time.
     tokio::time::pause();
     tokio::time::advance(Duration::from_millis(150)).await;
-    assert_eq!(core.live.connections(), 1, "open inside the timeout");
+    assert_eq!(core.bus.metrics.subscribers(), 1, "open inside the timeout");
     tokio::time::advance(Duration::from_millis(200)).await;
     tokio::time::resume();
     connections(&core, 0).await;
@@ -378,6 +378,35 @@ async fn a_reading_reaches_each_subscribed_topic_and_nothing_else() {
     core.live.publish(7, &reading(1_786_788_001_123, 1.0));
     assert_eq!(next_json(&mut both).await["topic"], "plant", "unsub stopped metrics, junk closed nothing");
     silent(&mut both).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_client_frame_publishes_nothing_and_anything_but_sub_or_unsub_is_ignored() {
+    let (core, admin) = open(&dir("ws-no-publish")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut listener = connect(addr, &admin).await;
+    subscribe(&mut listener, r#"["metrics","plant"]"#).await;
+    let mut client = connect(addr, &admin).await;
+    subscribe(&mut client, r#"["metrics","plant"]"#).await;
+    let metrics = r#"{"time":"2026-08-15T10:00:00.123Z","inverterId":"7","metrics":{"pv_power":1.0}}"#;
+    let plant =
+        r#"{"time":"2026-08-15T10:00:00.123Z","metrics":{"pv_power":1.0},"members":["7"],"stale":[]}"#;
+    for text in [
+        format!(r#"{{"topic":"metrics","data":{metrics}}}"#),
+        format!(r#"{{"topic":"plant","data":{plant}}}"#),
+        format!(r#"{{"t":"pub","topic":"plant","data":{plant}}}"#),
+        format!(r#"{{"t":"publish","topics":["metrics"],"data":{metrics}}}"#),
+    ] {
+        send_text(&mut client, &text).await;
+    }
+    client.send(Message::binary(metrics.as_bytes().to_vec())).await.expect("send");
+
+    silent(&mut listener).await;
+    let ack = subscribe(&mut client, "[]").await;
+    assert_eq!(ack["topic"], "__ack", "the sender is still served and was sent nothing else: {ack}");
+    assert!(core.bus.plant.subscribe().borrow().is_none(), "the plant topic holds nothing");
     drop(admin);
     core.stop().await;
 }
