@@ -8,104 +8,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-use crate::store::{DeviceRow, Store, StoreError};
+use crate::store::{Battery, Correction, DevicePv, DeviceRow, PlantSettings, PvArray, Store, StoreError};
 
-pub const OPEN_METEO: &str = "open-meteo";
 /// The plant fallbacks every array without its own value, or its inverter's, takes.
 pub const DEFAULT_TEMP_COEFFICIENT: f64 = -0.4;
 pub const DEFAULT_SYSTEM_LOSS: f64 = 14.0;
-const DEFAULT_MIN_SOC: f64 = 10.0;
 const MAX_ARRAYS: usize = 8;
 const LABEL_MAX: usize = 120;
 /// Edited on the inverter's device: a weather patch naming one is refused, never dropped.
 const MOVED_TO_DEVICE: [&str; 4] = ["arrays", "tempCoefficient", "systemLoss", "battery"];
-
-/// One PV array: panels sharing an orientation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct PvArray {
-    pub kwp: f64,
-    /// Degrees from horizontal.
-    pub tilt: f64,
-    /// Degrees: 0 south, -90 east, 90 west.
-    pub azimuth: f64,
-    /// The inverter the array is wired into; set on the composed record only.
-    #[serde(default, skip_serializing_if = "Option::is_none", skip_deserializing)]
-    pub device_slug: Option<String>,
-    /// %/°C; the inverter's, else the plant's, when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temp_coefficient: Option<f64>,
-    /// %; the inverter's, else the plant's, when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub system_loss: Option<f64>,
-    /// `index` of the inverter's `pv.string.*` metrics this array is wired into.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mppt: Option<u32>,
-}
-
-/// The battery the forecast's clipping sim models.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct Battery {
-    pub usable_kwh: f64,
-    /// W; unbounded when null.
-    #[serde(default)]
-    pub max_charge_w: Option<f64>,
-    /// Reserve floor, %.
-    #[serde(default = "default_min_soc")]
-    pub min_soc: f64,
-}
-
-const fn default_min_soc() -> f64 {
-    DEFAULT_MIN_SOC
-}
-
-/// One inverter's PV description and pack.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct DevicePv {
-    pub arrays: Vec<PvArray>,
-    pub temp_coefficient: Option<f64>,
-    pub system_loss: Option<f64>,
-    pub battery: Option<Battery>,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct Correction {
-    /// Apply the learned correction; it learns either way.
-    pub enabled: bool,
-}
-
-/// The plant-level half, stored once.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PlantSettings {
-    pub enabled: bool,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub label: String,
-    pub forecast_enabled: bool,
-    pub provider: String,
-    pub max_output_w: Option<f64>,
-    pub house_load_w: Option<f64>,
-    pub smart_meter_since: Option<String>,
-    pub correction: Correction,
-}
-
-impl Default for PlantSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            latitude: None,
-            longitude: None,
-            label: String::new(),
-            forecast_enabled: false,
-            provider: OPEN_METEO.into(),
-            max_output_w: None,
-            house_load_w: None,
-            smart_meter_since: None,
-            correction: Correction::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

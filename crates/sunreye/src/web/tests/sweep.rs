@@ -2,6 +2,7 @@
 
 use super::forecast::{NOW, configure_settings, onboarded};
 use super::*;
+use crate::run::Clock;
 use crate::support::Offline;
 use crate::support::paused_at;
 
@@ -64,7 +65,8 @@ async fn no_kiosk_or_session_read_fetches_in_its_request_path() {
 async fn a_fetch_of_a_still_core_dials_the_offline_address() {
     let offline = Offline::start();
     let (core, admin) = still("sweep-dial", &offline).await;
-    assert!(!core.solar.refresh(&core).await.expect("refresh"), "nothing answers");
+    let refreshed = core.solar.refresh(&core.store, &Clock::wall(), &core.roots).await;
+    assert!(!refreshed.expect("refresh"), "nothing answers");
     assert_eq!(offline.dials(), 1);
     drop(admin);
     core.stop().await;

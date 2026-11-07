@@ -21,14 +21,14 @@ use tokio::time::MissedTickBehavior;
 
 use crate::forecast::{
     self, CorrectionModel, ForecastConfig, Irradiance, Learned, Location, Observation, Point, Run, SimInputs,
-    Skill, StringObservation,
+    StringObservation,
 };
 use crate::open_meteo;
 use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
-use crate::store::{BucketWindow, DeviceRow, Store, StoreError, StringGrid};
-use crate::weather::{self, OPEN_METEO, WeatherConfig};
+use crate::store::{BucketWindow, DeviceRow, LearnState, OPEN_METEO, PvArray, Store, StoreError, StringGrid};
+use crate::weather::{self, WeatherConfig};
 
 /// The first run waits for the core to settle; later runs retry days the archive had not settled.
 const FIRST_AFTER: Duration = Duration::from_mins(2);
@@ -74,14 +74,6 @@ const PV_ROLE: &str = "pv.total.power";
 const STRING_ROLE: &str = "pv.string.power";
 const HOUR_MS: i64 = 3_600_000;
 
-/// How far one inverter's correction has learned.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LearnState {
-    /// The last plant-local day folded in.
-    pub learned_through: Date,
-    pub skill: Skill,
-}
-
 /// What one run did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -115,7 +107,7 @@ pub async fn stored(store: &Store) -> Result<Option<(CorrectionModel, Option<Lea
 /// grid in `arrays` order.
 pub async fn applied(
     store: &Store,
-    arrays: &[weather::PvArray],
+    arrays: &[PvArray],
 ) -> Result<(Option<CorrectionModel>, Vec<Option<CorrectionModel>>), StoreError> {
     let devices = store.devices().await?;
     let Some(device) = primary(&devices) else { return Ok((None, Vec::new())) };
@@ -128,7 +120,7 @@ pub async fn applied(
 /// The grid of the string each array is wired to on the inverter `slug`; none for an array of another inverter,
 /// without a string, or on a string with no grid.
 fn string_grids(
-    arrays: &[weather::PvArray],
+    arrays: &[PvArray],
     slug: &str,
     strings: &BTreeMap<u32, CorrectionModel>,
 ) -> Vec<Option<CorrectionModel>> {
@@ -168,7 +160,7 @@ fn own_arrays(config: &WeatherConfig, slug: &str) -> WeatherConfig {
 }
 
 /// Each array whose `mppt` names a string in `power` (`index`, `pv.string.power` key), in array order.
-fn wired(arrays: &[weather::PvArray], power: &[(u32, &str)]) -> Vec<Wired> {
+fn wired(arrays: &[PvArray], power: &[(u32, &str)]) -> Vec<Wired> {
     arrays
         .iter()
         .enumerate()
@@ -521,8 +513,8 @@ mod tests {
         drop(std::fs::remove_dir_all(&dir));
     }
 
-    fn array(slug: &str, kwp: f64, azimuth: f64) -> weather::PvArray {
-        weather::PvArray {
+    fn array(slug: &str, kwp: f64, azimuth: f64) -> PvArray {
+        PvArray {
             kwp,
             tilt: 30.0,
             azimuth,
@@ -535,7 +527,7 @@ mod tests {
 
     #[test]
     fn a_run_models_only_the_arrays_wired_into_its_inverter() {
-        let mut config = weather::compose(weather::PlantSettings::default(), &[], &BTreeMap::new());
+        let mut config = weather::compose(crate::store::PlantSettings::default(), &[], &BTreeMap::new());
         config.forecast.arrays = vec![array("2", 3.0, -90.0), array("1", 5.0, 0.0), array("1", 2.0, 90.0)];
         let model = own_arrays(&config, "1").model();
         let own: Vec<_> = model.arrays.iter().map(|a| (a.kwp, a.azimuth)).collect();
@@ -647,8 +639,8 @@ mod tests {
         }
     }
 
-    fn wired_array(mppt: Option<u32>) -> weather::PvArray {
-        weather::PvArray { mppt, ..array("1", 2.0, 0.0) }
+    fn wired_array(mppt: Option<u32>) -> PvArray {
+        PvArray { mppt, ..array("1", 2.0, 0.0) }
     }
 
     #[test]
@@ -700,7 +692,7 @@ mod tests {
         let mut one = CorrectionModel::default();
         one.set(7, 12, forecast::CorrectionCell { ratio: 0.8, weight: 3.0 });
         let strings = BTreeMap::from([(1, one.clone())]);
-        let on = |slug, mppt| weather::PvArray { mppt, ..array(slug, 1.0, 0.0) };
+        let on = |slug, mppt| PvArray { mppt, ..array(slug, 1.0, 0.0) };
         let arrays = [on("1", Some(1)), on("2", Some(1)), on("1", None), on("1", Some(2))];
         assert_eq!(string_grids(&arrays, "1", &strings), vec![Some(one), None, None, None]);
     }
