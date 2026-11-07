@@ -828,3 +828,118 @@ async fn a_stranger_is_denied_events_by_name_and_hears_no_change_while_a_session
     drop((stranger, session, admin));
     core.stop().await;
 }
+
+/// A stranger on the kiosk view, subscribed to `metrics` and `plant`.
+async fn kiosk_stranger(core: &Arc<Core>, admin: &Api) -> Socket {
+    let addr = serve(core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut socket = connect(addr, &admin.anonymous()).await;
+    subscribe(&mut socket, r#"["metrics","plant"]"#).await;
+    socket
+}
+
+/// A full ring of readings and of changes, every one ready for the connection at once.
+fn flood(core: &Core) {
+    for at_ms in 0..16 {
+        core.live.publish(7, &reading(at_ms, 1.0));
+        core.bus.changed.publish(crate::events::Changed::Settings);
+    }
+}
+
+#[tokio::test]
+async fn a_flood_on_metrics_and_events_cannot_hold_back_the_kiosk_view_closing() {
+    let (core, admin) = open(&dir("ws-flood-kiosk")).await;
+    let mut socket = kiosk_stranger(&core, &admin).await;
+    core.switch_kiosk(false).await.expect("kiosk off");
+    flood(&core);
+    ended(&mut socket, "kiosk off").await;
+    drop(admin);
+    core.stop().await;
+}
+
+/// Publishes on `metrics` and on `events`, a thread each, until dropped: faster than a connection takes
+/// them, so its bus is ready at every poll.
+struct Flood {
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl Flood {
+    fn start(core: &Arc<Core>) -> Self {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let publishers: [fn(&Core); 2] = [
+            |core| core.live.publish(7, &reading(0, 1.0)),
+            |core| core.bus.changed.publish(crate::events::Changed::Settings),
+        ];
+        let threads = publishers
+            .into_iter()
+            .map(|publish| {
+                let (core, stopped) = (Arc::clone(core), Arc::clone(&stop));
+                std::thread::spawn(move || Self::until(&stopped, || publish(&core)))
+            })
+            .collect();
+        Self { stop, threads }
+    }
+
+    fn until(stopped: &std::sync::atomic::AtomicBool, publish: impl Fn()) {
+        while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
+            publish();
+        }
+    }
+}
+
+impl Drop for Flood {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.threads.drain(..).for_each(|thread| drop(thread.join()));
+    }
+}
+
+/// The next message; the 5 s bound only stops a starved connection from hanging the test.
+async fn next_through_flood(socket: &mut Socket) -> Option<Result<Message, tungstenite::Error>> {
+    tokio::time::timeout(Duration::from_secs(5), socket.next()).await.expect("not starved by the flood")
+}
+
+/// A session holding no topic: the flood keeps its bus ready and costs it no send, so no send can stall into
+/// the idle deadline and close it some other way.
+async fn flooded_session(core: &Arc<Core>, admin: &Api, live: LiveLimits) -> Socket {
+    let addr = serve(core, &Config { live, ..Config::default() }).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let mut socket = connect(addr, admin).await;
+    subscribe(&mut socket, "[]").await;
+    socket
+}
+
+// Multi-threaded: the flood publishes while the connection runs, as a busy plant does in production.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_flood_on_metrics_and_events_cannot_hold_back_the_ping() {
+    let (core, admin) = open(&dir("ws-flood-ping")).await;
+    let live = LiveLimits {
+        ping: Duration::from_millis(100),
+        idle: Duration::from_secs(3600),
+        ..LiveLimits::default()
+    };
+    let mut socket = flooded_session(&core, &admin, live).await;
+    let flooding = Flood::start(&core);
+    let next = next_through_flood(&mut socket).await;
+    assert!(matches!(next, Some(Ok(Message::Ping(_)))), "{next:?}");
+    drop((flooding, admin));
+    core.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_flood_on_metrics_and_events_cannot_hold_back_the_idle_close() {
+    let (core, admin) = open(&dir("ws-flood-idle")).await;
+    let live = LiveLimits {
+        ping: Duration::from_secs(3600),
+        idle: Duration::from_millis(300),
+        ..LiveLimits::default()
+    };
+    let mut socket = flooded_session(&core, &admin, live).await;
+    let flooding = Flood::start(&core);
+    let next = next_through_flood(&mut socket).await;
+    assert!(matches!(next, None | Some(Err(_) | Ok(Message::Close(_)))), "{next:?}");
+    drop((flooding, admin));
+    core.stop().await;
+}

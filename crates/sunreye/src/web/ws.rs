@@ -189,15 +189,16 @@ async fn serve(mut peer: Peer, mut feed: Feed, ping: Duration) {
     }
 }
 
-/// Biased: the client first, then the bus.
+/// Biased, control first: a ready bus cannot hold back kiosk-off, the idle close or the ping tick that
+/// re-checks a session.
 async fn next_step(peer: &mut Peer, feed: &mut Feed, pings: &mut Interval) -> Step {
     tokio::select! {
         biased;
+        () = peer.holder.revoked() => Step::Revoked,
+        () = sleep_until(peer.deadline) => Step::Idle,
+        _ = pings.tick() => Step::Ping,
         incoming = peer.socket.recv() => Step::Client(incoming),
         step = feed.next() => step,
-        _ = pings.tick() => Step::Ping,
-        () = sleep_until(peer.deadline) => Step::Idle,
-        () = peer.holder.revoked() => Step::Revoked,
     }
 }
 
