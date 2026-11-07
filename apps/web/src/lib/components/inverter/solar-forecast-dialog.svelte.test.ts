@@ -101,3 +101,44 @@ test("a core that refuses the read leaves the Actual tile at zero instead of thr
   await vi.waitFor(() => expect(hits.some((h) => h.path === "/api/history/rollup")).toBe(true));
   await expect.element(page.getByText(/^0 kWh/)).toBeVisible();
 });
+
+// An unreachable core makes `fetch` itself reject (no response at all), which is a different
+// failure from a 500: openapi-fetch rethrows it, so only the dialog's own catch keeps it quiet.
+// The tile reads 0 either way, so the proof is that no rejection escapes the dialog.
+test.each([
+  ["rollup", [{ key: "pv_power", role: "pv.total.power" }], "/api/history/rollup"],
+  ["hourly energy", [], "/api/energy/series"],
+])(
+  "an unreachable core on the %s read leaves the Actual tile at zero",
+  async (_name, metrics, path) => {
+    store.allMetrics = metrics;
+    answer = () => {
+      throw new TypeError("Failed to fetch");
+    };
+    const escaped: unknown[] = [];
+    const onRejection = (e: PromiseRejectionEvent) => {
+      e.preventDefault();
+      escaped.push(e.reason);
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+
+    try {
+      await openDialog();
+      await vi.waitFor(() => expect(hits.some((h) => h.path === path)).toBe(true));
+      await expect.element(page.getByText(/^0 kWh/)).toBeVisible();
+    } finally {
+      window.removeEventListener("unhandledrejection", onRejection);
+    }
+    expect(escaped).toEqual([]);
+  },
+);
+
+test("an empty payload from the core leaves the Actual tile at zero", async () => {
+  store.allMetrics = [{ key: "pv_power", role: "pv.total.power" }];
+  answer = () => json([]);
+
+  await openDialog();
+
+  await vi.waitFor(() => expect(hits.some((h) => h.path === "/api/history/rollup")).toBe(true));
+  await expect.element(page.getByText(/^0 kWh/)).toBeVisible();
+});
