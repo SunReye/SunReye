@@ -5,15 +5,16 @@ use std::time::Duration;
 
 use axum::Extension;
 use axum::extract::State;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::response::{IntoResponse, Response};
 use tokio::sync::watch;
-use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout_at};
+use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at, sleep_until, timeout_at};
 
 use super::ApiError;
 use super::auth::AuthSession;
+use crate::events::Events;
 use crate::live::{
-    ClientFrame, Frame, Subscription, Topic, ack_frame, parse_client_frame, resolve_subscribe,
+    ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, parse_client_frame, resolve_subscribe,
     resolve_unsubscribe,
 };
 use crate::run::Core;
@@ -49,9 +50,9 @@ pub async fn upgrade(
     auth: AuthSession,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let subscription = core.live.subscribe();
+    let feed = Feed { metrics: core.bus.metrics.subscribe(), plant: core.bus.plant.subscribe() };
     let kiosk = auth.user.is_none().then(|| core.watch_kiosk());
-    if core.live.connections() > limits.connections || core.strangers() > limits.strangers {
+    if core.bus.metrics.subscribers() > limits.connections || core.strangers() > limits.strangers {
         tracing::warn!(stranger = kiosk.is_some(), "live connection refused at the cap");
         return ApiError::unavailable("Too many live connections").into_response();
     }
@@ -60,7 +61,7 @@ pub async fn upgrade(
         .max_frame_size(MAX_CLIENT_MESSAGE)
         .read_buffer_size(READ_BUFFER)
         .write_buffer_size(0)
-        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, kiosk), subscription, limits.ping))
+        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, kiosk), feed, limits.ping))
 }
 
 /// The socket, the instant it is closed unless the client speaks first and, for a stranger, the
@@ -95,39 +96,56 @@ impl Peer {
     }
 }
 
+/// One connection's view of the bus. Holds no sender, so it ends once the core drops the bus.
+struct Feed {
+    metrics: Events<MetricsFrame>,
+    plant: watch::Receiver<Option<PlantFrame>>,
+}
+
 /// Until the client leaves or goes silent, a send fails or the core stops.
-async fn serve(mut peer: Peer, mut feed: Subscription, ping: Duration) {
+async fn serve(mut peer: Peer, mut feed: Feed, ping: Duration) {
     let mut held: Vec<Topic> = Vec::new();
     let mut pings = interval_at(Instant::now() + ping, ping);
     pings.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
-        let step = tokio::select! {
-            incoming = peer.socket.recv() => Step::Client(incoming),
-            frame = feed.next() => Step::Feed(frame),
-            _ = pings.tick() => Step::Ping,
-            () = sleep_until(peer.deadline) => Step::Idle,
-            () = Peer::revoked(peer.kiosk.as_mut()) => Step::Revoked,
-        };
-        if !take(&mut peer, &feed, &mut held, step).await {
+        let step = next_step(&mut peer, &mut feed, &mut pings).await;
+        if !take(&mut peer, &mut feed, &mut held, step).await {
             return;
         }
     }
 }
 
+/// Biased: a reading's `metrics` frame is published before its `plant` fold and goes out first.
+async fn next_step(peer: &mut Peer, feed: &mut Feed, pings: &mut Interval) -> Step {
+    tokio::select! {
+        biased;
+        incoming = peer.socket.recv() => Step::Client(incoming),
+        frame = feed.metrics.next() => Step::Metrics(frame),
+        changed = feed.plant.changed() => {
+            Step::Plant(changed.ok().and_then(|()| feed.plant.borrow_and_update().clone()))
+        }
+        _ = pings.tick() => Step::Ping,
+        () = sleep_until(peer.deadline) => Step::Idle,
+        () = Peer::revoked(peer.kiosk.as_mut()) => Step::Revoked,
+    }
+}
+
 enum Step {
     Client(Option<Result<Message, axum::Error>>),
-    Feed(Option<Frame>),
+    Metrics(Option<MetricsFrame>),
+    Plant(Option<PlantFrame>),
     Ping,
     Idle,
     Revoked,
 }
 
 /// `false` once the connection is done.
-async fn take(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, step: Step) -> bool {
+async fn take(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, step: Step) -> bool {
     match step {
         Step::Client(Some(Ok(message))) => receive(peer, feed, held, message).await,
         Step::Client(Some(Err(_)) | None) | Step::Idle => false,
-        Step::Feed(frame) => forward(peer, held, frame).await,
+        Step::Metrics(frame) => forward(peer, held, Topic::Metrics, frame.map(|frame| frame.0)).await,
+        Step::Plant(frame) => forward(peer, held, Topic::Plant, frame.map(|frame| frame.0)).await,
         Step::Ping => peer.send(Message::Ping(Vec::new().into())).await,
         Step::Revoked => {
             peer.send(Message::Close(None)).await;
@@ -137,7 +155,7 @@ async fn take(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, step:
 }
 
 /// Any frame from the client, a pong included, puts the idle deadline back.
-async fn receive(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, message: Message) -> bool {
+async fn receive(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, message: Message) -> bool {
     peer.heard();
     match message {
         Message::Text(text) => answer(peer, feed, held, &text).await,
@@ -146,10 +164,10 @@ async fn receive(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, me
     }
 }
 
-/// Sends a frame on a held topic; closes the socket once the feed is gone.
-async fn forward(peer: &mut Peer, held: &[Topic], frame: Option<Frame>) -> bool {
+/// Sends a frame on a held topic; closes the socket once the bus is gone.
+async fn forward(peer: &mut Peer, held: &[Topic], topic: Topic, frame: Option<Utf8Bytes>) -> bool {
     match frame {
-        Some(frame) if held.contains(&frame.topic) => peer.send(Message::Text(frame.text)).await,
+        Some(text) if held.contains(&topic) => peer.send(Message::Text(text)).await,
         Some(_) => true,
         None => {
             peer.send(Message::Close(None)).await;
@@ -159,7 +177,7 @@ async fn forward(peer: &mut Peer, held: &[Topic], frame: Option<Frame>) -> bool 
 }
 
 /// Applies one client frame; `false` once the socket refuses a write. A malformed frame is ignored.
-async fn answer(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, text: &str) -> bool {
+async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &str) -> bool {
     match parse_client_frame(text) {
         Some(ClientFrame::Sub(topics)) => {
             let decision = resolve_subscribe(&topics);
@@ -168,8 +186,9 @@ async fn answer(peer: &mut Peer, feed: &Subscription, held: &mut Vec<Topic>, tex
             }
             let fresh: Vec<Topic> = decision.subscribe.into_iter().filter(|t| !held.contains(t)).collect();
             held.extend(&fresh);
-            match feed.plant().filter(|_| fresh.contains(&Topic::Plant)) {
-                Some(snapshot) => peer.send(Message::Text(snapshot)).await,
+            let snapshot = fresh.contains(&Topic::Plant).then(|| feed.plant.borrow_and_update().clone());
+            match snapshot.flatten() {
+                Some(snapshot) => peer.send(Message::Text(snapshot.0)).await,
                 None => true,
             }
         }

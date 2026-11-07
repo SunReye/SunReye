@@ -55,6 +55,18 @@ _Avoid_: sample, data point, measurement
 The current minute of one device's readings: polled, not yet stored, already served by recent history.
 _Avoid_: buffer, pending minute
 
+**Bus**:
+The core's in-process pub/sub: typed topics only core components publish to; `/ws` is one subscriber.
+_Avoid_: event system, message broker
+
+**Event topic**:
+A bus topic whose messages are hints: a subscriber hears only what is published after it subscribes, and one that falls behind skips ahead.
+_Avoid_: channel, stream
+
+**State topic**:
+A bus topic that keeps its last value; a new subscriber reads it at once.
+_Avoid_: cache, retained topic
+
 **Metric**:
 The named quantity a reading measures.
 _Avoid_: key, field, sensor
