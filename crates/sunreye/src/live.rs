@@ -161,19 +161,33 @@ pub enum Topic {
     Events,
 }
 
-/// Who may hold a topic, as in 3.x `TOPIC_POLICY`.
+/// Who may hold a topic: the access of its REST read in `route-access.txt`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Access {
+pub(crate) enum Access {
     /// A session, or a stranger while the kiosk view is on.
-    Dashboard,
+    Kiosk,
     /// A session only: it names what an admin just changed.
     Session,
 }
 
-impl Topic {
-    const fn access(self) -> Access {
+#[cfg(test)]
+impl Access {
+    /// The word `route-access.txt` uses.
+    pub(crate) const fn word(self) -> &'static str {
         match self {
-            Self::Metrics | Self::Plant | Self::Evcc => Access::Dashboard,
+            Self::Kiosk => "kiosk",
+            Self::Session => "session",
+        }
+    }
+}
+
+impl Topic {
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 4] = [Self::Metrics, Self::Plant, Self::Evcc, Self::Events];
+
+    pub(crate) const fn access(self) -> Access {
+        match self {
+            Self::Metrics | Self::Plant | Self::Evcc => Access::Kiosk,
             Self::Events => Access::Session,
         }
     }
@@ -188,7 +202,7 @@ impl Topic {
         }
     }
 
-    const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Metrics => "metrics",
             Self::Plant => "plant",
@@ -242,10 +256,7 @@ pub fn resolve_subscribe(topics: &[serde_json::Value], session: bool) -> Decisio
         if !seen.insert(name.clone()) {
             continue;
         }
-        match entry
-            .as_str()
-            .and_then(Topic::named)
-            .filter(|topic| session || topic.access() == Access::Dashboard)
+        match entry.as_str().and_then(Topic::named).filter(|topic| session || topic.access() == Access::Kiosk)
         {
             Some(topic) => decision.subscribe.push(topic),
             None => decision.denied.push(name),

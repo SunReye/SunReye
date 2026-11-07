@@ -5,17 +5,18 @@ use std::time::Duration;
 
 use axum::Extension;
 use axum::extract::State;
-use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, WebSocketUpgrade, close_code};
 use axum::response::{IntoResponse, Response};
 use tokio::sync::watch;
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at, sleep_until, timeout_at};
 use tower_sessions::SessionStore;
+use tower_sessions::cookie::time::OffsetDateTime;
 use tower_sessions::session::Id;
 
 use super::ApiError;
 use super::auth::AuthSession;
 use crate::evcc::EvccState;
-use crate::events::{Changed, Events};
+use crate::events::{Changed, Events, SessionEnded};
 use crate::live::{
     ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, evcc_frame, events_frame, parse_client_frame,
     resolve_subscribe, resolve_unsubscribe,
@@ -26,8 +27,7 @@ use crate::store::Store;
 /// What keeps a dead or stalled connection from holding a task and a socket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
-    /// How often the server pings; a browser answers on its own. Also how often a session socket
-    /// re-reads its session, so one that ends closes within this.
+    /// How often the server pings; a browser answers on its own.
     pub ping: Duration,
     /// A connection the client has sent nothing on, a pong included, for this long is closed, even
     /// mid-send.
@@ -61,11 +61,8 @@ pub async fn upgrade(
         events: core.bus.changed.subscribe(),
         evcc: core.bus.evcc.subscribe(),
     };
-    let holder = match (&auth.user, auth.session.id()) {
-        (Some(account), Some(id)) => {
-            Holder::Session { store: Arc::clone(&core.store), id, account: account.id }
-        }
-        _ => Holder::Stranger(core.watch_kiosk()),
+    let Some(holder) = holder(&core, &auth).await else {
+        return ApiError::unauthorized("Not signed in").into_response();
     };
     if core.bus.metrics.subscribers() > limits.connections || core.strangers() > limits.strangers {
         tracing::warn!(stranger = holder.is_stranger(), "live connection refused at the cap");
@@ -79,12 +76,21 @@ pub async fn upgrade(
         .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, holder), feed, limits.ping))
 }
 
+/// `None` for a session that ended since the request was authenticated.
+async fn holder(core: &Core, auth: &AuthSession) -> Option<Holder> {
+    let (Some(account), Some(id)) = (&auth.user, auth.session.id()) else {
+        return Some(Holder::Stranger(core.watch_kiosk()));
+    };
+    // Bound before this read: a session that ends from here on is re-read by the socket.
+    let mut bound = Bound::new(core, id, account.id);
+    bound.live().await.then_some(Holder::Session(bound))
+}
+
 /// What admitted the socket.
 enum Holder {
     /// No session: the kiosk view it came in on.
     Stranger(watch::Receiver<bool>),
-    /// The session it came in on and that session's account.
-    Session { store: Arc<Store>, id: Id, account: i64 },
+    Session(Bound),
 }
 
 impl Holder {
@@ -92,31 +98,88 @@ impl Holder {
         matches!(self, Self::Stranger(_))
     }
 
-    /// Resolves once a stranger's kiosk view is off; never for a session.
-    async fn revoked(&mut self) {
-        let Self::Stranger(kiosk) = self else { return std::future::pending().await };
-        if kiosk.wait_for(|on| !on).await.is_err() {
-            std::future::pending::<()>().await;
+    /// Resolves once a stranger's kiosk view is off, or once a session socket must re-read its session.
+    async fn revoked(&mut self) -> Step {
+        match self {
+            Self::Stranger(kiosk) => {
+                if kiosk.wait_for(|on| !on).await.is_err() {
+                    std::future::pending::<()>().await;
+                }
+                Step::Revoked
+            }
+            Self::Session(bound) => {
+                bound.due().await;
+                Step::Recheck
+            }
         }
-    }
-
-    /// The session is gone: logged out, expired or its account removed.
-    async fn ended(&self) -> bool {
-        let Self::Session { store, id, account } = self else { return false };
-        // Fail closed: a session the store cannot confirm is not served.
-        !live(store, id, *account).await.unwrap_or_else(|error| {
-            tracing::warn!(%error, "live session check failed; closing");
-            false
-        })
     }
 }
 
-/// Session `id` is stored and unexpired, and its account still exists.
-async fn live(store: &Store, id: &Id, account: i64) -> Result<bool, String> {
-    if store.sessions().load(id).await.map_err(|e| e.to_string())?.is_none() {
-        return Ok(false);
+/// A session socket's session, its account and when the session expires.
+struct Bound {
+    store: Arc<Store>,
+    id: Id,
+    account: i64,
+    ends: Events<SessionEnded>,
+    /// The stored expiry the timer is armed for.
+    expires: OffsetDateTime,
+    at: Instant,
+}
+
+impl Bound {
+    /// Due at once: nothing is read yet.
+    fn new(core: &Core, id: Id, account: i64) -> Self {
+        let ends = core.bus.sessions.subscribe();
+        Self {
+            store: Arc::clone(&core.store),
+            id,
+            account,
+            ends,
+            expires: OffsetDateTime::UNIX_EPOCH,
+            at: Instant::now(),
+        }
     }
-    store.account(account).await.map(|found| found.is_some()).map_err(|e| e.to_string())
+
+    /// Once any account's session ends (a burst counts once, so a lag loses none) or the armed expiry passes.
+    async fn due(&mut self) {
+        let ended = async {
+            if self.ends.newest().await.is_none() {
+                std::future::pending::<()>().await;
+            }
+        };
+        tokio::select! {
+            () = ended => {}
+            () = sleep_until(self.at) => {}
+        }
+    }
+
+    /// The session is still stored, unexpired, and its account exists; re-arms the expiry. Past the armed
+    /// expiry, only a later stored expiry keeps it. Fails closed on a store error.
+    async fn live(&mut self) -> bool {
+        let due = Instant::now() >= self.at;
+        let stored = self.stored().await.unwrap_or_else(|error| {
+            tracing::warn!(%error, "live session check failed; closing");
+            None
+        });
+        let Some(expires) = stored.filter(|expires| !due || *expires > self.expires) else { return false };
+        self.arm(expires);
+        true
+    }
+
+    /// The stored session's expiry; `None` once the session or its account is gone.
+    async fn stored(&self) -> Result<Option<OffsetDateTime>, String> {
+        let Some(record) = self.store.sessions().load(&self.id).await.map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let account = self.store.account(self.account).await.map_err(|e| e.to_string())?;
+        Ok(account.map(|_| record.expiry_date))
+    }
+
+    fn arm(&mut self, expires: OffsetDateTime) {
+        let left = Duration::try_from(expires - OffsetDateTime::now_utc()).unwrap_or_default();
+        self.expires = expires;
+        self.at = Instant::now() + left;
+    }
 }
 
 /// The socket, the instant it is closed unless the client speaks first, and what admitted it.
@@ -132,17 +195,20 @@ impl Peer {
         Self { socket, idle, deadline: Instant::now() + idle, holder }
     }
 
-    /// A ping, or the close once the session ended.
-    async fn tick(&mut self) -> bool {
-        if self.holder.ended().await {
-            return self.close().await;
-        }
-        self.send(Message::Ping(Vec::new().into())).await
-    }
-
     /// Sends the close frame; always `false`, the connection is done.
     async fn close(&mut self) -> bool {
         self.send(Message::Close(None)).await;
+        false
+    }
+
+    /// Re-reads the session; closes with 1008 once it ended, so the client can tell it from a drop.
+    async fn recheck(&mut self) -> bool {
+        let Holder::Session(bound) = &mut self.holder else { return true };
+        if bound.live().await {
+            return true;
+        }
+        let frame = CloseFrame { code: close_code::POLICY, reason: Utf8Bytes::default() };
+        self.send(Message::Close(Some(frame))).await;
         false
     }
 
@@ -190,12 +256,15 @@ async fn serve(mut peer: Peer, mut feed: Feed, ping: Duration) {
     }
 }
 
-/// Biased, control first: a ready bus cannot hold back kiosk-off, the idle close or the ping tick that
-/// re-checks a session.
+/// Biased, control first: a ready bus cannot hold back kiosk-off, a session end, the idle close or the ping.
 async fn next_step(peer: &mut Peer, feed: &mut Feed, pings: &mut Interval) -> Step {
+    // A new sleep already past its deadline fires only once the timer driver turns; a ready feed would go first.
+    if Instant::now() >= peer.deadline {
+        return Step::Idle;
+    }
     tokio::select! {
         biased;
-        () = peer.holder.revoked() => Step::Revoked,
+        step = peer.holder.revoked() => step,
         () = sleep_until(peer.deadline) => Step::Idle,
         _ = pings.tick() => Step::Ping,
         incoming = peer.socket.recv() => Step::Client(incoming),
@@ -218,6 +287,7 @@ enum Step {
     Ping,
     Idle,
     Revoked,
+    Recheck,
 }
 
 /// `false` once the connection is done.
@@ -233,8 +303,9 @@ async fn take(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, step: Ste
         Step::Evcc(state) => {
             forward(peer, held, Topic::Evcc, state.map(|state| evcc_frame(&state).into())).await
         }
-        Step::Ping => peer.tick().await,
+        Step::Ping => peer.send(Message::Ping(Vec::new().into())).await,
         Step::Revoked => peer.close().await,
+        Step::Recheck => peer.recheck().await,
     }
 }
 
@@ -260,7 +331,6 @@ async fn forward(peer: &mut Peer, held: &[Topic], topic: Topic, frame: Option<Ut
 /// Applies one client frame; `false` once the socket refuses a write. A malformed frame is ignored.
 async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &str) -> bool {
     match parse_client_frame(text) {
-        Some(ClientFrame::Sub(_)) if peer.holder.ended().await => peer.close().await,
         Some(ClientFrame::Sub(topics)) => {
             let decision = resolve_subscribe(&topics, !peer.holder.is_stranger());
             if !peer.send(Message::Text(ack_frame(&decision).into())).await {

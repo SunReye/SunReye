@@ -17,6 +17,7 @@ use utoipa::ToSchema;
 use super::origin::client_ip;
 use super::password::{Passwords, unhashable};
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::events::SessionEnded;
 use crate::run::Core;
 use crate::store::{AccountRow, NewAccount, Store, StoreError};
 
@@ -278,8 +279,10 @@ pub async fn current(auth: AuthSession) -> Result<Json<Account>, ApiError> {
     operation_id = "logout",
     responses((status = 204), (status = 401, body = ErrorBody), (status = 500, body = ErrorBody))
 )]
-pub async fn logout(mut auth: AuthSession) -> Result<StatusCode, ApiError> {
-    auth.logout().await?;
+pub async fn logout(State(core): State<Arc<Core>>, mut auth: AuthSession) -> Result<StatusCode, ApiError> {
+    if let Some(account) = auth.logout().await? {
+        core.bus.sessions.publish(SessionEnded(account.id));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
