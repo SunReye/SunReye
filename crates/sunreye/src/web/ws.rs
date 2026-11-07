@@ -9,20 +9,25 @@ use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::response::{IntoResponse, Response};
 use tokio::sync::watch;
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at, sleep_until, timeout_at};
+use tower_sessions::SessionStore;
+use tower_sessions::session::Id;
 
 use super::ApiError;
 use super::auth::AuthSession;
-use crate::events::Events;
+use crate::evcc::EvccState;
+use crate::events::{Changed, Events};
 use crate::live::{
-    ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, parse_client_frame, resolve_subscribe,
-    resolve_unsubscribe,
+    ClientFrame, MetricsFrame, PlantFrame, Topic, ack_frame, evcc_frame, events_frame, parse_client_frame,
+    resolve_subscribe, resolve_unsubscribe,
 };
 use crate::run::Core;
+use crate::store::Store;
 
 /// What keeps a dead or stalled connection from holding a task and a socket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
-    /// How often the server pings; a browser answers on its own.
+    /// How often the server pings; a browser answers on its own. Also how often a session socket
+    /// re-reads its session, so one that ends closes within this.
     pub ping: Duration,
     /// A connection the client has sent nothing on, a pong included, for this long is closed, even
     /// mid-send.
@@ -50,10 +55,20 @@ pub async fn upgrade(
     auth: AuthSession,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let feed = Feed { metrics: core.bus.metrics.subscribe(), plant: core.bus.plant.subscribe() };
-    let kiosk = auth.user.is_none().then(|| core.watch_kiosk());
+    let feed = Feed {
+        metrics: core.bus.metrics.subscribe(),
+        plant: core.bus.plant.subscribe(),
+        events: core.bus.changed.subscribe(),
+        evcc: core.bus.evcc.subscribe(),
+    };
+    let holder = match (&auth.user, auth.session.id()) {
+        (Some(account), Some(id)) => {
+            Holder::Session { store: Arc::clone(&core.store), id, account: account.id }
+        }
+        _ => Holder::Stranger(core.watch_kiosk()),
+    };
     if core.bus.metrics.subscribers() > limits.connections || core.strangers() > limits.strangers {
-        tracing::warn!(stranger = kiosk.is_some(), "live connection refused at the cap");
+        tracing::warn!(stranger = holder.is_stranger(), "live connection refused at the cap");
         return ApiError::unavailable("Too many live connections").into_response();
     }
     upgrade
@@ -61,29 +76,74 @@ pub async fn upgrade(
         .max_frame_size(MAX_CLIENT_MESSAGE)
         .read_buffer_size(READ_BUFFER)
         .write_buffer_size(0)
-        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, kiosk), feed, limits.ping))
+        .on_upgrade(move |socket| serve(Peer::new(socket, limits.idle, holder), feed, limits.ping))
 }
 
-/// The socket, the instant it is closed unless the client speaks first and, for a stranger, the
-/// kiosk view it came in on.
+/// What admitted the socket.
+enum Holder {
+    /// No session: the kiosk view it came in on.
+    Stranger(watch::Receiver<bool>),
+    /// The session it came in on and that session's account.
+    Session { store: Arc<Store>, id: Id, account: i64 },
+}
+
+impl Holder {
+    const fn is_stranger(&self) -> bool {
+        matches!(self, Self::Stranger(_))
+    }
+
+    /// Resolves once a stranger's kiosk view is off; never for a session.
+    async fn revoked(&mut self) {
+        let Self::Stranger(kiosk) = self else { return std::future::pending().await };
+        if kiosk.wait_for(|on| !on).await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    }
+
+    /// The session is gone: logged out, expired or its account removed.
+    async fn ended(&self) -> bool {
+        let Self::Session { store, id, account } = self else { return false };
+        // Fail closed: a session the store cannot confirm is not served.
+        !live(store, id, *account).await.unwrap_or_else(|error| {
+            tracing::warn!(%error, "live session check failed; closing");
+            false
+        })
+    }
+}
+
+/// Session `id` is stored and unexpired, and its account still exists.
+async fn live(store: &Store, id: &Id, account: i64) -> Result<bool, String> {
+    if store.sessions().load(id).await.map_err(|e| e.to_string())?.is_none() {
+        return Ok(false);
+    }
+    store.account(account).await.map(|found| found.is_some()).map_err(|e| e.to_string())
+}
+
+/// The socket, the instant it is closed unless the client speaks first, and what admitted it.
 struct Peer {
     socket: WebSocket,
     idle: Duration,
     deadline: Instant,
-    kiosk: Option<watch::Receiver<bool>>,
+    holder: Holder,
 }
 
 impl Peer {
-    fn new(socket: WebSocket, idle: Duration, kiosk: Option<watch::Receiver<bool>>) -> Self {
-        Self { socket, idle, deadline: Instant::now() + idle, kiosk }
+    fn new(socket: WebSocket, idle: Duration, holder: Holder) -> Self {
+        Self { socket, idle, deadline: Instant::now() + idle, holder }
     }
 
-    /// Resolves once a stranger's kiosk view is off; never for a session.
-    async fn revoked(kiosk: Option<&mut watch::Receiver<bool>>) {
-        let Some(kiosk) = kiosk else { return std::future::pending().await };
-        if kiosk.wait_for(|on| !on).await.is_err() {
-            std::future::pending::<()>().await;
+    /// A ping, or the close once the session ended.
+    async fn tick(&mut self) -> bool {
+        if self.holder.ended().await {
+            return self.close().await;
         }
+        self.send(Message::Ping(Vec::new().into())).await
+    }
+
+    /// Sends the close frame; always `false`, the connection is done.
+    async fn close(&mut self) -> bool {
+        self.send(Message::Close(None)).await;
+        false
     }
 
     fn heard(&mut self) {
@@ -100,6 +160,21 @@ impl Peer {
 struct Feed {
     metrics: Events<MetricsFrame>,
     plant: watch::Receiver<Option<PlantFrame>>,
+    events: Events<Changed>,
+    evcc: watch::Receiver<Option<EvccState>>,
+}
+
+impl Feed {
+    /// Biased: a reading's `metrics` frame is published before its `plant` fold and goes out first.
+    async fn next(&mut self) -> Step {
+        tokio::select! {
+            biased;
+            frame = self.metrics.next() => Step::Metrics(frame),
+            state = latest(&mut self.plant) => Step::Plant(state),
+            changed = self.events.next() => Step::Events(changed),
+            state = latest(&mut self.evcc) => Step::Evcc(state),
+        }
+    }
 }
 
 /// Until the client leaves or goes silent, a send fails or the core stops.
@@ -115,25 +190,31 @@ async fn serve(mut peer: Peer, mut feed: Feed, ping: Duration) {
     }
 }
 
-/// Biased: a reading's `metrics` frame is published before its `plant` fold and goes out first.
+/// Biased, control first: a ready bus cannot hold back kiosk-off, the idle close or the ping tick that
+/// re-checks a session.
 async fn next_step(peer: &mut Peer, feed: &mut Feed, pings: &mut Interval) -> Step {
     tokio::select! {
         biased;
-        incoming = peer.socket.recv() => Step::Client(incoming),
-        frame = feed.metrics.next() => Step::Metrics(frame),
-        changed = feed.plant.changed() => {
-            Step::Plant(changed.ok().and_then(|()| feed.plant.borrow_and_update().clone()))
-        }
-        _ = pings.tick() => Step::Ping,
+        () = peer.holder.revoked() => Step::Revoked,
         () = sleep_until(peer.deadline) => Step::Idle,
-        () = Peer::revoked(peer.kiosk.as_mut()) => Step::Revoked,
+        _ = pings.tick() => Step::Ping,
+        incoming = peer.socket.recv() => Step::Client(incoming),
+        step = feed.next() => step,
     }
+}
+
+/// The state topic's next value; `None` once the topic is gone.
+async fn latest<T: Clone>(topic: &mut watch::Receiver<Option<T>>) -> Option<T> {
+    topic.changed().await.ok()?;
+    topic.borrow_and_update().clone()
 }
 
 enum Step {
     Client(Option<Result<Message, axum::Error>>),
     Metrics(Option<MetricsFrame>),
     Plant(Option<PlantFrame>),
+    Events(Option<Changed>),
+    Evcc(Option<EvccState>),
     Ping,
     Idle,
     Revoked,
@@ -146,11 +227,14 @@ async fn take(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, step: Ste
         Step::Client(Some(Err(_)) | None) | Step::Idle => false,
         Step::Metrics(frame) => forward(peer, held, Topic::Metrics, frame.map(|frame| frame.0)).await,
         Step::Plant(frame) => forward(peer, held, Topic::Plant, frame.map(|frame| frame.0)).await,
-        Step::Ping => peer.send(Message::Ping(Vec::new().into())).await,
-        Step::Revoked => {
-            peer.send(Message::Close(None)).await;
-            false
+        Step::Events(changed) => {
+            forward(peer, held, Topic::Events, changed.map(|changed| events_frame(changed).into())).await
         }
+        Step::Evcc(state) => {
+            forward(peer, held, Topic::Evcc, state.map(|state| evcc_frame(&state).into())).await
+        }
+        Step::Ping => peer.tick().await,
+        Step::Revoked => peer.close().await,
     }
 }
 
@@ -169,28 +253,27 @@ async fn forward(peer: &mut Peer, held: &[Topic], topic: Topic, frame: Option<Ut
     match frame {
         Some(text) if held.contains(&topic) => peer.send(Message::Text(text)).await,
         Some(_) => true,
-        None => {
-            peer.send(Message::Close(None)).await;
-            false
-        }
+        None => peer.close().await,
     }
 }
 
 /// Applies one client frame; `false` once the socket refuses a write. A malformed frame is ignored.
 async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &str) -> bool {
     match parse_client_frame(text) {
+        Some(ClientFrame::Sub(_)) if peer.holder.ended().await => peer.close().await,
         Some(ClientFrame::Sub(topics)) => {
-            let decision = resolve_subscribe(&topics);
+            let decision = resolve_subscribe(&topics, !peer.holder.is_stranger());
             if !peer.send(Message::Text(ack_frame(&decision).into())).await {
                 return false;
             }
             let fresh: Vec<Topic> = decision.subscribe.into_iter().filter(|t| !held.contains(t)).collect();
             held.extend(&fresh);
-            let snapshot = fresh.contains(&Topic::Plant).then(|| feed.plant.borrow_and_update().clone());
-            match snapshot.flatten() {
-                Some(snapshot) => peer.send(Message::Text(snapshot.0)).await,
-                None => true,
+            for snapshot in snapshots(feed, &fresh) {
+                if !peer.send(Message::Text(snapshot)).await {
+                    return false;
+                }
             }
+            true
         }
         Some(ClientFrame::Unsub(topics)) => {
             let dropped = resolve_unsubscribe(&topics);
@@ -199,4 +282,16 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
         }
         None => true,
     }
+}
+
+/// The last value of each state topic in `fresh`, so a new subscriber starts from the current state.
+fn snapshots(feed: &mut Feed, fresh: &[Topic]) -> Vec<Utf8Bytes> {
+    let mut frames = Vec::new();
+    if fresh.contains(&Topic::Plant) {
+        frames.extend(feed.plant.borrow_and_update().clone().map(|plant| plant.0));
+    }
+    if fresh.contains(&Topic::Evcc) {
+        frames.extend(feed.evcc.borrow_and_update().as_ref().map(|state| evcc_frame(state).into()));
+    }
+    frames
 }

@@ -3,6 +3,7 @@
 
 use tokio::sync::{broadcast, watch};
 
+use crate::evcc::EvccState;
 use crate::live::{MetricsFrame, PlantFrame};
 
 /// Events held for the slowest subscriber. Publishing never waits: a subscriber that falls further
@@ -16,27 +17,34 @@ pub struct Bus {
     pub metrics: Event<MetricsFrame>,
     /// The plant's last fold.
     pub plant: State<PlantFrame>,
-    /// Published by the store once a write commits.
-    pub changes: Event<Change>,
+    /// Published by the store once a configuration write commits; a subscriber re-reads it.
+    pub changed: Event<Changed>,
+    /// EVCC's last state; the ingest publishes it.
+    pub evcc: State<EvccState>,
 }
 
-/// What a store write changed. A hint: a subscriber re-reads the store.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Change {
+/// What a store write changed, as the `/ws` `events` topic names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Changed {
     /// A setting, the plant's forecast settings or its time zone.
     Settings,
-    DeviceAdded(i64),
-    /// Anything but a retire, a restore and the device's PV description included.
-    DeviceEdited(i64),
-    DeviceRetired(i64),
-    DeviceRemoved(i64),
+    /// A device added, edited, retired, restored or removed, its PV description included.
+    Devices,
     /// An archive import landed its devices and settings.
-    Imported,
+    Archive,
 }
 
 /// A topic whose payloads are hints: a subscriber hears those published after it subscribed.
 #[derive(Debug)]
 pub struct Event<T>(broadcast::Sender<T>);
+
+/// Another handle on the same topic: the store publishes on the core's `changed` without holding the bus.
+impl<T> Clone for Event<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 impl<T: Clone> Default for Event<T> {
     fn default() -> Self {

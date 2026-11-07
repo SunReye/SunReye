@@ -1,7 +1,7 @@
 //! The plant time zone's row (migration 0009).
 
 use super::{Store, StoreError};
-use crate::events::Change;
+use crate::events::Changed;
 
 impl Store {
     /// The saved IANA name; none until first saved.
@@ -13,7 +13,7 @@ impl Store {
 
     pub async fn save_plant_time_zone(&self, name: &str) -> Result<(), StoreError> {
         save_time_zone(&self.pool, name).await?;
-        self.bus.changes.publish(Change::Settings);
+        self.changed.publish(Changed::Settings);
         Ok(())
     }
 }

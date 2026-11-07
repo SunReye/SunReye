@@ -13,7 +13,7 @@ use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
 use crate::conditions::Conditions;
-use crate::events::{Bus, Change, Events};
+use crate::events::{Bus, Changed, Events};
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
@@ -225,7 +225,8 @@ impl Core {
             }
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let (bus, unstored) = (Arc::clone(store.bus()), Arc::default());
+        let bus = Arc::new(Bus { changed: store.changed().clone(), ..Bus::default() });
+        let unstored = Arc::default();
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         #[cfg(test)]
         let seams = Arc::<Seams>::default();
@@ -551,7 +552,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
             })
         })
     };
-    tasks.spawn(refresh::keep_fresh(conditions, core.bus.changes.subscribe(), stopped.clone()));
+    tasks.spawn(refresh::keep_fresh(conditions, core.bus.changed.subscribe(), stopped.clone()));
     let weak = Arc::downgrade(core);
     let solar = move || {
         let core = weak.upgrade()?;
@@ -562,7 +563,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
             })
         })
     };
-    tasks.spawn(refresh::keep_fresh(solar, core.bus.changes.subscribe(), stopped));
+    tasks.spawn(refresh::keep_fresh(solar, core.bus.changed.subscribe(), stopped));
     Running { stop, tasks }
 }
 
@@ -585,13 +586,13 @@ const FORECAST_EXPORT_EVERY: Duration = Duration::from_mins(5);
 fn spawn_export(core: &Arc<Core>) -> Running {
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(follow_changes(Arc::downgrade(core), core.bus.changes.subscribe(), stopped.clone()));
+    tasks.spawn(follow_changes(Arc::downgrade(core), core.bus.changed.subscribe(), stopped.clone()));
     tasks.spawn(publish_forecast(core, stopped));
     Running { stop, tasks }
 }
 
 /// A burst that outruns the ring still restarts the export once more: it re-reads the store.
-async fn follow_changes(core: Weak<Core>, mut changes: Events<Change>, mut stopped: watch::Receiver<bool>) {
+async fn follow_changes(core: Weak<Core>, mut changes: Events<Changed>, mut stopped: watch::Receiver<bool>) {
     let mut last = None;
     while export_logged(&core, &mut last).await {
         tokio::select! {
@@ -737,7 +738,6 @@ mod tests {
     use jiff::Timestamp;
 
     use super::*;
-    use crate::events::Change;
     use crate::modbus::Transport;
     use crate::rollup::Tier;
     use crate::samples::{MINUTE_MS, Sample, minute_of};
@@ -1015,7 +1015,7 @@ mod tests {
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
         let core = Core::open_at(&dir, now_ms).await.expect("core");
         let (bus, seams) = (Arc::clone(&core.bus), Arc::clone(&core.seams));
-        let (mut metrics, mut changes) = (bus.metrics.subscribe(), bus.changes.subscribe());
+        let (mut metrics, mut changes) = (bus.metrics.subscribe(), bus.changed.subscribe());
 
         let polled = tokio::time::timeout(Duration::from_secs(20), metrics.next()).await.expect("no poll");
         let frame: serde_json::Value = serde_json::from_str(&polled.expect("a frame").0).expect("json");
@@ -1024,10 +1024,10 @@ mod tests {
         let retire =
             DeviceEdit { retired_at: Some(Some("2026-11-03T10:00:00.000Z".into())), ..DeviceEdit::default() };
         core.store.edit_device(device, &retire).await.expect("retire");
-        assert_eq!(published(&mut changes), [Change::Settings, Change::DeviceRetired(device)]);
+        assert_eq!(published(&mut changes), [Changed::Settings, Changed::Devices]);
 
         core.stop().await;
-        let subscribers = (bus.metrics.subscribers(), bus.changes.subscribers());
+        let subscribers = (bus.metrics.subscribers(), bus.changed.subscribers());
         assert_eq!(subscribers, (1, 1), "only this test's own: every core task ended");
         let closed = seams.events.lock().expect("events").iter().filter(|e| **e == "store closed").count();
         assert_eq!(closed, 1);

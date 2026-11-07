@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::{Store, StoreError};
-use crate::events::Change;
+use crate::events::Changed;
 use crate::weather::{Battery, Correction, DevicePv, PlantSettings, PvArray};
 
 impl Store {
@@ -33,7 +33,7 @@ impl Store {
 
     pub async fn save_plant_settings(&self, s: &PlantSettings) -> Result<(), StoreError> {
         save_plant(&self.pool, s).await?;
-        self.bus.changes.publish(Change::Settings);
+        self.changed.publish(Changed::Settings);
         Ok(())
     }
 
@@ -87,7 +87,7 @@ impl Store {
     pub async fn save_device_pv(&self, device_id: i64, pv: &DevicePv) -> Result<(), StoreError> {
         let mut conn = self.pool.acquire().await?;
         replace_device_pv(&mut conn, device_id, pv).await?;
-        self.bus.changes.publish(Change::DeviceEdited(device_id));
+        self.changed.publish(Changed::Devices);
         Ok(())
     }
 }

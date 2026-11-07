@@ -83,14 +83,124 @@ fn reading(at_ms: i64, power: f64) -> Sample {
 }
 
 async fn plain_user(core: &Core, admin: &Api) -> Api {
+    signed_in_user(core, admin, "viewer@example.org").await.1
+}
+
+/// A new plain account signed in: its id and its browser.
+async fn signed_in_user(core: &Core, admin: &Api, email: &str) -> (i64, Api) {
     let account = NewAccount {
-        email: "viewer@example.org".into(),
+        email: email.into(),
         name: "Viewer".into(),
         password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
     };
-    core.store.add_account(&account, false).await.expect("plain account");
-    let signed_in = login(&admin.anonymous(), "viewer@example.org", ADMIN_PASSWORD, false).await;
-    admin.with_cookie(&signed_in.session_cookie())
+    let id = core.store.add_account(&account, false).await.expect("plain account").expect("new");
+    let signed_in = login(&admin.anonymous(), email, ADMIN_PASSWORD, false).await;
+    (id, admin.with_cookie(&signed_in.session_cookie()))
+}
+
+/// The next message is the server ending the socket, not a frame or a ping.
+async fn ended(socket: &mut Socket, why: &str) {
+    let next =
+        tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("an answer within 2 s");
+    assert!(matches!(next, None | Some(Err(_) | Ok(Message::Close(_)))), "{why}: still served: {next:?}");
+}
+
+/// Expires the session behind `api`'s cookie in the store.
+async fn expire(core: &Core, api: &Api) {
+    use tower_sessions::SessionStore;
+    use tower_sessions::cookie::time::{Duration as Span, OffsetDateTime};
+    use tower_sessions::session::Id;
+
+    let cookie = api.cookie.clone().expect("cookie");
+    let id: Id = cookie.split_once('=').expect("name=value").1.parse().expect("session id");
+    let sessions = core.store.sessions();
+    let mut record = sessions.load(&id).await.expect("load").expect("a stored session");
+    record.expiry_date = OffsetDateTime::now_utc() - Span::seconds(1);
+    sessions.save(&record).await.expect("save");
+}
+
+/// A socket on `metrics` for each of three signed-in users: logged out, expired and removed once the sockets are open.
+async fn ended_sessions(core: &Core, admin: &Api, addr: std::net::SocketAddr) -> Vec<(Socket, &'static str)> {
+    let (_, out) = signed_in_user(core, admin, "out@example.org").await;
+    let (_, expired) = signed_in_user(core, admin, "expired@example.org").await;
+    let (removed_id, removed) = signed_in_user(core, admin, "removed@example.org").await;
+    let mut sockets = Vec::new();
+    for (api, why) in [(&out, "logout"), (&expired, "expiry"), (&removed, "account removal")] {
+        let mut socket = connect(addr, api).await;
+        subscribe(&mut socket, r#"["metrics"]"#).await;
+        sockets.push((socket, why));
+    }
+    end_sessions(core, admin, (&out, &expired, removed_id)).await;
+    sockets
+}
+
+/// Logs `out` out, expires `expired` and removes account `removed`.
+async fn end_sessions(core: &Core, admin: &Api, (out, expired, removed): (&Api, &Api, i64)) {
+    assert_eq!(delete(out, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    expire(core, expired).await;
+    let removal = delete(admin, &format!("/api/admin/users/{removed}")).await;
+    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn a_socket_closes_at_the_first_ping_tick_after_logout_expiry_or_account_removal_and_a_live_session_is_pinged()
+ {
+    let (core, admin) = open(&dir("ws-session-end-tick")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut staying = connect(addr, &admin).await;
+    subscribe(&mut staying, r#"["events"]"#).await;
+    let mut leaving = ended_sessions(&core, &admin, addr).await;
+
+    // Under one ping interval since the upgrade on the real clock: exactly one tick fires in the advance.
+    tokio::time::pause();
+    tokio::time::advance(LiveLimits::default().ping).await;
+    tokio::time::resume();
+    for (socket, why) in &mut leaving {
+        ended(socket, why).await;
+    }
+    let ping = tokio::time::timeout(Duration::from_secs(2), staying.next()).await.expect("a ping within 2 s");
+    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "the live session is pinged: {ping:?}");
+    connections(&core, 1).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_sub_after_logout_expiry_or_account_removal_closes_the_socket_unanswered() {
+    let (core, admin) = open(&dir("ws-session-end")).await;
+    let addr = serve(&core, &Config::default()).await;
+    for (mut socket, why) in ended_sessions(&core, &admin, addr).await {
+        send_text(&mut socket, r#"{"t":"sub","topics":["events"]}"#).await;
+        ended(&mut socket, why).await;
+    }
+    let mut live = connect(addr, &admin).await;
+    assert_eq!(subscribe(&mut live, r#"["events"]"#).await["data"]["subscribed"], json!(["events"]));
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_logged_out_session_the_store_cannot_confirm_is_closed_on_sub_and_on_the_tick() {
+    let (core, admin) = open(&dir("ws-store-error")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let user = plain_user(&core, &admin).await;
+    let mut subbing = connect(addr, &user).await;
+    subscribe(&mut subbing, r#"["metrics"]"#).await;
+    let mut ticking = connect(addr, &user).await;
+    subscribe(&mut ticking, r#"["metrics"]"#).await;
+    assert_eq!(delete(&user, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    let mut held = core.store.hold().await;
+    sqlx::query("ALTER TABLE tower_sessions RENAME TO unreadable").execute(&mut *held).await.expect("rename");
+    drop(held);
+
+    send_text(&mut subbing, r#"{"t":"sub","topics":["events"]}"#).await;
+    ended(&mut subbing, "sub on a store error").await;
+    tokio::time::pause();
+    tokio::time::advance(LiveLimits::default().ping).await;
+    tokio::time::resume();
+    ended(&mut ticking, "tick on a store error").await;
+    drop((user, admin));
+    core.stop().await;
 }
 
 /// Waits until the core holds `count` live connections.
@@ -222,7 +332,9 @@ async fn pings_before_ack(socket: &mut Socket) -> usize {
 async fn the_server_pings_and_a_client_that_answers_stays_open() {
     let (core, admin) = open(&dir("ws-ping")).await;
     let addr = serve(&core, &quick()).await;
-    let mut socket = connect(addr, &admin).await;
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    // A stranger: its ticks and subs read no store, which on a paused clock would let time jump.
+    let mut socket = connect(addr, &admin.anonymous()).await;
     // One second of virtual time in 10 ms steps: a 100 ms interval pings 10 times, give or take the
     // one tick at each edge that races the subscribe whose ack flushes the pings sent before it.
     tokio::time::pause();
@@ -621,4 +733,236 @@ async fn a_polled_device_is_published_with_the_oracle_values() {
     assert_eq!(plant["data"]["time"], metrics["data"]["time"]);
     drop(admin);
     core.stop().await;
+}
+
+/// One loadpoint charging at `power`, the state a producer would publish on `evcc`.
+fn evcc_state(power: f64) -> crate::evcc::EvccState {
+    crate::evcc::EvccState {
+        reachable: true,
+        loadpoints: vec![crate::evcc::EvccLoadpoint {
+            index: 1,
+            charge_power: power,
+            charge_power_live: power,
+            charging: true,
+            ..crate::evcc::EvccLoadpoint::default()
+        }],
+        subtract_from_home: false,
+    }
+}
+
+#[tokio::test]
+async fn a_late_evcc_subscriber_gets_the_last_state_at_once_and_a_topic_nobody_produces_answers_nothing() {
+    let (core, admin) = open(&dir("ws-evcc")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut early = connect(addr, &admin).await;
+    let ack = subscribe(&mut early, r#"["evcc"]"#).await;
+    assert_eq!(ack["data"]["subscribed"], json!(["evcc"]));
+    silent(&mut early).await;
+
+    core.bus.evcc.publish(evcc_state(1000.0));
+    assert_eq!(next_json(&mut early).await["data"]["loadpoints"][0]["chargePower"], 1000.0);
+    core.bus.evcc.publish(evcc_state(4200.0));
+    assert_eq!(next_json(&mut early).await["data"]["loadpoints"][0]["chargePower"], 4200.0);
+
+    let mut late = connect(addr, &admin).await;
+    subscribe(&mut late, r#"["evcc"]"#).await;
+    let snapshot = next_json(&mut late).await;
+    assert_eq!(snapshot["topic"], "evcc");
+    assert_eq!(snapshot["data"]["reachable"], true);
+    assert_eq!(snapshot["data"]["loadpoints"][0]["chargePower"], 4200.0, "the last state, not the first");
+    silent(&mut late).await;
+
+    let mut unsubscribed = connect(addr, &admin).await;
+    subscribe(&mut unsubscribed, r#"["metrics"]"#).await;
+    core.bus.evcc.publish(evcc_state(0.0));
+    silent(&mut unsubscribed).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn evcc_with_no_producer_answers_a_subscriber_nothing() {
+    let (core, admin) = open(&dir("ws-evcc-idle")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut socket = connect(addr, &admin).await;
+    subscribe(&mut socket, r#"["evcc"]"#).await;
+    silent(&mut socket).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_events_subscriber_hears_what_changed_and_only_after_it_subscribed() {
+    use crate::events::Changed;
+    let (core, admin) = open(&dir("ws-events")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.bus.changed.publish(Changed::Settings);
+    let mut listener = connect(addr, &admin).await;
+    subscribe(&mut listener, r#"["events"]"#).await;
+    silent(&mut listener).await;
+    let mut other = connect(addr, &admin).await;
+    subscribe(&mut other, r#"["metrics"]"#).await;
+
+    core.bus.changed.publish(Changed::Devices);
+    assert_eq!(next_json(&mut listener).await, json!({"topic": "events", "data": {"changed": "devices"}}));
+    silent(&mut listener).await;
+    silent(&mut other).await;
+
+    send_text(&mut listener, r#"{"t":"unsub","topics":["events"]}"#).await;
+    subscribe(&mut listener, "[]").await;
+    core.bus.changed.publish(Changed::Archive);
+    silent(&mut listener).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_client_cannot_publish_on_events_or_evcc() {
+    let (core, admin) = open(&dir("ws-no-publish-evcc")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut listener = connect(addr, &admin).await;
+    subscribe(&mut listener, r#"["events","evcc"]"#).await;
+    let mut client = connect(addr, &admin).await;
+    subscribe(&mut client, r#"["events","evcc"]"#).await;
+    for text in [
+        r#"{"topic":"events","data":{"changed":"settings"}}"#,
+        r#"{"t":"pub","topic":"evcc","data":{"reachable":true,"loadpoints":[],"subtractFromHome":false}}"#,
+        r#"{"t":"publish","topics":["events"],"data":{"changed":"devices"}}"#,
+    ] {
+        send_text(&mut client, text).await;
+    }
+    silent(&mut listener).await;
+    assert!(core.bus.evcc.subscribe().borrow().is_none(), "the evcc topic holds nothing");
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_stranger_is_denied_events_by_name_and_hears_no_change_while_a_session_does_and_the_dashboard_topics_stay_open()
+ {
+    use crate::events::Changed;
+    let (core, admin) = open(&dir("ws-events-stranger")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    core.bus.evcc.publish(evcc_state(1000.0));
+
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    let ack = subscribe(&mut stranger, r#"["metrics","plant","evcc","events"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["metrics", "plant", "evcc"], "denied": ["events"]}));
+    assert_eq!(next_json(&mut stranger).await["topic"], "evcc", "the kiosk view reads evcc, as in 3.x");
+    let mut session = connect(addr, &admin).await;
+    let ack = subscribe(&mut session, r#"["events"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["events"], "denied": []}));
+
+    core.bus.changed.publish(Changed::Settings);
+    assert_eq!(next_json(&mut session).await, json!({"topic": "events", "data": {"changed": "settings"}}));
+    silent(&mut stranger).await;
+
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut stranger).await["data"]["metrics"]["pv_power"], 42.0);
+    assert_eq!(next_json(&mut stranger).await["topic"], "plant");
+    drop((stranger, session, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_admin_settings_save_reaches_a_sessions_events_and_not_a_stranger() {
+    let (core, admin) = open(&dir("ws-events-save")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    subscribe(&mut stranger, r#"["metrics","events"]"#).await;
+    let mut session = connect(addr, &admin).await;
+    subscribe(&mut session, r#"["events"]"#).await;
+
+    let saved = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
+    assert_eq!(saved.status, StatusCode::OK);
+    assert_eq!(next_json(&mut session).await, json!({"topic": "events", "data": {"changed": "settings"}}));
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut stranger).await["topic"], "metrics", "the save reached the stranger first");
+    drop((stranger, session, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
+    let (core, admin) = open(&dir("ws-first-kiosk")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut socket = connect(addr, &admin.anonymous()).await;
+    subscribe(&mut socket, r#"["metrics","plant","evcc"]"#).await;
+    // One thread: the kiosk switch and the frames are all ready before the connection is polled again.
+    core.switch_kiosk(false).await.expect("kiosk off");
+    core.live.publish(7, &reading(0, 1.0));
+    core.bus.evcc.publish(evcc_state(1.0));
+    ended(&mut socket, "kiosk off").await;
+    drop(admin);
+    core.stop().await;
+}
+
+/// The next message of any kind; fails after two seconds of silence.
+async fn next_message(socket: &mut Socket) -> Option<Result<Message, tungstenite::Error>> {
+    tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("an answer within 2 s")
+}
+
+/// The message after the first ping of a session socket on `topics`. That tick's session check waits on a
+/// held store while time moves `by` and `publish` readies a frame, so the connection next polls with a control
+/// step and a feed frame both ready.
+async fn after_a_stalled_tick(
+    name: &str,
+    live: LiveLimits,
+    topics: &str,
+    by: Duration,
+    publish: impl FnOnce(&Core),
+) -> Option<Result<Message, tungstenite::Error>> {
+    let (core, admin, mut socket) = session_on(name, live, topics).await;
+    stall_tick(&core, live.ping, by, publish).await;
+    let ping = next_message(&mut socket).await;
+    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "{ping:?}");
+    let after = next_message(&mut socket).await;
+    drop(admin);
+    core.stop().await;
+    after
+}
+
+/// A core with device 7 on its roster and the admin's socket on `topics`.
+async fn session_on(name: &str, live: LiveLimits, topics: &str) -> (Arc<Core>, Api, Socket) {
+    let (core, admin) = open(&dir(name)).await;
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    let mut socket = connect(addr, &admin).await;
+    subscribe(&mut socket, topics).await;
+    (core, admin, socket)
+}
+
+/// Holds the store across the next ping tick, then moves time `by` and runs `publish` before letting go.
+async fn stall_tick(core: &Core, ping: Duration, by: Duration, publish: impl FnOnce(&Core)) {
+    let held = core.store.hold().await;
+    tokio::time::pause();
+    // Auto-advance fires the connection's tick, due first, before this sleep ends: the tick waits on the store.
+    tokio::time::sleep(ping + Duration::from_secs(1)).await;
+    publish(core);
+    tokio::time::advance(by).await;
+    tokio::time::resume();
+    drop(held);
+}
+
+#[tokio::test]
+async fn a_ready_feed_cannot_hold_back_the_ping() {
+    let live = LiveLimits { ping: Duration::from_secs(5), ..LiveLimits::default() };
+    let publish = |core: &Core| core.live.publish(7, &reading(0, 1.0));
+    let after = after_a_stalled_tick("ws-first-ping", live, r#"["metrics"]"#, live.ping, publish).await;
+    assert!(matches!(after, Some(Ok(Message::Ping(_)))), "{after:?}");
+}
+
+#[tokio::test]
+async fn a_ready_feed_cannot_hold_back_the_idle_close() {
+    let live =
+        LiveLimits { ping: Duration::from_secs(5), idle: Duration::from_secs(20), ..LiveLimits::default() };
+    let publish = |core: &Core| core.bus.evcc.publish(evcc_state(1.0));
+    let after = after_a_stalled_tick("ws-first-idle", live, r#"["evcc"]"#, live.idle, publish).await;
+    assert!(matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))), "{after:?}");
 }

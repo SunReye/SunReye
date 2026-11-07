@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use sqlx::migrate::{MigrateError, Migrator};
@@ -30,7 +29,7 @@ pub use self::tiers::BucketWindow;
 #[cfg(test)]
 pub(crate) use self::tiers::CounterFill;
 pub(crate) use self::time_zone::save_time_zone;
-use crate::events::{Bus, Change};
+use crate::events::{Changed, Event};
 use crate::modbus::{Transport, UnknownTransport};
 pub use crate::samples::Sample;
 use crate::samples::{ClosedMinute, SampleError, decode, encode, minute_of};
@@ -193,7 +192,7 @@ async fn migrate(pool: &SqlitePool, migrator: &Migrator) -> Result<(), StoreErro
 #[derive(Debug)]
 pub struct Store {
     pool: SqlitePool,
-    bus: Arc<Bus>,
+    changed: Event<Changed>,
 }
 
 impl Store {
@@ -229,7 +228,7 @@ impl Store {
             .connect_with(options.foreign_keys(true))
             .await?;
         migrate(&pool, &sqlx::migrate!("./migrations")).await?;
-        let store = Self { pool, bus: Arc::default() };
+        let store = Self { pool, changed: Event::default() };
         store.sessions().migrate().await?;
         store.sessions().delete_expired().await.map_err(|e| StoreError::Sessions(e.to_string()))?;
         Ok(store)
@@ -245,20 +244,21 @@ impl Store {
         Ok(self.pool.begin().await?)
     }
 
-    /// The core's topics: each configuration write publishes its [`Change`] here once it commits, so no caller
-    /// can forget to.
-    pub fn bus(&self) -> &Arc<Bus> {
-        &self.bus
+    /// Each configuration write publishes what it changed here once it commits, so no caller can forget to.
+    /// The core's bus carries this topic; the store holds no more of the bus, so a holder of the store does
+    /// not keep the live feed open past `Core::stop`.
+    pub fn changed(&self) -> &Event<Changed> {
+        &self.changed
     }
 
     /// Commits `tx`, then publishes `change`.
     pub(crate) async fn commit(
         &self,
         tx: sqlx::Transaction<'_, Sqlite>,
-        change: Change,
+        change: Changed,
     ) -> Result<(), StoreError> {
         tx.commit().await?;
-        self.bus.changes.publish(change);
+        self.changed.publish(change);
         Ok(())
     }
 
@@ -281,7 +281,7 @@ impl Store {
         )
         .execute(&self.pool)
         .await?;
-        self.bus.changes.publish(Change::Settings);
+        self.changed.publish(Changed::Settings);
         Ok(())
     }
 
@@ -377,7 +377,7 @@ impl Store {
         )
         .execute(&self.pool)
         .await?;
-        self.bus.changes.publish(Change::DeviceEdited(existing.id));
+        self.changed.publish(Changed::Devices);
         Ok(existing.id)
     }
 
@@ -599,7 +599,7 @@ pub(crate) fn refused(code: &'static str) -> StoreError {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::events::{Change, Events};
+    use crate::events::Events;
     use crate::samples::MINUTE_MS;
 
     const MINUTE: i64 = 29_000_000;
@@ -659,7 +659,7 @@ pub(crate) mod tests {
     }
 
     /// What the store published since `hints` last read.
-    pub(crate) fn published(hints: &mut Events<Change>) -> Vec<Change> {
+    pub(crate) fn published(hints: &mut Events<Changed>) -> Vec<Changed> {
         use futures_util::FutureExt;
         std::iter::from_fn(|| hints.next().now_or_never().flatten()).collect()
     }
@@ -667,14 +667,14 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn each_settings_write_publishes_once_it_commits() {
         let (store, device) = with_device().await;
-        let mut hints = store.bus().changes.subscribe();
+        let mut hints = store.changed().subscribe();
         store.set_setting("k", "v").await.expect("setting");
         store.save_plant_settings(&crate::weather::PlantSettings::default()).await.expect("plant");
         store.save_plant_time_zone("Europe/Berlin").await.expect("zone");
         store.save_device_pv(device, &crate::weather::DevicePv::default()).await.expect("pv");
         assert_eq!(
             published(&mut hints),
-            [Change::Settings, Change::Settings, Change::Settings, Change::DeviceEdited(device)]
+            [Changed::Settings, Changed::Settings, Changed::Settings, Changed::Devices]
         );
         assert_eq!(
             store.setting("k").await.expect("read").as_deref(),
@@ -684,15 +684,16 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn the_inverter_settings_device_publishes_an_edit_in_place_and_an_add_otherwise() {
+    async fn the_inverter_settings_device_publishes_an_edit_in_place_and_an_add() {
         let (store, device) = with_device().await;
         let connection = store.connection().await.expect("connection").expect("one").id;
-        let mut hints = store.bus().changes.subscribe();
+        let mut hints = store.changed().subscribe();
         let edited = NewDevice { connection_id: connection, profile_id: "deye-sg05lp3".into(), unit_id: 2 };
         assert_eq!(store.save_device(&edited).await.expect("edit"), device);
         let elsewhere = store.add_connection(&connection_to("gateway")).await.expect("connection");
         let added = store.save_device(&NewDevice { connection_id: elsewhere, ..edited }).await.expect("add");
-        assert_eq!(published(&mut hints), [Change::DeviceEdited(device), Change::DeviceAdded(added)]);
+        assert_ne!(added, device);
+        assert_eq!(published(&mut hints), [Changed::Devices, Changed::Devices]);
     }
 
     #[tokio::test]

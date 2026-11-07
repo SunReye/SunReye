@@ -17,7 +17,7 @@ use super::config::{self, Config};
 use super::container::{Container, Lines};
 use super::plan::{Bucketed, Plan, Window, plan};
 use super::{Checked, Conflict, Gap, ImportError, READINGS, Reading, SourceTier};
-use crate::events::Change;
+use crate::events::Changed;
 use crate::rollup::{Partial, Tier};
 use crate::samples::{MINUTE_MS, Sample, encode, minute_of};
 use crate::store::tiers::append;
@@ -91,7 +91,7 @@ pub async fn land(
         gaps.extend(land_device(&mut tx, slug, device, &metrics, cut).await?);
     }
     sqlx::query("DROP TABLE temp.import_point").execute(&mut *tx).await.map_err(StoreError::from)?;
-    store.commit(tx, Change::Imported).await?;
+    store.commit(tx, Changed::Archive).await?;
     gaps.sort_by_key(|g| g.start);
     Ok(Landed { gaps, conflicts, first_conflict })
 }

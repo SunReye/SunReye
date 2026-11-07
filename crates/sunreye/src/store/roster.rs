@@ -2,7 +2,7 @@
 //! with history is retired, never deleted: its readings and rollups refuse the delete (migration 0007).
 
 use super::{ConnectionRow, NewConnection, NewDevice, Store, StoreError};
-use crate::events::Change;
+use crate::events::Changed;
 
 /// What a connection edit changes; `None` leaves the field as stored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -124,7 +124,7 @@ impl Store {
         )
         .fetch_one(&self.pool)
         .await?;
-        self.bus.changes.publish(Change::DeviceAdded(row.id));
+        self.changed.publish(Changed::Devices);
         Ok(row.id)
     }
 
@@ -132,7 +132,6 @@ impl Store {
     pub async fn edit_device(&self, id: i64, edit: &DeviceEdit) -> Result<bool, StoreError> {
         let retire = edit.retired_at.is_some();
         let retired_at = edit.retired_at.clone().flatten();
-        let change = if retired_at.is_some() { Change::DeviceRetired(id) } else { Change::DeviceEdited(id) };
         let done = sqlx::query!(
             "UPDATE device SET name = COALESCE(?, name), role = COALESCE(?, role),
                connection_id = COALESCE(?, connection_id), profile_id = COALESCE(?, profile_id),
@@ -151,7 +150,7 @@ impl Store {
         .await?;
         let found = done.rows_affected() == 1;
         if found {
-            self.bus.changes.publish(change);
+            self.changed.publish(Changed::Devices);
         }
         Ok(found)
     }
@@ -179,7 +178,7 @@ impl Store {
         };
         tx.commit().await?;
         if removal == Removal::Removed {
-            self.bus.changes.publish(Change::DeviceRemoved(id));
+            self.changed.publish(Changed::Devices);
         }
         Ok(removal)
     }
@@ -260,10 +259,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_device_write_publishes_what_it_did_once_it_commits_and_a_write_that_changed_nothing_publishes_nothing()
-     {
+    async fn a_device_write_publishes_once_it_commits_and_a_write_that_changed_nothing_publishes_nothing() {
         let (store, first, _) = two_connections().await;
-        let mut hints = store.bus().changes.subscribe();
+        let mut hints = store.changed().subscribe();
         let id = store.create_device(&device(first, 1), None, "inverter").await.expect("device");
         let renamed = DeviceEdit { name: Some("Roof".into()), ..DeviceEdit::default() };
         store.edit_device(id, &renamed).await.expect("rename");
@@ -274,26 +272,18 @@ mod tests {
             .edit_device(id, &DeviceEdit { retired_at: Some(None), ..DeviceEdit::default() })
             .await
             .expect("restore");
-        assert_eq!(
-            published(&mut hints),
-            [
-                Change::DeviceAdded(id),
-                Change::DeviceEdited(id),
-                Change::DeviceRetired(id),
-                Change::DeviceEdited(id)
-            ]
-        );
+        assert_eq!(published(&mut hints), [Changed::Devices; 4]);
 
         assert!(!store.edit_device(id + 1, &renamed).await.expect("edit"), "no such device");
         assert!(store.create_device(&device(99, 1), None, "inverter").await.is_err(), "no such connection");
         let kept = store.create_device(&device(first, 2), None, "inverter").await.expect("device");
         store_a_reading(&store, kept).await;
         assert_eq!(store.remove_device(kept).await.expect("remove"), Removal::Kept);
-        assert_eq!(published(&mut hints), [Change::DeviceAdded(kept)], "only the add changed anything");
+        assert_eq!(published(&mut hints), [Changed::Devices], "only the add changed anything");
 
         assert_eq!(store.remove_device(id).await.expect("remove"), Removal::Removed);
         assert_eq!(store.remove_device(id).await.expect("remove"), Removal::Missing);
-        assert_eq!(published(&mut hints), [Change::DeviceRemoved(id)]);
+        assert_eq!(published(&mut hints), [Changed::Devices]);
     }
 
     #[tokio::test]
