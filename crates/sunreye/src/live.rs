@@ -161,7 +161,23 @@ pub enum Topic {
     Events,
 }
 
+/// Who may hold a topic, as in 3.x `TOPIC_POLICY`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Access {
+    /// A session, or a stranger while the kiosk view is on.
+    Dashboard,
+    /// A session only: it names what an admin just changed.
+    Session,
+}
+
 impl Topic {
+    const fn access(self) -> Access {
+        match self {
+            Self::Metrics | Self::Plant | Self::Evcc => Access::Dashboard,
+            Self::Events => Access::Session,
+        }
+    }
+
     fn named(name: &str) -> Option<Self> {
         match name {
             "metrics" => Some(Self::Metrics),
@@ -217,7 +233,8 @@ fn entry_name(entry: &serde_json::Value) -> String {
     text.chars().take(MAX_DENIED_NAME).collect()
 }
 
-pub fn resolve_subscribe(topics: &[serde_json::Value]) -> Decision {
+/// `session` is false for a stranger on the kiosk view.
+pub fn resolve_subscribe(topics: &[serde_json::Value], session: bool) -> Decision {
     let mut decision = Decision::default();
     let mut seen = std::collections::BTreeSet::new();
     for entry in topics {
@@ -225,7 +242,11 @@ pub fn resolve_subscribe(topics: &[serde_json::Value]) -> Decision {
         if !seen.insert(name.clone()) {
             continue;
         }
-        match entry.as_str().and_then(Topic::named) {
+        match entry
+            .as_str()
+            .and_then(Topic::named)
+            .filter(|topic| session || topic.access() == Access::Dashboard)
+        {
             Some(topic) => decision.subscribe.push(topic),
             None => decision.denied.push(name),
         }
@@ -431,7 +452,7 @@ mod tests {
 
     fn ack_for(text: &str) -> Value {
         let Some(ClientFrame::Sub(topics)) = parse_client_frame(text) else { panic!("a sub frame: {text}") };
-        parsed(&ack_frame(&resolve_subscribe(&topics)))
+        parsed(&ack_frame(&resolve_subscribe(&topics, true)))
     }
 
     #[test]
@@ -446,6 +467,19 @@ mod tests {
                     "denied":["statistics","logs","automations","nope"]}}"#
             )
         );
+    }
+
+    #[test]
+    fn a_stranger_is_denied_events_by_name_and_keeps_the_dashboard_topics() {
+        let Some(ClientFrame::Sub(topics)) =
+            parse_client_frame(r#"{"t":"sub","topics":["metrics","events","evcc"]}"#)
+        else {
+            panic!("a sub frame")
+        };
+        let stranger = resolve_subscribe(&topics, false);
+        assert_eq!(stranger.subscribe, [Topic::Metrics, Topic::Evcc]);
+        assert_eq!(stranger.denied, ["events"]);
+        assert_eq!(resolve_subscribe(&topics, true).subscribe, [Topic::Metrics, Topic::Events, Topic::Evcc]);
     }
 
     #[test]

@@ -212,7 +212,7 @@ async fn forward(peer: &mut Peer, held: &[Topic], topic: Topic, frame: Option<Ut
 async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &str) -> bool {
     match parse_client_frame(text) {
         Some(ClientFrame::Sub(topics)) => {
-            let decision = resolve_subscribe(&topics);
+            let decision = resolve_subscribe(&topics, peer.kiosk.is_none());
             if !peer.send(Message::Text(ack_frame(&decision).into())).await {
                 return false;
             }

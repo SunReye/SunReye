@@ -724,3 +724,32 @@ async fn a_client_cannot_publish_on_events_or_evcc() {
     drop(admin);
     core.stop().await;
 }
+
+#[tokio::test]
+async fn a_stranger_is_denied_events_by_name_and_hears_no_change_while_a_session_does_and_the_dashboard_topics_stay_open()
+ {
+    use crate::events::Changed;
+    let (core, admin) = open(&dir("ws-events-stranger")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    core.bus.evcc.publish(evcc_state(1000.0));
+
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    let ack = subscribe(&mut stranger, r#"["metrics","plant","evcc","events"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["metrics", "plant", "evcc"], "denied": ["events"]}));
+    assert_eq!(next_json(&mut stranger).await["topic"], "evcc", "the kiosk view reads evcc, as in 3.x");
+    let mut session = connect(addr, &admin).await;
+    let ack = subscribe(&mut session, r#"["events"]"#).await;
+    assert_eq!(ack["data"], json!({"subscribed": ["events"], "denied": []}));
+
+    core.bus.changed.publish(Changed::Settings);
+    assert_eq!(next_json(&mut session).await, json!({"topic": "events", "data": {"changed": "settings"}}));
+    silent(&mut stranger).await;
+
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut stranger).await["data"]["metrics"]["pv_power"], 42.0);
+    assert_eq!(next_json(&mut stranger).await["topic"], "plant");
+    drop((stranger, session, admin));
+    core.stop().await;
+}

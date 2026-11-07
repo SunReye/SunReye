@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-/// Where a loadpoint's live charge power comes from; absent on the wire means `measured`.
+/// Where a loadpoint's live charge power comes from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChargePowerSource {
@@ -50,7 +50,7 @@ pub struct EvccLoadpoint {
 }
 
 /// What the `evcc` topic retains.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvccState {
     /// The broker is connected and EVCC reports itself online.
