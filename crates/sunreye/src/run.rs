@@ -294,6 +294,15 @@ impl Core {
         Ok(self)
     }
 
+    /// Publishes today's `statistics` frame when `minute` is of today.
+    async fn publish_today(&self, minute: i64) {
+        match crate::web::today_frame(self, minute).await {
+            Ok(Some(frame)) => self.bus.statistics.publish(frame),
+            Ok(None) => {}
+            Err(error) => tracing::warn!(%error, "today's statistics not published"),
+        }
+    }
+
     pub async fn switch_kiosk(&self, on: bool) -> Result<(), StoreError> {
         set_kiosk(&self.store, on).await?;
         self.kiosk.send_replace(on);
@@ -639,11 +648,7 @@ async fn publish_statistics(core: Weak<Core>, mut rolled: Events<i64>, mut stopp
             minute = rolled.next() => minute,
         };
         let (Some(minute), Some(core)) = (minute, core.upgrade()) else { return };
-        match crate::web::today_frame(&core, minute).await {
-            Ok(Some(frame)) => core.bus.statistics.publish(frame),
-            Ok(None) => {}
-            Err(error) => tracing::warn!(%error, "today's statistics not published"),
-        }
+        core.publish_today(minute).await;
     }
 }
 
