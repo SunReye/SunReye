@@ -89,7 +89,7 @@ fn find<'a>(entries: &'a mut [(&'static str, Running)], name: &str) -> Option<&'
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
 
@@ -128,9 +128,15 @@ mod tests {
         tasks.stop_all().await;
 
         let restarted = tasks.restart("a", async { Err::<Running, _>("spawned") }).await;
-        tasks.spawn("a", |_| async { panic!("spawned") }).await;
+        let called = AtomicBool::new(false);
+        let record = |_| {
+            called.store(true, Ordering::SeqCst);
+            std::future::ready(())
+        };
+        tasks.spawn("a", record).await;
 
         assert_eq!(restarted, Ok(()));
+        assert!(!called.load(Ordering::SeqCst), "spawn ran its task after the stop");
         assert!(tasks.entries.lock().await.is_empty());
     }
 }
