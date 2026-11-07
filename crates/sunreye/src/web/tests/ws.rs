@@ -83,14 +83,87 @@ fn reading(at_ms: i64, power: f64) -> Sample {
 }
 
 async fn plain_user(core: &Core, admin: &Api) -> Api {
+    signed_in_user(core, admin, "viewer@example.org").await.1
+}
+
+/// A new plain account signed in: its id and its browser.
+async fn signed_in_user(core: &Core, admin: &Api, email: &str) -> (i64, Api) {
     let account = NewAccount {
-        email: "viewer@example.org".into(),
+        email: email.into(),
         name: "Viewer".into(),
         password_hash: password::Passwords::new().hash(ADMIN_PASSWORD.into()).await.expect("hash"),
     };
-    core.store.add_account(&account, false).await.expect("plain account");
-    let signed_in = login(&admin.anonymous(), "viewer@example.org", ADMIN_PASSWORD, false).await;
-    admin.with_cookie(&signed_in.session_cookie())
+    let id = core.store.add_account(&account, false).await.expect("plain account").expect("new");
+    let signed_in = login(&admin.anonymous(), email, ADMIN_PASSWORD, false).await;
+    (id, admin.with_cookie(&signed_in.session_cookie()))
+}
+
+/// The next message is the server ending the socket, not a frame or a ping.
+async fn ended(socket: &mut Socket, why: &str) {
+    let next =
+        tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("an answer within 2 s");
+    assert!(matches!(next, None | Some(Err(_) | Ok(Message::Close(_)))), "{why}: still served: {next:?}");
+}
+
+#[tokio::test]
+async fn a_session_socket_closes_at_the_first_ping_tick_after_logout_and_a_live_session_is_pinged() {
+    let (core, admin) = open(&dir("ws-logout-tick")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let user = plain_user(&core, &admin).await;
+    let mut leaving = connect(addr, &user).await;
+    subscribe(&mut leaving, r#"["events","metrics"]"#).await;
+    let mut staying = connect(addr, &admin).await;
+    subscribe(&mut staying, r#"["events"]"#).await;
+    assert_eq!(delete(&user, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+
+    // Under one ping interval since the upgrade on the real clock: exactly one tick fires in the advance.
+    tokio::time::pause();
+    tokio::time::advance(LiveLimits::default().ping).await;
+    tokio::time::resume();
+    ended(&mut leaving, "logout").await;
+    let ping = tokio::time::timeout(Duration::from_secs(2), staying.next()).await.expect("a ping within 2 s");
+    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "the live session is pinged: {ping:?}");
+    connections(&core, 1).await;
+    drop((user, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_sub_after_logout_expiry_or_account_removal_closes_the_socket_unanswered() {
+    use tower_sessions::SessionStore;
+    use tower_sessions::cookie::time::{Duration as Span, OffsetDateTime};
+    use tower_sessions::session::Id;
+
+    let (core, admin) = open(&dir("ws-session-end")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let (_, out) = signed_in_user(&core, &admin, "out@example.org").await;
+    let (_, expired) = signed_in_user(&core, &admin, "expired@example.org").await;
+    let (removed_id, removed) = signed_in_user(&core, &admin, "removed@example.org").await;
+    let mut sockets = Vec::new();
+    for api in [&out, &expired, &removed] {
+        let mut socket = connect(addr, api).await;
+        subscribe(&mut socket, r#"["metrics"]"#).await;
+        sockets.push(socket);
+    }
+
+    assert_eq!(delete(&out, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    let cookie = expired.cookie.clone().expect("cookie");
+    let id: Id = cookie.split_once('=').expect("name=value").1.parse().expect("session id");
+    let sessions = core.store.sessions();
+    let mut record = sessions.load(&id).await.expect("load").expect("a stored session");
+    record.expiry_date = OffsetDateTime::now_utc() - Span::seconds(1);
+    sessions.save(&record).await.expect("save");
+    let removal = delete(&admin, &format!("/api/admin/users/{removed_id}")).await;
+    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+
+    for (socket, why) in sockets.iter_mut().zip(["logout", "expiry", "account removal"]) {
+        send_text(socket, r#"{"t":"sub","topics":["events"]}"#).await;
+        ended(socket, why).await;
+    }
+    let mut live = connect(addr, &admin).await;
+    assert_eq!(subscribe(&mut live, r#"["events"]"#).await["data"]["subscribed"], json!(["events"]));
+    drop((out, expired, removed, admin));
+    core.stop().await;
 }
 
 /// Waits until the core holds `count` live connections.
@@ -222,7 +295,9 @@ async fn pings_before_ack(socket: &mut Socket) -> usize {
 async fn the_server_pings_and_a_client_that_answers_stays_open() {
     let (core, admin) = open(&dir("ws-ping")).await;
     let addr = serve(&core, &quick()).await;
-    let mut socket = connect(addr, &admin).await;
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    // A stranger: its ticks and subs read no store, which on a paused clock would let time jump.
+    let mut socket = connect(addr, &admin.anonymous()).await;
     // One second of virtual time in 10 ms steps: a 100 ms interval pings 10 times, give or take the
     // one tick at each edge that races the subscribe whose ack flushes the pings sent before it.
     tokio::time::pause();
