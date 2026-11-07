@@ -408,3 +408,30 @@ async fn a_rollup_of_a_minute_of_today_frames_todays_figures_and_one_of_another_
     assert_eq!(cost["productionKwh"], frame["data"]["energy"]["productionKwh"]);
     finish(core, admin).await;
 }
+
+/// `(now, [(minute starting at, whether it is of today)])`: a plant day in Berlin whose length is not 24 h.
+type DayCase = (&'static str, [(&'static str, bool); 3]);
+
+const SPRING_23_H: DayCase = (
+    "2026-03-29T21:59:30Z",
+    [("2026-03-28T22:59:00Z", false), ("2026-03-29T21:59:00Z", true), ("2026-03-29T22:00:00Z", false)],
+);
+const AUTUMN_25_H: DayCase = (
+    "2026-10-25T22:59:30Z",
+    [("2026-10-24T21:59:00Z", false), ("2026-10-25T22:59:00Z", true), ("2026-10-25T23:00:00Z", false)],
+);
+
+#[tokio::test(start_paused = true)]
+async fn the_plant_day_ends_with_the_23_h_and_the_25_h_day_not_24_h_after_it_began() {
+    for (case, (now, minutes)) in [("spring", SPRING_23_H), ("autumn", AUTUMN_25_H)] {
+        let core =
+            crate::support::core_at(&dir(&format!("statistics-dst-{case}")), now, "Europe/Berlin").await;
+        let device = add_device(&core, "10.0.0.5").await;
+        store(&core, device, &series(DAY_PRODUCTION, &[(now, 1.0)])).await;
+        for (minute, today) in minutes {
+            let framed = frame_of(&core, minute).await.is_some();
+            assert_eq!(framed, today, "{case}: the minute starting {minute}");
+        }
+        core.stop().await;
+    }
+}
