@@ -33,6 +33,7 @@ const CORE = {
   integrations: false,
   pvAndBattery: false,
   pricesAndCosts: false,
+  statisticsHeatmap: false,
 };
 
 const connection = (id: number, name: string, port: number): Connection => ({

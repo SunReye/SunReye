@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
 	import EnergySplitChart from '$lib/components/inverter/energy-split-chart.svelte';
 	import EnergySeriesChart from '$lib/components/statistics/energy-series-chart.svelte';
@@ -66,7 +67,11 @@
 	const hasBattery = $derived(inverter.capabilities?.battery ?? false);
 
 	// The heatmap panel only draws; the window it folds is read here.
-	const heatmap = queried(() => reads.heatmap(range.from, range.to), []);
+	// Only a core that serves the heatmap is asked for it.
+	const heatmap = queried(
+		() => (coreCapabilities.has('statisticsHeatmap') ? reads.heatmap(range.from, range.to) : null),
+		[]
+	);
 
 	// Measured pack capacity and SOH. Fetched ONCE, not per window: these are
 	// properties of the battery, not of the picked range, and re-fetching them on
@@ -74,7 +79,11 @@
 	// changed. Null until it arrives — and null is also the answer on a plant the
 	// server cannot measure (no SOC role, too few deep discharges), which the
 	// tiles render as absent rather than as a healthy-looking placeholder.
-	const batteryHealth = queried(() => (hasBattery ? reads.batteryHealth() : null), null);
+	// A core without PV and battery data serves no health figure to ask for.
+	const batteryHealth = queried(
+		() => (hasBattery && coreCapabilities.has('pvAndBattery') ? reads.batteryHealth() : null),
+		null
+	);
 	const health = $derived(batteryHealth.value);
 
 	const tileData = $derived<EnergyTileData>({

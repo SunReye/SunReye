@@ -6,12 +6,12 @@
  */
 
 import { getContext, setContext } from "svelte";
-import { api } from "$lib/api";
 import { core } from "$lib/core-api";
 import { source } from "$lib/source.svelte";
 import { statisticsLive } from "$lib/statistics-live.svelte";
 import {
   statisticsQuery,
+  type ApiResponse,
   type StatisticsApi,
   type StatisticsQuery,
   type StatisticsRead,
@@ -19,25 +19,37 @@ import {
 
 const KEY = Symbol("statistics-query");
 
-/** The core answers the energy series; the rest is still the Eden client's (prices and costs). */
-const edenApi: StatisticsApi = {
-  comparison: (query) => api.api.statistics.comparison.get({ query }),
-  costSeries: (query) => api.api.cost.series.get({ query }),
+/**
+ * What the core answers on this page: the energy series. The routes behind the
+ * priced sections, the heatmap and battery health are not served (monitoring only,
+ * ADR 0005), so those sections hide behind their capability and never call them;
+ * an answer that is an error is what a call that slips past the gate gets.
+ */
+const notServed = async (): Promise<ApiResponse> => ({
+  data: null,
+  error: "not served by this core",
+});
+
+const coreApi: StatisticsApi = {
+  comparison: notServed,
+  costSeries: notServed,
   energySeries: async (query) => {
     const { data, error } = await core.GET("/api/energy/series", { params: { query } });
     return { data, error };
   },
-  records: (query) => api.api.statistics.records.get({ query }),
-  amortisation: (query) => api.api.statistics.amortisation.get({ query }),
-  heatmap: (query) => api.api.statistics.heatmap.get({ query }),
-  spotStats: (query) => api.api.statistics.prices.get({ query }),
-  dayAheadPrices: () => api.api.prices.get(),
-  batteryHealth: () => api.api.battery.health.get(),
+  records: notServed,
+  amortisation: notServed,
+  heatmap: notServed,
+  spotStats: notServed,
+  dayAheadPrices: notServed,
+  batteryHealth: notServed,
 };
 
 /** Called once by the statistics page: this visit's reads, shared by every section. */
-export function provideStatisticsQuery(): StatisticsQuery {
-  return setContext(KEY, statisticsQuery({ api: edenApi, live: statisticsLive, source }));
+export function provideStatisticsQuery(
+  query: StatisticsQuery = statisticsQuery({ api: coreApi, live: statisticsLive, source }),
+): StatisticsQuery {
+  return setContext(KEY, query);
 }
 
 /** The page's reads, from any section body below it. */

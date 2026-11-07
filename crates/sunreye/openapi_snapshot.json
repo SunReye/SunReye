@@ -3418,7 +3418,8 @@
           "profileSources",
           "integrations",
           "pvAndBattery",
-          "pricesAndCosts"
+          "pricesAndCosts",
+          "statisticsHeatmap"
         ],
         "properties": {
           "automations": {
@@ -3450,6 +3451,10 @@
           },
           "statistics": {
             "type": "boolean"
+          },
+          "statisticsHeatmap": {
+            "type": "boolean",
+            "description": "The statistics page's hour-by-weekday heatmap of the picked window."
           }
         }
       },

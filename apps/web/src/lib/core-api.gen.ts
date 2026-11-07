@@ -821,6 +821,8 @@ export interface components {
             pvAndBattery: boolean;
             restart: boolean;
             statistics: boolean;
+            /** @description The statistics page's hour-by-weekday heatmap of the picked window. */
+            statisticsHeatmap: boolean;
         };
         /** @description The active profile and the entities it reads. */
         Catalog: {

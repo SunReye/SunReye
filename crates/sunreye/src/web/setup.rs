@@ -47,6 +47,8 @@ pub struct Capabilities {
     pub pv_and_battery: bool,
     /// Spot prices, tariffs and what they make of the energy: costs, records and amortisation.
     pub prices_and_costs: bool,
+    /// The statistics page's hour-by-weekday heatmap of the picked window.
+    pub statistics_heatmap: bool,
 }
 
 impl Capabilities {
@@ -61,6 +63,7 @@ impl Capabilities {
         integrations: false,
         pv_and_battery: false,
         prices_and_costs: false,
+        statistics_heatmap: false,
     };
 }
 

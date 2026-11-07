@@ -155,29 +155,14 @@ const sweepCharts = (page: Page, size: { width: number; height: number }) =>
  * Floors, so a sweep cannot pass by measuring nothing.
  *
  * Two of them because one is not enough: 15 samples is met by three charts, and
- * the three chart kinds on /statistics are three different LayerChart tooltip
- * paths — a point-scale line (`period-series-chart` drawing the ratio trend), a
- * band-scale bar (`yoy-chart`, and the same shell drawing the energy flows) and
- * a CANVAS band grid (`heat-grid`, whose tooltip resolves off
- * `tooltipContext={{ mode: 'band' }}` and has no SVG marks at all). The chart
- * floor is what keeps all three in the sweep; the heatmap gets its own case
- * below, because it is the one whose plot is short enough that the vertical
- * flip fires.
+ * the Energy section, the one the core serves, draws two LayerChart tooltip
+ * paths — a point-scale line (`period-series-chart` drawing the ratio trend) and
+ * a band-scale bar (the same shell drawing the energy flows). The chart floor is
+ * what keeps both in the sweep. The canvas heatmap's band tooltip is not on the
+ * page until a core serves the heatmap.
  */
 const MIN_MEASURED = 15;
-const MIN_CHARTS = 5;
-
-/** The heatmap panel's chart. Scoped by the panel's own heading, not by index. */
-function heatmapChart(page: Page): Locator {
-  // `.last()`: the heatmap is a NESTED panel, so the energy section that
-  // contains it also matches `has:` and would drag four sibling charts in. The
-  // innermost match is the panel itself.
-  return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Hour of the week", exact: true }) })
-    .last()
-    .locator(".lc-root-container");
-}
+const MIN_CHARTS = 3;
 
 test("every tooltip on /statistics stays on a 390px screen", async ({ page }) => {
   await page.setViewportSize(PHONE);
@@ -196,28 +181,6 @@ test("and on a 1024px one, where a wide tooltip has room to overhang", async ({ 
   expect(measured.samples).toBeGreaterThanOrEqual(MIN_MEASURED);
   expect(measured.charts).toBeGreaterThanOrEqual(MIN_CHARTS);
 });
-
-/**
- * The canvas heatmap, named rather than left to the sweep's index.
- *
- * A different tooltip path from every other chart here: no SVG marks, so the
- * hovered datum comes from `tooltipContext={{ mode: 'band' }}` resolving the
- * pointer against two band scales. It is also the SHORTEST plot on the page,
- * which is what makes it the one where a box the height of the placement's
- * budget cannot fit above the touch and the vertical flip has to fire.
- */
-for (const size of [PHONE, LAPTOP]) {
-  test(`the canvas heatmap's tooltip stays on a ${size.width}px screen`, async ({ page }) => {
-    await page.setViewportSize(size);
-    await openPage(page, "/#/statistics");
-    const measured = await sweep(page, heatmapChart(page), size, "heatmap");
-    console.log(`heatmap: ${measured.samples} tooltips at ${size.width}px`);
-    // One chart, five samples, and the two in the axis gutter are allowed to
-    // show nothing — so three is the whole of the plot's interior.
-    expect(measured.charts).toBe(1);
-    expect(measured.samples).toBeGreaterThanOrEqual(3);
-  });
-}
 
 /**
  * The other pointer. The suite's default context has `hasTouch: true`, which

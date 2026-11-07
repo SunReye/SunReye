@@ -166,7 +166,7 @@ async function openStatistics(page: Page, viewport: { width: number; height: num
   await page.mouse.wheel(0, 4000);
   await expect
     .poll(async () => (await labelsOn(page)).length, { timeout: 20_000 })
-    .toBeGreaterThan(20);
+    .toBeGreaterThan(10);
   return labelsOn(page);
 }
 
