@@ -21,7 +21,8 @@ pub(crate) mod tiers;
 mod time_zone;
 
 pub use self::accounts::{ApiKeyRow, NewApiKey, Refusal};
-pub use self::correction::StringGrid;
+pub use self::correction::{LearnState, StringGrid};
+pub use self::forecast::{Battery, Correction, DevicePv, OPEN_METEO, PlantSettings, PvArray};
 pub(crate) use self::forecast::{replace_device_pv, save_plant};
 pub use self::roster::{ConnectionEdit, DeviceEdit, Removal};
 pub(crate) use self::roster::{insert_connection, insert_device};
@@ -669,9 +670,9 @@ pub(crate) mod tests {
         let (store, device) = with_device().await;
         let mut hints = store.changed().subscribe();
         store.set_setting("k", "v").await.expect("setting");
-        store.save_plant_settings(&crate::weather::PlantSettings::default()).await.expect("plant");
+        store.save_plant_settings(&PlantSettings::default()).await.expect("plant");
         store.save_plant_time_zone("Europe/Berlin").await.expect("zone");
-        store.save_device_pv(device, &crate::weather::DevicePv::default()).await.expect("pv");
+        store.save_device_pv(device, &DevicePv::default()).await.expect("pv");
         assert_eq!(
             published(&mut hints),
             [Changed::Settings, Changed::Settings, Changed::Settings, Changed::Devices]

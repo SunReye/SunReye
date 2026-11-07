@@ -5,7 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{Store, StoreError};
 use crate::forecast::{CorrectionCell, CorrectionModel, Skill};
-use crate::learn::LearnState;
+
+/// How far one inverter's correction has learned.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LearnState {
+    /// The last plant-local day folded in.
+    pub learned_through: jiff::civil::Date,
+    pub skill: Skill,
+}
 
 /// One string's grid and the cells a fold wrote.
 #[derive(Debug, Clone, Copy)]

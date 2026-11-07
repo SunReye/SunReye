@@ -15,8 +15,8 @@ use crate::plant_zone;
 use crate::refresh::{PERIOD, within};
 use crate::rollup::Tier;
 use crate::run::Core;
-use crate::store::{BucketWindow, StoreError, first_in_service};
-use crate::weather::{self, OPEN_METEO, WeatherConfig};
+use crate::store::{BucketWindow, OPEN_METEO, StoreError, first_in_service};
+use crate::weather::{self, WeatherConfig};
 
 /// House load moves slowly: its median is read far less often than the irradiance.
 const LOAD_TTL: Duration = Duration::from_hours(6);

@@ -16,7 +16,8 @@ use crate::learn;
 use crate::live::iso;
 use crate::run::Core;
 use crate::solar::Served;
-use crate::weather::{self, OPEN_METEO, WeatherConfig, WeatherPatch};
+use crate::store::OPEN_METEO;
+use crate::weather::{self, WeatherConfig, WeatherPatch};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
