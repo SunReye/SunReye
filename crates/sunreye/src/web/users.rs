@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 
 use super::auth::{Account, AuthSession, validate_account};
 use super::{ApiError, ApiJson, ApiPath, ErrorBody};
+use crate::events::SessionEnded;
 use crate::run::Core;
 use crate::store::{NewAccount, Refusal};
 
@@ -107,6 +108,7 @@ pub async fn set_role(
     ApiJson(request): ApiJson<RoleRequest>,
 ) -> Result<Json<Account>, ApiError> {
     let account = core.store.set_admin(id, request.admin).await??;
+    core.bus.sessions.publish(SessionEnded(id));
     Ok(Json(Account::from(&account)))
 }
 
@@ -130,5 +132,6 @@ pub async fn remove(
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode, ApiError> {
     core.store.remove_account(id).await??;
+    core.bus.sessions.publish(SessionEnded(id));
     Ok(StatusCode::NO_CONTENT)
 }

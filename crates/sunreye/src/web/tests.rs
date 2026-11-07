@@ -70,6 +70,16 @@ async fn signed_in(core: Arc<Core>, config: &Config) -> (Arc<Core>, Api) {
     (core, api.with_cookie(&cookie))
 }
 
+/// Sets a core's pause: the receiver resolves once a task waits there; the sender resumes it.
+fn pause(
+    at: &std::sync::Mutex<Option<crate::run::Pause>>,
+) -> (tokio::sync::oneshot::Receiver<()>, tokio::sync::oneshot::Sender<()>) {
+    let (reached, waiting) = tokio::sync::oneshot::channel();
+    let (resume, resumed) = tokio::sync::oneshot::channel();
+    *at.lock().expect("pause") = Some((reached, resumed));
+    (waiting, resume)
+}
+
 async fn sign_up(api: &Api, email: &str, password: &str) -> Answer {
     post(api, "/api/auth/sign-up", &json!({"email": email, "name": "Admin", "password": password})).await
 }

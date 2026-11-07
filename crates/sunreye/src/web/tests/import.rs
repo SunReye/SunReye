@@ -448,14 +448,6 @@ fn an_upload_may_pause_a_minute_between_chunks() {
     assert_eq!(UploadIdle::default(), UploadIdle(Duration::from_secs(60)));
 }
 
-/// Sets a core's pause: the receiver resolves once an import waits there; the sender resumes it.
-fn pause(at: &std::sync::Mutex<Option<Pause>>) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
-    let (reached, waiting) = oneshot::channel();
-    let (resume, resumed) = oneshot::channel();
-    *at.lock().expect("pause") = Some((reached, resumed));
-    (waiting, resume)
-}
-
 fn applied(core: &Core) -> usize {
     core.seams.events.lock().expect("events").iter().filter(|e| **e == "apply").count()
 }
