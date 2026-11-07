@@ -30,13 +30,13 @@ fn archive(case: &str) -> Vec<u8> {
 }
 
 /// `manifest.json`'s `createdAt`, 2026-05-02T00:00:00Z: the clock the archives were cut at.
-const fn created() -> i64 {
-    1_777_680_000_000
+fn created() -> crate::run::Clock {
+    crate::run::Clock::at(1_777_680_000_000)
 }
 
 /// A signed-in core on the archives' clock that polls nothing: imported devices name hosts on other LANs.
 async fn importer(name: &str, limit: UploadLimit) -> (Arc<Core>, Api) {
-    let core = Core::open_unpolled(&dir(name), created).await.expect("core");
+    let core = Core::open_unpolled(&dir(name), created()).await.expect("core");
     signed_in(core, &Config { upload_limit: limit, ..Config::default() }).await
 }
 
@@ -183,13 +183,13 @@ async fn a_confirmation_is_single_use() {
 #[tokio::test]
 async fn a_confirmation_held_in_memory_does_not_survive_a_restart() {
     let dir = dir("import-guard-restart");
-    let core = Core::open_unpolled(&dir, created).await.expect("core");
+    let core = Core::open_unpolled(&dir, created()).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     assert_eq!(upload(&admin, archive("current-2.x")).await.status, StatusCode::ACCEPTED);
     drop(admin);
     core.stop().await;
     std::fs::write(dir.join(PART_FILE), b"cut off by a crash").expect("part");
-    let core = Core::open_unpolled(&dir, created).await.expect("core");
+    let core = Core::open_unpolled(&dir, created()).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     assert!(!dir.join(UPLOAD_FILE).exists(), "the held upload is removed at start");
     assert!(!dir.join(PART_FILE).exists(), "an upload a crash cut off is removed at start");
@@ -223,7 +223,7 @@ async fn an_upload_of_the_limit_is_read_and_one_byte_more_is_a_413_that_writes_n
     core.stop().await;
 
     let dir = dir("import-over");
-    let core = Core::open_unpolled(&dir, created).await.expect("core");
+    let core = Core::open_unpolled(&dir, created()).await.expect("core");
     let (core, admin) =
         signed_in(core, &Config { upload_limit: UploadLimit(size - 1), ..Config::default() }).await;
     let over = upload(&admin, bytes).await;
@@ -400,7 +400,7 @@ fn stalled() -> Body {
 
 #[tokio::test]
 async fn a_stalled_upload_is_a_408_that_frees_the_import_and_leaves_the_held_upload() {
-    let core = Core::open_unpolled(&dir("import-stalled"), created).await.expect("core");
+    let core = Core::open_unpolled(&dir("import-stalled"), created()).await.expect("core");
     let (core, admin) =
         signed_in(core, &Config { upload_idle: UploadIdle(Duration::ZERO), ..Config::default() }).await;
     held(&admin, &core).await;
@@ -517,7 +517,7 @@ fn trickle() -> Body {
 async fn an_upload_still_arriving_at_its_deadline_is_a_408_that_frees_the_import() {
     let limit = UploadLimit(1 << 20);
     let config = |deadline| Config { upload_limit: limit, upload_deadline: deadline, ..Config::default() };
-    let core = Core::open_unpolled(&dir("import-deadline"), created).await.expect("core");
+    let core = Core::open_unpolled(&dir("import-deadline"), created()).await.expect("core");
     let (core, admin) = signed_in(core, &config(UploadDeadline(Duration::ZERO))).await;
     let late = send_upload(&admin, None, trickle()).await;
     assert_eq!(
@@ -528,7 +528,7 @@ async fn an_upload_still_arriving_at_its_deadline_is_a_408_that_frees_the_import
     drop(admin);
     core.stop().await;
 
-    let core = Core::open_unpolled(&dir("import-in-time"), created).await.expect("core");
+    let core = Core::open_unpolled(&dir("import-in-time"), created()).await.expect("core");
     let (core, admin) = signed_in(core, &config(UploadDeadline::default())).await;
     assert_413(&send_upload(&admin, None, trickle()).await, limit.0);
     drop(admin);
@@ -568,7 +568,7 @@ async fn a_second_upload_while_a_dropped_requests_import_runs_is_a_409() {
 #[tokio::test]
 async fn stopping_the_core_waits_for_a_dropped_requests_import_then_stops_polling_and_closes_the_store() {
     let path = dir("import-dropped-stop");
-    let core = Core::open_unpolled(&path, created).await.expect("core");
+    let core = Core::open_unpolled(&path, created()).await.expect("core");
     let (core, admin) = signed_in(core, &Config::default()).await;
     legacy_profile(&admin).await;
     let seams = Arc::clone(&core.seams);

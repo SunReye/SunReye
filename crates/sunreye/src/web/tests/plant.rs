@@ -8,13 +8,11 @@ use crate::modbus::Transport;
 use crate::oracle::{as_floats, oracle};
 use crate::samples::{ClosedMinute, Sample, minute_of};
 use crate::store::{DeviceEdit, NewConnection, NewDevice};
+use crate::support::core_at;
 
-/// 2026-03-01T00:02:30Z: the instant every `plant.ndjson` case folds at.
+/// The instant every `plant.ndjson` case folds at.
+const AT: &str = "2026-03-01T00:02:30Z";
 const NOW: i64 = 1_772_323_350_000;
-
-fn fixed_clock() -> i64 {
-    NOW
-}
 
 fn text(value: &Value) -> &str {
     value.as_str().unwrap_or_else(|| panic!("a string: {value}"))
@@ -22,10 +20,7 @@ fn text(value: &Value) -> &str {
 
 /// A core at [`NOW`] cutting plant days in the cases' recorded `UTC`, not the host's zone.
 async fn recorded_core(name: &str) -> (Arc<Core>, Api) {
-    let (core, admin) =
-        signed_in(Core::open_at(&dir(name), fixed_clock).await.expect("core"), &Config::default()).await;
-    core.store.save_plant_time_zone("UTC").await.expect("zone");
-    (core, admin)
+    signed_in(core_at(&dir(name), AT, "UTC").await, &Config::default()).await
 }
 
 /// A [`recorded_core`] holding the case's roster, each device under the id its slug names.
@@ -103,7 +98,7 @@ fn backfill_readings(backfill: &Value) -> Vec<(i64, String, f64)> {
     readings
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn plant_recent_history_folds_every_history_members_own_as_recorded() {
     for case in oracle("plant.ndjson") {
         let name = text(&case["case"]).to_owned();
@@ -140,7 +135,7 @@ async fn assert_plant_minutes(admin: &Api, label: &str, query: &str, recorded: &
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn plant_minute_rollups_fold_every_history_members_own_as_recorded() {
     for case in oracle("plant-rollups.ndjson") {
         let name = text(&case["case"]).to_owned();
@@ -162,7 +157,7 @@ async fn plant_minute_rollups_fold_every_history_members_own_as_recorded() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn sources_name_the_plant_members_and_every_device_as_recorded() {
     for case in oracle("plant.ndjson") {
         let name = text(&case["case"]).to_owned();
@@ -173,7 +168,7 @@ async fn sources_name_the_plant_members_and_every_device_as_recorded() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn sources_carry_the_saved_plant_zone_and_the_default_while_none_is_saved() {
     let case = oracle("plant.ndjson").into_iter().find(|c| c["case"] == "retired-member").expect("case");
     let (core, admin) = with_roster("plant-sources-zone", &case).await;
@@ -185,7 +180,7 @@ async fn sources_carry_the_saved_plant_zone_and_the_default_while_none_is_saved(
     }
     finish(core, admin).await;
     let (core, admin) = signed_in(
-        Core::open_at(&dir("plant-sources-default-zone"), fixed_clock).await.expect("core"),
+        Core::open_at(&dir("plant-sources-default-zone"), crate::run::Clock::wall()).await.expect("core"),
         &Config::default(),
     )
     .await;
@@ -194,7 +189,7 @@ async fn sources_carry_the_saved_plant_zone_and_the_default_while_none_is_saved(
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn sources_answer_any_session_and_a_stranger_only_with_the_kiosk_view_on() {
     let case = oracle("plant.ndjson").into_iter().find(|c| c["case"] == "retired-member").expect("case");
     let (core, admin) = with_roster("plant-sources-gate", &case).await;
@@ -214,7 +209,7 @@ async fn sources_answer_any_session_and_a_stranger_only_with_the_kiosk_view_on()
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_stranger_reads_the_plant_under_the_kiosk_view_as_a_session_does_within_its_cap() {
     let case =
         oracle("plant-rollups.ndjson").into_iter().find(|c| c["case"] == "retired-member").expect("case");
@@ -242,7 +237,7 @@ async fn a_stranger_reads_the_plant_under_the_kiosk_view_as_a_session_does_withi
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_plant_rollup_holds_its_limit_across_members_for_a_session_and_a_kiosk_stranger() {
     let case =
         oracle("plant-rollups.ndjson").into_iter().find(|c| c["case"] == "overlapping-roles").expect("case");
@@ -264,7 +259,7 @@ async fn a_plant_rollup_holds_its_limit_across_members_for_a_session_and_a_kiosk
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_meter_first_in_the_roster_does_not_decide_how_the_plant_folds() {
     let device = |slug: &str, profile: &str, role: &str| {
         json!({

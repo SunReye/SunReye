@@ -9,8 +9,9 @@ use crate::modbus::Transport;
 use crate::rollup::Tier;
 use crate::samples::{ClosedMinute, Sample, minute_of};
 use crate::store::{NewConnection, NewDevice};
+use crate::support::core_at;
 
-/// 2026-03-01T00:02:30Z.
+const AT: &str = "2026-03-01T00:02:30Z";
 const NOW: i64 = 1_772_323_350_000;
 /// 2026-03-01T00:00:00Z. A reading on a minute boundary is its bucket's avg, max and min: nothing carried
 /// in from an earlier reading is held for any of the minute.
@@ -21,10 +22,6 @@ const HOUR: i64 = 3_600_000;
 type Point = (String, f64, f64, f64);
 /// Each instant of a minute with the values read at it.
 type Instants = BTreeMap<i64, Vec<(String, f64)>>;
-
-fn fixed_clock() -> i64 {
-    NOW
-}
 
 pub(super) async fn add_device(core: &Core, host: &str) -> i64 {
     let connection =
@@ -48,7 +45,7 @@ pub(super) async fn store(core: &Core, device: i64, readings: &[(i64, &str, f64)
 }
 
 pub(super) async fn clocked(name: &str) -> (Arc<Core>, Api) {
-    let core = Core::open_at(&dir(name), fixed_clock).await.expect("core");
+    let core = core_at(&dir(name), AT, "UTC").await;
     signed_in(core, &Config::default()).await
 }
 
@@ -143,7 +140,7 @@ async fn the_read_refuses_a_stranger_and_answers_a_plain_user() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_empty_store_and_an_unknown_metric_answer_an_empty_list() {
     let (core, admin) = clocked("rollup-empty").await;
     for bucket in ["minute", "hour", "day"] {
@@ -180,7 +177,7 @@ async fn served_as_recorded(core: &Core, admin: &Api, device: i64, case: &Value)
     open
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn every_oracle_case_is_served_as_its_recorded_tiers_with_the_last_hour_and_day_still_open() {
     let cases = oracle_cases();
     assert_eq!(cases.len(), 11);
@@ -194,7 +191,7 @@ async fn every_oracle_case_is_served_as_its_recorded_tiers_with_the_last_hour_an
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_omitted_bucket_reads_the_hour_tier() {
     let case = case("partial-window");
     let (core, admin) = clocked("rollup-default").await;
@@ -206,7 +203,7 @@ async fn an_omitted_bucket_reads_the_hour_tier() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_reading_stale_across_midnight_is_carried_into_the_open_hour_and_day() {
     let case = case("stale-across-midnight");
     let (core, admin) = clocked("rollup-stale").await;
@@ -222,7 +219,7 @@ async fn a_reading_stale_across_midnight_is_carried_into_the_open_hour_and_day()
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_open_bucket_starts_inside_the_window_or_is_left_out_and_comes_last_under_a_limit() {
     let case = case("stale-across-midnight");
     let (core, admin) = clocked("rollup-open-edge").await;
@@ -248,7 +245,7 @@ async fn an_open_bucket_starts_inside_the_window_or_is_left_out_and_comes_last_u
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_minute_split_and_repeated_across_a_restart_counts_each_reading_once_in_the_open_hour_and_day() {
     let (core, admin) = clocked("rollup-restart").await;
     let device = add_device(&core, "10.0.0.5").await;
@@ -277,7 +274,7 @@ async fn a_minute_split_and_repeated_across_a_restart_counts_each_reading_once_i
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_device_offline_longer_than_the_raw_window_keeps_its_last_hour_and_day() {
     let case = case("counter-restart");
     let (core, admin) = clocked("rollup-retained").await;
@@ -306,7 +303,7 @@ async fn a_device_offline_longer_than_the_raw_window_keeps_its_last_hour_and_day
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_open_day_is_rolled_up_from_its_stored_hours_and_the_open_hour() {
     let (core, admin) = clocked("rollup-open-day").await;
     let device = add_device(&core, "10.0.0.5").await;
@@ -319,7 +316,7 @@ async fn the_open_day_is_rolled_up_from_its_stored_hours_and_the_open_hour() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_hours_window_reaches_the_open_hour() {
     let (core, admin) = clocked("rollup-open-now").await;
     let device = add_device(&core, "10.0.0.5").await;
@@ -333,7 +330,7 @@ async fn an_hours_window_reaches_the_open_hour() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn zero_and_negative_readings_are_buckets_not_gaps() {
     let case = case("zero-and-negative");
     let (core, admin) = clocked("rollup-zero").await;
@@ -347,7 +344,7 @@ async fn zero_and_negative_readings_are_buckets_not_gaps() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_window_across_midnight_utc_opens_at_from_and_closes_before_to() {
     let case = case("midnight-crossing");
     let (core, admin) = clocked("rollup-midnight").await;
@@ -368,7 +365,7 @@ async fn a_window_across_midnight_utc_opens_at_from_and_closes_before_to() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_hours_window_reaches_back_from_now_and_defaults_to_a_week() {
     let readings = [
         (BASE - 169 * HOUR, "pv", 1.0),
@@ -396,7 +393,7 @@ async fn an_hours_window_reaches_back_from_now_and_defaults_to_a_week() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_half_specified_range_falls_back_to_hours() {
     let readings = [(BASE - 2 * HOUR, "pv", 1.0), (BASE - 30 * MINUTE, "pv", 2.0), (BASE + HOUR, "pv", 3.0)];
     let (core, admin) = clocked("rollup-half").await;
@@ -413,7 +410,7 @@ async fn a_half_specified_range_falls_back_to_hours() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_limit_keeps_the_oldest_buckets_in_ascending_order() {
     let case = case("partial-window");
     let (core, admin) = clocked("rollup-limit").await;
@@ -436,7 +433,7 @@ async fn a_limit_keeps_the_oldest_buckets_in_ascending_order() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_query_outside_what_the_route_takes_is_a_400_in_the_error_shape() {
     let (core, admin) = clocked("rollup-refused").await;
     for query in [
@@ -477,7 +474,7 @@ async fn a_query_outside_what_the_route_takes_is_a_400_in_the_error_shape() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn source_and_inverter_id_name_one_device_by_its_decimal_id() {
     let (core, admin) = clocked("rollup-source").await;
     let first = add_device(&core, "10.0.0.5").await;
@@ -506,7 +503,7 @@ async fn source_and_inverter_id_name_one_device_by_its_decimal_id() {
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_retired_device_is_read_by_its_source_and_the_default_is_the_first_in_service() {
     let (core, admin) = clocked("rollup-retired").await;
     let first = add_device(&core, "10.0.0.5").await;
@@ -531,7 +528,7 @@ async fn a_retired_device_is_read_by_its_source_and_the_default_is_the_first_in_
     finish(core, admin).await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_device_that_went_quiet_answers_an_empty_window_not_an_error() {
     let (core, admin) = clocked("rollup-offline").await;
     let device = add_device(&core, "10.0.0.5").await;

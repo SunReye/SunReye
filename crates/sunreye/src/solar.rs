@@ -7,12 +7,11 @@ use std::sync::Arc;
 
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
-use tokio::time::Instant;
 
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
 use crate::open_meteo::{self, Plane};
 use crate::plant_zone;
-use crate::refresh::PERIOD;
+use crate::refresh::within_period;
 use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, StoreError, first_in_service};
@@ -35,7 +34,6 @@ pub struct Solar {
 struct Cached {
     key: String,
     fetched_ms: i64,
-    fetched: Instant,
     data: Arc<Irradiance>,
     /// The last fetch for the key failed.
     stale: bool,
@@ -89,7 +87,9 @@ impl Solar {
     pub async fn refresh(&self, core: &Core) -> Result<bool, StoreError> {
         let config = weather::read(&core.store).await?;
         let Some(wanted) = wanted(&config) else { return Ok(true) };
-        if self.held().is_some_and(|c| c.key == wanted.key && !c.stale && c.fetched.elapsed() < PERIOD) {
+        let now_ms = core.now_ms();
+        if self.held().is_some_and(|c| c.key == wanted.key && !c.stale && within_period(c.fetched_ms, now_ms))
+        {
             return Ok(true);
         }
         let fetched = open_meteo::fetch(&self.url, &core.roots, wanted.location, &wanted.planes).await;
@@ -105,8 +105,7 @@ impl Solar {
             }
             return false;
         };
-        let fetched = Instant::now();
-        *cache = Some(Cached { key, fetched_ms: now_ms, fetched, data: Arc::new(data), stale: false });
+        *cache = Some(Cached { key, fetched_ms: now_ms, data: Arc::new(data), stale: false });
         true
     }
 

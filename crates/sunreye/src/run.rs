@@ -4,7 +4,7 @@
 use std::future::{Future, IntoFuture};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use rustls::pki_types::CertificateDer;
 use tokio::net::TcpListener;
@@ -32,7 +32,7 @@ use crate::store::{DeviceRow, Store, StoreError};
 
 mod clock;
 
-use clock::Clock;
+pub(crate) use clock::Clock;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -79,9 +79,7 @@ pub struct Core {
     /// The kiosk view as last stored, so a stranger's `/ws` closes when it turns off.
     kiosk: watch::Sender<bool>,
     stranger_reads: Arc<Semaphore>,
-    /// Unix milliseconds now; a field so a test can stand the clock where its readings are.
-    now: fn() -> i64,
-    /// Stamps every poll.
+    /// Stamps every poll and decides "now" for retention, the refreshes and the requests.
     clock: Clock,
     polling: Polling,
     retention: Mutex<Option<Running>>,
@@ -165,50 +163,42 @@ impl Core {
         roots: Vec<CertificateDer<'static>>,
     ) -> Result<Arc<Self>, RunError> {
         let urls = (open_meteo::URL.into(), open_meteo::ARCHIVE_URL.into());
-        Self::open_clocked(data_dir, roots, (now_ms, Clock::new(now_ms())), urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, roots, Clock::wall(), urls, learn::learn_logged).await
     }
 
-    /// [`Core::open`] with the clock standing where `now` says.
+    /// [`Core::open`] on `clock`.
     #[cfg(test)]
-    pub(crate) async fn open_at(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+    pub(crate) async fn open_at(data_dir: &Path, clock: Clock) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        Self::open_clocked(data_dir, Vec::new(), (now, Clock::new(now_ms())), urls, learn::learn_logged).await
-    }
-
-    /// [`Core::open`] with polls stamped by `clock`.
-    #[cfg(test)]
-    pub(crate) async fn open_on(data_dir: &Path, clock: Clock) -> Result<Arc<Self>, RunError> {
-        let urls = offline();
-        Self::open_clocked(data_dir, Vec::new(), (now_ms, clock), urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, Vec::new(), clock, urls, learn::learn_logged).await
     }
 
     /// [`Core::open_at`] on the wall clock, learning with `job`.
     #[cfg(test)]
     pub(crate) async fn open_learning(data_dir: &Path, job: learn::Job) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        Self::open_clocked(data_dir, Vec::new(), (now_ms, Clock::new(now_ms())), urls, job).await
+        Self::open_clocked(data_dir, Vec::new(), Clock::wall(), urls, job).await
     }
 
-    /// [`Core::open`] fetching the forecast and the archive from `urls`, trusting `roots`, the clock where `now`
-    /// says.
+    /// [`Core::open_at`] fetching the forecast and the archive from `urls`, trusting `roots`.
     #[cfg(test)]
     pub(crate) async fn open_forecasting(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
         urls: (String, String),
-        now: fn() -> i64,
+        clock: Clock,
     ) -> Result<Arc<Self>, RunError> {
-        Self::open_clocked(data_dir, roots, (now, Clock::new(now_ms())), urls, learn::learn_logged).await
+        Self::open_clocked(data_dir, roots, clock, urls, learn::learn_logged).await
     }
 
     async fn open_clocked(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        clocks: Clocks,
+        clock: Clock,
         (forecast_url, archive_url): (String, String),
         learn: learn::Job,
     ) -> Result<Arc<Self>, RunError> {
-        let core = Self::start(data_dir, roots, clocks, (forecast_url, archive_url)).await?;
+        let core = Self::start(data_dir, roots, clock, (forecast_url, archive_url)).await?;
         core.spawn_background(learn).await;
         *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
@@ -217,10 +207,9 @@ impl Core {
 
     /// [`Core::open_at`] that polls no device.
     #[cfg(test)]
-    pub(crate) async fn open_unpolled(data_dir: &Path, now: fn() -> i64) -> Result<Arc<Self>, RunError> {
+    pub(crate) async fn open_unpolled(data_dir: &Path, clock: Clock) -> Result<Arc<Self>, RunError> {
         let urls = offline();
-        let clocks = (now, Clock::new(now_ms()));
-        let core = Self::start(data_dir, Vec::new(), clocks, urls).await?;
+        let core = Self::start(data_dir, Vec::new(), clock, urls).await?;
         core.spawn_background(learn::learn_logged).await;
         core.seams.unpolled.store(true, std::sync::atomic::Ordering::SeqCst);
         core.apply().await?;
@@ -233,10 +222,9 @@ impl Core {
     pub(crate) async fn open_still(
         data_dir: &Path,
         url: String,
-        now: fn() -> i64,
+        clock: Clock,
     ) -> Result<Arc<Self>, RunError> {
-        let clocks = (now, Clock::new(now_ms()));
-        let core = Self::start(data_dir, Vec::new(), clocks, (url.clone(), url)).await?;
+        let core = Self::start(data_dir, Vec::new(), clock, (url.clone(), url)).await?;
         *core.exporting.lock().await = Some(spawn_export(&core));
         core.apply().await?;
         Ok(core)
@@ -245,7 +233,7 @@ impl Core {
     async fn start(
         data_dir: &Path,
         roots: Vec<CertificateDer<'static>>,
-        (now, clock): Clocks,
+        clock: Clock,
         (forecast_url, archive_url): (String, String),
     ) -> Result<Arc<Self>, RunError> {
         let store = Arc::new(Store::open(data_dir).await?);
@@ -259,7 +247,7 @@ impl Core {
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
         let bus = Arc::new(Bus { changed: store.changed().clone(), ..Bus::default() });
-        let retention = Mutex::new(Some(spawn_retention(&store, now)));
+        let retention = Mutex::new(Some(spawn_retention(&store, clock)));
         #[cfg(test)]
         let seams = Arc::<Seams>::default();
         let polling = Polling {
@@ -281,7 +269,6 @@ impl Core {
             archive_url,
             kiosk,
             stranger_reads: Arc::new(Semaphore::new(STRANGER_READS)),
-            now,
             clock,
             polling,
             retention,
@@ -326,7 +313,7 @@ impl Core {
     }
 
     pub fn now_ms(&self) -> i64 {
-        (self.now)()
+        self.clock.now_ms()
     }
 
     /// The compiled-in profile `id`, else the one a profile source supplied.
@@ -470,9 +457,6 @@ async fn serve(
     }
 }
 
-/// The core's `now` and the clock its polls are stamped with.
-type Clocks = (fn() -> i64, Clock);
-
 /// The running device tasks. [`Polling::restart`] replaces them with the ones the store describes.
 #[derive(Debug, Default)]
 pub struct Polling {
@@ -558,10 +542,10 @@ async fn spawn_devices(
     Ok(Running { stop, tasks })
 }
 
-fn spawn_retention(store: &Arc<Store>, now: fn() -> i64) -> Running {
+fn spawn_retention(store: &Arc<Store>, clock: Clock) -> Running {
     let (stop, stopped) = watch::channel(false);
     let mut tasks = JoinSet::new();
-    tasks.spawn(hourly(Arc::clone(store), now, stopped));
+    tasks.spawn(hourly(Arc::clone(store), clock, stopped));
     Running { stop, tasks }
 }
 
@@ -583,7 +567,7 @@ fn spawn_refreshing(core: &Arc<Core>) -> Running {
     let conditions = move || {
         let core = weak.upgrade()?;
         Some(async move {
-            let refreshed = core.conditions.refresh(&core.store, &core.roots, || core.now_ms()).await;
+            let refreshed = core.conditions.refresh(&core.store, &core.roots, core.now_ms()).await;
             refreshed.unwrap_or_else(|error| {
                 tracing::warn!(%error, "weather not refreshed");
                 false
@@ -760,15 +744,9 @@ impl DeviceTask {
     }
 }
 
-pub(crate) fn now_ms() -> i64 {
-    let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    i64::try_from(since_epoch.as_millis()).unwrap_or(i64::MAX)
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
     use sunreye_sim::profile_case;
@@ -786,7 +764,7 @@ mod tests {
     use crate::test_net::closed_port;
     use crate::web::Config;
 
-    use crate::support::Sim;
+    use crate::support::{Sim, core_at, hold_still};
 
     fn dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("sunreye-run-{name}-{}", std::process::id()));
@@ -895,7 +873,21 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(20);
         while polled(core, device).await < count {
             assert!(Instant::now() < deadline, "device {device} not polled {count} times");
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Raw readings of `device` in the store.
+    async fn raw(core: &Core, device: i64) -> Vec<i64> {
+        core.store.readings(device, 0, i64::MAX).await.expect("readings").iter().map(|s| s.at_ms).collect()
+    }
+
+    /// Waits until `device`'s raw readings are `want`, failing after 20 s.
+    async fn until_raw(core: &Core, device: i64, want: &[i64]) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while raw(core, device).await != want {
+            assert!(Instant::now() < deadline, "device {device} raw readings never {want:?}");
+            tokio::task::yield_now().await;
         }
     }
 
@@ -936,7 +928,7 @@ mod tests {
         let dir = dir("two-devices");
         let first = seed(&dir, low_sim.addr.port(), "deye-sg05lp3", "50").await;
         let second = seed_another(&dir, high_sim.addr.port(), "deye-sg01hp3").await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
         until_polled(&core, first, 2).await;
         until_polled(&core, second, 2).await;
 
@@ -1021,7 +1013,7 @@ mod tests {
         let dir = dir("retired");
         let kept = seed(&dir, kept_sim.addr.port(), "deye-sg05lp3", "50").await;
         let retired = seed_another(&dir, retired_sim.addr.port(), "deye-sg05lp3").await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
         until_polled(&core, retired, 2).await;
 
         let retire =
@@ -1051,7 +1043,7 @@ mod tests {
         let sim = Sim::start(case.registers.clone(), &[1]).await;
         let dir = dir("bus");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "50").await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
         let (bus, seams) = (Arc::clone(&core.bus), Arc::clone(&core.seams));
         let (mut metrics, mut changes) = (bus.metrics.subscribe(), bus.changed.subscribe());
 
@@ -1081,7 +1073,7 @@ mod tests {
         let on = serde_json::json!({"enabled": true, "brokerUrl": format!("mqtt://127.0.0.1:{broker}")});
         store.set_setting(mqtt::config::KEY, &on.to_string()).await.expect("mqtt");
         store.close().await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
 
         core.switch_kiosk(true).await.expect("kiosk");
         let seams = Arc::clone(&core.seams);
@@ -1097,7 +1089,7 @@ mod tests {
         let sim = Sim::start(case.registers, &[1]).await;
         let dir = dir("restart-held");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "20").await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
         wait_for_requests(&sim, 20).await;
         let held = core.unstored.held(device);
         assert!(!held.is_empty(), "the poll loop holds what it has not stored");
@@ -1160,7 +1152,7 @@ mod tests {
             client: None,
             // Only a refusal ends the dial: a hang never reaches this timeout within the deadline below.
             timeout: Duration::from_hours(1),
-            clock: Clock::new(now_ms()),
+            clock: Clock::wall(),
         };
         let polled = tokio::time::timeout(Duration::from_secs(20), task.poll_once()).await;
         match polled.expect("the dial hung") {
@@ -1180,7 +1172,7 @@ mod tests {
         let (_closed, port) = closed_port();
         let dir = dir("held-while-writing");
         let device = seed(&dir, port, "deye-sg05lp3", "20").await;
-        let core = Core::open_at(&dir, now_ms).await.expect("core");
+        let core = Core::open_at(&dir, Clock::wall()).await.expect("core");
         // Now, so the retention pass started by `open` keeps it.
         let at_ms = core.now_ms();
         core.unstored.push(device, Sample { at_ms, values: vec![("pv".into(), 1.0)] });
@@ -1216,7 +1208,7 @@ mod tests {
         let dir = dir("retention");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
         let store = Store::open(&dir).await.expect("store");
-        let now = now_ms();
+        let now = Clock::wall().now_ms();
         for at_ms in [now - 91 * 24 * 60 * MINUTE_MS, now - 89 * 24 * 60 * MINUTE_MS] {
             let sample = Sample { at_ms, values: vec![("power".into(), 1.0)] };
             let minute = ClosedMinute { minute: minute_of(at_ms), samples: vec![sample] };
@@ -1235,47 +1227,6 @@ mod tests {
         let kept = Timestamp::from_millisecond(minute_of(now - 89 * 24 * 60 * MINUTE_MS) * MINUTE_MS);
         assert_eq!(minutes.iter().map(|b| b.start).collect::<Vec<_>>(), [kept.expect("instant")]);
         assert_eq!(store.buckets(Tier::Hour, device, "power").await.expect("buckets").len(), 2);
-        core.stop().await;
-        drop(std::fs::remove_dir_all(&dir));
-    }
-
-    /// The retention passes `counted_now` has been read for; a static because the core clock is a
-    /// `fn`, so one test alone may read it.
-    static PASSES: AtomicUsize = AtomicUsize::new(0);
-
-    fn counted_now() -> i64 {
-        PASSES.fetch_add(1, Ordering::SeqCst);
-        now_ms()
-    }
-
-    #[tokio::test]
-    async fn a_settings_change_runs_no_retention_pass() {
-        let dir = dir("apply-retention");
-        let device = seed(&dir, 1, "no-such-profile", "20").await;
-        let stale_ms = now_ms() - 91 * 24 * 60 * MINUTE_MS;
-        let store = Store::open(&dir).await.expect("store");
-        append_at(&store, device, stale_ms).await;
-        store.close().await;
-        let core = Core::open_at(&dir, counted_now).await.expect("open");
-        let deadline = Instant::now() + Duration::from_secs(20);
-        // The pass drops raw readings, then the minute tier; the coarser tiers keep this row.
-        while !core.store.buckets(Tier::Minute, device, "power").await.expect("buckets").is_empty() {
-            assert!(Instant::now() < deadline, "the first pass did not run");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "the start runs one pass");
-        append_at(&core.store, device, stale_ms).await;
-
-        core.apply().await.expect("apply");
-        // Paused, the clock runs every timer due within the minute, a respawned pass's immediate
-        // first tick included, and stops short of the start's next pass an hour on.
-        tokio::time::pause();
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        tokio::time::resume();
-
-        assert_eq!(PASSES.load(Ordering::SeqCst), 1, "a restart starts no pass");
-        let minutes = core.store.buckets(Tier::Minute, device, "power").await.expect("buckets");
-        assert_eq!(minutes.len(), 1, "the next pass is an hour after start");
         core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -1307,7 +1258,8 @@ mod tests {
         core.await.expect("join").expect("run");
     }
 
-    /// 2026-03-01T00:02:30Z, in the past of the real clock.
+    /// In the past of the real clock.
+    const PAST: &str = "2026-03-01T00:02:30Z";
     const PAST_MS: i64 = 1_772_323_350_000;
     const DAY_MS: i64 = 24 * 60 * MINUTE_MS;
 
@@ -1317,8 +1269,9 @@ mod tests {
         store.append_minute(device, &minute).await.expect("append");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn the_first_retention_pass_reads_the_core_clock_not_real_time() {
+        hold_still();
         let dir = dir("retention-clock");
         let device = seed(&dir, 1, "no-such-profile", "20").await;
         let store = Store::open(&dir).await.expect("store");
@@ -1326,30 +1279,49 @@ mod tests {
         append_at(&store, device, PAST_MS - 6 * DAY_MS).await;
         store.close().await;
 
-        let core = Core::open_at(&dir, || PAST_MS).await.expect("open");
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while core.store.readings(device, 0, i64::MAX).await.expect("readings").len() > 1 {
-            assert!(Instant::now() < deadline, "the first pass did not run");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-
-        let kept = core.store.readings(device, 0, i64::MAX).await.expect("readings");
-        assert_eq!(kept.iter().map(|s| s.at_ms).collect::<Vec<_>>(), [PAST_MS - 6 * DAY_MS]);
+        let core = core_at(&dir, PAST, "UTC").await;
+        until_raw(&core, device, &[PAST_MS - 6 * DAY_MS]).await;
         core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
+    async fn a_settings_change_runs_no_retention_pass_and_the_next_is_an_hour_after_start() {
+        hold_still();
+        let dir = dir("apply-retention");
+        let device = seed(&dir, 1, "no-such-profile", "20").await;
+        let stale_ms = PAST_MS - 8 * DAY_MS;
+        let store = Store::open(&dir).await.expect("store");
+        append_at(&store, device, stale_ms).await;
+        store.close().await;
+        let core = core_at(&dir, PAST, "UTC").await;
+        until_raw(&core, device, &[]).await;
+        append_at(&core.store, device, stale_ms).await;
+
+        core.apply().await.expect("apply");
+        tokio::time::advance(Duration::from_hours(1) - Duration::from_millis(1)).await;
+        // Queued behind any pass the restart started: the store's one connection serves in turn.
+        for _ in 0..20 {
+            assert_eq!(raw(&core, device).await, [stale_ms], "a restart starts no pass");
+        }
+        tokio::time::advance(Duration::from_millis(1)).await;
+        until_raw(&core, device, &[]).await;
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn the_core_stamps_its_polls_with_its_clock_not_the_wall_clock() {
+        hold_still();
         let sim = Sim::start(oracle_case("deye-sg05lp3").registers, &[1]).await;
         let dir = dir("core-poll-clock");
         let device = seed(&dir, sim.addr.port(), "deye-sg05lp3", "3600000").await;
 
-        let core = Core::open_on(&dir, Clock::new(PAST_MS)).await.expect("open");
+        let core = core_at(&dir, PAST, "UTC").await;
         until_polled(&core, device, 1).await;
 
         let at_ms = core.unstored.held(device)[0].at_ms;
-        assert!((PAST_MS..PAST_MS + 20_000).contains(&at_ms), "stamped {at_ms}");
+        assert!((PAST_MS..PAST_MS + DAY_MS).contains(&at_ms), "stamped {at_ms}");
         core.stop().await;
         drop(std::fs::remove_dir_all(&dir));
     }
@@ -1375,7 +1347,7 @@ mod tests {
             device,
             client: None,
             timeout: Duration::from_secs(3),
-            clock: Clock::new(PAST_MS),
+            clock: Clock::at(PAST_MS),
         };
 
         task.tick().await;
