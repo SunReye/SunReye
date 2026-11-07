@@ -105,64 +105,101 @@ async fn ended(socket: &mut Socket, why: &str) {
     assert!(matches!(next, None | Some(Err(_) | Ok(Message::Close(_)))), "{why}: still served: {next:?}");
 }
 
-#[tokio::test]
-async fn a_session_socket_closes_at_the_first_ping_tick_after_logout_and_a_live_session_is_pinged() {
-    let (core, admin) = open(&dir("ws-logout-tick")).await;
-    let addr = serve(&core, &Config::default()).await;
-    let user = plain_user(&core, &admin).await;
-    let mut leaving = connect(addr, &user).await;
-    subscribe(&mut leaving, r#"["events","metrics"]"#).await;
-    let mut staying = connect(addr, &admin).await;
-    subscribe(&mut staying, r#"["events"]"#).await;
-    assert_eq!(delete(&user, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
-
-    // Under one ping interval since the upgrade on the real clock: exactly one tick fires in the advance.
-    tokio::time::pause();
-    tokio::time::advance(LiveLimits::default().ping).await;
-    tokio::time::resume();
-    ended(&mut leaving, "logout").await;
-    let ping = tokio::time::timeout(Duration::from_secs(2), staying.next()).await.expect("a ping within 2 s");
-    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "the live session is pinged: {ping:?}");
-    connections(&core, 1).await;
-    drop((user, admin));
-    core.stop().await;
-}
-
-#[tokio::test]
-async fn a_sub_after_logout_expiry_or_account_removal_closes_the_socket_unanswered() {
+/// Expires the session behind `api`'s cookie in the store.
+async fn expire(core: &Core, api: &Api) {
     use tower_sessions::SessionStore;
     use tower_sessions::cookie::time::{Duration as Span, OffsetDateTime};
     use tower_sessions::session::Id;
 
-    let (core, admin) = open(&dir("ws-session-end")).await;
-    let addr = serve(&core, &Config::default()).await;
-    let (_, out) = signed_in_user(&core, &admin, "out@example.org").await;
-    let (_, expired) = signed_in_user(&core, &admin, "expired@example.org").await;
-    let (removed_id, removed) = signed_in_user(&core, &admin, "removed@example.org").await;
-    let mut sockets = Vec::new();
-    for api in [&out, &expired, &removed] {
-        let mut socket = connect(addr, api).await;
-        subscribe(&mut socket, r#"["metrics"]"#).await;
-        sockets.push(socket);
-    }
-
-    assert_eq!(delete(&out, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
-    let cookie = expired.cookie.clone().expect("cookie");
+    let cookie = api.cookie.clone().expect("cookie");
     let id: Id = cookie.split_once('=').expect("name=value").1.parse().expect("session id");
     let sessions = core.store.sessions();
     let mut record = sessions.load(&id).await.expect("load").expect("a stored session");
     record.expiry_date = OffsetDateTime::now_utc() - Span::seconds(1);
     sessions.save(&record).await.expect("save");
-    let removal = delete(&admin, &format!("/api/admin/users/{removed_id}")).await;
-    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+}
 
-    for (socket, why) in sockets.iter_mut().zip(["logout", "expiry", "account removal"]) {
-        send_text(socket, r#"{"t":"sub","topics":["events"]}"#).await;
+/// A socket on `metrics` for each of three signed-in users: logged out, expired and removed once the sockets are open.
+async fn ended_sessions(core: &Core, admin: &Api, addr: std::net::SocketAddr) -> Vec<(Socket, &'static str)> {
+    let (_, out) = signed_in_user(core, admin, "out@example.org").await;
+    let (_, expired) = signed_in_user(core, admin, "expired@example.org").await;
+    let (removed_id, removed) = signed_in_user(core, admin, "removed@example.org").await;
+    let mut sockets = Vec::new();
+    for (api, why) in [(&out, "logout"), (&expired, "expiry"), (&removed, "account removal")] {
+        let mut socket = connect(addr, api).await;
+        subscribe(&mut socket, r#"["metrics"]"#).await;
+        sockets.push((socket, why));
+    }
+    end_sessions(core, admin, (&out, &expired, removed_id)).await;
+    sockets
+}
+
+/// Logs `out` out, expires `expired` and removes account `removed`.
+async fn end_sessions(core: &Core, admin: &Api, (out, expired, removed): (&Api, &Api, i64)) {
+    assert_eq!(delete(out, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    expire(core, expired).await;
+    let removal = delete(admin, &format!("/api/admin/users/{removed}")).await;
+    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn a_socket_closes_at_the_first_ping_tick_after_logout_expiry_or_account_removal_and_a_live_session_is_pinged()
+ {
+    let (core, admin) = open(&dir("ws-session-end-tick")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut staying = connect(addr, &admin).await;
+    subscribe(&mut staying, r#"["events"]"#).await;
+    let mut leaving = ended_sessions(&core, &admin, addr).await;
+
+    // Under one ping interval since the upgrade on the real clock: exactly one tick fires in the advance.
+    tokio::time::pause();
+    tokio::time::advance(LiveLimits::default().ping).await;
+    tokio::time::resume();
+    for (socket, why) in &mut leaving {
         ended(socket, why).await;
+    }
+    let ping = tokio::time::timeout(Duration::from_secs(2), staying.next()).await.expect("a ping within 2 s");
+    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "the live session is pinged: {ping:?}");
+    connections(&core, 1).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_sub_after_logout_expiry_or_account_removal_closes_the_socket_unanswered() {
+    let (core, admin) = open(&dir("ws-session-end")).await;
+    let addr = serve(&core, &Config::default()).await;
+    for (mut socket, why) in ended_sessions(&core, &admin, addr).await {
+        send_text(&mut socket, r#"{"t":"sub","topics":["events"]}"#).await;
+        ended(&mut socket, why).await;
     }
     let mut live = connect(addr, &admin).await;
     assert_eq!(subscribe(&mut live, r#"["events"]"#).await["data"]["subscribed"], json!(["events"]));
-    drop((out, expired, removed, admin));
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_logged_out_session_the_store_cannot_confirm_is_closed_on_sub_and_on_the_tick() {
+    let (core, admin) = open(&dir("ws-store-error")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let user = plain_user(&core, &admin).await;
+    let mut subbing = connect(addr, &user).await;
+    subscribe(&mut subbing, r#"["metrics"]"#).await;
+    let mut ticking = connect(addr, &user).await;
+    subscribe(&mut ticking, r#"["metrics"]"#).await;
+    assert_eq!(delete(&user, "/api/auth/session").await.status, StatusCode::NO_CONTENT);
+    let mut held = core.store.hold().await;
+    sqlx::query("ALTER TABLE tower_sessions RENAME TO unreadable").execute(&mut *held).await.expect("rename");
+    drop(held);
+
+    send_text(&mut subbing, r#"{"t":"sub","topics":["events"]}"#).await;
+    ended(&mut subbing, "sub on a store error").await;
+    tokio::time::pause();
+    tokio::time::advance(LiveLimits::default().ping).await;
+    tokio::time::resume();
+    ended(&mut ticking, "tick on a store error").await;
+    drop((user, admin));
     core.stop().await;
 }
 
@@ -829,117 +866,83 @@ async fn a_stranger_is_denied_events_by_name_and_hears_no_change_while_a_session
     core.stop().await;
 }
 
-/// A stranger on the kiosk view, subscribed to `metrics` and `plant`.
-async fn kiosk_stranger(core: &Arc<Core>, admin: &Api) -> Socket {
-    let addr = serve(core, &Config::default()).await;
-    core.live.roster(&[7], crate::plant::Aggregates::default());
-    put(admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
-    let mut socket = connect(addr, &admin.anonymous()).await;
-    subscribe(&mut socket, r#"["metrics","plant"]"#).await;
-    socket
-}
-
-/// A full ring of readings and of changes, every one ready for the connection at once.
-fn flood(core: &Core) {
-    for at_ms in 0..16 {
-        core.live.publish(7, &reading(at_ms, 1.0));
-        core.bus.changed.publish(crate::events::Changed::Settings);
-    }
-}
-
 #[tokio::test]
-async fn a_flood_on_metrics_and_events_cannot_hold_back_the_kiosk_view_closing() {
-    let (core, admin) = open(&dir("ws-flood-kiosk")).await;
-    let mut socket = kiosk_stranger(&core, &admin).await;
+async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
+    let (core, admin) = open(&dir("ws-first-kiosk")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut socket = connect(addr, &admin.anonymous()).await;
+    subscribe(&mut socket, r#"["metrics","plant","evcc"]"#).await;
+    // One thread: the kiosk switch and the frames are all ready before the connection is polled again.
     core.switch_kiosk(false).await.expect("kiosk off");
-    flood(&core);
+    core.live.publish(7, &reading(0, 1.0));
+    core.bus.evcc.publish(evcc_state(1.0));
     ended(&mut socket, "kiosk off").await;
     drop(admin);
     core.stop().await;
 }
 
-/// Publishes on `metrics` and on `events`, a thread each, until dropped: faster than a connection takes
-/// them, so its bus is ready at every poll.
-struct Flood {
-    stop: Arc<std::sync::atomic::AtomicBool>,
-    threads: Vec<std::thread::JoinHandle<()>>,
+/// The next message of any kind; fails after two seconds of silence.
+async fn next_message(socket: &mut Socket) -> Option<Result<Message, tungstenite::Error>> {
+    tokio::time::timeout(Duration::from_secs(2), socket.next()).await.expect("an answer within 2 s")
 }
 
-impl Flood {
-    fn start(core: &Arc<Core>) -> Self {
-        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let publishers: [fn(&Core); 2] = [
-            |core| core.live.publish(7, &reading(0, 1.0)),
-            |core| core.bus.changed.publish(crate::events::Changed::Settings),
-        ];
-        let threads = publishers
-            .into_iter()
-            .map(|publish| {
-                let (core, stopped) = (Arc::clone(core), Arc::clone(&stop));
-                std::thread::spawn(move || Self::until(&stopped, || publish(&core)))
-            })
-            .collect();
-        Self { stop, threads }
-    }
-
-    fn until(stopped: &std::sync::atomic::AtomicBool, publish: impl Fn()) {
-        while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
-            publish();
-        }
-    }
+/// The message after the first ping of a session socket on `topics`. That tick's session check waits on a
+/// held store while time moves `by` and `publish` readies a frame, so the connection next polls with a control
+/// step and a feed frame both ready.
+async fn after_a_stalled_tick(
+    name: &str,
+    live: LiveLimits,
+    topics: &str,
+    by: Duration,
+    publish: impl FnOnce(&Core),
+) -> Option<Result<Message, tungstenite::Error>> {
+    let (core, admin, mut socket) = session_on(name, live, topics).await;
+    stall_tick(&core, live.ping, by, publish).await;
+    let ping = next_message(&mut socket).await;
+    assert!(matches!(ping, Some(Ok(Message::Ping(_)))), "{ping:?}");
+    let after = next_message(&mut socket).await;
+    drop(admin);
+    core.stop().await;
+    after
 }
 
-impl Drop for Flood {
-    fn drop(&mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        self.threads.drain(..).for_each(|thread| drop(thread.join()));
-    }
-}
-
-/// The next message; the 5 s bound only stops a starved connection from hanging the test.
-async fn next_through_flood(socket: &mut Socket) -> Option<Result<Message, tungstenite::Error>> {
-    tokio::time::timeout(Duration::from_secs(5), socket.next()).await.expect("not starved by the flood")
-}
-
-/// A session holding no topic: the flood keeps its bus ready and costs it no send, so no send can stall into
-/// the idle deadline and close it some other way.
-async fn flooded_session(core: &Arc<Core>, admin: &Api, live: LiveLimits) -> Socket {
-    let addr = serve(core, &Config { live, ..Config::default() }).await;
+/// A core with device 7 on its roster and the admin's socket on `topics`.
+async fn session_on(name: &str, live: LiveLimits, topics: &str) -> (Arc<Core>, Api, Socket) {
+    let (core, admin) = open(&dir(name)).await;
+    let addr = serve(&core, &Config { live, ..Config::default() }).await;
     core.live.roster(&[7], crate::plant::Aggregates::default());
-    let mut socket = connect(addr, admin).await;
-    subscribe(&mut socket, "[]").await;
-    socket
+    let mut socket = connect(addr, &admin).await;
+    subscribe(&mut socket, topics).await;
+    (core, admin, socket)
 }
 
-// Multi-threaded: the flood publishes while the connection runs, as a busy plant does in production.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_flood_on_metrics_and_events_cannot_hold_back_the_ping() {
-    let (core, admin) = open(&dir("ws-flood-ping")).await;
-    let live = LiveLimits {
-        ping: Duration::from_millis(100),
-        idle: Duration::from_secs(3600),
-        ..LiveLimits::default()
-    };
-    let mut socket = flooded_session(&core, &admin, live).await;
-    let flooding = Flood::start(&core);
-    let next = next_through_flood(&mut socket).await;
-    assert!(matches!(next, Some(Ok(Message::Ping(_)))), "{next:?}");
-    drop((flooding, admin));
-    core.stop().await;
+/// Holds the store across the next ping tick, then moves time `by` and runs `publish` before letting go.
+async fn stall_tick(core: &Core, ping: Duration, by: Duration, publish: impl FnOnce(&Core)) {
+    let held = core.store.hold().await;
+    tokio::time::pause();
+    // Auto-advance fires the connection's tick, due first, before this sleep ends: the tick waits on the store.
+    tokio::time::sleep(ping + Duration::from_secs(1)).await;
+    publish(core);
+    tokio::time::advance(by).await;
+    tokio::time::resume();
+    drop(held);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_flood_on_metrics_and_events_cannot_hold_back_the_idle_close() {
-    let (core, admin) = open(&dir("ws-flood-idle")).await;
-    let live = LiveLimits {
-        ping: Duration::from_secs(3600),
-        idle: Duration::from_millis(300),
-        ..LiveLimits::default()
-    };
-    let mut socket = flooded_session(&core, &admin, live).await;
-    let flooding = Flood::start(&core);
-    let next = next_through_flood(&mut socket).await;
-    assert!(matches!(next, None | Some(Err(_) | Ok(Message::Close(_)))), "{next:?}");
-    drop((flooding, admin));
-    core.stop().await;
+#[tokio::test]
+async fn a_ready_feed_cannot_hold_back_the_ping() {
+    let live = LiveLimits { ping: Duration::from_secs(5), ..LiveLimits::default() };
+    let publish = |core: &Core| core.live.publish(7, &reading(0, 1.0));
+    let after = after_a_stalled_tick("ws-first-ping", live, r#"["metrics"]"#, live.ping, publish).await;
+    assert!(matches!(after, Some(Ok(Message::Ping(_)))), "{after:?}");
+}
+
+#[tokio::test]
+async fn a_ready_feed_cannot_hold_back_the_idle_close() {
+    let live =
+        LiveLimits { ping: Duration::from_secs(5), idle: Duration::from_secs(20), ..LiveLimits::default() };
+    let publish = |core: &Core| core.bus.evcc.publish(evcc_state(1.0));
+    let after = after_a_stalled_tick("ws-first-idle", live, r#"["evcc"]"#, live.idle, publish).await;
+    assert!(matches!(after, None | Some(Err(_) | Ok(Message::Close(_)))), "{after:?}");
 }

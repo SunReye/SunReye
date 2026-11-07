@@ -21,7 +21,7 @@ use crate::live::{
     resolve_subscribe, resolve_unsubscribe,
 };
 use crate::run::Core;
-use crate::store::{Store, StoreError};
+use crate::store::Store;
 
 /// What keeps a dead or stalled connection from holding a task and a socket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,22 +100,23 @@ impl Holder {
         }
     }
 
-    /// The session is gone: logged out, expired or its account removed. A store that cannot answer ends nothing;
-    /// the next tick asks again.
+    /// The session is gone: logged out, expired or its account removed.
     async fn ended(&self) -> bool {
         let Self::Session { store, id, account } = self else { return false };
-        let live = async {
-            let session = store.sessions().load(id).await.map_err(|e| StoreError::Sessions(e.to_string()))?;
-            Ok::<_, StoreError>(session.is_some() && store.account(*account).await?.is_some())
-        };
-        match live.await {
-            Ok(live) => !live,
-            Err(error) => {
-                tracing::warn!(%error, "live session check failed");
-                false
-            }
-        }
+        // Fail closed: a session the store cannot confirm is not served.
+        !live(store, id, *account).await.unwrap_or_else(|error| {
+            tracing::warn!(%error, "live session check failed; closing");
+            false
+        })
     }
+}
+
+/// Session `id` is stored and unexpired, and its account still exists.
+async fn live(store: &Store, id: &Id, account: i64) -> Result<bool, String> {
+    if store.sessions().load(id).await.map_err(|e| e.to_string())?.is_none() {
+        return Ok(false);
+    }
+    store.account(account).await.map(|found| found.is_some()).map_err(|e| e.to_string())
 }
 
 /// The socket, the instant it is closed unless the client speaks first, and what admitted it.
