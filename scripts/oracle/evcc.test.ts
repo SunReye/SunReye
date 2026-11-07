@@ -127,6 +127,39 @@ describe("the evcc oracle fixture", () => {
     });
   });
 
+  test("a padded <root>/status still reads online", () => {
+    expect(finalState("fold/status-padded").reachable).toBe(true);
+  });
+
+  test("with subtractFromHome a house-load step reaches the charge-power estimate", () => {
+    const steps = byName("fold/subtract-estimates-3-phase").output.steps;
+    expect(steps.at(-2).state.loadpoints[0]).toMatchObject({
+      chargePowerLive: 4140,
+      chargePowerSource: "measured",
+    });
+    expect(steps.at(-1).state.loadpoints[0]).toMatchObject({
+      chargePower: 4140,
+      chargePowerLive: 5520,
+      chargePowerSource: "estimated",
+    });
+  });
+
+  test("effectiveMaxCurrent and phasesActive bound the estimate", () => {
+    expect(loadpoint("fold/subtract-clamps-at-max-current", 1)).toMatchObject({
+      chargePower: 1380,
+      chargePowerLive: 1518,
+      chargePowerSource: "estimated",
+    });
+  });
+
+  test("in now mode an upward house-load step is not the charger", () => {
+    expect(loadpoint("fold/subtract-now-mode-upward-absorbed", 1)).toMatchObject({
+      mode: "now",
+      chargePowerLive: 4140,
+      chargePowerSource: "measured",
+    });
+  });
+
   test("the estimator anchors, attributes a 2 A three-phase step and re-anchors", () => {
     const steps = byName("estimator/residual-then-re-anchor").output;
     expect(steps[0].live["1"]).toEqual({ watts: 4140, source: "measured" });

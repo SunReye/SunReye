@@ -226,6 +226,8 @@ const CONFIG: EvccConfig = {
   subtractFromHome: false,
 };
 
+const SUBTRACT: EvccConfig = { ...CONFIG, subtractFromHome: true };
+
 const CONNECT: IngestStep = { do: "connect" };
 const ONLINE = msg("evcc/status", "online");
 
@@ -255,6 +257,22 @@ const RETAINED_LP1: IngestStep[] = [
   lp(1, "phasesActive", "3"),
   lp(1, "chargeCurrents/l1", "6"),
 ];
+
+/** `subtractFromHome` on, one charging loadpoint, a baseline sample, then one step: one estimated step per run, the ingest's estimator reads the wall clock. */
+const subtractCase = (name: string, setup: IngestStep[], baseline: number, step: number) => ({
+  case: name,
+  input: ingestInput(
+    [
+      CONNECT,
+      ...RETAINED_LP1,
+      ...setup,
+      lp(1, "charging", "true"),
+      { do: "load", watts: baseline },
+      { do: "load", watts: step },
+    ],
+    { config: SUBTRACT },
+  ),
+});
 
 const FOLD_CASES: Array<{ case: string; input: IngestInput }> = [
   {
@@ -357,6 +375,23 @@ const FOLD_CASES: Array<{ case: string; input: IngestInput }> = [
     ]),
   },
   {
+    case: "fold/status-padded",
+    input: ingestInput([CONNECT, msg("evcc/status", " online\n"), lp(1, "chargePower", "1000")]),
+  },
+  subtractCase("fold/subtract-estimates-3-phase", [lp(1, "chargePower", "4140")], 4640, 6020),
+  subtractCase(
+    "fold/subtract-clamps-at-max-current",
+    [lp(1, "phasesActive", "1"), lp(1, "effectiveMaxCurrent", "6"), lp(1, "chargePower", "1380")],
+    1880,
+    2380,
+  ),
+  subtractCase(
+    "fold/subtract-now-mode-upward-absorbed",
+    [lp(1, "mode", "now"), lp(1, "chargePower", "4140")],
+    4640,
+    6020,
+  ),
+  {
     case: "fold/disabled",
     input: ingestInput([CONNECT, ...RETAINED_LP1], { config: { ...CONFIG, enabled: false } }),
   },
@@ -383,30 +418,24 @@ type EstimatorStep =
 
 type Estimator = ReturnType<typeof createEvPowerEstimator>;
 
-const ESTIMATOR_HANDLERS: {
-  [K in EstimatorStep["do"]]: (
-    e: Estimator,
-    step: Extract<EstimatorStep, { do: K }>,
-  ) => boolean | null;
-} = {
-  anchor: (e, step) => e.anchorPower(step.index, step.watts),
-  params: (e, step) => {
-    e.updateParams(step.index, step.params);
-    return null;
-  },
-  load: (e, step) => e.onLoadSample(step.watts),
-};
+function applyEstimatorStep(e: Estimator, step: EstimatorStep): boolean | null {
+  switch (step.do) {
+    case "anchor":
+      return e.anchorPower(step.index, step.watts);
+    case "params":
+      e.updateParams(step.index, step.params);
+      return null;
+    case "load":
+      return e.onLoadSample(step.watts);
+  }
+}
 
 function runEstimator(steps: readonly EstimatorStep[], indices: readonly number[]) {
   let now = 0;
   const estimator = createEvPowerEstimator(() => now);
   return steps.map((step) => {
     now = step.at;
-    const handler = ESTIMATOR_HANDLERS[step.do] as (
-      e: Estimator,
-      s: EstimatorStep,
-    ) => boolean | null;
-    const changed = handler(estimator, step);
+    const changed = applyEstimatorStep(estimator, step);
     return { changed, live: Object.fromEntries(indices.map((i) => [i, estimator.live(i)])) };
   });
 }

@@ -23,17 +23,18 @@ Facts the core must decide about:
   is ignored, and the loadpoint stays listed until the ingest stops. Its deleted `chargePower` reads `0` while
   `chargePowerLive` keeps the last anchor (`fold/loadpoint-vanishing`). The registrar's retirement is therefore
   unreachable from the 3.x ingest; `stop` suspends, it does not retire.
-- **Only a zero-length payload deletes.** Whitespace coerces to `null` and is stored as `null`.
 - **The index is `Number()` of the segment.** `01` and `1e0` are loadpoint 1; `0`, `-1`, `1.5` are no loadpoint; a
   trailing slash gives the key `""`.
 - **`coercePayload` is `Number()`.** `0x10` is 16, `1e3` is 1000; `NaN` and `True` stay strings.
 - **A non-number `chargePower` does not anchor.** The snapshot shows `0`, the live figure keeps the last anchor.
-- **Reachable is the broker connected and `<root>/status` exactly `online`** (trimmed). A status never seen is
+- **Reachable is the broker connected and `<root>/status` exactly `online`** after trimming (`fold/status-padded`). A status never seen is
   unreachable.
 - **`vehicleTitle` falls back to `vehicleName`**, never to the vehicle's own `title` topic. A capacity of `0` is no
   capacity.
 - **Load samples reach the estimator only with `subtractFromHome`.** The flag rides on the state; the readings are
-  the same either way.
+  the same either way. With it, a step after the retained snapshot is attributed from `charging`, `mode`,
+  `phasesActive` and `effectiveMaxCurrent` (`fold/subtract-*`: one estimated step per run, the ingest's estimator reads
+  the wall clock).
 - **Estimator bounds.** A step under 150 W is noise; a step attributes when it snaps to whole amps at 230 V (within
   10 %, at most 0.4 A) on the known phases, else on 1 or 3; at most once per 3000 ms (3000 attributes, 2999 does not);
   only with exactly one charging loadpoint; in `now` mode only downward. The estimate clamps to
@@ -54,7 +55,7 @@ subscription still receives other controllers' `/set` echoes; the topic grammar 
 | --- | --- |
 | topic grammar | `topic/default-root` (1-based index, nested keys, count topic, bare id, `/set` echoes, vehicles, `<root>/status`, other roots, empty topic), `topic/custom-root` |
 | payload coercion | `payload/coercion` (empty, whitespace, `null`, booleans, zero, negative, padded, exponent, hex, `NaN`, text, JSON blob) |
-| state fold | `fold/retained-snapshot-then-live`, `fold/vehicle-joined-by-name` (capacity, unknown vehicle, zero capacity), `fold/effective-limit-soc`, `fold/evcc-offline`, `fold/status-never-seen`, `fold/broker-dropped`, `fold/loadpoint-vanishing`, `fold/charge-power-boundaries` (zero, negative, non-number, whitespace), `fold/loadpoints-sorted-by-index`, `fold/custom-topic-root` (row root over the setting), `fold/load-sample-without-subtract`, `fold/disabled`, `fold/no-connection` |
+| state fold | `fold/retained-snapshot-then-live`, `fold/vehicle-joined-by-name` (capacity, unknown vehicle, zero capacity), `fold/effective-limit-soc`, `fold/evcc-offline`, `fold/status-never-seen`, `fold/broker-dropped`, `fold/loadpoint-vanishing`, `fold/charge-power-boundaries` (zero, negative, non-number, whitespace), `fold/loadpoints-sorted-by-index`, `fold/custom-topic-root` (row root over the setting), `fold/load-sample-without-subtract`, `fold/status-padded`, `fold/subtract-estimates-3-phase`, `fold/subtract-clamps-at-max-current` (`phasesActive` 1, `effectiveMaxCurrent` 6), `fold/subtract-now-mode-upward-absorbed`, `fold/disabled`, `fold/no-connection` |
 | estimator | `estimator/never-anchored`, `estimator/anchor-zero-and-negative`, `estimator/residual-then-re-anchor`, `estimator/re-anchor-rebases-house`, `estimator/noise-absorbed`, `estimator/house-step-absorbed`, `estimator/unknown-phases-single-phase-step`, `estimator/above-max-current-absorbed`, `estimator/now-mode-downward-only`, `estimator/rate-limit-2999ms`, `estimator/rate-limit-3000ms`, `estimator/clamp-at-zero` (negative load), `estimator/clamp-at-max`, `estimator/not-charging-absorbed`, `estimator/two-charging-no-owner`, `estimator/absent-load-resets-baseline`, `estimator/zero-load` |
 | loadpoint readings | `readings/device-spec`, `readings/register-and-retire`, `readings/steady-roster-no-reload`, `readings/loadpoint-returns`, `readings/sample-boundaries` (absent, zero, negative, estimated), `readings/no-plant`, `readings/retired-row-retry`, `readings/subtract-from-home` |
 | no command topic | `commands/no-command-topic` |
