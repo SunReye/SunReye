@@ -12,8 +12,7 @@ use super::forecast::{
 use super::*;
 use crate::forecast::{self, Run, SimInputs};
 use crate::samples::{ClosedMinute, Sample, minute_of};
-use crate::store::{DeviceEdit, NewDevice, Removal};
-use crate::weather::{DevicePv, PvArray};
+use crate::store::{DeviceEdit, DevicePv, NewDevice, PvArray, Removal};
 
 /// Open-Meteo's answer for `path`: the daily row is dated `day`, else the asked `start_date`.
 pub(super) fn conditions_payload(path: &str, day: Option<String>) -> Value {
