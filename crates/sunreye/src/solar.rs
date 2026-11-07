@@ -4,6 +4,7 @@
 //! last irradiance for the same key and reports it stale.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
@@ -11,14 +12,14 @@ use jiff::tz::TimeZone;
 use crate::forecast::{self, Forecast, Irradiance, Location, Run, SimInputs};
 use crate::open_meteo::{self, Plane};
 use crate::plant_zone;
-use crate::refresh::within_period;
+use crate::refresh::{PERIOD, within};
 use crate::rollup::Tier;
 use crate::run::Core;
 use crate::store::{BucketWindow, StoreError, first_in_service};
 use crate::weather::{self, OPEN_METEO, WeatherConfig};
 
 /// House load moves slowly: its median is read far less often than the irradiance.
-const LOAD_TTL_MS: i64 = 6 * 3_600_000;
+const LOAD_TTL: Duration = Duration::from_hours(6);
 const LOAD_DAYS: i64 = 14;
 const HOUR_MS: i64 = 3_600_000;
 
@@ -88,7 +89,9 @@ impl Solar {
         let config = weather::read(&core.store).await?;
         let Some(wanted) = wanted(&config) else { return Ok(true) };
         let now_ms = core.now_ms();
-        if self.held().is_some_and(|c| c.key == wanted.key && !c.stale && within_period(c.fetched_ms, now_ms))
+        if self
+            .held()
+            .is_some_and(|c| c.key == wanted.key && !c.stale && within(PERIOD, c.fetched_ms, now_ms))
         {
             return Ok(true);
         }
@@ -161,7 +164,7 @@ impl Solar {
         now_ms: i64,
     ) -> Result<Option<f64>, StoreError> {
         let held = *self.load.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some((_, watts)) = held.filter(|(at_ms, _)| now_ms - at_ms < LOAD_TTL_MS) {
+        if let Some((_, watts)) = held.filter(|(at_ms, _)| within(LOAD_TTL, *at_ms, now_ms)) {
             return Ok(watts);
         }
         let window = hours(now_ms - LOAD_DAYS * 24 * HOUR_MS, now_ms + HOUR_MS, LOAD_DAYS * 24 + 1);
@@ -225,6 +228,55 @@ fn median(mut values: Vec<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modbus::Transport;
+    use crate::samples::{ClosedMinute, Sample, minute_of};
+    use crate::store::{NewConnection, NewDevice, Store};
+    use crate::support::{core_at, hold_still};
+
+    const LOAD: &str = "load.power";
+    /// 2026-07-24T10:00:00Z.
+    const NOW_MS: i64 = 1_784_887_200_000;
+    const TTL_MS: i64 = 6 * HOUR_MS;
+
+    async fn load_at(store: &Store, device: i64, at_ms: i64, watts: f64) {
+        let samples = vec![Sample { at_ms, values: vec![(LOAD.into(), watts)] }];
+        store
+            .append_minute(device, &ClosedMinute { minute: minute_of(at_ms), samples })
+            .await
+            .expect("append");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_house_load_median_is_read_again_past_its_ttl_and_after_the_clock_stepped_back() {
+        hold_still();
+        let dir = std::env::temp_dir().join(format!("sunreye-solar-load-{}", std::process::id()));
+        drop(std::fs::remove_dir_all(&dir));
+        let store = Store::open(&dir).await.expect("store");
+        let connection = NewConnection {
+            transport: Transport::Tcp,
+            host: "127.0.0.1".into(),
+            port: 1,
+            logger_serial: None,
+        };
+        let connection = store.add_connection(&connection).await.expect("connection");
+        let device = NewDevice { connection_id: connection, profile_id: "none".into(), unit_id: 1 };
+        let device = store.add_device(&device).await.expect("device");
+        store.close().await;
+        let core = core_at(&dir, "2026-07-24T10:00:00Z", "UTC").await;
+        let solar = Solar::new(String::new());
+        let median = async |now_ms| solar.median_load(&core, device, LOAD, now_ms).await.expect("median");
+
+        load_at(&core.store, device, NOW_MS - 3 * HOUR_MS, 300.0).await;
+        assert_eq!(median(NOW_MS).await, Some(300.0));
+        load_at(&core.store, device, NOW_MS - 2 * HOUR_MS, 500.0).await;
+        assert_eq!(median(NOW_MS + TTL_MS - 1).await, Some(300.0), "inside the TTL");
+        assert_eq!(median(NOW_MS - 1).await, Some(400.0), "read after the clock stepped back");
+        load_at(&core.store, device, NOW_MS - HOUR_MS, 700.0).await;
+        assert_eq!(median(NOW_MS - 2 + TTL_MS).await, Some(400.0), "inside the TTL");
+        assert_eq!(median(NOW_MS - 1 + TTL_MS).await, Some(500.0), "at the TTL");
+        core.stop().await;
+        drop(std::fs::remove_dir_all(&dir));
+    }
 
     #[test]
     fn the_median_interpolates_an_even_count_and_none_has_none() {

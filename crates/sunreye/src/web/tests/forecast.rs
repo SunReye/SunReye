@@ -150,18 +150,32 @@ pub(super) struct StandIn {
     pub(super) day: Arc<Mutex<Option<String>>>,
     /// Requests are read and never answered.
     pub(super) hanging: Arc<AtomicBool>,
+    /// The irradiance answer in place of [`payload`].
+    pub(super) series: Arc<Mutex<Option<Value>>>,
 }
 
-type Seen =
-    (Arc<AtomicUsize>, Arc<AtomicBool>, Arc<Mutex<Vec<String>>>, Arc<Mutex<Option<String>>>, Arc<AtomicBool>);
+type Seen = (
+    Arc<AtomicUsize>,
+    Arc<AtomicBool>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Option<String>>>,
+    Arc<AtomicBool>,
+    Arc<Mutex<Option<Value>>>,
+);
 
 async fn stand_in(ca: &Ca) -> StandIn {
     let tls = acceptor(ca.leaf("localhost"));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
-    let (hits, failing, paths, day, hanging): Seen = Default::default();
-    let seen: Seen =
-        (Arc::clone(&hits), Arc::clone(&failing), Arc::clone(&paths), Arc::clone(&day), Arc::clone(&hanging));
+    let (hits, failing, paths, day, hanging, series): Seen = Default::default();
+    let seen: Seen = (
+        Arc::clone(&hits),
+        Arc::clone(&failing),
+        Arc::clone(&paths),
+        Arc::clone(&day),
+        Arc::clone(&hanging),
+        Arc::clone(&series),
+    );
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             tokio::spawn(answer_one(tls.clone(), tcp, seen.clone()));
@@ -169,13 +183,13 @@ async fn stand_in(ca: &Ca) -> StandIn {
     });
     let urls =
         (format!("https://localhost:{port}/v1/forecast"), format!("https://localhost:{port}/v1/archive"));
-    StandIn { urls, hits, failing, paths, day, hanging }
+    StandIn { urls, hits, failing, paths, day, hanging, series }
 }
 
 async fn answer_one(
     tls: tokio_rustls::TlsAcceptor,
     tcp: tokio::net::TcpStream,
-    (hits, failing, paths, day, hanging): Seen,
+    (hits, failing, paths, day, hanging, series): Seen,
 ) {
     let Ok(mut stream) = tls.accept(tcp).await else { return };
     let Some(head) = read_request(&mut stream).await else { return };
@@ -186,7 +200,7 @@ async fn answer_one(
     } else if path.contains("current=") {
         conditions_payload(&path, day.lock().expect("day").clone())
     } else {
-        payload()
+        series.lock().expect("series").clone().unwrap_or_else(payload)
     }
     .to_string();
     paths.lock().expect("paths").push(path);
