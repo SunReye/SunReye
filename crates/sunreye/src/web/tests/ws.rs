@@ -622,3 +622,105 @@ async fn a_polled_device_is_published_with_the_oracle_values() {
     drop(admin);
     core.stop().await;
 }
+
+/// One loadpoint charging at `power`, the state a producer would publish on `evcc`.
+fn evcc_state(power: f64) -> crate::evcc::EvccState {
+    crate::evcc::EvccState {
+        reachable: true,
+        loadpoints: vec![crate::evcc::EvccLoadpoint {
+            index: 1,
+            charge_power: power,
+            charge_power_live: power,
+            charging: true,
+            ..crate::evcc::EvccLoadpoint::default()
+        }],
+        subtract_from_home: false,
+    }
+}
+
+#[tokio::test]
+async fn a_late_evcc_subscriber_gets_the_last_state_at_once_and_a_topic_nobody_produces_answers_nothing() {
+    let (core, admin) = open(&dir("ws-evcc")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut early = connect(addr, &admin).await;
+    let ack = subscribe(&mut early, r#"["evcc"]"#).await;
+    assert_eq!(ack["data"]["subscribed"], json!(["evcc"]));
+    silent(&mut early).await;
+
+    core.bus.evcc.publish(evcc_state(1000.0));
+    assert_eq!(next_json(&mut early).await["data"]["loadpoints"][0]["chargePower"], 1000.0);
+    core.bus.evcc.publish(evcc_state(4200.0));
+    assert_eq!(next_json(&mut early).await["data"]["loadpoints"][0]["chargePower"], 4200.0);
+
+    let mut late = connect(addr, &admin).await;
+    subscribe(&mut late, r#"["evcc"]"#).await;
+    let snapshot = next_json(&mut late).await;
+    assert_eq!(snapshot["topic"], "evcc");
+    assert_eq!(snapshot["data"]["reachable"], true);
+    assert_eq!(snapshot["data"]["loadpoints"][0]["chargePower"], 4200.0, "the last state, not the first");
+    silent(&mut late).await;
+
+    let mut unsubscribed = connect(addr, &admin).await;
+    subscribe(&mut unsubscribed, r#"["metrics"]"#).await;
+    core.bus.evcc.publish(evcc_state(0.0));
+    silent(&mut unsubscribed).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn evcc_with_no_producer_answers_a_subscriber_nothing() {
+    let (core, admin) = open(&dir("ws-evcc-idle")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut socket = connect(addr, &admin).await;
+    subscribe(&mut socket, r#"["evcc"]"#).await;
+    silent(&mut socket).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn an_events_subscriber_hears_what_changed_and_only_after_it_subscribed() {
+    use crate::events::Changed;
+    let (core, admin) = open(&dir("ws-events")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.bus.changed.publish(Changed::Settings);
+    let mut listener = connect(addr, &admin).await;
+    subscribe(&mut listener, r#"["events"]"#).await;
+    silent(&mut listener).await;
+    let mut other = connect(addr, &admin).await;
+    subscribe(&mut other, r#"["metrics"]"#).await;
+
+    core.bus.changed.publish(Changed::Devices);
+    assert_eq!(next_json(&mut listener).await, json!({"topic": "events", "data": {"changed": "devices"}}));
+    silent(&mut listener).await;
+    silent(&mut other).await;
+
+    send_text(&mut listener, r#"{"t":"unsub","topics":["events"]}"#).await;
+    subscribe(&mut listener, "[]").await;
+    core.bus.changed.publish(Changed::Archive);
+    silent(&mut listener).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn a_client_cannot_publish_on_events_or_evcc() {
+    let (core, admin) = open(&dir("ws-no-publish-evcc")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut listener = connect(addr, &admin).await;
+    subscribe(&mut listener, r#"["events","evcc"]"#).await;
+    let mut client = connect(addr, &admin).await;
+    subscribe(&mut client, r#"["events","evcc"]"#).await;
+    for text in [
+        r#"{"topic":"events","data":{"changed":"settings"}}"#,
+        r#"{"t":"pub","topic":"evcc","data":{"reachable":true,"loadpoints":[],"subtractFromHome":false}}"#,
+        r#"{"t":"publish","topics":["events"],"data":{"changed":"devices"}}"#,
+    ] {
+        send_text(&mut client, text).await;
+    }
+    silent(&mut listener).await;
+    assert!(core.bus.evcc.subscribe().borrow().is_none(), "the evcc topic holds nothing");
+    drop(admin);
+    core.stop().await;
+}

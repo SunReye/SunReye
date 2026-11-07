@@ -9,7 +9,8 @@ use serde::Serialize;
 use serde::ser::SerializeMap;
 use serde_json::json;
 
-use crate::events::Bus;
+use crate::evcc::EvccState;
+use crate::events::{Bus, Changed};
 use crate::plant::{Aggregate, Aggregates, Fold};
 use crate::samples::Sample;
 
@@ -140,12 +141,24 @@ pub fn metrics_frame(device_id: i64, sample: &Sample) -> String {
     )
 }
 
-/// The topics the core publishes. `evcc`, `statistics`, `logs` and `automations` are 3.x topics it
-/// does not, so a subscribe to them is denied by name.
+/// `{"topic":"events","data":{"changed":"settings"}}`: re-read what changed.
+pub fn events_frame(changed: Changed) -> String {
+    frame("events", json!({ "changed": changed }))
+}
+
+/// `{"topic":"evcc","data":EvccState}`.
+pub fn evcc_frame(state: &EvccState) -> String {
+    frame("evcc", state)
+}
+
+/// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
+/// so a subscribe to them is denied by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topic {
     Metrics,
     Plant,
+    Evcc,
+    Events,
 }
 
 impl Topic {
@@ -153,6 +166,8 @@ impl Topic {
         match name {
             "metrics" => Some(Self::Metrics),
             "plant" => Some(Self::Plant),
+            "evcc" => Some(Self::Evcc),
+            "events" => Some(Self::Events),
             _ => None,
         }
     }
@@ -161,6 +176,8 @@ impl Topic {
         match self {
             Self::Metrics => "metrics",
             Self::Plant => "plant",
+            Self::Evcc => "evcc",
+            Self::Events => "events",
         }
     }
 }
@@ -172,7 +189,7 @@ pub enum ClientFrame {
     Unsub(Vec<serde_json::Value>),
 }
 
-/// Entries read from one frame; there are two topics, so only a hostile client sends more.
+/// Entries read from one frame; only a hostile client names more topics than the core publishes.
 const MAX_FRAME_TOPICS: usize = 64;
 /// Characters of a denied entry echoed back.
 const MAX_DENIED_NAME: usize = 64;
@@ -276,6 +293,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::evcc::{ChargePowerSource, EvccLoadpoint};
     use crate::oracle::{as_floats, oracle};
     use crate::plant::Aggregates;
     use crate::samples::Sample;
@@ -417,15 +435,60 @@ mod tests {
     }
 
     #[test]
-    fn the_core_grants_metrics_and_plant_and_denies_the_topics_it_does_not_publish_by_name() {
+    fn the_core_grants_the_topics_it_publishes_and_denies_the_rest_by_name() {
         let ack = ack_for(
-            r#"{"t":"sub","topics":["metrics","plant","evcc","statistics","logs","automations","nope"]}"#,
+            r#"{"t":"sub","topics":["metrics","plant","evcc","events","statistics","logs","automations","nope"]}"#,
         );
         assert_eq!(
             ack,
             parsed(
-                r#"{"topic":"__ack","data":{"subscribed":["metrics","plant"],
-                    "denied":["evcc","statistics","logs","automations","nope"]}}"#
+                r#"{"topic":"__ack","data":{"subscribed":["metrics","plant","evcc","events"],
+                    "denied":["statistics","logs","automations","nope"]}}"#
+            )
+        );
+    }
+
+    #[test]
+    fn an_events_frame_names_what_changed() {
+        for (changed, name) in
+            [(Changed::Settings, "settings"), (Changed::Devices, "devices"), (Changed::Archive, "archive")]
+        {
+            assert_eq!(
+                parsed(&events_frame(changed)),
+                parsed(&format!(r#"{{"topic":"events","data":{{"changed":"{name}"}}}}"#))
+            );
+        }
+    }
+
+    #[test]
+    fn an_evcc_frame_is_the_3x_evcc_state() {
+        let state = EvccState {
+            reachable: true,
+            loadpoints: vec![EvccLoadpoint {
+                index: 1,
+                title: Some("Carport".into()),
+                charge_power: 4200.0,
+                charge_power_live: 4180.5,
+                charge_power_source: ChargePowerSource::Estimated,
+                charging: true,
+                connected: true,
+                vehicle_soc: Some(55.0),
+                effective_limit_soc: Some(80.0),
+                phases_active: Some(3),
+                ..EvccLoadpoint::default()
+            }],
+            subtract_from_home: true,
+        };
+        assert_eq!(
+            parsed(&evcc_frame(&state)),
+            parsed(
+                r#"{"topic":"evcc","data":{"reachable":true,"subtractFromHome":true,"loadpoints":[{
+                    "index":1,"title":"Carport","mode":null,"chargePower":4200.0,"chargePowerLive":4180.5,
+                    "chargePowerSource":"estimated","charging":true,"connected":true,"vehicleSoc":55.0,
+                    "vehicleRange":null,"vehicleTitle":null,"vehicleName":null,"sessionEnergy":null,
+                    "chargeRemainingEnergy":null,"limitSoc":null,"effectiveLimitSoc":80.0,
+                    "vehicleLimitSoc":null,"batteryBoost":false,"batteryBoostLimit":null,
+                    "vehicleCapacityKwh":null,"phasesActive":3}]}}"#
             )
         );
     }
