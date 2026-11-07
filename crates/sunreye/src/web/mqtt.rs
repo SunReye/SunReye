@@ -44,6 +44,5 @@ pub async fn save(
 ) -> Result<Json<MqttView>, ApiError> {
     let next = MqttConfig::load(&core.store).await?.patched(&patch).map_err(ApiError::bad_request)?;
     core.store.set_setting(KEY, &next.stored()).await?;
-    core.export().await?;
     Ok(Json(next.view()))
 }

@@ -867,6 +867,26 @@ async fn a_stranger_is_denied_events_by_name_and_hears_no_change_while_a_session
 }
 
 #[tokio::test]
+async fn an_admin_settings_save_reaches_a_sessions_events_and_not_a_stranger() {
+    let (core, admin) = open(&dir("ws-events-save")).await;
+    let addr = serve(&core, &Config::default()).await;
+    core.live.roster(&[7], crate::plant::Aggregates::default());
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    let mut stranger = connect(addr, &admin.anonymous()).await;
+    subscribe(&mut stranger, r#"["metrics","events"]"#).await;
+    let mut session = connect(addr, &admin).await;
+    subscribe(&mut session, r#"["events"]"#).await;
+
+    let saved = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
+    assert_eq!(saved.status, StatusCode::OK);
+    assert_eq!(next_json(&mut session).await, json!({"topic": "events", "data": {"changed": "settings"}}));
+    core.live.publish(7, &reading(1_786_788_000_123, 42.0));
+    assert_eq!(next_json(&mut stranger).await["topic"], "metrics", "the save reached the stranger first");
+    drop((stranger, session, admin));
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
     let (core, admin) = open(&dir("ws-first-kiosk")).await;
     let addr = serve(&core, &Config::default()).await;

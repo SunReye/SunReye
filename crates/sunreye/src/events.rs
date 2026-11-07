@@ -17,24 +17,34 @@ pub struct Bus {
     pub metrics: Event<MetricsFrame>,
     /// The plant's last fold.
     pub plant: State<PlantFrame>,
-    /// Stored state changed; a subscriber re-reads it.
+    /// Published by the store once a configuration write commits; a subscriber re-reads it.
     pub changed: Event<Changed>,
     /// EVCC's last state; the ingest publishes it.
     pub evcc: State<EvccState>,
 }
 
-/// What a write changed, for the `/ws` `events` topic.
+/// What a store write changed, as the `/ws` `events` topic names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Changed {
+    /// A setting, the plant's forecast settings or its time zone.
     Settings,
+    /// A device added, edited, retired, restored or removed, its PV description included.
     Devices,
+    /// An archive import landed its devices and settings.
     Archive,
 }
 
 /// A topic whose payloads are hints: a subscriber hears those published after it subscribed.
 #[derive(Debug)]
 pub struct Event<T>(broadcast::Sender<T>);
+
+/// Another handle on the same topic: the store publishes on the core's `changed` without holding the bus.
+impl<T> Clone for Event<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 impl<T: Clone> Default for Event<T> {
     fn default() -> Self {
@@ -70,6 +80,19 @@ impl<T: Clone> Events<T> {
                     tracing::debug!(missed, "slow subscriber skipped events");
                 }
                 Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    }
+
+    /// Waits for a payload, then answers the last one already queued: for a subscriber that re-reads state on
+    /// any hint, so a burst costs it one re-read.
+    pub async fn newest(&mut self) -> Option<T> {
+        let mut newest = self.next().await?;
+        loop {
+            match self.0.try_recv() {
+                Ok(payload) => newest = payload,
+                Err(broadcast::error::TryRecvError::Lagged(_)) => {}
+                Err(_) => return Some(newest),
             }
         }
     }
@@ -152,6 +175,22 @@ mod tests {
         let topic = Event::<Tracked>::default();
         topic.publish(Tracked { seq: 0, _alive: Arc::clone(&alive) });
         assert_eq!(copies(&alive), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn newest_waits_for_one_then_answers_the_last_queued_even_past_the_ring() {
+        let topic = Event::<u32>::default();
+        let mut hints = topic.subscribe();
+        assert_eq!(hints.newest().now_or_never(), None, "nothing queued");
+        for n in 1..=40 {
+            topic.publish(n);
+        }
+        assert_eq!(hints.newest().await, Some(40));
+        assert_eq!(hints.newest().now_or_never(), None, "the queue was drained");
+        topic.publish(41);
+        drop(topic);
+        assert_eq!(hints.newest().await, Some(41));
+        assert_eq!(hints.newest().await, None);
     }
 
     #[tokio::test(start_paused = true)]
