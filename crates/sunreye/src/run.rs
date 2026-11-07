@@ -13,6 +13,7 @@ use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 
 use crate::conditions::Conditions;
+use crate::events::Bus;
 use crate::learn;
 use crate::live::Live;
 use crate::modbus::Client;
@@ -56,7 +57,9 @@ pub struct Core {
     pub bundle: Bundle,
     /// Certificate authorities trusted besides the built-in store when a profile source is fetched.
     pub roots: Vec<CertificateDer<'static>>,
-    /// Every decoded reading, as the `/ws` frames.
+    /// The core's topics; `/ws` is one subscriber.
+    pub bus: Arc<Bus>,
+    /// Folds every decoded reading into the plant and publishes both.
     pub live: Arc<Live>,
     /// Each device's polled readings not yet in the store.
     pub unstored: Arc<Unstored>,
@@ -223,7 +226,7 @@ impl Core {
             }
         }
         let bundle = Bundle::official().map_err(RunError::Profiles)?;
-        let (live, unstored) = (Arc::default(), Arc::default());
+        let (bus, unstored) = (Arc::<Bus>::default(), Arc::default());
         let retention = Mutex::new(Some(spawn_retention(&store, now)));
         #[cfg(test)]
         let seams = Arc::<Seams>::default();
@@ -233,19 +236,19 @@ impl Core {
             ..Polling::default()
         };
         let kiosk = watch::Sender::new(kiosk(&store).await?);
-        let stranger_reads = Arc::new(Semaphore::new(STRANGER_READS));
         let core = Arc::new(Self {
             store,
             bundle,
             roots,
-            live,
+            live: Arc::new(Live::new(Arc::clone(&bus))),
+            bus,
             unstored,
             conditions: Conditions::new(forecast_url.clone()),
             solar: Solar::new(forecast_url),
             exports: Arc::default(),
             archive_url,
             kiosk,
-            stranger_reads,
+            stranger_reads: Arc::new(Semaphore::new(STRANGER_READS)),
             now,
             polling,
             retention,
@@ -866,7 +869,8 @@ mod tests {
     }
 
     fn members(core: &Core) -> Vec<String> {
-        let frame = core.live.subscribe().plant().map(|text| text.to_string()).unwrap_or_default();
+        let frame =
+            core.bus.plant.subscribe().borrow().as_ref().map(|frame| frame.0.to_string()).unwrap_or_default();
         let frame: serde_json::Value = serde_json::from_str(&frame).unwrap_or_default();
         let members = frame["data"]["members"].as_array().cloned().unwrap_or_default();
         members.iter().filter_map(|m| m.as_str().map(str::to_owned)).collect()
@@ -886,7 +890,8 @@ mod tests {
     }
 
     fn plant_data(core: &Core) -> serde_json::Value {
-        let frame = core.live.subscribe().plant().map(|text| text.to_string()).unwrap_or_default();
+        let frame =
+            core.bus.plant.subscribe().borrow().as_ref().map(|frame| frame.0.to_string()).unwrap_or_default();
         serde_json::from_str::<serde_json::Value>(&frame).unwrap_or_default()["data"].clone()
     }
 

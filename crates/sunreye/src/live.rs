@@ -2,33 +2,29 @@
 //! `plant` frame, in the 3.x wire contract (`packages/contracts/src/ws/types.ts`).
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::Utf8Bytes;
 use serde::Serialize;
 use serde::ser::SerializeMap;
 use serde_json::json;
-use tokio::sync::{broadcast, watch};
 
+use crate::events::Bus;
 use crate::plant::{Aggregate, Aggregates, Fold};
 use crate::samples::Sample;
 
-/// Frames held for the slowest connection. Sending never waits: a connection that falls further
-/// behind skips to the oldest frame still held, so memory is bounded by this ring, not per connection.
-const RING: usize = 16;
-
-/// One serialised frame, shared by every connection that sends it.
+/// One reading as its `metrics` frame, serialised once for every connection.
 #[derive(Debug, Clone)]
-pub struct Frame {
-    pub topic: Topic,
-    pub text: Utf8Bytes,
-}
+pub struct MetricsFrame(pub Utf8Bytes);
 
-/// The fan-out from the device tasks to the `/ws` connections.
-#[derive(Debug)]
+/// The plant's fold as its `plant` frame, serialised once for every connection.
+#[derive(Debug, Clone)]
+pub struct PlantFrame(pub Utf8Bytes);
+
+/// Folds each reading into the plant and publishes both on the bus.
+#[derive(Debug, Default)]
 pub struct Live {
-    frames: broadcast::Sender<Frame>,
-    plant: watch::Sender<Option<Utf8Bytes>>,
+    bus: Arc<Bus>,
     members: Mutex<Members>,
 }
 
@@ -56,13 +52,11 @@ fn copy_into(into: &mut Sample, from: &Sample) {
     }
 }
 
-impl Default for Live {
-    fn default() -> Self {
-        Self { frames: broadcast::channel(RING).0, plant: watch::channel(None).0, members: Mutex::default() }
-    }
-}
-
 impl Live {
+    pub fn new(bus: Arc<Bus>) -> Self {
+        Self { bus, members: Mutex::default() }
+    }
+
     /// The plant's live members and how its metrics fold; a device that leaves takes its sample with it.
     pub fn roster(&self, ids: &[i64], aggregates: Aggregates) {
         let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -71,7 +65,7 @@ impl Live {
         members.aggregates = aggregates;
     }
 
-    /// Sends `sample` on `metrics` and the plant's new fold on `plant`. Never waits.
+    /// Publishes `sample` on `metrics`, then the plant's new fold on `plant`. Never waits.
     pub fn publish(&self, device_id: i64, sample: &Sample) {
         let plant = {
             let mut members = self.members.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -84,54 +78,10 @@ impl Live {
             }
             let folded: Vec<(i64, Option<&Sample>)> =
                 members.ids.iter().map(|id| (*id, members.last.get(id))).collect();
-            Utf8Bytes::from(plant_frame(&folded, sample.at_ms, &members.aggregates))
+            plant_frame(&folded, sample.at_ms, &members.aggregates)
         };
-        if self.frames.receiver_count() > 0 {
-            self.send(Topic::Metrics, metrics_frame(device_id, sample).into());
-        }
-        self.plant.send_replace(Some(plant.clone()));
-        self.send(Topic::Plant, plant);
-    }
-
-    /// No connection is not an error: the frame is dropped.
-    fn send(&self, topic: Topic, text: Utf8Bytes) {
-        drop(self.frames.send(Frame { topic, text }));
-    }
-
-    pub fn subscribe(&self) -> Subscription {
-        Subscription { frames: self.frames.subscribe(), plant: self.plant.subscribe() }
-    }
-
-    /// Open subscriptions.
-    pub fn connections(&self) -> usize {
-        self.frames.receiver_count()
-    }
-}
-
-/// One connection's view of the feed. Holds no sender, so it ends once the core drops [`Live`].
-#[derive(Debug)]
-pub struct Subscription {
-    frames: broadcast::Receiver<Frame>,
-    plant: watch::Receiver<Option<Utf8Bytes>>,
-}
-
-impl Subscription {
-    /// The next frame, skipping what a lagging connection missed; `None` once the feed is gone.
-    pub async fn next(&mut self) -> Option<Frame> {
-        loop {
-            match self.frames.recv().await {
-                Ok(frame) => return Some(frame),
-                Err(broadcast::error::RecvError::Lagged(missed)) => {
-                    tracing::debug!(missed, "slow live connection skipped frames");
-                }
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
-        }
-    }
-
-    /// The last plant frame, sent to a connection when it subscribes to `plant`.
-    pub fn plant(&self) -> Option<Utf8Bytes> {
-        self.plant.borrow().clone()
+        self.bus.metrics.publish(MetricsFrame(metrics_frame(device_id, sample).into()));
+        self.bus.plant.publish(PlantFrame(plant.into()));
     }
 }
 
@@ -337,12 +287,10 @@ mod tests {
         serde_json::from_str(text).expect("json")
     }
 
-    /// `feed.next()` that fails instead of hanging when no frame was published.
-    async fn next(feed: &mut Subscription) -> Frame {
-        tokio::time::timeout(std::time::Duration::from_secs(5), feed.next())
-            .await
-            .expect("a frame within 5 s")
-            .expect("the feed is open")
+    /// The plant's last fold, parsed.
+    fn plant_of(bus: &Bus) -> Value {
+        let frame = bus.plant.subscribe().borrow().clone().expect("a plant fold");
+        parsed(frame.0.as_str())
     }
 
     fn sample(at_ms: i64, values: &[(&str, f64)]) -> Sample {
@@ -413,17 +361,17 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn the_plant_topic_folds_each_members_last_sample_by_role() {
+    #[test]
+    fn the_plant_topic_folds_each_members_last_sample_by_role() {
         let case =
             oracle("plant.ndjson").into_iter().find(|c| c["case"] == "overlapping-roles").expect("case");
         let roles = case["roles"].as_object().expect("roles");
-        let live = Live::default();
+        let bus = Arc::new(Bus::default());
+        let live = Live::new(Arc::clone(&bus));
         live.roster(
             &[1, 2],
             Aggregates::of_roles(roles.iter().map(|(key, role)| (key.as_str(), role.as_str()))),
         );
-        let mut feed = live.subscribe();
         for slug in ["2", "1"] {
             let sample = &case["live"]["samples"][slug];
             let values = sample["metrics"]
@@ -436,12 +384,7 @@ mod tests {
                 &Sample { at_ms: at_ms(&sample["time"]), values: values.collect() },
             );
         }
-        let plant = std::iter::repeat_n((), 4)
-            .map(|()| feed.frames.try_recv().expect("frame"))
-            .last()
-            .expect("frame");
-        assert_eq!(plant.topic, Topic::Plant);
-        assert_eq!(as_floats(&parsed(plant.text.as_str())["data"]), as_floats(&case["plant"]["live"]));
+        assert_eq!(as_floats(&plant_of(&bus)["data"]), as_floats(&case["plant"]["live"]));
     }
 
     #[test]
@@ -544,18 +487,32 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_device_off_the_roster_leaves_the_plant() {
-        let live = Live::default();
+    #[tokio::test(start_paused = true)]
+    async fn a_reading_is_published_on_metrics_then_folded_into_plant() {
+        let bus = Arc::new(Bus::default());
+        let live = Live::new(Arc::clone(&bus));
+        live.roster(&[7], Aggregates::default());
+        let mut metrics = bus.metrics.subscribe();
+        let reading = sample(AT_MS, &[("pv_power", 1234.5)]);
+        live.publish(7, &reading);
+        let frame = metrics.next().await.expect("a metrics frame");
+        assert_eq!(parsed(frame.0.as_str()), parsed(&metrics_frame(7, &reading)));
+        assert_eq!(
+            plant_of(&bus),
+            parsed(&plant_frame(&[(7, Some(&reading))], AT_MS, &Aggregates::default()))
+        );
+    }
+
+    #[test]
+    fn a_device_off_the_roster_leaves_the_plant() {
+        let bus = Arc::new(Bus::default());
+        let live = Live::new(Arc::clone(&bus));
         live.roster(&[1, 2], Aggregates::default());
         live.publish(1, &sample(AT_MS, &[("pv_power", 1.0)]));
         live.roster(&[2], Aggregates::default());
-        let mut feed = live.subscribe();
         live.publish(2, &sample(AT_MS, &[("pv_power", 2.0)]));
-        assert_eq!(next(&mut feed).await.topic, Topic::Metrics);
-        let plant = next(&mut feed).await;
         assert_eq!(
-            parsed(plant.text.as_str())["data"],
+            plant_of(&bus)["data"],
             parsed(
                 r#"{"time":"2026-08-15T10:00:00.123Z","metrics":{"pv_power":2.0},"members":["2"],"stale":[]}"#
             )
@@ -586,30 +543,6 @@ mod tests {
             parsed(r#"{"pv":3.0,"soc":80.0}"#),
             "the other member's value alone; a metric no member has a value for is absent"
         );
-    }
-
-    #[tokio::test]
-    async fn a_subscription_that_falls_behind_resumes_at_the_oldest_of_the_last_16_frames() {
-        let live = Live::default();
-        let mut feed = live.subscribe();
-        for at_ms in 0..10 {
-            live.publish(1, &sample(at_ms, &[("pv_power", 1.0)]));
-        }
-        let mut held = Vec::new();
-        for _ in 0..16 {
-            let frame = next(&mut feed).await;
-            held.push((frame.topic, parsed(frame.text.as_str())["data"]["time"].clone()));
-        }
-        let want: Vec<(Topic, Value)> = (2..10)
-            .flat_map(|ms| {
-                let time = json!(format!("1970-01-01T00:00:00.00{ms}Z"));
-                [(Topic::Metrics, time.clone()), (Topic::Plant, time)]
-            })
-            .collect();
-        assert_eq!(held, want, "20 frames published unread: frames 4 to 19 are held, in order");
-        // Everything published is already queued, so a further frame would be ready now.
-        let past_newest = futures_util::FutureExt::now_or_never(feed.next());
-        assert!(past_newest.is_none(), "nothing past the newest frame: {past_newest:?}");
     }
 
     #[test]
