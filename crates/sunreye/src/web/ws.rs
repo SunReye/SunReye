@@ -410,13 +410,9 @@ async fn answer(peer: &mut Peer, feed: &mut Feed, held: &mut Vec<Topic>, text: &
 async fn today(core: &Weak<Core>) -> Option<Utf8Bytes> {
     let core = core.upgrade()?;
     let minute = crate::samples::minute_of(core.now_ms());
-    match super::today_frame(&core, minute).await {
-        Ok(frame) => frame.map(|frame| frame.0),
-        Err(error) => {
-            tracing::warn!(%error, "today's statistics not sent");
-            None
-        }
-    }
+    let read = super::today_frame(&core, minute).await;
+    let frame = read.inspect_err(|error| tracing::warn!(%error, "today's statistics not sent")).ok()?;
+    frame.map(|frame| frame.0)
 }
 
 /// The current state of each state topic in `fresh`: the last value, or for `statistics` today's read.
