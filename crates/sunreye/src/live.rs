@@ -151,29 +151,49 @@ pub fn evcc_frame(state: &EvccState) -> String {
     frame("evcc", state)
 }
 
-/// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
-/// so a subscribe to them is denied by name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Topic {
-    Metrics,
-    Plant,
-    Evcc,
-    Events,
+/// Declares [`Topic`] and its test-only `ALL` from one list, so no variant escapes `ALL`.
+macro_rules! topics {
+    ($($variant:ident),+) => {
+        /// The topics the core publishes. `statistics`, `logs` and `automations` are 3.x topics it does not,
+        /// so a subscribe to them is denied by name.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Topic {
+            $($variant),+
+        }
+
+        impl Topic {
+            #[cfg(test)]
+            pub(crate) const ALL: &[Self] = &[$(Self::$variant),+];
+        }
+    };
 }
 
-/// Who may hold a topic, as in 3.x `TOPIC_POLICY`.
+topics!(Metrics, Plant, Evcc, Events);
+
+/// Who may hold a topic: the access of its REST read in `route-access.txt`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Access {
+pub(crate) enum Access {
     /// A session, or a stranger while the kiosk view is on.
-    Dashboard,
+    Kiosk,
     /// A session only: it names what an admin just changed.
     Session,
 }
 
-impl Topic {
-    const fn access(self) -> Access {
+#[cfg(test)]
+impl Access {
+    /// The word `route-access.txt` uses.
+    pub(crate) const fn word(self) -> &'static str {
         match self {
-            Self::Metrics | Self::Plant | Self::Evcc => Access::Dashboard,
+            Self::Kiosk => "kiosk",
+            Self::Session => "session",
+        }
+    }
+}
+
+impl Topic {
+    pub(crate) const fn access(self) -> Access {
+        match self {
+            Self::Metrics | Self::Plant | Self::Evcc => Access::Kiosk,
             Self::Events => Access::Session,
         }
     }
@@ -188,7 +208,7 @@ impl Topic {
         }
     }
 
-    const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Metrics => "metrics",
             Self::Plant => "plant",
@@ -242,10 +262,7 @@ pub fn resolve_subscribe(topics: &[serde_json::Value], session: bool) -> Decisio
         if !seen.insert(name.clone()) {
             continue;
         }
-        match entry
-            .as_str()
-            .and_then(Topic::named)
-            .filter(|topic| session || topic.access() == Access::Dashboard)
+        match entry.as_str().and_then(Topic::named).filter(|topic| session || topic.access() == Access::Kiosk)
         {
             Some(topic) => decision.subscribe.push(topic),
             None => decision.denied.push(name),

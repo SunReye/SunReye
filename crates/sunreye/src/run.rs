@@ -119,8 +119,20 @@ pub(crate) struct Seams {
     pub import_pause: std::sync::Mutex<Option<Pause>>,
     /// Where an import waits after it lands, before it polls what it added.
     pub apply_pause: std::sync::Mutex<Option<Pause>>,
+    /// Where a `/ws` session read waits between the session and its account.
+    pub session_read: std::sync::Mutex<Option<Pause>>,
     /// Taken one per `apply`, before it polls.
     pub apply_faults: std::sync::Mutex<std::collections::VecDeque<Fault>>,
+}
+
+/// Waits at a test core's pause, if one is set.
+#[cfg(test)]
+pub(crate) async fn pause(at: &std::sync::Mutex<Option<Pause>>) {
+    let pause = at.lock().expect("pause").take();
+    if let Some((reached, resume)) = pause {
+        reached.send(()).expect("the test waits");
+        resume.await.expect("the test resumes");
+    }
 }
 
 #[cfg(test)]
@@ -315,6 +327,10 @@ impl Core {
     /// The conditions the last refresh landed.
     pub async fn weather(&self) -> Result<Option<Reading>, StoreError> {
         self.conditions.serve(&self.store, &self.clock).await
+    }
+
+    pub(crate) const fn clock(&self) -> Clock {
+        self.clock
     }
 
     /// The compiled-in profile `id`, else the one a profile source supplied.
