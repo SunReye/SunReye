@@ -216,7 +216,6 @@ topics!(Metrics, Plant, Evcc, Events, Statistics);
 pub(crate) enum Access {
     /// A session, or a stranger while the kiosk view is on.
     Kiosk,
-    /// A session only.
     Session,
 }
 

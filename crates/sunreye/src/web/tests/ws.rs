@@ -142,8 +142,8 @@ async fn on_every_topic(addr: std::net::SocketAddr, api: &Api) -> Socket {
 }
 
 /// A `statistics` frame; its content is the topic's own tests' business.
-fn statistics_frame() -> crate::live::StatisticsFrame {
-    crate::live::StatisticsFrame(r#"{"topic":"statistics","data":{"type":"prices"}}"#.into())
+fn any_statistics_frame() -> crate::live::StatisticsFrame {
+    crate::live::StatisticsFrame(r#"{"topic":"statistics","data":{"type":"today"}}"#.into())
 }
 
 /// One frame ready on each topic.
@@ -151,7 +151,7 @@ fn flood(core: &Core) {
     core.live.publish(7, &reading(1_786_788_000_123, 42.0));
     core.bus.evcc.publish(evcc_state(1.0));
     core.bus.changed.publish(crate::events::Changed::Settings);
-    core.bus.statistics.publish(statistics_frame());
+    core.bus.statistics.publish(any_statistics_frame());
 }
 
 #[tokio::test]
@@ -1157,7 +1157,7 @@ async fn a_ready_feed_cannot_hold_back_the_kiosk_view_closing() {
     core.live.publish(7, &reading(0, 1.0));
     core.bus.evcc.publish(evcc_state(1.0));
     for _ in 0..100 {
-        core.bus.statistics.publish(statistics_frame());
+        core.bus.statistics.publish(any_statistics_frame());
     }
     ended(&mut socket, "kiosk off").await;
     drop(admin);
