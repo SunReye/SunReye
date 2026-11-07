@@ -74,26 +74,21 @@ pub fn plan(
 }
 
 type Feed = watch::Sender<Option<Arc<Sample>>>;
-type Tasks = (watch::Sender<bool>, JoinSet<()>);
 
-/// The running exports and what feeds them. Feeding never waits: each device keeps its latest sample.
+/// The links of one plan; [`Exports::stop`] ends them.
+#[derive(Debug)]
+pub struct Links(watch::Sender<bool>, JoinSet<()>);
+
+/// What feeds the running links. Feeding never waits: each device keeps its latest sample.
 #[derive(Debug)]
 pub struct Exports {
     samples: Mutex<BTreeMap<i64, Feed>>,
     forecast: watch::Sender<Option<Arc<Forecast>>>,
-    running: tokio::sync::Mutex<Option<Tasks>>,
-    /// Signalled after each restart, so the forecast goes out without waiting for its interval.
-    pub restarted: tokio::sync::Notify,
 }
 
 impl Default for Exports {
     fn default() -> Self {
-        Self {
-            samples: Mutex::default(),
-            forecast: watch::channel(None).0,
-            running: tokio::sync::Mutex::default(),
-            restarted: tokio::sync::Notify::new(),
-        }
+        Self { samples: Mutex::default(), forecast: watch::channel(None).0 }
     }
 }
 
@@ -114,10 +109,8 @@ impl Exports {
         self.forecast.send_replace(Some(Arc::new(forecast)));
     }
 
-    /// Stops the running exports, each publishing `offline`, then runs `planned`.
-    pub async fn restart(&self, planned: Vec<Planned>) {
-        let mut running = self.running.lock().await;
-        stop(running.take()).await;
+    /// Runs `planned`, fed from here.
+    pub fn start(&self, planned: Vec<Planned>) -> Links {
         let (stop, stopped) = watch::channel(false);
         let mut tasks = JoinSet::new();
         let mut samples = BTreeMap::new();
@@ -131,21 +124,20 @@ impl Exports {
             tasks.spawn(link::run(link, bridge, feeds));
         }
         *self.samples.lock().unwrap_or_else(PoisonError::into_inner) = samples;
-        *running = Some((stop, tasks));
-        self.restarted.notify_one();
+        Links(stop, tasks)
     }
 
-    pub async fn stop(&self) {
+    /// Stops `links`, each publishing `offline`.
+    pub async fn stop(&self, links: Links) {
         self.samples.lock().unwrap_or_else(PoisonError::into_inner).clear();
-        stop(self.running.lock().await.take()).await;
+        stop(links).await;
     }
 }
 
 /// How long the links get to publish `offline` before they are aborted.
 const GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 
-async fn stop(running: Option<Tasks>) {
-    let Some((stop, mut tasks)) = running else { return };
+async fn stop(Links(stop, mut tasks): Links) {
     stop.send_replace(true);
     let joined = async { while tasks.join_next().await.is_some() {} };
     if tokio::time::timeout(GRACE, joined).await.is_err() {
@@ -217,7 +209,7 @@ mod tests {
         let mut tasks = JoinSet::new();
         tasks.spawn(std::future::pending::<()>());
         let started = tokio::time::Instant::now();
-        let stopping = stop(Some((watch::channel(false).0, tasks)));
+        let stopping = stop(Links(watch::channel(false).0, tasks));
         tokio::time::timeout(Duration::from_secs(60), stopping).await.expect("stopped");
         let waited = started.elapsed();
         assert!(waited >= Duration::from_secs(10) && waited < Duration::from_secs(11), "{waited:?}");
@@ -246,6 +238,6 @@ mod tests {
         let held = exports.forecast.borrow().clone().expect("held");
         assert_eq!(held.raw.today_kwh, 1.5);
         exports.sample(1, &Sample { at_ms: 0, values: Vec::new() });
-        exports.stop().await;
+        exports.stop(exports.start(Vec::new())).await;
     }
 }
