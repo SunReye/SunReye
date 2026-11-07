@@ -194,6 +194,7 @@ async fn migrate(pool: &SqlitePool, migrator: &Migrator) -> Result<(), StoreErro
 pub struct Store {
     pool: SqlitePool,
     changed: Event<Changed>,
+    rolled: Event<i64>,
 }
 
 impl Store {
@@ -229,7 +230,7 @@ impl Store {
             .connect_with(options.foreign_keys(true))
             .await?;
         migrate(&pool, &sqlx::migrate!("./migrations")).await?;
-        let store = Self { pool, changed: Event::default() };
+        let store = Self { pool, changed: Event::default(), rolled: Event::default() };
         store.sessions().migrate().await?;
         store.sessions().delete_expired().await.map_err(|e| StoreError::Sessions(e.to_string()))?;
         Ok(store)
@@ -250,6 +251,11 @@ impl Store {
     /// not keep the live feed open past `Core::stop`.
     pub fn changed(&self) -> &Event<Changed> {
         &self.changed
+    }
+
+    /// Each minute [`Store::append_minute`] rolled up, once its write commits.
+    pub fn rolled(&self) -> &Event<i64> {
+        &self.rolled
     }
 
     /// Commits `tx`, then publishes `change`.
@@ -448,6 +454,7 @@ impl Store {
         put_minute(&mut *tx, device_id, closed.minute, &blob).await?;
         tiers::roll_up(&mut tx, device_id, closed.minute, &samples, &ids).await?;
         tx.commit().await?;
+        self.rolled.publish(closed.minute);
         Ok(())
     }
 

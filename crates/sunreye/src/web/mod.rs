@@ -24,6 +24,8 @@ mod users;
 mod v1;
 mod ws;
 
+pub(crate) use statistics::today_frame;
+
 use std::sync::Arc;
 
 use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
