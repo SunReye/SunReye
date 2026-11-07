@@ -1222,6 +1222,7 @@ mod devices;
 mod forecast;
 mod import;
 mod kiosk;
+mod midnight;
 mod mqtt;
 mod plant;
 mod reads;
