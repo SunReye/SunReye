@@ -2,7 +2,7 @@
 //! series are the model's own output for the stand-in's payload: the model is held to the 3.x oracle.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use tokio::io::AsyncWriteExt;
 
@@ -11,11 +11,11 @@ use super::weather::conditions_payload;
 use super::*;
 use crate::forecast::{self, CorrectionModel, ForecastConfig, Irradiance, Location, Run, SimInputs, Variant};
 use crate::samples::{ClosedMinute, Sample};
-use crate::support::{acceptor, read_request};
+use crate::support::{acceptor, paused_at, read_request};
 
-/// 2026-07-24T10:07:00Z: plant-local 12:07 in Berlin, inside the stand-in's series.
+/// Plant-local 12:07 in Berlin, inside the stand-in's series.
+pub(super) const NOW: &str = "2026-07-24T10:07:00Z";
 pub(super) const NOW_MS: i64 = 1_784_887_620_000;
-const HALF_HOUR_MS: i64 = 1_800_000;
 pub(super) const LAT: f64 = 50.5;
 pub(super) const LON: f64 = 8.25;
 const TIMES: [&str; 8] = [
@@ -203,12 +203,13 @@ async fn answer_one(
     let _ = stream.shutdown().await;
 }
 
-/// An onboarded core reading the forecast from a stand-in, its clock at `now`.
-pub(super) async fn forecasting(name: &str, now: fn() -> i64) -> (Arc<Core>, Api, StandIn) {
+/// An onboarded core reading the forecast from a stand-in, its clock paused at `at`.
+pub(super) async fn forecasting(name: &str, at: &str) -> (Arc<Core>, Api, StandIn) {
     let ca = Ca::new("forecast test CA");
     let standin = stand_in(&ca).await;
+    let clock = paused_at(at);
     let core =
-        Core::open_forecasting(&dir(name), vec![ca.root()], standin.urls.clone(), now).await.expect("core");
+        Core::open_forecasting(&dir(name), vec![ca.root()], standin.urls.clone(), clock).await.expect("core");
     let (core, admin) = onboarded(core).await;
     (core, admin, standin)
 }
@@ -277,11 +278,9 @@ pub(super) async fn landed(api: &Api, path: &str) -> Value {
     answer_once(api, path, |answer| !answer.is_null()).await
 }
 
-/// Moves the monotonic clock the refresh loops wait on by `ms`; the core keeps running in real time.
+/// Moves the paused core clock, and the timers the core waits on, by `ms`.
 pub(super) async fn elapse(ms: u64) {
-    tokio::time::pause();
     tokio::time::advance(Duration::from_millis(ms)).await;
-    tokio::time::resume();
 }
 
 pub(super) const QUARTER_HOUR_MS: u64 = 900_000;
@@ -303,13 +302,9 @@ pub(super) async fn configure(admin: &Api, max_output_w: Option<f64>) {
     landed(admin, "/api/forecast").await;
 }
 
-pub(super) fn fixed_now() -> i64 {
-    NOW_MS
-}
-
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn weather_settings_round_trip_and_compose_the_inverter_s_arrays() {
-    let (core, admin, _) = forecasting("weather-round-trip", fixed_now).await;
+    let (core, admin, _) = forecasting("weather-round-trip", NOW).await;
     let defaults = get(&admin, "/api/settings/weather").await;
     assert_eq!(
         defaults.json(),
@@ -352,9 +347,9 @@ async fn weather_settings_round_trip_and_compose_the_inverter_s_arrays() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn out_of_bound_values_and_device_owned_fields_are_refused_and_nothing_is_saved() {
-    let (core, admin, _) = forecasting("weather-refused", fixed_now).await;
+    let (core, admin, _) = forecasting("weather-refused", NOW).await;
     let before = get(&admin, "/api/settings/weather").await.json();
     for (body, error) in [
         (json!({"latitude": 91}), "latitude must be -90–90"),
@@ -388,9 +383,9 @@ async fn out_of_bound_values_and_device_owned_fields_are_refused_and_nothing_is_
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_array_on_a_string_the_inverter_lacks_or_shares_and_arrays_on_a_meter_are_refused() {
-    let (core, admin, _) = forecasting("device-pv-refused", fixed_now).await;
+    let (core, admin, _) = forecasting("device-pv-refused", NOW).await;
     let array = |mppt| json!({"kwp": 1, "tilt": 0, "azimuth": 0, "mppt": mppt});
     for (body, error) in [
         (json!({"arrays": [array(5)]}), "arrays: mppt 5 is not a PV string this inverter reports"),
@@ -417,9 +412,9 @@ async fn an_array_on_a_string_the_inverter_lacks_or_shares_and_arrays_on_a_meter
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn an_inverter_s_physics_override_is_set_by_a_value_kept_when_absent_and_cleared_by_null() {
-    let (core, admin, _) = forecasting("device-physics-override", fixed_now).await;
+    let (core, admin, _) = forecasting("device-physics-override", NOW).await;
     let physics = |answer: Answer| {
         let device = answer.json();
         (device["tempCoefficient"].clone(), device["systemLoss"].clone())
@@ -441,9 +436,9 @@ async fn an_inverter_s_physics_override_is_set_by_a_value_kept_when_absent_and_c
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_forecast_answers_the_model_s_series_and_a_second_request_does_not_refetch() {
-    let (core, admin, standin) = forecasting("forecast-served", fixed_now).await;
+    let (core, admin, standin) = forecasting("forecast-served", NOW).await;
     configure(&admin, None).await;
     let raw = get(&admin, "/api/forecast").await;
     assert_eq!(raw.status, StatusCode::OK);
@@ -457,9 +452,9 @@ async fn the_forecast_answers_the_model_s_series_and_a_second_request_does_not_r
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_feed_in_cap_clips_the_usable_view_with_the_stated_house_load() {
-    let (core, admin, _) = forecasting("forecast-clipped", fixed_now).await;
+    let (core, admin, _) = forecasting("forecast-clipped", NOW).await;
     configure(&admin, Some(2500.0)).await;
     let sim = SimInputs { house_load_w: Some(400.0), ..SimInputs::default() };
     let usable = get(&admin, "/api/forecast/usable").await.json();
@@ -469,37 +464,32 @@ async fn the_feed_in_cap_clips_the_usable_view_with_the_stated_house_load() {
     core.stop().await;
 }
 
-static STALE_NOW: AtomicI64 = AtomicI64::new(NOW_MS);
-
-fn stale_now() -> i64 {
-    STALE_NOW.load(Ordering::SeqCst)
-}
-
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_refetch_keeps_the_last_irradiance_and_reports_it_stale() {
-    let (core, admin, standin) = forecasting("forecast-stale", stale_now).await;
+    let (core, admin, standin) = forecasting("forecast-stale", NOW).await;
     configure(&admin, None).await;
     assert_eq!(get(&admin, "/api/forecast").await.json()["stale"], false);
     standin.failing.store(true, Ordering::SeqCst);
-    STALE_NOW.store(NOW_MS + HALF_HOUR_MS, Ordering::SeqCst);
+    elapse(QUARTER_HOUR_MS - 1).await;
     assert_eq!(get(&admin, "/api/forecast").await.json()["stale"], false, "no refresh due");
-    elapse(QUARTER_HOUR_MS).await;
+    elapse(1).await;
     let stale = answer_once(&admin, "/api/forecast", |answer| answer["stale"] == true).await;
     assert_eq!(standin.forecast_paths().len(), 2, "refreshed once");
+    let quarter_hour_on = NOW_MS + i64::try_from(QUARTER_HOUR_MS).expect("ms");
     let want = expected(
         &model(None),
         SimInputs::default(),
         Variant::Raw,
-        &Expected { now_ms: NOW_MS + HALF_HOUR_MS, fetched_ms: NOW_MS, stale: true },
+        &Expected { now_ms: quarter_hour_on, fetched_ms: NOW_MS, stale: true },
     );
     assert_eq!(stale, want, "fetchedAt unchanged");
     drop(admin);
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_failed_first_fetch_answers_null() {
-    let (core, admin, standin) = forecasting("forecast-unreachable", fixed_now).await;
+    let (core, admin, standin) = forecasting("forecast-unreachable", NOW).await;
     standin.failing.store(true, Ordering::SeqCst);
     configure_settings(&admin, None).await;
     until("a failed fetch", || !standin.forecast_paths().is_empty()).await;
@@ -511,9 +501,9 @@ async fn a_failed_first_fetch_answers_null() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn disabled_unlocated_or_arrayless_answers_null_and_asks_nothing_new() {
-    let (core, admin, standin) = forecasting("forecast-unready", fixed_now).await;
+    let (core, admin, standin) = forecasting("forecast-unready", NOW).await;
     let null = |answer: Answer| (answer.status, answer.json()) == (StatusCode::OK, Value::Null);
     let located = json!({"enabled": true, "latitude": LAT, "longitude": LON, "forecast": {"enabled": true}});
     assert_eq!(put(&admin, "/api/settings/weather", &located).await.status, StatusCode::OK);
@@ -533,9 +523,9 @@ async fn disabled_unlocated_or_arrayless_answers_null_and_asks_nothing_new() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_providers_list_open_meteo_with_its_capabilities() {
-    let (core, admin, _) = forecasting("forecast-providers", fixed_now).await;
+    let (core, admin, _) = forecasting("forecast-providers", NOW).await;
     assert_eq!(
         get(&admin, "/api/forecast/providers").await.json(),
         json!([{"id": "open-meteo", "label": "Open-Meteo", "capabilities": {"dni": true, "windSpeed": true}}])
@@ -544,9 +534,9 @@ async fn the_providers_list_open_meteo_with_its_capabilities() {
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_battery_sim_starts_from_the_live_soc_the_median_load_and_the_day_start_soc() {
-    let (core, admin, _) = forecasting("forecast-sim", fixed_now).await;
+    let (core, admin, _) = forecasting("forecast-sim", NOW).await;
     configure(&admin, Some(2500.0)).await;
     let pack = json!({"battery": {"usableKwh": 2, "minSoc": 10}});
     assert_eq!(patch(&admin, "/api/devices/1", &pack).await.status, StatusCode::OK);
@@ -573,12 +563,9 @@ async fn the_battery_sim_starts_from_the_live_soc_the_median_load_and_the_day_st
     core.stop().await;
 }
 
-/// 2026-07-24T22:30:00Z: 00:30 on the 25th in Berlin, 04:00 on the 25th in Kolkata, still the 24th in UTC.
+/// 00:30 on the 25th in Berlin, 04:00 on the 25th in Kolkata, still the 24th in UTC.
+const LATE: &str = "2026-07-24T22:30:00Z";
 const LATE_MS: i64 = 1_784_932_200_000;
-
-fn late_now() -> i64 {
-    LATE_MS
-}
 
 fn late(stale: bool) -> Expected {
     Expected { now_ms: LATE_MS, fetched_ms: LATE_MS, stale }
@@ -589,9 +576,9 @@ fn today_kwh(answer: &Value) -> f64 {
     answer["todayKwh"].as_f64().expect("todayKwh")
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_forecast_cuts_its_days_in_the_saved_plant_zone_not_the_provider_s() {
-    let (core, admin, standin) = forecasting("forecast-plant-zone", late_now).await;
+    let (core, admin, standin) = forecasting("forecast-plant-zone", LATE).await;
     configure(&admin, None).await;
     let base = &model(None);
     // The stand-in answers `Europe/Berlin`; the saved zone decides which day is today.
@@ -608,9 +595,9 @@ async fn the_forecast_cuts_its_days_in_the_saved_plant_zone_not_the_provider_s()
     core.stop().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_saved_zone_the_database_lost_cuts_utc_days_as_the_setting_reads_never_the_series_offset() {
-    let (core, admin, _) = forecasting("forecast-lost-zone", late_now).await;
+    let (core, admin, _) = forecasting("forecast-lost-zone", LATE).await;
     configure(&admin, None).await;
     core.store.save_plant_time_zone("Gone/Zone").await.expect("write");
     let setting = get(&admin, "/api/settings/time-zone").await.json();
