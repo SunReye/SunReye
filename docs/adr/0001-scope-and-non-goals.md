@@ -14,13 +14,15 @@ First release:
 - Tariff, spot price and savings figures; public data feeds (prices, weather) are allowed.
 - Write a device's settings on an admin's request (ADR 7).
 - EVCC and custom profiles; a CLI to create, lint and publish profiles.
+- A plant topology (ADR 14), which every plant-level value needs.
+- A solar forecast per string, and estimates for strings in parallel (ADR 17).
 
 Designed for, not in the first release:
 
 - Automations and optimisation (EMS). They enter only as controllers through the write funnel (ADR 7), each with its own ADR and safety case.
 - Live control: writes the device reverts unless refreshed. Profiles describe them now (ADR 5); only a controller under a lease may use them.
 - Remote access and multi-plant views through an end-to-end encrypted relay (ADR 16). Each install is one plant with a global install id.
-- Forecasts and plans (ADR 15) and a plant topology (ADR 14).
+- EMS plans (ADR 15).
 
 Out of scope: device vendor clouds, and local accounts beyond one admin and the read-only viewers it creates. Cloud accounts and business roles come with the relay build (ADR 16).
 
