@@ -17,7 +17,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 - Counters and enums never get a deadband.
 - A profile's storage class decides the destination: `series`, `config` (a change-log table, one row per change) or `none`.
 - Optional hardware (a generator) is persisted only after any of its readings is non-zero.
-- Non-finite readings are never stored. Only measured values become history.
+- Non-finite readings are never stored. Readings become history, including a computed device's (ADR 15); forecasts never do.
 - The pending change points are written on shutdown and on a profile or deadband change.
 
 **Layout.** Two stages. Each flush writes the minute's change points into a hot table keyed by integer device id, series id and time. A series is the interned pair of role and index, such as `pv.string.power[2]`; an unindexed role is a series of its own. Rollups and the API address series the same way. One owned task packs every closed hour, per device and series, into one block row and deletes the hot rows; an hour without a change writes nothing. A block holds the first change point, then zigzag variable-length deltas of time (at 100 ms resolution) and of value. Reads merge hot rows with blocks and carry the last value forward from the previous block. No general-purpose compressor: zstd or lz4 would add a dependency for a small gain on data that is already delta-encoded.

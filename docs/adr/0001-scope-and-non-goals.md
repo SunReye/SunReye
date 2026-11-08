@@ -1,6 +1,6 @@
 # 1. Scope and stages
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -22,7 +22,7 @@ Designed for, not in the first release:
 - Remote access and multi-plant views through an end-to-end encrypted relay (ADR 16). Each install is one plant with a global install id.
 - Forecasts and plans (ADR 15) and a plant topology (ADR 14).
 
-Out of scope: device vendor clouds, and accounts beyond one admin and read-only viewers.
+Out of scope: device vendor clouds, and local accounts beyond one admin and the read-only viewers it creates. Cloud accounts and business roles come with the relay build (ADR 16).
 
 ## Considered options
 
