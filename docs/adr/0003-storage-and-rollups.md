@@ -8,7 +8,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 ## Decision
 
-**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, no automatic VACUUM. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
+**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
 
 **Intervals.** Readings are change-encoded. A row is an interval: a value held for a duration, starting at a time, inside one 60 s epoch-aligned bucket.
 
@@ -21,6 +21,10 @@ History for years on flash storage, on hardware where memory and write volume ma
 - Non-finite readings are never stored. Only measured values become history.
 - Open intervals are closed and written on shutdown and on a profile or deadband change.
 
+**Layout.** Two stages. Each flush writes small rows into a hot table keyed by integer device id, role id and time. One owned task packs every closed hour, per device and role, into one block row and deletes the hot rows. A block holds the first timestamp, then zigzag variable-length deltas of time and value. Reads merge open hot rows with blocks. No general-purpose compressor: zstd or lz4 is added only when a measurement shows a gain worth the dependency.
+
+**Values.** Fixed-point integers, never floats. The scale is the point's quantisation step from the profile, so nothing the register can express is lost; a float register declares its resolution (ADR 5). Counters are stored as integer deltas.
+
 **Flush.** At most one bucket of intervals is held in memory. One transaction is written when each bucket closes. A crash or power cut loses at most the open 60 s of history, a deliberate trade. Live values and every consumer of the bus read memory.
 
 **Rollups.** Hourly and daily, derived from intervals by one owned task that updates the affected buckets after each flush. A bucket stores `Σ value·duration`, `Σ duration`, min and max; counters store first and last; enums store neither. The mean is computed on read, so a daily bucket is exact from hourly ones. Min and max are within one deadband of the true extreme; the poll interval is the resolution floor. Late rows mark buckets dirty and the task recomputes them. A rollup can be dropped and rebuilt while its intervals exist.
@@ -29,15 +33,19 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Time.** UTC instants only. Days, weeks and months are cut in the plant timezone, set once by the admin and separate from any viewer's display timezone. Days of 23 or 25 hours fall out of cutting from UTC instants. The daily key is the plant-local date. A timezone change applies from the change date. The daily key records the zone it was cut in: days still inside interval retention are rebuilt, older days cannot be and keep their zone. Tests pass an explicit zone and never change the process timezone.
 
-**Retention.** Hourly and daily rollups are kept forever. The interval retention is a setting; its default comes from the measured size per device-year in the skeleton.
+**Retention.** Hourly and daily rollups are kept forever. The interval retention is a setting. Expiry deletes whole blocks and returns pages in small incremental-vacuum steps, so the file shrinks.
+
+**Bench.** The skeleton replays captures and reports bytes per device-year for the blocks and for a plain row-per-interval baseline. Blocks stay only if at least 2 times smaller. The winning number becomes a budget the local gate checks and sets the retention default.
 
 **Migrations and backup.** Forward-only numbered SQL, embedded and applied at startup in one transaction. The core refuses a database whose schema is newer than it knows. Backup uses SQLite's online backup API into a file the admin names, through the API and the CLI. Restore replaces the file while the core is stopped.
 
-**Full disk.** History writing stops, live serving continues, the API reports `storage.full`. A prune task deletes expired intervals in small batches.
+**Full disk.** History writing stops, live serving continues, the API reports `storage.full`. A prune task deletes expired blocks in small batches.
 
 ## Considered options
 
 - **TimescaleDB.** Rejected: a server process, and v3's hyperfunctions and compression jobs cannot run on Android.
+- **Floats.** Rejected: integers delta-encode far better and are exact.
+- **One row per interval.** Kept only as the bench baseline: key, row header and page overhead cost several times the value.
 - **Fixed-rate samples.** Rejected: row volume then scales with the poll rate; change-encoding makes it a property of the signal.
 - **UTC day buckets cut from hourly rollups.** Rejected: exact only for whole-hour offsets, and v5 has no parity requirement with an older release.
 
