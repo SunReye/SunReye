@@ -10,10 +10,6 @@ type Connection = components["schemas"]["ConnectionView"];
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 vi.mock("svelte-sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-// The 4.0 build has no Elysia: any call to it is a dead request.
-vi.mock("$lib/api", () => ({
-  api: new Proxy({}, { get: () => expect.fail("the roster asked the Elysia API") }),
-}));
 const get = vi.fn();
 const patch = vi.fn();
 const del = vi.fn();

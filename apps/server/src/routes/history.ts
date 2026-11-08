@@ -135,6 +135,7 @@ export function historyRoutes({ profile, sources }: HistoryRoutesDeps) {
             inverterId: t.Optional(t.String()),
           }),
         },
+        // fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
         async ({ query, status }) => {
           const since = new Date(Date.now() - query.hours * 60 * 60 * 1000);
           const refused = await guardRange("raw", { from: since, to: new Date() }, status);
@@ -195,6 +196,7 @@ export function historyRoutes({ profile, sources }: HistoryRoutesDeps) {
             inverterId: t.Optional(t.String()),
           }),
         },
+        // fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
         async ({ query, status }) => {
           const req = sourceRequest(query);
           if (!req) return status(503, ONBOARDING_REQUIRED);
@@ -232,6 +234,7 @@ export function historyRoutes({ profile, sources }: HistoryRoutesDeps) {
             limit: t.Number({ default: 5000, minimum: 1, maximum: 50000 }),
           }),
         },
+        // fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
         async ({ query, status }) => {
           const req = sourceRequest(query);
           if (!req) return status(503, ONBOARDING_REQUIRED);

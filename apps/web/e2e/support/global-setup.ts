@@ -23,7 +23,7 @@ import { discoverPageFiles, hashUrlFor } from "./open-page";
 async function assertServesThisCheckout(base: string): Promise<void> {
   // A file this suite already depends on existing, so the probe cannot rot into
   // a false alarm on its own.
-  const marker = fileURLToPath(new URL("../../src/lib/api.ts", import.meta.url));
+  const marker = fileURLToPath(new URL("../../src/lib/core-api.ts", import.meta.url));
   if (!existsSync(marker)) {
     throw new Error(`e2e origin probe: marker file is gone (${marker}) — update global-setup.ts`);
   }

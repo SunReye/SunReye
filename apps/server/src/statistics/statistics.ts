@@ -247,6 +247,7 @@ async function moneyRecords(
  * the savings are spread over is measured in solar years where the roof is
  * known, so a summer-only history is not annualised as a whole year.
  */
+// fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
 export async function computeAmortisation(
   profile: InverterProfile,
   opts: { inverterId?: SeriesTarget } = {},

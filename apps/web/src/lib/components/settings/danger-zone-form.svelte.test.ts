@@ -5,10 +5,6 @@ import type { components } from "$lib/core-api.gen";
 import * as m from "$lib/paraglide/messages";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-// The 4.0 build has no Elysia: any call to it is a dead request.
-vi.mock("$lib/api", () => ({
-  api: new Proxy({}, { get: () => expect.fail("the danger zone asked the Elysia API") }),
-}));
 vi.mock("svelte-sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const get = vi.fn();
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));

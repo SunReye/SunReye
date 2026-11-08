@@ -97,6 +97,7 @@ const NO_PLANT = { id: null as number | null, name: "", slug: "" };
  * who renamed it must see their name, not a re-derived one. A blank field is the
  * one submitted without reading, and what is submitted here is frozen.
  */
+// fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
 async function spine() {
   const plant = (await readPlant(db)) ?? null;
   if (plant === null) return { plant: NO_PLANT, device: null, rows: null };
@@ -121,6 +122,7 @@ async function gateState(): Promise<GateState> {
 }
 
 /** What the status endpoint answers, and what the page paints from. */
+// fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
 export async function readMigrationView(): Promise<MigrationView> {
   const state = await gateState();
   const { plant, device } = await spine();
@@ -161,6 +163,7 @@ export interface OnboardingApplied {
  * abort the whole submit while the form is still open, not after the record has
  * been stamped and the gate released.
  */
+// fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
 async function writeSlugs(plan: OnboardingPlan, spine: Spine): Promise<void> {
   if (plan.plantSlug === null && plan.deviceSlug === null) return;
   await reslugForMigrationOnboarding(db, {
@@ -220,6 +223,7 @@ async function stampRecord(record: MigrationRecord, migrateNow: boolean): Promis
  * The five steps are in the order the module note argues for, and each is its own
  * function so that order is readable as a list rather than inferred from 70 lines.
  */
+// fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
 export async function applyOnboarding(
   input: OnboardingInput,
 ): Promise<OnboardingApplied | OnboardingRefusal> {

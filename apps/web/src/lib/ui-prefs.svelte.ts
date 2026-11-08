@@ -1,5 +1,5 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 
 /**
  * Dashboard visibility preferences shape. Mirrors the server's `uiPrefsSchema`
@@ -43,7 +43,7 @@ class UiPrefsStore {
    * config set.
    */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.settings.ui.get().then(({ data }) => {
+    this.#loadPromise ??= byPath.GET("/api/settings/ui").then(({ data }) => {
       if (data) this.config = data as UiPrefs;
     });
     return this.#loadPromise;
@@ -51,15 +51,15 @@ class UiPrefsStore {
 
   /** Re-fetch from the server, bypassing the once-per-session cache. */
   async reload(): Promise<void> {
-    const { data } = await api.api.settings.ui.get();
+    const { data } = await byPath.GET("/api/settings/ui");
     if (data) this.config = data as UiPrefs;
   }
 
   /** Persist a new config; on success the reactive sets update in place. */
   async save(next: UiPrefs): Promise<boolean> {
-    const { data, error } = await api.api.settings.ui.put(next);
-    if (error) return false;
-    this.config = payloadOrNull<UiPrefs>(data) ?? next;
+    const answer = await byPath.PUT("/api/settings/ui", { body: next });
+    if (refused(answer)) return false;
+    this.config = payloadOrNull<UiPrefs>(answer.data) ?? next;
     return true;
   }
 }

@@ -5,8 +5,8 @@
  * configuration read require an admin one. That turns a class of response the
  * app had barely seen — a 401 arriving in the middle of a working page — into
  * an everyday event: a session expires, an admin revokes an account, the server
- * restarts with a new secret. The client's answer is a single Eden `onResponse`
- * hook in `src/lib/api.ts`.
+ * restarts with a new secret. The client's answer is a single
+ * middleware on the core client in `src/lib/core-api.ts`.
  *
  * Two things are being proven here, and only one of them is "it redirects":
  *
@@ -116,9 +116,9 @@ test("a stale session does not bounce a page that is already pre-auth", async ({
   // client: the hook that would bounce is the thing under test.
   const status = await page.evaluate(async () => {
     // A variable specifier: the module is the dev server's, not one tsc can resolve.
-    const specifier = "/src/lib/api.ts";
-    const { api } = await import(/* @vite-ignore */ specifier);
-    return (await api.api.profile.get()).status as number;
+    const specifier = "/src/lib/core-api.ts";
+    const { core } = await import(/* @vite-ignore */ specifier);
+    return (await core.GET("/api/profile")).response.status as number;
   });
   expect(status).toBe(401);
   // The bounce is `import().then(goto)`, a few tasks after the response: let frames pass.

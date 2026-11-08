@@ -28,7 +28,7 @@ const config = {
     // app at /api/hassio_ingress/<token>/ — absolute-path navigation would
     // escape the prefix). Implies SSR off and requires a single client bundle.
     // Constraint: no +page.server.ts/+layout.server.ts or per-page options may
-    // be added — all data flows through the Eden treaty client.
+    // be added — all data flows through the core client.
     router: { type: "hash" },
     output: { bundleStrategy: "single" },
   },

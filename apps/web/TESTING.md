@@ -64,7 +64,7 @@ test("keeps the explanation behind a tap", async () => {
 - **Phone width:** `await page.viewport(390, 844)` before `render`.
 - **Context, snippets, slots:** mount a small `*.fixture.svelte` beside the test that sets the
   context or passes the snippet (`section.fixture.svelte`, `stat-tiles.fixture.svelte`).
-- **Modules that reach the network or `$env`:** `vi.mock("$lib/api")`,
+- **Modules that reach the network or `$env`:** `vi.mock("$lib/core-api")`,
   `vi.mock("$env/dynamic/public", () => ({ env: {} }))`. Vitest mocks are per file — the bun
   `mock.module` hygiene rules do not apply here.
 - **Hidden elements:** `getByRole` skips them unless `{ includeHidden: true }`.
@@ -234,7 +234,7 @@ The failure mode on this dashboard is not a crash, it is a **plausible wrong num
 screen nobody is watching**. Write the cases that produce one:
 
 - **Absent vs empty vs zero.** `0` is a reading; `""` is not. The server answers `null` for a
-  disabled feature, Elysia sends that as an empty body, and Eden hands it back as `""` — so
+  disabled feature, the core sends that as an empty body, and openapi-fetch hands it back as `""` — so
   `data ?? null` keeps it and the guard downstream passes. Always normalize through
   `payloadOrNull` (or a shape guard like `isReadableWeather`), and test the empty body
   explicitly.

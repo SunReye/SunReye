@@ -35,7 +35,7 @@ import { CadenceTracker } from "$lib/inverter/cadence";
 import { ReconnectingSocket, type SocketLike } from "./reconnecting-socket";
 
 export interface LiveBusHooks {
-  /** Open the transport — `api.ws.subscribe()` in the browser, a fake in tests. */
+  /** Open the transport — a browser WebSocket on the core's `/ws`, a fake in tests. */
   create(): SocketLike;
   /** The connection came up or went down. */
   onConnected(connected: boolean): void;
