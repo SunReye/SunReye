@@ -11,4 +11,5 @@ The first milestone: one register read travels to one SPA screen on the real cor
 7. **SPA.** One screen with live power and a day chart: hash router, relative paths, embedded in the binary. Done: a component test passes and the built binary serves the screen.
 8. **Real device, gateway.** The owner's plant over Modbus TCP, unit 0, read only. Done: an hour of readings stored and shown, matching the values v4 reports for the same hour.
 9. **Real device, Solarman.** The ported V5 framing with its quirk tests, on the stick at unit 1. Done: the same values as through the gateway.
-10. **Package.** The Docker image, and the SPA under a real Home Assistant ingress prefix. Done: the image runs the skeleton; the ingress result is recorded in ADR 13.
+10. **Solar forecast.** The owner's layout: MPPT input 1 with 2 × 16 modules in parallel, south and north; MPPT input 2 with 14 modules south. The weather fake in tests, Open-Meteo live; Perez fixtures from pvlib. Done: the day chart shows the forecast per string and the live estimates of the two parallel strings, which sum to the measured MPPT power.
+11. **Package.** The Docker image, and the SPA under a real Home Assistant ingress prefix. Done: the image runs the skeleton; the ingress result is recorded in ADR 13.
