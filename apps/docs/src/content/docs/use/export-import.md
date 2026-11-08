@@ -7,6 +7,8 @@ SunReye can write its entire contents to **one portable file** and read that fil
 the way to move to another machine, the thing to keep before a reset, and the reason a future
 schema change cannot cost you your history.
 
+Moving a 3.x install to 4.0 uses this archive: see [Migrating from 3.x to 4.0](/deploy/migrating-to-4/).
+
 ## Why not just back up the database?
 
 A `pg_dump` is an excellent **backup** of one version and a poor **migration vehicle**. It

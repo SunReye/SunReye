@@ -101,6 +101,7 @@ export default defineConfig({
             { label: "Home Assistant Addon", slug: "deploy/home-assistant" },
             { label: "SunReye Appliance", slug: "deploy/appliance" },
             { label: "Upgrading to 2.0.0", slug: "deploy/upgrading-to-2" },
+            { label: "Migrating to 4.0", slug: "deploy/migrating-to-4" },
           ],
         },
         {
