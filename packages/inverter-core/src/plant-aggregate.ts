@@ -16,38 +16,15 @@
  *    value. A plant-level read of one is REFUSED, never rendered as an empty
  *    series a chart would draw as flat zero.
  *
- * Derived from the spec rather than annotated on ~100 entries, with an
- * explicit `aggregate` on the spec as the override. `per-device` is the
- * fallback for every case the derivation does not recognise, because it is the
- * one answer that cannot invent a total.
+ * Each spec states its own `aggregate`. `per-device` is the answer for a role
+ * the catalogue does not know, because it is the one answer that cannot invent
+ * a total.
  */
 
 import { type CanonicalRole, ROLE_CATALOG, type RoleSpec } from "./roles";
 
 export const PLANT_AGGREGATES = ["sum", "weighted-mean", "per-device"] as const;
 export type PlantAggregate = (typeof PLANT_AGGREGATES)[number];
-
-/** What a unit says about the fold, for the roles that are not ruled out first. */
-const BY_UNIT: Readonly<Record<string, PlantAggregate>> = {
-  W: "sum",
-  kW: "sum",
-  Wh: "sum",
-  kWh: "sum",
-  "%": "weighted-mean",
-  "°C": "weighted-mean",
-};
-
-/** A role that is one machine's own state, whatever its unit. */
-function isDeviceLocal(spec: RoleSpec): boolean {
-  const foreignClass = spec.deviceClass !== undefined && spec.deviceClass !== "inverter";
-  const notAReading = spec.kind === "status" || spec.kind === "setting";
-  return foreignClass || notAReading || spec.indexed === true;
-}
-
-function derive(spec: RoleSpec): PlantAggregate {
-  if (isDeviceLocal(spec)) return "per-device";
-  return (spec.unitHint !== undefined && BY_UNIT[spec.unitHint]) || "per-device";
-}
 
 /**
  * The aggregate for a role. `spec` is taken from {@link ROLE_CATALOG} when the
@@ -60,5 +37,5 @@ export function plantAggregateOf(
     : undefined,
 ): PlantAggregate {
   if (spec === undefined) return "per-device";
-  return spec.aggregate ?? derive(spec);
+  return spec.aggregate;
 }

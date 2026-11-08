@@ -11,54 +11,10 @@ use std::collections::BTreeMap;
 
 use crate::profile::Profile;
 use crate::recent::{Recent, Series};
+use crate::role::Aggregate;
+use crate::role::aggregate_of;
 use crate::rollup::Bucket;
 use crate::store::DeviceRow;
-
-/// How a role folds across members.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Aggregate {
-    Sum,
-    WeightedMean,
-    /// One machine's own state: the plant has no value for it.
-    PerDevice,
-}
-
-/// The roles that fold, from the 2.x role catalog; every other role is per device. Held against it by a test.
-const ROLE_AGGREGATES: &[(&str, Aggregate)] = &[
-    ("pv.total.power", Aggregate::Sum),
-    ("production.today", Aggregate::Sum),
-    ("production.total", Aggregate::Sum),
-    ("battery.soc", Aggregate::WeightedMean),
-    ("battery.power", Aggregate::Sum),
-    ("battery.temperature", Aggregate::WeightedMean),
-    ("battery.energy.charged.today", Aggregate::Sum),
-    ("battery.energy.charged.total", Aggregate::Sum),
-    ("battery.energy.discharged.today", Aggregate::Sum),
-    ("battery.energy.discharged.total", Aggregate::Sum),
-    ("grid.power", Aggregate::Sum),
-    ("grid.energy.imported.today", Aggregate::Sum),
-    ("grid.energy.imported.total", Aggregate::Sum),
-    ("grid.energy.exported.today", Aggregate::Sum),
-    ("grid.energy.exported.total", Aggregate::Sum),
-    ("load.power", Aggregate::Sum),
-    ("load.energy.today", Aggregate::Sum),
-    ("load.energy.total", Aggregate::Sum),
-    ("backup.power", Aggregate::Sum),
-    ("backup.energy.today", Aggregate::Sum),
-    ("backup.energy.total", Aggregate::Sum),
-    ("generator.power", Aggregate::Sum),
-    ("generator.energy.today", Aggregate::Sum),
-    ("generator.energy.total", Aggregate::Sum),
-    ("inverter.temperature.dc", Aggregate::WeightedMean),
-    ("inverter.temperature.ac", Aggregate::WeightedMean),
-    ("inverter.power", Aggregate::Sum),
-    ("inverter.efficiency", Aggregate::WeightedMean),
-];
-
-fn role_aggregate(role: Option<&str>) -> Aggregate {
-    let found = ROLE_AGGREGATES.iter().find(|(name, _)| Some(*name) == role);
-    found.map_or(Aggregate::PerDevice, |(_, aggregate)| *aggregate)
-}
 
 /// Each metric key's aggregate, from the roles a profile gives its metrics; an unknown key is per device.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,7 +22,7 @@ pub struct Aggregates(BTreeMap<String, Aggregate>);
 
 impl Aggregates {
     pub fn of_roles<'a>(roles: impl IntoIterator<Item = (&'a str, Option<&'a str>)>) -> Self {
-        Self(roles.into_iter().map(|(key, role)| (key.to_owned(), role_aggregate(role))).collect())
+        Self(roles.into_iter().map(|(key, role)| (key.to_owned(), aggregate_of(role))).collect())
     }
 
     pub fn of_profile(profile: &Profile) -> Self {
@@ -198,14 +154,6 @@ mod tests {
     use crate::oracle::{as_floats, oracle};
     use crate::rollup::{Tier, rollup};
 
-    fn name(aggregate: Aggregate) -> &'static str {
-        match aggregate {
-            Aggregate::Sum => "sum",
-            Aggregate::WeightedMean => "weighted-mean",
-            Aggregate::PerDevice => "per-device",
-        }
-    }
-
     fn text(value: &Value) -> &str {
         value.as_str().expect("string")
     }
@@ -253,19 +201,6 @@ mod tests {
             step: u32::try_from(value["step"].as_u64().expect("step")).expect("step"),
             metrics: metrics.collect(),
         }
-    }
-
-    #[test]
-    fn the_role_aggregates_are_the_2x_role_catalog() {
-        let [catalog] = oracle("role-aggregates.ndjson").try_into().expect("one line");
-        let catalog = catalog.as_object().expect("roles");
-        for (role, aggregate) in catalog {
-            assert_eq!(name(role_aggregate(Some(role))), aggregate, "{role}");
-        }
-        for (role, _) in ROLE_AGGREGATES {
-            assert!(catalog.contains_key(*role), "{role} is no 2.x role");
-        }
-        assert_eq!(role_aggregate(None), Aggregate::PerDevice);
     }
 
     #[test]

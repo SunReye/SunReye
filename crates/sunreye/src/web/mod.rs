@@ -55,10 +55,14 @@ use crate::run::Core;
 use crate::store::StoreError;
 
 #[derive(OpenApi)]
-#[openapi(info(
-    title = "SunReye Core API",
-    description = "Monitoring core: accounts, onboarding and capabilities."
-))]
+#[openapi(
+    info(
+        title = "SunReye Core API",
+        description = "Monitoring core: accounts, onboarding and capabilities."
+    ),
+    // No route answers with a profile; the SDK's types are generated from these.
+    components(schemas(crate::profile::Profile, crate::role::Role, crate::role::RoleSpec))
+)]
 struct ApiDoc;
 
 /// What the startup flags decide about sessions and origins.

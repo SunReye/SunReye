@@ -7,98 +7,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::profile::{Access, Flow, Metric, MetricKind, Profile, Range, Storage};
-
-/// The kind each canonical role prescribes, for a metric that states none. Held against the 2.x role
-/// catalog by a test.
-const ROLE_KINDS: &[(&str, MetricKind)] = &[
-    ("pv.string.power", MetricKind::Measurement),
-    ("pv.string.voltage", MetricKind::Measurement),
-    ("pv.string.current", MetricKind::Measurement),
-    ("pv.total.power", MetricKind::Measurement),
-    ("pv.string.energy.today", MetricKind::Cumulative),
-    ("pv.string.energy.total", MetricKind::Cumulative),
-    ("production.today", MetricKind::Cumulative),
-    ("production.total", MetricKind::Cumulative),
-    ("battery.soc", MetricKind::Measurement),
-    ("battery.power", MetricKind::Measurement),
-    ("battery.voltage", MetricKind::Measurement),
-    ("battery.current", MetricKind::Measurement),
-    ("battery.temperature", MetricKind::Measurement),
-    ("battery.mode", MetricKind::Status),
-    ("battery.energy.charged.today", MetricKind::Cumulative),
-    ("battery.energy.charged.total", MetricKind::Cumulative),
-    ("battery.energy.discharged.today", MetricKind::Cumulative),
-    ("battery.energy.discharged.total", MetricKind::Cumulative),
-    ("grid.power", MetricKind::Measurement),
-    ("grid.frequency", MetricKind::Measurement),
-    ("grid.phase.voltage", MetricKind::Measurement),
-    ("grid.phase.current", MetricKind::Measurement),
-    ("grid.phase.power", MetricKind::Measurement),
-    ("grid.energy.imported.today", MetricKind::Cumulative),
-    ("grid.energy.imported.total", MetricKind::Cumulative),
-    ("grid.energy.exported.today", MetricKind::Cumulative),
-    ("grid.energy.exported.total", MetricKind::Cumulative),
-    ("load.power", MetricKind::Measurement),
-    ("load.phase.power", MetricKind::Measurement),
-    ("load.phase.voltage", MetricKind::Measurement),
-    ("load.phase.current", MetricKind::Measurement),
-    ("load.energy.today", MetricKind::Cumulative),
-    ("load.energy.total", MetricKind::Cumulative),
-    ("backup.power", MetricKind::Measurement),
-    ("backup.phase.power", MetricKind::Measurement),
-    ("backup.phase.voltage", MetricKind::Measurement),
-    ("backup.phase.current", MetricKind::Measurement),
-    ("backup.frequency", MetricKind::Measurement),
-    ("backup.energy.today", MetricKind::Cumulative),
-    ("backup.energy.total", MetricKind::Cumulative),
-    ("generator.power", MetricKind::Measurement),
-    ("generator.phase.power", MetricKind::Measurement),
-    ("generator.phase.voltage", MetricKind::Measurement),
-    ("generator.phase.current", MetricKind::Measurement),
-    ("generator.energy.today", MetricKind::Cumulative),
-    ("generator.energy.total", MetricKind::Cumulative),
-    ("ev.charge.power", MetricKind::Measurement),
-    ("ev.vehicle.soc", MetricKind::Measurement),
-    ("ev.session.energy", MetricKind::Cumulative),
-    ("ev.connected", MetricKind::Status),
-    ("ev.charging", MetricKind::Status),
-    ("optimizer.target.current", MetricKind::Measurement),
-    ("optimizer.applied.current", MetricKind::Measurement),
-    ("optimizer.threshold.power", MetricKind::Measurement),
-    ("optimizer.excess.power", MetricKind::Measurement),
-    ("optimizer.local.sink.power", MetricKind::Measurement),
-    ("optimizer.headroom.energy", MetricKind::Measurement),
-    ("optimizer.surplus.energy", MetricKind::Measurement),
-    ("optimizer.soc.envelope", MetricKind::Measurement),
-    ("optimizer.soakable.energy", MetricKind::Measurement),
-    ("optimizer.unavoidable.energy", MetricKind::Measurement),
-    ("optimizer.ev.demand.energy", MetricKind::Measurement),
-    ("optimizer.sell.limit.power", MetricKind::Measurement),
-    ("optimizer.grid.charge.current", MetricKind::Measurement),
-    ("optimizer.state", MetricKind::Status),
-    ("optimizer.price.regime", MetricKind::Status),
-    ("optimizer.override", MetricKind::Status),
-    ("optimizer.ineffective", MetricKind::Status),
-    ("optimizer.enabled", MetricKind::Setting),
-    ("optimizer.mode", MetricKind::Setting),
-    ("optimizer.restore.pending", MetricKind::Status),
-    ("inverter.status", MetricKind::Status),
-    ("inverter.relay_status", MetricKind::Status),
-    ("inverter.temperature.dc", MetricKind::Measurement),
-    ("inverter.temperature.ac", MetricKind::Measurement),
-    ("inverter.power", MetricKind::Measurement),
-    ("inverter.efficiency", MetricKind::Measurement),
-    ("setting.battery.max_charge_current", MetricKind::Setting),
-    ("setting.battery.max_discharge_current", MetricKind::Setting),
-    ("setting.battery.max_grid_charge_current", MetricKind::Setting),
-    ("setting.battery.max_charge_power", MetricKind::Setting),
-    ("setting.battery.max_discharge_power", MetricKind::Setting),
-    ("setting.battery.max_grid_charge_power", MetricKind::Setting),
-    ("setting.battery.grid_charge", MetricKind::Setting),
-    ("setting.work_mode", MetricKind::Setting),
-    ("setting.solar_sell.max_power", MetricKind::Setting),
-    ("setting.solar_sell.enabled", MetricKind::Setting),
-];
+use crate::role::kind_of_role;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct InverterManifest {
@@ -172,13 +81,9 @@ pub fn manifest(profile: &Profile) -> InverterManifest {
     }
 }
 
-fn role_kind(role: &str) -> Option<MetricKind> {
-    ROLE_KINDS.iter().find(|(name, _)| *name == role).map(|(_, kind)| *kind)
-}
-
 /// The kind a metric states: itself, its role, being writable, or counting kWh; a measurement otherwise.
 fn kind_of(metric: &Metric) -> MetricKind {
-    let stated = metric.kind.or_else(|| metric.role.as_deref().and_then(role_kind));
+    let stated = metric.kind.or_else(|| metric.role.as_deref().and_then(kind_of_role));
     let derived = || {
         if metric.access == Some(Access::ReadWrite) {
             Some(MetricKind::Setting)
@@ -320,13 +225,6 @@ mod tests {
             let (ours, theirs) = (as_floats(served(&pinned.profile)), as_floats(row["manifest"].clone()));
             assert_eq!(ours, theirs, "{}", pinned.profile.id);
         }
-    }
-
-    #[test]
-    fn the_role_kinds_are_the_2x_role_catalog() {
-        let [catalog] = oracle("role-kinds.ndjson").try_into().expect("one line");
-        let ours: Value = ROLE_KINDS.iter().map(|(role, kind)| ((*role).to_owned(), json!(kind))).collect();
-        assert_eq!(ours, catalog);
     }
 
     #[test]

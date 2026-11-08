@@ -17,6 +17,7 @@
   },
   "scripts": {
     "test": "bun test ./src",
+    "gen:profile": "bun scripts/gen-profile.ts",
     "check-types": "tsrs -p . --noEmit"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@SunReye/config": "workspace:*",
     "@types/bun": "catalog:",
+    "openapi-typescript": "^7.13.0",
     "typescript": "catalog:"
   }
 }

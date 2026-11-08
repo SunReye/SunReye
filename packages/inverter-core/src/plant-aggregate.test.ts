@@ -54,7 +54,7 @@ describe("plantAggregateOf — how a role folds across a plant's devices", () =>
     expect(plantAggregateOf(undefined)).toBe("per-device");
   });
 
-  test("an explicit `aggregate` on the spec wins over the derivation", () => {
+  test("a given spec answers for its own aggregate", () => {
     expect(plantAggregateOf("x", { kind: "measurement", unitHint: "V", aggregate: "sum" })).toBe(
       "sum",
     );

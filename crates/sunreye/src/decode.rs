@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use crate::profile::{Binding, Expr, Metric, Profile, Range, RegisterType};
+use crate::profile::{Binding, Expr, KeyAndFactor, Metric, Profile, Range, RegisterType};
 
 /// Words the device answered, by register address.
 pub type Words = HashMap<u16, u16>;
@@ -70,7 +70,7 @@ fn evaluate(expr: &Expr, values: &HashMap<&str, f64>) -> f64 {
     match expr {
         Expr::Sum(keys) => total(keys),
         Expr::Diff([a, b]) => get(a) - get(b),
-        Expr::Scale(key, factor) => get(key) * factor,
+        Expr::Scale(KeyAndFactor(key, factor)) => get(key) * factor,
         Expr::Combine { add, sub } => total(add) - total(sub.as_deref().unwrap_or_default()),
         Expr::Ratio { num, den, scale } => {
             let denominator = total(den);
