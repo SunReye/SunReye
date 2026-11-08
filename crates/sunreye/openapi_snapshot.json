@@ -1637,6 +1637,39 @@
         }
       }
     },
+    "/api/evcc": {
+      "get": {
+        "summary": "The ingest's last state; `null` while it is off. Kiosk-readable, as the `/ws` `evcc` topic.",
+        "operationId": "evccState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvccState"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/forecast": {
       "get": {
         "summary": "The uncurtailed PV potential; null while the forecast is off or unconfigured, or no irradiance was had.",
@@ -3609,6 +3642,15 @@
           }
         }
       },
+      "ChargePowerSource": {
+        "type": "string",
+        "description": "Where a loadpoint's live charge power comes from.",
+        "enum": [
+          "measured",
+          "estimated",
+          "feedforward"
+        ]
+      },
       "Confirmation": {
         "type": "object",
         "required": [
@@ -4217,6 +4259,189 @@
             "type": "string",
             "description": "EVCC's own MQTT root topic.",
             "default": "evcc"
+          }
+        }
+      },
+      "EvccLoadpoint": {
+        "type": "object",
+        "description": "One loadpoint as the dashboard renders it; an unknown figure is `None`, not zero.",
+        "required": [
+          "index",
+          "title",
+          "mode",
+          "chargePower",
+          "chargePowerLive",
+          "chargePowerSource",
+          "charging",
+          "connected",
+          "vehicleSoc",
+          "vehicleRange",
+          "vehicleTitle",
+          "vehicleName",
+          "sessionEnergy",
+          "chargeRemainingEnergy",
+          "limitSoc",
+          "effectiveLimitSoc",
+          "vehicleLimitSoc",
+          "batteryBoost",
+          "batteryBoostLimit",
+          "vehicleCapacityKwh",
+          "phasesActive"
+        ],
+        "properties": {
+          "batteryBoost": {
+            "type": "boolean",
+            "description": "EVCC is draining the house battery into the car."
+          },
+          "batteryBoostLimit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "chargePower": {
+            "type": "number",
+            "format": "double",
+            "description": "W, as EVCC last reported it."
+          },
+          "chargePowerLive": {
+            "type": "number",
+            "format": "double",
+            "description": "W, the estimator's view between EVCC's publishes."
+          },
+          "chargePowerSource": {
+            "$ref": "#/components/schemas/ChargePowerSource"
+          },
+          "chargeRemainingEnergy": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Wh still needed to reach the limit."
+          },
+          "charging": {
+            "type": "boolean"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "effectiveLimitSoc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The limit EVCC charges to, in %; `0` or `None` is no limit."
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1-based, as in EVCC's topics.",
+            "minimum": 0
+          },
+          "limitSoc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`off`, `pv`, `minpv` or `now`."
+          },
+          "phasesActive": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "sessionEnergy": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Wh added this session."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleCapacityKwh": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "vehicleLimitSoc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "vehicleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleRange": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "km."
+          },
+          "vehicleSoc": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "vehicleTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "EvccState": {
+        "type": "object",
+        "description": "What the `evcc` topic retains.",
+        "required": [
+          "reachable",
+          "loadpoints",
+          "subtractFromHome"
+        ],
+        "properties": {
+          "loadpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvccLoadpoint"
+            }
+          },
+          "reachable": {
+            "type": "boolean",
+            "description": "The broker is connected and EVCC reports itself online."
+          },
+          "subtractFromHome": {
+            "type": "boolean",
+            "description": "Draw the EV off the house-load node."
           }
         }
       },

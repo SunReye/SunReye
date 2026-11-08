@@ -1,4 +1,5 @@
-//! The MQTT 3.1.1 packets a publish-only client sends and the two it reads. There is no SUBSCRIBE.
+//! The MQTT 3.1.1 packets the export and the EVCC ingest send, and the ones they read. Every packet is `QoS` 0:
+//! nothing here acknowledges a publish.
 
 use std::io;
 
@@ -9,7 +10,8 @@ pub use super::bridge::Publish;
 pub const PINGREQ: [u8; 2] = [0xC0, 0];
 pub const DISCONNECT: [u8; 2] = [0xE0, 0];
 pub const CONNACK: u8 = 0x20;
-/// A publish-only client reads CONNACK and PINGRESP; anything longer is refused rather than buffered.
+pub const SUBACK: u8 = 0x90;
+/// Longer packets are refused rather than buffered.
 const MAX_READ: usize = 64 * 1024;
 
 #[derive(Debug)]
@@ -18,7 +20,7 @@ pub struct Connect<'a> {
     pub keep_alive_secs: u16,
     pub username: Option<&'a str>,
     pub password: Option<&'a str>,
-    pub will: &'a Publish,
+    pub will: Option<&'a Publish>,
 }
 
 pub fn remaining_length(out: &mut Vec<u8>, mut length: usize) {
@@ -45,11 +47,11 @@ fn packet(first: u8, body: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A clean session with a `QoS` 0 will.
+/// A clean session, with a `QoS` 0 will when given one.
 pub fn connect(c: &Connect) -> Vec<u8> {
-    let mut flags = 0b0000_0110;
-    if c.will.retain {
-        flags |= 0b0010_0000;
+    let mut flags = 0b0000_0010;
+    if let Some(will) = c.will {
+        flags |= 0b0000_0100 | if will.retain { 0b0010_0000 } else { 0 };
     }
     let mut body = Vec::new();
     string(&mut body, b"MQTT");
@@ -58,8 +60,10 @@ pub fn connect(c: &Connect) -> Vec<u8> {
     body.push(0);
     body.extend_from_slice(&c.keep_alive_secs.to_be_bytes());
     string(&mut body, c.client_id.as_bytes());
-    string(&mut body, c.will.topic.as_bytes());
-    string(&mut body, c.will.payload.as_bytes());
+    if let Some(will) = c.will {
+        string(&mut body, will.topic.as_bytes());
+        string(&mut body, will.payload.as_bytes());
+    }
     if let Some(username) = c.username {
         flags |= 0b1000_0000;
         string(&mut body, username.as_bytes());
@@ -78,6 +82,37 @@ pub fn publish(p: &Publish) -> Vec<u8> {
     string(&mut body, p.topic.as_bytes());
     body.extend_from_slice(p.payload.as_bytes());
     packet(0x30 | u8::from(p.retain), &body)
+}
+
+/// Every filter at `QoS` 0.
+pub fn subscribe(packet_id: u16, filters: &[String]) -> Vec<u8> {
+    let mut body = packet_id.to_be_bytes().to_vec();
+    for filter in filters {
+        string(&mut body, filter.as_bytes());
+        body.push(0);
+    }
+    packet(0x82, &body)
+}
+
+/// A SUBACK body names a refused filter with 0x80.
+pub fn suback_refused(body: &[u8]) -> bool {
+    body.iter().skip(2).any(|code| *code == 0x80)
+}
+
+/// A PUBLISH the broker sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Inbound {
+    pub topic: String,
+    pub payload: Vec<u8>,
+}
+
+/// The PUBLISH whose first byte is `first`; `None` when cut short or the topic is not UTF-8.
+pub fn inbound(first: u8, body: &[u8]) -> Option<Inbound> {
+    let length = usize::from(u16::from_be_bytes([*body.first()?, *body.get(1)?]));
+    let topic = std::str::from_utf8(body.get(2..2 + length)?).ok()?;
+    let packet_id = if first & 0b0110 == 0 { 0 } else { 2 };
+    let payload = body.get(2 + length + packet_id..)?;
+    Some(Inbound { topic: topic.to_owned(), payload: payload.to_vec() })
 }
 
 fn refused(what: &str) -> io::Error {
@@ -126,7 +161,7 @@ mod tests {
             keep_alive_secs: 60,
             username: Some("u"),
             password: Some("pw"),
-            will: &will(),
+            will: Some(&will()),
         });
         #[rustfmt::skip]
         let want: Vec<u8> = [
@@ -148,7 +183,7 @@ mod tests {
             keep_alive_secs: 5,
             username: None,
             password: None,
-            will: &will(),
+            will: Some(&will()),
         });
         assert_eq!(packet[9], 0b0010_0110);
         assert_eq!(&packet[10..12], &[0, 5]);
@@ -161,6 +196,43 @@ mod tests {
         assert_eq!(retained, [&[0x31, 7, 0, 3][..], b"t/x", b"42"].concat());
         let plain = publish(&Publish { topic: "t".into(), payload: String::new(), retain: false });
         assert_eq!(plain, [0x30, 3, 0, 1, b't']);
+    }
+
+    #[test]
+    fn connect_without_a_will_sets_only_clean_session() {
+        let packet = connect(&Connect {
+            client_id: "c",
+            keep_alive_secs: 60,
+            username: None,
+            password: None,
+            will: None,
+        });
+        assert_eq!(packet, [&[0x10, 13, 0, 4][..], b"MQTT", &[4, 0b0000_0010, 0, 60, 0, 1], b"c"].concat());
+    }
+
+    #[test]
+    fn subscribe_asks_qos_0_for_each_filter_under_one_packet_id() {
+        let packet = subscribe(1, &["a/#".to_owned(), "b".to_owned()]);
+        assert_eq!(packet, [&[0x82, 12, 0, 1, 0, 3][..], b"a/#", &[0, 0, 1], b"b", &[0]].concat());
+    }
+
+    #[test]
+    fn an_inbound_publish_reads_its_topic_and_payload_past_a_packet_id_when_qos_is_above_0() {
+        let qos0 = [&[0, 3][..], b"t/x", b"42"].concat();
+        assert_eq!(inbound(0x31, &qos0), Some(Inbound { topic: "t/x".into(), payload: b"42".to_vec() }));
+        let qos1 = [&[0, 1][..], b"t", &[0, 9], b"on"].concat();
+        assert_eq!(inbound(0x32, &qos1), Some(Inbound { topic: "t".into(), payload: b"on".to_vec() }));
+        assert_eq!(inbound(0x30, &[0, 1, b't']), Some(Inbound { topic: "t".into(), payload: Vec::new() }));
+        for cut in [&[0, 4, b't'][..], &[0], &[0, 1, 0xFF], &[0, 1, b't', 0]] {
+            let first = if cut.len() == 4 { 0x32 } else { 0x30 };
+            assert_eq!(inbound(first, cut), None, "{cut:?}");
+        }
+    }
+
+    #[test]
+    fn a_suback_refuses_when_any_return_code_is_0x80() {
+        assert!(!suback_refused(&[0, 1, 0, 1, 2]));
+        assert!(suback_refused(&[0, 1, 0, 0x80]));
     }
 
     #[test]

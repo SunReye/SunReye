@@ -814,6 +814,7 @@ describe("the kiosk surface is a closed list", () => {
     expect([...KIOSK_LABELS].sort()).toEqual(
       [
         "GET /api/capabilities",
+        "GET /api/evcc",
         "GET /api/history/recent",
         "GET /api/history/rollup",
         "GET /api/profile",

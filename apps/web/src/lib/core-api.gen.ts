@@ -333,6 +333,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evcc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The ingest's last state; `null` while it is off. Kiosk-readable, as the `/ws` `evcc` topic. */
+        get: operations["evccState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/forecast": {
         parameters: {
             query?: never;
@@ -856,6 +873,11 @@ export interface components {
             manufacturer: string;
             name: string;
         };
+        /**
+         * @description Where a loadpoint's live charge power comes from.
+         * @enum {string}
+         */
+        ChargePowerSource: "measured" | "estimated" | "feedforward";
         Confirmation: {
             /** @description The sha256 the guard answered with. */
             sha256: string;
@@ -1062,6 +1084,74 @@ export interface components {
              * @default evcc
              */
             topicRoot: string;
+        };
+        /** @description One loadpoint as the dashboard renders it; an unknown figure is `None`, not zero. */
+        EvccLoadpoint: {
+            /** @description EVCC is draining the house battery into the car. */
+            batteryBoost: boolean;
+            /** Format: double */
+            batteryBoostLimit: number | null;
+            /**
+             * Format: double
+             * @description W, as EVCC last reported it.
+             */
+            chargePower: number;
+            /**
+             * Format: double
+             * @description W, the estimator's view between EVCC's publishes.
+             */
+            chargePowerLive: number;
+            chargePowerSource: components["schemas"]["ChargePowerSource"];
+            /**
+             * Format: double
+             * @description Wh still needed to reach the limit.
+             */
+            chargeRemainingEnergy: number | null;
+            charging: boolean;
+            connected: boolean;
+            /**
+             * Format: double
+             * @description The limit EVCC charges to, in %; `0` or `None` is no limit.
+             */
+            effectiveLimitSoc: number | null;
+            /**
+             * Format: int32
+             * @description 1-based, as in EVCC's topics.
+             */
+            index: number;
+            /** Format: double */
+            limitSoc: number | null;
+            /** @description `off`, `pv`, `minpv` or `now`. */
+            mode: string | null;
+            /** Format: int32 */
+            phasesActive: number | null;
+            /**
+             * Format: double
+             * @description Wh added this session.
+             */
+            sessionEnergy: number | null;
+            title: string | null;
+            /** Format: double */
+            vehicleCapacityKwh: number | null;
+            /** Format: double */
+            vehicleLimitSoc: number | null;
+            vehicleName: string | null;
+            /**
+             * Format: double
+             * @description km.
+             */
+            vehicleRange: number | null;
+            /** Format: double */
+            vehicleSoc: number | null;
+            vehicleTitle: string | null;
+        };
+        /** @description What the `evcc` topic retains. */
+        EvccState: {
+            loadpoints: components["schemas"]["EvccLoadpoint"][];
+            /** @description The broker is connected and EVCC reports itself online. */
+            reachable: boolean;
+            /** @description Draw the EV off the house-load node. */
+            subtractFromHome: boolean;
         };
         /**
          * @description An optional subsystem the roles of a profile show.
@@ -3103,6 +3193,33 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evccState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvccState"] | null;
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

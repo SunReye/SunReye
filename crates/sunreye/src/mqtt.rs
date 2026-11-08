@@ -5,9 +5,10 @@ pub mod bridge;
 pub mod config;
 pub mod discovery;
 #[cfg(test)]
-mod fixture;
+pub(crate) mod fixture;
 pub mod link;
 pub mod number;
+pub mod subscriber;
 pub mod wire;
 
 use std::collections::BTreeMap;

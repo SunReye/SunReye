@@ -22,15 +22,15 @@ use crate::samples::Sample;
 
 const BASE: Duration = Duration::from_secs(1);
 const CAP: Duration = Duration::from_secs(60);
-const KEEP_ALIVE: Duration = Duration::from_secs(60);
+pub(super) const KEEP_ALIVE: Duration = Duration::from_secs(60);
 /// 1.5 × keep-alive without a packet from the broker: the connection is dead (PINGREQ goes every half).
-const SILENCE: Duration = Duration::from_secs(90);
+pub(super) const SILENCE: Duration = Duration::from_secs(90);
 /// Bounds the dial, the TLS handshake and the CONNACK.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// A broker that stops reading fills the socket; past this the connection is dropped.
-const WRITE_TIMEOUT: Duration = KEEP_ALIVE;
+pub(super) const WRITE_TIMEOUT: Duration = KEEP_ALIVE;
 /// Bounds `offline` and DISCONNECT on stop.
-const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+pub(super) const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The delay before redial `attempt` (0 after a session that lasted a keep-alive): doubling from 1 s, capped at 60 s,
 /// then scaled into its upper half by `jitter` in [0, 1) so a broker restart is not met by every client at once.
@@ -56,7 +56,7 @@ pub fn sleep() -> Pause {
     Arc::new(|delay| Box::pin(tokio::time::sleep(delay)))
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Dial {
     pub broker: Broker,
     pub client_id: String,
@@ -186,7 +186,7 @@ async fn open(dial: &Dial) -> Result<Box<dyn Stream>, String> {
 }
 
 /// Dials and reads the CONNACK; the will goes with the CONNECT.
-async fn handshake(link: &Link, will: &Publish) -> Result<Box<dyn Stream>, String> {
+pub(super) async fn handshake(link: &Link, will: Option<&Publish>) -> Result<Box<dyn Stream>, String> {
     let dial = &link.dial;
     let mut stream = (link.open)(dial).await?;
     let connect = wire::connect(&wire::Connect {
@@ -209,7 +209,7 @@ fn encode(publishes: &[Publish]) -> Vec<u8> {
     publishes.iter().flat_map(wire::publish).collect()
 }
 
-fn timed_out(what: &str) -> std::io::Error {
+pub(super) fn timed_out(what: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::TimedOut, what)
 }
 
@@ -249,7 +249,7 @@ async fn dial_queueing(
 ) -> Option<Result<Box<dyn Stream>, String>> {
     let will = bridge.will();
     tokio::select! {
-        opened = tokio::time::timeout(CONNECT_TIMEOUT, handshake(link, &will)) => {
+        opened = tokio::time::timeout(CONNECT_TIMEOUT, handshake(link, Some(&will))) => {
             Some(opened.unwrap_or_else(|_| Err("no answer in time".into())))
         }
         () = queue(bridge, feeds) => None,
@@ -347,11 +347,11 @@ fn log_connected(broker: &Broker) {
     tracing::info!(host = %broker.host, port = broker.port, "MQTT export connected");
 }
 
-fn log_unreachable(broker: &Broker, error: &str) {
+pub(super) fn log_unreachable(broker: &Broker, error: &str) {
     tracing::warn!(host = %broker.host, port = broker.port, %error, "MQTT broker unreachable");
 }
 
-fn log_lost(error: &std::io::Error) {
+pub(super) fn log_lost(error: &std::io::Error) {
     tracing::warn!(%error, "MQTT connection lost");
 }
 

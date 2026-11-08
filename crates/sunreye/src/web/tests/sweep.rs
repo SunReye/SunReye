@@ -49,7 +49,7 @@ async fn no_kiosk_or_session_read_fetches_in_its_request_path() {
     assert_eq!(offline.dials(), 0, "nothing but a request path runs");
 
     let reads = gets(&[Access::Kiosk, Access::Session]);
-    assert_eq!(reads.len(), 11, "{reads:?}");
+    assert_eq!(reads.len(), 12, "{reads:?}");
     for path in &reads {
         answers_without_fetching(&admin, path, &offline).await;
     }

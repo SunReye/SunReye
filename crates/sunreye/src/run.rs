@@ -31,6 +31,7 @@ use crate::sources::{find_profile, installed};
 use crate::store::{DeviceRow, Store, StoreError};
 
 mod clock;
+mod evcc;
 mod tasks;
 
 pub(crate) use clock::Clock;
@@ -206,6 +207,7 @@ impl Core {
         let core = Self::start(data_dir, roots, clock, (forecast_url, archive_url)).await?;
         core.spawn_background(learn).await;
         core.tasks.start("exporting", spawn_export(&core)).await;
+        core.tasks.start("evcc", evcc::spawn(&core)).await;
         core.poll().await
     }
 
@@ -229,6 +231,7 @@ impl Core {
     ) -> Result<Arc<Self>, RunError> {
         let core = Self::start(data_dir, Vec::new(), clock, (url.clone(), url)).await?;
         core.tasks.start("exporting", spawn_export(&core)).await;
+        core.tasks.start("evcc", evcc::spawn(&core)).await;
         core.poll().await
     }
 
@@ -1327,6 +1330,7 @@ mod tests {
             "importing",
             "polling",
             "statistics",
+            "evcc",
             "exporting",
             "refreshing",
             "learning",

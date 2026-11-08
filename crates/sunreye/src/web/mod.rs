@@ -102,6 +102,7 @@ fn dashboard() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(history::recent))
         .routes(routes!(rollup::buckets))
         .routes(routes!(forecast::weather))
+        .routes(routes!(evcc::state))
         .route("/ws", get(ws::upgrade))
         .route_layer(middleware::from_fn(kiosk::session_or_kiosk))
 }

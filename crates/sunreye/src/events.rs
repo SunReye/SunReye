@@ -19,7 +19,7 @@ pub struct Bus {
     pub plant: State<PlantFrame>,
     /// Published by the store once a configuration write commits; a subscriber re-reads it.
     pub changed: Event<Changed>,
-    /// EVCC's last state; the ingest publishes it.
+    /// EVCC's last state while the ingest runs; the ingest publishes it.
     pub evcc: State<EvccState>,
     /// Today's figures, after each rollup of a minute of today.
     pub statistics: Event<StatisticsFrame>,
@@ -122,6 +122,11 @@ impl<T> State<T> {
         self.0.send_replace(Some(value));
     }
 
+    /// The producer stopped: nothing is current.
+    pub(crate) fn clear(&self) {
+        self.0.send_replace(None);
+    }
+
     pub fn subscribe(&self) -> watch::Receiver<Option<T>> {
         self.0.subscribe()
     }
@@ -153,6 +158,17 @@ mod tests {
         topic.publish(1);
         topic.publish(2);
         assert_eq!(*topic.subscribe().borrow(), Some(2));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cleared_state_topic_hands_a_late_subscriber_nothing_and_wakes_a_held_one() {
+        let topic = State::<u32>::default();
+        topic.publish(1);
+        let mut held = topic.subscribe();
+        held.borrow_and_update();
+        topic.clear();
+        assert_eq!(*topic.subscribe().borrow(), None);
+        assert!(held.has_changed().expect("open"), "a subscriber hears the value go");
     }
 
     #[tokio::test(start_paused = true)]

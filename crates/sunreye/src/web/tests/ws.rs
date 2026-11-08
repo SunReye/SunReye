@@ -1039,6 +1039,49 @@ async fn a_late_evcc_subscriber_gets_the_last_state_at_once_and_a_topic_nobody_p
 }
 
 #[tokio::test]
+async fn the_evcc_ingest_feeds_a_late_subscriber_and_the_rest_read_until_disabling_stops_it() {
+    use crate::mqtt::fixture::FakeBroker;
+    let (core, admin) = open(&dir("ws-evcc-ingest")).await;
+    let addr = serve(&core, &Config::default()).await;
+    let mut broker = FakeBroker::new(&[
+        ("evcc/status", "online"),
+        ("evcc/loadpoints/1/title", "Carport"),
+        ("evcc/loadpoints/1/chargePower", "4140"),
+    ]);
+    let port = broker.listen().await;
+    put(&admin, "/api/settings/mqtt", &json!({"brokerUrl": format!("mqtt://127.0.0.1:{port}")})).await;
+    let on = put(&admin, "/api/settings/evcc", &json!({"enabled": true, "connectionId": 1})).await;
+    assert_eq!(on.status, StatusCode::OK);
+    broker.until(8).await;
+    let mut socket = connect(addr, &admin).await;
+    subscribe(&mut socket, r#"["evcc"]"#).await;
+    let mut frame = next_json(&mut socket).await;
+    while frame["data"]["loadpoints"][0]["chargePower"] != 4140.0 {
+        frame = next_json(&mut socket).await;
+    }
+    assert_eq!(frame["data"]["reachable"], true);
+    assert_eq!(frame["data"]["loadpoints"][0]["title"], "Carport");
+    assert_eq!(get(&admin, "/api/evcc").await.json(), frame["data"], "the route reads what the topic holds");
+
+    let mut late = connect(addr, &admin).await;
+    subscribe(&mut late, r#"["evcc"]"#).await;
+    assert_eq!(next_json(&mut late).await["data"], frame["data"], "the last state at once");
+
+    let off = put(&admin, "/api/settings/evcc", &json!({"enabled": false, "connectionId": 1})).await;
+    assert_eq!(off.status, StatusCode::OK);
+    broker.until(14).await;
+    assert!(broker.log.iter().all(|seen| seen.kind != 3), "{:?}", broker.log);
+    let cleared = core.bus.evcc.subscribe().wait_for(Option::is_none).await.is_ok();
+    assert!(cleared);
+    assert_eq!(get(&admin, "/api/evcc").await.json(), Value::Null, "nothing is current once stopped");
+    let mut after = connect(addr, &admin).await;
+    subscribe(&mut after, r#"["evcc"]"#).await;
+    silent(&mut after).await;
+    drop(admin);
+    core.stop().await;
+}
+
+#[tokio::test]
 async fn evcc_with_no_producer_answers_a_subscriber_nothing() {
     let (core, admin) = open(&dir("ws-evcc-idle")).await;
     let addr = serve(&core, &Config::default()).await;
@@ -1170,16 +1213,13 @@ async fn next_message(socket: &mut Socket) -> Option<Result<Message, tungstenite
 }
 
 /// The REST read whose access each topic follows; a topic with no data read follows the session read.
-const TOPIC_READS: [(&str, &str); 4] = [
+const TOPIC_READS: [(&str, &str); 5] = [
     ("metrics", "GET /api/history/recent"),
     ("plant", "GET /api/history/recent"),
+    ("evcc", "GET /api/evcc"),
     ("events", "GET /api/auth/session"),
     ("statistics", "GET /api/energy/series"),
 ];
-
-/// A topic whose read is not built yet, with the access that read will have. #327 adds `GET /api/evcc` and
-/// deletes this entry.
-const PENDING_READS: [(&str, &str, &str); 1] = [("evcc", "GET /api/evcc", "kiosk")];
 
 /// `route-access.txt`'s access word for `read`, if it lists it.
 fn read_access(read: &str) -> Option<String> {
@@ -1193,9 +1233,6 @@ fn every_topic_has_the_access_of_its_rest_read() {
         let (name, word) = (topic.name(), topic.access().word());
         if let Some((_, read)) = TOPIC_READS.iter().find(|(t, _)| *t == name) {
             assert_eq!(read_access(read).as_deref(), Some(word), "topic {name} follows {read}");
-        } else if let Some((_, read, access)) = PENDING_READS.iter().find(|(t, _, _)| *t == name) {
-            assert_eq!(read_access(read), None, "{read} exists: map {name} to it in TOPIC_READS");
-            assert_eq!(*access, word, "topic {name} follows the pending {read}");
         } else {
             panic!("topic {name} has no REST read");
         }

@@ -25,7 +25,7 @@ impl Running {
         running
     }
 
-    async fn stop(mut self) {
+    pub(super) async fn stop(mut self) {
         self.stop.send_replace(true);
         while self.tasks.join_next().await.is_some() {}
     }

@@ -1,4 +1,4 @@
-//! The EVCC ingest settings. Nothing subscribes yet; the record only says what would.
+//! The EVCC ingest's settings and its last state.
 
 use std::sync::Arc;
 
@@ -6,6 +6,7 @@ use axum::Json;
 use axum::extract::State;
 
 use super::{ApiError, ApiJson, ErrorBody};
+use crate::evcc::EvccState;
 use crate::run::Core;
 use crate::settings::{EVCC_KEY, EvccConfig};
 
@@ -45,4 +46,18 @@ pub async fn save(
     config.validate().map_err(ApiError::bad_request)?;
     core.store.set_setting(EVCC_KEY, &config.stored()).await?;
     Ok(Json(config))
+}
+
+/// The ingest's last state; `null` while it is off. Kiosk-readable, as the `/ws` `evcc` topic.
+#[utoipa::path(
+    get,
+    path = "/api/evcc",
+    operation_id = "evccState",
+    responses(
+        (status = 200, body = Option<EvccState>),
+        (status = 401, body = ErrorBody)
+    )
+)]
+pub async fn state(State(core): State<Arc<Core>>) -> Json<Option<EvccState>> {
+    Json(core.bus.evcc.subscribe().borrow().clone())
 }

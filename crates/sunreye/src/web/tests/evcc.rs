@@ -86,3 +86,21 @@ async fn a_plain_user_and_a_kiosk_stranger_can_neither_read_nor_save() {
     drop((admin, user, stranger));
     core.stop().await;
 }
+
+const STATE: &str = "/api/evcc";
+
+#[tokio::test]
+async fn the_evcc_state_reads_null_while_the_ingest_is_off_and_follows_the_kiosk_view() {
+    let (core, admin) = open(&dir("evcc-state-off")).await;
+    let user = reads::plain_user(&admin).await;
+    let stranger = admin.anonymous();
+    for api in [&admin, &user] {
+        let answer = get(api, STATE).await;
+        assert_eq!((answer.status, answer.json()), (StatusCode::OK, Value::Null));
+    }
+    assert_eq!(get(&stranger, STATE).await.status, StatusCode::UNAUTHORIZED);
+    put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
+    assert_eq!(get(&stranger, STATE).await.status, StatusCode::OK);
+    drop((admin, user, stranger));
+    core.stop().await;
+}
