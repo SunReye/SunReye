@@ -27,7 +27,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Energy.** A role with a lifetime counter yields energy from the counter's delta. Without one, the time-weighted power is integrated. A counter that drops is a reset or rollover, never a negative delta, and a restart gap never invents energy.
 
-**Time.** UTC instants only. Days, weeks and months are cut in the plant timezone, set once by the admin and separate from any viewer's display timezone. Days of 23 or 25 hours fall out of cutting from UTC instants. The daily key is the plant-local date. Tests pass an explicit zone and never change the process timezone.
+**Time.** UTC instants only. Days, weeks and months are cut in the plant timezone, set once by the admin and separate from any viewer's display timezone. Days of 23 or 25 hours fall out of cutting from UTC instants. The daily key is the plant-local date. A timezone change applies from the change date. The daily key records the zone it was cut in: days still inside interval retention are rebuilt, older days cannot be and keep their zone. Tests pass an explicit zone and never change the process timezone.
 
 **Retention.** Hourly and daily rollups are kept forever. The interval retention is a setting; its default comes from the measured size per device-year in the skeleton.
 
