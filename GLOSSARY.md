@@ -130,9 +130,17 @@ _Avoid_: Plant id, serial
 The cloud service that carries encrypted traffic between a core and its paired clients without reading it.
 _Avoid_: Cloud backend, proxy, tunnel server
 
-**Paired client**:
-An app or dashboard whose public key a core accepts, with a role granted by the homeowner.
-_Avoid_: Remote user, device (a device is hardware)
+**Account**:
+A cloud identity, signed in by social login, that routes to installs and holds a passkey-wrapped key.
+_Avoid_: User (a user is local), profile
+
+**Device key**:
+The key pair one browser or app generates; the core trusts it when an account it trusts has signed it.
+_Avoid_: Session key, token
+
+**Share code**:
+The code a business gives a homeowner to grant access; it carries the business key's fingerprint.
+_Avoid_: Invite, referral
 
 ## Platform
 
