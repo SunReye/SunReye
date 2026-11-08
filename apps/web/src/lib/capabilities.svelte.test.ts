@@ -19,6 +19,8 @@ const ABSENT = {
   statisticsHeatmap: false,
   evccCommands: false,
   customCharts: false,
+  logging: false,
+  dataReset: false,
 };
 
 afterEach(() => get.mockReset());

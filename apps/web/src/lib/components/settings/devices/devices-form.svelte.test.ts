@@ -36,6 +36,8 @@ const CORE = {
   statisticsHeatmap: false,
   evccCommands: false,
   customCharts: false,
+  logging: false,
+  dataReset: false,
 };
 
 const connection = (id: number, name: string, port: number): Connection => ({

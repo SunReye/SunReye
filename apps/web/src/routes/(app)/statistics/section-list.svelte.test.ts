@@ -24,6 +24,8 @@ const NONE = {
   statisticsHeatmap: false,
   evccCommands: false,
   customCharts: false,
+  logging: false,
+  dataReset: false,
 };
 
 async function mountWith(served: Partial<typeof NONE>) {

@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
 	import SettingsNavLink from './settings-nav-link.svelte';
-	import { SETTINGS_ROUTES, message, type SettingsGroup, type SettingsRoute } from './nav-routes';
+	import { gatedAway, message, railRoutes, type SettingsGroup, type SettingsRoute } from './nav-routes';
+	import { goto } from '$app/navigation';
+	import type { CapabilityName } from '$lib/capabilities';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
+	import { resolve } from '$lib/resolve';
 	import * as m from '$lib/paraglide/messages';
 	import LightningIcon from 'phosphor-svelte/lib/Lightning';
 	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnected';
@@ -64,10 +68,18 @@
 	};
 
 	// Profiles/Access/Users/API keys/Danger zone are admin-only management
-	// surfaces; the group appears once we know the viewer is an admin.
-	const visible = $derived(
-		SETTINGS_ROUTES.filter((r) => !r.hidden && (isAdmin || r.group !== 'admin'))
-	);
+	// surfaces; the group appears once we know the viewer is an admin. A panel
+	// whose core area the core does not serve is not offered at all.
+	const offers = (area: CapabilityName) => coreCapabilities.has(area);
+	const visible = $derived(railRoutes(isAdmin, offers));
+
+	// A gated panel reached by URL (a bookmark, a typed path) has nothing behind it:
+	// land on the first panel on offer, like `/settings` does, and keep it out of history.
+	// Runs again when the capabilities arrive, so it never fires before the core has spoken.
+	$effect(() => {
+		const first = visible[0];
+		if (first && gatedAway(current, offers)) goto(resolve(first.href), { replaceState: true });
+	});
 
 	const groups = $derived(
 		(['connection', 'preferences', 'admin'] as const)
