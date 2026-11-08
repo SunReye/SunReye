@@ -14,7 +14,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 **In the core.** An admin adds an index URL once. The core fetches only on that action or on "check for updates", never on a timer. It verifies the hash before storing, validates with the same loader, stores the profile under the data directory and serves the last good copy. The official index's URL is built in, and the binary embeds a snapshot of the official profiles at release time so a first run works offline. A fetched profile replaces a bundled one only when its semver is higher and its signature verifies.
 
-**Keys.** One signing key per purpose: profiles, web bundles (ADR 16) and release artifacts (ADR 13). Each has an active key and a backup kept offline. The core compiles in the profile key and its backup. A revocation of the active key, signed by the backup, is published in the index; the core then trusts only the backup.
+**Keys.** One signing key per purpose: profiles, web bundles (ADR 16) and release artifacts (ADR 13). Each has an active key and a backup kept offline. Signatures are Ed25519 over the exact file bytes, never over re-serialised JSON; the index's SHA-256 covers the same bytes. The core compiles in the profile key and its backup. A revocation of the active key, signed by the backup, is published in the index; the core then trusts only the backup.
 
 **Trust.** Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown. The same per-setting enable applies to an official setting marked `verified: false` (ADR 5).
 
