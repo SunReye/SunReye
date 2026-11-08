@@ -11,7 +11,8 @@ use serde_json::json;
 
 use crate::evcc::EvccState;
 use crate::events::{Bus, Changed};
-use crate::plant::{Aggregate, Aggregates, Fold};
+use crate::plant::{Aggregates, Fold};
+use crate::role::Aggregate;
 use crate::samples::Sample;
 use crate::statistics::PeriodEnergy;
 

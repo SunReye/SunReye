@@ -86,6 +86,9 @@ export { ROLE_CATALOG, ROLE_NAMES } from "./roles";
 export { PLANT_AGGREGATES, plantAggregateOf } from "./plant-aggregate";
 export type { PlantAggregate } from "./plant-aggregate";
 export type { CanonicalRole, RoleSpec } from "./roles";
+// The core's read model of a profile (`bun run --cwd packages/inverter-core gen:profile`): a subset of
+// the authoring model above, which also carries `http` bindings and the v1 addressing mirror.
+export type { CoreBinding, CoreMetric, CoreProfile } from "./profile.gen";
 // The optimizer's stored enums live in `./optimizer-vocabulary.ts` and are
 // deliberately NOT re-exported here: the browser reads them too, and this barrel
 // pulls in `modbus-serial` — a Node transport that dies at import in a browser

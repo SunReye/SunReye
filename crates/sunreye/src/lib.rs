@@ -21,6 +21,7 @@ pub mod profile;
 pub mod recent;
 mod refresh;
 pub mod retention;
+pub mod role;
 pub mod rollup;
 pub mod run;
 pub mod samples;

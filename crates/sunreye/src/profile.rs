@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::openapi::{ArrayBuilder, ObjectBuilder, RefOr, Schema, Type};
+use utoipa::{PartialSchema, ToSchema};
 
 const BUNDLE: &str = include_str!("../profiles/official.json");
 
@@ -30,48 +31,79 @@ pub struct Pinned {
     pub profile: Arc<Profile>,
 }
 
-#[derive(Debug, Deserialize)]
+/// A device profile as the core reads it. Serialized, it is what the published profile says of these fields.
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct Profile {
     /// Absent reads as the current schema.
-    #[serde(rename = "schemaVersion")]
+    #[serde(rename = "schemaVersion", skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub schema_version: Option<u32>,
     pub id: String,
     pub name: String,
     pub manufacturer: String,
+    /// Semver of the profile content.
     pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub declares: Option<Declares>,
     pub metrics: Vec<Metric>,
 }
 
 /// What the profile states about hardware no metric implies.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 pub struct Declares {
-    #[serde(rename = "backupOutput")]
+    #[serde(rename = "backupOutput", skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub backup_output: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct Metric {
     pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub label: Option<String>,
+    /// Published profiles write `null` for a unitless metric.
+    #[schema(required = true)]
     pub unit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub group: Option<String>,
     pub scale: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub offset: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub access: Option<Access>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub kind: Option<MetricKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub storage: Option<Storage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub range: Option<Range>,
-    #[serde(rename = "enumLabels")]
+    #[serde(rename = "enumLabels", skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub enum_labels: Option<BTreeMap<i32, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub flow: Option<Flow>,
     pub binding: Binding,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 pub enum Access {
     #[serde(rename = "r")]
     Read,
@@ -112,7 +144,7 @@ pub struct Range {
 }
 
 /// Where a metric's value comes from. `Control` metrics are settings the core never writes in 4.0.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(tag = "via", rename_all = "lowercase")]
 pub enum Binding {
     Modbus {
@@ -151,7 +183,7 @@ pub(crate) fn binding_fault(
     serde_path_to_error::deserialize::<_, Flat>(node).err()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 pub enum RegisterType {
     #[serde(rename = "U_WORD")]
     UWord,
@@ -171,15 +203,53 @@ impl Metric {
 }
 
 /// A derived value; keys name other metrics, and a key without a value reads as 0.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Expr {
     Sum(Vec<String>),
     Diff([String; 2]),
-    Scale(String, f64),
-    Combine { add: Vec<String>, sub: Option<Vec<String>> },
-    Ratio { num: Vec<String>, den: Vec<String>, scale: Option<f64> },
-    Clamp { key: String, min: Option<f64>, max: Option<f64> },
+    Scale(KeyAndFactor),
+    Combine {
+        add: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        sub: Option<Vec<String>>,
+    },
+    Ratio {
+        num: Vec<String>,
+        den: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        scale: Option<f64>,
+    },
+    Clamp {
+        key: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        min: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[schema(nullable = false)]
+        max: Option<f64>,
+    },
+}
+
+/// `[key, factor]`; utoipa describes a tuple variant as an array of objects, so the pair names itself.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct KeyAndFactor(pub String, pub f64);
+
+impl ToSchema for KeyAndFactor {}
+
+impl PartialSchema for KeyAndFactor {
+    fn schema() -> RefOr<Schema> {
+        ArrayBuilder::new()
+            .prefix_items([
+                ObjectBuilder::new().schema_type(Type::String).build(),
+                ObjectBuilder::new().schema_type(Type::Number).build(),
+            ])
+            .min_items(Some(2))
+            .max_items(Some(2))
+            .into()
+    }
 }
 
 impl Expr {
@@ -191,7 +261,7 @@ impl Expr {
         match self {
             Self::Sum(list) => keys(list),
             Self::Diff(pair) => keys(pair),
-            Self::Scale(key, _) | Self::Clamp { key, .. } => vec![key.as_str()],
+            Self::Scale(KeyAndFactor(key, _)) | Self::Clamp { key, .. } => vec![key.as_str()],
             Self::Combine { add, sub } => [keys(add), keys(sub.as_deref().unwrap_or_default())].concat(),
             Self::Ratio { num, den, .. } => [keys(num), keys(den)].concat(),
         }
@@ -213,9 +283,10 @@ impl Bundle {
 mod tests {
     use std::path::Path;
 
-    use serde_json::Value;
+    use serde_json::{Value, json};
 
     use super::*;
+    use crate::oracle::as_floats;
 
     fn corpus() -> Vec<Value> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/oracle/profile-decode.ndjson");
@@ -238,6 +309,118 @@ mod tests {
                 "sha256": pinned.sha256,
             });
             assert_eq!(&got, want);
+        }
+    }
+
+    fn bundle_json() -> Value {
+        serde_json::from_str(BUNDLE).expect("bundle")
+    }
+
+    fn keep(node: &Value, keys: &[&str]) -> Value {
+        let fields = node.as_object().expect("object");
+        keys.iter().filter_map(|k| fields.get(*k).map(|v| ((*k).to_owned(), v.clone()))).collect()
+    }
+
+    /// What the published profile says of the fields the core models; the legacy `type`/`addresses`,
+    /// `computeExpr`, `controlExpr` and `deadband` are not among them.
+    fn modelled(profile: &Value) -> Value {
+        let mut out =
+            keep(profile, &["schemaVersion", "id", "name", "manufacturer", "version", "declares", "metrics"]);
+        out["metrics"] = profile["metrics"]
+            .as_array()
+            .expect("metrics")
+            .iter()
+            .map(|metric| {
+                let mut out = keep(
+                    metric,
+                    &[
+                        "key",
+                        "topic",
+                        "label",
+                        "unit",
+                        "group",
+                        "scale",
+                        "offset",
+                        "access",
+                        "role",
+                        "index",
+                        "kind",
+                        "storage",
+                        "range",
+                        "enumLabels",
+                        "flow",
+                    ],
+                );
+                let binding = &metric["binding"];
+                out["binding"] = match binding["via"].as_str().expect("via") {
+                    "modbus" => keep(binding, &["via", "addr", "type"]),
+                    "compute" => keep(binding, &["via", "expr"]),
+                    _ => keep(binding, &["via"]),
+                };
+                out
+            })
+            .collect();
+        out
+    }
+
+    fn has_null(value: &Value) -> bool {
+        match value {
+            Value::Null => true,
+            Value::Array(items) => items.iter().any(has_null),
+            Value::Object(fields) => fields.values().any(has_null),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn a_serialized_profile_says_what_the_published_profile_says() {
+        let bundle = Bundle::official().expect("bundle");
+        let source = bundle_json();
+        for (pinned, raw) in bundle.profiles.iter().zip(source["profiles"].as_array().expect("profiles")) {
+            let ours = as_floats(&serde_json::to_value(&*pinned.profile).expect("serialize"));
+            let want = as_floats(&modelled(&raw["profile"]));
+            for (got, want) in ours["metrics"]
+                .as_array()
+                .expect("metrics")
+                .iter()
+                .zip(want["metrics"].as_array().expect("metrics"))
+            {
+                assert_eq!(got, want, "{} {}", pinned.profile.id, want["key"]);
+            }
+            assert_eq!(ours, want, "{}", pinned.profile.id);
+        }
+    }
+
+    /// An absent optional field serializes as absent: `null` would change the fingerprint that decides a
+    /// profile's version bump. `unit` is the one field published profiles write as `null`.
+    #[test]
+    fn an_absent_field_is_omitted_never_null() {
+        let sparse = json!({
+            "id": "p", "name": "P", "manufacturer": "M", "version": "1.0.0",
+            "metrics": [{"key": "k", "unit": null, "scale": 1, "binding": {"via": "control"}}]
+        });
+        let profile: Profile = serde_json::from_value(sparse.clone()).expect("profile");
+        let mut ours = serde_json::to_value(&profile).expect("serialize");
+        assert_eq!(as_floats(&ours), as_floats(&sparse));
+        ours["metrics"][0].as_object_mut().expect("metric").remove("unit");
+        assert!(!has_null(&ours), "{ours}");
+    }
+
+    #[test]
+    fn every_expression_arm_serializes_as_the_profile_writes_it() {
+        let exprs = [
+            json!({"sum": ["a", "b"]}),
+            json!({"diff": ["a", "b"]}),
+            json!({"scale": ["a", 0.5]}),
+            json!({"combine": {"add": ["a"], "sub": ["b"]}}),
+            json!({"combine": {"add": ["a"]}}),
+            json!({"ratio": {"num": ["a"], "den": ["b"], "scale": 100.0}}),
+            json!({"ratio": {"num": ["a"], "den": ["b"]}}),
+            json!({"clamp": {"key": "a", "min": 0.0}}),
+        ];
+        for expr in exprs {
+            let parsed: Expr = serde_json::from_value(expr.clone()).expect("expr");
+            assert_eq!(serde_json::to_value(&parsed).expect("serialize"), expr);
         }
     }
 }
