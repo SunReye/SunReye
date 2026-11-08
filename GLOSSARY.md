@@ -39,7 +39,7 @@ A declarative file describing one device model: its quantities, how to read them
 _Avoid_: Driver, template, map
 
 **Official profile**:
-A profile signed by the project key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
+A profile signed by the profile key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
 _Avoid_: Verified profile
 
 **Community profile**:
