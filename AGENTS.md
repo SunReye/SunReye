@@ -2,8 +2,6 @@
 
 Bun is the JavaScript runtime and package manager.
 
-Load the `caveman` skill at session start.
-
 ## Specs
 
 Specs are ADRs in `docs/adr/`, written by a `grilling` session. Domain terms live in `GLOSSARY.md`.
