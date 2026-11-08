@@ -8,9 +8,9 @@ Tariff information and savings figures are part of the product. They need a netw
 
 ## Decision
 
-- **Tariff.** A setting: import and feed-in prices, fixed or in time-of-use bands, evaluated in the plant timezone.
-- **Spot prices.** Optional. One owned task fetches them into SQLite and serves the last good copy; a handler never fetches. The first source is energy-charts for DE-LU at 15-minute resolution: keyless, with its CC BY attribution shown in the SPA.
-- **Savings and payback.** Computed in the core from stored energy (ADR 3) and the price in force at the time, not in the SPA. Payback uses an investment amount the admin enters.
+- **Tariff.** A computed device (ADR 15) configured by the admin: import and feed-in prices, fixed or in time-of-use bands, evaluated in the plant timezone. It publishes `price.import` and `price.export` readings.
+- **Spot prices.** Optional, a computed device. Its owned task fetches day-ahead prices into the forecast store; each slot becomes a `price.*` history change point when it begins. A handler never fetches. The first source is energy-charts for DE-LU at 15-minute resolution: keyless, with its CC BY attribution shown in the SPA.
+- **Savings and payback.** Computed in the core from stored energy (ADR 3) and the `price.*` readings in force at the time, not in the SPA. Payback uses an investment amount the admin enters.
 - **Price history.** A tariff has an effective-from date. Editing a tariff changes only the future. Correcting the past is an explicit "reprice from date" action by the admin, which recomputes savings from stored energy and is logged.
 
 ## Considered options
