@@ -21,7 +21,8 @@ async fn a_fresh_core_reads_the_ingest_off_on_the_evcc_root() {
 async fn a_saved_record_reads_back_and_survives_a_restart() {
     let path = dir("evcc-save");
     let (core, admin) = open(&path).await;
-    let record = json!({"enabled": true, "connectionId": 4, "topicRoot": "home/evcc", "subtractFromHome": true});
+    let record =
+        json!({"enabled": true, "connectionId": 4, "topicRoot": "home/evcc", "subtractFromHome": true});
     let saved = put(&admin, PATH, &record).await;
     assert_eq!((saved.status, saved.json()), (StatusCode::OK, record.clone()));
     assert_eq!(get(&admin, PATH).await.json(), record);
@@ -48,7 +49,8 @@ async fn a_body_naming_fewer_fields_takes_the_defaults_for_the_rest() {
 #[tokio::test]
 async fn a_refused_record_is_a_400_and_the_saved_one_stays() {
     let (core, admin) = open(&dir("evcc-refused")).await;
-    let kept = put(&admin, PATH, &json!({"enabled": true, "connectionId": 1, "topicRoot": "ev"})).await.json();
+    let kept =
+        put(&admin, PATH, &json!({"enabled": true, "connectionId": 1, "topicRoot": "ev"})).await.json();
     for body in [
         json!({"topicRoot": ""}),
         json!({"topicRoot": "   "}),

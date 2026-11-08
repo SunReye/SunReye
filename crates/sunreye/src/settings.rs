@@ -575,7 +575,8 @@ mod tests {
 
         #[test]
         fn ready_needs_enabled_a_resolved_connection_and_a_non_blank_url() {
-            let config = |enabled, connection_id| EvccConfig { enabled, connection_id, ..EvccConfig::default() };
+            let config =
+                |enabled, connection_id| EvccConfig { enabled, connection_id, ..EvccConfig::default() };
             let on = config(true, Some(1));
             assert!(on.ready(Some("mqtt://broker.lan")));
             assert!(!config(false, Some(1)).ready(Some("mqtt://broker.lan")), "disabled");
@@ -590,7 +591,8 @@ mod tests {
         async fn a_saved_record_loads_back_from_the_store() {
             let store = Store::in_memory().await.expect("store");
             assert_eq!(EvccConfig::load(&store).await.expect("load"), EvccConfig::default());
-            let config = saved(json!({"enabled": true, "connectionId": 2, "topicRoot": "ev"})).expect("valid");
+            let config =
+                saved(json!({"enabled": true, "connectionId": 2, "topicRoot": "ev"})).expect("valid");
             store.set_setting(EVCC_KEY, &config.stored()).await.expect("save");
             assert_eq!(EvccConfig::load(&store).await.expect("load"), config);
         }
