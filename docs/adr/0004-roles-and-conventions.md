@@ -8,12 +8,13 @@ Every profile maps its native quantities to roles; storage, the API, the SPA and
 
 ## Decision
 
-Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries a string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total) and `status` (an enum).
+Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries an MPPT input, string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total) and `status` (an enum).
 
 | Role | Unit | Kind | Signed |
 | --- | --- | --- | --- |
 | `pv.power` | W | measurement | |
-| `pv.string.power` / `.voltage` / `.current` | W / V / A | measurement, indexed | |
+| `pv.mppt.power` / `.voltage` / `.current` | W / V / A | measurement, indexed by MPPT input | |
+| `pv.string.power` | W | measurement, indexed by string; estimated unless alone on its MPPT input (ADR 17) | |
 | `pv.energy.total` | kWh | counter | |
 | `battery.soc` | % | measurement | |
 | `battery.capacity` | kWh | measurement | |

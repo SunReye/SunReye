@@ -69,7 +69,7 @@ One decoded value of a role from a device at an instant.
 _Avoid_: Sample, datapoint
 
 **Series**:
-One role at one index, such as `pv.string.power[2]`; an unindexed role is its own series. The key of storage, rollups and history reads.
+One role at one index, such as `pv.mppt.power[2]`; an unindexed role is its own series. The key of storage, rollups and history reads.
 _Avoid_: Channel, metric
 
 **Change point**:
@@ -123,6 +123,18 @@ _Avoid_: Lock, ownership
 **Measurement point**:
 A place in the plant where a device measures a flow, with a parent point. The root is the grid connection.
 _Avoid_: Node, meter position
+
+**MPPT input**:
+One maximum-power-point tracker input of an inverter: the finest level at which PV is measured.
+_Avoid_: PV1 (a vendor label), string
+
+**String**:
+Modules in series on one plane, wired to one MPPT input. Strings on one input are in parallel.
+_Avoid_: Array, panel group
+
+**Module type**:
+The datasheet values of one PV module model.
+_Avoid_: Panel model
 
 **Computed device**:
 A device whose readings the core computes or fetches instead of polling hardware: a tariff, a price feed, a forecast, the plant aggregates.
