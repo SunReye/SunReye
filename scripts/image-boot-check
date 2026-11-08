@@ -1,0 +1,72 @@
+#!/usr/bin/env bun
+// Boots the core image on an empty throwaway /data volume with no device, waits for the listener,
+// asks it for the embedded SPA at `/`, and checks the SQLite store appeared under /data. Host network
+// (bridged containers fail on the LXC host) on a port that is not 5432 or 8099. Removes what it made.
+//
+// Usage: scripts/image-boot-check <image>
+import { BOOT_PORT, bootRunArgs, holdsStore } from "./image-boot";
+
+const image = process.argv[2];
+if (!image) {
+  console.error("usage: scripts/image-boot-check <image>");
+  process.exit(2);
+}
+
+async function docker(...args: string[]): Promise<{ out: string; code: number }> {
+  const proc = Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { out: out + err, code };
+}
+
+async function mustDocker(...args: string[]): Promise<string> {
+  const { out, code } = await docker(...args);
+  if (code !== 0) throw new Error(`docker ${args.join(" ")} failed:\n${out}`);
+  return out;
+}
+
+const id = `${process.pid}-${Date.now()}`;
+const name = `sunreye-boot-${id}`;
+const volume = `sunreye-boot-${id}`;
+const url = `http://127.0.0.1:${BOOT_PORT}/`;
+
+async function answer(): Promise<Response> {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const state = (await mustDocker("inspect", "--format", "{{.State.Running}}", name)).trim();
+    if (state !== "true") throw new Error(`the core exited before answering:\n${(await docker("logs", name)).out}`);
+    try {
+      return await fetch(url);
+    } catch {
+      await Bun.sleep(500);
+    }
+  }
+  throw new Error(`no answer from ${url} in 30 s:\n${(await docker("logs", name)).out}`);
+}
+
+async function storeListing(): Promise<string[]> {
+  const copy = Bun.spawn(["sh", "-c", `docker cp ${name}:/data - | tar -t`], { stdout: "pipe", stderr: "pipe" });
+  const listing = await new Response(copy.stdout).text();
+  if ((await copy.exited) !== 0) throw new Error(`cannot list /data: ${await new Response(copy.stderr).text()}`);
+  return listing.split("\n").filter(Boolean);
+}
+
+try {
+  await mustDocker("volume", "create", volume);
+  await mustDocker(...bootRunArgs({ image, name, volume, port: BOOT_PORT }));
+  const response = await answer();
+  const body = await response.text();
+  if (!response.ok || !body.includes("<html")) {
+    throw new Error(`GET ${url} answered ${response.status}, not the embedded SPA:\n${body.slice(0, 200)}`);
+  }
+  const entries = await storeListing();
+  if (!holdsStore(entries)) throw new Error(`no SQLite store under /data; found: ${entries.join(", ")}`);
+  const user = (await mustDocker("inspect", "--format", "{{.Config.User}}", name)).trim();
+  if (user === "" || user === "0" || user === "root") throw new Error(`the image runs as ${user || "root"}`);
+  console.log(`boot check ok: ${image} answered ${url}, /data holds sunreye.db, runs as ${user}`);
+} finally {
+  await docker("rm", "--force", name);
+  await docker("volume", "rm", "--force", volume);
+}

@@ -611,3 +611,101 @@ describe("the server image can read a profile repository", () => {
     expect(runtime).toMatch(/COPY --from=runtime-libs/);
   });
 });
+
+describe("the Rust-core image", () => {
+  const CORE = "docker/rust-core/Dockerfile";
+
+  /** What `docker` acts on in the stage that starts at `FROM … AS <name>`, up to the next FROM. */
+  const stage = async (name: string): Promise<string> => {
+    const text = await instructions(CORE);
+    const start = text.search(new RegExp(`^FROM .* AS ${name}$`, "m"));
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start + 1);
+    const next = rest.search(/^FROM /m);
+    return next < 0 ? rest : rest.slice(0, next);
+  };
+
+  it("builds the dashboard before the cargo build, which build.rs refuses to run without", async () => {
+    const text = await instructions(CORE);
+    const spa = text.indexOf("bun run build:static");
+    const copied = text.indexOf("COPY --from=spa /app/apps/web/build apps/web/build");
+    const cargo = text.indexOf("cargo build");
+    expect(spa).toBeGreaterThan(0);
+    expect(copied).toBeGreaterThan(spa);
+    expect(cargo).toBeGreaterThan(copied);
+  });
+
+  it("builds the sunreye crate in release, against the committed lockfile and query cache", async () => {
+    const core = await stage("core");
+    expect(core).toContain("cargo build --release --locked -p sunreye");
+    expect(core).toContain("SQLX_OFFLINE=true");
+    expect(core).toMatch(/COPY \.sqlx \.sqlx/);
+  });
+
+  it("keeps its data in /data, owned by the non-root user", async () => {
+    const text = await instructions(CORE);
+    expect(text).toContain('ENTRYPOINT ["/sunreye", "--data-dir", "/data"]');
+    expect(text).toMatch(/COPY --from=core --chown=65532:65532 \/out\/data \/data/);
+    expect(text).toContain("USER 65532:65532");
+  });
+
+  it("listens on every interface at the core's port", async () => {
+    expect(await instructions(CORE)).toContain('CMD ["--listen", "0.0.0.0:8099"]');
+  });
+
+  it("ships no database server", async () => {
+    expect(await instructions(CORE)).not.toMatch(/postgres|timescale/i);
+  });
+
+  it("compiles on the build platform and runs nothing on the target, so arm64 needs no QEMU", async () => {
+    const text = await instructions(CORE);
+    const froms = [...text.matchAll(/^FROM\s+(.*)$/gm)].map((m) => m[1] as string);
+    expect(froms.slice(0, -1).every((from) => from.startsWith("--platform=$BUILDPLATFORM "))).toBe(
+      true,
+    );
+    const runtime = text.slice(text.lastIndexOf("\nFROM "));
+    expect(runtime).not.toMatch(/^RUN /m);
+  });
+
+  it("builds glibc binaries for both architectures, matching its glibc base", async () => {
+    const text = await instructions(CORE);
+    expect(text).toContain("x86_64-unknown-linux-gnu");
+    expect(text).toContain("aarch64-unknown-linux-gnu");
+    expect(text).not.toContain("musl");
+    expect(await read(CORE)).toMatch(
+      /^FROM --platform=\$BUILDPLATFORM rust:\S+-bookworm AS core$/m,
+    );
+    expect(runtimeBase(await folded(CORE))).toBe("gcr.io/distroless/cc-debian12:nonroot");
+  });
+
+  it("pins the Rust toolchain rust-toolchain.toml names", async () => {
+    const channel = (await read("rust-toolchain.toml")).match(/^channel = "([^"]+)"/m)?.[1];
+    expect(channel).toBeString();
+    expect(await read(CORE)).toContain(
+      `FROM --platform=$BUILDPLATFORM rust:${channel}-bookworm AS core`,
+    );
+  });
+
+  it("pins the same bun as the 3.x images, since the dashboard is built the same way", async () => {
+    const pin = (dockerfile: string) =>
+      dockerfile.match(/FROM\s+--platform=\$BUILDPLATFORM\s+(oven\/bun:\S+)\s+AS/)?.[1];
+    const server = pin(await folded(SERVER));
+    expect(server).toBeString();
+    expect(pin(await folded(CORE))).toBe(server as string);
+  });
+
+  it("keeps local cargo output out of the build context", async () => {
+    expect((await read(".dockerignore")).split("\n")).toContain("/target");
+  });
+
+  it("is built by no workflow: publishing is the owner's step", async () => {
+    const dir = new Bun.Glob("*.yml").scan({
+      cwd: new URL("../.github/workflows/", import.meta.url).pathname,
+    });
+    for await (const file of dir) {
+      const text = await read(`.github/workflows/${file}`);
+      expect(text, file).not.toContain("docker/rust-core");
+      expect(text, file).not.toContain("release-image");
+    }
+  });
+});
