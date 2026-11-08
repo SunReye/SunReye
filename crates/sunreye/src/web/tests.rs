@@ -211,7 +211,8 @@ async fn capabilities_report_only_history_and_profile_sources_served() {
         json!({
             "history": true, "statistics": true, "controls": false, "automations": false,
             "restart": false, "profileSources": true, "integrations": false, "pvAndBattery": false,
-            "pricesAndCosts": false, "statisticsHeatmap": false, "evccCommands": false, "customCharts": false
+            "pricesAndCosts": false, "statisticsHeatmap": false, "evccCommands": false, "customCharts": false,
+            "logging": false, "dataReset": false
         })
     );
     drop(app);

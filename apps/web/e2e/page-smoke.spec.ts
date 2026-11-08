@@ -151,6 +151,12 @@ type SmokeRoute = {
   url?: string;
   /** Mock deltas. `live: false` for the routes that never lease the socket. */
   open?: OpenPageOptions;
+  /**
+   * Reload the document before opening this route. The app reads the core's capabilities once, at
+   * startup, so a route that needs the fake core to answer differently (`open.pricesAndCosts`)
+   * only sees it on a fresh load; until then its panel is gated away and the URL redirects.
+   */
+  reload?: true;
   /** The shell header this route sets, resolved from `messages/en.json`. */
   h1: string;
   /** Where a redirect stub lands. The redirect IS the surface for those. */
@@ -474,6 +480,8 @@ const ROUTES: readonly SmokeRoute[] = [
   },
   {
     file: "(app)/settings/tariff/+page.svelte",
+    open: { pricesAndCosts: true },
+    reload: true,
     h1: "Tariff",
     surface: async (page) => {
       await heading(page, "General");
@@ -482,6 +490,7 @@ const ROUTES: readonly SmokeRoute[] = [
   },
   {
     file: "(app)/settings/prices/+page.svelte",
+    open: { pricesAndCosts: true },
     h1: "Day-ahead prices",
     // The zone picker's items come from the SELECTED PROVIDER's zone list, so a
     // populated zone trigger proves `/api/prices/providers` landed too — a
@@ -645,6 +654,7 @@ test("every route renders its key surface", async ({ page }) => {
       if (index > 0) {
         opened.backend.setGate(route.open ?? {});
         const previous = ROUTES[index - 1];
+        if (route.reload) await page.reload();
         if (previous.exit) await previous.exit(page, opened);
         else await goToHash(page, url);
       }

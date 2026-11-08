@@ -4,7 +4,7 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import SaveBar from './save-bar.svelte';
 	import PlantSiteFields from './plant-site-fields.svelte';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
 	import { parsePlantFields, plantTextsFrom } from '$lib/settings/plant-fields';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
@@ -35,7 +35,7 @@
 	const fieldsDisabled = $derived(!isAdmin || saving);
 
 	onMount(async () => {
-		const { data } = await api.api.settings.weather.get();
+		const { data } = await core.GET('/api/settings/weather');
 		if (!data) return;
 		const texts = plantTextsFrom(data.forecast);
 		maxOutputText = texts.maxOutput;
@@ -60,11 +60,13 @@
 		// Every field named, none spread: this list IS the ownership boundary
 		// between this form, the weather one and the device dialog, and a spread
 		// hides it from both the reader and the test that pins it.
-		const { error } = await api.api.settings.weather.put({
-			forecast: {
-				maxOutputW: fields.maxOutputW,
-				houseLoadW: fields.houseLoadW,
-				smartMeterSince: fields.smartMeterSince
+		const { error } = await core.PUT('/api/settings/weather', {
+			body: {
+				forecast: {
+					maxOutputW: fields.maxOutputW,
+					houseLoadW: fields.houseLoadW,
+					smartMeterSince: fields.smartMeterSince
+				}
 			}
 		});
 		saving = false;

@@ -1,4 +1,5 @@
 import type { Pathname } from "$app/types";
+import type { CapabilityName } from "$lib/capabilities";
 import * as m from "$lib/paraglide/messages";
 
 /**
@@ -36,8 +37,14 @@ export type SettingsRoute = {
    * table for the census — but a link to it would be a link to somewhere else.
    */
   hidden?: true;
+  /**
+   * The core area this panel edits. A core that reports the area absent has nothing to
+   * serve it, so the rail drops the panel and its URL lands on a panel that is offered.
+   */
+  capability?: CapabilityName;
 };
 
+// fallow-ignore-next-line unused-export -- the table itself, read directly by nav-routes.test.ts and settings-nav.svelte.test.ts; the app reads it through railRoutes and settingsHeaderFor
 export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
   {
     id: "devices",
@@ -72,6 +79,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     titleKey: "settings_tab_integrations",
     subtitleKey: "settings_sub_integrations",
     hidden: true,
+    capability: "integrations",
   },
   {
     id: "plant",
@@ -100,6 +108,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "preferences",
     titleKey: "settings_tab_tariff",
     subtitleKey: "settings_sub_tariff",
+    capability: "pricesAndCosts",
   },
   {
     id: "prices",
@@ -107,6 +116,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "preferences",
     titleKey: "settings_tab_prices",
     subtitleKey: "settings_sub_prices",
+    capability: "pricesAndCosts",
   },
   {
     id: "weather",
@@ -128,6 +138,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "admin",
     titleKey: "settings_tab_automations",
     subtitleKey: "settings_sub_automations",
+    capability: "automations",
   },
   {
     id: "profiles",
@@ -156,6 +167,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "admin",
     titleKey: "settings_tab_logs",
     subtitleKey: "settings_sub_logs",
+    capability: "logging",
   },
   {
     id: "danger",
@@ -163,6 +175,7 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "admin",
     titleKey: "settings_tab_danger",
     subtitleKey: "settings_sub_danger",
+    capability: "dataReset",
   },
 ];
 
@@ -172,6 +185,30 @@ const bundle = m as unknown as Record<string, () => string>;
 /** The message a key names, resolved in the viewer's current locale. */
 export function message(key: MessageKey): string {
   return bundle[key]!();
+}
+
+/** Whether the connected core serves an area; `coreCapabilities.has` in the app. */
+export type Offers = (area: CapabilityName) => boolean;
+
+/** The panel a path belongs to: the panel itself, or anything below it. */
+function routeFor(path: string): SettingsRoute | undefined {
+  return SETTINGS_ROUTES.find((r) => path === r.href || path.startsWith(`${r.href}/`));
+}
+
+/**
+ * The panels the rail links, in render order: not hidden, the core serves what they edit,
+ * and admin panels only for an admin.
+ */
+export function railRoutes(isAdmin: boolean, offers: Offers): SettingsRoute[] {
+  return SETTINGS_ROUTES.filter(
+    (r) => !r.hidden && (isAdmin || r.group !== "admin") && (!r.capability || offers(r.capability)),
+  );
+}
+
+/** Whether `path` is a panel (or a page under one) whose core area the core does not serve. */
+export function gatedAway(path: string, offers: Offers): boolean {
+  const capability = routeFor(path)?.capability;
+  return capability !== undefined && !offers(capability);
 }
 
 export type SettingsHeader = { title: () => string; subtitle: () => string };
@@ -185,7 +222,7 @@ export type SettingsHeader = { title: () => string; subtitle: () => string };
  * belongs to that panel — the header should not blank out mid-drilldown.
  */
 export function settingsHeaderFor(path: string): SettingsHeader | null {
-  const route = SETTINGS_ROUTES.find((r) => path === r.href || path.startsWith(`${r.href}/`));
+  const route = routeFor(path);
   if (!route) return null;
   return {
     title: () => message(route.titleKey),

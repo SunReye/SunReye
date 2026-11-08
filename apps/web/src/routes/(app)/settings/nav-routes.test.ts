@@ -14,7 +14,8 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as m from "$lib/paraglide/messages";
-import { SETTINGS_ROUTES, settingsHeaderFor } from "./nav-routes";
+import { type CapabilityName } from "$lib/capabilities";
+import { SETTINGS_ROUTES, gatedAway, railRoutes, settingsHeaderFor } from "./nav-routes";
 
 const DIR = fileURLToPath(new URL(".", import.meta.url));
 
@@ -94,5 +95,81 @@ describe("settingsHeaderFor", () => {
   // A deeper path under a panel is still that panel, not a miss.
   test("matches a panel's own subroutes to the panel", () => {
     expect(settingsHeaderFor("/settings/users/42")?.title()).toBe(messages.settings_tab_users!);
+  });
+});
+
+const offering =
+  (...served: CapabilityName[]) =>
+  (area: CapabilityName) =>
+    served.includes(area);
+const ids = (routes: readonly { id: string }[]) => routes.map((r) => r.id);
+
+describe("which panels the core's capabilities leave in the rail", () => {
+  test("each gated panel names the one capability it needs", () => {
+    const gates = Object.fromEntries(
+      SETTINGS_ROUTES.filter((r) => r.capability).map((r) => [r.id, r.capability]),
+    );
+    expect(gates).toEqual({
+      tariff: "pricesAndCosts",
+      prices: "pricesAndCosts",
+      automations: "automations",
+      integrations: "integrations",
+      logs: "logging",
+      danger: "dataReset",
+    });
+  });
+
+  test("a core that serves nothing optional keeps the ungated panels, in table order", () => {
+    expect(ids(railRoutes(true, offering()))).toEqual([
+      "devices",
+      "plant",
+      "sensors",
+      "display",
+      "weather",
+      "access",
+      "profiles",
+      "users",
+      "api-keys",
+    ]);
+  });
+
+  test("a core that serves everything keeps every panel the table does not hide", () => {
+    const all = offering("pricesAndCosts", "automations", "integrations", "logging", "dataReset");
+    expect(ids(railRoutes(true, all))).toEqual(
+      SETTINGS_ROUTES.filter((r) => !r.hidden).map((r) => r.id),
+    );
+  });
+
+  test("a viewer who is not an admin never gets an admin panel, served or not", () => {
+    const all = offering("pricesAndCosts", "automations", "integrations", "logging", "dataReset");
+    expect(ids(railRoutes(false, all))).toEqual([
+      "devices",
+      "plant",
+      "sensors",
+      "display",
+      "tariff",
+      "prices",
+      "weather",
+    ]);
+  });
+});
+
+describe("gatedAway", () => {
+  test("is true for a panel whose capability the core does not serve", () => {
+    expect(gatedAway("/settings/danger", offering())).toBe(true);
+    expect(gatedAway("/settings/danger", offering("logging"))).toBe(true);
+    expect(gatedAway("/settings/danger", offering("dataReset"))).toBe(false);
+  });
+
+  test("covers a hidden route and a drilldown under a gated panel", () => {
+    expect(gatedAway("/settings/integrations", offering())).toBe(true);
+    expect(gatedAway("/settings/integrations/mqtt-1", offering())).toBe(true);
+    expect(gatedAway("/settings/integrations/mqtt-1", offering("integrations"))).toBe(false);
+  });
+
+  test("is false for an ungated panel, the settings root, an unknown path or another area", () => {
+    for (const path of ["/settings/plant", "/settings", "/settings/nope", "/history", "/"]) {
+      expect(gatedAway(path, offering())).toBe(false);
+    }
   });
 });

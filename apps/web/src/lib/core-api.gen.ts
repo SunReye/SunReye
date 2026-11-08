@@ -813,11 +813,15 @@ export interface components {
             controls: boolean;
             /** @description User-defined charts on the history page, saved server-side. */
             customCharts: boolean;
+            /** @description The danger zone: wiping the stored readings and settings. */
+            dataReset: boolean;
             /** @description The dashboard's EVCC charge mode and limit commands, which write to EVCC. */
             evccCommands: boolean;
             history: boolean;
             /** @description Coded integrations and the MQTT connections they run over. */
             integrations: boolean;
+            /** @description The runtime log-level panel: reading and setting the core's log level. */
+            logging: boolean;
             /** @description Spot prices, tariffs and what they make of the energy: costs, records and amortisation. */
             pricesAndCosts: boolean;
             profileSources: boolean;

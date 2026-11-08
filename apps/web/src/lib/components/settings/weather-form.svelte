@@ -10,7 +10,8 @@
 	import FieldInfo from './field-info.svelte';
 	import ForecastCorrectionPanel from './forecast-correction-panel.svelte';
 	import OptionSelect from './option-select.svelte';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
+	import type { components } from '$lib/core-api.gen';
 	import { parseNum } from '$lib/parse-num';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
@@ -18,28 +19,8 @@
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.admin === true);
 
-	type PvArray = { kwp: number; tilt: number; azimuth: number };
-	type ForecastBattery = { usableKwh: number; maxChargeW: number | null; minSoc: number };
-	type WeatherConfig = {
-		enabled: boolean;
-		latitude: number | null;
-		longitude: number | null;
-		label: string;
-		forecast: {
-			enabled: boolean;
-			provider: string;
-			arrays: PvArray[];
-			tempCoefficient: number;
-			systemLoss: number;
-			maxOutputW: number | null;
-			battery: ForecastBattery | null;
-			houseLoadW: number | null;
-			smartMeterSince: string | null;
-			correction: { enabled: boolean };
-		};
-	};
-
-	type Provider = { id: string; label: string; capabilities: { dni: boolean; windSpeed: boolean } };
+	type WeatherConfig = components['schemas']['WeatherConfig'];
+	type Provider = components['schemas']['Provider'];
 
 	let draft = $state<WeatherConfig | null>(null);
 	let providers = $state<Provider[]>([]);
@@ -63,12 +44,12 @@
 
 	onMount(async () => {
 		const [config, catalog] = await Promise.all([
-			api.api.settings.weather.get(),
-			api.api.forecast.providers.get()
+			core.GET('/api/settings/weather'),
+			core.GET('/api/forecast/providers')
 		]);
-		providers = (catalog.data ?? []) as Provider[];
+		providers = catalog.data ?? [];
 		if (!config.data) return;
-		draft = config.data as WeatherConfig;
+		draft = config.data;
 		loadTexts(draft);
 	});
 
@@ -86,21 +67,23 @@
 		// export limit, battery, smart-meter date — shares this record but is
 		// edited with the inverter, and the server merges rather than replacing,
 		// so neither page can write back the other's stale values.
-		const { data, error } = await api.api.settings.weather.put({
-			enabled: draft.enabled,
-			latitude,
-			longitude,
-			label: draft.label,
-			forecast: {
-				enabled: draft.forecast.enabled,
-				provider: draft.forecast.provider,
-				correction: draft.forecast.correction
+		const { data, error } = await core.PUT('/api/settings/weather', {
+			body: {
+				enabled: draft.enabled,
+				latitude,
+				longitude,
+				label: draft.label,
+				forecast: {
+					enabled: draft.forecast.enabled,
+					provider: draft.forecast.provider,
+					correction: draft.forecast.correction
+				}
 			}
 		});
 		saving = false;
 		if (error) toast.error(m.weather_toast_error());
 		else {
-			draft = data as WeatherConfig;
+			draft = data;
 			toast.success(m.weather_toast_saved());
 		}
 	}
