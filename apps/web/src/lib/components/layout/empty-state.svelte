@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The "nothing here yet" block. The same bordered, centred, muted box was
-	// copy-pasted verbatim into six files (mqtt-form, inverter-form,
+	// copy-pasted verbatim into six files (mqtt-form, inverter-form, tariff-form,
 	// statistics-body, history, controls), which is why one of them could drift
 	// without anyone noticing.
 	//

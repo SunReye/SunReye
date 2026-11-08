@@ -7,7 +7,7 @@ export const TIME_ZONE_AUTO = "auto";
 /**
  * Display preferences shape. Mirrors the server's `displayConfigSchema`
  * (packages/db/src/display.ts) — kept as a local type per the web convention of
- * not depending on the db package (see plant.svelte.ts).
+ * not depending on the db package (see tariff-form.svelte).
  */
 export type DisplayConfig = {
   hourCycle: "auto" | "12h" | "24h";

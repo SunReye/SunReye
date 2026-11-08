@@ -10,6 +10,9 @@
  * negative-slot count for a day that is `"missing"` means *unknown*, not "none".
  */
 
+/** The tariff the settings form edits; its zod schema stays in `@SunReye/db` (no runtime tail here). */
+export type { TariffConfig } from "@SunReye/db/tariff";
+
 export type SlotCoverage = "complete" | "partial" | "missing";
 
 /** Whether the automation may plan on this slice, and how far. */

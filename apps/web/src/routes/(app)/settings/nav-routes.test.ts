@@ -82,13 +82,6 @@ describe("settingsHeaderFor", () => {
     expect(settingsHeaderFor("/settings/mqtt")).toBeNull();
   });
 
-  // The core serves no tariff, spot-price or automation setting, so these panels left the app
-  // with the routes that backed them; their paths are no panel and no header.
-  test.each(["tariff", "prices", "automations"])("the %s panel is gone", (id) => {
-    expect(SETTINGS_ROUTES.map((r) => r.id)).not.toContain(id);
-    expect(settingsHeaderFor(`/settings/${id}`)).toBeNull();
-  });
-
   // /settings itself only redirects to the first panel; there is no header to
   // show for it, and guessing one would flash the wrong title on the way past.
   test("has nothing for the settings root, an unknown panel, or another area", () => {
@@ -117,6 +110,8 @@ describe("which panels the core's capabilities leave in the rail", () => {
       SETTINGS_ROUTES.filter((r) => r.capability).map((r) => [r.id, r.capability]),
     );
     expect(gates).toEqual({
+      tariff: "pricesAndCosts",
+      prices: "pricesAndCosts",
       integrations: "integrations",
       logs: "logging",
       danger: "dataReset",
@@ -138,19 +133,21 @@ describe("which panels the core's capabilities leave in the rail", () => {
   });
 
   test("a core that serves everything keeps every panel the table does not hide", () => {
-    const all = offering("integrations", "logging", "dataReset");
+    const all = offering("pricesAndCosts", "integrations", "logging", "dataReset");
     expect(ids(railRoutes(true, all))).toEqual(
       SETTINGS_ROUTES.filter((r) => !r.hidden).map((r) => r.id),
     );
   });
 
   test("a viewer who is not an admin never gets an admin panel, served or not", () => {
-    const all = offering("integrations", "logging", "dataReset");
+    const all = offering("pricesAndCosts", "integrations", "logging", "dataReset");
     expect(ids(railRoutes(false, all))).toEqual([
       "devices",
       "plant",
       "sensors",
       "display",
+      "tariff",
+      "prices",
       "weather",
     ]);
   });

@@ -11,6 +11,8 @@
 	import PlugsConnectedIcon from 'phosphor-svelte/lib/PlugsConnected';
 	import WaveformIcon from 'phosphor-svelte/lib/Waveform';
 	import MonitorIcon from 'phosphor-svelte/lib/Monitor';
+	import ReceiptIcon from 'phosphor-svelte/lib/Receipt';
+	import ChartLineIcon from 'phosphor-svelte/lib/ChartLine';
 	import CloudSunIcon from 'phosphor-svelte/lib/CloudSun';
 	import ShieldCheckIcon from 'phosphor-svelte/lib/ShieldCheck';
 	import StackIcon from 'phosphor-svelte/lib/Stack';
@@ -46,6 +48,8 @@
 		plant: LightningIcon,
 		sensors: WaveformIcon,
 		display: MonitorIcon,
+		tariff: ReceiptIcon,
+		prices: ChartLineIcon,
 		weather: CloudSunIcon,
 		access: ShieldCheckIcon,
 		profiles: StackIcon,

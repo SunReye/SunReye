@@ -477,6 +477,28 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
+    file: "(app)/settings/tariff/+page.svelte",
+    open: { pricesAndCosts: true },
+    reload: true,
+    h1: "Tariff",
+    surface: async (page) => {
+      await heading(page, "General");
+      await expect(page.getByLabel("Currency")).toHaveValue("EUR");
+    },
+  },
+  {
+    file: "(app)/settings/prices/+page.svelte",
+    open: { pricesAndCosts: true },
+    h1: "Day-ahead prices",
+    // The zone picker's items come from the SELECTED PROVIDER's zone list, so a
+    // populated zone trigger proves `/api/prices/providers` landed too — a
+    // heading assertion would pass against an empty provider list.
+    surface: async (page) => {
+      await switchNamed(page, "Fetch day-ahead prices");
+      await picker(page, "DE-LU");
+    },
+  },
+  {
     file: "(app)/settings/weather/+page.svelte",
     h1: "Weather & Forecast",
     surface: async (page) => {
