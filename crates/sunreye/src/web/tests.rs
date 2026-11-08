@@ -185,9 +185,27 @@ async fn wait_until_polled(sim: &Sim) {
     }
 }
 
-async fn unused_port() -> u16 {
-    let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
-    free.local_addr().expect("addr").port()
+/// A port that refuses connections and that no other test's listener can be handed: the socket stays bound (never
+/// listening) for the life of the process. A released port could become another test's simulator while this one's
+/// poller still retries it, and the simulator would log the poller's reads.
+fn unused_port() -> u16 {
+    static HELD: std::sync::Mutex<Vec<tokio::net::TcpSocket>> = std::sync::Mutex::new(Vec::new());
+    let socket = tokio::net::TcpSocket::new_v4().expect("socket");
+    socket.bind("127.0.0.1:0".parse().expect("addr")).expect("bind");
+    let port = socket.local_addr().expect("addr").port();
+    HELD.lock().expect("held ports").push(socket);
+    port
+}
+
+#[tokio::test]
+async fn an_unused_port_refuses_connections_and_stays_unclaimable() {
+    let port = unused_port();
+    let refused = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.expect_err("nothing listens");
+    assert_eq!(refused.kind(), std::io::ErrorKind::ConnectionRefused);
+    assert!(
+        tokio::net::TcpListener::bind(("127.0.0.1", port)).await.is_err(),
+        "another listener took the port"
+    );
 }
 
 #[tokio::test]
@@ -408,7 +426,7 @@ async fn the_connection_test_uses_the_active_profile_when_none_is_named() {
 #[tokio::test]
 async fn the_connection_test_fails_for_an_unreachable_device_and_an_unknown_profile() {
     let (core, app) = open(&dir("test-fail")).await;
-    let mut body = connection(unused_port().await);
+    let mut body = connection(unused_port());
     body["profileId"] = json!(PROFILE);
     let down = post(&app, "/api/settings/inverter/test", &body).await;
     assert_eq!(down.status, StatusCode::OK, "an unreachable device is a result, not a bad request");
@@ -1230,6 +1248,7 @@ mod api_keys;
 mod busy;
 mod correction;
 mod devices;
+mod evcc;
 mod forecast;
 mod import;
 mod kiosk;

@@ -41,7 +41,7 @@ async fn store_a_reading(core: &Core, device: i64) {
 
 #[tokio::test]
 async fn the_onboarded_device_and_its_connection_answer_in_the_3x_roster_shape() {
-    let port = unused_port().await;
+    let port = unused_port();
     let (core, admin) = onboarded("roster", port).await;
     let answer = get(&admin, "/api/devices").await;
     assert_eq!(answer.status, StatusCode::OK);
@@ -107,7 +107,7 @@ async fn a_device_added_on_a_new_connection_is_listed_and_polled() {
 
 #[tokio::test]
 async fn an_add_the_core_cannot_hold_is_refused_by_field_and_adds_nothing() {
-    let (core, admin) = onboarded("roster-refused", unused_port().await).await;
+    let (core, admin) = onboarded("roster-refused", unused_port()).await;
     let existing = json!({"id": 1});
     let cases = [
         (json!({"profileId": "no-such"}), StatusCode::BAD_REQUEST, "profileId"),
@@ -143,7 +143,7 @@ async fn an_add_the_core_cannot_hold_is_refused_by_field_and_adds_nothing() {
 
 #[tokio::test]
 async fn a_device_is_renamed_retired_and_restored_by_id() {
-    let (core, admin) = onboarded("roster-patch", unused_port().await).await;
+    let (core, admin) = onboarded("roster-patch", unused_port()).await;
     let renamed = patch(&admin, "/api/devices/1", &json!({"name": "Hybrid", "unitId": 7})).await;
     assert_eq!(
         (renamed.status, &renamed.json()["name"], &renamed.json()["unitId"]),
@@ -186,7 +186,7 @@ async fn a_device_is_renamed_retired_and_restored_by_id() {
 
 #[tokio::test]
 async fn a_device_with_stored_readings_is_refused_deletion_as_3x_refuses_it_and_one_without_is_deleted() {
-    let (core, admin) = onboarded("roster-delete", unused_port().await).await;
+    let (core, admin) = onboarded("roster-delete", unused_port()).await;
     post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
     let added = post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 3)).await.json();
     store_a_reading(&core, 2).await;
@@ -217,7 +217,7 @@ async fn a_device_with_stored_readings_is_refused_deletion_as_3x_refuses_it_and_
 
 #[tokio::test]
 async fn a_connection_is_edited_in_place_and_removed_only_once_no_device_is_on_it() {
-    let (core, admin) = onboarded("roster-connection", unused_port().await).await;
+    let (core, admin) = onboarded("roster-connection", unused_port()).await;
     let edited = patch(
         &admin,
         "/api/connections/1",
@@ -267,7 +267,7 @@ const POLLED: &str = "this device is the one being polled; change the inverter c
 
 #[tokio::test]
 async fn the_device_the_inverter_settings_edit_is_refused_retirement_and_deletion_as_3x_refuses_it() {
-    let (core, admin) = onboarded("roster-polled", unused_port().await).await;
+    let (core, admin) = onboarded("roster-polled", unused_port()).await;
     for answer in [
         patch(&admin, "/api/devices/1", &json!({"retired": true})).await,
         delete(&admin, "/api/devices/1").await,
@@ -290,7 +290,7 @@ async fn the_inverter_settings_edit_the_device_a_read_without_source_is_from() {
     body["role"] = json!("inverter");
     assert_eq!(post(&admin, "/api/devices", &body).await.status, StatusCode::OK);
 
-    let port = unused_port().await;
+    let port = unused_port();
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
     assert_eq!(put(&admin, "/api/settings/inverter", &connection(port)).await.status, StatusCode::OK);
     let roster = get(&admin, "/api/devices").await.json();
@@ -308,7 +308,7 @@ async fn the_inverter_settings_edit_the_device_a_read_without_source_is_from() {
 
 #[tokio::test]
 async fn a_device_with_readings_held_for_the_open_minute_is_refused_deletion() {
-    let (core, admin) = onboarded("roster-held", unused_port().await).await;
+    let (core, admin) = onboarded("roster-held", unused_port()).await;
     post(&admin, "/api/devices", &new_device(&json!({"id": 1}), "Meter", 2)).await;
     core.unstored.push(2, Sample { at_ms: 6_000_000, values: vec![("pv".into(), 1.0)] });
     let refused = delete(&admin, "/api/devices/2").await;
@@ -342,7 +342,7 @@ const REFUSED: StatusCode = StatusCode::BAD_REQUEST;
 // The onboarded core polls with timeoutMs 500 and pollIntervalMs 1000.
 #[tokio::test]
 async fn a_connection_edit_takes_only_the_cores_poll_timing_and_a_connection_add_ignores_it() {
-    let (core, admin) = onboarded("roster-timing", unused_port().await).await;
+    let (core, admin) = onboarded("roster-timing", unused_port()).await;
     let cells = [
         ("timeoutMs", None, OK, OK),
         ("timeoutMs", Some(json!(null)), REFUSED, OK),
@@ -373,7 +373,7 @@ async fn a_connection_edit_takes_only_the_cores_poll_timing_and_a_connection_add
 
 #[tokio::test]
 async fn a_device_created_with_its_connection_ignores_a_stated_poll_timing() {
-    let (core, admin) = onboarded("roster-create-timing", unused_port().await).await;
+    let (core, admin) = onboarded("roster-create-timing", unused_port()).await;
     let cells = [
         ("timeoutMs", None, OK),
         ("timeoutMs", Some(json!(null)), OK),
@@ -415,7 +415,7 @@ async fn an_empty_core_lists_no_device_and_no_connection() {
 
 #[tokio::test]
 async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_unit_ends_are_accepted() {
-    let (core, admin) = onboarded("roster-bounds", unused_port().await).await;
+    let (core, admin) = onboarded("roster-bounds", unused_port()).await;
     let solarman = |serial: i64| json!({"host": "stick", "port": 8899, "transport": "solarman-v5", "loggerSerial": serial});
     let endpoints = [
         (json!({"host": "gw", "port": 0}), "params"),
@@ -467,7 +467,7 @@ async fn an_endpoint_or_unit_out_of_range_is_refused_and_the_unit_ends_are_accep
 
 #[tokio::test]
 async fn an_endpoint_at_its_range_ends_is_accepted() {
-    let (core, admin) = onboarded("roster-ends", unused_port().await).await;
+    let (core, admin) = onboarded("roster-ends", unused_port()).await;
     let solarman = |serial: i64| json!({"host": "stick", "port": 8899, "transport": "solarman-v5", "loggerSerial": serial});
     let ends = [
         json!({"host": "gw", "port": 1}),
@@ -495,7 +495,7 @@ async fn a_connection_probe_answers_the_3x_shape_and_reads_nothing() {
     assert_eq!(answer.status, StatusCode::OK);
     let body = answer.json();
     assert_eq!((&body["ok"], body["ms"].is_u64(), body.get("logger")), (&json!(true), true, None), "{body}");
-    let closed = post(&admin, "/api/connections/probe", &probe_body(unused_port().await)).await.json();
+    let closed = post(&admin, "/api/connections/probe", &probe_body(unused_port())).await.json();
     assert_eq!(closed["ok"], false);
     assert!(closed["error"].as_str().is_some_and(|error| error.starts_with("i/o error")), "{closed}");
     let mqtt = json!({"kind": "mqtt", "params": {"brokerUrl": "mqtt://broker"}});
@@ -539,7 +539,7 @@ async fn a_unit_scan_tries_unit_1_first_and_issues_only_reads() {
             "{extra}"
         );
     }
-    let mut unreachable = probe_body(unused_port().await);
+    let mut unreachable = probe_body(unused_port());
     unreachable["profileId"] = json!(PROFILE);
     let closed = post(&admin, "/api/connections/scan-units", &unreachable).await;
     assert_eq!(closed.status, StatusCode::BAD_REQUEST);

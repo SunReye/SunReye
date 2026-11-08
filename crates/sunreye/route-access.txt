@@ -30,6 +30,7 @@ GET /api/kiosk public
 GET /api/profile kiosk
 GET /api/profile-status public
 GET /api/profiles admin
+GET /api/settings/evcc admin
 GET /api/settings/inverter admin
 GET /api/settings/mqtt admin
 GET /api/settings/profile-sources admin
@@ -58,6 +59,7 @@ POST /api/settings/profile-sources admin
 POST /api/settings/profiles/import admin
 PUT /api/admin/users/{id}/role admin
 PUT /api/settings/active-profile admin
+PUT /api/settings/evcc admin
 PUT /api/settings/inverter admin
 PUT /api/settings/kiosk admin
 PUT /api/settings/mqtt admin
