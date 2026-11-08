@@ -3255,6 +3255,13 @@
   },
   "components": {
     "schemas": {
+      "Access": {
+        "type": "string",
+        "enum": [
+          "r",
+          "rw"
+        ]
+      },
       "Account": {
         "type": "object",
         "description": "The signed-in account as the SPA reads it.",
@@ -3336,6 +3343,15 @@
           }
         ]
       },
+      "Aggregate": {
+        "type": "string",
+        "description": "How a role folds across a plant's members.",
+        "enum": [
+          "sum",
+          "weighted-mean",
+          "per-device"
+        ]
+      },
       "ApiKeyView": {
         "type": "object",
         "description": "A key as listed: never the key itself.",
@@ -3405,6 +3421,70 @@
             "format": "double"
           }
         }
+      },
+      "Binding": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "addr",
+              "type",
+              "via"
+            ],
+            "properties": {
+              "addr": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "type": {
+                "$ref": "#/components/schemas/RegisterType"
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "modbus"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expr",
+              "via"
+            ],
+            "properties": {
+              "expr": {
+                "$ref": "#/components/schemas/Expr"
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "compute"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "via"
+            ],
+            "properties": {
+              "via": {
+                "type": "string",
+                "enum": [
+                  "control"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where a metric's value comes from. `Control` metrics are settings the core never writes in 4.0."
       },
       "Capabilities": {
         "type": "object",
@@ -3756,6 +3836,15 @@
         ],
         "description": "The only answer that holds the key."
       },
+      "Declares": {
+        "type": "object",
+        "description": "What the profile states about hardware no metric implies.",
+        "properties": {
+          "backupOutput": {
+            "type": "boolean"
+          }
+        }
+      },
       "DetailedPoint": {
         "type": "object",
         "description": "One slot of the Solcast-shaped curve Home Assistant PV blueprints read.",
@@ -4083,6 +4172,138 @@
             "description": "The request field the refusal concerns, when the client acts on it."
           }
         }
+      },
+      "Expr": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sum"
+            ],
+            "properties": {
+              "sum": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "diff"
+            ],
+            "properties": {
+              "diff": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "scale"
+            ],
+            "properties": {
+              "scale": {
+                "$ref": "#/components/schemas/KeyAndFactor"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "combine"
+            ],
+            "properties": {
+              "combine": {
+                "type": "object",
+                "required": [
+                  "add"
+                ],
+                "properties": {
+                  "add": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sub": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "ratio"
+            ],
+            "properties": {
+              "ratio": {
+                "type": "object",
+                "required": [
+                  "num",
+                  "den"
+                ],
+                "properties": {
+                  "den": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "num": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "scale": {
+                    "type": "number",
+                    "format": "double"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "clamp"
+            ],
+            "properties": {
+              "clamp": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "max": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "min": {
+                    "type": "number",
+                    "format": "double"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "description": "A derived value; keys name other metrics, and a key without a value reads as 0."
       },
       "Feature": {
         "type": "string",
@@ -4522,6 +4743,20 @@
           }
         }
       },
+      "KeyAndFactor": {
+        "type": "array",
+        "items": {},
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "maxItems": 2,
+        "minItems": 2
+      },
       "Kiosk": {
         "type": "object",
         "required": [
@@ -4675,6 +4910,80 @@
           },
           "writable": {
             "type": "boolean"
+          }
+        }
+      },
+      "Metric": {
+        "type": "object",
+        "required": [
+          "key",
+          "unit",
+          "scale",
+          "binding"
+        ],
+        "properties": {
+          "access": {
+            "$ref": "#/components/schemas/Access"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/Binding"
+          },
+          "enumLabels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "flow": {
+            "$ref": "#/components/schemas/Flow"
+          },
+          "group": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MetricKind"
+          },
+          "label": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "number",
+            "format": "double"
+          },
+          "range": {
+            "$ref": "#/components/schemas/Range"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scale": {
+            "type": "number",
+            "format": "double"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/Storage"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Published profiles write `null` for a unitless metric."
           }
         }
       },
@@ -5117,6 +5426,47 @@
           }
         }
       },
+      "Profile": {
+        "type": "object",
+        "description": "A device profile as the core reads it. Serialized, it is what the published profile says of these fields.",
+        "required": [
+          "id",
+          "name",
+          "manufacturer",
+          "version",
+          "metrics"
+        ],
+        "properties": {
+          "declares": {
+            "$ref": "#/components/schemas/Declares"
+          },
+          "id": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Absent reads as the current schema.",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string",
+            "description": "Semver of the profile content."
+          }
+        }
+      },
       "ProfileEntry": {
         "type": "object",
         "required": [
@@ -5330,6 +5680,15 @@
           }
         }
       },
+      "RegisterType": {
+        "type": "string",
+        "enum": [
+          "U_WORD",
+          "S_WORD",
+          "U_DWORD",
+          "RAW"
+        ]
+      },
       "Removed": {
         "type": "object",
         "required": [
@@ -5358,6 +5717,595 @@
           }
         }
       },
+      "Role": {
+        "type": "string",
+        "description": "A canonical role a metric maps to.",
+        "enum": [
+          "pv.string.power",
+          "pv.string.voltage",
+          "pv.string.current",
+          "pv.total.power",
+          "pv.string.energy.today",
+          "pv.string.energy.total",
+          "production.today",
+          "production.total",
+          "battery.soc",
+          "battery.power",
+          "battery.voltage",
+          "battery.current",
+          "battery.temperature",
+          "battery.mode",
+          "battery.energy.charged.today",
+          "battery.energy.charged.total",
+          "battery.energy.discharged.today",
+          "battery.energy.discharged.total",
+          "grid.power",
+          "grid.frequency",
+          "grid.phase.voltage",
+          "grid.phase.current",
+          "grid.phase.power",
+          "grid.energy.imported.today",
+          "grid.energy.imported.total",
+          "grid.energy.exported.today",
+          "grid.energy.exported.total",
+          "load.power",
+          "load.phase.power",
+          "load.phase.voltage",
+          "load.phase.current",
+          "load.energy.today",
+          "load.energy.total",
+          "backup.power",
+          "backup.phase.power",
+          "backup.phase.voltage",
+          "backup.phase.current",
+          "backup.frequency",
+          "backup.energy.today",
+          "backup.energy.total",
+          "generator.power",
+          "generator.phase.power",
+          "generator.phase.voltage",
+          "generator.phase.current",
+          "generator.energy.today",
+          "generator.energy.total",
+          "ev.charge.power",
+          "ev.vehicle.soc",
+          "ev.session.energy",
+          "ev.connected",
+          "ev.charging",
+          "optimizer.target.current",
+          "optimizer.applied.current",
+          "optimizer.threshold.power",
+          "optimizer.excess.power",
+          "optimizer.local.sink.power",
+          "optimizer.headroom.energy",
+          "optimizer.surplus.energy",
+          "optimizer.soc.envelope",
+          "optimizer.soakable.energy",
+          "optimizer.unavoidable.energy",
+          "optimizer.ev.demand.energy",
+          "optimizer.sell.limit.power",
+          "optimizer.grid.charge.current",
+          "optimizer.state",
+          "optimizer.price.regime",
+          "optimizer.override",
+          "optimizer.ineffective",
+          "optimizer.enabled",
+          "optimizer.mode",
+          "optimizer.restore.pending",
+          "inverter.status",
+          "inverter.relay_status",
+          "inverter.temperature.dc",
+          "inverter.temperature.ac",
+          "inverter.power",
+          "inverter.efficiency",
+          "setting.battery.max_charge_current",
+          "setting.battery.max_discharge_current",
+          "setting.battery.max_grid_charge_current",
+          "setting.battery.max_charge_power",
+          "setting.battery.max_discharge_power",
+          "setting.battery.max_grid_charge_power",
+          "setting.battery.grid_charge",
+          "setting.work_mode",
+          "setting.solar_sell.max_power",
+          "setting.solar_sell.enabled"
+        ],
+        "x-roles": {
+          "backup.energy.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "backup.energy.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "backup.frequency": {
+            "aggregate": "per-device",
+            "kind": "measurement",
+            "unitHint": "Hz"
+          },
+          "backup.phase.current": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "backup.phase.power": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "backup.phase.voltage": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "backup.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "battery.current": {
+            "aggregate": "per-device",
+            "kind": "measurement",
+            "signed": true,
+            "unitHint": "A"
+          },
+          "battery.energy.charged.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "battery.energy.charged.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "battery.energy.discharged.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "battery.energy.discharged.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "battery.mode": {
+            "aggregate": "per-device",
+            "kind": "status",
+            "needsEnumLabels": true
+          },
+          "battery.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "signed": true,
+            "unitHint": "W"
+          },
+          "battery.soc": {
+            "aggregate": "weighted-mean",
+            "kind": "measurement",
+            "unitHint": "%"
+          },
+          "battery.temperature": {
+            "aggregate": "weighted-mean",
+            "kind": "measurement",
+            "unitHint": "°C"
+          },
+          "battery.voltage": {
+            "aggregate": "per-device",
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "ev.charge.power": {
+            "aggregate": "per-device",
+            "deviceClass": "charger",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "ev.charging": {
+            "aggregate": "per-device",
+            "deviceClass": "charger",
+            "kind": "status"
+          },
+          "ev.connected": {
+            "aggregate": "per-device",
+            "deviceClass": "charger",
+            "kind": "status"
+          },
+          "ev.session.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "charger",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "ev.vehicle.soc": {
+            "aggregate": "per-device",
+            "deviceClass": "charger",
+            "kind": "measurement",
+            "unitHint": "%"
+          },
+          "generator.energy.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "generator.energy.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "generator.phase.current": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "generator.phase.power": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "generator.phase.voltage": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "generator.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "grid.energy.exported.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "grid.energy.exported.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "grid.energy.imported.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "grid.energy.imported.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "grid.frequency": {
+            "aggregate": "per-device",
+            "kind": "measurement",
+            "unitHint": "Hz"
+          },
+          "grid.phase.current": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "signed": true,
+            "unitHint": "A"
+          },
+          "grid.phase.power": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "signed": true,
+            "unitHint": "W"
+          },
+          "grid.phase.voltage": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "grid.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "signed": true,
+            "unitHint": "W"
+          },
+          "inverter.efficiency": {
+            "aggregate": "weighted-mean",
+            "kind": "measurement",
+            "unitHint": "%"
+          },
+          "inverter.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "inverter.relay_status": {
+            "aggregate": "per-device",
+            "kind": "status",
+            "needsEnumLabels": true
+          },
+          "inverter.status": {
+            "aggregate": "per-device",
+            "kind": "status",
+            "needsEnumLabels": true
+          },
+          "inverter.temperature.ac": {
+            "aggregate": "weighted-mean",
+            "kind": "measurement",
+            "unitHint": "°C"
+          },
+          "inverter.temperature.dc": {
+            "aggregate": "weighted-mean",
+            "kind": "measurement",
+            "unitHint": "°C"
+          },
+          "load.energy.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "load.energy.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "load.phase.current": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "load.phase.power": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "load.phase.voltage": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "load.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "optimizer.applied.current": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "optimizer.enabled": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "setting"
+          },
+          "optimizer.ev.demand.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "kWh"
+          },
+          "optimizer.excess.power": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "optimizer.grid.charge.current": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "optimizer.headroom.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "kWh"
+          },
+          "optimizer.ineffective": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "status"
+          },
+          "optimizer.local.sink.power": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "optimizer.mode": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "setting",
+            "needsEnumLabels": true
+          },
+          "optimizer.override": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "status"
+          },
+          "optimizer.price.regime": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "status",
+            "needsEnumLabels": true
+          },
+          "optimizer.restore.pending": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "status"
+          },
+          "optimizer.sell.limit.power": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "optimizer.soakable.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "kWh"
+          },
+          "optimizer.soc.envelope": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "%"
+          },
+          "optimizer.state": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "status",
+            "needsEnumLabels": true
+          },
+          "optimizer.surplus.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "kWh"
+          },
+          "optimizer.target.current": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "optimizer.threshold.power": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "optimizer.unavoidable.energy": {
+            "aggregate": "per-device",
+            "deviceClass": "optimizer",
+            "kind": "measurement",
+            "unitHint": "kWh"
+          },
+          "production.today": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "production.total": {
+            "aggregate": "sum",
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "pv.string.current": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "A"
+          },
+          "pv.string.energy.today": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "pv.string.energy.total": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "cumulative",
+            "unitHint": "kWh"
+          },
+          "pv.string.power": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "pv.string.voltage": {
+            "aggregate": "per-device",
+            "indexed": true,
+            "kind": "measurement",
+            "unitHint": "V"
+          },
+          "pv.total.power": {
+            "aggregate": "sum",
+            "kind": "measurement",
+            "unitHint": "W"
+          },
+          "setting.battery.grid_charge": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "needsEnumLabels": true,
+            "writable": true
+          },
+          "setting.battery.max_charge_current": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "A",
+            "writable": true
+          },
+          "setting.battery.max_charge_power": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "W",
+            "writable": true
+          },
+          "setting.battery.max_discharge_current": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "A",
+            "writable": true
+          },
+          "setting.battery.max_discharge_power": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "W",
+            "writable": true
+          },
+          "setting.battery.max_grid_charge_current": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "A",
+            "writable": true
+          },
+          "setting.battery.max_grid_charge_power": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "W",
+            "writable": true
+          },
+          "setting.solar_sell.enabled": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "needsEnumLabels": true,
+            "writable": true
+          },
+          "setting.solar_sell.max_power": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "unitHint": "W",
+            "writable": true
+          },
+          "setting.work_mode": {
+            "aggregate": "per-device",
+            "kind": "setting",
+            "needsEnumLabels": true,
+            "writable": true
+          }
+        }
+      },
+      "RoleDevice": {
+        "type": "string",
+        "description": "The device class a role describes when it is not the inverter a register profile maps.",
+        "enum": [
+          "charger",
+          "optimizer"
+        ]
+      },
       "RoleRequest": {
         "type": "object",
         "required": [
@@ -5366,6 +6314,47 @@
         "properties": {
           "admin": {
             "type": "boolean"
+          }
+        }
+      },
+      "RoleSpec": {
+        "type": "object",
+        "description": "What a role asks of the metric mapped to it.",
+        "required": [
+          "kind",
+          "aggregate"
+        ],
+        "properties": {
+          "aggregate": {
+            "$ref": "#/components/schemas/Aggregate"
+          },
+          "deviceClass": {
+            "$ref": "#/components/schemas/RoleDevice",
+            "description": "The device class the role describes when it is not the inverter a register profile maps."
+          },
+          "indexed": {
+            "type": "boolean",
+            "description": "Needs a 1-based `index` on the metric."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MetricKind",
+            "description": "The kind a metric takes when it states none."
+          },
+          "needsEnumLabels": {
+            "type": "boolean",
+            "description": "The mapped metric must carry `enumLabels`."
+          },
+          "signed": {
+            "type": "boolean",
+            "description": "Has a natural +/- direction and expects `flow`."
+          },
+          "unitHint": {
+            "type": "string",
+            "description": "Conventional unit."
+          },
+          "writable": {
+            "type": "boolean",
+            "description": "A control: the mapped metric must be writable."
           }
         }
       },

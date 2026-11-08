@@ -80,6 +80,13 @@
         "gen:core-api"
       ],
       [
+        "bun",
+        "run",
+        "--cwd",
+        "packages/inverter-core",
+        "gen:profile"
+      ],
+      [
         "scripts/sqlx-cache"
       ],
       [

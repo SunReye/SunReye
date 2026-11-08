@@ -603,11 +603,12 @@ class ConfiguredTrain(unittest.TestCase):
             self.assertEqual([(d["pr"], d["files"]) for d in train["dropped"]],
                              [(2, ["crates/sunreye/openapi_snapshot.json", "crates/sunreye/src/lib.rs"])])
 
-    def test_regeneration_rebuilds_snapshot_client_and_sqlx_cache_in_order(self):
+    def test_regeneration_rebuilds_snapshot_clients_and_sqlx_cache_in_order(self):
         self.assertEqual(factory.CFG["commands"]["regenerate"], [
             ["bun", "install"],
             ["env", "UPDATE_OPENAPI=1", "cargo", "test", "-p", "sunreye", "openapi"],
             ["bun", "run", "--cwd", "apps/web", "gen:core-api"],
+            ["bun", "run", "--cwd", "packages/inverter-core", "gen:profile"],
             ["scripts/sqlx-cache"],
             ["bun", "scripts/timing-hygiene.ts", "--write"],
         ])

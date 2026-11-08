@@ -589,6 +589,18 @@ fn the_committed_openapi_json_is_the_document_the_core_serves() {
     );
 }
 
+#[test]
+fn the_document_carries_the_profile_types_and_role_catalogue_for_the_sdk() {
+    let document = serde_json::to_value(openapi()).expect("document");
+    let schemas = &document["components"]["schemas"];
+    for name in
+        ["Profile", "Metric", "Binding", "Expr", "RegisterType", "Access", "Declares", "Role", "RoleSpec"]
+    {
+        assert!(schemas[name].is_object(), "{name} is not in components.schemas");
+    }
+    assert!(schemas["Role"]["x-roles"]["grid.power"].is_object());
+}
+
 async fn call(api: &Api, route: &(String, String)) -> StatusCode {
     call_for_answer(api, (&route.0, &route.1)).await.status
 }
