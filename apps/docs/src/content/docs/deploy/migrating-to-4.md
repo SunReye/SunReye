@@ -20,8 +20,7 @@ import it into a fresh 4.0. 3.x is never touched by the import, so it stays your
 | Postgres / TimescaleDB | One SQLite file in `--data-dir` |
 | Transports | Modbus TCP, RTU-over-TCP and Solarman V5 only |
 
-Nothing in 4.0 changes an inverter register. Registers 3.x automation wrote stay as 3.x left them,
-which is why step 1 below is not optional.
+Registers 3.x automation wrote stay as 3.x left them, which is why step 1 below is not optional.
 
 ## What the import carries
 
@@ -57,8 +56,6 @@ Switching off hands every register an automation held back to the value it had b
 
 ### 2. Export the archive from 3.x
 
-Export after step 1, so the archive records automation as off.
-
 In 3.x: **Settings → Danger Zone → Download export**. From a shell:
 
 ```bash
@@ -69,18 +66,18 @@ The file is a gzipped tar: `manifest.json`, `config.json`, `config-log.ndjson.gz
 `readings.ndjson.gz`. Each reading line names its tier in `source_tier` (`raw`, `minute`, `hourly`
 or `daily`). See [Export & Import](/use/export-import/) for the format.
 
-Keep the file and leave 3.x running. 3.x history after the export does not reach 4.0.
+Export after step 1: an archive that records automation as on triggers
+[the guard](#the-automation-guard). 3.x history after the export does not reach 4.0.
 
 ### 3. Start 4.0 on an empty data directory
 
-Start 4.0 with `--data-dir` pointing at a directory with no store:
+Stop 3.x, then start 4.0 with `--data-dir` pointing at a directory with no store:
 
 ```bash
 sunreye --data-dir /var/lib/sunreye --listen 0.0.0.0:8099
 ```
 
-`--listen` defaults to `127.0.0.1:8099`, which only the host itself reaches. 3.x and 4.0 cannot
-listen on the same port: pick another with `--listen`, or stop 3.x.
+`--listen` defaults to `127.0.0.1:8099`, which only the host itself reaches.
 
 ### 4. Create the administrator
 
@@ -143,9 +140,13 @@ The import keeps each tier back to 4.0's retention, measured from the import:
 | Hourly | 3650 days |
 | Daily | Forever |
 
-Raw and minute rows older than that are not imported; the hourly and daily tiers import in full. The
-retention pass runs at start and hourly, so an older row would be deleted anyway. Settings `retention.raw_days`, `retention.minute_days`,
-`retention.hour_days` and `retention.day_days` override the defaults.
+Raw and minute rows older than that are not stored but still roll into the hourly and daily
+buckets. Hourly rows older than 3650 days are not imported; daily rows are always kept. The
+retention pass runs at start and hourly, so an older row would be deleted anyway.
+
+Override the defaults with the settings `retention.raw_days`, `retention.minute_days`,
+`retention.hour_days` and `retention.day_days`. No web page or API sets them: they are rows in the
+store's `setting` table, read at import and by the retention pass.
 
 ## Go back
 
