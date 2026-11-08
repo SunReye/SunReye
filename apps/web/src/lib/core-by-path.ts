@@ -11,7 +11,16 @@ type ByPath = Record<
   "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   (path: string, init?: unknown) => Promise<Answer>
 >;
-export const byPath = core as unknown as ByPath;
+// Resolved per call: `core` may be replaced after this module loads (test doubles).
+type Args = [path: string, init?: unknown];
+const client = () => core as unknown as ByPath;
+export const byPath = {
+  GET: (...args: Args) => client().GET(...args),
+  POST: (...args: Args) => client().POST(...args),
+  PUT: (...args: Args) => client().PUT(...args),
+  PATCH: (...args: Args) => client().PATCH(...args),
+  DELETE: (...args: Args) => client().DELETE(...args),
+};
 
 /**
  * Whether the answer is a refusal. `error` alone is not enough: openapi-fetch reads an empty

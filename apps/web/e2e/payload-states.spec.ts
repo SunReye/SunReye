@@ -9,8 +9,8 @@
  * questions here are the other two, and both need a differently-configured
  * backend per case:
  *
- *  - **Absent.** Half of this app's endpoints legally answer `null`, Elysia
- *    sends that as an EMPTY BODY, Eden hands it back as `""`, and `""` is not
+ *  - **Absent.** Half of this app's endpoints legally answer `null`, the core
+ *    sends that as an EMPTY BODY, openapi-fetch hands it back as `""`, and `""` is not
  *    nullish — so `data ?? null` keeps it and every `if (data)` downstream
  *    passes on a feature that is switched off. The components that own those
  *    payloads self-hide, which means the failure is a tile that is simply not

@@ -30,7 +30,12 @@ function noticeIncompleteRange(response: Response): void {
  *
  * `credentials: "include"` keeps the session cookie on requests once the core has accounts.
  */
-export const core = createClient<paths>({ baseUrl: serverUrl, credentials: "include" });
+export const core = createClient<paths>({
+  baseUrl: serverUrl,
+  credentials: "include",
+  // Late-bound: openapi-fetch otherwise captures `globalThis.fetch` at creation.
+  fetch: (request) => globalThis.fetch(request),
+});
 
 core.use({
   onResponse({ response, schemaPath }) {

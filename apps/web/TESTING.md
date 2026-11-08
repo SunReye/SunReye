@@ -234,7 +234,7 @@ The failure mode on this dashboard is not a crash, it is a **plausible wrong num
 screen nobody is watching**. Write the cases that produce one:
 
 - **Absent vs empty vs zero.** `0` is a reading; `""` is not. The server answers `null` for a
-  disabled feature, Elysia sends that as an empty body, and Eden hands it back as `""` — so
+  disabled feature, the core sends that as an empty body, and openapi-fetch hands it back as `""` — so
   `data ?? null` keeps it and the guard downstream passes. Always normalize through
   `payloadOrNull` (or a shape guard like `isReadableWeather`), and test the empty body
   explicitly.
