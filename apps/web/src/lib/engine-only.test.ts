@@ -63,7 +63,13 @@ beforeEach(() => {
 });
 
 const input = { name: "Mine", metrics: ["pv.power"] };
-const chart = { id: "c1", name: "Mine" };
+const chart = {
+  id: "c1",
+  name: "Mine",
+  metrics: ["pv.power"],
+  createdAt: "2026-11-01T00:00:00Z",
+  updatedAt: "2026-11-01T00:00:00Z",
+};
 
 describe("postSetting", () => {
   test("true when the engine accepted it, sending key and value", async () => {
@@ -100,11 +106,16 @@ describe("postEvccCommand", () => {
 
 describe("fetchCostToday", () => {
   test("asks for today, carrying the source", async () => {
-    answer = { data: { currency: "EUR", importCost: 0 } };
-    expect(await fetchCostToday({ source: "plant" })).toEqual({
+    const cost = {
       currency: "EUR",
       importCost: 0,
-    });
+      exportEarnings: 0,
+      solarSavings: 0,
+      selfSufficiency: null,
+      selfConsumption: null,
+    };
+    answer = { data: cost };
+    expect(await fetchCostToday({ source: "plant" })).toEqual(cost);
     expect(calls[0]).toEqual({
       route: "cost",
       args: { query: { range: "today", source: "plant" } },
