@@ -22,6 +22,8 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **History.** By device, series (ADR 3) and range. The server picks the rollup tier so a series has at most 1,500 points (about one per pixel of a wide chart), returns time-weighted means and names the tier. Raw intervals only for short ranges.
 
+**Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns the latest issue by default; `issuedBefore` selects an earlier one, so forecast accuracy can be compared (ADR 15).
+
 **Errors.** `application/problem+json` (RFC 9457) with a stable machine `code`, such as `write.range` or `device.unreachable`, and no localised text. A device fault and a caller mistake have different codes and status classes.
 
 ## Considered options
