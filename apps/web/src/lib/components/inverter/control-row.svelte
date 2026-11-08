@@ -42,11 +42,12 @@
 		busy = true;
 		pending = v;
 		try {
-			if (!(await postSetting(metric.key, v))) throw new Error('setting refused');
+			if (!(await postSetting(metric.key, v))) {
+				toast.error(m.controls_toast_update_failed({ name: metric.label }));
+				pending = null;
+				return;
+			}
 			toast.success(`${metric.label} → ${valueLabel(v)}`);
-		} catch {
-			toast.error(m.controls_toast_update_failed({ name: metric.label }));
-			pending = null;
 		} finally {
 			busy = false;
 		}

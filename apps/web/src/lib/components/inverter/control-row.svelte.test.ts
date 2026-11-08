@@ -41,3 +41,14 @@ test("renders nothing when the core reports controls absent", async () => {
   await expect.element(page.getByRole("switch")).not.toBeInTheDocument();
   expect(postSetting).not.toHaveBeenCalled();
 });
+
+test("a refused write puts the control back on the live value and frees it", async () => {
+  get.mockResolvedValue({ data: { controls: true } });
+  postSetting.mockResolvedValue(false);
+  await coreCapabilities.load();
+  render(ControlRow, { metric });
+  await page.getByRole("switch").click();
+  expect(postSetting).toHaveBeenCalledWith("settings.grid_charge", 1);
+  await expect.element(page.getByText("Off")).toBeVisible();
+  await expect.element(page.getByRole("switch")).toBeEnabled();
+});

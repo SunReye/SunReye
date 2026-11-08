@@ -109,11 +109,12 @@ export class TouController {
     this.#busy.add(key);
     this.#pending.set(key, value);
     try {
-      if (!(await postSetting(key, value))) throw new Error("setting refused");
+      if (!(await postSetting(key, value))) {
+        toast.error(m.tou_toast_update_failed({ label }));
+        this.#pending.delete(key);
+        return;
+      }
       toast.success(`${label} → ${value}`);
-    } catch {
-      toast.error(m.tou_toast_update_failed({ label }));
-      this.#pending.delete(key);
     } finally {
       this.#busy.delete(key);
     }

@@ -33,3 +33,14 @@ test("sends nothing and keeps no pending value when the core reports controls ab
   expect(controller.value("timeofuse.time.1")).toBeUndefined();
   expect(controller.busy("timeofuse.time.1")).toBe(false);
 });
+
+test("a refused write drops the pending value and frees the field", async () => {
+  get.mockResolvedValue({ data: { controls: true } });
+  postSetting.mockResolvedValue(false);
+  await coreCapabilities.load();
+  const controller = new TouController();
+  await controller.write("timeofuse.time.1", 530, "Start");
+  expect(postSetting).toHaveBeenCalledWith("timeofuse.time.1", 530);
+  expect(controller.value("timeofuse.time.1")).toBeUndefined();
+  expect(controller.busy("timeofuse.time.1")).toBe(false);
+});
