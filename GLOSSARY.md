@@ -13,12 +13,20 @@ One physical or logical unit that produces readings: an inverter, a battery, a m
 _Avoid_: Inverter (as the general term), asset
 
 **Connection**:
-How the core reaches one or more devices: host, port, transport, unit id, credentials.
+How the core reaches one or more devices: an endpoint, broker or HTTP host, plus its credentials.
 _Avoid_: Integration, source
 
 **Endpoint**:
-A request/response network address (Modbus TCP, RTU over TCP, Solarman). One task serialises all traffic to it.
+A request/response network address with its transport (Modbus TCP, RTU over TCP, Solarman). One task serialises all traffic to it, for every device behind it.
 _Avoid_: Port, link
+
+**Device address**:
+Where a device sits behind its connection: a Modbus unit id, an EVCC loadpoint index or a topic root. It belongs to the device.
+_Avoid_: Slave id
+
+**Integration**:
+An outbound adapter for a neighbour: the role endpoint, the MQTT publisher with Home Assistant discovery, the cloud relay.
+_Avoid_: Connection, plugin
 
 **Transport**:
 The wire framing on an endpoint: Modbus TCP, RTU over TCP, Solarman V5, or `sim`.
