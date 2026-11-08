@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { evcc } from '$lib/evcc/store.svelte';
 	import { useAppSession } from '$lib/session';
 	import EvChargerBody from './_shared/ev-charger-body.svelte';
@@ -10,8 +11,11 @@
 	const TRIGGER_CLASS = `${CARD_CLASS} transition-colors hover:border-border hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
 
 	const session = useAppSession();
-	// Commands are admin-only server-side; everyone else gets the read-only tile.
-	const isAdmin = $derived($session.data?.user.admin === true);
+	// Commands are admin-only server-side, and only an engine that serves them; everyone
+	// else gets the read-only tile.
+	const canCommand = $derived(
+		$session.data?.user.admin === true && coreCapabilities.has('evccCommands')
+	);
 
 	$effect(() => evcc.lease());
 </script>
@@ -19,7 +23,7 @@
 {#if evcc.active}
 	<div class="flex flex-col gap-3 sm:gap-4">
 		{#each evcc.loadpoints as lp (lp.index)}
-			{#if isAdmin}
+			{#if canCommand}
 				<EvChargerDialog {lp} triggerClass={TRIGGER_CLASS} />
 			{:else}
 				<div class={CARD_CLASS}>

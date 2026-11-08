@@ -3418,7 +3418,9 @@
           "profileSources",
           "integrations",
           "pvAndBattery",
-          "pricesAndCosts"
+          "pricesAndCosts",
+          "evccCommands",
+          "customCharts"
         ],
         "properties": {
           "automations": {
@@ -3426,6 +3428,14 @@
           },
           "controls": {
             "type": "boolean"
+          },
+          "customCharts": {
+            "type": "boolean",
+            "description": "User-defined charts on the history page, saved server-side."
+          },
+          "evccCommands": {
+            "type": "boolean",
+            "description": "The dashboard's EVCC charge mode and limit commands, which write to EVCC."
           },
           "history": {
             "type": "boolean"

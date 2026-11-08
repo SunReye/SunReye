@@ -11,6 +11,8 @@ const NONE: Capabilities = {
   integrations: false,
   pvAndBattery: false,
   pricesAndCosts: false,
+  evccCommands: false,
+  customCharts: false,
 };
 
 describe("hasCapability", () => {
