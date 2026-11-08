@@ -18,7 +18,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Auth.** The first run sets the admin password; there is no registration. Passwords use bcrypt at cost 12, as v4 did. A password longer than bcrypt's 72-byte limit is refused, never silently truncated. The SPA uses an httpOnly cookie session; integrations use bearer tokens scoped `read` or `admin`. The admin creates viewer accounts, each with a name and password. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin. Under Home Assistant ingress the core trusts HA's login: a request from the Supervisor's ingress address that carries the ingress header acts as admin. This trust is switched on only in the add-on image; any other source on the same port still needs the core's login.
 
-**Live.** SSE at `/api/v1/live`: a full snapshot on connect, then deltas only, no replay. One JSON object per tick, serialised once and shared by all clients. Live reads memory, never SQLite.
+**Live.** SSE at `/api/v1/live`: a full snapshot on connect, then deltas only, no replay. One JSON object per tick, serialised once and shared by all clients. A tick is a 1 s window that coalesces every reading changed in it, whatever the poll cadences; a tick with no change sends nothing. Live reads memory, never SQLite.
 
 **History.** By device, series (ADR 3) and range. The server picks the rollup tier so a series has at most 1,500 points (about one per pixel of a wide chart), returns time-weighted means and names the tier. Raw intervals only for short ranges.
 
