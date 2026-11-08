@@ -106,6 +106,20 @@ _Avoid_: Automation engine, bot
 A controller's exclusive, revocable hold on the settings it controls.
 _Avoid_: Lock, ownership
 
+## Plant model
+
+**Measurement point**:
+A place in the plant where a device measures a flow, with a parent point. The root is the grid connection.
+_Avoid_: Node, meter position
+
+**Computed device**:
+A device whose readings the core computes or fetches instead of polling hardware: a tariff, a price feed, a forecast, the plant aggregates.
+_Avoid_: Virtual device, coded device
+
+**Forecast**:
+A value issued at one time about a later target time.
+_Avoid_: Prediction, projection
+
 ## Platform
 
 **Capability**:
