@@ -1,24 +1,14 @@
 /**
- * The roster's production adapter: devices, connections and profiles on the
- * core's typed client; integrations on Eden, asked only of an engine that serves
- * them. The one place an answer's `data` is cast to the contract type the
- * server built it from.
+ * The roster's production adapter: every read and write on the core's client.
+ * Integrations are asked only of a core that reports them served. The one place
+ * an answer's `data` is cast to the contract type the server built it from.
  */
 
-import { api } from "$lib/api";
 import type { CapabilityName } from "$lib/capabilities";
 import { core } from "$lib/core-api";
 import * as m from "$lib/paraglide/messages";
 import type { Catalog } from "../wizard/add-wizard";
 import type { Answer, RosterTransport } from "./device-roster";
-
-/** The two fields of an Eden answer this reads. */
-type EdenAnswer = { data: unknown; error: { value: unknown } | null };
-
-async function answer<T>(request: Promise<EdenAnswer>): Promise<Answer<T>> {
-  const { data, error } = await request;
-  return data ? { ok: true, data: data as T } : { ok: false, error: error?.value };
-}
 
 /** A core answer. A dead connection throws; it is a failure with no reason, like the rest. */
 async function coreAnswer<T>(
@@ -49,7 +39,18 @@ const devicesOnly = (): Catalog => ({
 });
 
 const byId = (id: number) => ({ params: { path: { id } } });
-const integration = (id: number) => api.api.integrations({ id: String(id) });
+
+/**
+ * The core client addressed by path. A core that serves integrations reports
+ * `integrations`; until its generated contract names the routes, they are the
+ * one thing the roster calls without a typed path.
+ */
+type ByPath = Record<
+  "GET" | "POST" | "PATCH" | "DELETE",
+  (path: string, init?: unknown) => Promise<{ data?: unknown; error?: unknown }>
+>;
+const byPath = core as unknown as ByPath;
+const withId = (id: number) => `/api/integrations/${id}`;
 
 /** `offers` is the connected engine's capabilities: absent integrations are answered here, unasked. */
 export function rosterTransport(offers: (area: CapabilityName) => boolean): RosterTransport {
@@ -57,11 +58,11 @@ export function rosterTransport(offers: (area: CapabilityName) => boolean): Rost
     devices: () => coreAnswer(core.GET("/api/devices")),
     integrations: async () =>
       offers("integrations")
-        ? answer(api.api.integrations.get())
+        ? coreAnswer(byPath.GET("/api/integrations"))
         : { ok: true, data: { integrations: [] } },
     catalog: async () =>
       offers("integrations")
-        ? answer(api.api.integrations.catalog.get())
+        ? coreAnswer(byPath.GET("/api/integrations/catalog"))
         : { ok: true, data: devicesOnly() },
     profiles: () => coreAnswer(core.GET("/api/profiles")),
     addDevice: (body) => coreAnswer(core.POST("/api/devices", { body: body as never })),
@@ -71,8 +72,8 @@ export function rosterTransport(offers: (area: CapabilityName) => boolean): Rost
     patchConnection: (id, body) =>
       coreAnswer(core.PATCH("/api/connections/{id}", { ...byId(id), body: body as never })),
     deleteConnection: (id) => coreAnswer(core.DELETE("/api/connections/{id}", byId(id))),
-    addIntegration: (body) => answer(api.api.integrations.post(body)),
-    patchIntegration: (id, body) => answer(integration(id).patch(body)),
-    deleteIntegration: (id) => answer(integration(id).delete()),
+    addIntegration: (body) => coreAnswer(byPath.POST("/api/integrations", { body })),
+    patchIntegration: (id, body) => coreAnswer(byPath.PATCH(withId(id), { body })),
+    deleteIntegration: (id) => coreAnswer(byPath.DELETE(withId(id))),
   };
 }

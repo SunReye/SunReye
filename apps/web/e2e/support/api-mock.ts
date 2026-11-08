@@ -790,9 +790,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       return json(route, fixture.CHART_PALETTE);
     }
 
-    // ── Engine status (polled by every /settings/* route) ───────────────────
-    if (at("status")) return json(route, fixture.status(MANIFEST));
-
     // ── The catalogue ───────────────────────────────────────────────────────
     if (at("profile")) return json(route, MANIFEST);
     if (at("custom-charts")) {
@@ -944,13 +941,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     // browser reads them since the Integrations tab became integration ROWS. An
     // absent route here is the assertion — a page that fetched one again would
     // land in `backend.unhandled`, which every spec checks.
-    if (at("settings/logging")) {
-      if (method === "PUT") {
-        const level = (body().level ?? null) as string | null;
-        return json(route, { level, effective: level ?? "info", default: "info" });
-      }
-      return json(route, fixture.LOGGING);
-    }
     if (at("settings/weather")) {
       if (method === "PUT") return json(route, saved(fixture.WEATHER_CONFIG, body()));
       return json(route, fixture.WEATHER_CONFIG);
@@ -1139,9 +1129,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         return json(route, { ...key, id: 2, name: body().name, key: "sunreye_e2e_generated_key" });
       }
       return json(route, fixture.apiKeys(SESSION_USER));
-    }
-    if (at("admin/reset-data")) {
-      return json(route, { ok: true, cleared: ["metrics_raw", "hourly_rollups", "daily_rollups"] });
     }
     if (at("admin/restart")) return json(route, { ok: true });
 
