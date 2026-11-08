@@ -1,6 +1,6 @@
 # 3. Storage and rollups
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -31,6 +31,8 @@ History for years on flash storage, on hardware where memory and write volume ma
 **Energy.** A role with a lifetime counter yields energy from the counter's delta. Without one, the time-weighted power is integrated. A counter that drops is a reset or rollover, never a negative delta, and a restart gap never invents energy.
 
 **Time.** UTC instants only. Days, weeks and months are cut in the plant timezone, set once by the admin and separate from any viewer's display timezone. Days of 23 or 25 hours fall out of cutting from UTC instants. The daily key is the plant-local date. A timezone change applies from the change date. The daily key records the zone it was cut in: days still inside change-point retention are rebuilt, older days cannot be and keep their zone. Tests pass an explicit zone and never change the process timezone.
+
+**Clock.** Low-power hosts boot without a synced clock. No change point is written at or before the last stored instant of its series; a backwards step is recorded as a gap and writing continues. Until the wall clock is later than both the build time and the last stored instant, history writing is held, live serving continues, and the API reports `clock.unsynced`.
 
 **Retention.** Hourly and daily rollups are kept forever. Change-point retention is a setting, 5 years by default. Estimated, not measured: a hybrid inverter polled every 5 s with the default deadbands stores roughly 100 to 300 MB per device-year. Expiry deletes whole blocks and returns pages in small incremental-vacuum steps, so the file shrinks.
 
