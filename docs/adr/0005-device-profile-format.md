@@ -10,8 +10,10 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **One owner.** A Rust crate owns the format: loader, decoder, validation, lints, capability table and schema rules. The core and a WASM build compile from that source. The npm package ships the WASM and TypeScript types generated from the Rust types. The authoring API (`define…`) and the CLI serve profile authors; a homeowner never needs them. They are thin TypeScript over it, with autocomplete from the generated types. No second decoder exists.
 
-**Schema versions.** A profile declares one integer `schema`. The core and the WASM report the supported range and a capability list (bindings, decoders, step kinds).
+**Schema versions.** A profile declares one integer `schema` and the capabilities it `requires`. The core and the WASM report the supported range and a capability list (bindings, decoders, step kinds).
 
+- A new binding, decoder or step kind is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
+- A core that lacks a required capability refuses the profile with an error naming it.
 - The current and previous schema load. The previous one yields deprecation warnings that name the replacement and the removal version.
 - A removed schema is refused with an error naming the migration. Removal happens only in a major release. `migrate` rewrites an old profile.
 - Warnings are data from the WASM, so the CLI, the core log and the SPA show identical text.

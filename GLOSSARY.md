@@ -51,7 +51,7 @@ A hosted `index.json` listing profiles with their hashes and signatures.
 _Avoid_: Source, registry, repository
 
 **Schema**:
-The integer version of the profile format. The core supports the current schema and the previous one.
+The integer version of the profile format. The core supports the current schema and the previous one. It bumps only on a breaking change; additive features are capabilities.
 _Avoid_: Profile version (a profile has its own semver)
 
 **Read plan**:

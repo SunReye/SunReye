@@ -8,7 +8,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 ## Decision
 
-**Index.** A static `index.json` lists each profile: id, semver, schema, SHA-256, URL and signature. The CLI builds validated rendered JSON and the index. Anyone can host an index; a custom profile is distributed through a custom index.
+**Index.** A static `index.json` lists each profile: id, semver, schema, required capabilities, SHA-256, URL and signature. The CLI builds validated rendered JSON and the index. Anyone can host an index; a custom profile is distributed through a custom index.
 
 **Publishing.** Official profiles live in `profiles/`, written in TypeScript and tested with the shipped WASM. `bun run publish:profiles` builds, validates, signs and pushes only the output to an orphan `profiles-dist` branch served by GitHub Pages. It creates no tag, no release and no npm publish. The build bumps a profile's semver when its content changes. The maintainer runs it locally; the private key stays outside the repo. A test verifies that a fresh bundle verifies against the compiled public key. Hosted CI, when it returns, receives the key as a secret and runs the same command.
 
@@ -18,7 +18,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 **Updates.** Applying an update is an admin click, shown as a diff. A change to a writable setting (added, a different register, bounds or unit) switches that setting's writes off until re-enabled. Official profiles follow the same rule: a fix never silently widens what the core may write.
 
-**Compatibility.** An entry whose schema is above the core's range is listed as "needs a newer core" and not downloaded. Official profiles are published in the current schema and, while it is supported, the previous one.
+**Compatibility.** An entry whose schema is above the core's range, or that requires a capability the core lacks, is listed as "needs a newer core" and not downloaded. Official profiles are published in the current schema and, while it is supported, the previous one.
 
 ## Considered options
 
