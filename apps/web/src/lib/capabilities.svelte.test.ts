@@ -16,6 +16,7 @@ const ABSENT = {
   integrations: false,
   pvAndBattery: false,
   pricesAndCosts: false,
+  statisticsHeatmap: false,
   evccCommands: false,
   customCharts: false,
 };

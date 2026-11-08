@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SectionDef, SectionData, SectionId } from '$lib/statistics/sections';
+	import { servedSections, type SectionDef, type SectionData, type SectionId } from '$lib/statistics/sections';
 	import { rangeCaption } from '$lib/cost/labels';
 	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { queried, useStatisticsQuery } from '$lib/statistics/statistics-query.svelte';
@@ -17,8 +17,9 @@
 	} = $props();
 
 	// Capability gating, which is not the same thing as preference hiding: a
-	// system with no spot price feed has no price section to show, hide or
+	// core that does not serve a section's data has nothing to show, hide or
 	// toggle in customize mode, so the gate sits here rather than in the prefs.
+	// The prices section additionally waits for its own payload: no feed, no section.
 	// The one read it needs is also the section's own payload, and the page's
 	// query module hands the body the same answer, so gating costs no extra request.
 	const reads = useStatisticsQuery();
@@ -30,7 +31,9 @@
 	// rather than appearing and vanishing.
 	const available = (id: SectionId): boolean => id !== 'prices' || (spot.loaded && spot.value !== null);
 
-	const shown = $derived(sections.filter((s) => available(s.id)));
+	const shown = $derived(
+		servedSections(sections, (name) => coreCapabilities.has(name)).filter((s) => available(s.id))
+	);
 </script>
 
 {#each shown as section (section.id)}

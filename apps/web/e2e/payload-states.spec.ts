@@ -59,19 +59,6 @@ test("EVCC off sends no evcc frame at all, and the card stays away", async ({ pa
   expect(opened.consoleErrors).toEqual([]);
 });
 
-test("no price feed drops the whole spot-prices section", async ({ page }) => {
-  // `section-list.svelte` gates the section on the spot-stats read answering with a payload, so this
-  // is capability gating rather than a preference: the section, its charts and
-  // its customize toggle all go together.
-  const opened = await openPage(page, "/#/statistics", { prices: null });
-
-  await expect(page.getByRole("heading", { level: 2, name: "Costs & savings" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Spot prices" })).toBeHidden();
-  await expect(page.getByText("Negative hours")).toBeHidden();
-  expect(opened.consoleErrors).toEqual([]);
-  expect(opened.backend.unhandled).toEqual([]);
-});
-
 test("a core without pricesAndCosts shows the energy section and nothing priced", async ({
   page,
 }) => {

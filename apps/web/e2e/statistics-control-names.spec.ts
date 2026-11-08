@@ -65,10 +65,6 @@ test("no navigator control shares its accessible name with anything else on /sta
 }) => {
   const opened = await openPage(page, "/#/statistics");
 
-  // The compare switcher is the control that collides, and it only exists once
-  // the comparison payload has landed — so wait for its OTHER option before
-  // counting anything.
-  await expect(page.getByRole("radio", { name: "Year ago", exact: true })).toBeVisible();
   await expect(navigatorRows(page)).toHaveCount(2);
 
   const names = await controlNames(navigatorRows(page));
@@ -82,9 +78,9 @@ test("no navigator control shares its accessible name with anything else on /sta
     await expect(named(page, name)).toHaveCount(1);
   }
 
-  // And the collision was resolved by naming the ARROWS, not by renaming the
-  // compare mode out from under the reader who already knows it.
-  await expect(named(page, "Previous period")).toHaveCount(1);
+  // The compare switcher belongs to a core that serves prices and costs; this one does not, so
+  // no control here answers to a compare mode's name, and the arrows are not named after one.
+  await expect(named(page, "Previous period")).toHaveCount(0);
   expect(names).not.toContain("Previous period");
 
   expect(opened.consoleErrors).toEqual([]);
