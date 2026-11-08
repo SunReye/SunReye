@@ -8,7 +8,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 ## Decision
 
-**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
+**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Every table is keyed by plant id; the first release shows one plant. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
 
 **Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at bucket boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
 
