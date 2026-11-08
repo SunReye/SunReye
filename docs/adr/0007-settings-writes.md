@@ -29,7 +29,10 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **No live control.** A recipe must set any revert timeout to none, and a lint rejects one that needs a refresher, naming the reason. A grid-feed limit with revert time 0 (Fronius `WMaxLimPct`) is a setting; a Sungrow external-EMS heartbeat is not.
 
-**Composite settings.** `preset` is kept: each write goes through the funnel, outcomes are per write, no rollback. `snapshotToggle` is dropped for the first release: it is stateful, and closer to an automation. The official Deye profiles must be checked for it before this ADR is accepted.
+**Composite settings.** Two kinds, each write going through the funnel with its own outcome and no rollback.
+
+- `snapshot-toggle` is kept: all 20 official Deye profiles use it once, as a battery discharge lock that writes `maximum_discharge_current = 0` and restores the previous value on release. Engaging reads the target's current value and stores it in the store, not in a settings blob, before writing. Releasing with no stored value is refused with a stable code. The lock persists on the device and needs no refresher, so it is a setting, not live control.
+- `preset` writes a fixed list of values. No official profile uses it yet; it stays out of the schema until one does.
 
 ## Considered options
 

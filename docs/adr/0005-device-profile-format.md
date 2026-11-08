@@ -30,7 +30,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Read plan.** Compiled once at load, or at connect for SunSpec. Contiguous registers coalesce into blocks of at most 120. A framing-specific gap tolerance merges blocks when a round trip costs more than the wasted registers: `tcp` 0, `rtu-over-tcp` 0, `solarman-v5` 32 (measured on one stick: about 199 ms per read busy, 2 ms per register; re-measured on the Rust core). The inputs of a computed role are read in one transaction for a single device snapshot. A merged block refused with Modbus exception 2 is split and the split remembered. A flat list of decode operations runs per poll with no allocation. The same plan serves the CLI's "decode this dump".
 
-**Write side.** A setting is a recipe (ADR 7). Admitted step kinds: `write` (function code 6 or 16), `write-block`, `rmw` (mask), `unlock` with `finally` steps, `precondition`, `activate` (values, then an enable field last), `delay`, and `mqtt` publish. Not admitted yet: a commit register with status (SolarEdge only), function codes 5 and 23, SML, Speedwire.
+**Write side.** A setting is a recipe (ADR 7). Admitted step kinds: `write` (function code 6 or 16), `write-block`, `rmw` (mask), `unlock` with `finally` steps, `precondition`, `activate` (values, then an enable field last), `delay`, `snapshot-toggle` (the owner's Deye discharge lock) and `mqtt` publish. Not admitted yet: a commit register with status (SolarEdge only), function codes 5 and 23, SML, Speedwire.
 
 **Official profiles.** A profile is official only when a capture of a real device replays in `sim` and passes its tests, and its writes were verified on real hardware.
 
