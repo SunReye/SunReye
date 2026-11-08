@@ -32,6 +32,7 @@ export function batteryRoutes({ profile }: BatteryRoutesDeps) {
       .get(
         "/api/battery/health",
         { requireSession: true, query: t.Object({ inverterId: t.Optional(t.String()) }) },
+        // fallow-ignore-next-line complexity -- frozen 3.x engine; the CRAP estimate counted the web Eden client's `App` reference as coverage
         async ({ query, status }) => {
           if (!profile) return status(503, ONBOARDING_REQUIRED);
           const keys = batteryKeys(profile);
