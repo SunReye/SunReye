@@ -3,7 +3,7 @@ import { type IncompleteRange, incompleteRangeFrom, withNotice } from "$lib/hist
 /**
  * The refused ranges this session has seen, for the app-wide banner.
  *
- * Fed from `$lib/api.ts`'s `onResponse` — every response the typed client makes
+ * Fed from `$lib/core-api.ts`'s middleware — every response the typed client makes
  * passes through there, which is why no call site has to opt in. See
  * `$lib/history-incomplete.ts` for why one detector beats ten.
  *

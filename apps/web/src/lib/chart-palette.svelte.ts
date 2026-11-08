@@ -1,5 +1,5 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 import {
   DEFAULT_PRESET,
   isPalettePreset,
@@ -76,7 +76,7 @@ class ChartPaletteStore {
    * settings form) share the same in-flight request.
    */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.settings["chart-palette"].get().then(({ data }) => {
+    this.#loadPromise ??= byPath.GET("/api/settings/chart-palette").then(({ data }) => {
       const preset = (data as { preset?: unknown } | null)?.preset;
       if (isPalettePreset(preset)) this.#rememberInstance(preset);
     });
@@ -94,9 +94,9 @@ class ChartPaletteStore {
 
   /** Persist the instance setting. Admin-only server-side; false on rejection. */
   async save(preset: PalettePreset): Promise<boolean> {
-    const { data, error } = await api.api.settings["chart-palette"].put({ preset });
-    if (error) return false;
-    const saved = payloadOrNull<{ preset: PalettePreset }>(data);
+    const answer = await byPath.PUT("/api/settings/chart-palette", { body: { preset } });
+    if (refused(answer)) return false;
+    const saved = payloadOrNull<{ preset: PalettePreset }>(answer.data);
     this.#rememberInstance(saved && isPalettePreset(saved.preset) ? saved.preset : preset);
     return true;
   }

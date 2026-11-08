@@ -5,10 +5,6 @@ import type { components } from "$lib/core-api.gen";
 import * as m from "$lib/paraglide/messages";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-// The 4.0 build has no Elysia: any call to it is a dead request.
-vi.mock("$lib/api", () => ({
-  api: new Proxy({}, { get: () => expect.fail("the log panel asked the Elysia API") }),
-}));
 // The panel leases the `logs` topic on the app's one socket; none exists here.
 vi.mock("$lib/ws/bus.svelte", () => ({
   bus: { connected: false, subscribe: () => () => {} },

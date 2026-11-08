@@ -11,9 +11,9 @@ import { env } from "$env/dynamic/public";
  * 2. Same-origin default: the directory of the current document URL. This
  *    keeps reverse-proxy path prefixes intact — under Home Assistant ingress
  *    the app is served at `https://<ha>/api/hassio_ingress/<token>/`, and both
- *    fetch and the ws(s):// URL Eden derives must stay under that prefix.
+ *    fetch and the ws(s):// URL derived from it must stay under that prefix.
  *
- * The trailing slash is stripped because Eden treaty and openapi-fetch join
+ * The trailing slash is stripped because openapi-fetch and the `/ws` URL join
  * paths with a leading `/`.
  */
 function resolveServerUrl(): string {

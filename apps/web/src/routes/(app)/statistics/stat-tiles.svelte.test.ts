@@ -4,9 +4,8 @@ import { render } from "vitest-browser-svelte";
 import type { TileDef } from "$lib/statistics/tiles";
 import StatTilesFixture from "./stat-tiles.fixture.svelte";
 
-// The customize session reaches the saved preferences, which import the API
-// client, which reads the server env at import. Nothing here fetches.
-vi.mock("$lib/api", () => ({ api: {} }));
+// The customize session reaches the saved preferences, which import the core client, which reads the server env at import.
+vi.mock("$env/dynamic/public", () => ({ env: {} }));
 
 const tile = (id: string, value: string): TileDef<null> => ({
   id,

@@ -54,18 +54,12 @@ describe("slugFields", () => {
 describe("refusalOf", () => {
   test("a 400's field errors are what the form renders, beside their inputs", () => {
     expect(
-      refusalOf({
-        status: 400,
-        value: { error: "invalid", errors: { plantName: "Plant name is required." } },
-      }),
+      refusalOf({ error: "invalid", errors: { plantName: "Plant name is required." } }, 400),
     ).toEqual({ ok: false, errors: { plantName: "Plant name is required." } });
   });
 
   test("both fields at once — the form is shown ONCE and must not need two submits", () => {
-    const result = refusalOf({
-      status: 400,
-      value: { errors: { plantName: "required", deviceName: "required" } },
-    });
+    const result = refusalOf({ errors: { plantName: "required", deviceName: "required" } }, 400);
     expect(result).toEqual({
       ok: false,
       errors: { plantName: "required", deviceName: "required" },
@@ -74,35 +68,37 @@ describe("refusalOf", () => {
 
   test("field errors WIN over a summary message", () => {
     // Otherwise the reason for a rejected field appears anywhere but next to it.
-    expect(
-      refusalOf({ status: 400, value: { message: "Something is wrong", errors: { x: "y" } } }),
-    ).toEqual({ ok: false, errors: { x: "y" } });
+    expect(refusalOf({ message: "Something is wrong", errors: { x: "y" } }, 400)).toEqual({
+      ok: false,
+      errors: { x: "y" },
+    });
   });
 
   test("a 409 has no field to blame, so its message IS the answer", () => {
     // `slug_frozen` and `onboarding_closed`: the refusal is about the instance's
     // state, not about anything the operator typed.
-    expect(
-      refusalOf({ status: 409, value: { error: "slug_frozen", message: "already announced" } }),
-    ).toEqual({ ok: false, message: "already announced" });
+    expect(refusalOf({ error: "slug_frozen", message: "already announced" }, 409)).toEqual({
+      ok: false,
+      message: "already announced",
+    });
   });
 
   test("a non-string error value is not a field error", () => {
     // The body crosses the network. `{ plantName: 7 }` rendered into the DOM is a
     // field error the operator cannot act on and did not cause.
-    expect(refusalOf({ status: 400, value: { errors: { plantName: 7 } } })).toEqual({
+    expect(refusalOf({ errors: { plantName: 7 } }, 400)).toEqual({
       ok: false,
       message: "400",
     });
   });
 
   test("no body at all degrades to the status code rather than to nothing", () => {
-    expect(refusalOf({ status: 503, value: null })).toEqual({ ok: false, message: "503" });
-    expect(refusalOf({ status: 500 })).toEqual({ ok: false, message: "500" });
+    expect(refusalOf(null, 503)).toEqual({ ok: false, message: "503" });
+    expect(refusalOf("", 500)).toEqual({ ok: false, message: "500" });
   });
 
   test("errors that is not an object is ignored, not spread", () => {
-    expect(refusalOf({ status: 400, value: { errors: "nope", message: "bad" } })).toEqual({
+    expect(refusalOf({ errors: "nope", message: "bad" }, 400)).toEqual({
       ok: false,
       message: "bad",
     });

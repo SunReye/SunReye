@@ -1,5 +1,5 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 
 /** `timeZone` sentinel meaning "fall back to the server host zone". */
 const PLANT_ZONE_AUTO = "auto";
@@ -39,7 +39,7 @@ class PlantStore {
 
   /** Fetch the saved plant config once; concurrent callers share the request. */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.settings.plant.get().then(({ data }) => {
+    this.#loadPromise ??= byPath.GET("/api/settings/plant").then(({ data }) => {
       if (data) this.config = data as PlantConfig;
     });
     return this.#loadPromise;
@@ -47,9 +47,9 @@ class PlantStore {
 
   /** Persist a new plant config; on success updates the cached value. */
   async save(next: PlantConfig): Promise<boolean> {
-    const { data, error } = await api.api.settings.plant.put(next);
-    if (error) return false;
-    this.config = payloadOrNull<PlantConfig>(data) ?? next;
+    const answer = await byPath.PUT("/api/settings/plant", { body: next });
+    if (refused(answer)) return false;
+    this.config = payloadOrNull<PlantConfig>(answer.data) ?? next;
     return true;
   }
 }

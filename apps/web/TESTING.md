@@ -64,7 +64,7 @@ test("keeps the explanation behind a tap", async () => {
 - **Phone width:** `await page.viewport(390, 844)` before `render`.
 - **Context, snippets, slots:** mount a small `*.fixture.svelte` beside the test that sets the
   context or passes the snippet (`section.fixture.svelte`, `stat-tiles.fixture.svelte`).
-- **Modules that reach the network or `$env`:** `vi.mock("$lib/api")`,
+- **Modules that reach the network or `$env`:** `vi.mock("$lib/core-api")`,
   `vi.mock("$env/dynamic/public", () => ({ env: {} }))`. Vitest mocks are per file — the bun
   `mock.module` hygiene rules do not apply here.
 - **Hidden elements:** `getByRole` skips them unless `{ includeHidden: true }`.

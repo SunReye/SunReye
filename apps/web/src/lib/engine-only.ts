@@ -1,18 +1,17 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 import type { CustomChart } from "$lib/inverter/custom-chart";
 import type { SourceId } from "$lib/source";
 
 /**
- * Endpoints only the 3.x engine serves, still on Eden. The Rust core serves none of them (it
- * reports `controls`, `evccCommands`, `customCharts` and `pricesAndCosts` absent in its
- * capabilities, and every caller checks those first), so these leave with the engine.
+ * Endpoints only the 3.x engine serves, reached by path on the core client. The Rust core serves
+ * none of them (it reports `controls`, `evccCommands`, `customCharts` and `pricesAndCosts` absent
+ * in its capabilities, and every caller checks those first), so these leave with the engine.
  */
 
 /** Write one inverter setting; `true` when the engine accepted it. */
 export async function postSetting(key: string, value: number): Promise<boolean> {
-  const { error } = await api.api.commands.setting.post({ key, value });
-  return !error;
+  return !refused(await byPath.POST("/api/commands/setting", { body: { key, value } }));
 }
 
 export type EvccCommand =
@@ -21,10 +20,10 @@ export type EvccCommand =
 
 /** Send a loadpoint command; `null` on success, else the engine's message. */
 export async function postEvccCommand(body: EvccCommand): Promise<string | null> {
-  const { error } = await api.api.commands.evcc.post(body);
-  if (!error) return null;
-  const detail = error.value as { error?: string } | null;
-  return detail?.error ?? `Command failed (${error.status})`;
+  const answer = await byPath.POST("/api/commands/evcc", { body });
+  if (!refused(answer)) return null;
+  const detail = answer.error as { error?: string } | null;
+  return detail?.error ?? `Command failed (${answer.response?.status})`;
 }
 
 /** The slice of `/api/cost?range=today` the daily-energy cards render. */
@@ -42,7 +41,9 @@ export type CostToday = {
 
 /** Today's cost read, or `null` when the engine had nothing readable to say. */
 export async function fetchCostToday(query: { source: SourceId }): Promise<CostToday | null> {
-  const { data } = await api.api.cost.get({ query: { range: "today", ...query } });
+  const { data } = await byPath.GET("/api/cost", {
+    params: { query: { range: "today", ...query } },
+  });
   return payloadOrNull<CostToday>(data);
 }
 
@@ -61,15 +62,14 @@ export interface CustomChartInput {
 
 /** The saved custom charts, or `null` when the engine did not answer with a list. */
 export async function listCustomCharts(): Promise<CustomChart[] | null> {
-  const { data } = await api.api["custom-charts"].get();
+  const { data } = await byPath.GET("/api/custom-charts");
   return data ? (data as CustomChart[]) : null;
 }
 
-/** Pull a human message out of an Eden error ({ error } bodies from the API). */
-function errorMessage(error: { value?: unknown }): string {
-  const value = error.value;
-  if (value && typeof value === "object" && "error" in value) {
-    return String((value as { error: unknown }).error);
+/** Pull a human message out of an error body ({ error } bodies from the API). */
+function errorMessage(body: unknown): string {
+  if (body && typeof body === "object" && "error" in body) {
+    return String((body as { error: unknown }).error);
   }
   return "Something went wrong";
 }
@@ -77,22 +77,24 @@ function errorMessage(error: { value?: unknown }): string {
 /** A custom-chart write: the saved chart, or the engine's message. */
 export type ChartWrite = { chart: CustomChart | null; error: string | null };
 
+function chartWrite(answer: Awaited<ReturnType<typeof byPath.POST>>): ChartWrite {
+  return refused(answer)
+    ? { chart: null, error: errorMessage(answer.error) }
+    : { chart: (answer.data as CustomChart) ?? null, error: null };
+}
+
 export async function createCustomChart(input: CustomChartInput): Promise<ChartWrite> {
-  const { data, error } = await api.api["custom-charts"].post(input);
-  return error
-    ? { chart: null, error: errorMessage(error) }
-    : { chart: (data as CustomChart) ?? null, error: null };
+  return chartWrite(await byPath.POST("/api/custom-charts", { body: input }));
 }
 
 export async function updateCustomChart(id: string, input: CustomChartInput): Promise<ChartWrite> {
-  const { data, error } = await api.api["custom-charts"]({ id }).put(input);
-  return error
-    ? { chart: null, error: errorMessage(error) }
-    : { chart: (data as CustomChart) ?? null, error: null };
+  return chartWrite(
+    await byPath.PUT("/api/custom-charts/{id}", { params: { path: { id } }, body: input }),
+  );
 }
 
 /** Delete a custom chart; `null` on success, else the engine's message. */
 export async function deleteCustomChart(id: string): Promise<string | null> {
-  const { error } = await api.api["custom-charts"]({ id }).delete();
-  return error ? errorMessage(error) : null;
+  const answer = await byPath.DELETE("/api/custom-charts/{id}", { params: { path: { id } } });
+  return refused(answer) ? errorMessage(answer.error) : null;
 }

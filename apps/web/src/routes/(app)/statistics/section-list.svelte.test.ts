@@ -6,7 +6,6 @@ import Stub from "./section-body.fixture.svelte";
 import Fixture from "./section-list.fixture.svelte";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-vi.mock("$lib/api", () => ({ api: {} }));
 const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
 vi.mock("./section-body.svelte", () => ({ default: Stub }));
