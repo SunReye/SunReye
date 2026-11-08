@@ -5,6 +5,7 @@ mod assets;
 mod auth;
 mod busy;
 mod devices;
+mod evcc;
 mod forecast;
 mod history;
 mod import;
@@ -147,6 +148,7 @@ fn plant_settings() -> OpenApiRouter<Arc<Core>> {
         .routes(routes!(forecast::providers))
         .routes(routes!(time_zone::read, time_zone::save))
         .routes(routes!(mqtt::read, mqtt::save))
+        .routes(routes!(evcc::read, evcc::save))
 }
 
 fn roster() -> OpenApiRouter<Arc<Core>> {

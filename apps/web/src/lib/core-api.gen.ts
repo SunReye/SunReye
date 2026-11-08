@@ -515,6 +515,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/evcc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["readEvcc"];
+        /** The whole record: an absent field takes its default. */
+        put: operations["saveEvcc"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/inverter": {
         parameters: {
             query?: never;
@@ -1021,6 +1038,30 @@ export interface components {
             error: string;
             /** @description The request field the refusal concerns, when the client acts on it. */
             field?: string | null;
+        };
+        /**
+         * @description The EVCC ingest settings: one flat record under `evcc`, not a tagged union, so an unreadable one reads as
+         *     the default, which is off. Nothing here publishes: EVCC is consume-only (ADR 0005).
+         */
+        EvccConfig: {
+            /**
+             * Format: int64
+             * @description The broker connection EVCC is published on; null until one is chosen.
+             * @default null
+             */
+            connectionId: number | null;
+            /** @default false */
+            enabled: boolean;
+            /**
+             * @description Draw the EV off the house-load node.
+             * @default false
+             */
+            subtractFromHome: boolean;
+            /**
+             * @description EVCC's own MQTT root topic.
+             * @default evcc
+             */
+            topicRoot: string;
         };
         /**
          * @description An optional subsystem the roles of a profile show.
@@ -3504,6 +3545,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActiveProfile"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    readEvcc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvccConfig"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    saveEvcc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvccConfig"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvccConfig"];
                 };
             };
             400: {
