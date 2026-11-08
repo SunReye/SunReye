@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: proposed (2026-11-08)
+Status: accepted (2026-11-08)
 
 ## Context
 

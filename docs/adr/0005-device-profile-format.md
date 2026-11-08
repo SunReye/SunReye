@@ -1,6 +1,6 @@
 # 5. Device profile format
 
-Status: proposed (2026-11-08)
+Status: accepted (2026-11-08)
 
 ## Context
 
