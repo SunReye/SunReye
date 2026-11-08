@@ -4,16 +4,17 @@ Status: proposed (2026-11-08)
 
 ## Context
 
-The tool is small, runs for years on low-power hardware, and must stay fast for live values. Efficiency is decided by a few choices, not by the architecture diagram; none is measured yet.
+The tool is small, runs for years on low-power hardware, and must stay fast for live values. Efficiency is decided by a few choices, made here from known costs rather than measured.
 
 ## Decision
 
 - One Rust process: endpoint tasks, storage, API, MQTT, and the embedded SPA (ADR 11).
 - Targets, first release: Linux amd64 and arm64, as a static binary, a Docker image and a Home Assistant add-on. Android follows from the same core; nothing may preclude it.
 - `unsafe_code` is forbidden workspace-wide. One small glue crate for the WASM build (ADR 5) is the only exception.
-- Every dependency starts at its latest release and is justified by what it replaces. `rusqlite` (bundled SQLite), a minimal HTTPS client on `rustls` for profile and price fetches. The web framework is chosen by measuring `axum` against a lighter one.
-- A single-threaded async runtime or a small pool, chosen by measurement.
-- Budgets are numbers, not adjectives: resident memory, idle CPU, binary size, and the latency from a register read to the SPA with device time excluded. The first walking skeleton measures them on a Raspberry Pi 3-class board and a mid-range Android phone. A bench in the local gate fails when one is exceeded; budgets ratchet down.
+- Every dependency starts at its latest release and is justified by what it replaces. `rusqlite` (bundled SQLite), a minimal HTTPS client on `rustls` for profile and price fetches. `axum` with default features off for HTTP.
+- `tokio` on a single thread for all I/O. One dedicated thread owns the SQLite connection and is fed by a channel, so a slow write never stalls polling.
+- Release build: `opt-level = "s"`, fat LTO, one codegen unit, `panic = "abort"`, stripped, statically linked against musl. The workload waits on devices, so size beats peak speed.
+- Design rules instead of budgets: no allocation per poll, live values served from memory, every queue and buffer bounded (one bucket per device), history responses bounded (ADR 9), SPA routes code-split (ADR 11).
 - The gate is local: one serial command, identical before and after merge. Hosted CI returns when the project is stable.
 
 ## Considered options

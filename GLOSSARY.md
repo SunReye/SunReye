@@ -60,16 +60,20 @@ _Avoid_: Metric, point, entity
 One decoded value of a role from a device at an instant.
 _Avoid_: Sample, datapoint
 
-**Interval**:
-A stored row: one value held for a duration within one bucket.
+**Change point**:
+A stored value and the instant it began. History is a series of change points and gaps.
 _Avoid_: Row, sample
 
+**Interval**:
+The span from one change point to the next change point or gap. Derived, never stored.
+_Avoid_: Period
+
 **Bucket**:
-A 60 second slot aligned to the Unix epoch. No interval crosses a bucket boundary.
+A 60 second slot aligned to the Unix epoch: the unit of a flush and the smallest rollup step.
 _Avoid_: Window, tick
 
 **Rollup**:
-An hourly or daily aggregate built from intervals.
+An hourly or daily aggregate built from change points.
 _Avoid_: Aggregate, summary
 
 **Deadband**:

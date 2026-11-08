@@ -16,11 +16,11 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Transport.** Plain HTTP. TLS is a documented reverse-proxy job.
 
-**Auth.** The first run sets the admin password; there is no registration. A memory-hard hash (Argon2id, parameters tuned on the target hardware). The SPA uses an httpOnly cookie session; integrations use bearer tokens scoped `read` or `admin`. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin.
+**Auth.** The first run sets the admin password; there is no registration. Passwords use Argon2id with 19 MiB memory, 2 iterations, 1 lane (the OWASP minimum, affordable on a Raspberry Pi). The SPA uses an httpOnly cookie session; integrations use bearer tokens scoped `read` or `admin`. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin.
 
 **Live.** SSE at `/api/v1/live`: a full snapshot on connect, then deltas only, no replay. One JSON object per tick, serialised once and shared by all clients. Live reads memory, never SQLite.
 
-**History.** By device, role and range. The server picks the rollup tier so the number of points is bounded (the cap comes from the skeleton), returns time-weighted means and names the tier. Raw intervals only for short ranges.
+**History.** By device, role and range. The server picks the rollup tier so a series has at most 1,500 points (about one per pixel of a wide chart), returns time-weighted means and names the tier. Raw intervals only for short ranges.
 
 **Errors.** `application/problem+json` (RFC 9457) with a stable machine `code`, such as `write.range` or `device.unreachable`, and no localised text. A device fault and a caller mistake have different codes and status classes.
 
