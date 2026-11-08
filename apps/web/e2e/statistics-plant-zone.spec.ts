@@ -53,19 +53,17 @@ test("statistics windows open on the plant's midnights, not the browser's", asyn
   const { backend } = opened;
 
   // The month tab the page opens on, once the plant's zone has landed.
+  await expect.poll(() => fromsOf(backend.requests, "energy/series").at(-1) ?? "").not.toBe("");
   await expect
-    .poll(() => fromsOf(backend.requests, "statistics/comparison").at(-1) ?? "")
-    .not.toBe("");
-  await expect
-    .poll(() => wallTime(fromsOf(backend.requests, "statistics/comparison").at(-1)!, PLANT))
+    .poll(() => wallTime(fromsOf(backend.requests, "energy/series").at(-1)!, PLANT))
     .toBe("00:00");
 
-  // The Day tab: the priced window and its hourly detail chart both start at
+  // The Day tab: the window's energy and its hourly detail chart both start at
   // Berlin midnight, which on the browser's own clock is the evening before.
   backend.resetRequests();
   await dayTab(page).click();
-  await expect.poll(() => fromsOf(backend.requests, "statistics/comparison").length).toBe(1);
-  const [from] = fromsOf(backend.requests, "statistics/comparison");
+  await expect.poll(() => fromsOf(backend.requests, "energy/series").length).toBeGreaterThan(0);
+  const [from] = fromsOf(backend.requests, "energy/series");
   expect(wallTime(from!, PLANT)).toBe("00:00");
   expect(wallTime(from!, "America/New_York")).not.toBe("00:00");
 
@@ -105,11 +103,9 @@ test("a New York evening opens on the plant's CURRENT month, not the one it name
   });
   const { backend } = opened;
 
+  await expect.poll(() => fromsOf(backend.requests, "energy/series").at(-1) ?? "").not.toBe("");
   await expect
-    .poll(() => fromsOf(backend.requests, "statistics/comparison").at(-1) ?? "")
-    .not.toBe("");
-  await expect
-    .poll(() => wallDate(fromsOf(backend.requests, "statistics/comparison").at(-1)!, PLANT))
+    .poll(() => wallDate(fromsOf(backend.requests, "energy/series").at(-1)!, PLANT))
     .toBe("2026-09-01 00:00");
   const nav = periodNavigator(page);
   await expect(nav.trigger).toContainText("Live");

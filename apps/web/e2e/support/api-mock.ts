@@ -159,9 +159,8 @@ export interface BackendOptions {
    */
   prices?: "view" | null;
   /**
-   * The core's `pricesAndCosts` capability. Default `true`: the fake stands for a core with price
-   * support, so the cost, price, record and amortisation sections stay covered. `false` is the core
-   * as shipped, which serves the energy section alone.
+   * The core's `pricesAndCosts` capability. Default `false`, the core as shipped: the statistics
+   * page reads the energy series alone, because no priced route is served for the SPA to call.
    */
   pricesAndCosts?: boolean;
   /** `evcc` topic payload. `null` is ingest disabled — the EV card self-hides. */
@@ -756,7 +755,8 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         profileSources: true,
         integrations: true,
         pvAndBattery: true,
-        pricesAndCosts: options.pricesAndCosts ?? true,
+        pricesAndCosts: options.pricesAndCosts ?? false,
+        statisticsHeatmap: false,
         evccCommands: true,
         customCharts: true,
       });

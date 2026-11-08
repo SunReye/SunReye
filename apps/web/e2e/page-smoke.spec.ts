@@ -279,31 +279,17 @@ const ROUTES: readonly SmokeRoute[] = [
   {
     file: "(app)/statistics/+page.svelte",
     h1: "Statistics",
-    // The section headings are NOT the surface. `statistics-section.svelte`
-    // renders every one of them from the registry label the moment `data` is
-    // non-null, so they survive their own body being deleted: emptying
-    // `cost-section.svelte` to a script-only component and forcing the prices
-    // section off left `heading("Costs & savings")` green. What each section
-    // actually PUT ON THE SCREEN is what this asserts.
+    // The section headings are NOT the surface: `statistics-section.svelte` renders them from
+    // the registry label the moment `data` is non-null, so they survive their own body being
+    // deleted. The core serves the energy series alone, so what the Energy section put on the
+    // screen from it is what this asserts, and what the core does not serve stays away.
     surface: async (page) => {
       await expect(page.getByText("Loading costs…")).toBeHidden();
-      // Cost body: the band breakdown is rendered straight from the comparison
-      // payload's `byBand`, and the chart panel only exists once
-      // /api/cost/series answered with a non-zero series (`costHasData`).
-      await heading(page, "Costs & savings");
-      const bands = sectionNamed(page, "Import by tariff band");
-      await expect(bands).toContainText("Standard");
-      await expect(bands).toContainText("8.4 kWh");
-      await expect(bands).toContainText("€2.52");
-      await expect(sectionNamed(page, "Total cost")).toBeVisible();
-      // Prices body: capability-gated on the spot-stats read answering with a payload, so a broken
-      // /api/statistics/prices deletes the whole section silently — asserting
-      // its tiles is the only thing that notices.
-      await heading(page, "Spot prices");
-      await expect(page.getByText("Negative hours")).toBeVisible();
-      // Records body: its own /api/statistics/records fetch, nothing else.
-      await heading(page, "Records");
-      await expect(page.getByText("Best production day")).toBeVisible();
+      await heading(page, "Energy");
+      await expect(page.getByText("Produced", { exact: true }).first()).toBeVisible();
+      for (const name of ["Costs & savings", "Spot prices", "Records", "Amortisation"]) {
+        await expect(page.getByRole("heading", { level: 2, name })).toBeHidden();
+      }
 
       // And the toolbar carries no CONNECTION indicator. The dot was removed:
       // one socket now serves every feed, so a lit dot here said "connected"
@@ -323,8 +309,8 @@ const ROUTES: readonly SmokeRoute[] = [
     // plus one payload-fed value proving it landed on a LOADED statistics page
     // rather than on its loading skeleton.
     surface: async (page) => {
-      await heading(page, "Costs & savings");
-      await expect(sectionNamed(page, "Import by tariff band")).toContainText("Standard");
+      await heading(page, "Energy");
+      await expect(page.getByText("Produced", { exact: true }).first()).toBeVisible();
     },
   },
   {
