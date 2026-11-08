@@ -561,24 +561,23 @@ const ROUTES: readonly SmokeRoute[] = [
   {
     file: "(app)/settings/logs/+page.svelte",
     h1: "Logs",
-    // The viewer renders its shell with zero lines, and the server-level picker
-    // only appears once `/api/settings/logging` resolved. Both, then.
+    // The viewer renders its shell with zero lines, so a pushed line proves the
+    // `logs` topic is leased.
     surface: async (page, opened) => {
       await heading(page, "Server logs");
       await opened.backend.pushLogs();
       await expect(page.getByText("poll ok").first()).toBeVisible();
-      await expect(page.getByText("Server level")).toBeVisible();
     },
   },
   {
     file: "(app)/settings/danger/+page.svelte",
     h1: "Danger Zone",
     // The only panel with no GET of its own, so the heading is available
-    // immediately and proves nothing. The disabled confirm button does.
+    // immediately and proves nothing. The export link does: it is rendered only
+    // while the core reports `dataReset`.
     surface: async (page) => {
       await heading(page, "Danger zone");
-      await page.getByRole("button", { name: "Reset all data…" }).click();
-      await expect(page.getByRole("button", { name: "Delete everything" })).toBeDisabled();
+      await expect(page.getByRole("link", { name: "Download export" })).toBeVisible();
     },
   },
   {

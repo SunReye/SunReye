@@ -5,8 +5,6 @@
 	import Section from '$lib/components/layout/section.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { resolve } from '$lib/resolve';
-	import InverterStatusBadge from '../inverter-status-badge.svelte';
-	import type { InverterStatus } from '../inverter-types';
 	import AddDeviceDialog from './add-device-dialog.svelte';
 	import ConnectionDialog from './connection-dialog.svelte';
 	import DeviceList from './device-list.svelte';
@@ -30,14 +28,11 @@
 	// The devices panel: the plant's connections and, under each, both halves of
 	// what hangs off it — the devices reached THROUGH it, retired ones included
 	// (a device the UI cannot see is a device nobody can restore), and the
-	// integrations that RUN over it. The header badge is the poll loop's health —
-	// the one link this release drives.
+	// integrations that RUN over it. Each device row carries its own state.
 	//
 	// The integrations used to be a tab of their own (`/settings/mqtt`), which
 	// meant the page that answered "what is on this broker" showed the loadpoints
 	// and no sign of the EVCC ingest that provisioned them.
-	let { status = null }: { status?: InverterStatus | null } = $props();
-
 	// Every read and write, and the re-read after each, is the roster's; this
 	// file holds which dialog is open and says what happened.
 	const roster = deviceRoster({ afterWrite: 'reload' });
@@ -138,7 +133,6 @@
 
 <Section title={m.devices_section_title()}>
 	{#snippet actions()}
-		<InverterStatusBadge {status} />
 		<!-- A connection is added on its own, not only alongside a device: a broker
 		     has no device to be created with — its loadpoints appear after the EVCC
 		     ingest is bound to it (#217). -->

@@ -108,6 +108,39 @@ test("a two-device roster lists both devices under their connections, read from 
   expect(get.mock.calls.map(([path]) => path)).toEqual(["/api/capabilities", "/api/devices"]);
 });
 
+/** An integration row as the plant keeps it: an EVCC ingest on the Garage broker. */
+const EVCC = {
+  id: 1,
+  kind: "evcc-ingest",
+  connectionId: GARAGE.id,
+  enabled: true,
+  params: { topicRoot: "evcc" },
+  label: "EVCC",
+  addable: true,
+  multiInstance: true,
+  status: { connected: true, lastError: null, lastErrorAt: null, lastConnectedAt: null },
+};
+
+test("a core without integrations lists the devices and no integration row, and never asks for them", async () => {
+  render(DevicesForm);
+  await expect.element(page.getByText("Hybrid", { exact: true })).toBeVisible();
+  expect(page.getByRole("link", { name: "EVCC" }).query()).toBeNull();
+  expect(get.mock.calls.map(([path]) => path)).not.toContain("/api/integrations");
+});
+
+test("a core with integrations shows each integration row under its connection, beside the devices", async () => {
+  get.mockImplementation(async (path: string) => {
+    if (path === "/api/capabilities") return { data: { ...CORE, integrations: true } };
+    if (path === "/api/devices") return { data: roster };
+    if (path === "/api/integrations") return { data: { integrations: [EVCC] } };
+    return { data: [] };
+  });
+  await coreCapabilities.load();
+  render(DevicesForm);
+  await expect.element(page.getByRole("link", { name: "EVCC" })).toBeVisible();
+  await expect.element(page.getByText("Hybrid", { exact: true })).toBeVisible();
+});
+
 test("a second polled device is retired through the core, the one the inverter settings edit is not", async () => {
   patch.mockResolvedValue({ data: { ...device(2, "Grid meter", GARAGE, "2026-11-03T07:00:00Z") } });
   render(DevicesForm);
