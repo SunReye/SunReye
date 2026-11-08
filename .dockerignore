@@ -45,3 +45,6 @@ docker-compose.yml
 **/.env
 **/.env.*
 !**/.env.example
+
+# Local cargo output; the image builds its own.
+/target
