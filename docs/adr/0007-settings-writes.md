@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -25,7 +25,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set.
 
-**Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile also needs each setting enabled (ADR 8).
+**Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile, and an official setting not verified on hardware, also needs each setting enabled (ADR 5, 8).
 
 **Actors.** Every write carries an actor: `admin`, or a named controller (a future EMS). An admin acts through the authenticated API. A controller holds an exclusive lease on the settings it controls, shown in the SPA and revocable by the admin; while a lease is held, an admin write to that setting is refused with a code naming the holder. Controller writes run through this same funnel, audit log and wear limits. No integration commands a register; EVCC settings (ADR 10) are admin actions through this funnel.
 

@@ -1,6 +1,6 @@
 # 8. Profile distribution and trust
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -14,7 +14,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 **In the core.** An admin adds an index URL once. The core fetches only on that action or on "check for updates", never on a timer. It verifies the hash before storing, validates with the same loader, stores the profile under the data directory and serves the last good copy. The official index's URL is built in, and the binary embeds a snapshot of the official profiles at release time so a first run works offline. A fetched profile replaces a bundled one only when its semver is higher and its signature verifies.
 
-**Trust.** The public key list is compiled into the core; rotating a key needs a core release. Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown.
+**Trust.** The public key list is compiled into the core; rotating a key needs a core release. Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown. The same per-setting enable applies to an official setting marked `verified: false` (ADR 5).
 
 **Updates.** Applying an update is an admin click, shown as a diff. A change to a writable setting (added, a different register, bounds or unit) switches that setting's writes off until re-enabled. Official profiles follow the same rule: a fix never silently widens what the core may write.
 
@@ -25,7 +25,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 - **Hash only.** Rejected for anything that can write.
 - **Timed auto-update.** Rejected: it changes the write set unattended.
 - **Profiles inside core releases.** Rejected: profile updates must not trigger one.
-- **The separate official-profiles repository.** Retired: a format change and the profiles that need it could not land in one commit. Its 20 Deye profiles are carried in as inputs.
+- **The separate official-profiles repository.** Retired: a format change and the profiles that need it could not land in one commit. Its 20 Deye profiles are carried in as official, with a setting `verified` only where it was checked on the owner's inverter.
 
 ## Consequences
 
