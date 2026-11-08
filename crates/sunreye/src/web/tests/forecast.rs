@@ -235,7 +235,7 @@ pub(super) async fn onboarded(core: Arc<Core>) -> (Arc<Core>, Api) {
     let berlin = put(&admin, "/api/settings/time-zone", &json!({"timeZone": "Europe/Berlin"})).await;
     assert_eq!(berlin.status, StatusCode::OK);
     put(&admin, "/api/settings/active-profile", &json!({"id": PROFILE})).await;
-    let port = unused_port().await;
+    let port = unused_port();
     assert_eq!(put(&admin, "/api/settings/inverter", &connection(port)).await.status, StatusCode::OK);
     (core, admin)
 }
