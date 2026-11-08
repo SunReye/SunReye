@@ -18,7 +18,7 @@ Status: accepted (2026-11-08)
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
 - The plant's location (latitude, longitude) is entered at first-run setup.
 
-**Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, at 15-minute resolution for today and two more days. Its task fetches on start and hourly; a handler never fetches. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests.
+**Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, at 15-minute resolution for today and two more days. Its task fetches on start and hourly; a handler never fetches. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests. Archive weather is stored as `weather.*` history, so learning, charts and re-learning after a layout change read it locally.
 
 **PV model.** The `pv` crate, whose `estimate(layout, weather)` returns series per string, MPPT input and inverter. It is pure: no I/O, no async runtime, no provider knowledge. The gate builds it for `wasm32-unknown-unknown`, so the 3D house builder (ADR 1) can run the same model in the browser; its browser glue arrives with the builder.
 
