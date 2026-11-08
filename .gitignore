@@ -1,0 +1,105 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs.
+#
+# ANCHORED ON PURPOSE. A bare `build` or `dist` matches at EVERY depth, so it
+# also swallows a source directory that happens to carry the name — silently,
+# with no error anywhere. `apps/web/src/lib/build/` was written, imported,
+# unit-tested and pushed while git had never been told it existed, and CI went
+# red on an unresolved import for a file nobody could see was missing. Same
+# trap as the bare `core` entry below. Name the real output directory here
+# rather than widening these back to a bare name.
+/dist
+/build
+apps/*/dist
+apps/*/build
+packages/*/dist
+packages/*/build
+*.tsbuildinfo
+
+# Generated files
+apps/web/src/routeTree.gen.ts
+
+# Environment variables
+.env
+.env*.local
+
+# IDEs and editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Turbo
+.turbo
+.nx
+
+# Better-T-Stack
+.alchemy
+
+# Testing
+coverage
+.nyc_output
+
+# Playwright (browser layer, apps/web/e2e)
+test-results
+playwright-report
+blob-report
+.playwright
+
+# Nix (nixos/, see nixos/README.md)
+# `nix build` drops a symlink to the built closure here. Unignored, it is both a
+# 3 GB store path oxlint walks on every push and something git offers to commit.
+result
+result-*
+# `run-*-vm` writes its scratch disk into whatever directory you launch it from,
+# which is normally the repo root. 12 GB, and regenerated on every boot.
+*.qcow2
+
+# Misc
+*.tgz
+.cache
+tmp
+temp
+core
+
+# Personal notes / drafts
+.notes
+
+# Agent worktrees. Checkouts of this repo living inside it: never committable,
+# and oxlint would otherwise walk the copies and report the same file twice.
+.claude/worktrees/
+
+# fixture-1-2-0.ts build artifacts. The ground-truth summaries ARE committed;
+# these two are not: the per-bucket parity snapshot is tens of MB (GBs for the
+# full span) and is regenerated per run, and a --ground-truth recheck is an
+# ad-hoc read of a live fixture, not a record.
+scripts/fixtures/parity-1-2-0.*.json
+scripts/fixtures/ground-truth-1-2-0.*.recheck.json
+sunreye_2026-08-27_16.27_30079104.tar
+
+# Agent factory runtime state and Python bytecode
+/.factory/
+__pycache__/
+
+# Rust build output
+/target
+**/target/
