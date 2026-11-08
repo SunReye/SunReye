@@ -1,6 +1,6 @@
 # 12. Tariff, prices and savings
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -10,10 +10,11 @@ Tariff information and savings figures are part of the product. They need a netw
 
 - **Tariff.** A computed device (ADR 15) configured by the admin: import and feed-in prices, fixed or in time-of-use bands, evaluated in the plant timezone. It publishes `price.import` and `price.export` readings.
 - **Spot prices.** Optional, a computed device. Its owned task fetches day-ahead prices into the forecast store; each slot becomes a `price.*` history change point when it begins. A handler never fetches. The first source is energy-charts for DE-LU at 15-minute resolution: keyless, with its CC BY attribution shown in the SPA.
-- **Savings and payback.** Computed in the core from stored energy (ADR 3) and the `price.*` readings in force at the time, not in the SPA. Payback uses an investment amount the admin enters.
-- **Price history.** A tariff has an effective-from date. Editing a tariff changes only the future. Correcting the past is an explicit "reprice from date" action by the admin, which recomputes savings from stored energy and is logged.
+- **Savings and payback.** The tariff device publishes signed rates in EUR/h from the plant's energy flows and the `price.*` readings in force: `cost.import.rate` (paid), `cost.export.rate` (earned) and `cost.savings.rate`. Storage integrates them like power (ADR 3), so hourly and daily rollups hold exact EUR, negative prices included, kept forever. Payback sums `cost.savings.rate` against an investment amount the admin enters. Nothing is computed in the SPA.
+- **Price history.** A tariff has an effective-from date. Editing a tariff changes only the future. Correcting the past is an explicit "reprice from date" action by the admin: it rebuilds the `cost.*` series from change points, refuses a date beyond change-point retention (ADR 3), and is logged.
 
 ## Considered options
 
 - **Computing in the SPA.** Rejected: every client would repeat the arithmetic and could disagree.
 - **Clients fetching prices.** Rejected: the same source would be hit per viewer and history would depend on who was watching.
+- **Money counters.** Rejected: negative spot prices make them fall, which ADR 3 reads as a reset.
