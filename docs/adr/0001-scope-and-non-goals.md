@@ -23,6 +23,7 @@ Designed for, not in the first release:
 - Live control: writes the device reverts unless refreshed. Profiles describe them now (ADR 5); only a controller under a lease may use them.
 - Remote access and multi-plant views through an end-to-end encrypted relay (ADR 16). Each install is one plant with a global install id.
 - EMS plans (ADR 15).
+- A 3D house builder in the SPA, built with three.js and loaded only on its own route: roof shape and module placement, yielding planes and shading for the PV model (ADR 17), with optimizers. It gets its own ADR.
 
 Out of scope: device vendor clouds, and local accounts beyond one admin and the read-only viewers it creates. Cloud accounts and business roles come with the relay build (ADR 16).
 
