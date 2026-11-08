@@ -94,10 +94,7 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
   {
     reason:
       "Svelte context accessors: get/setContext throw outside component init, so only the component layer calls them",
-    paths: [
-      "apps/web/src/lib/charts/fullscreen-context.ts",
-      "apps/web/src/routes/(app)/settings/status-context.ts",
-    ],
+    paths: ["apps/web/src/lib/charts/fullscreen-context.ts"],
   },
   {
     reason:
