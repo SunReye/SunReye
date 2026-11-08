@@ -10,7 +10,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Each install is one plant and generates a stable install id (a UUID) at first run; local tables carry no plant key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
 
-**Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at bucket boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
+**Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at rollup boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
 
 - The deadband compares against the last stored value, never the last reading, so the stored series is never wrong by more than the deadband.
 - The gap threshold is three times the poll group's cadence and at least 15 s. A silence beyond it is a gap, not a held value.
@@ -26,7 +26,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Flush.** At most one bucket of change points is held in memory. One transaction is written when each bucket closes. A crash or power cut loses at most the open 60 s of history, a deliberate trade. Live values and every consumer of the bus read memory.
 
-**Rollups.** Hourly and daily, derived from intervals by one owned task that updates the affected buckets after each flush. A bucket stores `Σ value·duration`, `Σ duration`, min and max; counters store first and last; enums store neither. The mean is computed on read, so a daily bucket is exact from hourly ones. Min and max are within one deadband of the true extreme; the poll interval is the resolution floor. Late rows mark buckets dirty and the task recomputes them. A rollup can be dropped and rebuilt while its change points exist.
+**Rollups.** Hourly and daily, derived from intervals by one owned task that updates the affected rollups after each flush. Hourly rollups are cut on UTC hours. Daily rollups are cut on plant-local days directly from intervals, never summed from hourly ones, so any zone offset is exact. A rollup stores `Σ value·duration`, `Σ duration`, min and max; counters store first and last; enums store neither. The mean is computed on read. Min and max are within one deadband of the true extreme; the poll interval is the resolution floor. Late rows mark rollups dirty and the task recomputes them. A rollup can be dropped and rebuilt while its change points exist.
 
 **Energy.** A role with a lifetime counter yields energy from the counter's delta. Without one, the time-weighted power is integrated. A counter that drops is a reset or rollover, never a negative delta, and a restart gap never invents energy.
 
@@ -46,7 +46,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 - **Floats.** Rejected: integers delta-encode far better and are exact.
 - **One row per interval.** Rejected: key, row header and page overhead cost several times the value.
 - **Fixed-rate samples.** Rejected: row volume then scales with the poll rate; change-encoding makes it a property of the signal.
-- **UTC day buckets cut from hourly rollups.** Rejected: exact only for whole-hour offsets, and v5 has no parity requirement with an older release.
+- **Daily rollups summed from hourly ones.** Rejected: exact only for whole-hour offsets, and v5 has no parity requirement with an older release.
 
 ## Consequences
 

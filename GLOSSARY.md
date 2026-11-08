@@ -81,11 +81,11 @@ The span from one change point to the next change point or gap. Derived, never s
 _Avoid_: Period
 
 **Bucket**:
-A 60 second slot aligned to the Unix epoch: the unit of a flush and the smallest rollup step.
+A 60 second slot aligned to the Unix epoch: the unit of a flush.
 _Avoid_: Window, tick
 
 **Rollup**:
-An hourly or daily aggregate built from change points.
+An hourly (UTC hour) or daily (plant-local day) aggregate built from intervals.
 _Avoid_: Aggregate, summary
 
 **Deadband**:
