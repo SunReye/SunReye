@@ -1,33 +1,35 @@
-# 1. Scope and non-goals
+# 1. Scope and stages
 
 Status: proposed (2026-11-08)
 
 ## Context
 
-v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs; every later ADR answers to this scope.
+v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs. The goal is an all-in-one energy monitoring workspace for a home, with energy management (EMS) as a later stage. YAGNI governs features, not the founding seams: a seam added later means migrating every table, profile and adapter.
 
 ## Decision
 
-In scope:
+First release:
 
-- Read inverters, batteries and meters; store history; show live and historic views.
-- Tariff, spot price and savings figures.
+- Read inverters, batteries, meters, wallboxes (via EVCC), heat pumps and gas and water meters; store history; show live and historic views.
+- Tariff, spot price and savings figures; public data feeds (prices, weather) are allowed.
 - Write a device's settings on an admin's request (ADR 7).
-- EVCC and custom sources, as declarative profiles.
-- A CLI to create, lint and publish profiles.
+- EVCC and custom profiles; a CLI to create, lint and publish profiles.
 
-Out of scope:
+Designed for, not in the first release:
 
-- Automations and optimisation.
-- Live control: a write the device reverts unless refreshed.
-- Vendor cloud APIs.
-- Accounts beyond one admin and read-only viewers; several plants.
+- Automations and optimisation (EMS). They enter only as controllers through the write funnel (ADR 7), each with its own ADR and safety case.
+- Live control: writes the device reverts unless refreshed. Profiles describe them now (ADR 5); only a controller under a lease may use them.
+- Several plants: every key carries a plant id now; the first release shows one plant.
+- Forecasts and plans (ADR 15) and a plant topology (ADR 14).
+
+Out of scope: device vendor clouds, and accounts beyond one admin and read-only viewers.
 
 ## Considered options
 
-- **Monitoring only (v4).** Rejected: the owner needs settings writes.
-- **Include live control.** Rejected: setpoints expire on SMA (60 min), Sungrow (20 s heartbeat), Victron (60 s), SolarEdge (command timeout) and Kostal (fallback timer). Refreshing them is a control loop, which is an automation with its own safety case.
+- **Monitoring only (v4).** Rejected: the owner needs settings writes now and EMS later.
+- **Live control in the first release.** Rejected: setpoints expire on SMA (60 min), Sungrow (20 s heartbeat), Victron (60 s), SolarEdge (command timeout) and Kostal (fallback timer). A refresh loop needs the controller seam and its safety case first.
+- **Exclude EMS.** Rejected: an EMS added to a monitoring-only design would need a write path, a forecast store and a topology retrofitted under live data.
 
 ## Consequences
 
-A write may reach grid-tied hardware, so ADR 7 gates every one. No ADR may add scheduled or rule-driven writes.
+A write may reach grid-tied hardware, so ADR 7 gates every one. Rule-driven writes exist only as controllers.

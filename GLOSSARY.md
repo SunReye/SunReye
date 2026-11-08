@@ -95,8 +95,16 @@ The result of a write: `verified`, `mismatch`, `unknown`, `partial`, or `unchang
 _Avoid_: Status, result
 
 **Live control**:
-A write the device reverts unless it is refreshed. Out of scope.
+A write the device reverts unless it is refreshed. Only a controller under a lease may use it.
 _Avoid_: Remote control, setpoint
+
+**Controller**:
+A named automation that writes settings through the funnel. None exists in the first release.
+_Avoid_: Automation engine, bot
+
+**Lease**:
+A controller's exclusive, revocable hold on the settings it controls.
+_Avoid_: Lock, ownership
 
 ## Platform
 

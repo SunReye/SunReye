@@ -27,9 +27,9 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile also needs each setting enabled (ADR 8).
 
-**Who.** Only an authenticated admin, through the API. No integration commands a register. EVCC settings (ADR 10) are admin actions through this same funnel.
+**Actors.** Every write carries an actor: `admin`, or a named controller (a future EMS). An admin acts through the authenticated API. A controller holds an exclusive lease on the settings it controls, shown in the SPA and revocable by the admin; while a lease is held, an admin write to that setting is refused with a code naming the holder. Controller writes run through this same funnel, audit log and wear limits. No integration commands a register; EVCC settings (ADR 10) are admin actions through this funnel.
 
-**No live control.** A recipe must set any revert timeout to none, and a lint rejects one that needs a refresher, naming the reason. A grid-feed limit with revert time 0 (Fronius `WMaxLimPct`) is a setting; a Sungrow external-EMS heartbeat is not.
+**Live control.** A recipe that needs a refresher, or sets a revert timeout other than none, is a live-control point (ADR 5). An admin cannot invoke one; a controller under a lease can. The core, not the controller, owns the refresh timer, and stops refreshing when the controller stops, so the device falls back to its own default. The first release has no controller. A grid-feed limit with revert time 0 (Fronius `WMaxLimPct`) is an ordinary setting.
 
 **Composite settings.** Two kinds, each write going through the funnel with its own outcome and no rollback.
 
@@ -44,4 +44,4 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 ## Consequences
 
-Setting changes are slow and visible. Features that need a control loop (battery dispatch from EVCC, price-driven charging) need their own ADR and a separate safety case.
+Setting changes are slow and visible. A control loop (battery dispatch from EVCC, price-driven charging) is a controller with its own ADR and safety case; the refresh timer and its watchdog live once, in the core.
