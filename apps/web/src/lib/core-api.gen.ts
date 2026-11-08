@@ -811,6 +811,10 @@ export interface components {
         Capabilities: {
             automations: boolean;
             controls: boolean;
+            /** @description User-defined charts on the history page, saved server-side. */
+            customCharts: boolean;
+            /** @description The dashboard's EVCC charge mode and limit commands, which write to EVCC. */
+            evccCommands: boolean;
             history: boolean;
             /** @description Coded integrations and the MQTT connections they run over. */
             integrations: boolean;

@@ -7,7 +7,7 @@
 	import CloudRain from 'phosphor-svelte/lib/CloudRain';
 	import CloudSnow from 'phosphor-svelte/lib/CloudSnow';
 	import CloudLightning from 'phosphor-svelte/lib/CloudLightning';
-	import { api } from '$lib/api';
+	import { core } from '$lib/core-api';
 	import SolarForecastDialog from './solar-forecast-dialog.svelte';
 	import WeatherTileBody from './_shared/weather-tile-body.svelte';
 	import { isReadableWeather, type Weather } from './_shared/weather';
@@ -30,10 +30,10 @@
 	$effect(() => {
 		let stop = false;
 		const load = async () => {
-			const { data } = await api.api.weather.get();
-			// Weather being off answers `null`, which Elysia sends as an empty body
-			// and Eden reports as ""; `?? null` would keep that and the tile would
-			// print "NaN undefined". Only a payload we can actually read counts.
+			const { data } = await core.GET('/api/weather');
+			// Weather being off answers `null`; a body we cannot read (an empty one, a
+			// partial one) would print "NaN undefined". Only a payload we can actually
+			// read counts.
 			if (!stop) weather = isReadableWeather(data) ? data : null;
 		};
 		load();
