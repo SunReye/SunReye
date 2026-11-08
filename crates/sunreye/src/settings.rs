@@ -226,6 +226,70 @@ pub fn positive(key: &str, setting: Option<&str>, unit: &str) -> Option<u64> {
     }
 }
 
+pub const EVCC_KEY: &str = "evcc";
+const TOPIC_ROOT_MAX: usize = 120;
+
+/// The EVCC ingest settings: one flat record under `evcc`, not a tagged union, so an unreadable one reads as
+/// the default, which is off. Nothing here publishes: EVCC is consume-only (ADR 0005).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EvccConfig {
+    pub enabled: bool,
+    /// The broker connection EVCC is published on; null until one is chosen.
+    #[schema(required = true)]
+    pub connection_id: Option<i64>,
+    /// EVCC's own MQTT root topic.
+    pub topic_root: String,
+    /// Draw the EV off the house-load node.
+    pub subtract_from_home: bool,
+}
+
+impl Default for EvccConfig {
+    fn default() -> Self {
+        Self { enabled: false, connection_id: None, topic_root: "evcc".into(), subtract_from_home: false }
+    }
+}
+
+impl EvccConfig {
+    /// The stored record; anything unreadable reads as the default.
+    pub fn read(stored: Option<&str>) -> Self {
+        let Some(stored) = stored else { return Self::default() };
+        serde_json::from_str(stored).unwrap_or_else(|_| {
+            tracing::warn!(setting = EVCC_KEY, "unreadable, the EVCC ingest stays off");
+            Self::default()
+        })
+    }
+
+    pub async fn load(store: &Store) -> Result<Self, StoreError> {
+        Ok(Self::read(store.setting(EVCC_KEY).await?.as_deref()))
+    }
+
+    pub fn stored(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        let root_length = self.topic_root.chars().count();
+        let checks = [
+            (
+                self.topic_root.trim().is_empty() || root_length > TOPIC_ROOT_MAX,
+                "Topic root must be 1–120 characters, not blank",
+            ),
+            (self.connection_id.is_some_and(|id| id < 1), "Connection id must be positive"),
+        ];
+        match checks.into_iter().find(|(failed, _)| *failed) {
+            Some((_, message)) => Err(message.to_owned()),
+            None => Ok(()),
+        }
+    }
+
+    /// Whether the ingest can run: on, and `broker_url`, what the connection resolved to, is not blank.
+    /// The caller resolves the connection, so this stays a statement about the record.
+    pub fn ready(&self, broker_url: Option<&str>) -> bool {
+        self.enabled && self.connection_id.is_some() && broker_url.is_some_and(|url| !url.trim().is_empty())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +494,105 @@ mod tests {
         assert_eq!(store.devices().await.expect("devices"), []);
         save_inverter(&store, &config()).await.expect("save");
         assert_eq!(store.devices().await.expect("devices")[0].profile_id, "deye-sg05lp3");
+    }
+
+    mod evcc {
+        use serde_json::json;
+
+        use super::super::*;
+
+        fn saved(body: serde_json::Value) -> Result<EvccConfig, String> {
+            let config: EvccConfig = serde_json::from_value(body).expect("body");
+            config.validate().map(|()| config)
+        }
+
+        #[test]
+        fn nothing_stored_reads_as_off_without_a_connection_on_the_evcc_root() {
+            let want = EvccConfig {
+                enabled: false,
+                connection_id: None,
+                topic_root: "evcc".into(),
+                subtract_from_home: false,
+            };
+            assert_eq!(EvccConfig::read(None), want);
+            assert_eq!(
+                serde_json::to_value(&want).expect("json"),
+                json!({"enabled": false, "connectionId": null, "topicRoot": "evcc", "subtractFromHome": false})
+            );
+        }
+
+        #[test]
+        fn an_absent_field_takes_its_default() {
+            let config = saved(json!({"enabled": true, "connectionId": 3})).expect("valid");
+            assert_eq!((config.topic_root.as_str(), config.subtract_from_home), ("evcc", false));
+            assert_eq!(saved(json!({})), Ok(EvccConfig::default()));
+        }
+
+        #[test]
+        fn a_record_reads_back_as_stored() {
+            let config = saved(json!({
+                "enabled": true, "connectionId": 7, "topicRoot": "home/evcc", "subtractFromHome": true
+            }))
+            .expect("valid");
+            assert_eq!(EvccConfig::read(Some(&config.stored())), config);
+        }
+
+        #[test]
+        fn an_unreadable_stored_record_reads_as_the_default() {
+            for damaged in ["{not json", "", "[]", r#"{"enabled":"yes"}"#, r#"{"connectionId":"a"}"#] {
+                assert_eq!(EvccConfig::read(Some(damaged)), EvccConfig::default(), "{damaged:?}");
+            }
+        }
+
+        #[test]
+        fn a_topic_root_is_one_to_120_characters_and_not_blank() {
+            let root = |text: &str| saved(json!({"topicRoot": text}));
+            for ok in ["e", "evcc", "home/evcc", &"x".repeat(120), &"é".repeat(120)] {
+                assert!(root(ok).is_ok(), "{} chars", ok.chars().count());
+            }
+            for refused in ["", " ", "\t\n", &"x".repeat(121), &"é".repeat(121)] {
+                assert_eq!(
+                    root(refused),
+                    Err("Topic root must be 1–120 characters, not blank".to_owned()),
+                    "{} chars",
+                    refused.chars().count()
+                );
+            }
+        }
+
+        #[test]
+        fn a_connection_id_is_positive_or_null() {
+            assert!(saved(json!({"connectionId": 1})).is_ok());
+            assert!(saved(json!({"connectionId": null})).is_ok());
+            for id in [0, -1] {
+                assert_eq!(
+                    saved(json!({"connectionId": id})),
+                    Err("Connection id must be positive".to_owned()),
+                    "{id}"
+                );
+            }
+        }
+
+        #[test]
+        fn ready_needs_enabled_a_resolved_connection_and_a_non_blank_url() {
+            let config = |enabled, connection_id| EvccConfig { enabled, connection_id, ..EvccConfig::default() };
+            let on = config(true, Some(1));
+            assert!(on.ready(Some("mqtt://broker.lan")));
+            assert!(!config(false, Some(1)).ready(Some("mqtt://broker.lan")), "disabled");
+            assert!(!config(true, None).ready(Some("mqtt://broker.lan")), "no connection chosen");
+            assert!(!on.ready(None), "the connection names no broker");
+            for blank in ["", " ", "\t"] {
+                assert!(!on.ready(Some(blank)), "{blank:?}");
+            }
+        }
+
+        #[tokio::test]
+        async fn a_saved_record_loads_back_from_the_store() {
+            let store = Store::in_memory().await.expect("store");
+            assert_eq!(EvccConfig::load(&store).await.expect("load"), EvccConfig::default());
+            let config = saved(json!({"enabled": true, "connectionId": 2, "topicRoot": "ev"})).expect("valid");
+            store.set_setting(EVCC_KEY, &config.stored()).await.expect("save");
+            assert_eq!(EvccConfig::load(&store).await.expect("load"), config);
+        }
     }
 }

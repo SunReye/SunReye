@@ -1230,6 +1230,7 @@ mod api_keys;
 mod busy;
 mod correction;
 mod devices;
+mod evcc;
 mod forecast;
 mod import;
 mod kiosk;

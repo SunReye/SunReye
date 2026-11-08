@@ -2232,6 +2232,110 @@
         }
       }
     },
+    "/api/settings/evcc": {
+      "get": {
+        "operationId": "readEvcc",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvccConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "The whole record: an absent field takes its default.",
+        "operationId": "saveEvcc",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvccConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvccConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/inverter": {
       "get": {
         "operationId": "readInverter",
@@ -4081,6 +4185,38 @@
               "null"
             ],
             "description": "The request field the refusal concerns, when the client acts on it."
+          }
+        }
+      },
+      "EvccConfig": {
+        "type": "object",
+        "description": "The EVCC ingest settings: one flat record under `evcc`, not a tagged union, so an unreadable one reads as\nthe default, which is off. Nothing here publishes: EVCC is consume-only (ADR 0005).",
+        "required": [
+          "connectionId"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The broker connection EVCC is published on; null until one is chosen.",
+            "default": null
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "subtractFromHome": {
+            "type": "boolean",
+            "description": "Draw the EV off the house-load node.",
+            "default": false
+          },
+          "topicRoot": {
+            "type": "string",
+            "description": "EVCC's own MQTT root topic.",
+            "default": "evcc"
           }
         }
       },
