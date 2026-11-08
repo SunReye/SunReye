@@ -372,20 +372,24 @@ mod tests {
             .filter(|case| text(&case["case"]).starts_with("fold/"))
             .collect();
         assert_eq!(cases.len(), 17);
-        for case in cases {
+        let mut estimated = Vec::new();
+        for case in &cases {
             let name = text(&case["case"]);
-            let (subscribed, states) = run(&case);
+            let (subscribed, states) = run(case);
             assert_eq!(subscribed, case["output"]["subscribed"], "{name}");
             assert_eq!(case["output"]["published"], json!([]), "{name}");
-            let masked = ESTIMATOR_CASES.contains(&name);
             let want: Vec<Json> = case["output"]["steps"]
                 .as_array()
                 .expect("steps")
                 .iter()
                 .map(|step| step["state"].clone())
                 .collect();
-            assert_eq!(compared(&states, masked), compared(&want, masked), "{name}");
+            assert_eq!(compared(&states, true), compared(&want, true), "{name}");
+            if compared(&states, false) != compared(&want, false) {
+                estimated.push(name);
+            }
         }
+        assert_eq!(estimated, ESTIMATOR_CASES, "only these differ, and only in the estimator's fields");
     }
 
     #[test]

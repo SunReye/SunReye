@@ -1,4 +1,5 @@
-//! The EVCC settings: admin-only, a flat record that round-trips, a blank or over-long topic root refused.
+//! The EVCC settings: admin-only, a flat record that round-trips, a blank, over-long or wildcard topic root
+//! refused, and a change restarts a running ingest.
 
 use super::*;
 
@@ -55,6 +56,8 @@ async fn a_refused_record_is_a_400_and_the_saved_one_stays() {
         json!({"topicRoot": ""}),
         json!({"topicRoot": "   "}),
         json!({"topicRoot": "x".repeat(121)}),
+        json!({"topicRoot": "evcc/#"}),
+        json!({"topicRoot": "+"}),
         json!({"connectionId": 0}),
         json!({"connectionId": -3}),
         json!({"connectionId": "a"}),
@@ -102,5 +105,31 @@ async fn the_evcc_state_reads_null_while_the_ingest_is_off_and_follows_the_kiosk
     put(&admin, "/api/settings/kiosk", &json!({"enabled": true})).await;
     assert_eq!(get(&stranger, STATE).await.status, StatusCode::OK);
     drop((admin, user, stranger));
+    core.stop().await;
+}
+
+#[tokio::test]
+async fn changing_the_topic_root_or_the_broker_while_on_resubscribes_with_the_new_filters() {
+    use crate::mqtt::fixture::FakeBroker;
+    let (core, admin) = open(&dir("evcc-restart")).await;
+    let (mut first, mut second) = (FakeBroker::new(&[]), FakeBroker::new(&[]));
+    let url = |port: u16| json!({"brokerUrl": format!("mqtt://127.0.0.1:{port}")});
+    put(&admin, "/api/settings/mqtt", &url(first.listen().await)).await;
+    let record = |root: &str| json!({"enabled": true, "connectionId": 1, "topicRoot": root});
+    let filters =
+        |root: &str| [format!("{root}/status"), format!("{root}/loadpoints/#"), format!("{root}/vehicles/#")];
+
+    put(&admin, PATH, &record("evcc")).await;
+    assert_eq!(first.until(8).await.filters(), filters("evcc"));
+
+    assert_eq!(put(&admin, PATH, &record("home/evcc")).await.status, StatusCode::OK);
+    first.until(14).await;
+    let again = first.until(8).await;
+    assert_eq!((again.connection, again.filters()), (1, filters("home/evcc").to_vec()));
+
+    put(&admin, "/api/settings/mqtt", &url(second.listen().await)).await;
+    first.until(14).await;
+    assert_eq!(second.until(8).await.filters(), filters("home/evcc"));
+    drop(admin);
     core.stop().await;
 }

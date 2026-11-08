@@ -245,4 +245,39 @@ mod tests {
         task.await.expect("ended");
         assert!(broker.log.iter().all(|seen| seen.kind != 3), "{:?}", broker.log);
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_session_that_lasted_a_keep_alive_restarts_the_backoff() {
+        let broker = FakeBroker::new(&[]);
+        let paused = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&paused);
+        let link = Link {
+            pause: Arc::new(move |delay| {
+                recorded.lock().expect("delays").push(delay);
+                Box::pin(std::future::ready(()))
+            }),
+            jitter: || 0.0,
+            ..link(&broker)
+        };
+        let (heard, mut hearing) = mpsc::unbounded_channel();
+        let (stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(run(link, filters(), move |event| drop(heard.send(event)), stopped));
+
+        assert_eq!(next(&mut hearing).await, Heard::Connected);
+        broker.kick();
+        assert_eq!(next(&mut hearing).await, Heard::Lost);
+        assert_eq!(next(&mut hearing).await, Heard::Connected);
+        tokio::time::sleep(Duration::from_secs(61)).await;
+        broker.kick();
+        assert_eq!(next(&mut hearing).await, Heard::Lost);
+        assert_eq!(next(&mut hearing).await, Heard::Connected);
+        broker.kick();
+        assert_eq!(next(&mut hearing).await, Heard::Lost);
+        assert_eq!(next(&mut hearing).await, Heard::Connected);
+        stop.send_replace(true);
+        task.await.expect("ended");
+
+        let ms = |ms| Duration::from_millis(ms);
+        assert_eq!(*paused.lock().expect("delays"), [ms(500), ms(500), ms(1000)], "short, stable, short");
+    }
 }
