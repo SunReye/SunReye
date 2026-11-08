@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { api } from '$lib/api';
+	import { byPath } from '$lib/core-by-path';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -46,14 +46,15 @@
 
 	onMount(async () => {
 		const [{ data }, { data: invested }] = await Promise.all([
-			api.api.settings.tariff.get(),
-			api.api.settings.investment.get()
+			byPath.GET('/api/settings/tariff'),
+			byPath.GET('/api/settings/investment')
 		]);
 		// Deliberately stays null on a failed read: offering to overwrite a tariff
 		// we could not read is how a stored config gets wiped.
-		if (data) tariff = toTariff(data);
+		if (data) tariff = toTariff(data as TariffResponse);
 		if (invested) {
-			investment = { totalCost: invested.totalCost, commissionedOn: invested.commissionedOn ?? '' };
+			const stored = invested as { totalCost: number; commissionedOn: string | null };
+			investment = { totalCost: stored.totalCost, commissionedOn: stored.commissionedOn ?? '' };
 		}
 	});
 
@@ -91,8 +92,8 @@
 			}
 		};
 		const [{ error }, { error: investError }] = await Promise.all([
-			api.api.settings.tariff.put(payload),
-			api.api.settings.investment.put(investment)
+			byPath.PUT('/api/settings/tariff', { body: payload }),
+			byPath.PUT('/api/settings/investment', { body: investment })
 		]);
 		saving = false;
 		if (error) toast.error(m.tariff_toast_error());

@@ -945,10 +945,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       if (method === "PUT") return json(route, saved(fixture.WEATHER_CONFIG, body()));
       return json(route, fixture.WEATHER_CONFIG);
     }
-    if (at("settings/automations")) {
-      if (method === "PUT") return json(route, saved(fixture.automations(), body()));
-      return json(route, fixture.automations());
-    }
     // Profile sources and imports: what they add shows in `GET /api/profiles`, as on the core.
     if (at("settings/profile-sources")) {
       if (method === "POST") {

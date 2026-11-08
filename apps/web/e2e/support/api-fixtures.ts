@@ -835,53 +835,6 @@ export const WEATHER_CONFIG = {
 /** `packages/db/src/spot-price-config.ts` → `defaultSpotPriceConfig`. */
 export const SPOT_PRICE_CONFIG = { enabled: true, provider: "energy-charts", zone: "DE-LU" };
 
-/**
- * `packages/db/src/automation-config.ts` → `defaultAutomations`, with the master
- * switch ON.
- *
- * Off is the default, and off replaces the whole peak-shaving form with a
- * "turn automations on first" alert — so the shipped default would make every
- * assertion about that page's controls vacuous.
- */
-export function automations() {
-  return {
-    enabled: true,
-    disclaimerAcceptedAt: ago(48 * DAY_MS),
-    peakShaving: {
-      enabled: false,
-      shadowMode: false,
-      mode: "maximize-exports",
-      safetyBufferW: 500,
-      maxChargeA: 100,
-      fallbackChargeA: 50,
-      topBalanceFloorA: 5,
-      nominalBatteryV: 51.2,
-      controlIntervalS: 30,
-      gridFriendly: {
-        minThresholdW: 0,
-        forecastTrustPct: 100,
-        slewWPerMin: 600,
-        chargeSlewAPerMin: 10,
-        reserveForEvDemand: true,
-      },
-      priceAware: {
-        enabled: false,
-        negativeThresholdEurPerMwh: 0,
-        minWindowMinutes: 15,
-        bridgeGapSlots: 1,
-        lookaheadHours: 8,
-        soakFloorW: 0,
-        shapeSoc: true,
-        reserveMarginPct: 5,
-        pullInEv: false,
-        evBoostLimitPct: 10,
-        gridChargeInWindow: false,
-        gridChargeMaxA: 20,
-      },
-    },
-  };
-}
-
 // ─── Profiles ───────────────────────────────────────────────────────────────
 
 /** `GET /api/profiles` — the registered profiles, aligned with the fixture manifest. */

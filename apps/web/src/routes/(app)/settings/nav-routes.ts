@@ -133,14 +133,6 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     subtitleKey: "settings_sub_access",
   },
   {
-    id: "automations",
-    href: "/settings/automations",
-    group: "admin",
-    titleKey: "settings_tab_automations",
-    subtitleKey: "settings_sub_automations",
-    capability: "automations",
-  },
-  {
     id: "profiles",
     href: "/settings/profiles",
     group: "admin",

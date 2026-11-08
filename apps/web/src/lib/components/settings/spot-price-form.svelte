@@ -8,7 +8,7 @@
 	import SaveBar from './save-bar.svelte';
 	import OptionSelect from './option-select.svelte';
 	import { apiErrorText } from '$lib/api-error';
-	import { api } from '$lib/api';
+	import { byPath } from '$lib/core-by-path';
 	import { useAppSession } from '$lib/session';
 	import * as m from '$lib/paraglide/messages';
 
@@ -24,8 +24,8 @@
 
 	onMount(async () => {
 		const [config, catalog] = await Promise.all([
-			api.api.settings['spot-prices'].get(),
-			api.api.prices.providers.get()
+			byPath.GET('/api/settings/spot-prices'),
+			byPath.GET('/api/prices/providers')
 		]);
 		if (config.data) draft = config.data as SpotPriceConfig;
 		providers = (catalog.data ?? []) as Provider[];
@@ -56,10 +56,12 @@
 	async function save(): Promise<void> {
 		if (!draft) return;
 		saving = true;
-		const { data, error } = await api.api.settings['spot-prices'].put({ ...draft, zone });
+		const { data, error } = await byPath.PUT('/api/settings/spot-prices', {
+			body: { ...draft, zone }
+		});
 		saving = false;
 		if (error) {
-			toast.error(apiErrorText(error.value, m.prices_settings_error()));
+			toast.error(apiErrorText(error, m.prices_settings_error()));
 			return;
 		}
 		draft = data as SpotPriceConfig;

@@ -10,7 +10,6 @@
 	import { signOut as endSession, useAppSession } from '$lib/session';
 	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { automationsGate } from '$lib/automations-gate.svelte';
 	import { navItemIds, type NavItemId } from '$lib/components/nav-items';
 	import * as m from '$lib/paraglide/messages';
 	import GaugeIcon from 'phosphor-svelte/lib/Gauge';
@@ -37,14 +36,6 @@
 
 	type NavItem = { href: Pathname; label: string; icon: Component };
 
-	// Automations are experimental and write inverter registers, so the entry
-	// stays out of the nav until an admin has switched the master gate on in
-	// Settings -> Automations. The read is admin-only and off-by-default; see
-	// `$lib/automations-gate`.
-	$effect(() => {
-		void automationsGate.load(isAdmin);
-	});
-
 	// WHICH areas to offer is policy and lives in `nav-items.ts` (unit-tested);
 	// what each one LOOKS like is the only thing decided here.
 	const CHROME: Record<NavItemId, () => NavItem> = {
@@ -59,8 +50,7 @@
 		navItemIds({
 			isAdmin,
 			offers: (area) => coreCapabilities.has(area),
-			controlCount: inverter.capabilities?.controls.length ?? 0,
-			automationsEnabled: automationsGate.enabled
+			controlCount: inverter.capabilities?.controls.length ?? 0
 		}).map((id) => CHROME[id]())
 	);
 

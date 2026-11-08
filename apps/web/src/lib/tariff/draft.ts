@@ -1,7 +1,7 @@
 /**
  * The shape the tariff settings form edits.
  *
- * Derived from the server's own response rather than hand-written: the form PUTs
+ * Derived from the tariff the server stores rather than hand-written: the form PUTs
  * the *whole* config, so any field the type doesn't know about would be dropped
  * on save and silently reset to its default — which is how a plant would lose
  * its day-ahead pricing settings just by opening the page and pressing Save.
@@ -10,11 +10,9 @@
  * meaning "every day") and always present here so the editor can bind to it.
  */
 
-import type { api } from "$lib/api";
+import type { TariffConfig } from "@SunReye/contracts/prices";
 
-export type TariffResponse = NonNullable<
-  Awaited<ReturnType<typeof api.api.settings.tariff.get>>["data"]
->;
+export type TariffResponse = TariffConfig;
 
 export type BandDraft = {
   name: string;

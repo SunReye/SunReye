@@ -8,13 +8,13 @@
  * `@SunReye/contracts/automation` (mostly through the `$lib/automations`
  * barrel). Type-only — no runtime tail (see AGENTS.md).
  *
- * `AutomationConfig` and `PeakShavingMode` are re-exported from `@SunReye/db`:
- * their zod schemas stay in the db package (moving them would give contracts a
- * runtime tail and a `zod` dependency), so contracts takes a type-only dep on
- * db and re-exports the inferred shapes.
+ * `PeakShavingMode` is re-exported from `@SunReye/db`: its zod schema stays in
+ * the db package (moving it would give contracts a runtime tail and a `zod`
+ * dependency), so contracts takes a type-only dep on db and re-exports the
+ * inferred shape.
  */
 
-export type { AutomationConfig, PeakShavingMode } from "@SunReye/db/automation-config";
+export type { PeakShavingMode } from "@SunReye/db/automation-config";
 
 import type { PeakShavingMode } from "@SunReye/db/automation-config";
 import type { CanonicalRole } from "@SunReye/inverter-core";

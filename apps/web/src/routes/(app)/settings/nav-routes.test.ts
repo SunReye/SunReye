@@ -112,7 +112,6 @@ describe("which panels the core's capabilities leave in the rail", () => {
     expect(gates).toEqual({
       tariff: "pricesAndCosts",
       prices: "pricesAndCosts",
-      automations: "automations",
       integrations: "integrations",
       logs: "logging",
       danger: "dataReset",
@@ -134,14 +133,14 @@ describe("which panels the core's capabilities leave in the rail", () => {
   });
 
   test("a core that serves everything keeps every panel the table does not hide", () => {
-    const all = offering("pricesAndCosts", "automations", "integrations", "logging", "dataReset");
+    const all = offering("pricesAndCosts", "integrations", "logging", "dataReset");
     expect(ids(railRoutes(true, all))).toEqual(
       SETTINGS_ROUTES.filter((r) => !r.hidden).map((r) => r.id),
     );
   });
 
   test("a viewer who is not an admin never gets an admin panel, served or not", () => {
-    const all = offering("pricesAndCosts", "automations", "integrations", "logging", "dataReset");
+    const all = offering("pricesAndCosts", "integrations", "logging", "dataReset");
     expect(ids(railRoutes(false, all))).toEqual([
       "devices",
       "plant",
