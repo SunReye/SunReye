@@ -80,3 +80,17 @@ the `sunreye_pg` volume across restarts.
   `service_healthy`.
 - Pulling private GHCR packages requires `docker login ghcr.io` first. If the
   packages are public, no login is needed.
+
+## The 4.0 core image
+
+`docker/rust-core/Dockerfile` builds the Rust core (SQLite under `/data`, no database server) for
+`linux/amd64` and `linux/arm64`. Both cross-compile on the build host; no QEMU is needed.
+
+```bash
+scripts/release-image 4.0.0              # local build, tags 4.0.0 and 4; never latest, never pushed
+bun run test:image                       # builds amd64, boots it on an empty /data, probes /
+```
+
+`latest` stays on 3.x (ADR 0003). Publishing is the owner's step. Run with
+`docker run -v sunreye:/data -p 8099:8099 <image>`; extra flags replace the default `--listen 0.0.0.0:8099`,
+so repeat it: `<image> --listen 0.0.0.0:8099 --trusted-origin https://ha.example`.

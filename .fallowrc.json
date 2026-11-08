@@ -31,6 +31,9 @@
     "scripts/db-parity.ts",
     "scripts/ensure-browser.ts",
     "scripts/fixture-1-2-0.ts",
+    "scripts/image-boot.ts",
+    "scripts/image-plan.ts",
+    "scripts/image-tags.ts",
     "scripts/oracle/*.ts",
     "scripts/replay-rehearsal.ts",
     "scripts/route-smoke.ts",
@@ -117,6 +120,13 @@
     },
     {
       "file": "apps/web/scripts/gen-core-api.ts",
+      "exports": [
+        "*"
+      ]
+    },
+    {
+      "comment": "Consumed by the extensionless bun scripts scripts/release-image and scripts/image-boot-check, which fallow does not parse.",
+      "file": "scripts/image-{boot,plan,tags}.ts",
       "exports": [
         "*"
       ]

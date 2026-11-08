@@ -1,0 +1,36 @@
+#!/usr/bin/env bun
+// Builds the Rust-core image locally for linux/amd64 and linux/arm64 (cross-compiled, no QEMU),
+// tagged 4.<minor>.<patch> and 4 in the local image store. Never tags `latest`, never pushes:
+// publishing is the owner's step.
+//
+// Usage: scripts/release-image <version> [--platform <linux/arch>]... [--dry-run]
+//   --dry-run  print the docker command instead of running it
+import { parseArgs } from "node:util";
+import { PLATFORMS, buildxArgs } from "./image-plan";
+
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { platform: { type: "string", multiple: true }, "dry-run": { type: "boolean" } },
+});
+
+const [version] = positionals;
+if (positionals.length !== 1 || !version) {
+  console.error("usage: scripts/release-image <version> [--platform <linux/arch>]... [--dry-run]");
+  process.exit(2);
+}
+
+let args: string[];
+try {
+  args = buildxArgs(version, values.platform ?? PLATFORMS);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
+if (values["dry-run"]) {
+  console.log(["docker", ...args].join(" "));
+} else {
+  const root = new URL("..", import.meta.url).pathname;
+  const build = Bun.spawn(["docker", ...args], { cwd: root, stdout: "inherit", stderr: "inherit" });
+  process.exit(await build.exited);
+}
