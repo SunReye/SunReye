@@ -2,12 +2,10 @@
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { api } from '$lib/api';
 	import { routePath } from '$lib/resolve';
 	import { useAppSession } from '$lib/session';
 	import SettingsNav from './settings-nav.svelte';
 	import { settingsHeaderFor } from './nav-routes';
-	import { setSettingsStatus, type SettingsStatus } from './status-context';
 	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import { setPageHeader } from '$lib/page-header.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -28,29 +26,6 @@
 	// The hash router pins `page.url.pathname` to the served document, so the
 	// active route has to be read from the hash (see `routePath`).
 	const current = $derived(routePath(page.url));
-
-	// Live connection health, polled once for the whole settings area and shared
-	// with the Inverter/MQTT panels through context.
-	let status = $state<SettingsStatus>(null);
-	setSettingsStatus({
-		get current() {
-			return status;
-		}
-	});
-
-	$effect(() => {
-		let stop = false;
-		const tick = async () => {
-			const { data } = await api.api.status.get();
-			if (!stop && data) status = data as SettingsStatus;
-		};
-		tick();
-		const id = setInterval(tick, 3000);
-		return () => {
-			stop = true;
-			clearInterval(id);
-		};
-	});
 
 	// Only the changing panel moves; the nav rail stays put. Honour reduced motion.
 	const reduceMotion = new MediaQuery('prefers-reduced-motion: reduce');

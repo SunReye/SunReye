@@ -79,31 +79,6 @@ const ago = (ms: number): string => new Date(Date.now() - ms).toISOString();
 const dayKey = (days: number): string =>
   new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
 
-// ─── Engine status ──────────────────────────────────────────────────────────
-
-/** `GET /api/status` — `runtime.status()`, polled by every `/settings/*` route. */
-export function status(manifest: FixtureManifest): {
-  inverter: {
-    connected: boolean;
-    simulate: boolean;
-    lastError: string | null;
-    lastSampleAt: string;
-    profile: string;
-  };
-  mqtt: { enabled: boolean; connected: boolean; lastError: string | null };
-} {
-  return {
-    inverter: {
-      connected: true,
-      simulate: false,
-      lastError: null,
-      lastSampleAt: new Date().toISOString(),
-      profile: manifest.id,
-    },
-    mqtt: { enabled: false, connected: false, lastError: null },
-  };
-}
-
 // ─── Weather ────────────────────────────────────────────────────────────────
 
 /**
@@ -820,9 +795,6 @@ export const INTEGRATION_CATALOG = {
     },
   ],
 };
-
-/** `apps/server/src/settings/logging-settings.ts` — config plus resolved level. */
-export const LOGGING = { level: null, effective: "info", default: "info" };
 
 /**
  * `packages/db/src/weather.ts` → `defaultWeather`, configured for Berlin.
