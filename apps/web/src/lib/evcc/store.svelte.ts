@@ -1,5 +1,5 @@
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
-import { api } from "$lib/api";
+import { postEvccCommand } from "$lib/engine-only";
 import * as m from "$lib/paraglide/messages";
 import { bus } from "$lib/ws/bus.svelte";
 import { EvccFeed, isActive, leaseEvcc, totalChargePower } from "./feed";
@@ -94,12 +94,7 @@ class EvccStore {
       | { loadpoint: number; action: "mode"; value: EvccMode }
       | { loadpoint: number; action: "limitSoc"; value: number },
   ): Promise<string | null> {
-    const { error } = await api.api.commands.evcc.post(body);
-    if (error) {
-      const detail = error.value as { error?: string } | null;
-      return detail?.error ?? `Command failed (${error.status})`;
-    }
-    return null;
+    return postEvccCommand(body);
   }
 
   setMode(loadpoint: number, mode: EvccMode): Promise<string | null> {

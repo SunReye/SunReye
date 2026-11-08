@@ -22,6 +22,8 @@ const NONE = {
   pvAndBattery: false,
   pricesAndCosts: false,
   statisticsHeatmap: false,
+  evccCommands: false,
+  customCharts: false,
 };
 
 async function mountWith(served: Partial<typeof NONE>) {

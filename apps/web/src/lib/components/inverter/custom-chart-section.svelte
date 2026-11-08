@@ -7,6 +7,7 @@
 	import ChartEmptyState from './_shared/chart-empty-state.svelte';
 	import ChartAdminDialogs from './_shared/chart-admin-dialogs.svelte';
 	import { useAppSession } from '$lib/session';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { customCharts } from '$lib/inverter/custom-charts.svelte';
 	import type { CustomChart } from '$lib/inverter/custom-chart';
 	import type { HistoryRange } from '$lib/inverter/ranges';
@@ -25,8 +26,11 @@
 	const session = useAppSession();
 	const isAdmin = $derived($session.data?.user.admin === true);
 
-	// Load saved charts once (idempotent).
-	customCharts.start();
+	// Load saved charts once (idempotent), and only from a core that serves them.
+	const served = $derived(coreCapabilities.has('customCharts'));
+	$effect(() => {
+		if (served) customCharts.start();
+	});
 
 	let editorOpen = $state(false);
 	let editing = $state<CustomChart | null>(null);
@@ -58,7 +62,7 @@
 
 	const charts = $derived(customCharts.charts);
 	// Hide the whole section for non-admins when there's nothing saved yet.
-	const show = $derived(isAdmin || charts.length > 0);
+	const show = $derived(served && (isAdmin || charts.length > 0));
 	const isEmpty = $derived(charts.length === 0);
 </script>
 

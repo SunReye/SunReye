@@ -7,8 +7,8 @@
 	import ArrowLineDown from 'phosphor-svelte/lib/ArrowLineDown';
 	import type { CanonicalRole, ManifestMetric } from '$lib/inverter/types';
 	import { inverter } from '$lib/inverter/store.svelte';
-	import { api } from '$lib/api';
-	import { payloadOrNull } from '$lib/api-payload';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
+	import { fetchCostToday, type CostToday } from '$lib/engine-only';
 	import * as m from '$lib/paraglide/messages';
 	import EnergyDetailDialog from './energy-detail-dialog.svelte';
 	import EnergyHeadline from './_shared/energy-headline.svelte';
@@ -32,31 +32,23 @@
 	const CARD_CLASS =
 		'flex w-full flex-col gap-2 rounded-xl border border-border/60 bg-card p-3 text-left transition-colors hover:border-border hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4';
 
-	// The slice of /api/cost?range=today the cards render: money that flowed
-	// through the meter plus the two ratio KPIs the server already derives.
-	type CostToday = {
-		currency: string;
-		importCost: number;
-		exportEarnings: number;
-		/** Value of self-consumed solar: (load − import) priced at the grid rate. */
-		solarSavings: number;
-		/** (load − import) / load — autarky. */
-		selfSufficiency: number | null;
-		/** (production − export) / production. */
-		selfConsumption: number | null;
-	};
-
 	let cost = $state<CostToday | null>(null);
 
 	// The kWh headlines stream live over the WebSocket; the €/% figures come
 	// from a rollup query, so poll once a minute (cheap, feels live on a wall
 	// display) and resync when the tab becomes visible again. Failures (e.g.
-	// tariff endpoint unavailable) simply leave the KPI rows off.
+	// tariff endpoint unavailable) simply leave the KPI rows off. A core that
+	// serves no prices and costs is never asked, and shows no KPI rows at all.
+	const priced = $derived(coreCapabilities.has('pricesAndCosts'));
 	$effect(() => {
+		if (!priced) {
+			cost = null;
+			return;
+		}
 		let stop = false;
 		const load = async () => {
-			const { data } = await api.api.cost.get({ query: { range: 'today', ...source.query } });
-			if (!stop) cost = payloadOrNull<CostToday>(data);
+			const next = await fetchCostToday(source.query);
+			if (!stop) cost = next;
 		};
 		load();
 		const id = setInterval(load, 60 * 1000);
@@ -197,7 +189,7 @@
 
 	/** Everything one card renders, so its markup stays branch-free. */
 	function decorate(t: Tile) {
-		const slots = SLOTS[t.role] ?? NO_SLOTS;
+		const slots = priced ? (SLOTS[t.role] ?? NO_SLOTS) : NO_SLOTS;
 		const kpis = cost ? kpisFor(t.role, cost) : null;
 		return {
 			...t,

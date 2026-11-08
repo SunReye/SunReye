@@ -1,6 +1,7 @@
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { toast } from "svelte-sonner";
-import { api } from "$lib/api";
+import { coreCapabilities } from "$lib/capabilities.svelte";
+import { postSetting } from "$lib/engine-only";
 import { inverter } from "$lib/inverter/store.svelte";
 import * as m from "$lib/paraglide/messages";
 import type { ManifestMetric } from "$lib/inverter/types";
@@ -103,11 +104,12 @@ export class TouController {
   }
 
   async write(key: string, value: number, label: string): Promise<void> {
+    // Monitoring only (ADR 0005): a core that serves no controls takes no schedule edit.
+    if (!coreCapabilities.has("controls")) return;
     this.#busy.add(key);
     this.#pending.set(key, value);
     try {
-      const { error } = await api.api.commands.setting.post({ key, value });
-      if (error) throw error;
+      if (!(await postSetting(key, value))) throw new Error("setting refused");
       toast.success(`${label} → ${value}`);
     } catch {
       toast.error(m.tou_toast_update_failed({ label }));

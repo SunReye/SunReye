@@ -757,6 +757,8 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         pvAndBattery: true,
         pricesAndCosts: options.pricesAndCosts ?? false,
         statisticsHeatmap: false,
+        evccCommands: true,
+        customCharts: true,
       });
     }
     if (at("kiosk")) return json(route, { enabled: options.kiosk ?? false });

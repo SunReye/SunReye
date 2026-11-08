@@ -34,6 +34,8 @@ const CORE = {
   pvAndBattery: false,
   pricesAndCosts: false,
   statisticsHeatmap: false,
+  evccCommands: false,
+  customCharts: false,
 };
 
 const connection = (id: number, name: string, port: number): Connection => ({

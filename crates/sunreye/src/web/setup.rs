@@ -49,6 +49,10 @@ pub struct Capabilities {
     pub prices_and_costs: bool,
     /// The statistics page's hour-by-weekday heatmap of the picked window.
     pub statistics_heatmap: bool,
+    /// The dashboard's EVCC charge mode and limit commands, which write to EVCC.
+    pub evcc_commands: bool,
+    /// User-defined charts on the history page, saved server-side.
+    pub custom_charts: bool,
 }
 
 impl Capabilities {
@@ -64,6 +68,8 @@ impl Capabilities {
         pv_and_battery: false,
         prices_and_costs: false,
         statistics_heatmap: false,
+        evcc_commands: false,
+        custom_charts: false,
     };
 }
 

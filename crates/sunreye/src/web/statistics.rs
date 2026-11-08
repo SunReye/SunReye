@@ -12,9 +12,11 @@ use serde::Deserialize;
 use super::history::{Source, source};
 use super::rollup::{instant, non_empty};
 use super::{ApiError, ApiQuery, ErrorBody};
+use crate::live::{StatisticsFrame, statistics_frame};
 use crate::plant_zone;
 use crate::rollup::Tier;
 use crate::run::Core;
+use crate::samples::MINUTE_MS;
 use crate::statistics::{self, Cut, Period, PeriodEnergy, Rises, Roles, Source as Counter, View};
 use crate::store::{BucketWindow, StoreError};
 
@@ -151,14 +153,46 @@ pub async fn energy_series(
     refuse_wide(view, from, to)?;
     let zone = plant_zone::plant_zone(&core.store).await?;
     let wanted = non_empty(query.source.as_deref()).or(non_empty(query.inverter_id.as_deref()));
-    let members = members(&core, wanted).await?;
-    let roles = roles(&core, &members).await?;
-    let read = Read { core: &core, members: &members, zone: &zone, view, from, to };
+    let cut = Cut { period, zone: &zone, from, to };
+    Ok(Json(energy(&core, wanted, view, &cut).await?))
+}
+
+/// The energy of each period of `cut`, read from `view`'s tier of `wanted`'s members.
+async fn energy(
+    core: &Core,
+    wanted: Option<&str>,
+    view: View,
+    cut: &Cut<'_>,
+) -> Result<Vec<PeriodEnergy>, StoreError> {
+    let members = members(core, wanted).await?;
+    let roles = roles(core, &members).await?;
+    let read = Read { core, members: &members, zone: cut.zone, view, from: cut.from, to: cut.to };
     let mut rises = Vec::new();
     for counter in statistics::sources(&roles, view) {
         rises.extend(read.rises(&counter).await?.into_iter().map(|member| (counter.field, member)));
     }
     let buckets = statistics::totals_by_bucket(rises);
-    let cut = Cut { period, zone: &zone, from, to };
-    Ok(Json(statistics::energy_series(&cut, &buckets, !statistics::meters_load(&roles))))
+    Ok(statistics::energy_series(cut, &buckets, !statistics::meters_load(&roles)))
+}
+
+/// The `statistics` frame of today's figures for the default source, as `GET /api/energy/series` answers the
+/// plant day; none when `minute` lies outside today, so a rollup of another day publishes nothing.
+pub(crate) async fn today_frame(core: &Core, minute: i64) -> Result<Option<StatisticsFrame>, StoreError> {
+    let zone = plant_zone::plant_zone(&core.store).await?;
+    let now_ms = core.now_ms();
+    let Some(day) = plant_day(&zone, now_ms) else { return Ok(None) };
+    let at = Timestamp::from_millisecond(minute * MINUTE_MS).unwrap_or(Timestamp::MIN);
+    if !(day.0..day.1).contains(&at) {
+        return Ok(None);
+    }
+    let cut = Cut { period: Period::Day, zone: &zone, from: day.0, to: day.1 };
+    let energy = energy(core, None, View::Hour, &cut).await?;
+    Ok(energy.first().map(|today| StatisticsFrame(statistics_frame(now_ms, day, today).into())))
+}
+
+/// The plant day holding `at_ms`, as `[start, next start)`.
+fn plant_day(zone: &TimeZone, at_ms: i64) -> Option<(Timestamp, Timestamp)> {
+    let start = Timestamp::from_millisecond(at_ms).ok()?.to_zoned(zone.clone()).start_of_day().ok()?;
+    let next = start.tomorrow().ok()?.start_of_day().ok()?;
+    Some((start.timestamp(), next.timestamp()))
 }
