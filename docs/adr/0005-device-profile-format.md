@@ -32,7 +32,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Write side.** A setting is a recipe (ADR 7). Admitted step kinds: `write` (function code 6 or 16), `write-block`, `rmw` (mask), `unlock` with `finally` steps, `precondition`, `activate` (values, then an enable field last), `delay`, `snapshot-toggle` (the owner's Deye discharge lock) and `mqtt` publish. Live-control points are declared now: expiring setpoints with their revert time, heartbeat registers with their interval, and fallback values (SunSpec 123 and 704, Sungrow 13080, SolarEdge F310, Victron's 60 s rule). Only a controller under a lease may use them (ADR 7); the lint rejects them as admin settings. Not admitted yet: a commit register with status (SolarEdge only), function codes 5 and 23, SML, Speedwire.
 
-**Official profiles.** A profile is official when it is signed (ADR 8) and a capture of a real device replays in `sim` and passes its tests. Each writable setting carries `verified: true` only once its write was checked on real hardware. An unverified setting stays off until an admin enables it, as in a community profile.
+**Official profiles.** A profile is official when it is signed (ADR 8) and a capture of a real device, recorded by `sunreye capture` (ADR 6), replays in `sim` and passes its tests. Each writable setting carries `verified: true` only once its write was checked on real hardware. An unverified setting stays off until an admin enables it, as in a community profile.
 
 ### Evidence for admitted features
 
