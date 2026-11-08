@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import pkg from "../../package.json";
 import { renderCoreApiTypes, TYPES_FILE } from "../../scripts/gen-core-api";
 
 // mock-hygiene-ignore-next-line -- SvelteKit virtual module: no real module exists under bun test. Server-side while the client loads, flipped to the browser per case.
@@ -27,6 +28,7 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = ((input: unknown, init?: RequestInit) =>
   answer(input, init)) as unknown as typeof fetch;
 const { core } = await import("./core-api");
+const { refused } = await import("./core-by-path");
 
 /** One request through the real client, answered with `status` and `body`. */
 async function send(status: number, body = "{}", path = "/api/probe") {
@@ -162,4 +164,33 @@ test("the client sends the session cookie", async () => {
   };
   await core.GET("/api/probe" as never);
   expect(init?.credentials).toBe("include");
+});
+
+describe("refused", () => {
+  test("an answer with an error body is refused, whatever the body", () => {
+    expect(refused({ error: { error: "no" } })).toBe(true);
+    // openapi-fetch reads an empty error body as "": falsy, still a refusal.
+    expect(refused({ error: "" })).toBe(true);
+    expect(refused({ error: null })).toBe(true);
+  });
+
+  test("a non-2xx response is refused even with no error body", () => {
+    expect(refused({ response: { ok: false } as Response })).toBe(true);
+  });
+
+  test("a 2xx answer, or one with nothing to read, is not", () => {
+    expect(refused({ response: { ok: true } as Response })).toBe(false);
+    expect(refused({})).toBe(false);
+  });
+});
+
+const declared = (): string[] =>
+  [pkg.dependencies, pkg.devDependencies, (pkg as { peerDependencies?: object }).peerDependencies]
+    .flatMap((group) => Object.keys(group ?? {}))
+    .sort();
+
+// The SPA talks to the Rust core over its OpenAPI client and a plain WebSocket: the Elysia
+// client and the server package it types against are gone, and accounts are the core's own.
+test.each(["@elysia/eden", "server", "better-auth"])("apps/web does not depend on %s", (name) => {
+  expect(declared()).not.toContain(name);
 });
