@@ -19,7 +19,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
 
-**Audit.** Every attempt is appended to a write log: time, device, setting, value before, value requested, outcome, failing step, actor. It is kept long and not rolled up.
+**Audit.** Every attempt is appended to a write log: time, device, setting, value before, value requested, outcome, failing step, actor, and `via`: the trusted device key a remote write came through (ADR 16). It is kept long and not rolled up.
 
 **Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped.
 

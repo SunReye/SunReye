@@ -1,12 +1,14 @@
 # 16. Cloud relay
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08): design accepted, build deferred
 
 ## Context
 
 Homeowners who cannot set up a VPN want an app, and businesses that sold the software want to watch many installs. The operator must not be able to read a home's data, no home should open an inbound port, and nobody wants to handle passwords.
 
 ## Decision
+
+**First release.** Only the seams ship: the install id, the core's static Noise key, the trusted-keys table, the `via` field on the write log (ADR 7) and a transport interface in the SPA's API client (ADR 11). No `apps/cloud`, tunnel or pairing code exists until the build starts.
 
 **Where.** `apps/cloud` in this monorepo, TypeScript on Cloudflare Workers. One Durable Object per install id is the rendezvous, using WebSocket hibernation so an idle connection costs little. The cloud account is optional; the core's local login (ADR 9) works without it.
 
