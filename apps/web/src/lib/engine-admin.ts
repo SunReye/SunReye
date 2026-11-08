@@ -1,14 +1,12 @@
-import { api } from "$lib/api";
+import { core } from "$lib/core-api";
+import { byPath, refused } from "$lib/core-by-path";
 
-/**
- * Endpoints only the 3.x engine serves, still on Eden. The Rust core serves neither (it reports
- * `restart` absent in its capabilities), so these leave with the engine.
- */
+/** The restart route only the 3.x engine serves (the Rust core reports `restart` absent), so it leaves with the engine. */
 
 /** Whether the server has answered again after a restart. */
 async function serverIsUp(): Promise<boolean> {
   try {
-    const { data } = await api.api["setup-status"].get();
+    const { data } = await core.GET("/api/setup-status");
     return data != null;
   } catch {
     return false;
@@ -23,8 +21,7 @@ async function serverIsUp(): Promise<boolean> {
  * success the page reloads and the promise never settles.
  */
 export async function restartServer(timeoutMs = 30_000): Promise<boolean> {
-  const { error } = await api.api.admin.restart.post();
-  if (error) return false;
+  if (refused(await byPath.POST("/api/admin/restart"))) return false;
   // Let it actually go down before polling, so we don't see the pre-exit server.
   await new Promise((r) => setTimeout(r, 1200));
   const deadline = Date.now() + timeoutMs;

@@ -5,11 +5,6 @@ import { render } from "vitest-browser-svelte";
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
-// Eden must stay out of the tile: a call through it would reach a real network.
-vi.mock("$lib/api", () => ({ api: new Proxy({}, { get: () => assertNoEden }) }));
-function assertNoEden(): never {
-  throw new Error("the weather tile reached Eden");
-}
 
 const { default: WeatherTile } = await import("./weather-tile.svelte");
 

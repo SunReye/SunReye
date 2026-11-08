@@ -1,4 +1,4 @@
-import { api } from "$lib/api";
+import { byPath, refused } from "$lib/core-by-path";
 import { historyIncomplete } from "$lib/history-incomplete.svelte";
 import { type ConfirmResult, refusalOf } from "$lib/migration-submit";
 
@@ -62,7 +62,7 @@ class MigrationStore {
 
   /** Read it again — after a write, or while a backfill is running. */
   async refresh(): Promise<void> {
-    const { data } = await api.api.migration.status.get();
+    const { data } = await byPath.GET("/api/migration/status");
     if (data) this.status = data as MigrationStatus;
   }
 
@@ -75,16 +75,15 @@ class MigrationStore {
    * the log of the one write that cannot be undone.
    */
   async confirm(input: ConfirmNames): Promise<ConfirmResult> {
-    const { error } = await api.api.migration.names.post(input);
-    if (error) return refusalOf(error);
+    const answer = await byPath.POST("/api/migration/names", { body: input });
+    if (refused(answer)) return refusalOf(answer.error, answer.response?.status);
     await this.refresh();
     return { ok: true };
   }
 
   /** Run the deferred backfill now. Single-flight on the server. */
   async runBackfill(): Promise<boolean> {
-    const { error } = await api.api.migration.backfill.post();
-    if (error) return false;
+    if (refused(await byPath.POST("/api/migration/backfill"))) return false;
     await this.refresh();
     // The horizon is about to move, so the refusals already collected are stale.
     historyIncomplete.clear();
@@ -93,8 +92,7 @@ class MigrationStore {
 
   /** Put the banner away for a week. It comes back — see the server's SNOOZE_DAYS. */
   async snooze(): Promise<void> {
-    const { error } = await api.api.migration.notice.snooze.post();
-    if (!error) await this.refresh();
+    if (!refused(await byPath.POST("/api/migration/notice/snooze"))) await this.refresh();
   }
 }
 

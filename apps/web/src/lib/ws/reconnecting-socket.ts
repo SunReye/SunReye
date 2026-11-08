@@ -1,4 +1,4 @@
-/** Minimal shape of an Eden Treaty WS subscription this helper drives. */
+/** Minimal shape of the socket this helper drives (see `browser-socket.ts`). */
 export interface SocketLike {
   subscribe(handler: (message: { data: unknown }) => void): void;
   on(event: "open" | "close" | "error", handler: () => void): void;

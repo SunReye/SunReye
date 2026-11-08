@@ -45,7 +45,7 @@ function fieldErrors(value: unknown): Record<string, string> {
 }
 
 /**
- * What a refused submit means, from whatever the client hands back.
+ * What a refused submit means, from the error body and status the client hands back.
  *
  * FIELD ERRORS WIN over the summary message. A 400 names the fields, and showing
  * the sentence instead would put the reason somewhere other than beside the input
@@ -56,10 +56,13 @@ function fieldErrors(value: unknown): Record<string, string> {
  * is the whole answer. Anything with neither degrades to the status code, which is
  * ugly but is at least a thing the operator can quote.
  */
-export function refusalOf(error: { status?: unknown; value?: unknown }): ConfirmResult {
-  const body = error.value as { errors?: unknown; message?: unknown } | null;
+export function refusalOf(error: unknown, status: number | undefined): ConfirmResult {
+  const body = (typeof error === "object" ? error : null) as {
+    errors?: unknown;
+    message?: unknown;
+  } | null;
   const errors = fieldErrors(body?.errors);
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   const message = body?.message;
-  return { ok: false, message: typeof message === "string" ? message : String(error.status) };
+  return { ok: false, message: typeof message === "string" ? message : String(status) };
 }

@@ -9,8 +9,9 @@
 
 import { browser } from "$app/environment";
 import type { WsTopic, WsTopicPayloads } from "@SunReye/contracts/ws";
-import { api } from "$lib/api";
+import { serverUrl } from "$lib/server-url";
 import { LiveBus } from "./bus";
+import { coreSocketUrl, openSocket } from "./browser-socket";
 
 class LiveBusStore {
   /** The app's single "are we live?" answer. */
@@ -26,8 +27,7 @@ class LiveBusStore {
   cadenceMs = $state(1000);
 
   #bus = new LiveBus({
-    // Eden derives this from the server's `.ws("/ws", …)` route.
-    create: () => api.ws.subscribe(),
+    create: () => openSocket(coreSocketUrl(serverUrl)),
     onConnected: (connected) => {
       this.connected = connected;
     },

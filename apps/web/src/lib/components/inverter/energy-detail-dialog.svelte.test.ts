@@ -6,10 +6,6 @@ import EnergyDetailDialogFixture from "./energy-detail-dialog.fixture.svelte";
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
-vi.mock("$lib/api", () => ({ api: new Proxy({}, { get: () => assertNoEden }) }));
-function assertNoEden(): never {
-  throw new Error("the energy detail dialog reached Eden");
-}
 
 afterEach(() => get.mockReset());
 

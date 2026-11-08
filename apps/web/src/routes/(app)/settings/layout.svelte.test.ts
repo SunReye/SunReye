@@ -5,10 +5,6 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-// The 4.0 build has no Elysia: any call to it, `/api/status` poll included, is a dead request.
-vi.mock("$lib/api", () => ({
-  api: new Proxy({}, { get: () => expect.fail("the settings layout asked the Elysia API") }),
-}));
 const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));

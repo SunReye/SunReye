@@ -457,5 +457,3 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
-
-export type App = typeof app;

@@ -18,8 +18,8 @@
  *
  * ## Why it is recognised in ONE place
  *
- * Retrofitting ten call sites would leave the eleventh silent. `$lib/api.ts`'s
- * `onResponse` hook sees every response the typed client makes, so the refusal is
+ * Retrofitting ten call sites would leave the eleventh silent. `$lib/core-api.ts`'s
+ * middleware sees every response the typed client makes, so the refusal is
  * noticed there and surfaced by the app-wide banner — the same slot the migration
  * notice uses. That is what "solve it once, for both causes" means here: one
  * detector, one renderer, and no call site has to opt in.

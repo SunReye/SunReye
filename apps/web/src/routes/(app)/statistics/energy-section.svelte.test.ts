@@ -6,7 +6,6 @@ import { inverter } from "$lib/inverter/store.svelte";
 import Fixture from "./energy-section.fixture.svelte";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-vi.mock("$lib/api", () => ({ api: {} }));
 const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
 

@@ -1,5 +1,5 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 
 /**
  * Statistics-page layout preferences. Mirrors the server's
@@ -80,7 +80,7 @@ class StatisticsPrefsStore {
    * share the same in-flight request and all resolve with the config set.
    */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.settings.statistics.get().then(({ data }) => {
+    this.#loadPromise ??= byPath.GET("/api/settings/statistics").then(({ data }) => {
       if (data) this.config = data as StatisticsPrefs;
     });
     return this.#loadPromise;
@@ -88,9 +88,9 @@ class StatisticsPrefsStore {
 
   /** Persist a new config; on success the reactive sets update in place. */
   async save(next: StatisticsPrefs): Promise<boolean> {
-    const { data, error } = await api.api.settings.statistics.put(next);
-    if (error) return false;
-    this.config = payloadOrNull<StatisticsPrefs>(data) ?? next;
+    const answer = await byPath.PUT("/api/settings/statistics", { body: next });
+    if (refused(answer)) return false;
+    this.config = payloadOrNull<StatisticsPrefs>(answer.data) ?? next;
     return true;
   }
 }

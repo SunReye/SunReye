@@ -1,5 +1,5 @@
-import { api } from "$lib/api";
 import { payloadOrNull } from "$lib/api-payload";
+import { byPath, refused } from "$lib/core-by-path";
 
 /** `timeZone` sentinel meaning "follow the viewer's system zone". */
 export const TIME_ZONE_AUTO = "auto";
@@ -88,7 +88,7 @@ class DisplayStore {
    * form) share the same in-flight request and all resolve with config set.
    */
   load(): Promise<void> {
-    this.#loadPromise ??= api.api.settings.display.get().then(({ data }) => {
+    this.#loadPromise ??= byPath.GET("/api/settings/display").then(({ data }) => {
       if (data) this.config = data as DisplayConfig;
     });
     return this.#loadPromise;
@@ -96,9 +96,9 @@ class DisplayStore {
 
   /** Persist a new config; on success the reactive formatters update in place. */
   async save(next: DisplayConfig): Promise<boolean> {
-    const { data, error } = await api.api.settings.display.put(next);
-    if (error) return false;
-    this.config = payloadOrNull<DisplayConfig>(data) ?? next;
+    const answer = await byPath.PUT("/api/settings/display", { body: next });
+    if (refused(answer)) return false;
+    this.config = payloadOrNull<DisplayConfig>(answer.data) ?? next;
     return true;
   }
 }

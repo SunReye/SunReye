@@ -6,8 +6,6 @@ import type { components } from "$lib/core-api.gen";
 import * as m from "$lib/paraglide/messages";
 
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
-// The form is on the core client: an Eden call would hit this and throw.
-vi.mock("$lib/api", () => ({ api: {} }));
 const get = vi.fn();
 const put = vi.fn();
 vi.mock("$lib/core-api", () => ({ core: { GET: get, PUT: put } }));
