@@ -14,6 +14,8 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Settings.** `PUT /api/v1/devices/{id}/settings/{key}` returns the outcome and the failing step (ADR 7).
 
+**Transport.** Plain HTTP. TLS is a documented reverse-proxy job.
+
 **Auth.** The first run sets the admin password; there is no registration. A memory-hard hash (Argon2id, parameters tuned on the target hardware). The SPA uses an httpOnly cookie session; integrations use bearer tokens scoped `read` or `admin`. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin.
 
 **Live.** SSE at `/api/v1/live`: a full snapshot on connect, then deltas only, no replay. One JSON object per tick, serialised once and shared by all clients. Live reads memory, never SQLite.
