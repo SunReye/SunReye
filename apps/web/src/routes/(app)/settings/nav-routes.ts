@@ -103,22 +103,6 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     subtitleKey: "settings_sub_display",
   },
   {
-    id: "tariff",
-    href: "/settings/tariff",
-    group: "preferences",
-    titleKey: "settings_tab_tariff",
-    subtitleKey: "settings_sub_tariff",
-    capability: "pricesAndCosts",
-  },
-  {
-    id: "prices",
-    href: "/settings/prices",
-    group: "preferences",
-    titleKey: "settings_tab_prices",
-    subtitleKey: "settings_sub_prices",
-    capability: "pricesAndCosts",
-  },
-  {
     id: "weather",
     href: "/settings/weather",
     group: "preferences",
@@ -131,14 +115,6 @@ export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
     group: "admin",
     titleKey: "settings_tab_access",
     subtitleKey: "settings_sub_access",
-  },
-  {
-    id: "automations",
-    href: "/settings/automations",
-    group: "admin",
-    titleKey: "settings_tab_automations",
-    subtitleKey: "settings_sub_automations",
-    capability: "automations",
   },
   {
     id: "profiles",

@@ -88,7 +88,6 @@ export const COVERAGE_EXEMPT: ReadonlyArray<
       "apps/web/src/lib/components/ui/chart/chart-house-style.ts",
       "apps/web/src/lib/components/ui/sidebar/constants.ts",
       "apps/web/src/lib/statistics/sections.ts",
-      "apps/web/src/lib/tariff/draft.ts",
       "packages/env/src/web.ts",
     ],
   },

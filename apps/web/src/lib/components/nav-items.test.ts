@@ -6,7 +6,6 @@ describe("navItemIds", () => {
     isAdmin: false,
     offers: () => true,
     controlCount: 0,
-    automationsEnabled: false,
   } as const;
 
   test("an anonymous or non-admin viewer sees only the read-only areas", () => {
@@ -22,29 +21,29 @@ describe("navItemIds", () => {
     expect(navItemIds({ ...base, isAdmin: false, controlCount: 9 })).not.toContain("controls");
   });
 
-  test("automations stay out of the nav until the master gate is on", () => {
-    expect(navItemIds({ ...base, isAdmin: true, automationsEnabled: false })).not.toContain(
-      "automations",
-    );
-    expect(navItemIds({ ...base, isAdmin: true, automationsEnabled: true })).toContain(
-      "automations",
-    );
+  test("automations appear for an admin, and only when the core serves them", () => {
+    expect(navItemIds({ ...base, isAdmin: true })).toContain("automations");
+    expect(
+      navItemIds({ ...base, isAdmin: true, offers: (a) => a !== "automations" }),
+    ).not.toContain("automations");
   });
 
-  test("an enabled gate still does not expose automations to a non-admin", () => {
-    expect(navItemIds({ ...base, isAdmin: false, automationsEnabled: true })).not.toContain(
-      "automations",
-    );
+  test("automations are never offered to a non-admin", () => {
+    expect(navItemIds({ ...base, isAdmin: false })).not.toContain("automations");
   });
 
   test("order is stable: automations last, after controls", () => {
-    expect(
-      navItemIds({ ...base, isAdmin: true, controlCount: 2, automationsEnabled: true }),
-    ).toEqual(["overview", "history", "statistics", "controls", "automations"]);
+    expect(navItemIds({ ...base, isAdmin: true, controlCount: 2 })).toEqual([
+      "overview",
+      "history",
+      "statistics",
+      "controls",
+      "automations",
+    ]);
   });
 
   test("an area the engine does not serve is offered to nobody", () => {
-    const everything = { isAdmin: true, controlCount: 2, automationsEnabled: true };
+    const everything = { isAdmin: true, controlCount: 2 };
     const without = (area: string) => navItemIds({ ...everything, offers: (a) => a !== area });
     expect(without("history")).not.toContain("history");
     expect(without("statistics")).not.toContain("statistics");
@@ -54,8 +53,8 @@ describe("navItemIds", () => {
   });
 
   test("an engine serving no area still leaves the overview", () => {
-    expect(
-      navItemIds({ isAdmin: true, offers: () => false, controlCount: 2, automationsEnabled: true }),
-    ).toEqual(["overview"]);
+    expect(navItemIds({ isAdmin: true, offers: () => false, controlCount: 2 })).toEqual([
+      "overview",
+    ]);
   });
 });

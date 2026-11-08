@@ -348,11 +348,9 @@ const ROUTES: readonly SmokeRoute[] = [
     file: "(app)/automations/peak-shaving/+page.svelte",
     h1: "PV peak shaving & forecast charging",
     // The status card degrades gracefully on a null stream, so it cannot be the
-    // probe. The form's switch only exists once `/api/settings/automations`
-    // resolved AND the master flag is on.
+    // probe; the decision charts below are.
     surface: async (page) => {
       await expect(page.getByRole("link", { name: "All automations" })).toBeVisible();
-      await switchNamed(page, "Enable peak shaving");
       // The decision charts are the OPTIMIZER'S STORED SERIES rendered — read
       // from `/api/history/rollup` under the `optimizer` slug, not from the
       // socket frame. A page that never issued that request, or issued it
@@ -479,28 +477,6 @@ const ROUTES: readonly SmokeRoute[] = [
     },
   },
   {
-    file: "(app)/settings/tariff/+page.svelte",
-    open: { pricesAndCosts: true },
-    reload: true,
-    h1: "Tariff",
-    surface: async (page) => {
-      await heading(page, "General");
-      await expect(page.getByLabel("Currency")).toHaveValue("EUR");
-    },
-  },
-  {
-    file: "(app)/settings/prices/+page.svelte",
-    open: { pricesAndCosts: true },
-    h1: "Day-ahead prices",
-    // The zone picker's items come from the SELECTED PROVIDER's zone list, so a
-    // populated zone trigger proves `/api/prices/providers` landed too — a
-    // heading assertion would pass against an empty provider list.
-    surface: async (page) => {
-      await switchNamed(page, "Fetch day-ahead prices");
-      await picker(page, "DE-LU");
-    },
-  },
-  {
     file: "(app)/settings/weather/+page.svelte",
     h1: "Weather & Forecast",
     surface: async (page) => {
@@ -515,14 +491,6 @@ const ROUTES: readonly SmokeRoute[] = [
     // so the switch is the payload proof.
     surface: async (page) => {
       await switchNamed(page, /Kiosk view/);
-    },
-  },
-  {
-    file: "(app)/settings/automations/+page.svelte",
-    h1: "Automations",
-    // Deliberately NOT the section heading: it is the same string as the h1.
-    surface: async (page) => {
-      await switchNamed(page, "Enable automations");
     },
   },
   {

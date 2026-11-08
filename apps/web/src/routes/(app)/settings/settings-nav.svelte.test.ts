@@ -66,10 +66,10 @@ describe("the settings rail", () => {
   });
 
   test("marks the panel being viewed as the current page", async () => {
-    render(SettingsNav, { isAdmin: true, current: "/settings/tariff" });
+    render(SettingsNav, { isAdmin: true, current: "/settings/display" });
     await expect.element(rail()).toBeVisible();
     const current = rail().element().querySelectorAll("a[aria-current=page]");
-    expect([...current].map((a) => a.textContent?.trim())).toEqual([m.settings_tab_tariff()]);
+    expect([...current].map((a) => a.textContent?.trim())).toEqual([m.settings_tab_display()]);
   });
 
   test("a viewer who is not an admin is offered no admin panel", async () => {
@@ -86,9 +86,6 @@ describe("the settings rail", () => {
 
 /** Tab label -> the capability that gates it. */
 const GATED = [
-  ["tariff", "pricesAndCosts"],
-  ["prices", "pricesAndCosts"],
-  ["automations", "automations"],
   ["logs", "logging"],
   ["danger", "dataReset"],
 ] as const;
@@ -118,7 +115,7 @@ describe("the settings rail follows the core's capabilities", () => {
     render(SettingsNav, { isAdmin: true, current: "/settings/devices" });
     await expect.element(rail()).toBeVisible();
     expect(tab("logs").elements()).toHaveLength(1);
-    for (const id of ["tariff", "prices", "automations", "danger"]) {
+    for (const id of ["danger"]) {
       expect(tab(id).elements()).toHaveLength(0);
     }
   });

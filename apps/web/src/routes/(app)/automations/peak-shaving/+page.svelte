@@ -2,7 +2,6 @@
 	import { fly } from 'svelte/transition';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import CaretLeftIcon from 'phosphor-svelte/lib/CaretLeft';
-	import PeakShavingForm from '$lib/components/automations/peak-shaving-form.svelte';
 	import PeakShavingStatus from '$lib/components/automations/peak-shaving-status.svelte';
 	import DecisionCharts from '$lib/components/automations/decision-charts.svelte';
 	import DecisionPlan from '$lib/components/automations/decision-plan.svelte';
@@ -14,9 +13,8 @@
 	import PageShell from '$lib/components/layout/page-shell.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	// One topic lease feeds the LIVE half of the page: the status card, the
-	// form's blocker gating and the plan projection all update the moment the
-	// engine ticks. The socket itself is the app shell's.
+	// One topic lease feeds the page: the status card and the plan projection
+	// update the moment the engine ticks. The socket itself is the app shell's.
 	//
 	// The decision history is not on that topic any more. The optimizer is a
 	// device, so what it decided is read from `/api/history/rollup` under the
@@ -57,31 +55,15 @@
 		/>
 	{/snippet}
 
-	<!-- Widescreen: configuration on the left, the live picture on the right.
-	     The status card belongs to the live picture, not to the configuration —
-	     it was only ever in the left column because that column happened to be
-	     first, and stacking put a screen and a half of knobs between the reader
-	     and the plan those knobs produce. Below xl the order classes put the live
-	     column first, so a phone reads status → plan → charts → settings. -->
-	<div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-		<div class="order-2 flex min-w-0 flex-col gap-6 xl:order-1">
-			<div in:fly={rise(3)}>
-				<PeakShavingForm {status} />
-			</div>
+	<div class="flex min-w-0 flex-col gap-6">
+		<div in:fly={rise(0)}>
+			<PeakShavingStatus {status} />
 		</div>
-		<div class="order-1 flex min-w-0 flex-col gap-6 xl:order-2">
-			<div in:fly={rise(0)}>
-				<PeakShavingStatus {status} />
-			</div>
-			<div in:fly={rise(1)}>
-				<DecisionPlan plans={automationStream.plan} loaded={automationStream.loaded} />
-			</div>
-			<div in:fly={rise(2)}>
-				<DecisionCharts
-					loaded={automationStream.loaded}
-					lastTickAt={automationStream.lastTickAt}
-				/>
-			</div>
+		<div in:fly={rise(1)}>
+			<DecisionPlan plans={automationStream.plan} loaded={automationStream.loaded} />
+		</div>
+		<div in:fly={rise(2)}>
+			<DecisionCharts loaded={automationStream.loaded} lastTickAt={automationStream.lastTickAt} />
 		</div>
 	</div>
 </PageShell>

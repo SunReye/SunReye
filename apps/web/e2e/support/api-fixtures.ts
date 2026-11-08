@@ -523,70 +523,6 @@ export function spotStats(from: string, to: string): SpotStats {
   };
 }
 
-/**
- * `GET /api/prices/providers` — `spotProviderCatalog()`
- * (`apps/server/src/prices/spot-price-job.ts`), zone lists copied from the two
- * registered providers rather than sampled.
- *
- * The energy-charts list is the upstream's own advertised set
- * (`prices/providers/energy-charts.ts`); a trimmed thirteen-zone version of it
- * shipped here for a while under a comment that called it "the real registry",
- * which is the sort of half-truth that makes a green settings test worthless.
- */
-export const PRICE_PROVIDERS: { id: string; zones: string[]; attribution: string }[] = [
-  {
-    id: "energy-charts",
-    zones: [
-      "AT",
-      "BE",
-      "BG",
-      "CH",
-      "CZ",
-      "DE-LU",
-      "DE-AT-LU",
-      "DK1",
-      "DK2",
-      "EE",
-      "ES",
-      "FI",
-      "FR",
-      "GR",
-      "HR",
-      "HU",
-      "IT-Calabria",
-      "IT-Centre-North",
-      "IT-Centre-South",
-      "IT-North",
-      "IT-SACOAC",
-      "IT-SACODC",
-      "IT-Sardinia",
-      "IT-Sicily",
-      "IT-South",
-      "LT",
-      "LV",
-      "ME",
-      "NL",
-      "NO1",
-      "NO2",
-      "NO3",
-      "NO4",
-      "NO5",
-      "PL",
-      "PT",
-      "RO",
-      "RS",
-      "SE1",
-      "SE2",
-      "SE3",
-      "SE4",
-      "SI",
-      "SK",
-    ],
-    attribution: ATTRIBUTION,
-  },
-  { id: "awattar", zones: ["AT", "DE-LU"], attribution: "Preisdaten: aWATTar" },
-];
-
 // ─── Forecast ───────────────────────────────────────────────────────────────
 
 /** `GET /api/forecast/providers` — the one registered provider. */
@@ -648,29 +584,6 @@ export const STATISTICS_PREFS = {
   energy: { bucket: "day", chartScope: "detail", heatmapField: "load" },
   prices: { windowDays: 90 },
   records: { compareMode: "previous", yoyMetric: "net" },
-};
-
-/** `packages/db/src/tariff.ts` → `defaultTariff`, with a real import price. */
-export const TARIFF = {
-  currency: "EUR",
-  standingChargeMonthly: 12.5,
-  import: {
-    mode: "static",
-    defaultPricePerKwh: 0.31,
-    bands: [],
-    spot: {
-      supplierMarkupPerKwh: 0,
-      gridFeesPerKwh: 0,
-      leviesPerKwh: 0,
-      vatPercent: 0,
-      clampToZero: false,
-    },
-  },
-  export: {
-    mode: "static",
-    feedInPerKwh: 0.082,
-    spot: { marketingModel: "none", managementFeePerKwh: 0 },
-  },
 };
 
 /**
@@ -859,56 +772,6 @@ export const WEATHER_CONFIG = {
     correction: { enabled: true },
   },
 };
-
-/** `packages/db/src/spot-price-config.ts` → `defaultSpotPriceConfig`. */
-export const SPOT_PRICE_CONFIG = { enabled: true, provider: "energy-charts", zone: "DE-LU" };
-
-/**
- * `packages/db/src/automation-config.ts` → `defaultAutomations`, with the master
- * switch ON.
- *
- * Off is the default, and off replaces the whole peak-shaving form with a
- * "turn automations on first" alert — so the shipped default would make every
- * assertion about that page's controls vacuous.
- */
-export function automations() {
-  return {
-    enabled: true,
-    disclaimerAcceptedAt: ago(48 * DAY_MS),
-    peakShaving: {
-      enabled: false,
-      shadowMode: false,
-      mode: "maximize-exports",
-      safetyBufferW: 500,
-      maxChargeA: 100,
-      fallbackChargeA: 50,
-      topBalanceFloorA: 5,
-      nominalBatteryV: 51.2,
-      controlIntervalS: 30,
-      gridFriendly: {
-        minThresholdW: 0,
-        forecastTrustPct: 100,
-        slewWPerMin: 600,
-        chargeSlewAPerMin: 10,
-        reserveForEvDemand: true,
-      },
-      priceAware: {
-        enabled: false,
-        negativeThresholdEurPerMwh: 0,
-        minWindowMinutes: 15,
-        bridgeGapSlots: 1,
-        lookaheadHours: 8,
-        soakFloorW: 0,
-        shapeSoc: true,
-        reserveMarginPct: 5,
-        pullInEv: false,
-        evBoostLimitPct: 10,
-        gridChargeInWindow: false,
-        gridChargeMaxA: 20,
-      },
-    },
-  };
-}
 
 // ─── Profiles ───────────────────────────────────────────────────────────────
 

@@ -874,11 +874,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
       if (options.prices === null) return emptyBody(route);
       return json(route, fixture.spotStats(query.from ?? "", query.to ?? ""));
     }
-    if (at("settings/investment")) {
-      const stored = { totalCost: 14_800, commissionedOn: "2024-05-17" };
-      if (method === "PUT") return json(route, saved(stored, body()));
-      return json(route, stored);
-    }
     if (at("settings/statistics")) {
       if (method === "PUT") return json(route, saved(fixture.STATISTICS_PREFS, body()));
       return json(route, fixture.STATISTICS_PREFS);
@@ -892,14 +887,9 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     if (at("battery/health")) return json(route, fixture.BATTERY_HEALTH);
 
     // ── Prices ──────────────────────────────────────────────────────────────
-    if (at("prices/providers")) return json(route, fixture.PRICE_PROVIDERS);
     if (at("prices")) {
       if (options.prices === null) return emptyBody(route);
       return json(route, fixture.spotPriceView());
-    }
-    if (at("settings/spot-prices")) {
-      if (method === "PUT") return json(route, saved(fixture.SPOT_PRICE_CONFIG, body()));
-      return json(route, fixture.SPOT_PRICE_CONFIG);
     }
 
     // ── Forecast ────────────────────────────────────────────────────────────
@@ -916,10 +906,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         return json(route, { error: role ? "Admin only" : "Not signed in" }, role ? 403 : 401);
       options = { ...options, kiosk: body().enabled === true };
       return json(route, { enabled: options.kiosk });
-    }
-    if (at("settings/tariff")) {
-      if (method === "PUT") return json(route, saved(fixture.TARIFF, body()));
-      return json(route, fixture.TARIFF);
     }
     if (at("settings/inverter/test")) {
       return json(route, {
@@ -954,10 +940,6 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
     if (at("settings/weather")) {
       if (method === "PUT") return json(route, saved(fixture.WEATHER_CONFIG, body()));
       return json(route, fixture.WEATHER_CONFIG);
-    }
-    if (at("settings/automations")) {
-      if (method === "PUT") return json(route, saved(fixture.automations(), body()));
-      return json(route, fixture.automations());
     }
     // Profile sources and imports: what they add shows in `GET /api/profiles`, as on the core.
     if (at("settings/profile-sources")) {
