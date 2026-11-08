@@ -15,6 +15,7 @@ Status: accepted (2026-11-08)
 - A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc and the temperature coefficients of power, voltage and current. The admin enters them; there is no built-in catalogue.
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
+- Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
 - The plant's location (latitude, longitude) is entered at first-run setup.
 
 **Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, at 15-minute resolution for today and two more days. Its task fetches on start and hourly; a handler never fetches. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests.
