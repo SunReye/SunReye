@@ -1,6 +1,6 @@
 # Architecture
 
-Dashed links: designed for, not in the first release (ADR 1).
+Dashed links: designed for, not in the first release (ADR 1). Principles: ADR 19.
 
 ```mermaid
 flowchart TB
