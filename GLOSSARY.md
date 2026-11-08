@@ -68,6 +68,10 @@ _Avoid_: Metric, point, entity
 One decoded value of a role from a device at an instant.
 _Avoid_: Sample, datapoint
 
+**Series**:
+One role at one index, such as `pv.string.power[2]`; an unindexed role is its own series. The key of storage, rollups and history reads.
+_Avoid_: Channel, metric
+
 **Change point**:
 A stored value and the instant it began. History is a series of change points and gaps.
 _Avoid_: Row, sample

@@ -13,7 +13,7 @@ A request handler must never touch a device. Endpoints are fragile: a Solarman s
 - **Setup scan.** First run scans the local network for known endpoints (Modbus ports 502, 1502 and 6607, Solarman loggers), runs the identify probes (ADR 5) to propose a profile and unit id, and asks the homeowner to confirm. Manual entry is the fallback.
 - **Poll groups** and cadence come from the profile, per group.
 - **The unit id belongs to the device** as its device address behind the endpoint: a gateway serves several unit ids on one endpoint. A connection is the endpoint, broker or HTTP host plus its credentials. On the dev plant the same inverter answers unit 0 through a gateway and unit 1 through a Solarman stick, and 0 stays valid. Scan probes the first planned register. Devices with dynamic unit ids (Victron, SMA) are found by scan.
-- **One bus of typed readings:** role, value, unit, timestamp, device. A reading is fixed-size and copyable, with role ids interned. Storage, the live API, integrations and write read-back subscribe. No consumer decodes registers.
+- **One bus of typed readings:** series (role and index), value, unit, timestamp, device. A reading is fixed-size and copyable, with series ids interned. Storage, the live API, integrations and write read-back subscribe. No consumer decodes registers.
 - **Live values** reach the SPA from memory over SSE (ADR 9). SQLite is not on that path.
 
 ## Considered options
