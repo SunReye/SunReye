@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::mqtt::config::publishable;
 use crate::store::{NewConnection, NewDevice, Store, StoreError};
 
 pub const INTERVAL_KEY: &str = "poll.interval_ms";
@@ -275,6 +276,7 @@ impl EvccConfig {
                 self.topic_root.trim().is_empty() || root_length > TOPIC_ROOT_MAX,
                 "Topic root must be 1–120 characters, not blank",
             ),
+            (!publishable(&self.topic_root), "Topic root must be without +, # or NUL"),
             (self.connection_id.is_some_and(|id| id < 1), "Connection id must be positive"),
         ];
         match checks.into_iter().find(|(failed, _)| *failed) {
@@ -556,6 +558,13 @@ mod tests {
                     Err("Topic root must be 1–120 characters, not blank".to_owned()),
                     "{} chars",
                     refused.chars().count()
+                );
+            }
+            for wildcard in ["evcc/#", "+/x", "a#", "#", "+", "ev\0cc"] {
+                assert_eq!(
+                    root(wildcard),
+                    Err("Topic root must be without +, # or NUL".to_owned()),
+                    "{wildcard:?}"
                 );
             }
         }

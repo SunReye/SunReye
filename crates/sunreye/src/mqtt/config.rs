@@ -137,8 +137,8 @@ impl Broker {
     }
 }
 
-/// A topic segment the broker accepts for publishing: no wildcards, no NUL.
-fn publishable(text: &str) -> bool {
+/// Topic text with no wildcards and no NUL: a publish topic or a literal filter prefix.
+pub(crate) fn publishable(text: &str) -> bool {
     !text.is_empty() && !text.contains(['+', '#', '\0'])
 }
 
