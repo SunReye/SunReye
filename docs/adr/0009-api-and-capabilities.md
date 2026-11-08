@@ -8,7 +8,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 ## Decision
 
-**Shape.** REST with JSON under `/api/v1`, described by one OpenAPI document generated from the Rust types and served at `/openapi.json`. The SPA client and its TypeScript types are generated from it. `v1` changes only additively; a break is `v2` beside `v1`. API version, core version and profile schema are three separate numbers. Routes take the plant id (`/api/v1/plants/{plant}/…`); the first release has one plant.
+**Shape.** REST with JSON under `/api/v1`, described by one OpenAPI document generated from the Rust types and served at `/openapi.json`. The SPA client and its TypeScript types are generated from it. `v1` changes only additively; a break is `v2` beside `v1`. API version, core version and profile schema are three separate numbers.
 
 **Capabilities.** `GET /api/v1/capabilities` returns the core version, the schema range, transports, bindings, step kinds, enabled features and per-device capabilities derived from roles. It comes from the same table the WASM exposes. The SPA renders from it and never branches on a brand or profile name.
 
