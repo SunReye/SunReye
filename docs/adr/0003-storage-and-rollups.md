@@ -36,7 +36,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Retention.** Hourly and daily rollups are kept forever. Change-point retention is a setting, 5 years by default. Estimated, not measured: a hybrid inverter polled every 5 s with the default deadbands stores roughly 100 to 300 MB per device-year. Expiry deletes whole blocks and returns pages in small incremental-vacuum steps, so the file shrinks.
 
-**Migrations and backup.** Forward-only numbered SQL, embedded and applied at startup in one transaction. The core refuses a database whose schema is newer than it knows. Backup uses SQLite's online backup API into a file the admin names, through the API and the CLI. Restore replaces the file while the core is stopped.
+**Migrations and backup.** Forward-only numbered SQL, embedded and applied at startup in one transaction. The core refuses a database whose schema is newer than it knows. Backup uses SQLite's online backup API into a file the admin names, through the API and the CLI, without secrets unless asked (ADR 7). Restore replaces the file while the core is stopped.
 
 **Full disk.** History writing stops, live serving continues, the API reports `storage.full`. A prune task deletes expired blocks in small batches.
 

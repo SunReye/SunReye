@@ -23,7 +23,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped.
 
-**Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set.
+**Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set. They live in their own table, unencrypted: a key on the same disk would add nothing. The data directory is mode 0700 and the database 0600. A backup excludes them unless the admin includes them explicitly; a restored connection without its secret reports `secret.missing`.
 
 **Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile, and an official setting not verified on hardware, also needs each setting enabled (ADR 5, 8).
 
