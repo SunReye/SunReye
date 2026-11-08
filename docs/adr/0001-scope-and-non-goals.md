@@ -4,7 +4,7 @@ Status: proposed (2026-11-08)
 
 ## Context
 
-v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs. The goal is an all-in-one energy monitoring workspace for a home, with energy management (EMS) as a later stage. YAGNI governs features, not the founding seams: a seam added later means migrating every table, profile and adapter.
+v4 ported a 3.x system and kept surfacing seams. v5 restarts from specs. The audience is single-household homeowners who monitor their home now and want it energy-managed later; not installers, not fleets. The goal is an all-in-one energy monitoring workspace for a home, with energy management (EMS) as a later stage. YAGNI governs features, not the founding seams: a seam added later means migrating every table, profile and adapter.
 
 ## Decision
 
