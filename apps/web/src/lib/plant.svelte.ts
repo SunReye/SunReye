@@ -7,7 +7,7 @@ const PLANT_ZONE_AUTO = "auto";
 /**
  * Plant (site) configuration shape. Mirrors the server's `plantConfigSchema`
  * (packages/db/src/plant.ts) — kept as a local type per the web convention of
- * not depending on the db package (see display.svelte.ts / tariff-form.svelte).
+ * not depending on the db package (see display.svelte.ts).
  */
 export type PlantConfig = {
   /** IANA zone the SERVER buckets energy/cost/statistics days in, or `"auto"`. */
