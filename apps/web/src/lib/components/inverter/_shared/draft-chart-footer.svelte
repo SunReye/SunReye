@@ -11,10 +11,12 @@
 	//
 	// "Save as chart" hands the metric list to the editor that already exists,
 	// seeded, so the draft is named and saved through the one path that writes a
-	// custom chart. Admin-only, because that write is.
+	// custom chart. Admin-only, because that write is, and only while the core serves custom
+	// charts: without them the editor the click seeds never renders.
 	import FloppyDisk from 'phosphor-svelte/lib/FloppyDisk';
 	import X from 'phosphor-svelte/lib/X';
 	import * as m from '$lib/paraglide/messages';
+	import { coreCapabilities } from '$lib/capabilities.svelte';
 	import { customCharts } from '$lib/inverter/custom-charts.svelte';
 	import { useAppSession } from '$lib/session';
 	import { TAP } from '$lib/layout/tokens';
@@ -22,7 +24,9 @@
 	let { metrics, onClear }: { metrics: string[]; onClear: () => void } = $props();
 
 	const session = useAppSession();
-	const canSave = $derived($session.data?.user.admin === true);
+	const canSave = $derived(
+		$session.data?.user.admin === true && coreCapabilities.has('customCharts')
+	);
 
 	const save = () => customCharts.seedEditor(metrics);
 </script>

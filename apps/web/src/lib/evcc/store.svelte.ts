@@ -1,4 +1,5 @@
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
+import { coreCapabilities } from "$lib/capabilities.svelte";
 import { postEvccCommand } from "$lib/engine-only";
 import * as m from "$lib/paraglide/messages";
 import { bus } from "$lib/ws/bus.svelte";
@@ -88,21 +89,19 @@ class EvccStore {
     return leaseEvcc(bus, this.#feed);
   }
 
-  /** Send a loadpoint command; state converges via EVCC's republish over WS. */
-  async #command(
-    body:
-      | { loadpoint: number; action: "mode"; value: EvccMode }
-      | { loadpoint: number; action: "limitSoc"; value: number },
-  ): Promise<string | null> {
-    return postEvccCommand(body);
+  /**
+   * Send a loadpoint command: `null` on success, else the engine's message. State
+   * converges via EVCC's republish over WS. A core that serves no EVCC commands
+   * (ADR 0005) takes none, so both writes are dropped, however they were reached.
+   */
+  async setMode(loadpoint: number, mode: EvccMode): Promise<string | null> {
+    if (!coreCapabilities.has("evccCommands")) return null;
+    return postEvccCommand({ loadpoint, action: "mode", value: mode });
   }
 
-  setMode(loadpoint: number, mode: EvccMode): Promise<string | null> {
-    return this.#command({ loadpoint, action: "mode", value: mode });
-  }
-
-  setLimitSoc(loadpoint: number, limit: number): Promise<string | null> {
-    return this.#command({ loadpoint, action: "limitSoc", value: limit });
+  async setLimitSoc(loadpoint: number, limit: number): Promise<string | null> {
+    if (!coreCapabilities.has("evccCommands")) return null;
+    return postEvccCommand({ loadpoint, action: "limitSoc", value: limit });
   }
 }
 
