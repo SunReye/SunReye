@@ -115,8 +115,8 @@ The dialog lists each held register as **Holder**, **Saved value** and **Saved a
 
 The dialog cannot be dismissed with Escape or a click outside. Tick **I switched automation off in
 3.x** to enable **Continue**, or choose **Cancel** to stop. If you exported before step 1,
-switch automation off in 3.x now (the saved values return to the inverter), then tick the box. No
-second export is needed. Ticking the box restores nothing: it states that 3.x did.
+start 3.x again, turn the automation master switch off (the saved values return to the inverter), stop
+3.x, then tick the box. No second export is needed. Ticking the box restores nothing: it states that 3.x did.
 
 #### Report lines
 
@@ -141,7 +141,7 @@ The import keeps each tier back to 4.0's retention, measured from the import:
 | Daily | Forever |
 
 Raw and minute rows older than that are not stored but still roll into the hourly and daily
-buckets. Hourly rows older than 3650 days are not imported; daily rows are always kept. The
+buckets. Hourly rows older than 3650 days are not stored but still roll into the daily buckets; daily rows are always kept. The
 retention pass runs at start and hourly, so an older row would be deleted anyway.
 
 Override the defaults with the settings `retention.raw_days`, `retention.minute_days`,
