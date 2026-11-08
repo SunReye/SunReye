@@ -38,6 +38,14 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 
 **On the core.** The relay connection is an integration, off by default, enabled by "connect to cloud".
 
+## Open before build
+
+- Framing of HTTP requests and the SSE stream inside the tunnel.
+- How the core authenticates to its Durable Object, so nobody who knows an install id can hold its slot.
+- How revocations reach the core when the relay withholds them.
+- The release flow for the signed web bundle.
+- A second WASM glue crate for the Noise client, which needs an ADR 2 amendment.
+
 ## Considered options
 
 - **A cloud that stores readings.** Rejected: the operator could read them, and it carries a GDPR processing burden.
@@ -49,4 +57,4 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 
 ## Consequences
 
-Cross-install history needs each install online. Passkey PRF support varies by browser and platform; the per-device fallback covers the gap. The relay depends on Cloudflare, but its protocol is a plain WebSocket carrying Noise, so another host can replace it. Workers WebSocket messages have a size limit (1 MiB, as I understand it, unverified), so large responses are streamed in chunks.
+Cross-install history needs each install online. Passkey PRF support varies by browser and platform; the per-device fallback covers the gap. The relay depends on Cloudflare, but its protocol is a plain WebSocket carrying Noise, so another host can replace it. Workers accept WebSocket messages up to 32 MiB (raised from 1 MiB in October 2025); large responses are still streamed in chunks.
