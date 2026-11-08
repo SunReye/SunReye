@@ -19,7 +19,7 @@ Status: accepted (2026-11-08)
 
 **Weather.** A weather computed device stores global, direct and diffuse irradiance, temperature and wind as `weather.*` forecasts (ADR 15) for the plant's location, at 15-minute resolution for today and two more days. Its task fetches on start and hourly; a handler never fetches. The provider is an adapter at this seam: Open-Meteo forecast, Open-Meteo archive (past weather for learning) and a fake for tests.
 
-**PV model.** One pure module, `estimate(layout, weather)`, returns series per string, MPPT input and inverter. It knows no provider.
+**PV model.** The `pv` crate, whose `estimate(layout, weather)` returns series per string, MPPT input and inverter. It is pure: no I/O, no async runtime, no provider knowledge. The gate builds it for `wasm32-unknown-unknown`, so the 3D house builder (ADR 1) can run the same model in the browser; its browser glue arrives with the builder.
 
 - Per string: Perez transposition onto its plane; the Martin–Ruiz incidence-angle loss on the beam and a constant factor on diffuse; cell temperature by Faiman with wind, by the NOCT rise without; current from Isc and voltage from Vmp at that temperature, times the module count; then the string's loss.
 - Per MPPT input: parallel currents add and are capped at the maximum input current. Below the voltage window or the start voltage it yields nothing; above the window it is clipped.
@@ -43,6 +43,7 @@ Status: accepted (2026-11-08)
 - **Tilted irradiance from the provider (3.x).** Rejected: few providers deliver it; plain irradiance makes any weather source an adapter.
 - **Power-level providers (Forecast.Solar, Solcast).** Rejected: they bypass the string model, so per-string views vanish.
 - **Hay–Davies transposition.** Rejected: simpler, less precise.
+- **The PV model as a module inside the core.** Rejected: the 3D builder needs it in the browser, and a crate keeps I/O out by construction.
 - **An optimizer count per string now.** Rejected: without a shading model it changes nothing; the string's loss absorbs it.
 
 ## Consequences

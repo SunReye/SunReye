@@ -50,7 +50,7 @@ flowchart TB
 | Bus | Typed readings (device, series, value, time); subscribe | 6 |
 | Computed devices | Publish readings like hardware; each fetch in its own task | 12, 14, 15, 17 |
 | Weather source | Adapter per provider: plain irradiance, temperature and wind for a location | 17 |
-| PV model | Pure `estimate(layout, weather)` → series per string, MPPT input and inverter | 17 |
+| PV model (`pv` crate) | Pure `estimate(layout, weather)` → series per string, MPPT input and inverter; also builds for WASM | 17 |
 | Write funnel | `write(device, setting, value, actor)` → outcome | 7 |
 | Storage thread | Sole SQLite owner, fed by a channel: change points, blocks, rollups, forecasts, write log | 3, 15 |
 | API | REST `/api/v1`, SSE live, OpenAPI, auth | 9 |
