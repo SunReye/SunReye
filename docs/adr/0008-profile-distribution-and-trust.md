@@ -8,13 +8,13 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 ## Decision
 
-**Source.** A static `index.json` lists each profile: id, semver, schema, SHA-256, URL and signature. The CLI builds validated rendered JSON and the index. Anyone can host a source; a custom integration is a custom source.
+**Index.** A static `index.json` lists each profile: id, semver, schema, SHA-256, URL and signature. The CLI builds validated rendered JSON and the index. Anyone can host an index; a custom profile is distributed through a custom index.
 
 **Publishing.** Official profiles live in `profiles/`, written in TypeScript and tested with the shipped WASM. `bun run publish:profiles` builds, validates, signs and pushes only the output to an orphan `profiles-dist` branch served by GitHub Pages. It creates no tag, no release and no npm publish. The build bumps a profile's semver when its content changes. The maintainer runs it locally; the private key stays outside the repo. A test verifies that a fresh bundle verifies against the compiled public key. Hosted CI, when it returns, receives the key as a secret and runs the same command.
 
-**In the core.** An admin adds a source URL once. The core fetches only on that action or on "check for updates", never on a timer. It verifies the hash before storing, validates with the same loader, stores the profile under the data directory and serves the last good copy. The official source's URL is built in.
+**In the core.** An admin adds an index URL once. The core fetches only on that action or on "check for updates", never on a timer. It verifies the hash before storing, validates with the same loader, stores the profile under the data directory and serves the last good copy. The official index's URL is built in, and the binary embeds a snapshot of the official profiles at release time so a first run works offline. A fetched profile replaces a bundled one only when its semver is higher and its signature verifies.
 
-**Trust.** The public key list is compiled into the core; rotating a key needs a core release. Official sources are those whose signature verifies. A profile from any other source loads read-only; the admin enables a write per setting with its declared bounds shown.
+**Trust.** The public key list is compiled into the core; rotating a key needs a core release. Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown.
 
 **Updates.** Applying an update is an admin click, shown as a diff. A change to a writable setting (added, a different register, bounds or unit) switches that setting's writes off until re-enabled. Official profiles follow the same rule: a fix never silently widens what the core may write.
 

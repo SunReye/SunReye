@@ -38,9 +38,9 @@ _Avoid_: Verified profile
 Any other profile. It loads read-only until an admin enables a write.
 _Avoid_: Custom profile, unofficial profile
 
-**Source**:
+**Index**:
 A hosted `index.json` listing profiles with their hashes and signatures.
-_Avoid_: Registry, repository
+_Avoid_: Source, registry, repository
 
 **Schema**:
 The integer version of the profile format. The core supports the current schema and the previous one.
