@@ -30,6 +30,7 @@ Roles are dotted lowercase names. Each has a kind and a unit, a sign convention 
 | `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | per device | |
 | `ev.connected`, `ev.charging` | | status | per device | |
 
+- **Reserved namespaces** for the workspace, with roles added by amendment as devices need them: `load.circuit` (indexed sub-meters), `heatpump` (power, thermal energy, SG Ready state), `heat` (thermal energy in kWh), `gas` and `water` (volume counters in m³), `weather` (irradiance in W/m², temperature), `forecast` (future values of any role, ADR 15), `price` (import and export in EUR/kWh) and `plan` (EMS decisions).
 - **Signs.** `grid.power` is positive when importing. `battery.power` and `battery.current` are positive when charging. Everything else is non-negative. The decoder converts at read time; no consumer converts. Outbound adapters convert at their own edge (ADR 10).
 - **No day counters.** A device's "today" counters reset on their own schedule; the core derives days from rollups (ADR 3).
 - **Extras.** A quantity with no role is stored as `extra.<name>` and hidden by default.
