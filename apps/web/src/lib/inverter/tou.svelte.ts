@@ -108,15 +108,19 @@ export class TouController {
     if (!coreCapabilities.has("controls")) return;
     this.#busy.add(key);
     this.#pending.set(key, value);
+    let written = false;
     try {
-      if (!(await postSetting(key, value))) {
-        toast.error(m.tou_toast_update_failed({ label }));
-        this.#pending.delete(key);
-        return;
-      }
-      toast.success(`${label} → ${value}`);
+      written = await postSetting(key, value);
+    } catch {
+      // a rejected write is a refused write
     } finally {
       this.#busy.delete(key);
+    }
+    if (written) {
+      toast.success(`${label} → ${value}`);
+    } else {
+      toast.error(m.tou_toast_update_failed({ label }));
+      this.#pending.delete(key);
     }
   }
 }

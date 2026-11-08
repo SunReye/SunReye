@@ -1,6 +1,6 @@
 import type { EvccLoadpoint, EvccState } from "@SunReye/contracts/evcc";
 import { coreCapabilities } from "$lib/capabilities.svelte";
-import { type EvccCommand, postEvccCommand } from "$lib/engine-only";
+import { postEvccCommand } from "$lib/engine-only";
 import * as m from "$lib/paraglide/messages";
 import { bus } from "$lib/ws/bus.svelte";
 import { EvccFeed, isActive, leaseEvcc, totalChargePower } from "./feed";
@@ -96,12 +96,12 @@ class EvccStore {
    */
   async setMode(loadpoint: number, mode: EvccMode): Promise<string | null> {
     if (!coreCapabilities.has("evccCommands")) return null;
-    return postEvccCommand({ loadpoint, action: "mode", value: mode } satisfies EvccCommand);
+    return postEvccCommand({ loadpoint, action: "mode", value: mode });
   }
 
   async setLimitSoc(loadpoint: number, limit: number): Promise<string | null> {
     if (!coreCapabilities.has("evccCommands")) return null;
-    return postEvccCommand({ loadpoint, action: "limitSoc", value: limit } satisfies EvccCommand);
+    return postEvccCommand({ loadpoint, action: "limitSoc", value: limit });
   }
 }
 

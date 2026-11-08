@@ -41,15 +41,19 @@
 	async function write(v: number) {
 		busy = true;
 		pending = v;
+		let written = false;
 		try {
-			if (!(await postSetting(metric.key, v))) {
-				toast.error(m.controls_toast_update_failed({ name: metric.label }));
-				pending = null;
-				return;
-			}
-			toast.success(`${metric.label} → ${valueLabel(v)}`);
+			written = await postSetting(metric.key, v);
+		} catch {
+			// a rejected write is a refused write
 		} finally {
 			busy = false;
+		}
+		if (written) {
+			toast.success(`${metric.label} → ${valueLabel(v)}`);
+		} else {
+			toast.error(m.controls_toast_update_failed({ name: metric.label }));
+			pending = null;
 		}
 	}
 </script>
