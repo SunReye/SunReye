@@ -87,7 +87,7 @@ The ordered steps that apply one setting.
 _Avoid_: Script, macro
 
 **Outcome**:
-The result of a write: `verified`, `mismatch`, `unknown` or `partial`.
+The result of a write: `verified`, `mismatch`, `unknown`, `partial`, or `unchanged` when no write was needed.
 _Avoid_: Status, result
 
 **Live control**:
