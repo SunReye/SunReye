@@ -120,6 +120,20 @@ _Avoid_: Virtual device, coded device
 A value issued at one time about a later target time.
 _Avoid_: Prediction, projection
 
+## Remote access
+
+**Install id**:
+The globally unique identity of one install, created at first run. One install is one plant.
+_Avoid_: Plant id, serial
+
+**Relay**:
+The cloud service that carries encrypted traffic between a core and its paired clients without reading it.
+_Avoid_: Cloud backend, proxy, tunnel server
+
+**Paired client**:
+An app or dashboard whose public key a core accepts, with a role granted by the homeowner.
+_Avoid_: Remote user, device (a device is hardware)
+
 ## Platform
 
 **Capability**:
