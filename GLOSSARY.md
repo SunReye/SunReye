@@ -143,7 +143,7 @@ A cloud identity, signed in by social login, that routes to installs and holds a
 _Avoid_: User (a user is local), profile
 
 **Device key**:
-The key pair one browser or app generates; the core trusts it when an account it trusts has signed it.
+The X25519 key pair one browser or app generates, used as its Noise static key; the core trusts it when an account it trusts has signed it.
 _Avoid_: Session key, token
 
 **Share code**:

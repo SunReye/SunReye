@@ -16,12 +16,14 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 
 **Login.** Social login only: Google, Apple and Microsoft over OpenID Connect, in the Worker. No passwords, no email signup, nothing password-derived stored.
 
-**Tunnel.** The core keeps one outbound WebSocket to its Durable Object. A client opens a WebSocket to the same object, which splices frames per session and never decrypts. Inside, client and core run a Noise handshake (the `snow` crate), with the core's static key pinned; clients run the same crate compiled to WASM. The relay sees ciphertext, sizes and timing. It stores routing metadata only: install id, account, and whether the core is connected.
+**Tunnel.** The core keeps one outbound WebSocket to its Durable Object. A client opens a WebSocket to the same object, which splices frames per session and never decrypts. Inside, client and core run `Noise_IK_25519_ChaChaPoly_BLAKE2s` (the `snow` crate); clients run the same crate compiled to WASM. The client pins the core's static key. The client's static key is its device key, and the first handshake message carries the account's signature over it. The relay sees ciphertext, sizes and timing. It stores routing metadata only: install id, account, and whether the core is connected.
+
+**Core identity.** At first run the core generates its X25519 static key alongside the install id. The trusted-keys table holds Ed25519 account keys, each with a role (`admin` or `viewer`) and a revoked flag. Backups always include both, unlike credential secrets (ADR 7), so a restore keeps every pairing.
 
 **Keys.**
 
-- Each account has a key pair. The private key is stored in the cloud wrapped by a passkey's PRF secret, so any device with the account's synced passkey can unwrap it.
-- Each browser or app generates its own device key and signs it with the account key. The core accepts device keys signed by an account it trusts.
+- Each account has an Ed25519 key pair. The private key is stored in the cloud wrapped by a passkey's PRF secret, so any device with the account's synced passkey can unwrap it.
+- Each browser or app generates its own X25519 device key and signs it with the account key. The core accepts device keys signed by an account it trusts.
 - A lost device is revoked by a signed revocation the core checks. "Revoke all" rotates the account key and needs one more connect at home.
 - There is no recovery key: the cloud holds no data, so losing every passkey means a new account key and one more connect at home.
 - A browser without PRF support is paired as a single device at home instead, by one click or a QR code.
