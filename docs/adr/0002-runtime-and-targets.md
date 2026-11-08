@@ -1,6 +1,6 @@
 # 2. Runtime and targets
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -10,7 +10,7 @@ The tool is small, runs for years on low-power hardware, and must stay fast for 
 
 - One Rust process: endpoint tasks, storage, API, MQTT, and the embedded SPA (ADR 11).
 - Targets, first release: Linux amd64 and arm64, as a static binary, a Docker image and a Home Assistant add-on. Android follows from the same core; nothing may preclude it.
-- `unsafe_code` is forbidden workspace-wide. One small glue crate for the WASM build (ADR 5) is the only exception.
+- `unsafe_code` is denied workspace-wide. One small glue crate for the WASM build (ADR 5) is the only exception, through a single `#[expect(unsafe_code, reason = "…")]`; `forbid` could not be lifted for it.
 - Every dependency starts at its latest release and is justified by what it replaces. `rusqlite` (bundled SQLite), a minimal HTTPS client on `rustls` for profile and price fetches. `axum` with default features off for HTTP.
 - `tokio` on a single thread for all I/O. One dedicated thread owns the SQLite connection and is fed by a channel, so a slow write never stalls polling.
 - Release build: `opt-level = "s"`, fat LTO, one codegen unit, `panic = "abort"`, stripped, statically linked against musl. The workload waits on devices, so size beats peak speed.
