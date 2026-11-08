@@ -8,6 +8,8 @@ const get = vi.hoisted(() => vi.fn());
 vi.mock("$lib/core-api", () => ({ core: { GET: get } }));
 const postSetting = vi.hoisted(() => vi.fn());
 vi.mock("$lib/engine-only", () => ({ postSetting }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("svelte-sonner", () => ({ toast }));
 
 const { coreCapabilities } = await import("$lib/capabilities.svelte");
 const { default: ControlRow } = await import("./control-row.svelte");
@@ -23,6 +25,8 @@ const metric = {
 afterEach(() => {
   get.mockReset();
   postSetting.mockReset();
+  toast.success.mockReset();
+  toast.error.mockReset();
 });
 
 test("shows the control while the core serves controls", async () => {
@@ -40,4 +44,28 @@ test("renders nothing when the core reports controls absent", async () => {
   await expect.element(page.getByText("Grid charge")).not.toBeInTheDocument();
   await expect.element(page.getByRole("switch")).not.toBeInTheDocument();
   expect(postSetting).not.toHaveBeenCalled();
+});
+
+test("a refused write puts the control back on the live value and frees it", async () => {
+  get.mockResolvedValue({ data: { controls: true } });
+  postSetting.mockResolvedValue(false);
+  await coreCapabilities.load();
+  render(ControlRow, { metric });
+  await page.getByRole("switch").click();
+  expect(postSetting).toHaveBeenCalledWith("settings.grid_charge", 1);
+  await expect.element(page.getByText("Off")).toBeVisible();
+  await expect.element(page.getByRole("switch")).toBeEnabled();
+});
+
+test("a write that rejects toasts the failure, puts the control back and frees it", async () => {
+  get.mockResolvedValue({ data: { controls: true } });
+  postSetting.mockRejectedValue(new Error("boom"));
+  await coreCapabilities.load();
+  render(ControlRow, { metric });
+  await page.getByRole("switch").click();
+  expect(postSetting).toHaveBeenCalledWith("settings.grid_charge", 1);
+  expect(toast.error).toHaveBeenCalledTimes(1);
+  expect(toast.success).not.toHaveBeenCalled();
+  await expect.element(page.getByText("Off")).toBeVisible();
+  await expect.element(page.getByRole("switch")).toBeEnabled();
 });
