@@ -11,7 +11,7 @@ The tool is small, runs for years on low-power hardware, and must stay fast for 
 - One Rust process: endpoint tasks, storage, API, MQTT, and the embedded SPA (ADR 11).
 - Targets, first release: Linux amd64 and arm64, as a static binary, a Docker image and a Home Assistant add-on. Android follows from the same core; nothing may preclude it.
 - `unsafe_code` is forbidden workspace-wide. One small glue crate for the WASM build (ADR 5) is the only exception.
-- Every dependency is justified by what it replaces. `rusqlite` (bundled SQLite), a minimal HTTPS client on `rustls` for profile and price fetches. The web framework is chosen by measuring `axum` against a lighter one.
+- Every dependency starts at its latest release and is justified by what it replaces. `rusqlite` (bundled SQLite), a minimal HTTPS client on `rustls` for profile and price fetches. The web framework is chosen by measuring `axum` against a lighter one.
 - A single-threaded async runtime or a small pool, chosen by measurement.
 - Budgets are numbers, not adjectives: resident memory, idle CPU, binary size, and the latency from a register read to the SPA with device time excluded. The first walking skeleton measures them on a Raspberry Pi 3-class board and a mid-range Android phone. A bench in the local gate fails when one is exceeded; budgets ratchet down.
 - The gate is local: one serial command, identical before and after merge. Hosted CI returns when the project is stable.

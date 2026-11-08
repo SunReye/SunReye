@@ -10,7 +10,7 @@ v4 shipped images, an add-on, an appliance and an Android build, each with its o
 
 - **Layout.** `crates/` (Rust: core, profile crate, WASM glue), `apps/web` (SPA), `packages/` (npm: authoring API, CLI, WASM), `profiles/` (official profiles), `docs/adr/`.
 - **First release.** A static Linux binary for amd64 and arm64 with a systemd unit, a multi-arch Docker image, and a Home Assistant add-on that wraps the image. The NixOS appliance and the Android app follow; no release gate depends on them.
-- **Home Assistant add-on.** No ingress: it exposes the core's own port with its own login. The core serves plain HTTP; TLS is a reverse-proxy job. The SPA is served at `/`.
+- **Home Assistant add-on.** A skeleton test decides ingress: the SPA under a real ingress prefix. Pass: the add-on ships with ingress and a sidebar entry. Fail: it exposes the core's own port with its own login. The core serves plain HTTP; TLS is a reverse-proxy job.
 - **Core release.** Semver, cut by one local `bun run release` that builds the artifacts and the image, tags, and publishes. The changelog comes from conventional commits.
 - **Profiles and npm.** Profiles publish separately (ADR 8). The npm package releases only when the schema, the capability table or a decoder changes.
 - **Gate.** One serial command, the same before and after merge: unit tests, `cargo test`, the WASM build and its tests, lint and format, and the budget bench (ADR 2). Hosted CI returns when the project is stable and runs the same command.
