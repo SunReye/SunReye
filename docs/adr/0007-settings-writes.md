@@ -8,7 +8,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 ## Decision
 
-**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault.
+**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault.
 
 **Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run even after a failure. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live).
 
@@ -24,6 +24,8 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 **Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped.
 
 **Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set.
+
+**Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile also needs each setting enabled (ADR 8).
 
 **Who.** Only an authenticated admin, through the API. No integration commands a register. EVCC settings (ADR 10) are admin actions through this same funnel.
 
