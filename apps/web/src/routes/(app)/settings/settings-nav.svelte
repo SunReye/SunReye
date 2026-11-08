@@ -19,7 +19,6 @@
 	import UsersIcon from 'phosphor-svelte/lib/Users';
 	import KeyIcon from 'phosphor-svelte/lib/Key';
 	import TerminalWindowIcon from 'phosphor-svelte/lib/TerminalWindow';
-	import RobotIcon from 'phosphor-svelte/lib/Robot';
 	import WarningIcon from 'phosphor-svelte/lib/Warning';
 
 	let {
@@ -53,7 +52,6 @@
 		prices: ChartLineIcon,
 		weather: CloudSunIcon,
 		access: ShieldCheckIcon,
-		automations: RobotIcon,
 		profiles: StackIcon,
 		users: UsersIcon,
 		'api-keys': KeyIcon,

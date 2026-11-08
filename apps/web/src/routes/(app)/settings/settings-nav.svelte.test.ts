@@ -88,7 +88,6 @@ describe("the settings rail", () => {
 const GATED = [
   ["tariff", "pricesAndCosts"],
   ["prices", "pricesAndCosts"],
-  ["automations", "automations"],
   ["logs", "logging"],
   ["danger", "dataReset"],
 ] as const;
@@ -118,7 +117,7 @@ describe("the settings rail follows the core's capabilities", () => {
     render(SettingsNav, { isAdmin: true, current: "/settings/devices" });
     await expect.element(rail()).toBeVisible();
     expect(tab("logs").elements()).toHaveLength(1);
-    for (const id of ["tariff", "prices", "automations", "danger"]) {
+    for (const id of ["tariff", "prices", "danger"]) {
       expect(tab(id).elements()).toHaveLength(0);
     }
   });

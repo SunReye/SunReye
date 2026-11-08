@@ -14,12 +14,10 @@ vi.mock("$app/navigation", () => ({ goto }));
 const toast = { error: vi.fn() };
 vi.mock("svelte-sonner", () => ({ toast }));
 vi.mock("$app/state", () => ({ page: { url: new URL("http://localhost/#/") } }));
-vi.mock("$lib/automations-gate.svelte", () => ({
-  automationsGate: { load: vi.fn(), enabled: false },
-}));
 
 const { default: Fixture } = await import("./app-sidebar.fixture.svelte");
 const { refreshSession, signOut } = await import("$lib/session");
+const { coreCapabilities } = await import("$lib/capabilities.svelte");
 
 type Account = components["schemas"]["Account"];
 const ada: Account = { id: 1, name: "Ada Lovelace", email: "ada@example.com", admin: true };
@@ -28,6 +26,8 @@ const bob: Account = { id: 2, name: "Bob Babbage", email: "bob@example.com", adm
 afterEach(async () => {
   del.mockImplementation(() => deleteAnswer(204));
   await signOut();
+  get.mockRejectedValue(new Error("no core"));
+  await coreCapabilities.load();
   for (const fn of [get, del, goto, toast.error]) fn.mockReset();
 });
 
@@ -108,5 +108,40 @@ test("a visitor with no session is offered the way in", async () => {
   await expect.element(page.getByRole("link", { name: m.nav_log_in() })).toBeVisible();
   await expect
     .element(page.getByRole("button", { name: m.nav_sign_out() }))
+    .not.toBeInTheDocument();
+});
+
+/** What a core that serves nothing optional reports. */
+const NOTHING = {
+  history: false,
+  statistics: false,
+  controls: false,
+  automations: false,
+  restart: false,
+  profileSources: false,
+  integrations: false,
+  pvAndBattery: false,
+  pricesAndCosts: false,
+  statisticsHeatmap: false,
+  evccCommands: false,
+  customCharts: false,
+  logging: false,
+  dataReset: false,
+};
+
+test("an admin is offered Automations when the core serves them, with no master switch to flip", async () => {
+  get.mockResolvedValue({ data: { ...NOTHING, automations: true } });
+  await coreCapabilities.load();
+  await mountAs(ada);
+  await expect.element(page.getByRole("link", { name: m.nav_automations() })).toBeVisible();
+});
+
+test("an admin is offered no Automations when the core does not serve them", async () => {
+  get.mockResolvedValue({ data: NOTHING });
+  await coreCapabilities.load();
+  await mountAs(ada);
+  await expect.element(page.getByRole("link", { name: m.nav_settings() })).toBeVisible();
+  await expect
+    .element(page.getByRole("link", { name: m.nav_automations() }))
     .not.toBeInTheDocument();
 });

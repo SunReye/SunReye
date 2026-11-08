@@ -6,6 +6,7 @@
 
 import type { CapabilityName } from "$lib/capabilities";
 import { core } from "$lib/core-api";
+import { byPath } from "$lib/core-by-path";
 import * as m from "$lib/paraglide/messages";
 import type { Catalog } from "../wizard/add-wizard";
 import type { Answer, RosterTransport } from "./device-roster";
@@ -40,16 +41,6 @@ const devicesOnly = (): Catalog => ({
 
 const byId = (id: number) => ({ params: { path: { id } } });
 
-/**
- * The core client addressed by path. A core that serves integrations reports
- * `integrations`; until its generated contract names the routes, they are the
- * one thing the roster calls without a typed path.
- */
-type ByPath = Record<
-  "GET" | "POST" | "PATCH" | "DELETE",
-  (path: string, init?: unknown) => Promise<{ data?: unknown; error?: unknown }>
->;
-const byPath = core as unknown as ByPath;
 const withId = (id: number) => `/api/integrations/${id}`;
 
 /** `offers` is the connected engine's capabilities: absent integrations are answered here, unasked. */
