@@ -17,7 +17,7 @@ How the core reaches one or more devices: host, port, transport, unit id, creden
 _Avoid_: Integration, source
 
 **Endpoint**:
-One network address a connection dials. All traffic to an endpoint is serialised by one task.
+A request/response network address (Modbus TCP, RTU over TCP, Solarman). One task serialises all traffic to it.
 _Avoid_: Port, link
 
 **Transport**:
