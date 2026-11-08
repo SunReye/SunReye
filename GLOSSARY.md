@@ -5,7 +5,7 @@ A local-first monitor for home solar, battery and meter hardware: it reads devic
 ## Plant and devices
 
 **Plant**:
-The one site being monitored. It has one timezone, set by the admin.
+The one site being monitored. It has one timezone and one location, set by the admin.
 _Avoid_: Site, installation, system
 
 **Device**:
