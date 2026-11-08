@@ -1,6 +1,6 @@
 # 4. Roles and conventions
 
-Status: accepted (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-08)
 
 ## Context
 
@@ -8,28 +8,30 @@ Every profile maps its native quantities to roles; storage, the API, the SPA and
 
 ## Decision
 
-Roles are dotted lowercase names. Each has a kind and a unit, a sign convention if signed, and a rule for combining devices. An indexed role carries a string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total) and `status` (an enum).
+Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries a string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total) and `status` (an enum).
 
-| Role | Unit | Kind | Combine | Signed |
-| --- | --- | --- | --- | --- |
-| `pv.power` | W | measurement | sum | |
-| `pv.string.power` / `.voltage` / `.current` | W / V / A | measurement, indexed | per device | |
-| `pv.energy.total` | kWh | counter | sum | |
-| `battery.soc` | % | measurement | weighted mean | |
-| `battery.power` | W | measurement | sum | yes |
-| `battery.current` | A | measurement | per device | yes |
-| `battery.voltage`, `battery.temperature` | V, °C | measurement | per device, weighted mean | |
-| `battery.mode` | | status | per device | |
-| `battery.energy.charged.total`, `battery.energy.discharged.total` | kWh | counter | sum | |
-| `grid.power` | W | measurement | sum | yes |
-| `grid.frequency` | Hz | measurement | per device | |
-| `grid.phase.voltage` / `.current` / `.power` | V / A / W | measurement, indexed | per device | current, power |
-| `grid.energy.imported.total`, `grid.energy.exported.total` | kWh | counter | sum | |
-| `load.power`, `backup.power`, `generator.power` | W | measurement | sum | |
-| `load.energy.total`, `backup.energy.total`, `generator.energy.total` | kWh | counter | sum | |
-| `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | per device | |
-| `ev.connected`, `ev.charging` | | status | per device | |
+| Role | Unit | Kind | Signed |
+| --- | --- | --- | --- |
+| `pv.power` | W | measurement | |
+| `pv.string.power` / `.voltage` / `.current` | W / V / A | measurement, indexed | |
+| `pv.energy.total` | kWh | counter | |
+| `battery.soc` | % | measurement | |
+| `battery.capacity` | kWh | measurement | |
+| `battery.power` | W | measurement | yes |
+| `battery.current` | A | measurement | yes |
+| `battery.voltage`, `battery.temperature` | V, °C | measurement | |
+| `battery.mode` | | status | |
+| `battery.energy.charged.total`, `battery.energy.discharged.total` | kWh | counter | |
+| `grid.power` | W | measurement | yes |
+| `grid.frequency` | Hz | measurement | |
+| `grid.phase.voltage` / `.current` / `.power` | V / A / W | measurement, indexed | current, power |
+| `grid.energy.imported.total`, `grid.energy.exported.total` | kWh | counter | |
+| `load.power`, `backup.power`, `generator.power` | W | measurement | |
+| `load.energy.total`, `backup.energy.total`, `generator.energy.total` | kWh | counter | |
+| `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | |
+| `ev.connected`, `ev.charging` | | status | |
 
+- **Plant values.** A role has no rule for combining devices. Plant-level values come only from the `plant` computed device and its topology (ADR 14), which weights `battery.soc` by `battery.capacity`.
 - **Reserved namespaces** for the workspace, with roles added by amendment as devices need them: `load.circuit` (indexed sub-meters), `heatpump` (power, thermal energy, SG Ready state), `heat` (thermal energy in kWh), `gas` and `water` (volume counters in m³), `weather` (irradiance in W/m², temperature), `forecast` (future values of any role, ADR 15), `price` (import and export in EUR/kWh) and `plan` (EMS decisions).
 - **Signs.** `grid.power` is positive when importing. `battery.power` and `battery.current` are positive when charging. Everything else is non-negative. The decoder converts at read time; no consumer converts. Outbound adapters convert at their own edge (ADR 10).
 - **No day counters.** A device's "today" counters reset on their own schedule; the core derives days from rollups (ADR 3).
