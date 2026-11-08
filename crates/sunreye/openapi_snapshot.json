@@ -3421,7 +3421,9 @@
           "pricesAndCosts",
           "statisticsHeatmap",
           "evccCommands",
-          "customCharts"
+          "customCharts",
+          "logging",
+          "dataReset"
         ],
         "properties": {
           "automations": {
@@ -3434,6 +3436,10 @@
             "type": "boolean",
             "description": "User-defined charts on the history page, saved server-side."
           },
+          "dataReset": {
+            "type": "boolean",
+            "description": "The danger zone: wiping the stored readings and settings."
+          },
           "evccCommands": {
             "type": "boolean",
             "description": "The dashboard's EVCC charge mode and limit commands, which write to EVCC."
@@ -3444,6 +3450,10 @@
           "integrations": {
             "type": "boolean",
             "description": "Coded integrations and the MQTT connections they run over."
+          },
+          "logging": {
+            "type": "boolean",
+            "description": "The runtime log-level panel: reading and setting the core's log level."
           },
           "pricesAndCosts": {
             "type": "boolean",

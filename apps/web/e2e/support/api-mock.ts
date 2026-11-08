@@ -759,6 +759,8 @@ export async function mockBackend(page: Page, initial: BackendOptions = {}): Pro
         statisticsHeatmap: false,
         evccCommands: true,
         customCharts: true,
+        logging: true,
+        dataReset: true,
       });
     }
     if (at("kiosk")) return json(route, { enabled: options.kiosk ?? false });

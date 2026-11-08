@@ -14,6 +14,8 @@ const NONE: Capabilities = {
   statisticsHeatmap: false,
   evccCommands: false,
   customCharts: false,
+  logging: false,
+  dataReset: false,
 };
 
 describe("hasCapability", () => {

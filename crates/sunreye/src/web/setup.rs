@@ -53,6 +53,10 @@ pub struct Capabilities {
     pub evcc_commands: bool,
     /// User-defined charts on the history page, saved server-side.
     pub custom_charts: bool,
+    /// The runtime log-level panel: reading and setting the core's log level.
+    pub logging: bool,
+    /// The danger zone: wiping the stored readings and settings.
+    pub data_reset: bool,
 }
 
 impl Capabilities {
@@ -70,6 +74,8 @@ impl Capabilities {
         statistics_heatmap: false,
         evcc_commands: false,
         custom_charts: false,
+        logging: false,
+        data_reset: false,
     };
 }
 
