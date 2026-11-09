@@ -1,12 +1,10 @@
 import createClient from "openapi-fetch";
+import { refusal, type Client, type Problem } from "./client";
 import { events, type Message } from "./events";
 import { merge, parseFrame, type Values } from "./frames";
 import { body, type LayoutChange } from "./layout-change";
+import { setup, type Setup } from "./setup";
 import type { components, paths } from "./schema";
-
-type Client = ReturnType<typeof createClient<paths>>;
-
-type ProblemDetails = components["schemas"]["ProblemDetails"];
 
 export type History = components["schemas"]["History"];
 
@@ -37,10 +35,9 @@ export type Attempt = components["schemas"]["Entry"];
 
 export type WriteLog = components["schemas"]["WriteLog"];
 
-/** A refusal's stable code (ADR 9), such as `auth.required`. */
-export interface Problem {
-  readonly problem: string;
-}
+export type { Problem } from "./client";
+
+export type { Found, PointDraft } from "./setup";
 
 export type { Values } from "./frames";
 
@@ -63,7 +60,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core {
+export interface Core extends Setup {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -109,20 +106,14 @@ export function connect(transport: Transport): Core {
     },
     history: async (device, series, from, to) => {
       const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
-        params: {
-          path: { id: device },
-          query: { series, from: from.toISOString(), to: to.toISOString() },
-        },
+        params: { path: { id: device }, query: span(series, from, to) },
       });
 
       return data ?? refusal(error, response.status);
     },
     forecasts: async (device, series, from, to) => {
       const { data, error, response } = await client.GET("/api/v1/devices/{id}/forecasts", {
-        params: {
-          path: { id: device },
-          query: { series, from: from.toISOString(), to: to.toISOString() },
-        },
+        params: { path: { id: device }, query: span(series, from, to) },
       });
 
       return data ?? refusal(error, response.status);
@@ -130,6 +121,7 @@ export function connect(transport: Transport): Core {
     ...layouts(client),
     ...settings(client),
     ...trust(client),
+    ...setup(client),
   };
 }
 
@@ -260,9 +252,9 @@ async function stream(
   return values !== undefined;
 }
 
-/** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
-function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
-  return { problem: error instanceof Object ? error.code : `http.${status}` };
+/** One series over a span, as the history and forecast routes take it. */
+function span(series: string, from: Readonly<Date>, to: Readonly<Date>) {
+  return { series, from: from.toISOString(), to: to.toISOString() };
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
