@@ -10,6 +10,7 @@ pub mod estimates;
 pub mod layout;
 pub mod live;
 pub mod location;
+pub mod plant;
 pub mod profiles;
 pub mod settings;
 pub mod solar;
