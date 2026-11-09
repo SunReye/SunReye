@@ -174,14 +174,14 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     };
     let (south, north, second) = (string(0).await, string(1).await, string(2).await);
     let input = async |n| plant.forecast("pv.mppt.power", Some(n), &[NOON]).await[0];
-    // pvlib: south 5681.94 W and north 2730.21 W in parallel; second south 4971.70 W alone.
-    assert_near(input(1).await, 8412.15, "input 1");
-    assert_near(south + north, 8412.15, "input 1's strings");
-    assert!(south > north, "south {south} beats north {north}");
-    assert_near(second, 4971.70, "second south");
-    assert_near(input(2).await, 4971.70, "input 2");
+    // pvlib: south 5713.54 W and north 2725.72 W in parallel; second south 5005.27 W alone.
+    assert_near(input(1).await, 8439.27, "input 1");
+    assert_near(south, 5713.54, "south");
+    assert_near(north, 2725.72, "north");
+    assert_near(second, 5005.27, "second south");
+    assert_near(input(2).await, 5005.27, "input 2");
     let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
-    assert_near(inverter, 13_383.85, "inverter");
+    assert_near(inverter, 13_444.54, "inverter");
 }
 
 #[tokio::test]
@@ -221,4 +221,39 @@ async fn a_layout_change_applies_from_its_date() {
         old[1].abs() < f64::EPSILON && new[1] > 0.0,
         "an hour on: {old:?} {new:?}"
     );
+}
+
+#[tokio::test]
+async fn a_form_entered_strings_optimizers_reach_the_model() {
+    let plant = plant(&[NOON]).await;
+    let optimized = StringDraft {
+        wiring: Wiring {
+            optimized: 16,
+            ..plant.string(None, 2, 0.0, 16).wiring
+        },
+        ..plant.string(None, 2, 0.0, 16)
+    };
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![plant.string(None, 1, 0.0, 16), optimized],
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let power = async |i: usize| {
+        let id = layout.strings[i].id;
+        plant.forecast("pv.string.power", Some(id), &[NOON]).await[0]
+    };
+    let (plain, optimized) = (power(0).await, power(1).await);
+    // Equal modules in one sun: each optimizer delivers its module's own peak less 1 %.
+    assert_near(optimized, 0.99 * plain, "optimized");
 }

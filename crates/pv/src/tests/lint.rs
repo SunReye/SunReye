@@ -1,22 +1,14 @@
 //! Layout lints.
 
-use crate::{ModuleType, Plane, PvString, module_counts_differ};
+use super::fixtures::MODULE;
+use crate::{Plane, PvString, module_counts_differ};
 
 fn string(modules: u16) -> PvString {
-    PvString {
-        module: ModuleType {
-            pmax: 400.0,
-            vmp: 34.0,
-            power_coefficient: -0.35,
-            voltage_coefficient: -0.27,
-        },
-        modules,
-        plane: Plane {
-            tilt: 30.0,
-            azimuth: 0.0,
-        },
-        loss: 0.0,
-    }
+    let plane = Plane {
+        tilt: 30.0,
+        azimuth: 0.0,
+    };
+    PvString::on_one_plane(MODULE, plane, modules, 0, 0.0)
 }
 
 #[test]

@@ -133,8 +133,12 @@ One maximum-power-point tracker input of an inverter: the finest level at which 
 _Avoid_: PV1 (a vendor label), string
 
 **String**:
-Modules in series on one plane, wired to one MPPT input. Strings on one input are in parallel.
+Modules in series, wired to one MPPT input; they may sit on different roof faces. Strings on one input are in parallel.
 _Avoid_: Array, panel group
+
+**Substring**:
+The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
+_Avoid_: Cell string, diode group
 
 **Module type**:
 The datasheet values of one PV module model.

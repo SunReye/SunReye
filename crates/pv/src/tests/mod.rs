@@ -1,8 +1,10 @@
+mod diode;
 mod estimate;
 mod fixtures;
+mod input;
 mod lint;
-mod mppt;
 mod perez;
+mod shade;
 mod string;
 mod sun;
 mod temperature;

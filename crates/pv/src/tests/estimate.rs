@@ -1,29 +1,17 @@
 //! The whole chain for the owner's layout against pvlib 0.16.1 (`fixtures/estimate.csv`), and
 //! the MPPT and inverter limits on top of it.
 
-use super::fixtures::{Row, rows};
+use super::fixtures::{MODULE, Row, rows};
 use crate::{
-    Estimate, Input, Inverter, Layout, Location, ModuleType, MpptLimits, Plane, PvString, Weather,
-    estimate,
-};
-
-const MODULE: ModuleType = ModuleType {
-    pmax: 400.0,
-    vmp: 34.0,
-    power_coefficient: -0.35,
-    voltage_coefficient: -0.27,
+    Estimate, Input, Inverter, Layout, Location, MpptLimits, Plane, PvString, Weather, estimate,
 };
 
 fn string(azimuth: f64, modules: u16) -> PvString {
-    PvString {
-        module: MODULE,
-        modules,
-        plane: Plane {
-            tilt: 35.0,
-            azimuth,
-        },
-        loss: 2.0,
-    }
+    let plane = Plane {
+        tilt: 35.0,
+        azimuth,
+    };
+    PvString::on_one_plane(MODULE, plane, modules, 0, 2.0)
 }
 
 /// Input 1: 16 south and 16 north in parallel; input 2: 14 south.
@@ -46,6 +34,7 @@ fn owner(limits: [Option<MpptLimits>; 2], ac_rating: Option<f64>) -> Layout {
                 },
             ],
         }],
+        occluders: Vec::new(),
     }
 }
 
@@ -91,7 +80,7 @@ fn strings(estimate: &Estimate) -> Vec<f64> {
 }
 
 #[test]
-fn inputs_match_pvlib_through_the_day() {
+fn inputs_and_strings_match_pvlib_through_the_day() {
     let layout = owner([None, None], None);
     for (i, row) in rows(include_str!("../../fixtures/estimate.csv"))
         .iter()
@@ -99,18 +88,25 @@ fn inputs_match_pvlib_through_the_day() {
     {
         let estimate = estimate(&layout, &weather(row));
 
-        let inputs = &estimate.inverters[0].inputs;
-        // Parallel strings at their shared voltage deliver their own powers' sum.
-        let parallel = row.get::<f64>("south") + row.get::<f64>("north");
-        assert_near(inputs[0].power, parallel, &format!("row {i} input 1"));
+        let [first, second] = [
+            &estimate.inverters[0].inputs[0],
+            &estimate.inverters[0].inputs[1],
+        ];
+        assert_near(first.power, row.get("input1"), &format!("row {i} input 1"));
         assert_near(
-            inputs[1].power,
-            row.get("second_south"),
-            &format!("row {i} input 2"),
+            first.strings[0],
+            row.get("south"),
+            &format!("row {i} south"),
         );
         assert_near(
-            inputs[1].strings[0],
-            row.get("second_south"),
+            first.strings[1],
+            row.get("north"),
+            &format!("row {i} north"),
+        );
+        assert_near(second.power, row.get("input2"), &format!("row {i} input 2"));
+        assert_near(
+            second.strings[0],
+            row.get("input2"),
             &format!("row {i} alone"),
         );
     }
@@ -134,6 +130,7 @@ fn parallel_strings_share_a_capped_input_by_their_modelled_current() {
         loss: 12.0,
         ..string(0.0, 16)
     };
+    // Below the parallel strings' 2 × 9.9 A at their peak.
     let limits = MpptLimits {
         max_current: 10.0,
         min_voltage: 150.0,

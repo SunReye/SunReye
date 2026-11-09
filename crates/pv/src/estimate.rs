@@ -1,9 +1,6 @@
 //! A layout's output under one weather instant: strings, then their MPPT inputs, then inverters.
 
-use crate::{
-    Estimate, Input, InputEstimate, InverterEstimate, Layout, Sky, StringOutput, Weather,
-    inverter_power, mppt_output, string_output, sun_position,
-};
+use crate::{Estimate, InverterEstimate, Layout, Sky, Weather, input_output, sun_position};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
@@ -22,50 +19,19 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
         .inverters
         .iter()
         .map(|inverter| {
-            let inputs: Vec<InputEstimate> =
-                inverter.inputs.iter().map(|i| input(i, &sky)).collect();
-            let outputs: Vec<_> = inputs
+            let inputs: Vec<_> = inverter
+                .inputs
                 .iter()
-                .map(|i| StringOutput {
-                    current: i.current,
-                    voltage: i.voltage,
-                    power: i.power,
-                })
+                .map(|i| input_output(i, &sky, &layout.occluders))
                 .collect();
+            let power: f64 = inputs.iter().map(|i| i.power).sum();
             InverterEstimate {
-                power: inverter_power(&outputs, inverter.ac_rating.unwrap_or(f64::INFINITY)),
+                power: power.min(inverter.ac_rating.unwrap_or(f64::INFINITY)),
                 inputs,
             }
         })
         .collect();
     Estimate { inverters }
-}
-
-/// The input's operating point; each string gets the share of its modelled current (ADR 17).
-fn input(input: &Input, sky: &Sky) -> InputEstimate {
-    let strings: Vec<_> = input
-        .strings
-        .iter()
-        .map(|s| string_output(s, sky))
-        .collect();
-    let output = mppt_output(&strings, input.limits.as_ref());
-    let current: f64 = strings.iter().map(|s| s.current).sum();
-    let shares = strings
-        .iter()
-        .map(|s| {
-            if current > 0.0 {
-                output.power * s.current / current
-            } else {
-                0.0
-            }
-        })
-        .collect();
-    InputEstimate {
-        current: output.current,
-        voltage: output.voltage,
-        power: output.power,
-        strings: shares,
-    }
 }
 
 /// 1 to 366, for the UTC day `days` after 1970-01-01 (Hinnant's civil-from-days).
