@@ -43,6 +43,10 @@ pub struct Answers {
     pub together: usize,
 }
 
+/// Serves `answers` on a free local port.
+///
+/// # Panics
+/// No local port is free.
 pub async fn serve(answers: Answers) -> Fake {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();

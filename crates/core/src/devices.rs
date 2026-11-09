@@ -24,6 +24,7 @@ use crate::api::{Code, Problem};
 use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, Task};
+use crate::http;
 use crate::layout::Inverters;
 use crate::mqtt;
 use crate::profiles::Catalogue;
@@ -58,8 +59,8 @@ enum Refusal {
     DeviceConnection,
     /// The device names no known profile.
     Profile,
-    /// A device behind a broker needs a profile with an `mqtt` binding, and one with an `mqtt`
-    /// binding needs a broker.
+    /// A device's profile reads through the binding its connection's transport carries: a broker
+    /// `mqtt`, an HTTP host `http`, any other Modbus.
     Transport,
     /// A device's profile is fixed: its history is stored in that profile's steps.
     ProfileChange,
@@ -103,6 +104,26 @@ pub enum Transport {
     SolarmanV5,
     /// An MQTT broker (ADR 10); its credentials are the secrets `username` and `password`.
     Mqtt,
+    /// An HTTP host (ADR 10); the secrets `username` and `password` answer its Digest challenge.
+    Http,
+}
+
+impl Transport {
+    const fn reads(self) -> Reads {
+        match self {
+            Self::ModbusTcp | Self::RtuOverTcp | Self::SolarmanV5 => Reads::Registers,
+            Self::Mqtt => Reads::Topics,
+            Self::Http => Reads::Gets,
+        }
+    }
+}
+
+/// The binding a profile reads through, which its device's connection must carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reads {
+    Registers,
+    Topics,
+    Gets,
 }
 
 /// How the core reaches an endpoint, without its secrets.
@@ -253,6 +274,14 @@ struct Brokered {
     _publisher: Option<Publisher>,
 }
 
+/// An HTTP host connection as its task reads it.
+#[derive(PartialEq, Eq)]
+struct Hosting {
+    host: http::Host,
+    /// Each device's id, address and profile.
+    devices: Vec<(u32, u8, String)>,
+}
+
 /// An endpoint task and the devices it polls.
 struct Running {
     endpoint: Endpoint,
@@ -272,6 +301,8 @@ pub struct Devices {
     running: Arc<Mutex<Vec<Running>>>,
     /// Changed only under `running`'s lock.
     brokers: Arc<std::sync::Mutex<Vec<Brokered>>>,
+    /// Each HTTP host's task, with what it was started for; changed only under `running`'s lock.
+    hosts: Arc<std::sync::Mutex<Vec<(Hosting, http::Task)>>>,
     /// Every device's id and name, as the publishers report their availability.
     named: Arc<watch::Sender<Vec<(DeviceId, String)>>>,
     scanner: Scanner,
@@ -312,6 +343,7 @@ impl Devices {
             inverters,
             running: Arc::default(),
             brokers: Arc::default(),
+            hosts: Arc::default(),
             named: Arc::new(watch::channel(Vec::new()).0),
             scanner: Scanner::lan(),
         };
@@ -489,8 +521,8 @@ impl Devices {
         draft: DeviceDraft,
         changed: SystemTime,
     ) -> Result<Device, Problem> {
-        let topics = self.check_profile(&draft)?;
-        self.apply(move |db| store::add_device(db, draft, topics, changed))
+        let reads = self.check_profile(&draft)?;
+        self.apply(move |db| store::add_device(db, draft, reads, changed))
             .await
     }
 
@@ -505,8 +537,8 @@ impl Devices {
         draft: DeviceDraft,
         changed: SystemTime,
     ) -> Result<Device, Problem> {
-        let topics = self.check_profile(&draft)?;
-        self.apply(move |db| store::change_device(db, id, draft, topics, changed))
+        let reads = self.check_profile(&draft)?;
+        self.apply(move |db| store::change_device(db, id, draft, reads, changed))
             .await
     }
 
@@ -767,12 +799,16 @@ impl Devices {
         Ok(self.catalogue.get(id).ok_or(settings::Refusal::None)?)
     }
 
-    /// Whether the draft's profile reads topics; refused when the profile is unknown.
-    fn check_profile(&self, draft: &DeviceDraft) -> Result<bool, Refusal> {
-        self.catalogue
-            .get(&draft.profile)
-            .map(|p| p.reads_topics())
-            .ok_or(Refusal::Profile)
+    /// The binding the draft's profile reads through; refused when the profile is unknown.
+    fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, Refusal> {
+        let profile = self.catalogue.get(&draft.profile).ok_or(Refusal::Profile)?;
+        Ok(if profile.reads_topics() {
+            Reads::Topics
+        } else if profile.reads_http() {
+            Reads::Gets
+        } else {
+            Reads::Registers
+        })
     }
 
     /// Runs one change on the file, then restarts the endpoints it touched.
@@ -799,6 +835,7 @@ impl Devices {
             changed
         });
         self.restart_brokers().await?;
+        self.restart_hosts().await?;
         let wanted = by_endpoint(self.database.run(store::polled).await?);
         running.retain(|r| {
             wanted
@@ -880,6 +917,37 @@ impl Devices {
         Ok(())
     }
 
+    /// Brings the HTTP host tasks in line with the HTTP connections: one whose connection or
+    /// devices changed is replaced.
+    async fn restart_hosts(&self) -> Result<(), storage::Error> {
+        let mut wanted = self.database.run(store::hosts).await?;
+        self.keep_hosts(&mut wanted);
+        for hosting in wanted {
+            let devices: Vec<endpoint::Device> = hosting
+                .devices
+                .iter()
+                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
+                .collect();
+            for device in &devices {
+                self.declare(device.id, &device.profile).await?;
+            }
+            let task = http::spawn(hosting.host.clone(), devices, self.bus.clone());
+            self.hosts
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((hosting, task));
+        }
+        Ok(())
+    }
+
+    /// Stops the host tasks no longer `wanted`, and leaves in `wanted` those still to start.
+    fn keep_hosts(&self, wanted: &mut Vec<Hosting>) {
+        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
+        hosts.retain(|(h, _)| wanted.contains(h));
+        wanted.retain(|w| !hosts.iter().any(|(h, _)| h == w));
+        drop(hosts);
+    }
+
     /// Stops the clients no longer `wanted`, and leaves in `wanted` those still to start.
     fn keep_brokers(&self, wanted: &mut Vec<Brokering>) {
         let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
@@ -955,9 +1023,10 @@ fn check_reach(reach: &Reach) -> Result<(), Refusal> {
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,
-        (Transport::ModbusTcp | Transport::RtuOverTcp | Transport::SolarmanV5, root) => {
-            root.is_none() && reach.publish.is_none()
-        }
+        (
+            Transport::ModbusTcp | Transport::RtuOverTcp | Transport::SolarmanV5 | Transport::Http,
+            root,
+        ) => root.is_none() && reach.publish.is_none(),
     };
     if !root || reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
         return Err(Refusal::ConnectionValue);

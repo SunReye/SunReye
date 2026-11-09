@@ -213,7 +213,7 @@ async fn a_vehicle_title_in_the_catalogue_reads_as_its_entry() {
 
 impl Core {
     /// The value at `uri` once it is live, within two seconds.
-    async fn read_role(&self, set_cookie: &str, uri: &str) -> Value {
+    pub(super) async fn read_role(&self, set_cookie: &str, uri: &str) -> Value {
         for _ in 0..200 {
             let (status, body) = self.ask(set_cookie, get(uri)).await;
             if status == StatusCode::OK {

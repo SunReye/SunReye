@@ -46,6 +46,7 @@ mod devices;
 mod evcc;
 mod forecasts;
 mod history;
+mod http;
 mod import;
 mod ingress;
 mod layout;

@@ -2971,7 +2971,8 @@
           "modbus-tcp",
           "rtu-over-tcp",
           "solarman-v5",
-          "mqtt"
+          "mqtt",
+          "http"
         ],
         "type": "string"
       },

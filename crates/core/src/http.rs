@@ -6,7 +6,7 @@
 
 mod digest;
 #[cfg(test)]
-mod fake;
+pub mod fake;
 
 use std::sync::Arc;
 use std::time::SystemTime;
