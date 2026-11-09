@@ -26,7 +26,7 @@ const RAW_SPAN: Duration = DAY;
 const HOUR_SPAN: Duration = HOUR.saturating_mul(MAX_POINTS as u32 - 1);
 /// The longest range of plant-local days: 1,498 of the shortest, 23 hours, and the two it cuts.
 #[expect(clippy::cast_possible_truncation, reason = "1,498 fits")]
-const DAY_SPAN: Duration = HOUR.saturating_mul(23 * (MAX_POINTS as u32 - 2));
+pub(super) const DAY_SPAN: Duration = HOUR.saturating_mul(23 * (MAX_POINTS as u32 - 2));
 
 const QUERY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,

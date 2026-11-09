@@ -15,6 +15,7 @@
 {#key locale}
   <Dashboard {core} {layout}>
     {#snippet nav()}
+      <a href="#/history">{m.nav_history()}</a>
       <a href="#/forecast">{m.nav_forecast()}</a>
       <a href="#/builder">{m.nav_builder()}</a>
       <a href="#/settings">{m.nav_settings()}</a>
