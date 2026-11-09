@@ -17,7 +17,7 @@ use tokio::sync::watch;
 use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
-use crate::storage::{Database, Error};
+use crate::storage::{Aggregate, Database, Error};
 
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -328,6 +328,52 @@ pub fn residual(points: &[Point], energy: impl Fn(u32, &str) -> Option<f64>) -> 
         .filter(|&(id, own)| own < 0.0 && consuming.contains(&id))
         .map(|(id, own)| (id, -own))
         .collect()
+}
+
+/// The lifetime counters, in kWh, that give a power role's energy: each added or taken away.
+const COUNTERS: &[(&str, &[(&str, f64)])] = &[
+    (
+        "grid.power",
+        &[
+            ("grid.energy.imported.total", 1.0),
+            ("grid.energy.exported.total", -1.0),
+        ],
+    ),
+    ("pv.power", &[("pv.energy.total", 1.0)]),
+    ("generator.power", &[("generator.energy.total", 1.0)]),
+    (
+        "battery.power",
+        &[
+            ("battery.energy.charged.total", 1.0),
+            ("battery.energy.discharged.total", -1.0),
+        ],
+    ),
+    ("load.power", &[("load.energy.total", 1.0)]),
+    ("backup.power", &[("backup.energy.total", 1.0)]),
+];
+
+/// A power role's energy in kWh over one rollup window, signed as the role (ADR 4).
+///
+/// `rollup` is the window's aggregate of a series. The energy is the delta of the role's lifetime
+/// counters while each has one, else its integrated power (ADR 3).
+pub fn energy(role: &str, rollup: impl Fn(&str) -> Option<Aggregate>) -> Option<f64> {
+    let counters = COUNTERS
+        .iter()
+        .find(|(r, _)| *r == role)
+        .map(|&(_, counters)| counters);
+    let counted: Option<f64> = counters.and_then(|counters| {
+        counters
+            .iter()
+            .map(|&(series, sign)| match rollup(series)? {
+                Aggregate::Counter { delta, .. } => Some(sign * delta),
+                Aggregate::Measurement { .. } => None,
+            })
+            .sum()
+    });
+    counted.or_else(|| match rollup(role)? {
+        Aggregate::Measurement { integral, .. } => Some(integral / 1000.0),
+        Aggregate::Counter { .. } => None,
+    })
 }
 
 /// Each measured point's power minus its nearest measured descendants.

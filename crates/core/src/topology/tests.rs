@@ -1,8 +1,10 @@
 //! The balance of a measurement-point tree, worked by hand.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
-use super::{Balance, Claim, Point, balance, residual};
+use super::{Balance, Claim, Point, balance, energy, residual};
+use crate::storage::Aggregate;
 
 fn point(id: u32, parent: Option<u32>, claims: &[(u32, &str)]) -> Point {
     Point {
@@ -288,4 +290,66 @@ fn a_missing_source_shows_as_the_residual_of_the_point_above_it() {
 
     // −6 − 3 − 8 = −17 kWh.
     assert_eq!(residual_of(&missing, &energies), [(1, 17.0)]);
+}
+
+/// A day of a counter that rose by `delta` kWh.
+const fn counted(delta: f64) -> Aggregate {
+    Aggregate::Counter {
+        first: 100.0,
+        last: 100.0 + delta,
+        delta,
+    }
+}
+
+/// A day of power whose integral is `wh`.
+const fn integrated(wh: f64) -> Aggregate {
+    Aggregate::Measurement {
+        duration: Duration::from_hours(24),
+        mean: wh / 24.0,
+        min: 0.0,
+        max: wh,
+        integral: wh,
+    }
+}
+
+fn energy_of(role: &str, days: &[(&str, Aggregate)]) -> Option<f64> {
+    energy(role, |series| {
+        days.iter().find(|(s, _)| *s == series).map(|&(_, a)| a)
+    })
+}
+
+#[test]
+fn a_role_with_a_lifetime_counter_yields_its_delta_over_its_integrated_power() {
+    let days = [
+        ("pv.power", integrated(12_000.0)),
+        ("pv.energy.total", counted(12.5)),
+    ];
+
+    assert_eq!(energy_of("pv.power", &days), Some(12.5));
+}
+
+#[test]
+fn the_grid_and_battery_net_their_two_counters() {
+    let days = [
+        ("grid.energy.imported.total", counted(4.0)),
+        ("grid.energy.exported.total", counted(9.0)),
+        ("battery.energy.charged.total", counted(6.0)),
+        ("battery.energy.discharged.total", counted(5.5)),
+    ];
+
+    assert_eq!(energy_of("grid.power", &days), Some(-5.0));
+    assert_eq!(energy_of("battery.power", &days), Some(0.5));
+}
+
+#[test]
+fn without_every_counter_a_role_integrates_its_power_in_kwh() {
+    let days = [
+        ("grid.power", integrated(-2500.0)),
+        ("grid.energy.imported.total", counted(4.0)),
+        ("ev.charge.power", integrated(7000.0)),
+    ];
+
+    assert_eq!(energy_of("grid.power", &days), Some(-2.5));
+    assert_eq!(energy_of("ev.charge.power", &days), Some(7.0));
+    assert_eq!(energy_of("load.power", &days), None);
 }
