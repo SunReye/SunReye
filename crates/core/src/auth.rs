@@ -3,7 +3,7 @@
 mod backoff;
 mod sessions;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::Json;
@@ -30,6 +30,8 @@ const COST: u32 = 12;
 /// non-truncating calls also refuse exactly 72 bytes, so its plain calls run behind this check.
 const LONGEST: usize = 72;
 const COOKIE: &str = "sunreye_session";
+/// The prefix Home Assistant's Supervisor stripped from an ingress request.
+const INGRESS_PATH: &str = "x-ingress-path";
 
 const SETUP: Problem = Problem {
     status: StatusCode::UNAUTHORIZED,
@@ -84,6 +86,8 @@ pub struct Auth(Arc<Inner>);
 #[derive(Debug)]
 struct Inner {
     database: Database,
+    /// The address whose ingress requests act as admin (ADR 9).
+    ingress: Option<IpAddr>,
     /// The admin's bcrypt hash; `None` until the first run sets it.
     admin: Mutex<Option<String>>,
     sessions: Mutex<Sessions>,
@@ -91,9 +95,11 @@ struct Inner {
 }
 
 impl Auth {
+    /// `ingress` is the Home Assistant Supervisor's address, set only in the add-on image.
+    ///
     /// # Errors
     /// The stored admin cannot be read.
-    pub async fn open(database: Database) -> Result<Self, Error> {
+    pub async fn open(database: Database, ingress: Option<IpAddr>) -> Result<Self, Error> {
         let admin = database
             .run(|db| {
                 db.query_row("SELECT hash FROM admin", [], |row| row.get(0))
@@ -102,6 +108,7 @@ impl Auth {
             .await?;
         Ok(Self(Arc::new(Inner {
             database,
+            ingress,
             admin: Mutex::new(admin),
             sessions: Mutex::default(),
             backoff: Mutex::default(),
@@ -118,6 +125,19 @@ impl Auth {
             .routes(routes!(login))
             .with_state(self.clone())
             .merge(protected)
+    }
+
+    /// Whether the Supervisor proxied `request` through ingress, which names its prefix in
+    /// `X-Ingress-Path`. Anyone may send the header; only the Supervisor's address is trusted.
+    fn via_ingress(&self, request: &Request) -> bool {
+        let client = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(client)| client.ip().to_canonical());
+        self.0
+            .ingress
+            .is_some_and(|ingress| client == Some(ingress))
+            && request.headers().contains_key(INGRESS_PATH)
     }
 
     fn admin(&self) -> Option<String> {
@@ -244,8 +264,12 @@ async fn login(
     ))
 }
 
-/// Refuses a request without a live session, and renews the cookie of one with it.
+/// Refuses a request without a live session, and renews the cookie of one with it. An ingress
+/// request from the Supervisor needs neither: Home Assistant signed its user in.
 async fn require(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+    if auth.via_ingress(&request) {
+        return next.run(request).await;
+    }
     if auth.admin().is_none() {
         return SETUP.into_response();
     }

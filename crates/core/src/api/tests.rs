@@ -1,6 +1,6 @@
 //! The API over HTTP, against a real SQLite file.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,6 +21,7 @@ use crate::live::Live;
 use crate::storage::{Problem, Storage};
 
 mod history;
+mod ingress;
 mod live;
 mod screen;
 
@@ -37,9 +38,14 @@ struct Core {
 
 impl Core {
     async fn open(path: &Path) -> Self {
+        Self::trusting(path, None).await
+    }
+
+    /// A core that trusts Home Assistant ingress from `ingress`.
+    async fn trusting(path: &Path, ingress: Option<IpAddr>) -> Self {
         let bus = Bus::default();
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
-        let auth = Auth::open(storage.database()).await.unwrap();
+        let auth = Auth::open(storage.database(), ingress).await.unwrap();
         let (problems, watched) = watch::channel(Vec::new());
         let clock = Arc::new(Mutex::new(None));
         let set = Arc::clone(&clock);
@@ -113,7 +119,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         &Bus::default(),
     )
     .unwrap();
-    let auth = Auth::open(storage.database()).await.unwrap();
+    let auth = Auth::open(storage.database(), None).await.unwrap();
     let api = Api {
         auth,
         live: Live::spawn(&Bus::default()),

@@ -41,7 +41,17 @@ fn main() -> ExitCode {
 async fn run(options: Options) -> Result<(), startup::Error> {
     let listener = TcpListener::bind(options.listen).await?;
     tracing::info!(address = %options.listen, data = %options.data_dir.display(), "serving");
-    startup::serve(listener, options.data_dir, build_time(), terminated()).await?;
+    if let Some(ingress) = options.ingress {
+        tracing::info!(%ingress, "trusting Home Assistant ingress");
+    }
+    startup::serve(
+        listener,
+        options.data_dir,
+        options.ingress,
+        build_time(),
+        terminated(),
+    )
+    .await?;
     tracing::info!("stopped");
     Ok(())
 }

@@ -1,8 +1,8 @@
-//! Startup (ADR 2): the two options, and the core served until shutdown.
+//! Startup (ADR 2): the options, and the core served until shutdown.
 
 use std::fmt;
 use std::future::{Future, IntoFuture};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -16,7 +16,7 @@ use crate::live::Live;
 use crate::storage::{self, Storage};
 
 const DEFAULT_LISTEN: SocketAddr =
-    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
+    SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
 /// Storage closes a bucket and marks silent series once a minute (ADR 3).
 const MINUTE: Duration = Duration::from_secs(60);
 /// How long open requests may finish after a shutdown signal; live streams never do.
@@ -27,6 +27,9 @@ const GRACE: Duration = Duration::from_secs(3);
 pub struct Options {
     pub data_dir: PathBuf,
     pub listen: SocketAddr,
+    /// The Home Assistant Supervisor's address, whose ingress requests act as admin (ADR 9).
+    /// Only the add-on image sets it.
+    pub ingress: Option<IpAddr>,
 }
 
 /// Why the options were refused.
@@ -35,6 +38,7 @@ pub enum OptionsError {
     Missing(&'static str),
     NoValue(&'static str),
     Address(String),
+    Ip(String),
     Unknown(String),
 }
 
@@ -44,6 +48,7 @@ impl fmt::Display for OptionsError {
             Self::Missing(flag) => write!(f, "--{flag} or {} is required", variable(flag)),
             Self::NoValue(flag) => write!(f, "--{flag} needs a value"),
             Self::Address(value) => write!(f, "--listen: `{value}` is not an address and port"),
+            Self::Ip(value) => write!(f, "--ingress: `{value}` is not an IP address"),
             Self::Unknown(arg) => write!(f, "unknown argument `{arg}`"),
         }
     }
@@ -57,7 +62,7 @@ fn variable(flag: &str) -> String {
 }
 
 impl Options {
-    /// Reads `--data-dir` and `--listen` from `args`, each falling back to its environment
+    /// Reads `--data-dir`, `--listen` and `--ingress` from `args`, each falling back to its environment
     /// variable from `env`.
     ///
     /// # Errors
@@ -66,7 +71,7 @@ impl Options {
         args: impl IntoIterator<Item = String>,
         env: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, OptionsError> {
-        let (mut data_dir, mut listen) = (None, None);
+        let (mut data_dir, mut listen, mut ingress) = (None, None, None);
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             let (name, inline) = match arg.split_once('=') {
@@ -76,6 +81,7 @@ impl Options {
             let (flag, slot) = match name {
                 "--data-dir" => ("data-dir", &mut data_dir),
                 "--listen" => ("listen", &mut listen),
+                "--ingress" => ("ingress", &mut ingress),
                 _ => return Err(OptionsError::Unknown(arg)),
             };
             *slot = Some(
@@ -91,9 +97,14 @@ impl Options {
             Some(listen) => listen.parse().map_err(|_| OptionsError::Address(listen))?,
             None => DEFAULT_LISTEN,
         };
+        let ingress = match ingress.or_else(|| env(&variable("ingress"))) {
+            Some(ingress) => Some(ingress.parse().map_err(|_| OptionsError::Ip(ingress))?),
+            None => None,
+        };
         Ok(Self {
             data_dir: PathBuf::from(data_dir),
             listen,
+            ingress,
         })
     }
 }
@@ -129,13 +140,17 @@ impl From<storage::Error> for Error {
 }
 
 /// Opens the store in `data_dir` and serves the API on `listener` until `shutdown` resolves,
-/// then writes the open bucket. `build` is the build time: the clock is unsynced until past it.
+/// then writes the open bucket.
+///
+/// `ingress` is the Supervisor's address, if trusted. `build` is the build time: the clock is
+/// unsynced until past it.
 ///
 /// # Errors
 /// The store cannot be opened or written, or serving fails.
 pub async fn serve(
     listener: TcpListener,
     data_dir: PathBuf,
+    ingress: Option<IpAddr>,
     build: SystemTime,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
@@ -146,7 +161,7 @@ pub async fn serve(
     let (problems, watched) = watch::channel(Vec::new());
     tick(&storage, &problems).await?;
     let api = Api {
-        auth: Auth::open(storage.database()).await?,
+        auth: Auth::open(storage.database(), ingress).await?,
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),

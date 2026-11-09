@@ -25,6 +25,7 @@ fn options(data_dir: &str, listen: &str) -> Result<Options, String> {
     Ok(Options {
         data_dir: PathBuf::from(data_dir),
         listen,
+        ingress: None,
     })
 }
 
@@ -55,6 +56,29 @@ fn each_flag_falls_back_to_its_environment_variable() {
     assert_eq!(
         parse(&["--data-dir", "/flag"], &env),
         options("/flag", "127.0.0.1:9000")
+    );
+}
+
+#[test]
+fn only_the_add_on_image_names_the_supervisor_whose_ingress_is_trusted() {
+    let supervisor = Ok(Some("172.30.32.2".parse().unwrap()));
+    let ingress = |args: &[&str], env: &[(&str, &str)]| parse(args, env).map(|o| o.ingress);
+
+    assert_eq!(ingress(&["--data-dir", "/data"], &[]), Ok(None));
+    assert_eq!(
+        ingress(&["--data-dir", "/data", "--ingress", "172.30.32.2"], &[]),
+        supervisor
+    );
+    assert_eq!(
+        ingress(
+            &["--data-dir", "/data"],
+            &[("SUNREYE_INGRESS", "172.30.32.2")]
+        ),
+        supervisor
+    );
+    assert_eq!(
+        parse(&["--data-dir", "/data", "--ingress", "supervisor"], &[]),
+        Err("--ingress: `supervisor` is not an IP address".to_owned())
     );
 }
 
@@ -116,7 +140,7 @@ async fn the_core_serves_until_shut_down_and_reports_a_clock_behind_its_build() 
     let address = listener.local_addr().unwrap();
     let build = SystemTime::now() + Duration::from_hours(24);
     let (stop, stopped) = oneshot::channel::<()>();
-    let core = tokio::spawn(serve(listener, dir.path().to_owned(), build, async {
+    let core = tokio::spawn(serve(listener, dir.path().to_owned(), None, build, async {
         stopped.await.ok();
     }));
 
@@ -134,4 +158,29 @@ async fn the_core_serves_until_shut_down_and_reports_a_clock_behind_its_build() 
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
     assert!(dir.path().join("core.sqlite").exists());
+}
+
+#[tokio::test]
+async fn the_core_trusts_ingress_from_the_address_it_was_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let ingress = Some(address.ip());
+    let (stop, stopped) = oneshot::channel::<()>();
+    let core = tokio::spawn(serve(
+        listener,
+        dir.path().to_owned(),
+        ingress,
+        SystemTime::UNIX_EPOCH,
+        async {
+            stopped.await.ok();
+        },
+    ));
+
+    let header = "X-Ingress-Path: /api/hassio_ingress/abc123\r\n";
+    let (status, _) = request(address, "GET", "/api/v1/session", header, "").await;
+    assert_eq!(status, 204);
+
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
 }
