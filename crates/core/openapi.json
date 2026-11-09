@@ -1,0 +1,455 @@
+{
+  "components": {
+    "schemas": {
+      "Condition": {
+        "properties": {
+          "code": {
+            "description": "A stable machine code, such as `clock.unsynced`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "Credentials": {
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "Frame": {
+        "description": "Values by device id, then by series name, such as `pv.mppt.power[2]`.",
+        "properties": {
+          "devices": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "format": "double",
+                "type": "number"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "History": {
+        "description": "Time-weighted means of one series over a range, at the tier the server picked.",
+        "properties": {
+          "points": {
+            "description": "In time order; a gap has no point.",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "type": "array"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/Tier"
+          },
+          "width": {
+            "description": "A `bucket`'s width in seconds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "tier",
+          "points"
+        ],
+        "type": "object"
+      },
+      "Point": {
+        "properties": {
+          "end": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "mean": {
+            "description": "The value weighted by the time it held between `start` and `end`.",
+            "format": "double",
+            "type": "number"
+          },
+          "start": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "mean"
+        ],
+        "type": "object"
+      },
+      "ProblemDetails": {
+        "description": "The body of a refusal.",
+        "properties": {
+          "code": {
+            "description": "A stable machine code, such as `auth.required`.",
+            "type": "string"
+          },
+          "status": {
+            "description": "The HTTP status.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "code"
+        ],
+        "type": "object"
+      },
+      "Problems": {
+        "description": "Conditions that degrade the core.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "problems"
+        ],
+        "type": "object"
+      },
+      "Schemas": {
+        "description": "An inclusive range of profile schemas.",
+        "properties": {
+          "max": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "min": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "type": "object"
+      },
+      "Support": {
+        "description": "What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,\nthe one its WASM build reports.",
+        "properties": {
+          "capabilities": {
+            "description": "The bindings, decoders and computed quantities a profile may require.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schema": {
+            "$ref": "#/components/schemas/Schemas",
+            "description": "The profile schemas this core loads."
+          },
+          "transports": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "description": "The core's version.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "schema",
+          "capabilities",
+          "transports"
+        ],
+        "type": "object"
+      },
+      "Tier": {
+        "description": "`raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or\n`day` (plant-local) rollups.",
+        "enum": [
+          "raw",
+          "bucket",
+          "hour",
+          "day"
+        ],
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "license": {
+      "identifier": "AGPL-3.0-only",
+      "name": "AGPL-3.0-only"
+    },
+    "title": "SunReye",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/capabilities": {
+      "get": {
+        "operationId": "capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Support"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}/history": {
+      "get": {
+        "operationId": "history",
+        "parameters": [
+          {
+            "description": "The device id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "A series such as `pv.mppt.power[2]`.",
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The first instant, RFC 3339.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The instant after the last, RFC 3339.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/live": {
+      "get": {
+        "operationId": "live_values",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Frame"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in\nwhich a value changed. There is no replay: a client that falls behind is disconnected and\nreconnects to a fresh snapshot."
+      }
+    },
+    "/api/v1/login": {
+      "post": {
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in; the cookie is set"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Signs the admin in to a session cookie."
+      }
+    },
+    "/api/v1/problems": {
+      "get": {
+        "operationId": "problems",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problems"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "operationId": "session",
+        "responses": {
+          "204": {
+            "description": "Signed in"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Whether the request carries a live session."
+      }
+    },
+    "/api/v1/setup": {
+      "post": {
+        "operationId": "setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The admin password is set"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The first run sets the admin password; there is no registration."
+      }
+    }
+  }
+}

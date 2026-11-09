@@ -43,6 +43,8 @@ const steps: readonly Command[] = [
   // Types
   ["tsc", "-p", "tsconfig.json"],
   [...web, "check"],
+  // The generated client types match the core's committed OpenAPI document (ADR 9).
+  [...web, "api:check"],
   // Builds and tests
   ["cargo", "test", "--workspace", "--locked"],
   ["cargo", "build", "--locked", "-p", "sunreye-pv", "--target", "wasm32-unknown-unknown"],

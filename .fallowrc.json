@@ -88,7 +88,8 @@
   },
   "duplicates": {
     "minTokens": 40,
-    "minLines": 5
+    "minLines": 5,
+    "ignore": ["apps/web/src/lib/api/schema.d.ts"]
   },
   "boundaries": {
     "zones": [

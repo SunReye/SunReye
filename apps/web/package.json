@@ -4,16 +4,23 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "api": "SUNREYE_UPDATE_OPENAPI=1 cargo test -q -p sunreye-core --lib committed_openapi && bun run api:types",
+    "api:types": "openapi-typescript ../../crates/core/openapi.json -o src/lib/api/schema.d.ts",
+    "api:check": "bun run api:types --check",
     "format:check": "prettier --check \"src/**/*.svelte\"",
     "sync": "svelte-kit sync",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test:components": "vitest run"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@vitest/browser-playwright": "5.1.0",
+    "openapi-typescript": "7.13.0",
     "playwright": "1.65.0",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",

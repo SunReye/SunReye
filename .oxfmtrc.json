@@ -5,6 +5,8 @@
     ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
+    "crates/core/openapi.json",
+    "apps/web/src/lib/api/schema.d.ts",
     "**/*.svelte",
     "**/*.md"
   ]
