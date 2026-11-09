@@ -334,6 +334,16 @@
       "url": "evcc.json"
     },
     {
+      "id": "shelly-pro-3em",
+      "version": "1.0.0",
+      "schema": 1,
+      "requires": [
+        "http"
+      ],
+      "sha256": "4cd454353fb9c529d874a52f95a95422dd6c38161286fcfa7264137584a03341",
+      "url": "shelly-pro-3em.json"
+    },
+    {
       "id": "sunspec",
       "version": "1.0.0",
       "schema": 1,

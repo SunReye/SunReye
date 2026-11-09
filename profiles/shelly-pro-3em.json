@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "id": "shelly-pro-3em",
+  "name": "Pro 3EM",
+  "manufacturer": "Shelly",
+  "version": "1.0.0",
+  "requires": [
+    "http"
+  ],
+  "quantities": [
+    {
+      "key": "power",
+      "role": "grid.power",
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/total_act_power",
+      "resolution": 0.1
+    },
+    {
+      "key": "frequency",
+      "role": "grid.frequency",
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/a_freq",
+      "resolution": 0.01
+    },
+    {
+      "key": "a.power",
+      "role": "grid.phase.power",
+      "index": 1,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/a_act_power",
+      "resolution": 0.1
+    },
+    {
+      "key": "a.voltage",
+      "role": "grid.phase.voltage",
+      "index": 1,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/a_voltage",
+      "resolution": 0.1
+    },
+    {
+      "key": "a.current",
+      "role": "grid.phase.current",
+      "index": 1,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/a_current",
+      "resolution": 0.001
+    },
+    {
+      "key": "b.power",
+      "role": "grid.phase.power",
+      "index": 2,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/b_act_power",
+      "resolution": 0.1
+    },
+    {
+      "key": "b.voltage",
+      "role": "grid.phase.voltage",
+      "index": 2,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/b_voltage",
+      "resolution": 0.1
+    },
+    {
+      "key": "b.current",
+      "role": "grid.phase.current",
+      "index": 2,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/b_current",
+      "resolution": 0.001
+    },
+    {
+      "key": "c.power",
+      "role": "grid.phase.power",
+      "index": 3,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/c_act_power",
+      "resolution": 0.1
+    },
+    {
+      "key": "c.voltage",
+      "role": "grid.phase.voltage",
+      "index": 3,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/c_voltage",
+      "resolution": 0.1
+    },
+    {
+      "key": "c.current",
+      "role": "grid.phase.current",
+      "index": 3,
+      "get": "/rpc/EM.GetStatus?id={address}",
+      "json": "/c_current",
+      "resolution": 0.001
+    }
+  ]
+}

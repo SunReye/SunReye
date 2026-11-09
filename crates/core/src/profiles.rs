@@ -64,6 +64,7 @@ const BUNDLED: &[&str] = &[
     include_str!("../../../profiles/deye-sun6k-sg05lp3.json"),
     include_str!("../../../profiles/deye-sun8k-sg05lp3.json"),
     include_str!("../../../profiles/evcc.json"),
+    include_str!("../../../profiles/shelly-pro-3em.json"),
     include_str!("../../../profiles/sunspec.json"),
 ];
 

@@ -587,7 +587,8 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
     if doc.texts.is_some() && doc.topic.is_none() {
         return Err("only a topic maps texts");
     }
-    if doc.scale_factor.is_some() != doc.resolution.is_some() {
+    // A JSON number is a float, which may declare the resolution it is stored in.
+    if doc.scale_factor.is_some() != doc.resolution.is_some() && doc.get.is_none() {
         return Err("a scale factor and a resolution come together");
     }
     if doc.scale_factor.is_some() && doc.register.is_none() {

@@ -151,3 +151,44 @@ fn an_http_profile_has_no_read_plan_and_reads_http() {
     assert!(p.reads_http());
     assert!(!p.reads_topics());
 }
+
+#[test]
+fn a_point_is_stored_in_its_resolution_or_else_its_scale() {
+    let p = profile(&json!([
+        { "key": "v", "role": "grid.phase.voltage", "index": 1, "get": GET, "json": "/a_voltage",
+          "resolution": 0.1 },
+        { "key": "kw", "role": "extra.kw", "get": GET, "json": "/c_act_power", "scale": 0.001 },
+    ]));
+    assert_eq!(p.quantities()[0].step(), 0.1);
+    assert_eq!(p.quantities()[1].step(), 0.001);
+}
+
+#[test]
+fn the_shelly_pro_3em_reads_its_status_as_grid_roles() {
+    let p = Profile::load(include_str!("../../../../profiles/shelly-pro-3em.json")).unwrap();
+    let get = "/rpc/EM.GetStatus?id=0";
+    assert_eq!(p.requests(0), [get]);
+    let values = answered(&p, get, STATUS);
+    let read: Vec<_> = p
+        .quantities()
+        .iter()
+        .zip(values)
+        .map(|(q, v)| (q.role.as_str(), q.index, v.unwrap()))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            ("grid.power", None, 2484.782),
+            ("grid.frequency", None, 50.0),
+            ("grid.phase.power", Some(1), 951.2),
+            ("grid.phase.voltage", Some(1), 236.1),
+            ("grid.phase.current", Some(1), 4.029),
+            ("grid.phase.power", Some(2), -951.1),
+            ("grid.phase.voltage", Some(2), 236.201),
+            ("grid.phase.current", Some(2), 4.027),
+            ("grid.phase.power", Some(3), 715.4),
+            ("grid.phase.voltage", Some(3), 236.402),
+            ("grid.phase.current", Some(3), 3.03),
+        ]
+    );
+}
