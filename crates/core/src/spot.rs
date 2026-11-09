@@ -4,6 +4,7 @@
 mod energy_charts;
 #[cfg(test)]
 pub mod fake;
+mod zone;
 
 use std::fmt;
 use std::future::Future;
@@ -19,6 +20,7 @@ use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 use crate::storage::{self, Issue, Policy, Storage};
 
 pub use energy_charts::EnergyCharts;
+pub use zone::SpotZone;
 
 /// Computed device ids count down from `u32::MAX`, the weather device's (ADR 15).
 pub const DEVICE: DeviceId = DeviceId(u32::MAX - 3);
@@ -41,7 +43,7 @@ pub enum BiddingZone {
 }
 
 impl BiddingZone {
-    const fn code(self) -> &'static str {
+    pub(crate) const fn code(self) -> &'static str {
         match self {
             Self::DeLu => "DE-LU",
         }

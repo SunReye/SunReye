@@ -27,6 +27,7 @@ use crate::location::PlantLocation;
 use crate::profiles::Profiles;
 use crate::settings::{Declared, Enable};
 use crate::spa;
+use crate::spot::SpotZone;
 use crate::storage;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
@@ -64,6 +65,7 @@ pub struct Api {
     pub devices: Devices,
     pub changes: Changes,
     pub location: PlantLocation,
+    pub spot: SpotZone,
     pub profiles: Profiles,
     pub topologies: Topologies,
     pub tariffs: Tariffs,
@@ -109,6 +111,7 @@ pub fn router(api: Api) -> Router {
         .merge(api.changes.routes())
         .merge(api.cars.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
+        .merge(api.spot.routes(Clock::clone(&api.clock)))
         .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
         .merge(api.layouts.routes(Clock::clone(&api.clock)));

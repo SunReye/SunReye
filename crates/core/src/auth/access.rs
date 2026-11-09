@@ -63,6 +63,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::PUT, "/api/v1/location", Admin),
     (Method::GET, "/api/v1/timezone", Admin),
     (Method::PUT, "/api/v1/timezone", Admin),
+    (Method::GET, "/api/v1/spot-prices", Admin),
+    (Method::PUT, "/api/v1/spot-prices", Admin),
     (Method::GET, "/api/v1/changes", Admin),
     (Method::GET, "/api/v1/topology", Admin),
     (Method::PUT, "/api/v1/topology", Admin),

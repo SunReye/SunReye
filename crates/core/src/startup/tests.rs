@@ -10,6 +10,7 @@ use tokio::sync::oneshot;
 
 use super::{Boot, Options, serve};
 use crate::location::Location;
+use crate::spot::{self, BiddingZone};
 use crate::weather::Slot;
 use crate::weather::fake::Fake;
 
@@ -105,17 +106,18 @@ fn startup_refuses_a_missing_data_dir_a_bad_address_and_unknown_arguments() {
     );
 }
 
-/// A core in `data_dir` whose weather provider answers nothing.
+/// A core in `data_dir` whose weather and spot-price providers answer nothing.
 fn boot(
     data_dir: &std::path::Path,
     ingress: Option<std::net::IpAddr>,
     build: SystemTime,
-) -> Boot<Fake> {
+) -> Boot<Fake, spot::fake::Fake> {
     Boot {
         data_dir: data_dir.to_owned(),
         ingress,
         build,
         weather: Fake::new(Vec::new(), &[]).0,
+        spot: spot::fake::Fake::new(Vec::new(), &[]).0,
         fetch: crate::profiles::fake::Host::new(),
         keys: None,
     }
@@ -212,15 +214,25 @@ fn start(
     oneshot::Sender<()>,
     tokio::task::JoinHandle<Result<(), super::Error>>,
 ) {
+    start_with(Boot {
+        weather,
+        ..boot(data_dir, None, SystemTime::UNIX_EPOCH)
+    })
+}
+
+/// Starts the core from `boot` on a free port; returns its address and the sender that stops it.
+fn start_with(
+    boot: Boot<Fake, spot::fake::Fake>,
+) -> (
+    SocketAddr,
+    oneshot::Sender<()>,
+    tokio::task::JoinHandle<Result<(), super::Error>>,
+) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
     let listener = TcpListener::from_std(listener).unwrap();
     let (stop, stopped) = oneshot::channel::<()>();
-    let boot = Boot {
-        weather,
-        ..boot(data_dir, None, SystemTime::UNIX_EPOCH)
-    };
     let core = tokio::spawn(serve(listener, boot, async {
         stopped.await.ok();
     }));
@@ -350,6 +362,69 @@ async fn weather_and_the_solar_forecast_run_from_boot_once_the_plant_has_a_locat
     let fetched = tokio::time::timeout(Duration::from_secs(10), calls.recv()).await;
 
     assert_eq!(fetched.unwrap().unwrap().1, rounded);
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+}
+
+/// The spot-price targets stored for the current quarter hour.
+async fn spot_targets(address: SocketAddr, headers: &str) -> usize {
+    let now = jiff::Timestamp::now();
+    let path = format!(
+        "/api/v1/devices/{}/forecasts?series=price.spot&from={}&to={}",
+        spot::DEVICE.0,
+        now - jiff::SignedDuration::from_mins(15),
+        now + jiff::SignedDuration::from_mins(15)
+    );
+    let (status, response) = request(address, "GET", &path, headers, "").await;
+    assert_eq!(status, 200, "{response}");
+    response.matches("\"target\"").count()
+}
+
+#[tokio::test]
+async fn spot_prices_are_fetched_from_boot_once_the_admin_chooses_a_bidding_zone() {
+    let dir = tempfile::tempdir().unwrap();
+    let device = crate::transport::fake::serve().await;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let price = spot::Slot {
+        start: UNIX_EPOCH + Duration::from_secs(now - now % 900),
+        price: 0.1,
+    };
+    let (fake, mut calls) = spot::fake::Fake::new(vec![price], &[]);
+    let (address, stop, core) = start_with(Boot {
+        spot: fake,
+        ..boot(dir.path(), None, UNIX_EPOCH)
+    });
+    let headers = configure(address, device.address).await;
+    assert!(calls.try_recv().is_err(), "fetched without a bidding zone");
+
+    let de_lu = r#"{"zone":"DE-LU"}"#;
+    let (status, _) = request(address, "PUT", "/api/v1/spot-prices", &headers, de_lu).await;
+
+    assert_eq!(status, 200);
+    let fetched = tokio::time::timeout(Duration::from_secs(10), calls.recv()).await;
+    assert_eq!(fetched.unwrap().unwrap().1, BiddingZone::DeLu);
+    let stored = async {
+        while spot_targets(address, &headers).await < 1 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), stored)
+        .await
+        .unwrap();
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+
+    let (fake, mut calls) = spot::fake::Fake::new(Vec::new(), &[]);
+    let (_, stop, core) = start_with(Boot {
+        spot: fake,
+        ..boot(dir.path(), None, UNIX_EPOCH)
+    });
+    let fetched = tokio::time::timeout(Duration::from_secs(10), calls.recv()).await;
+
+    assert_eq!(fetched.unwrap().unwrap().1, BiddingZone::DeLu);
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
 }
