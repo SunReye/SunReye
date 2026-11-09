@@ -140,6 +140,10 @@ _Avoid_: Assignment, binding
 A measurement point's power minus that of its measured children: the unmeasured remainder no child explains.
 _Avoid_: Residual (the daily energy balance check), rest
 
+**Residual**:
+The energy a consuming measurement point gave out over a day that its measured children do not explain. A consumer cannot give energy out, so a residual is a missing or misplaced point.
+_Avoid_: Own consumption, imbalance
+
 **House load**:
 All consumption in the plant except the battery's charging.
 _Avoid_: Consumption (alone), home power

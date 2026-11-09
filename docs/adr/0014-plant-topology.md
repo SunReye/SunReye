@@ -16,7 +16,7 @@ A home with a grid meter, an inverter, a battery and a heat-pump sub-meter has o
 - Plant aggregates (house load, self-consumption, autarky, flows between grid, PV, battery, heat pump and EV) are computed from the tree and published as readings of a computed `plant` device (ADR 15). They are stored and rolled up like any reading, and are the only plant-level values (ADR 4).
 - The `plant` device balances the tree in force at each reading over every point's latest reading younger than the gap threshold (ADR 3). It publishes its totals under the roles its devices use, and each measured point's own consumption as `point.power` indexed by point id (ADR 4). An unchanged value is published once a poll cadence, so it is neither a gap nor a flood on the bus.
 - Setup proposes a tree from the devices' capabilities (an inverter with its grid meter, PV and battery); the admin adjusts it in the SPA.
-- An energy balance check reports the residual per day, so a missing or misplaced point is visible.
+- An energy balance check reports the residual per plant-local day, so a missing or misplaced point is visible. The tree is balanced over each point's day energy as over powers, in the version in force at the day's end. A consumer, the root or a load point, cannot give energy out: what its own consumption falls below zero is its residual. Only a negative remainder shows a wrong tree: own consumptions sum to the grid's energy whatever its shape.
 
 ## Considered options
 

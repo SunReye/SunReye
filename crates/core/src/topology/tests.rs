@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::{Balance, Claim, Point, balance};
+use super::{Balance, Claim, Point, balance, residual};
 
 fn point(id: u32, parent: Option<u32>, claims: &[(u32, &str)]) -> Point {
     Point {
@@ -223,4 +223,69 @@ fn two_batteries_without_capacities_give_no_plant_soc() {
     ];
 
     assert_eq!(total(&balanced(&points, &values), "battery.soc"), None);
+}
+
+/// The residual of `points` over a day's energies by device and role, in kWh.
+fn residual_of(points: &[Point], energies: &[(u32, &str, f64)]) -> Vec<(u32, f64)> {
+    let energies: HashMap<(u32, &str), f64> = energies
+        .iter()
+        .map(|&(device, role, kwh)| ((device, role), kwh))
+        .collect();
+    residual(points, |device, role| {
+        energies.get(&(device, role)).copied()
+    })
+    .into_iter()
+    .collect()
+}
+
+#[test]
+fn a_tree_whose_consumers_each_take_energy_has_no_residual() {
+    let energies = [
+        (2, "grid.power", 5.0),
+        (1, "pv.power", 20.0),
+        (1, "battery.power", 3.0),
+        (3, "load.power", 8.0),
+    ];
+
+    // The grid point keeps 5 + 20 − 3 − 8 = 14 kWh, the heat pump its 8 kWh.
+    assert_eq!(residual_of(&house(), &energies), []);
+}
+
+#[test]
+fn a_consumer_giving_out_energy_its_children_do_not_explain_is_the_residual() {
+    // The PV wrongly placed under the heat pump meter, which never measured it.
+    let misplaced = vec![
+        point(1, None, &[(2, "grid.power")]),
+        point(4, Some(1), &[(3, "load.power")]),
+        point(2, Some(4), &[(1, "pv.power")]),
+        point(3, Some(1), &[(1, "battery.power")]),
+    ];
+    let energies = [
+        (2, "grid.power", -6.0),
+        (1, "pv.power", 20.0),
+        (1, "battery.power", 3.0),
+        (3, "load.power", 8.0),
+    ];
+
+    // The heat pump keeps 8 + 20 = 28 kWh; the grid point −6 − 8 − 3 = −17 kWh, which no
+    // consumer can give out.
+    assert_eq!(residual_of(&misplaced, &energies), [(1, 17.0)]);
+}
+
+#[test]
+fn a_missing_source_shows_as_the_residual_of_the_point_above_it() {
+    // The PV has no point: its 20 kWh feed the house and the grid unexplained.
+    let missing = vec![
+        point(1, None, &[(2, "grid.power")]),
+        point(3, Some(1), &[(1, "battery.power")]),
+        point(4, Some(1), &[(3, "load.power")]),
+    ];
+    let energies = [
+        (2, "grid.power", -6.0),
+        (1, "battery.power", 3.0),
+        (3, "load.power", 8.0),
+    ];
+
+    // −6 − 3 − 8 = −17 kWh.
+    assert_eq!(residual_of(&missing, &energies), [(1, 17.0)]);
 }

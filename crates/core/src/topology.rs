@@ -307,6 +307,29 @@ pub fn balance(points: &[Point], value: impl Fn(u32, &str) -> Option<f64>) -> Ba
     Balance { own, totals }
 }
 
+/// The energy balance check: each consuming point's residual over one day, by point id.
+///
+/// `energy` is a day's energy of a device's power role. A consumer, the grid connection or a load,
+/// cannot give energy out, so what its measured children do not explain of what it gave out is a
+/// missing or misplaced point, or a meter that overstates. Points without one are left out.
+pub fn residual(points: &[Point], energy: impl Fn(u32, &str) -> Option<f64>) -> BTreeMap<u32, f64> {
+    let consuming: HashSet<u32> = points
+        .iter()
+        .filter(|p| {
+            role_of(p)
+                .and_then(kind)
+                .is_some_and(|k| matches!(k, Kind::Grid | Kind::Load))
+        })
+        .map(|p| p.id)
+        .collect();
+    balance(points, energy)
+        .own
+        .into_iter()
+        .filter(|&(id, own)| own < 0.0 && consuming.contains(&id))
+        .map(|(id, own)| (id, -own))
+        .collect()
+}
+
 /// Each measured point's power minus its nearest measured descendants.
 fn own(points: &[Point], measured: &BTreeMap<u32, Measured<'_>>) -> BTreeMap<u32, f64> {
     let mut children: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
