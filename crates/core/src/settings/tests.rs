@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use sunreye_profile::{Framing, Profile};
 
-use super::{Applied, Job, Outcome, Refusal};
+use super::{Applied, Job, Outcome, Refusal, Secret};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{self, Device};
 use crate::transport::{Capture, Endpoint, Exchange};
@@ -21,6 +21,9 @@ fn job(setting: &Value, value: f64) -> (Device, Job) {
     let profile = Arc::new(Profile::load(&doc.to_string()).unwrap());
     let setting = profile.setting("current").unwrap().clone();
     let words = setting.encode(value).unwrap();
+    let unlock = setting
+        .unlock()
+        .map(|unlock| Secret::new(unlock.encode(CODE).unwrap()));
     let device = Device {
         id: DeviceId(1),
         unit: 1,
@@ -32,9 +35,13 @@ fn job(setting: &Value, value: f64) -> (Device, Job) {
             unit: 1,
             setting,
             words,
+            unlock,
         },
     )
 }
+
+/// The unlock code the connection holds.
+const CODE: &str = "4711";
 
 fn current(recipe: &Value) -> Value {
     json!({
@@ -328,4 +335,124 @@ async fn a_precondition_that_cannot_be_read_writes_nothing_and_is_unknown() {
             failed_step: Some(1),
         }
     );
+}
+
+/// A setting unlocked with code 4711 at register 200 and relocked by writing 0 there.
+fn locked() -> Value {
+    current(&json!([
+        { "unlock": { "register": 200, "type": "u16", "secret": "unlock",
+            "finally": [{ "register": 200, "words": [0] }] } },
+        { "write": { "register": 108 } },
+    ]))
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_unlock_writes_the_secret_before_the_value_and_relocks_after() {
+    let (device, job) = job(&locked(), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 200, 4711, &echo(200)),
+        write(3, 108, 50, &echo(108)),
+        write(4, 200, 0, &echo(200)),
+        read(5, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Verified,
+            before: Some(108.0),
+            after: Some(50.0),
+            failed_step: None,
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refused_unlock_is_never_retried_and_still_relocks() {
+    let (device, job) = job(&locked(), 50.0);
+    // The capture holds one unlock: a retry fails the replay.
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 200, 4711, &[0x90, 3]),
+        write(3, 200, 0, &echo(200)),
+        read(4, 108, 108),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Mismatch,
+            before: Some(108.0),
+            after: Some(108.0),
+            failed_step: Some(1),
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_step_that_fails_after_the_unlock_still_relocks() {
+    let (device, job) = job(&locked(), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 200, 4711, &echo(200)),
+        write(3, 108, 50, &[0x90, 3]),
+        write(4, 200, 0, &echo(200)),
+        read(5, 108, 108),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    // An acknowledged unlock is not a write of the setting.
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Mismatch,
+            before: Some(108.0),
+            after: Some(108.0),
+            failed_step: Some(2),
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_relock_that_fails_after_the_value_was_written_is_partial_and_named() {
+    let (device, job) = job(&locked(), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 200, 4711, &echo(200)),
+        write(3, 108, 50, &echo(108)),
+        write(4, 200, 0, &[0x90, 4]),
+        read(5, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    // Relock steps count on from the recipe's last step.
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Partial,
+            before: Some(108.0),
+            after: Some(50.0),
+            failed_step: Some(3),
+        }
+    );
+}
+
+#[test]
+fn a_job_never_shows_its_secret() {
+    let (_, job) = job(&locked(), 50.0);
+
+    let shown = format!("{job:?}");
+
+    assert!(!shown.contains(CODE), "{shown}");
 }

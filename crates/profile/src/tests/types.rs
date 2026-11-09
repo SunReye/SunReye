@@ -6,7 +6,7 @@ use ts_rs::{Config, TS};
 
 use crate::document::{
     ActivateDoc, BlockDoc, DelayDoc, ExprDoc, Kind, MaskedDoc, PreconditionDoc, ProfileDoc,
-    QuantityDoc, Range, ReadBackDoc, RegisterDoc, SettingDoc, StepDoc,
+    QuantityDoc, Range, ReadBackDoc, RegisterDoc, RelockDoc, SettingDoc, StepDoc, UnlockDoc,
 };
 use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support};
 
@@ -33,6 +33,8 @@ fn declarations() -> String {
         DelayDoc::decl(&cfg),
         ActivateDoc::decl(&cfg),
         PreconditionDoc::decl(&cfg),
+        UnlockDoc::decl(&cfg),
+        RelockDoc::decl(&cfg),
         MaskedDoc::decl(&cfg),
         ReadBackDoc::decl(&cfg),
         Block::decl(&cfg),

@@ -13,7 +13,7 @@ pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
-pub use setting::{Field, Setting, Step};
+pub use setting::{Field, Relock, Setting, Step, Unlock};
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
@@ -30,6 +30,7 @@ pub const CAPABILITIES: &[&str] = &[
     "rmw",
     "activate",
     "precondition",
+    "unlock",
     "delay",
 ];
 

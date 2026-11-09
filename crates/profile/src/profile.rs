@@ -261,7 +261,16 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
     let kinds = quantities
         .clone()
         .filter_map(|q| q.kind)
-        .chain(doc.settings.iter().map(|s| s.kind));
+        .chain(doc.settings.iter().map(|s| s.kind))
+        .chain(doc.settings.iter().flat_map(|s| {
+            s.recipe.iter().filter_map(|step| {
+                if let StepDoc::Unlock(u) = step {
+                    Some(u.kind)
+                } else {
+                    None
+                }
+            })
+        }));
     let used: Vec<&str> = kinds
         .map(|kind| match kind {
             Kind::U16 => "u16",

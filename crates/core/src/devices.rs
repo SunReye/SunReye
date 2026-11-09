@@ -345,6 +345,7 @@ impl Devices {
             unit: device.draft.unit,
             setting,
             words,
+            unlock: None,
         };
         // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
         let applied = task.write(job).await.ok_or(INTERNAL)??;

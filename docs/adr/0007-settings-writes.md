@@ -10,7 +10,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition`, is not logged and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
 
-**Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run even after a failure. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live).
+**Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run once the unlock was sent, even after a failure, each once; a failing one is named counting on from the recipe's last step. An acknowledged unlock or relock is not a write of the setting. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live).
 
 **Outcomes.** `verified`, `mismatch`, `unknown`, `partial`, and `unchanged` when the current value already equals the request and nothing was written.
 
