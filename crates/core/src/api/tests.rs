@@ -22,6 +22,7 @@ use crate::storage::{Problem, Storage};
 
 mod history;
 mod live;
+mod screen;
 
 const HOME: &str = "192.0.2.1:50000";
 
@@ -472,5 +473,27 @@ async fn the_openapi_document_describes_api_version_1() {
     assert_eq!(
         (&document["info"]["title"], &document["info"]["version"]),
         (&serde_json::json!("SunReye"), &serde_json::json!("1"))
+    );
+}
+
+/// The SPA's client is generated from this file (ADR 9), so a route or type change that is not
+/// regenerated fails here. `SUNREYE_UPDATE_OPENAPI=1` rewrites it.
+#[tokio::test]
+async fn the_committed_openapi_document_is_the_one_served() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+    let document = json(core.send(get("/openapi.json")).await).await;
+    let served = serde_json::to_string_pretty(&document).unwrap() + "\n";
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("openapi.json");
+
+    if std::env::var_os("SUNREYE_UPDATE_OPENAPI").is_some() {
+        std::fs::write(&path, &served).unwrap();
+    }
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+
+    assert!(
+        committed == served,
+        "{} is stale: run `bun run --cwd apps/web api`",
+        path.display()
     );
 }

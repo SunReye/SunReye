@@ -8,6 +8,8 @@ const web = ["bun", "run", "--cwd", "apps/web"];
 const steps: readonly Command[] = [
   // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
   [...web, "sync"],
+  // The core embeds the SPA's build (ADR 11), so every cargo step needs it.
+  [...web, "build"],
   // Formatting
   ["cargo", "fmt", "--all", "--check"],
   ["oxfmt", "--check"],
@@ -41,6 +43,8 @@ const steps: readonly Command[] = [
   // Types
   ["tsc", "-p", "tsconfig.json"],
   [...web, "check"],
+  // The generated client types match the core's committed OpenAPI document (ADR 9).
+  [...web, "api:check"],
   // Builds and tests
   ["cargo", "test", "--workspace", "--locked"],
   ["cargo", "build", "--locked", "-p", "sunreye-pv", "--target", "wasm32-unknown-unknown"],

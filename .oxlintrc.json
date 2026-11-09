@@ -15,6 +15,8 @@
     ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
+    "crates/core/openapi.json",
+    "apps/web/src/lib/api/schema.d.ts",
     "target/**",
     "**/.svelte-kit/**"
   ],
@@ -51,6 +53,23 @@
           {
             "from": "lib",
             "name": ["Function", "Global", "Memory", "Table"]
+          },
+          {
+            "from": "lib",
+            "name": [
+              "AbortSignal",
+              "Date",
+              "ReadableStreamDefaultController",
+              "Request",
+              "Response",
+              "TransformStreamDefaultController",
+              "Uint8Array"
+            ]
+          },
+          {
+            "from": "package",
+            "package": "openapi-fetch",
+            "name": ["Client"]
           }
         ]
       }
