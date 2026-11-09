@@ -1,8 +1,104 @@
 //! WASM exports of the profile crate for the CLI (ADR 5).
+//!
+//! Strings cross as UTF-8 in linear memory: the host writes into a buffer from `reserve`, a call
+//! returns `ptr << 32 | len` of a JSON reply, `{"ok": …}` or `{"error": "…"}`, and the host hands
+//! every buffer back to `release`.
 
-/// The schema the profile crate loads.
-#[expect(unsafe_code, reason = "a WASM export needs an unmangled symbol")]
-#[unsafe(no_mangle)]
-pub const extern "C" fn schema() -> u32 {
-    sunreye_profile::SCHEMA
+use serde::Serialize;
+use serde_json::json;
+use sunreye_profile::{Block, Profile};
+
+/// The read plan of `profile` at `gap_tolerance`.
+fn read_plan(profile: &[u8], gap_tolerance: u32) -> String {
+    let gap = u16::try_from(gap_tolerance).unwrap_or(u16::MAX);
+    reply(load(profile).map(|p| p.read_plan(gap)))
+}
+
+/// `block` of `profile` as plain blocks.
+fn split(profile: &[u8], block: &[u8]) -> String {
+    let block = serde_json::from_slice::<Block>(block).map_err(|e| e.to_string());
+    reply(load(profile).and_then(|p| block.map(|b| p.split(b))))
+}
+
+fn load(profile: &[u8]) -> Result<Profile, String> {
+    let text = std::str::from_utf8(profile).map_err(|e| e.to_string())?;
+    Profile::load(text).map_err(|e| e.to_string())
+}
+
+fn reply<T: Serialize>(result: Result<T, String>) -> String {
+    match result {
+        Ok(value) => json!({ "ok": value }),
+        Err(error) => json!({ "error": error }),
+    }
+    .to_string()
+}
+
+#[expect(
+    unsafe_code,
+    reason = "WASM exports need unmangled symbols and raw buffers"
+)]
+mod exports {
+    use std::ptr::slice_from_raw_parts_mut;
+
+    /// The schema the profile crate loads.
+    #[unsafe(no_mangle)]
+    pub const extern "C" fn schema() -> u32 {
+        sunreye_profile::SCHEMA
+    }
+
+    /// A zeroed buffer of `len` bytes for the host to write into.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn reserve(len: usize) -> *mut u8 {
+        Box::into_raw(vec![0_u8; len].into_boxed_slice()).cast()
+    }
+
+    /// Returns a buffer from `reserve` or a reply.
+    ///
+    /// # Safety
+    /// `ptr` and `len` name one live buffer this module handed out, freed once.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn release(ptr: *mut u8, len: usize) {
+        // SAFETY: the caller passes back a boxed slice this module leaked, exactly once.
+        drop(unsafe { Box::from_raw(slice_from_raw_parts_mut(ptr, len)) });
+    }
+
+    /// # Safety
+    /// `profile`/`profile_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn read_plan(
+        profile: *const u8,
+        profile_len: usize,
+        gap_tolerance: u32,
+    ) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let profile = unsafe { std::slice::from_raw_parts(profile, profile_len) };
+        leak(super::read_plan(profile, gap_tolerance))
+    }
+
+    /// # Safety
+    /// Both pointer and length pairs name live buffers from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn split(
+        profile: *const u8,
+        profile_len: usize,
+        block: *const u8,
+        block_len: usize,
+    ) -> u64 {
+        // SAFETY: the caller guarantees both buffers, written through `reserve`.
+        let (profile, block) = unsafe {
+            (
+                std::slice::from_raw_parts(profile, profile_len),
+                std::slice::from_raw_parts(block, block_len),
+            )
+        };
+        leak(super::split(profile, block))
+    }
+
+    /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.
+    fn leak(reply: String) -> u64 {
+        let bytes = reply.into_bytes().into_boxed_slice();
+        let len = u64::try_from(bytes.len()).unwrap_or(0);
+        let ptr = u64::try_from(Box::into_raw(bytes).cast::<u8>().addr()).unwrap_or(0);
+        ptr << 32 | len
+    }
 }

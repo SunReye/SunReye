@@ -54,6 +54,10 @@ _Avoid_: Source, registry, repository
 The integer version of the profile format. The core supports the current schema and the previous one. It bumps only on a breaking change; additive features are capabilities.
 _Avoid_: Profile version (a profile has its own semver)
 
+**Quantity**:
+One value a profile declares: read from a register or computed from earlier quantities, and published as a role.
+_Avoid_: Metric, point, field
+
 **Read plan**:
 The list of register blocks the core compiles from a profile at load time.
 _Avoid_: Poll list

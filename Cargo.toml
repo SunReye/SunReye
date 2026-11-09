@@ -9,6 +9,9 @@ license = "AGPL-3.0-only"
 publish = false
 
 [workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+# float_roundtrip: profile scales like 0.01 must parse to the nearest double.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sunreye-profile = { path = "crates/profile" }
 
 [workspace.lints.rust]
