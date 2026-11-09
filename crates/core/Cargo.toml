@@ -37,8 +37,12 @@ tokio = { version = "1.54.1", default-features = false, features = [
 # The minimal HTTPS client on rustls (ADR 2): blocking, so a fetch runs on Tokio's blocking pool;
 # an async client would add hyper, hyper-util and tokio-rustls for an hourly request.
 ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
+utoipa = "6.0.0"
+utoipa-axum = "0.3.0"
 
 [dev-dependencies]
+# The contract test reads the route a request matched.
+axum = { version = "0.8.9", default-features = false, features = ["matched-path"] }
 tempfile = "3.27.0"
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt", "test-util"] }

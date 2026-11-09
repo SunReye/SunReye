@@ -6,8 +6,10 @@ use std::time::UNIX_EPOCH;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::ConnectInfo;
-use axum::http::{Request, Response, StatusCode, header};
+use axum::extract::{ConnectInfo, MatchedPath, Request as Incoming};
+use axum::http::{Method, Request, Response, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::routing::get as route_get;
 use tower::ServiceExt;
 
 use super::router;
@@ -27,7 +29,7 @@ impl Core {
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &Bus::default()).unwrap();
         let auth = Auth::open(storage.database()).await.unwrap();
         Self {
-            router: router(&auth),
+            router: contract(router(&auth)).await,
             _storage: storage,
         }
     }
@@ -35,6 +37,95 @@ impl Core {
     async fn send(&self, request: Request<Body>) -> Response<Body> {
         self.router.clone().oneshot(request).await.unwrap()
     }
+}
+
+/// The contract test (ADR 9): every route a test's request reaches must be described, with its
+/// method, by the served OpenAPI document.
+async fn contract(router: Router) -> Router {
+    let response = router.clone().oneshot(get("/openapi.json")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let document = json(response).await;
+    router.layer(middleware::from_fn(move |request: Incoming, next: Next| {
+        let document = document.clone();
+        async move {
+            let path = request.extensions().get::<MatchedPath>().cloned();
+            let method = request.method().as_str().to_ascii_lowercase();
+            let response = next.run(request).await;
+            // A method the route lacks reached no route.
+            if let Some(path) = path
+                && response.status() != StatusCode::METHOD_NOT_ALLOWED
+            {
+                let path = path.as_str();
+                assert!(
+                    path == "/openapi.json" || !document["paths"][path][&method].is_null(),
+                    "{method} {path} is missing from the OpenAPI document"
+                );
+            }
+            response
+        }
+    }))
+}
+
+async fn json(response: Response<Body>) -> serde_json::Value {
+    let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+#[should_panic(expected = "get /api/v1/undocumented is missing from the OpenAPI document")]
+async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = Storage::open(
+        &dir.path().join("core.sqlite"),
+        UNIX_EPOCH,
+        "UTC",
+        &Bus::default(),
+    )
+    .unwrap();
+    let auth = Auth::open(storage.database()).await.unwrap();
+    let undocumented = router(&auth).route("/api/v1/undocumented", route_get(|| async {}));
+
+    contract(undocumented)
+        .await
+        .oneshot(get("/api/v1/undocumented"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_unknown_route_is_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+
+    let response = core.send(get("/api/v1/nowhere")).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::NOT_FOUND, "request.route".to_owned())
+    );
+}
+
+#[tokio::test]
+async fn a_method_a_route_lacks_is_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+    let request = from(
+        HOME,
+        Request::builder()
+            .method(Method::DELETE)
+            .uri("/api/v1/login")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    let response = core.send(request).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::METHOD_NOT_ALLOWED, "request.method".to_owned())
+    );
 }
 
 fn get(uri: &str) -> Request<Body> {
@@ -54,10 +145,7 @@ async fn problem(response: Response<Body>) -> (StatusCode, String) {
         response.headers()[header::CONTENT_TYPE],
         "application/problem+json"
     );
-    let body = axum::body::to_bytes(response.into_body(), 1 << 16)
-        .await
-        .unwrap();
-    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = json(response).await;
     assert_eq!(body["status"], status.as_u16());
     (status, body["code"].as_str().unwrap().to_owned())
 }

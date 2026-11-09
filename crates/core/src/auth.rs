@@ -6,18 +6,20 @@ mod sessions;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use tokio::time::Instant;
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
-use crate::api::Problem;
+use crate::api::{Problem, ProblemDetails};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{IDLE, Sessions};
@@ -62,8 +64,8 @@ const INTERNAL: Problem = Problem {
     code: "internal",
 };
 
-#[derive(Deserialize)]
-struct Credentials {
+#[derive(Deserialize, ToSchema)]
+pub struct Credentials {
     password: String,
 }
 
@@ -107,13 +109,13 @@ impl Auth {
     }
 
     /// The sign-in routes, and `protected` behind a session.
-    pub fn routes(&self, protected: Router) -> Router {
+    pub fn routes(&self, protected: OpenApiRouter) -> OpenApiRouter {
         let protected = protected
-            .route("/api/v1/session", get(|| async { StatusCode::NO_CONTENT }))
+            .routes(routes!(session))
             .layer(middleware::from_fn_with_state(self.clone(), require));
-        Router::new()
-            .route("/api/v1/setup", post(setup))
-            .route("/api/v1/login", post(login))
+        OpenApiRouter::new()
+            .routes(routes!(setup))
+            .routes(routes!(login))
             .with_state(self.clone())
             .merge(protected)
     }
@@ -141,7 +143,20 @@ impl Auth {
     }
 }
 
+/// Whether the request carries a live session.
+#[utoipa::path(get, path = "/api/v1/session", responses(
+    (status = 204, description = "Signed in"),
+    (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn session() -> StatusCode {
+    StatusCode::NO_CONTENT
+}
+
 /// The first run sets the admin password; there is no registration.
+#[utoipa::path(post, path = "/api/v1/setup", request_body = Credentials, responses(
+    (status = 204, description = "The admin password is set"),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
 async fn setup(
     State(auth): State<Auth>,
     body: Result<Json<Credentials>, JsonRejection>,
@@ -192,6 +207,11 @@ impl IntoResponse for Refused {
     }
 }
 
+/// Signs the admin in to a session cookie.
+#[utoipa::path(post, path = "/api/v1/login", request_body = Credentials, responses(
+    (status = 204, description = "Signed in; the cookie is set"),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
 async fn login(
     State(auth): State<Auth>,
     ConnectInfo(client): ConnectInfo<SocketAddr>,
