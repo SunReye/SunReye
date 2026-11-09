@@ -55,3 +55,9 @@ test("a refused profile throws the loader's reason", () => {
     "schema 2 is not supported; this build loads schema 1",
   );
 });
+
+test("the profile WASM's warnings are the loader's text", () => {
+  const doc = document([{ key: "a", role: "extra.a", register: 1, type: "u32" }]);
+
+  expect(profile.lint(doc)).toEqual(["`requires` lacks `u32`, which the profile uses"]);
+});

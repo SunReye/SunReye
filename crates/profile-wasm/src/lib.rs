@@ -19,6 +19,11 @@ fn read_plan(profile: &[u8], gap_tolerance: u32) -> String {
     reply(load(profile).map(|p| p.read_plan(gap)))
 }
 
+/// The warnings of `profile`: the text the core logs for it.
+fn lint(profile: &[u8]) -> String {
+    reply(load(profile).map(|p| p.warnings().to_vec()))
+}
+
 /// `block` of `profile` as plain blocks.
 fn split(profile: &[u8], block: &[u8]) -> String {
     let block = serde_json::from_slice::<Block>(block).map_err(|e| e.to_string());
@@ -84,6 +89,15 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let profile = unsafe { std::slice::from_raw_parts(profile, profile_len) };
         leak(super::read_plan(profile, gap_tolerance))
+    }
+
+    /// # Safety
+    /// `profile`/`profile_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn lint(profile: *const u8, profile_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let profile = unsafe { std::slice::from_raw_parts(profile, profile_len) };
+        leak(super::lint(profile))
     }
 
     /// # Safety

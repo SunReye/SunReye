@@ -13,6 +13,8 @@ export interface ProfileWasm {
   readPlan(profile: string, gapTolerance: number): Block[];
   /** A spanning block of a profile file as plain blocks; throws the loader's reason. */
   split(profile: string, block: Readonly<Block>): Block[];
+  /** A profile file's warnings, as the core logs them; throws the loader's reason. */
+  lint(profile: string): string[];
 }
 
 /** The ABI of crates/profile-wasm: replies are `ptr << 32 | len` of JSON in linear memory. */
@@ -24,11 +26,20 @@ interface Exports {
   readonly release: (ptr: number, len: number) => void;
   readonly read_plan: (profile: number, profileLen: number, gapTolerance: number) => bigint;
   readonly split: (profile: number, profileLen: number, block: number, blockLen: number) => bigint;
+  readonly lint: (profile: number, profileLen: number) => bigint;
 }
 
 type Reply<T> = { readonly ok: T } | { readonly error: string };
 
-const functions = ["schema", "capabilities", "reserve", "release", "read_plan", "split"] as const;
+const functions = [
+  "schema",
+  "capabilities",
+  "reserve",
+  "release",
+  "read_plan",
+  "split",
+  "lint",
+] as const;
 
 function isFunctionExport(value: WebAssembly.ExportValue | undefined): boolean {
   return (
@@ -129,15 +140,16 @@ function take<T>(wasm: Exports, packed: bigint, isOk: (ok: unknown) => ok is T):
 }
 
 /** Runs one export over `inputs` written to WASM memory, releasing them afterwards. */
-function call(
+function call<T>(
   wasm: Exports,
   inputs: readonly string[],
   run: (buffers: readonly number[]) => bigint,
-): Block[] {
+  isOk: (ok: unknown) => ok is T,
+): T {
   const buffers = inputs.map((input) => write(wasm, input));
 
   try {
-    return take(wasm, run(buffers.flat()), isBlocks);
+    return take(wasm, run(buffers.flat()), isOk);
   } finally {
     for (const [ptr, len] of buffers) wasm.release(ptr, len);
   }
@@ -152,10 +164,19 @@ export async function loadProfileWasm(): Promise<ProfileWasm> {
     schema: () => wasm.schema(),
     capabilities: () => take(wasm, wasm.capabilities(), isSupport),
     readPlan: (profile, gapTolerance) =>
-      call(wasm, [profile], ([ptr = 0, len = 0]) => wasm.read_plan(ptr, len, gapTolerance)),
-    split: (profile, block) =>
-      call(wasm, [profile, JSON.stringify(block)], ([ptr = 0, len = 0, at = 0, size = 0]) =>
-        wasm.split(ptr, len, at, size),
+      call(
+        wasm,
+        [profile],
+        ([ptr = 0, len = 0]) => wasm.read_plan(ptr, len, gapTolerance),
+        isBlocks,
       ),
+    split: (profile, block) =>
+      call(
+        wasm,
+        [profile, JSON.stringify(block)],
+        ([ptr = 0, len = 0, at = 0, size = 0]) => wasm.split(ptr, len, at, size),
+        isBlocks,
+      ),
+    lint: (profile) => call(wasm, [profile], ([ptr = 0, len = 0]) => wasm.lint(ptr, len), isNames),
   };
 }
