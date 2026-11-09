@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use sunreye_profile::{Profile, Unit};
+use sunreye_profile::{Framing, Profile, Unit};
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Instant;
 
@@ -81,6 +81,7 @@ async fn one_poll_cycle_publishes_typed_readings() {
     let mut readings = bus.subscribe();
     let before = SystemTime::now();
     let capture = Capture {
+        framing: Framing::Tcp,
         exchanges: one_cycle(),
     };
     let _task = spawn(Endpoint::Sim(capture), vec![device()], bus.clone());
@@ -102,7 +103,10 @@ async fn an_error_backs_off_and_the_last_good_value_reports_its_age() {
     exchanges.push(Exchange::Request(unhex("000200000006010301f40003")));
     let start = Instant::now();
     let task = spawn(
-        Endpoint::Sim(Capture { exchanges }),
+        Endpoint::Sim(Capture {
+            framing: Framing::Tcp,
+            exchanges,
+        }),
         vec![device()],
         bus.clone(),
     );

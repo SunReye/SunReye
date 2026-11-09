@@ -1,10 +1,13 @@
-//! v4's Modbus TCP transport corpus (`fixtures/transport.ndjson`, the `tcp` lines of v4's
+//! v4's transport corpus (`fixtures/transport.ndjson`, the `tcp` and `solarman-v5` lines of v4's
 //! `fixtures/oracle/transport.ndjson`) replayed through `sim`. Expected words come from each case's
 //! recorded `device` registers, not from the reply bytes.
+
+mod solarman;
 
 use std::time::Duration;
 
 use serde_json::Value;
+use sunreye_profile::Framing;
 
 use super::{Capture, Client, Endpoint, Error, Exchange};
 
@@ -26,7 +29,13 @@ fn unhex(hex: &str) -> Vec<u8> {
 }
 
 fn capture(name: &str) -> Capture {
-    let exchanges = case(name)["exchanges"]
+    let row = case(name);
+    let framing = match row["framing"].as_str().unwrap() {
+        "tcp" => Framing::Tcp,
+        "solarman-v5" => Framing::SolarmanV5,
+        other => panic!("framing {other}"),
+    };
+    let exchanges = row["exchanges"]
         .as_array()
         .unwrap()
         .iter()
@@ -42,7 +51,7 @@ fn capture(name: &str) -> Capture {
             ),
         })
         .collect();
-    Capture { exchanges }
+    Capture { framing, exchanges }
 }
 
 /// The recorded device's registers from `start`.

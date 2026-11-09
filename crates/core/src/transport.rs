@@ -1,16 +1,19 @@
 //! Transports (ADR 6).
 //!
-//! A client speaks Modbus TCP framing to an endpoint, over a TCP socket or over `sim`, which replays
-//! a capture. The framing is the same over both, so a capture checks the bytes a real device sees.
+//! A client speaks Modbus TCP or Solarman V5 framing to an endpoint, over a TCP socket or over
+//! `sim`, which replays a capture. The framing is the same over both, so a capture checks the bytes a
+//! real device sees.
 
 #[cfg(test)]
 pub mod fake;
 mod mbap;
 mod sim;
+mod solarman;
 
 use std::fmt;
 use std::time::Duration;
 
+use sunreye_profile::Framing;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -21,18 +24,35 @@ pub enum Endpoint {
         host: String,
         port: u16,
     },
+    /// A Solarman logging stick, which wraps Modbus RTU.
+    SolarmanV5 {
+        host: String,
+        port: u16,
+    },
     /// Replays a capture in memory; nothing touches the network.
     Sim(Capture),
 }
 
 impl Endpoint {
     /// The transport of each variant, by name.
-    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "sim"];
+    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "solarman-v5", "sim"];
+
+    /// The wire framing, which sets the read plan's gap tolerance.
+    #[must_use]
+    pub const fn framing(&self) -> Framing {
+        match self {
+            Self::ModbusTcp { .. } => Framing::Tcp,
+            Self::SolarmanV5 { .. } => Framing::SolarmanV5,
+            Self::Sim(capture) => capture.framing,
+        }
+    }
 }
 
 /// A recorded wire exchange with one device endpoint, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capture {
+    /// The framing of the recorded transport.
+    pub framing: Framing,
     pub exchanges: Vec<Exchange>,
 }
 
@@ -80,10 +100,18 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> Wire for T {}
 /// One connection to an endpoint. Requests are sequential: the endpoint task (ADR 6) owns the client.
 pub struct Client {
     wire: Box<dyn Wire>,
+    envelope: Envelope,
     transaction: u16,
     timeout: Duration,
     /// The reply being read; reused so a poll allocates nothing.
-    reply: [u8; mbap::MAX_PDU],
+    reply: [u8; solarman::MAX_FRAME],
+}
+
+/// What wraps a request on the wire.
+#[derive(Debug)]
+enum Envelope {
+    Mbap,
+    Solarman(solarman::Logger),
 }
 
 impl fmt::Debug for Client {
@@ -101,8 +129,8 @@ impl Client {
     ///
     /// [`Error::Timeout`] or [`Error::Io`] when the endpoint cannot be reached.
     pub async fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<Self, Error> {
-        let wire: Box<dyn Wire> = match endpoint {
-            Endpoint::ModbusTcp { host, port } => {
+        let mut wire: Box<dyn Wire> = match endpoint {
+            Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port } => {
                 let stream =
                     tokio::time::timeout(timeout, TcpStream::connect((host.as_str(), *port)))
                         .await
@@ -112,11 +140,25 @@ impl Client {
             }
             Endpoint::Sim(capture) => Box::new(sim::Sim::new(capture.clone())),
         };
+        let mut reply = [0; solarman::MAX_FRAME];
+        let envelope = match endpoint.framing() {
+            Framing::Tcp => Envelope::Mbap,
+            Framing::SolarmanV5 => {
+                let discover = solarman::Logger::discover(wire.as_mut(), &mut reply);
+                Envelope::Solarman(
+                    tokio::time::timeout(timeout, discover)
+                        .await
+                        .map_err(|_| Error::Timeout)??,
+                )
+            }
+            Framing::RtuOverTcp => return Err(Error::Protocol("RTU over TCP is not supported")),
+        };
         Ok(Self {
             wire,
+            envelope,
             transaction: 0,
             timeout,
-            reply: [0; mbap::MAX_PDU],
+            reply,
         })
     }
 
@@ -156,27 +198,47 @@ impl Client {
         mbap::parse_write(pdu, start, words.len())
     }
 
-    /// Sends `request`, built with the next transaction id, and returns the PDU of its reply.
+    /// Sends `request`, a Modbus TCP frame built with the next transaction id, and returns the PDU
+    /// of its reply. Solarman framing rewraps the frame's unit id and PDU.
     async fn exchange(&mut self, request: &[u8], unit: u8) -> Result<&[u8], Error> {
         self.transaction = self.transaction.wrapping_add(1);
         let transaction = self.transaction;
-        let wire = &mut self.wire;
+        let wire = self.wire.as_mut();
         let reply = &mut self.reply;
         let exchange = async {
-            wire.write_all(request).await?;
-            let mut header = [0; mbap::HEADER_LEN];
-            wire.read_exact(&mut header).await?;
-            let pdu = reply
-                .get_mut(..mbap::check_header(header, transaction, unit)?)
-                .ok_or(Error::Protocol("bad length"))?;
-            wire.read_exact(pdu).await?;
-            Ok::<_, Error>(pdu.len())
+            match &mut self.envelope {
+                Envelope::Mbap => mbap_exchange(wire, reply, request, transaction, unit).await,
+                Envelope::Solarman(logger) => {
+                    let adu = request
+                        .get(mbap::UNIT_OFFSET..)
+                        .ok_or(Error::Protocol("bad length"))?;
+                    logger.exchange(wire, adu, reply).await
+                }
+            }
         };
-        let len = tokio::time::timeout(self.timeout, exchange)
+        let pdu = tokio::time::timeout(self.timeout, exchange)
             .await
             .map_err(|_| Error::Timeout)??;
-        self.reply.get(..len).ok_or(Error::Protocol("bad length"))
+        self.reply.get(pdu).ok_or(Error::Protocol("bad length"))
     }
+}
+
+/// Returns where the reply's PDU sits in `reply`.
+async fn mbap_exchange(
+    wire: &mut dyn Wire,
+    reply: &mut [u8],
+    request: &[u8],
+    transaction: u16,
+    unit: u8,
+) -> Result<std::ops::Range<usize>, Error> {
+    wire.write_all(request).await?;
+    let mut header = [0; mbap::HEADER_LEN];
+    wire.read_exact(&mut header).await?;
+    let pdu = reply
+        .get_mut(..mbap::check_header(header, transaction, unit)?)
+        .ok_or(Error::Protocol("bad length"))?;
+    wire.read_exact(pdu).await?;
+    Ok(0..pdu.len())
 }
 
 #[cfg(test)]
