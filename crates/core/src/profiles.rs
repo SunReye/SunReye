@@ -43,6 +43,15 @@ pub const OFFICIAL_INDEX: &str = "https://sunreye.github.io/SunReye/index.json";
 
 /// The official profiles, as `profiles/` holds them at build time.
 const BUNDLED: &[&str] = &[
+    include_str!("../../../profiles/deye-sg01hp3-10k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-12k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-15k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-20k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-25k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-5k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-6k.json"),
+    include_str!("../../../profiles/deye-sg01hp3-8k.json"),
+    include_str!("../../../profiles/deye-sg01hp3.json"),
     include_str!("../../../profiles/deye-sg05lp3.json"),
     include_str!("../../../profiles/deye-sun10k-sg05lp3.json"),
     include_str!("../../../profiles/deye-sun12k-sg05lp3.json"),
