@@ -208,13 +208,13 @@ export interface ClearRun {
 
 export interface Pv {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
-  geometry(scene: Scene): Geometry;
+  readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
-  modules(scene: Scene, sizes: Readonly<Record<number, Size>>): Modules;
+  readonly modules: (scene: Scene, sizes: Readonly<Record<number, Size>>) => Modules;
   /** Where the sun stands at `unix` seconds over `location`. */
-  sun(unix: number, location: Location): Sun;
+  readonly sun: (unix: number, location: Location) => Sun;
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
-  clearSky(run: ClearRun): number[][];
+  readonly clearSky: (run: ClearRun) => number[][];
 }
 
 /** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */

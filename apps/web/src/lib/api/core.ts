@@ -4,6 +4,7 @@ import { refusal, type Client, type Problem } from "./client";
 import { events, type Message } from "./events";
 import { merge, parseFrame, type Values } from "./frames";
 import { body, type LayoutChange } from "./layout-change";
+import { pvModel, type PvModel } from "./model";
 import { setup, type Setup } from "./setup";
 import type { components, paths } from "./schema";
 
@@ -42,6 +43,8 @@ export type { Found, PointDraft } from "./setup";
 
 export type { Values } from "./frames";
 
+export type { Corrections } from "./model";
+
 /** Every live value, or why the core refused the stream. */
 export type Live = Values | Problem;
 
@@ -61,7 +64,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies {
+export interface Core extends Setup, CarBodies, PvModel {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -124,6 +127,7 @@ export function connect(transport: Transport): Core {
     ...trust(client),
     ...setup(client),
     ...carBodies(client),
+    ...pvModel(client),
   };
 }
 

@@ -34,6 +34,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Time slider.** A date and time slider moves the sun and the shadows. Per-string production comes from measured values or estimates for past dates, the forecast for today and the next two days, and a clear-sky run of the `pv` crate in the browser for any other date. Once readings exist, each MPPT input's learned correction and its residual over the last 30 days are shown, so a misplaced face or a missing obstacle shows where it is drawn. Nothing changes the scene automatically.
 
+- A day with nothing stored, such as one before the first reading, runs the clear sky too. The browser's clear sky caps no MPPT input, as it reads no inverter profile. The location is the admin's (ADR 9), so for a viewer the sun stays put and no clear sky runs.
 - `GET /api/v1/corrections`, read like history, returns each MPPT input's learned factors and its residual: measured against modelled energy in kWh over the whole hours of the last 30 days that are both modelled on archive weather and measured, short of the AC limit, the model uncorrected.
 - The clear sky is Ineichen and Perez's at sea level under a Linke turbidity of 3, with still air at 20 °C: a plant stores no altitude, and a turbidity climatology is a 30 MB table. Golden values come from pvlib.
 

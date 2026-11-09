@@ -286,5 +286,18 @@
   "field_length": "Länge (m)",
   "block_carport": "Carport",
   "builder_cars": "Angeschlossene Fahrzeuge",
-  "builder_car": "{name}: {state}"
+  "builder_car": "{name}: {state}",
+  "builder_day": "Tag",
+  "builder_time": "Uhrzeit",
+  "builder_source_measured": "Gemessen oder geschätzt",
+  "builder_source_forecast": "Prognose",
+  "builder_source_clear_sky": "Klarer Himmel, berechnet",
+  "builder_no_location": "Ohne den Standort der Anlage steht die Sonne nicht am Himmel und kein klarer Himmel wird berechnet.",
+  "builder_strings_power": "Leistung je String",
+  "builder_string_power": "{name}: {power}",
+  "builder_string_dark": "{name}: –",
+  "builder_model_check": "Modell gegen Messung",
+  "builder_correction": "{name} · MPPT {input}: Korrektur {factor}",
+  "builder_recent": "letzte 30 Tage {measured} kWh gemessen, {modelled} kWh berechnet ({deviation})",
+  "builder_no_recent": "noch keine Messung mit Archivwetter"
 }
