@@ -109,6 +109,19 @@
   });
 </script>
 
+<!--
+  The canvas build ships no `.lc-path` stylesheet, so an unset line fill resolves to black.
+  layerchart's default 20 px left and 4 px right padding clip "10.000" and an end-of-axis time.
+-->
 <figure>
-  <LineChart data={rows} x="time" y="power" series={lines} height={240} legend />
+  <LineChart
+    data={rows}
+    x="time"
+    y="power"
+    series={lines}
+    height={240}
+    legend
+    padding={{ top: 4, left: 40, bottom: 52, right: 16 }}
+    props={{ spline: { fill: "none" } }}
+  />
 </figure>
