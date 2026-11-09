@@ -365,3 +365,46 @@ async fn the_admin_password_survives_a_restart_and_is_set_only_once() {
         (StatusCode::CONFLICT, "auth.configured".to_owned())
     );
 }
+
+impl Core {
+    /// A core with the admin signed in; returns it and the session's `Set-Cookie`.
+    async fn signed_in(path: &Path) -> (Self, String) {
+        let core = Self::set_up(path).await;
+        let set_cookie = core.sign_in(post("/api/v1/login", "correct horse")).await;
+        (core, set_cookie)
+    }
+}
+
+#[tokio::test]
+async fn capabilities_report_the_profile_table_the_wasm_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let response = core
+        .send(with_cookie(&set_cookie, get("/api/v1/capabilities")))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json(response).await,
+        serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "schema": { "min": 1, "max": 1 },
+            "capabilities": ["modbus", "u16", "i16", "u32", "compute"],
+            "transports": ["modbus-tcp", "sim"],
+        })
+    );
+}
+
+#[tokio::test]
+async fn capabilities_need_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::set_up(&dir.path().join("core.sqlite")).await;
+
+    let response = core.send(get("/api/v1/capabilities")).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+    );
+}
