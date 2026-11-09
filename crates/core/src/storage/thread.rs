@@ -136,6 +136,7 @@ pub fn spawn(
 }
 
 fn open(path: &Path) -> Result<Connection, Error> {
+    private(path).map_err(Error::Io)?;
     let mut db = Connection::open(path)?;
     // Page size and auto-vacuum take effect only before the first table exists.
     db.execute_batch(
@@ -153,6 +154,27 @@ fn open(path: &Path) -> Result<Connection, Error> {
     }
     tx.commit()?;
     Ok(db)
+}
+
+/// Makes the file and its WAL readable by the core alone (ADR 7): it holds the connections'
+/// secrets. SQLite gives the WAL it creates the file's mode; one left by an earlier build is
+/// closed here.
+fn private(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)?;
+    for suffix in ["", "-wal", "-shm"] {
+        let mut file = path.as_os_str().to_owned();
+        file.push(suffix);
+        match std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            other => other?,
+        }
+    }
+    Ok(())
 }
 
 fn tick(time: SystemTime) -> Option<Tick> {
