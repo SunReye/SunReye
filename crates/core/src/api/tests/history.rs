@@ -65,6 +65,7 @@ impl Core {
                 value,
                 unit: None,
                 time: at(seconds),
+                cadence: crate::endpoint::CADENCE,
             };
             self.storage.record(reading).await.unwrap();
             last = seconds;

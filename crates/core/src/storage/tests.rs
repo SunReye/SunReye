@@ -59,6 +59,7 @@ impl Plant {
             value,
             unit: None,
             time: at(seconds),
+            cadence: crate::endpoint::CADENCE,
         }
     }
 

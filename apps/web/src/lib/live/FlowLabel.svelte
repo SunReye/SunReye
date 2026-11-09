@@ -53,6 +53,9 @@
     <span
       >{quantity.kind === "car" ? car(quantity.watts) : texts[quantity.kind](quantity.watts)}</span
     >
+    {#if quantity.kind !== "car" && quantity.stale}
+      <span class="stale">{m.live_stale_short()}</span>
+    {/if}
     {#if (quantity.kind === "battery" || quantity.kind === "car") && quantity.soc !== null}
       <span>{m.live_soc({ soc: format.format(quantity.soc) })}</span>
     {/if}
@@ -72,5 +75,9 @@
     font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .stale {
+    color: #6b7280;
   }
 </style>

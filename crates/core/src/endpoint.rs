@@ -217,6 +217,7 @@ impl Polled {
                     value,
                     unit: *unit,
                     time,
+                    cadence: CADENCE,
                 };
                 *slot = Some((reading, read));
                 out.bus.publish(reading);

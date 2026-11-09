@@ -124,10 +124,10 @@ test("without markers, grid, house, battery and inverter sit in one label beside
       anchor: [12, -4, 7],
       leader: null,
       quantities: [
-        { kind: "grid", watts: -1200 },
-        { kind: "house", watts: 450 },
-        { kind: "battery", watts: -350, soc: 64 },
-        { kind: "inverter", device: 1, watts: 700 },
+        { kind: "grid", watts: -1200, stale: false },
+        { kind: "house", watts: 450, stale: false },
+        { kind: "battery", watts: -350, soc: 64, stale: false },
+        { kind: "inverter", device: 1, watts: 700, stale: false },
       ],
     },
   ]);
@@ -151,19 +151,19 @@ test("a marker carries its device's label on a leader line; the rest stays besid
       anchor: [12, -4, 7],
       leader: null,
       quantities: [
-        { kind: "grid", watts: -1200 },
-        { kind: "house", watts: 450 },
+        { kind: "grid", watts: -1200, stale: false },
+        { kind: "house", watts: 450, stale: false },
       ],
     },
     {
       anchor: [2, -8.1, 8],
       leader: [2, -8.1, 1.5],
-      quantities: [{ kind: "inverter", device: 1, watts: 700 }],
+      quantities: [{ kind: "inverter", device: 1, watts: 700, stale: false }],
     },
     {
       anchor: [2, -8.1, 8],
       leader: [2, -8.1, 1.5],
-      quantities: [{ kind: "battery", watts: -350, soc: 64 }],
+      quantities: [{ kind: "battery", watts: -350, soc: 64, stale: false }],
     },
   ]);
 });

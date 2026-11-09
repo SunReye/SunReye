@@ -57,6 +57,7 @@ impl Core {
                 value: value(hour),
                 unit: None,
                 time: at(hour * HOUR),
+                cadence: crate::endpoint::CADENCE,
             };
             self.storage.record(reading).await.unwrap();
         }

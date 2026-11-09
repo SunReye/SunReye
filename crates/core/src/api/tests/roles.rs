@@ -1,6 +1,6 @@
 //! A role's live value for EVCC's HTTP custom meter (ADR 10).
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
 use serde_json::{Value, json};
@@ -8,6 +8,7 @@ use tempfile::TempDir;
 
 use super::tokens::bearer;
 use super::{Core, get, json as body};
+use crate::bus::{DeviceId, Reading};
 use crate::plant;
 
 /// A core with a `read` token, the scope EVCC is given, and paused time.
@@ -95,6 +96,54 @@ async fn a_role_without_a_live_value_is_refused() {
             json!({ "status": 404, "code": "role.none" })
         )
     );
+}
+
+/// A device that dropped out keeps its last reading in memory; past the gap threshold (ADR 3),
+/// 15 s at the 5 s poll cadence, it no longer measures the plant.
+#[tokio::test]
+async fn a_value_past_the_gap_threshold_is_refused() {
+    let (_dir, core, token) = core().await;
+    core.publish(plant::DEVICE.0, "grid.power", None, 300.0);
+    let fresh = core.role(&token, "/api/v1/roles/grid.power").await;
+
+    tokio::time::sleep(Duration::from_secs(15)).await;
+    let stale = core.role(&token, "/api/v1/roles/grid.power").await;
+
+    assert_eq!(
+        (fresh, stale),
+        (
+            (StatusCode::OK, json!(300.0)),
+            (
+                StatusCode::NOT_FOUND,
+                json!({ "status": 404, "code": "role.none" })
+            )
+        )
+    );
+}
+
+/// The tariff device publishes its prices once a minute, so its gap threshold is three minutes.
+#[tokio::test]
+async fn a_slower_publisher_has_a_longer_gap_threshold() {
+    let (_dir, core, token) = core().await;
+    core.bus.publish(Reading {
+        device: DeviceId(7),
+        series: core.bus.intern("price.import", None),
+        value: 0.3,
+        unit: None,
+        time: SystemTime::now(),
+        cadence: Duration::from_secs(60),
+    });
+
+    tokio::time::sleep(Duration::from_secs(150)).await;
+    let held = core
+        .role(&token, "/api/v1/roles/price.import?device=7")
+        .await;
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    let stale = core
+        .role(&token, "/api/v1/roles/price.import?device=7")
+        .await;
+
+    assert_eq!((held.0, stale.0), (StatusCode::OK, StatusCode::NOT_FOUND));
 }
 
 #[tokio::test]

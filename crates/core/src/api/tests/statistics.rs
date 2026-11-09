@@ -52,6 +52,7 @@ impl Core {
                 value: value(n),
                 unit: None,
                 time,
+                cadence: crate::endpoint::CADENCE,
             };
             self.storage.record(reading).await.unwrap();
             time += Duration::from_hours(1);

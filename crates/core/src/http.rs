@@ -94,6 +94,7 @@ impl Read {
                     value,
                     unit: *unit,
                     time,
+                    cadence: CADENCE,
                 });
             }
         }

@@ -413,6 +413,7 @@ impl Site {
                 value,
                 unit: Some(Unit::Watt),
                 time: instant(at),
+                cadence: crate::endpoint::CADENCE,
             });
         }
     }
