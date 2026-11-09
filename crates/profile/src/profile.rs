@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use serde::Deserialize;
+
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range};
 use crate::plan::{self, Block};
 use crate::{CAPABILITIES, SCHEMA};
@@ -16,6 +18,30 @@ pub struct Profile {
     pub version: String,
     quantities: Vec<Quantity>,
     plan: Vec<Block>,
+    inverter: Option<Inverter>,
+}
+
+/// An inverter's DC side from its datasheet (ADR 5, 17).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Inverter {
+    /// Volts.
+    pub max_input_voltage: f64,
+    /// The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices.
+    pub mppt: Vec<Mppt>,
+}
+
+/// One MPPT input's limits.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Mppt {
+    /// Amperes.
+    pub max_current: f64,
+    /// The voltage window, in volts.
+    pub min_voltage: f64,
+    pub max_voltage: f64,
+    /// Volts.
+    pub start_voltage: f64,
 }
 
 /// One quantity a profile reads or derives, published as a role at an optional index.
@@ -79,7 +105,15 @@ pub enum LoadError {
     Malformed(String),
     Schema(u32),
     MissingCapability(String),
-    Quantity { key: String, problem: &'static str },
+    Quantity {
+        key: String,
+        problem: &'static str,
+    },
+    /// An MPPT input, numbered from 1.
+    Mppt {
+        input: usize,
+        problem: &'static str,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -94,6 +128,7 @@ impl fmt::Display for LoadError {
                 write!(f, "this build lacks the required capability `{name}`")
             }
             Self::Quantity { key, problem } => write!(f, "quantity `{key}`: {problem}"),
+            Self::Mppt { input, problem } => write!(f, "MPPT input {input}: {problem}"),
         }
     }
 }
@@ -119,6 +154,7 @@ impl Profile {
         {
             return Err(LoadError::MissingCapability(missing.clone()));
         }
+        doc.inverter.as_ref().map_or(Ok(()), check)?;
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
         Ok(Self {
@@ -128,7 +164,14 @@ impl Profile {
             version: doc.version,
             quantities,
             plan,
+            inverter: doc.inverter,
         })
+    }
+
+    /// The inverter's DC side, when the profile declares one.
+    #[must_use]
+    pub const fn inverter(&self) -> Option<&Inverter> {
+        self.inverter.as_ref()
     }
 
     /// The quantities in file order; [`Profile::decode`] fills one value per quantity.
@@ -150,6 +193,19 @@ impl Profile {
     pub fn split(&self, block: Block) -> Vec<Block> {
         plan::split(&self.quantities, block)
     }
+}
+
+fn check(inverter: &Inverter) -> Result<(), LoadError> {
+    inverter
+        .mppt
+        .iter()
+        .position(|m| m.min_voltage > m.max_voltage)
+        .map_or(Ok(()), |at| {
+            Err(LoadError::Mppt {
+                input: at + 1,
+                problem: "the voltage window is inverted",
+            })
+        })
 }
 
 fn malformed(error: &serde_json::Error) -> LoadError {
