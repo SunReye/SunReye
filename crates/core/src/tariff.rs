@@ -5,6 +5,7 @@
 //! The tariff module owns the `tariff` and `tariff_band` tables. A change is a new version applying
 //! from its instant, never before the change itself: editing changes only the future.
 
+mod device;
 mod routes;
 mod store;
 
@@ -18,6 +19,8 @@ use tokio::sync::watch;
 use crate::api::{Code, Problem};
 use crate::changes;
 use crate::storage::{Database, Error};
+
+pub use device::{DEVICE, TariffDevice};
 
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,

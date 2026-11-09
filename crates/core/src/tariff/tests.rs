@@ -1,10 +1,14 @@
-//! Tariff evaluation in the plant timezone, worked by hand.
+//! Tariff evaluation in the plant timezone, worked by hand, and the tariff device on the bus.
 
-use std::time::SystemTime;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use jiff::tz::TimeZone;
+use tokio::sync::broadcast;
 
-use super::{Band, Days, Prices, Schedule, Version, in_force, wake};
+use super::{Band, DEVICE, Days, Prices, Schedule, TariffDevice, Tariffs, Version, in_force, wake};
+use crate::bus::{Bus, Reading};
+use crate::storage::Storage;
 
 fn instant(text: &str) -> SystemTime {
     text.parse::<jiff::Timestamp>().unwrap().into()
@@ -224,5 +228,173 @@ fn the_device_wakes_at_the_next_minute_or_the_next_version_if_sooner() {
     assert_eq!(
         wake(&versions, instant("2026-06-01T12:01:00Z")),
         instant("2026-06-01T12:02:00Z")
+    );
+}
+
+/// A plant in Europe/Berlin with the night rate, and its tariff device started at `start` on a
+/// paused Tokio clock.
+struct Site {
+    _dir: tempfile::TempDir,
+    bus: Bus,
+    storage: Storage,
+    tariffs: Tariffs,
+    readings: broadcast::Receiver<Reading>,
+    /// Every reading of the device received, as (role, instant, value).
+    seen: Vec<(String, String, f64)>,
+    _device: TariffDevice,
+}
+
+/// Runs `job` to completion on a runtime of its own while the test's paused runtime is blocked,
+/// so no virtual time passes while it waits on the storage thread.
+fn frozen<T: Send>(job: impl Future<Output = T> + Send) -> T {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .unwrap();
+                runtime.block_on(job)
+            })
+            .join()
+            .unwrap()
+    })
+}
+
+/// Inside a paused Tokio runtime.
+fn site(start: &str) -> Site {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage = Storage::open(
+        &dir.path().join("core.sqlite"),
+        UNIX_EPOCH,
+        "Europe/Berlin",
+        &bus,
+    )
+    .unwrap();
+    let tariffs = Tariffs::new(storage.database());
+    frozen(tariffs.change(
+        night_rate("2026-01-01T00:00:00Z"),
+        instant("2026-01-01T00:00:00Z"),
+    ))
+    .unwrap();
+    let start = instant(start);
+    let paused = tokio::time::Instant::now();
+    let clock = Arc::new(move || start + paused.elapsed());
+    let readings = bus.subscribe();
+    let device = TariffDevice::spawn(tariffs.clone(), berlin(), storage.declarer(), &bus, clock);
+    Site {
+        _dir: dir,
+        bus,
+        storage,
+        tariffs,
+        readings,
+        seen: Vec::new(),
+        _device: device,
+    }
+}
+
+impl Site {
+    /// The device's readings of `role` until it publishes `value`, as (instant, value).
+    async fn until(&mut self, role: &str, value: f64) -> Vec<(String, f64)> {
+        let of_role = |seen: &[(String, String, f64)]| -> Vec<(String, f64)> {
+            seen.iter()
+                .filter(|(r, ..)| r == role)
+                .map(|(_, at, value)| (at.clone(), *value))
+                .collect()
+        };
+        loop {
+            let found = self
+                .seen
+                .iter()
+                .any(|(r, _, v)| r == role && v.to_bits() == value.to_bits());
+            if found {
+                return of_role(&self.seen);
+            }
+            let reading = self.readings.recv().await.unwrap();
+            if reading.device != DEVICE {
+                continue;
+            }
+            let role = self.bus.series(reading.series).unwrap().role;
+            let at = jiff::Timestamp::try_from(reading.time).unwrap().to_string();
+            self.seen.push((role, at, reading.value));
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_device_publishes_each_price_from_the_instant_it_begins() {
+    let mut site = site("2026-03-29T03:58:30Z");
+
+    // 06:00 CEST on the 23-hour day ends the night band.
+    assert_eq!(
+        site.until("price.import", 0.30).await,
+        [
+            ("2026-03-29T03:58:30Z".to_owned(), 0.20),
+            ("2026-03-29T03:59:00Z".to_owned(), 0.20),
+            ("2026-03-29T04:00:00Z".to_owned(), 0.30),
+        ]
+    );
+    // Feed-in has no band: one price throughout.
+    let export = site.until("price.export", 0.08).await;
+    assert_eq!(export[0], ("2026-03-29T03:58:30Z".to_owned(), 0.08));
+    assert!(
+        export
+            .iter()
+            .all(|&(_, price)| price.to_bits() == 0.08_f64.to_bits())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_new_version_is_published_from_the_instant_it_applies() {
+    let mut site = site("2026-07-01T12:00:00Z");
+    site.until("price.import", 0.30).await;
+
+    let mut dearer = night_rate("2026-07-01T12:00:20Z");
+    dearer.import.price = 0.40;
+    frozen(site.tariffs.change(dearer, instant("2026-07-01T12:00:00Z"))).unwrap();
+
+    assert_eq!(
+        site.until("price.import", 0.40).await,
+        [
+            ("2026-07-01T12:00:00Z".to_owned(), 0.30),
+            // Read again at the change.
+            ("2026-07-01T12:00:00Z".to_owned(), 0.30),
+            ("2026-07-01T12:00:20Z".to_owned(), 0.40),
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_prices_are_stored_as_change_points() {
+    let mut site = site("2026-03-29T03:58:30Z");
+    site.until("price.import", 0.30).await;
+    let series = site.bus.intern("price.import", None);
+    let from = instant("2026-03-29T03:58:00Z");
+    let to = instant("2026-03-29T04:02:00Z");
+
+    // Storage hears the bus on its own task: asked until both prices are history.
+    let mut history = Vec::new();
+    while history.len() < 2 {
+        tokio::task::yield_now().await;
+        history = frozen(async {
+            site.storage.tick(to).await.unwrap();
+            site.storage
+                .history(DEVICE, series, from, to)
+                .await
+                .unwrap()
+        });
+    }
+
+    // To a thousandth of a cent, the step they are stored in.
+    let stored: Vec<(SystemTime, Option<String>)> = history
+        .iter()
+        .map(|p| (p.time, p.value.map(|v| format!("{v:.5}"))))
+        .collect();
+    assert_eq!(
+        stored,
+        [
+            (instant("2026-03-29T03:58:30Z"), Some("0.20000".to_owned())),
+            (instant("2026-03-29T04:00:00Z"), Some("0.30000".to_owned())),
+        ]
     );
 }
