@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import cases from "../../../crates/profile/src/tests/plan-cases.json" with { type: "json" };
-import { loadProfileWasm } from "./profile-wasm.ts";
+import { loadProfileWasm } from "./index.ts";
 
 const profile = await loadProfileWasm();
 
@@ -54,4 +54,10 @@ test("a refused profile throws the loader's reason", () => {
   expect(() => profile.readPlan(JSON.stringify({ schema: 2 }), 0)).toThrow(
     "schema 2 is not supported; this build loads schema 1",
   );
+});
+
+test("the profile WASM's warnings are the loader's text", () => {
+  const doc = document([{ key: "a", role: "extra.a", register: 1, type: "u32" }]);
+
+  expect(profile.lint(doc)).toEqual(["`requires` lacks `u32`, which the profile uses"]);
 });

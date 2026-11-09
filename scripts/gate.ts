@@ -58,16 +58,8 @@ const steps: readonly Command[] = [
   // Builds and tests
   ["cargo", "test", "--workspace", "--locked"],
   ["cargo", "build", "--locked", "-p", "sunreye-pv", "--target", "wasm32-unknown-unknown"],
-  [
-    "cargo",
-    "build",
-    "--locked",
-    "--release",
-    "-p",
-    "sunreye-profile-wasm",
-    "--target",
-    "wasm32-unknown-unknown",
-  ],
+  // The SDK's tests load the WASM from where the package ships it.
+  ["bun", "run", "--cwd", "packages/sdk", "wasm"],
   [
     "cargo",
     "build",

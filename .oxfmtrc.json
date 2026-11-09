@@ -7,6 +7,7 @@
     "tools/oxlint/anti-slop/**",
     "crates/core/openapi.json",
     "apps/web/src/lib/api/schema.d.ts",
+    "packages/sdk/src/generated.ts",
     "**/*.svelte",
     "**/*.md"
   ]

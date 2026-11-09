@@ -32,13 +32,16 @@ pub const SUPPORT: Support = Support {
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Support {
     pub schema: Schemas,
+    #[cfg_attr(test, ts(type = "Array<Capability>"))]
     pub capabilities: &'static [&'static str],
 }
 
 /// An inclusive range of schemas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Schemas {
     pub min: u32,
     pub max: u32,
