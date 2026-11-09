@@ -492,14 +492,17 @@ impl Store {
         name: &str,
         policy: &Policy,
     ) -> Result<(), Error> {
-        if self.tracks.contains_key(&(device, series)) {
-            // Points pending under the old policy are written before it changes.
-            self.flush(self.clock)?;
-        }
         let id = self.series_id(name)?;
         self.step(device, id, policy.step)?;
-        let last = self.last(device.0, id)?;
-        let track = Track::resume(policy, last, self.restart);
+        let track = if let Some(declared) = self.tracks.get(&(device, series)) {
+            let track = declared.track.retune(policy);
+            // Points pending under the old policy are written before it changes.
+            self.flush(self.clock)?;
+            track
+        } else {
+            let last = self.last(device.0, id)?;
+            Track::resume(policy, last, self.restart)
+        };
         let kind = policy.kind;
         self.tracks
             .insert((device, series), Stored { id, kind, track });

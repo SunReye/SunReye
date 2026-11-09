@@ -74,6 +74,17 @@ impl Track {
         track
     }
 
+    /// This track under `policy`, as of the readings it has seen: a changed deadband or cadence
+    /// applies from the next reading.
+    pub fn retune(&self, policy: &Policy) -> Self {
+        Self {
+            stored: self.stored,
+            seen: self.seen,
+            stepped: self.stepped,
+            ..Self::new(policy)
+        }
+    }
+
     /// The deadband's reference after stored history was replaced: `value` is now last stored.
     pub const fn rebase(&mut self, value: Option<i64>) {
         self.stored = value;

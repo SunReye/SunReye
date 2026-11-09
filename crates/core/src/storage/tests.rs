@@ -301,6 +301,49 @@ async fn a_changed_step_is_refused() {
 }
 
 #[tokio::test]
+async fn a_changed_deadband_writes_the_pending_points_and_applies_without_a_gap() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite");
+    let plant = Plant::new();
+    let storage = plant.open(&path, epoch()).await;
+    plant
+        .record(
+            &storage,
+            &[
+                (0.0, 10.0),
+                (10.0, 10.0),
+                (20.0, 11.0),
+                (30.0, 11.0),
+                (40.0, 11.0),
+                (50.0, 11.0),
+            ],
+        )
+        .await;
+    let wider = Policy {
+        deadband: 5.0,
+        ..policy()
+    };
+
+    storage.declare(DEVICE, plant.power, wider).await.unwrap();
+
+    assert_eq!(
+        plant.history(&storage, 0.0, 3600.0).await,
+        [(0.0, Some(10.0)), (20.0, Some(11.0))]
+    );
+    plant.record(&storage, &[(55.0, 15.0), (60.0, 16.0)]).await;
+    storage.tick(at(180.0)).await.unwrap();
+    assert_eq!(
+        plant.history(&storage, 0.0, 3600.0).await,
+        [
+            (0.0, Some(10.0)),
+            (20.0, Some(11.0)),
+            (60.0, Some(16.0)),
+            (65.0, None)
+        ]
+    );
+}
+
+#[tokio::test]
 async fn readings_on_the_bus_reach_storage() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("history.sqlite");
