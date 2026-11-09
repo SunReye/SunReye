@@ -32,6 +32,9 @@ impl Tariffs {
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(tariff, change_tariff))
+            .routes(routes!(reprice))
+            .routes(routes!(payback))
+            .routes(routes!(invest))
             .with_state((self, clock))
     }
 }
@@ -200,6 +203,83 @@ async fn change_tariff(
     };
     let version = tariffs.change(version, now).await?;
     Ok(Json((&version).into()))
+}
+
+/// A tariff applying from a date, even a past one.
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct Reprice {
+    /// RFC 3339, within change-point retention.
+    applies_from: String,
+    import: ScheduleView,
+    export: ScheduleView,
+}
+
+/// Corrects the past: the tariff applies from its date, and the prices and the `cost.*` rates are
+/// rebuilt from then on from stored history. Refused before change-point retention.
+#[utoipa::path(post, path = "/api/v1/tariff/reprice", request_body = Reprice, responses(
+    (status = 200, body = Tariff),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn reprice(
+    State((tariffs, clock)): TariffState,
+    body: Result<Json<Reprice>, JsonRejection>,
+) -> Result<Json<Tariff>, Problem> {
+    let Json(reprice) = body.map_err(|_| BODY)?;
+    let version = Version {
+        applies_from: instant(&reprice.applies_from).ok_or(BODY)?,
+        import: reprice.import.try_into()?,
+        export: reprice.export.try_into()?,
+    };
+    let version = tariffs.reprice(version, clock()).await?;
+    Ok(Json((&version).into()))
+}
+
+/// The savings so far against the investment, in EUR to the cent.
+#[derive(Serialize, ToSchema)]
+struct Payback {
+    /// What the admin entered; `null` until then.
+    investment: Option<f64>,
+    /// `cost.savings.rate` summed over every rolled-up hour.
+    savings: f64,
+    /// What the savings have yet to pay back, none once they have; `null` without an investment.
+    remaining: Option<f64>,
+}
+
+/// The savings so far against the investment.
+#[utoipa::path(get, path = "/api/v1/payback", responses(
+    (status = 200, body = Payback),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn payback(State((tariffs, _)): TariffState) -> Result<Json<Payback>, Problem> {
+    let (investment, savings) = tariffs.payback().await.map_err(|_| INTERNAL)?;
+    let cents = |euros: f64| (euros * 100.0).round() / 100.0;
+    Ok(Json(Payback {
+        investment,
+        savings: cents(savings),
+        remaining: investment.map(|i| cents((i - savings).max(0.0))),
+    }))
+}
+
+/// The investment payback is measured against.
+#[derive(Serialize, Deserialize, ToSchema)]
+struct Investment {
+    /// EUR, more than zero.
+    amount: f64,
+}
+
+/// Sets the investment payback is measured against.
+#[utoipa::path(put, path = "/api/v1/investment", request_body = Investment, responses(
+    (status = 200, body = Investment),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn invest(
+    State((tariffs, clock)): TariffState,
+    body: Result<Json<Investment>, JsonRejection>,
+) -> Result<Json<Investment>, Problem> {
+    let Json(Investment { amount }) = body.map_err(|_| BODY)?;
+    tariffs.invest(amount, clock()).await?;
+    Ok(Json(Investment { amount }))
 }
 
 fn instant(text: &str) -> Option<SystemTime> {

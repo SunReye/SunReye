@@ -7,7 +7,7 @@ use sunreye_profile::RoleKind;
 
 use super::{DEVICE, Plant, at, epoch, policy};
 use crate::bus::{Reading, SeriesId};
-use crate::storage::{Aggregate, Policy, Rollup, Storage, Tier};
+use crate::storage::{Aggregate, ChangePoint, Policy, Rollup, Storage, Tier};
 
 /// A measurement rollup as hours from `T0`, hours covered, mean, min, max and integral.
 type Measured = (f64, f64, f64, f64, f64, f64);
@@ -306,5 +306,41 @@ async fn a_dropped_rollup_rebuilds_to_the_same_values() {
     assert_eq!(
         rollups(&storage, plant.power, Tier::Day, -86_400.0, 86_400.0).await,
         daily
+    );
+}
+
+#[tokio::test]
+async fn replaced_change_points_are_history_and_their_rollups_rebuilt() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant.open(&dir.path().join("r.sqlite"), epoch()).await;
+    // 1000 W, 100 W more each half hour, until hour 1 is rolled up.
+    let readings = steady(0.0, 1461, 5.0, |t| {
+        (t / 1800.0).floor().mul_add(100.0, 1000.0)
+    });
+    plant.record(&storage, &readings).await;
+
+    let points = [(1800.0, Some(500.0)), (3600.0, None)]
+        .map(|(s, value)| ChangePoint { time: at(s), value });
+    storage
+        .replace(DEVICE, plant.power, at(1800.0)..at(5400.0), points.to_vec())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        plant.history(&storage, 0.0, 7200.0).await,
+        [
+            (0.0, Some(1000.0)),
+            (1800.0, Some(500.0)),
+            (3600.0, None),
+            (5400.0, Some(1300.0))
+        ]
+    );
+    assert_eq!(
+        measured(&rollups(&storage, plant.power, Tier::Hour, 0.0, 7200.0).await),
+        [
+            (0.0, 1.0, 750.0, 500.0, 1000.0, 750.0),
+            (1.0, 0.5, 1300.0, 1300.0, 1300.0, 650.0)
+        ]
     );
 }

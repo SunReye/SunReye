@@ -38,6 +38,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0014.sql"),
     include_str!("migrations/0015.sql"),
     include_str!("migrations/0016.sql"),
+    include_str!("migrations/0017.sql"),
 ];
 
 /// SQL a feature module runs on its own tables.
@@ -71,16 +72,28 @@ pub enum Request {
         range: Range<SystemTime>,
         reply: oneshot::Sender<Result<Vec<Rollup>, Error>>,
     },
+    Rewriting(Rewriting),
+    Forecasting(Forecasting),
+    Problems(oneshot::Sender<Vec<Problem>>),
+    Run(Job),
+    Shutdown(oneshot::Sender<Result<(), Error>>),
+}
+
+/// Stored history rewritten: rollups rebuilt, a derived series replaced (ADR 3).
+pub enum Rewriting {
     Rebuild {
         device: DeviceId,
         series: SeriesId,
         range: Range<SystemTime>,
         reply: oneshot::Sender<Result<(), Error>>,
     },
-    Forecasting(Forecasting),
-    Problems(oneshot::Sender<Vec<Problem>>),
-    Run(Job),
-    Shutdown(oneshot::Sender<Result<(), Error>>),
+    Replace {
+        device: DeviceId,
+        series: SeriesId,
+        range: Range<SystemTime>,
+        points: Vec<ChangePoint>,
+        reply: oneshot::Sender<Result<(), Error>>,
+    },
 }
 
 /// Forecasts (ADR 15).
@@ -273,14 +286,7 @@ impl Store {
             } => {
                 reply.send(self.rollups(device, &name, tier, range)).ok();
             }
-            Request::Rebuild {
-                device,
-                series,
-                range,
-                reply,
-            } => {
-                reply.send(self.rebuild(device, series, range)).ok();
-            }
+            Request::Rewriting(request) => self.rewriting(request),
             Request::Forecasting(request) => self.forecasting(request),
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
@@ -453,6 +459,30 @@ impl Store {
                     params![device.0, series, step],
                 )?;
                 Ok(())
+            }
+        }
+    }
+
+    fn rewriting(&mut self, request: Rewriting) {
+        match request {
+            Rewriting::Rebuild {
+                device,
+                series,
+                range,
+                reply,
+            } => {
+                reply.send(self.rebuild(device, series, range)).ok();
+            }
+            Rewriting::Replace {
+                device,
+                series,
+                range,
+                points,
+                reply,
+            } => {
+                reply
+                    .send(self.replace(device, series, range, &points))
+                    .ok();
             }
         }
     }

@@ -352,6 +352,10 @@ pub enum Code {
     TariffBand,
     #[serde(rename = "tariff.past")]
     TariffPast,
+    #[serde(rename = "tariff.retention")]
+    TariffRetention,
+    #[serde(rename = "investment.value")]
+    InvestmentValue,
     #[serde(rename = "location.none")]
     LocationNone,
     #[serde(rename = "location.value")]

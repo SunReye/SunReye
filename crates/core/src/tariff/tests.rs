@@ -4,11 +4,15 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jiff::tz::TimeZone;
+use sunreye_profile::Unit;
 use tokio::sync::broadcast;
 
 use super::{Band, DEVICE, Days, Prices, Schedule, TariffDevice, Tariffs, Version, in_force, wake};
 use crate::bus::{Bus, Reading};
+use crate::plant;
 use crate::storage::Storage;
+
+mod reprice;
 
 fn instant(text: &str) -> SystemTime {
     text.parse::<jiff::Timestamp>().unwrap().into()
@@ -271,7 +275,7 @@ fn site(start: &str) -> Site {
         &bus,
     )
     .unwrap();
-    let tariffs = Tariffs::new(storage.database());
+    let tariffs = Tariffs::new(&storage, &bus, berlin());
     frozen(tariffs.change(
         night_rate("2026-01-01T00:00:00Z"),
         instant("2026-01-01T00:00:00Z"),
@@ -281,7 +285,7 @@ fn site(start: &str) -> Site {
     let paused = tokio::time::Instant::now();
     let clock = Arc::new(move || start + paused.elapsed());
     let readings = bus.subscribe();
-    let device = TariffDevice::spawn(tariffs.clone(), berlin(), storage.declarer(), &bus, clock);
+    let device = TariffDevice::spawn(tariffs.clone(), clock);
     Site {
         _dir: dir,
         bus,
@@ -396,5 +400,68 @@ async fn the_prices_are_stored_as_change_points() {
             (instant("2026-03-29T03:58:30Z"), Some("0.20000".to_owned())),
             (instant("2026-03-29T04:00:00Z"), Some("0.30000".to_owned())),
         ]
+    );
+}
+
+impl Site {
+    /// The plant's grid power and house load, in W, at `at`.
+    fn plant(&self, at: &str, grid: f64, load: f64) {
+        for (role, value) in [("grid.power", grid), ("load.power", load)] {
+            self.bus.publish(Reading {
+                device: plant::DEVICE,
+                series: self.bus.intern(role, None),
+                value,
+                unit: Some(Unit::Watt),
+                time: instant(at),
+            });
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_device_publishes_cost_rates_from_the_plant_and_the_prices_in_force() {
+    let mut site = site("2026-03-29T03:59:50Z");
+    site.until("price.import", 0.20).await;
+
+    // 2 kW bought for a 2 kW house at 0.20, then at 0.30 once the night band ends.
+    site.plant("2026-03-29T03:59:50Z", 2000.0, 2000.0);
+    site.plant("2026-03-29T03:59:55Z", 2000.0, 2000.0);
+    let import = site.until("cost.import.rate", 0.60).await;
+
+    assert_eq!(
+        import.first(),
+        Some(&("2026-03-29T03:59:50Z".to_owned(), 0.40))
+    );
+    assert_eq!(
+        import.last(),
+        Some(&("2026-03-29T04:00:00Z".to_owned(), 0.60))
+    );
+    let savings = site.until("cost.savings.rate", 0.0).await;
+    assert!(savings.iter().all(|&(_, rate)| rate == 0.0));
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_cost_is_published_from_a_silent_plant() {
+    let mut site = site("2026-03-29T03:59:00Z");
+    site.until("price.import", 0.20).await;
+    site.plant("2026-03-29T03:59:00Z", 2000.0, 2000.0);
+    site.until("cost.import.rate", 0.40).await;
+
+    // The plant falls silent while the night band ends, then speaks again.
+    site.until("price.import", 0.30).await;
+    site.plant("2026-03-29T04:00:30Z", 2000.0, 2000.0);
+    site.until("cost.import.rate", 0.60).await;
+
+    let costs: Vec<&str> = site
+        .seen
+        .iter()
+        .filter(|(role, ..)| role == "cost.import.rate")
+        .map(|(_, at, _)| at.as_str())
+        .collect();
+    assert_eq!(costs.first(), Some(&"2026-03-29T03:59:00Z"));
+    assert!(
+        costs
+            .iter()
+            .all(|at| ["2026-03-29T03:59:00Z", "2026-03-29T04:00:30Z"].contains(at))
     );
 }

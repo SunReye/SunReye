@@ -45,6 +45,8 @@ pub enum Subject {
     Profile,
     /// A tariff version (ADR 12).
     Tariff,
+    /// The investment payback is measured against (ADR 12), id 0.
+    Investment,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -53,6 +55,8 @@ pub enum Action {
     Add,
     Change,
     Remove,
+    /// A tariff applying from the past, its prices and costs rebuilt (ADR 12).
+    Reprice,
 }
 
 /// One configuration change.
@@ -139,11 +143,11 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile` or `tariff`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`.
     subject: String,
     /// The subject's id.
     id: u32,
-    /// `add`, `change` or `remove`.
+    /// `add`, `change`, `remove` or `reprice`.
     action: String,
     /// The subject after the change, as its own route reads it; `null` once removed.
     state: Option<serde_json::Value>,

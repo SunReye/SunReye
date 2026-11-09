@@ -36,6 +36,8 @@
   "problem_tariff_none": "No tariff applies at that time.",
   "problem_tariff_band": "A band needs weekdays from 1 to 7 and a span of one day from HH:MM to a later HH:MM, without overlapping another band of its flow.",
   "problem_tariff_past": "A tariff change applies from now or later; prices already in force stay as they were.",
+  "problem_tariff_retention": "Repricing reaches back only as far as stored history is kept.",
+  "problem_investment_value": "An investment is an amount in EUR above zero.",
   "problem_location_none": "The plant's location has not been set yet.",
   "problem_location_value": "A latitude must lie from -90 to 90 and a longitude from -180 to 180.",
   "problem_connection_none": "This connection does not exist.",

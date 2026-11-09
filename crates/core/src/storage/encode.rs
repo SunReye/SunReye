@@ -74,6 +74,11 @@ impl Track {
         track
     }
 
+    /// The deadband's reference after stored history was replaced: `value` is now last stored.
+    pub const fn rebase(&mut self, value: Option<i64>) {
+        self.stored = value;
+    }
+
     pub fn reading(&mut self, time: Tick, value: f64, out: &mut Vec<Point>) {
         let Some(value) = self.quantise(value) else {
             return;
