@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 /// Readings a subscriber may fall behind by before it loses the oldest.
 const CAPACITY: usize = 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(pub u32);
 
 /// An interned series; [`Bus::series`] names it.

@@ -153,9 +153,9 @@ pub struct PvString {
 #[derive(Deserialize, ToSchema)]
 pub struct StringDraft {
     /// A string kept from an earlier version; absent for a new string.
-    id: Option<u32>,
+    pub id: Option<u32>,
     #[serde(flatten)]
-    wiring: Wiring,
+    pub wiring: Wiring,
 }
 
 /// One layout version.
@@ -208,7 +208,11 @@ impl Layouts {
         self.database.run(read_versions).await
     }
 
-    async fn add_module_type(&self, datasheet: Datasheet) -> Result<ModuleType, Problem> {
+    /// Adds a module type with a fresh id.
+    ///
+    /// # Errors
+    /// A datasheet value is not physical, or the file cannot be written.
+    pub async fn add_module_type(&self, datasheet: Datasheet) -> Result<ModuleType, Problem> {
         if !physical(&datasheet) {
             return Err(Refusal::Value.into());
         }
@@ -221,7 +225,12 @@ impl Layouts {
         Ok(ModuleType { id, datasheet })
     }
 
-    async fn change(
+    /// Appends a version applying from `applies_from`; new strings get fresh ids.
+    ///
+    /// # Errors
+    /// A string names an unknown inverter, MPPT input, string id or module type, or a value is
+    /// out of range, or the file cannot be written.
+    pub async fn change(
         &self,
         applies_from: SystemTime,
         strings: Vec<StringDraft>,

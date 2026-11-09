@@ -6,6 +6,7 @@ pub mod bus;
 pub mod endpoint;
 pub mod layout;
 pub mod live;
+pub mod solar;
 mod spa;
 pub mod startup;
 pub mod storage;

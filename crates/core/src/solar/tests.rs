@@ -1,0 +1,224 @@
+//! The solar forecast from stored weather and the layout, against pvlib 0.16.1's run of the
+//! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
+
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use sunreye_profile::Profile;
+
+use super::SolarForecast;
+use crate::bus::{Bus, DeviceId};
+use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
+use crate::storage::{Issue, Location, Storage};
+
+const INVERTER: DeviceId = DeviceId(1);
+const WEATHER: DeviceId = DeviceId(3);
+/// 2026-06-21 11:00 UTC.
+const NOON: u64 = 1_782_039_600;
+const HOUR: u64 = 3600;
+
+fn at(seconds: u64) -> SystemTime {
+    UNIX_EPOCH + Duration::from_secs(seconds)
+}
+
+struct Plant {
+    _dir: tempfile::TempDir,
+    bus: Bus,
+    storage: Storage,
+    layouts: Layouts,
+    module_type: u32,
+}
+
+/// The fixture's noon weather at each of `targets`.
+async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
+    let weather = [
+        ("weather.ghi", 880.0),
+        ("weather.dni", 800.0),
+        ("weather.dhi", 150.0),
+        ("weather.temperature", 25.0),
+        ("weather.wind", 3.0),
+    ];
+    for (role, value) in weather {
+        let issue = Issue {
+            issued: at(NOON - HOUR),
+            step: 0.01,
+            values: targets.iter().map(|t| (at(*t), value)).collect(),
+        };
+        storage
+            .forecast(WEATHER, bus.intern(role, None), issue)
+            .await
+            .unwrap();
+    }
+}
+
+/// Berlin, the owner's Deye as device 1, and the fixture's noon weather at `targets`.
+async fn plant(targets: &[u64]) -> Plant {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage = Storage::open(&dir.path().join("core.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    storage
+        .set_location(Location {
+            latitude: 52.52,
+            longitude: 13.38,
+        })
+        .await
+        .unwrap();
+    store_weather(&storage, &bus, targets).await;
+    let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
+    let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
+    let layouts = Layouts::new(storage.database(), inverters);
+    let module_type = layouts
+        .add_module_type(Datasheet {
+            name: "fixture".into(),
+            pmax: 400.0,
+            vmp: 34.0,
+            imp: 11.76,
+            voc: 41.0,
+            isc: 12.5,
+            power_coefficient: -0.35,
+            voltage_coefficient: -0.27,
+            current_coefficient: 0.05,
+            width: 1.134,
+            height: 1.722,
+            bypass_diodes: 3,
+        })
+        .await
+        .unwrap()
+        .id;
+    Plant {
+        _dir: dir,
+        bus,
+        storage,
+        layouts,
+        module_type,
+    }
+}
+
+impl Plant {
+    fn string(&self, id: Option<u32>, input: u32, azimuth: f64, modules: u16) -> StringDraft {
+        StringDraft {
+            id,
+            wiring: Wiring {
+                name: format!("{input} {azimuth}"),
+                module_type: self.module_type,
+                device: INVERTER.0,
+                input,
+                modules,
+                optimized: 0,
+                tilt: 35.0,
+                azimuth,
+                loss: 2.0,
+            },
+        }
+    }
+
+    /// The latest forecast of `series` at each target, in watts.
+    async fn forecast(&self, role: &str, index: Option<u32>, targets: &[u64]) -> Vec<f64> {
+        let series = self.bus.intern(role, index);
+        let stored = self
+            .storage
+            .forecasts(
+                INVERTER,
+                series,
+                at(targets[0]),
+                at(targets[targets.len() - 1] + 1),
+            )
+            .await
+            .unwrap();
+        targets
+            .iter()
+            .map(|t| {
+                stored
+                    .iter()
+                    .rfind(|f| f.target == at(*t))
+                    .map_or(f64::NAN, |f| f.value)
+            })
+            .collect()
+    }
+}
+
+/// Within 0.1 % of pvlib, as the sun position allows, and the 1 W storage step.
+fn assert_near(actual: f64, expected: f64, what: &str) {
+    assert!(
+        (actual - expected).abs() <= 1e-3f64.mul_add(expected.abs(), 1.0),
+        "{what}: {actual} != pvlib {expected}"
+    );
+}
+
+#[tokio::test]
+async fn the_owners_strings_inputs_and_inverter_are_forecast() {
+    let plant = plant(&[NOON]).await;
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 0.0, 16),
+                plant.string(None, 1, 180.0, 16),
+                plant.string(None, 2, 0.0, 14),
+            ],
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let string = async |i: usize| {
+        let id = layout.strings[i].id;
+        plant.forecast("pv.string.power", Some(id), &[NOON]).await[0]
+    };
+    let (south, north, second) = (string(0).await, string(1).await, string(2).await);
+    let input = async |n| plant.forecast("pv.mppt.power", Some(n), &[NOON]).await[0];
+    // pvlib: south 5681.94 W and north 2730.21 W in parallel; second south 4971.70 W alone.
+    assert_near(input(1).await, 8412.15, "input 1");
+    assert_near(south + north, 8412.15, "input 1's strings");
+    assert!(south > north, "south {south} beats north {north}");
+    assert_near(second, 4971.70, "second south");
+    assert_near(input(2).await, 4971.70, "input 2");
+    let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
+    assert_near(inverter, 13_383.85, "inverter");
+}
+
+#[tokio::test]
+async fn a_layout_change_applies_from_its_date() {
+    let targets = [NOON, NOON + HOUR];
+    let plant = plant(&targets).await;
+    let before = plant
+        .layouts
+        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], at(0))
+        .await
+        .unwrap();
+    let after = plant
+        .layouts
+        .change(at(NOON + HOUR), vec![plant.string(None, 2, 0.0, 14)], at(0))
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let removed = before.strings[0].id;
+    let added = after.strings[0].id;
+    let old = plant
+        .forecast("pv.string.power", Some(removed), &targets)
+        .await;
+    let new = plant
+        .forecast("pv.string.power", Some(added), &targets)
+        .await;
+    assert!(
+        old[0] > 0.0 && new[0].abs() < f64::EPSILON,
+        "noon: {old:?} {new:?}"
+    );
+    assert!(
+        old[1].abs() < f64::EPSILON && new[1] > 0.0,
+        "an hour on: {old:?} {new:?}"
+    );
+}
