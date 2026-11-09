@@ -8,6 +8,11 @@ use serde::Serialize;
 use serde_json::json;
 use sunreye_profile::{Block, Profile};
 
+/// The schemas and capabilities this build loads.
+fn capabilities() -> String {
+    reply(Ok(sunreye_profile::SUPPORT))
+}
+
 /// The read plan of `profile` at `gap_tolerance`.
 fn read_plan(profile: &[u8], gap_tolerance: u32) -> String {
     let gap = u16::try_from(gap_tolerance).unwrap_or(u16::MAX);
@@ -44,6 +49,12 @@ mod exports {
     #[unsafe(no_mangle)]
     pub const extern "C" fn schema() -> u32 {
         sunreye_profile::SCHEMA
+    }
+
+    /// The schemas and capabilities the profile crate loads, as a reply.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn capabilities() -> u64 {
+        leak(super::capabilities())
     }
 
     /// A zeroed buffer of `len` bytes for the host to write into.

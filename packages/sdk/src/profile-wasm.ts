@@ -11,8 +11,16 @@ export interface Block {
   readonly merged?: boolean;
 }
 
+/** The schemas and capabilities a build loads (crates/profile `Support`). */
+export interface Support {
+  readonly schema: { readonly min: number; readonly max: number };
+  readonly capabilities: readonly string[];
+}
+
 export interface ProfileWasm {
   schema(): number;
+  /** The schemas and capabilities this build loads: the table the core's API also serves. */
+  capabilities(): Support;
   /** The read plan of a profile file at a gap tolerance; throws the loader's reason. */
   readPlan(profile: string, gapTolerance: number): Block[];
   /** A spanning block of a profile file as plain blocks; throws the loader's reason. */
@@ -23,15 +31,16 @@ export interface ProfileWasm {
 interface Exports {
   readonly memory: WebAssembly.Memory;
   readonly schema: () => number;
+  readonly capabilities: () => bigint;
   readonly reserve: (len: number) => number;
   readonly release: (ptr: number, len: number) => void;
   readonly read_plan: (profile: number, profileLen: number, gapTolerance: number) => bigint;
   readonly split: (profile: number, profileLen: number, block: number, blockLen: number) => bigint;
 }
 
-type Reply = { readonly ok: Block[] } | { readonly error: string };
+type Reply<T> = { readonly ok: T } | { readonly error: string };
 
-const functions = ["schema", "reserve", "release", "read_plan", "split"] as const;
+const functions = ["schema", "capabilities", "reserve", "release", "read_plan", "split"] as const;
 
 function isFunctionExport(value: WebAssembly.ExportValue | undefined): boolean {
   return (
@@ -62,12 +71,40 @@ function isBlock(value: unknown): value is Block {
   );
 }
 
-function isReply(value: unknown): value is Reply {
+function isBlocks(value: unknown): value is Block[] {
+  return Array.isArray(value) && value.every((block) => isBlock(block));
+}
+
+function isSchemas(value: unknown): value is Support["schema"] {
+  return (
+    value instanceof Object &&
+    "min" in value &&
+    Number.isInteger(value.min) &&
+    "max" in value &&
+    Number.isInteger(value.max)
+  );
+}
+
+function isNames(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((name) => String(name) === name);
+}
+
+function isSupport(value: unknown): value is Support {
+  return (
+    value instanceof Object &&
+    "schema" in value &&
+    isSchemas(value.schema) &&
+    "capabilities" in value &&
+    isNames(value.capabilities)
+  );
+}
+
+function isReply<T>(value: unknown, isOk: (ok: unknown) => ok is T): value is Reply<T> {
   if (!(value instanceof Object)) return false;
 
   if ("error" in value) return String(value.error) === value.error;
 
-  return "ok" in value && Array.isArray(value.ok) && value.ok.every((block) => isBlock(block));
+  return "ok" in value && isOk(value.ok);
 }
 
 function exportsOf(exports: Readonly<WebAssembly.Exports>): Exports {
@@ -87,7 +124,7 @@ function write(wasm: Exports, text: string): readonly [number, number] {
 }
 
 /** Reads and releases a reply. */
-function take(wasm: Exports, packed: bigint): Block[] {
+function take<T>(wasm: Exports, packed: bigint, isOk: (ok: unknown) => ok is T): T {
   const ptr = Number(packed >> 32n);
   const len = Number(packed & 0xffff_ffffn);
   const text = new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len));
@@ -96,7 +133,7 @@ function take(wasm: Exports, packed: bigint): Block[] {
 
   const reply: unknown = JSON.parse(text);
 
-  if (!isReply(reply)) throw new TypeError(`profile WASM replied ${text}`);
+  if (!isReply(reply, isOk)) throw new TypeError(`profile WASM replied ${text}`);
 
   if ("error" in reply) throw new Error(reply.error);
 
@@ -112,7 +149,7 @@ function call(
   const buffers = inputs.map((input) => write(wasm, input));
 
   try {
-    return take(wasm, run(buffers.flat()));
+    return take(wasm, run(buffers.flat()), isBlocks);
   } finally {
     for (const [ptr, len] of buffers) wasm.release(ptr, len);
   }
@@ -125,6 +162,7 @@ export async function loadProfileWasm(): Promise<ProfileWasm> {
 
   return {
     schema: () => wasm.schema(),
+    capabilities: () => take(wasm, wasm.capabilities(), isSupport),
     readPlan: (profile, gapTolerance) =>
       call(wasm, [profile], ([ptr = 0, len = 0]) => wasm.read_plan(ptr, len, gapTolerance)),
     split: (profile, block) =>
