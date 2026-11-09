@@ -1,7 +1,10 @@
-//! An MQTT 3.1.1 broker on a local port, for tests: it answers every CONNECT with one return code,
-//! answers pings, and closes its sessions on demand.
+//! An MQTT 3.1.1 broker on a local port, for tests.
+//!
+//! It answers every CONNECT with one return code, answers pings, sends retained and published
+//! messages to matching subscriptions at `QoS` 0, and closes its sessions on demand.
 
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -23,12 +26,32 @@ pub struct Fake {
     /// One message per accepted session the client closed.
     pub hung_up: mpsc::UnboundedReceiver<()>,
     close: broadcast::Sender<()>,
+    retained: Retained,
+    published: broadcast::Sender<(String, String)>,
 }
+
+/// The retained message of each topic, as (topic, payload).
+type Retained = Arc<Mutex<Vec<(String, String)>>>;
 
 impl Fake {
     /// Closes every open session.
     pub fn close(&self) {
         let _closed = self.close.send(());
+    }
+
+    /// Keeps `payload` as `topic`'s retained message, sent to each later subscription, and sends
+    /// it to the sessions subscribed now.
+    pub fn retain(&self, topic: &str, payload: &str) {
+        let mut retained = self.retained.lock().unwrap_or_else(PoisonError::into_inner);
+        retained.retain(|(t, _)| t != topic);
+        retained.push((topic.to_owned(), payload.to_owned()));
+        drop(retained);
+        self.publish(topic, payload);
+    }
+
+    /// Sends `payload` on `topic` to the sessions subscribed now.
+    pub fn publish(&self, topic: &str, payload: &str) {
+        let _sent = self.published.send((topic.to_owned(), payload.to_owned()));
     }
 }
 
@@ -43,11 +66,21 @@ pub async fn serve(code: u8) -> Fake {
     let (sent, connects) = mpsc::unbounded_channel();
     let (hangs_up, hung_up) = mpsc::unbounded_channel();
     let (close, _) = broadcast::channel(1);
-    let closing = close.clone();
+    let (published, _) = broadcast::channel(64);
+    let retained = Retained::default();
+    let session_close = close.clone();
+    let session_published = published.clone();
+    let session_retained = Arc::clone(&retained);
     tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
-            let channels = (sent.clone(), hangs_up.clone(), closing.subscribe());
+            let channels = Channels {
+                connects: sent.clone(),
+                hangs_up: hangs_up.clone(),
+                close: session_close.subscribe(),
+                published: session_published.subscribe(),
+                retained: Arc::clone(&session_retained),
+            };
             tokio::spawn(session(socket, code, channels));
         }
     });
@@ -56,38 +89,107 @@ pub async fn serve(code: u8) -> Fake {
         connects,
         hung_up,
         close,
+        retained,
+        published,
     }
 }
 
-type Channels = (
-    mpsc::UnboundedSender<Connect>,
-    mpsc::UnboundedSender<()>,
-    broadcast::Receiver<()>,
-);
+struct Channels {
+    connects: mpsc::UnboundedSender<Connect>,
+    hangs_up: mpsc::UnboundedSender<()>,
+    close: broadcast::Receiver<()>,
+    published: broadcast::Receiver<(String, String)>,
+    retained: Retained,
+}
 
-async fn session(mut socket: TcpStream, code: u8, channels: Channels) {
-    let (connects, hangs_up, mut close) = channels;
+async fn session(mut socket: TcpStream, code: u8, mut channels: Channels) {
     let Some((0x10, body)) = packet(&mut socket).await else {
         return;
     };
-    let _sent = connects.send(connect(&body));
+    let _sent = channels.connects.send(connect(&body));
     socket.write_all(&[0x20, 2, 0, code]).await.unwrap();
     if code != 0 {
         return;
     }
+    let mut filters: Vec<String> = Vec::new();
     loop {
         tokio::select! {
             read = packet(&mut socket) => match read {
                 Some((0xC0, _)) => socket.write_all(&[0xD0, 0]).await.unwrap(),
+                Some((0x82, body)) => {
+                    let (id, new) = subscribe(&body);
+                    let mut ack = vec![0x90, 2 + u8::try_from(new.len()).unwrap()];
+                    ack.extend(id.to_be_bytes());
+                    ack.extend(std::iter::repeat_n(0, new.len()));
+                    socket.write_all(&ack).await.unwrap();
+                    let retained = channels
+                        .retained
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .clone();
+                    for (topic, payload) in retained {
+                        if new.iter().any(|f| matches(f, &topic)) {
+                            socket.write_all(&publish(&topic, &payload, true)).await.unwrap();
+                        }
+                    }
+                    filters.extend(new);
+                }
                 Some(_) => {}
                 None => {
-                    let _sent = hangs_up.send(());
+                    let _sent = channels.hangs_up.send(());
                     return;
                 }
             },
-            _ = close.recv() => return,
+            Ok((topic, payload)) = channels.published.recv() => {
+                if filters.iter().any(|f| matches(f, &topic)) {
+                    socket.write_all(&publish(&topic, &payload, false)).await.unwrap();
+                }
+            }
+            _ = channels.close.recv() => return,
         }
     }
+}
+
+/// A SUBSCRIBE body's packet id and topic filters, each followed by its `QoS` byte.
+fn subscribe(body: &[u8]) -> (u16, Vec<String>) {
+    let id = u16::from_be_bytes([body[0], body[1]]);
+    let mut rest = &body[2..];
+    let mut filters = Vec::new();
+    while !rest.is_empty() {
+        let length = usize::from(u16::from_be_bytes([rest[0], rest[1]]));
+        filters.push(String::from_utf8(rest[2..2 + length].to_vec()).unwrap());
+        rest = &rest[3 + length..];
+    }
+    (id, filters)
+}
+
+/// Whether `filter` matches `topic`: equal, or a prefix ending in `/#`. `+` is not served.
+fn matches(filter: &str, topic: &str) -> bool {
+    filter.strip_suffix("/#").map_or(filter == topic, |prefix| {
+        topic
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// A `QoS` 0 PUBLISH of `payload` on `topic`.
+fn publish(topic: &str, payload: &str, retain: bool) -> Vec<u8> {
+    let mut body = u16::try_from(topic.len()).unwrap().to_be_bytes().to_vec();
+    body.extend(topic.as_bytes());
+    body.extend(payload.as_bytes());
+    let mut packet = vec![0x30 | u8::from(retain)];
+    let mut length = body.len();
+    loop {
+        let byte = u8::try_from(length % 128).unwrap();
+        length /= 128;
+        if length == 0 {
+            packet.push(byte);
+            break;
+        }
+        packet.push(byte | 0x80);
+    }
+    packet.extend(body);
+    packet
 }
 
 /// The next packet's first byte and body; `None` once the socket closes.

@@ -700,7 +700,7 @@ impl Devices {
             if !brokers.iter().any(|b| b.id == id) {
                 brokers.push(Brokered {
                     id,
-                    client: mqtt::spawn(broker.clone()),
+                    client: mqtt::spawn(broker.clone(), Vec::new()),
                     broker,
                 });
             }
