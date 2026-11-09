@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pvlib import iam, irradiance, pvsystem, solarposition, temperature
+from pvlib import atmosphere, clearsky, iam, irradiance, pvsystem, solarposition, temperature
 from pvlib.ivtools import sdm
 from scipy import constants, optimize
 
@@ -399,10 +399,31 @@ def perez():
     return rows
 
 
+# The clear sky the browser runs for dates without weather (ADR 20): Ineichen–Perez at sea level
+# under a Linke turbidity of 3, airmass by Kasten and Young 1989 on the geometric zenith.
+LINKE_TURBIDITY = 3.0
+CLEAR_ZENITHS = [0, 20, 45, 60, 75, 85, 89.5, 95]
+CLEAR_DAYS = [1, 172, 313]
+
+
+def clear_sky():
+    rows = [["zenith", "day_of_year", "ghi", "dni", "dhi"]]
+    for doy in CLEAR_DAYS:
+        for zenith in CLEAR_ZENITHS:
+            airmass = atmosphere.get_absolute_airmass(
+                atmosphere.get_relative_airmass(zenith, model="kastenyoung1989"))
+            sky = clearsky.ineichen(zenith, airmass, LINKE_TURBIDITY, altitude=0,
+                                    dni_extra=irradiance.get_extra_radiation(doy))
+            rows.append([zenith, doy, *(0.0 if math.isnan(sky[k]) else sky[k]
+                                        for k in ("ghi", "dni", "dhi"))])
+    return rows
+
+
 def main():
     for name, rows in (("perez.csv", perez()), ("string.csv", string_fixture()),
                        ("sun.csv", sun()), ("estimate.csv", estimate()),
-                       ("desoto.csv", desoto()), ("input.csv", input_fixture())):
+                       ("desoto.csv", desoto()), ("input.csv", input_fixture()),
+                       ("clearsky.csv", clear_sky())):
         with open(HERE / name, "w", newline="") as f:
             csv.writer(f, lineterminator="\n").writerows(
                 [[v if isinstance(v, (str, int)) else repr(float(v)) for v in row] for row in rows]

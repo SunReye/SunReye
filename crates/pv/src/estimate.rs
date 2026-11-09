@@ -2,7 +2,7 @@
 
 use crate::{Estimate, InverterEstimate, Layout, Sky, Weather, input_output, sun_position};
 
-const SECONDS_PER_DAY: i64 = 86_400;
+pub const SECONDS_PER_DAY: i64 = 86_400;
 
 #[must_use]
 pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
@@ -35,7 +35,7 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
 }
 
 /// 1 to 366, for the UTC day `days` after 1970-01-01 (Hinnant's civil-from-days).
-fn day_of_year(days: i64) -> u16 {
+pub fn day_of_year(days: i64) -> u16 {
     let shifted = days + 719_468;
     let era = shifted.div_euclid(146_097);
     let of_era = shifted - era * 146_097;
