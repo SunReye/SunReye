@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09)
+Status: accepted (2026-11-09), amended (2026-11-09)
 
 ## Context
 
@@ -12,7 +12,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Scene.** The scene is part of the PV layout, owned by the layout feature module (ADR 19). Saving it is one configuration change with an effective-from date. Planes and strings are derived from it and are not edited separately once a scene exists. Units are metres, y up, origin at the first block's corner; a compass dial rotates the scene to true north. Plane azimuths follow ADR 17. No map or satellite tiles: they would send the home's address to a tile service.
 
-- **Blocks.** A rectangular footprint (width, depth, eave height, rotation) with one roof: flat, mono-pitch, gable or hip, at a pitch. A plant has several blocks. Dormers, larger L-shapes and free-form polygons wait.
+- **Blocks.** A rectangular footprint (width, depth, eave height, rotation) with one roof: flat, mono-pitch, gable or hip, at a pitch. A plant has several blocks. Dormers, larger L-shapes and free-form polygons wait. The compass dial's angle is the bearing of the scene's −z axis; a block's width runs along x and its depth along z from its corner, turned clockwise seen from above. A mono-pitch roof rises from the front eave (+z), a gable's ridge runs along the width, a hip's along the longer side.
 - **Modules.** The admin defines the roofs first, then places modules freely on a grid on each roof face, like a PV planner. A cell is the module's size plus a gap; each face has an edge setback and a portrait or landscape orientation. Strings are painted onto modules and may span faces. Optimizers are set per module.
 - **Obstacles.** Opaque boxes (a neighbour, a wall), cylinders (a chimney, a pole) and trees (a trunk with a sphere crown), each with position, size and height.
 - **Equipment.** Markers for inverters and batteries, each linked to its device and placed on a block's wall, inside or outside.
@@ -21,7 +21,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Editing.** Undo and redo until save. Saving checks that modules sit inside their face's setback and do not overlap. Unassigned modules are shown and produce nothing. A string whose open-circuit voltage at −10 °C exceeds the inverter's maximum DC input voltage (ADR 5) raises a warning, never a refusal, because the plant may already exist.
 
-**Physics.** Shading is computed in the `pv` crate (ADR 17), per bypass-diode substring, against blocks, obstacles and carport roofs; diffuse light stays unshaded. The core's forecast and the browser run the same code, so the scene and the forecast never disagree. three.js only draws.
+**Physics.** Shading is computed in the `pv` crate (ADR 17), per bypass-diode substring, against blocks, obstacles and carport roofs; diffuse light stays unshaded. The `pv` crate also turns blocks, roofs and obstacles into the faces and solids the browser draws, so what is drawn is what shades. The core's forecast and the browser run the same code, so the scene and the forecast never disagree. three.js only draws.
 
 **Rendering.** three.js directly, without a Svelte wrapper. The scene is built by pure functions from the layout and drawn by one thin component. It needs WebGL2. It redraws only on a live tick or a camera move, never in a continuous loop. An orbit camera offers preset views (north, east, south, west, top, isometric); each viewer's last view is kept in their browser. The `pv` crate reaches the browser through its own WASM glue crate (ADR 2). Desktop and tablet edit; a phone views.
 
