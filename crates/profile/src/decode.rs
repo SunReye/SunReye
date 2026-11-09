@@ -39,7 +39,7 @@ impl Profile {
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
-                Read::Point { .. } | Read::Topic { .. } => None,
+                Read::Point { .. } | Read::Topic { .. } | Read::Json { .. } => None,
             };
             if let Some(slot) = values.get_mut(position) {
                 *slot = value;
@@ -54,6 +54,33 @@ impl Profile {
             .any(|q| matches!(q.read, Read::Topic { .. }))
     }
 
+    /// Whether it reads through the `http` binding: a device behind an HTTP host needs one that
+    /// does.
+    #[must_use]
+    pub fn reads_http(&self) -> bool {
+        self.quantities()
+            .iter()
+            .any(|q| matches!(q.read, Read::Json { .. }))
+    }
+
+    /// Each GET its quantities read, once, in file order, with `address` in place of its address
+    /// mark: one poll of the device.
+    #[must_use]
+    pub fn requests(&self, address: u32) -> Vec<String> {
+        let address = address.to_string();
+        let mut requests: Vec<String> = Vec::new();
+        let gets = self.quantities().iter().filter_map(|q| match &q.read {
+            Read::Json { get, .. } => Some(get.replace(ADDRESS, &address)),
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } | Read::Compute(_) => None,
+        });
+        for get in gets {
+            if !requests.contains(&get) {
+                requests.push(get);
+            }
+        }
+        requests
+    }
+
     /// The topic of every quantity read from one, with `address` in place of its address mark,
     /// by position in [`Profile::quantities`].
     #[must_use]
@@ -64,7 +91,9 @@ impl Profile {
             .enumerate()
             .filter_map(|(position, q)| match &q.read {
                 Read::Topic { topic, .. } => Some((position, topic.replace(ADDRESS, &address))),
-                Read::Register(_) | Read::Point { .. } | Read::Compute(_) => None,
+                Read::Register(_) | Read::Point { .. } | Read::Json { .. } | Read::Compute(_) => {
+                    None
+                }
             })
             .collect()
     }
@@ -93,6 +122,43 @@ impl Profile {
         if let Some(slot) = values.get_mut(position) {
             *slot = value;
         }
+        self.recompute(values);
+    }
+
+    /// Takes `body`, the answer to `get` on the device at `address`, into the value of every
+    /// quantity read from it, and recomputes every computed quantity. What its JSON Pointer
+    /// finds reads as a topic's payload does; an unreadable answer leaves them no value.
+    pub fn answer(&self, address: u32, get: &str, body: &[u8], values: &mut [Option<f64>]) {
+        let document: Option<Value> = serde_json::from_slice(body).ok();
+        let address = address.to_string();
+        for (position, quantity) in self.quantities().iter().enumerate() {
+            let Read::Json {
+                get: ref asked,
+                ref pointer,
+                scale,
+                offset,
+            } = quantity.read
+            else {
+                continue;
+            };
+            if asked.replace(ADDRESS, &address) != get {
+                continue;
+            }
+            let value = document
+                .as_ref()
+                .and_then(|d| d.pointer(pointer))
+                .and_then(number)
+                .map(|raw| scaled(raw, scale, offset))
+                .filter(|value| value.is_finite())
+                .map(|value| clamped(quantity.range, value));
+            if let Some(slot) = values.get_mut(position) {
+                *slot = value;
+            }
+        }
+        self.recompute(values);
+    }
+
+    fn recompute(&self, values: &mut [Option<f64>]) {
         for (at, quantity) in self.quantities().iter().enumerate() {
             let Read::Compute(expr) = &quantity.read else {
                 continue;
@@ -105,6 +171,15 @@ impl Profile {
     }
 }
 
+/// A number, or `true` and `false` as 1 and 0; anything else is no value.
+fn number(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.as_f64(),
+        Value::Bool(on) => Some(f64::from(u8::from(*on))),
+        Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
+    }
+}
+
 fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
     if !texts.is_empty() {
         return texts
@@ -112,11 +187,7 @@ fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
             .find(|(text, _)| text.as_bytes() == payload)
             .map(|(_, value)| *value);
     }
-    match serde_json::from_slice(payload).ok()? {
-        Value::Number(n) => n.as_f64(),
-        Value::Bool(on) => Some(f64::from(u8::from(on))),
-        Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
-    }
+    number(&serde_json::from_slice(payload).ok()?)
 }
 
 /// `None` while a word is unanswered, or for a SunSpec sentinel.

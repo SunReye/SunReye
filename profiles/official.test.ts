@@ -22,6 +22,7 @@ import deyeSun5kSg05lp3 from "./deye-sun5k-sg05lp3.ts";
 import deyeSun6kSg05lp3 from "./deye-sun6k-sg05lp3.ts";
 import deyeSun8kSg05lp3 from "./deye-sun8k-sg05lp3.ts";
 import evcc from "./evcc.ts";
+import shellyPro3em from "./shelly-pro-3em.ts";
 import sunspec from "./sunspec.ts";
 
 /** Every official profile, by its source's file name. */
@@ -47,6 +48,7 @@ const official = {
   "deye-sun6k-sg05lp3.ts": deyeSun6kSg05lp3,
   "deye-sun8k-sg05lp3.ts": deyeSun8kSg05lp3,
   "evcc.ts": evcc,
+  "shelly-pro-3em.ts": shellyPro3em,
   "sunspec.ts": sunspec,
 };
 

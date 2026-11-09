@@ -123,7 +123,11 @@ impl Quantity {
     pub const fn linear(&self) -> Option<(u16, f64, f64)> {
         match &self.read {
             Read::Register(r) if r.scale_factor.is_none() => Some((r.address, r.scale, r.offset)),
-            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } | Read::Compute(_) => None,
+            Read::Register(_)
+            | Read::Point { .. }
+            | Read::Topic { .. }
+            | Read::Json { .. }
+            | Read::Compute(_) => None,
         }
     }
 
@@ -136,7 +140,7 @@ impl Quantity {
                 expr.inputs(),
                 matches!(expr, Expr::Sum(_) | Expr::Diff(..) | Expr::Combine { .. }),
             )),
-            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } => None,
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } | Read::Json { .. } => None,
         }
     }
 }
@@ -157,6 +161,14 @@ pub enum Read {
         offset: f64,
         /// Text payloads and the values they read as.
         texts: Vec<(String, f64)>,
+    },
+    /// A JSON Pointer into the answer to a GET on the connection's host, with `{address}`
+    /// unsubstituted in the GET.
+    Json {
+        get: String,
+        pointer: String,
+        scale: f64,
+        offset: f64,
     },
     Compute(Expr),
 }
@@ -200,6 +212,7 @@ enum Binding {
     Registers,
     Topics,
     SunSpec,
+    Http,
 }
 
 impl Read {
@@ -209,6 +222,7 @@ impl Read {
             Self::Register(_) => Some(Binding::Registers),
             Self::Point { .. } => Some(Binding::SunSpec),
             Self::Topic { .. } => Some(Binding::Topics),
+            Self::Json { .. } => Some(Binding::Http),
             Self::Compute(_) => None,
         }
     }
@@ -555,7 +569,8 @@ fn step(read: &Read, earlier: &[Quantity]) -> f64 {
             register: Register { scale, .. },
             ..
         }
-        | Read::Topic { scale, .. } => scale.abs(),
+        | Read::Topic { scale, .. }
+        | Read::Json { scale, .. } => scale.abs(),
         Read::Compute(Expr::Ratio { scale, .. }) => scale.abs() / 1000.0,
         Read::Compute(expr) => expr
             .inputs()
@@ -572,7 +587,8 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
     if doc.texts.is_some() && doc.topic.is_none() {
         return Err("only a topic maps texts");
     }
-    if doc.scale_factor.is_some() != doc.resolution.is_some() {
+    // A JSON number is a float, which may declare the resolution it is stored in.
+    if doc.scale_factor.is_some() != doc.resolution.is_some() && doc.get.is_none() {
         return Err("a scale factor and a resolution come together");
     }
     if doc.scale_factor.is_some() && doc.register.is_none() {
@@ -581,9 +597,13 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
     if doc.model.is_some() && doc.register.is_none() {
         return Err("a SunSpec model is read at a register");
     }
-    match (doc.register, &doc.topic, &doc.compute) {
-        (Some(address), None, None) => register(doc, address, scale, offset),
-        (None, Some(topic), None) => {
+    if doc.json.is_some() != doc.get.is_some() {
+        return Err("a GET and its JSON Pointer come together");
+    }
+    match (doc.register, &doc.topic, &doc.get, &doc.compute) {
+        (Some(address), None, None, None) => register(doc, address, scale, offset),
+        (None, None, Some(get), None) => json(doc, get, scale, offset),
+        (None, Some(topic), None, None) => {
             if doc.kind.is_some() {
                 return Err("a topic takes no type");
             }
@@ -597,14 +617,33 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
                 texts: doc.texts.clone().unwrap_or_default().into_iter().collect(),
             })
         }
-        (None, None, Some(expr)) if doc.kind.is_none() => {
+        (None, None, None, Some(expr)) if doc.kind.is_none() => {
             if doc.scale.is_some() || doc.offset.is_some() {
                 return Err("a computed quantity takes no scale or offset");
             }
             expr_of(expr, positions).map(Read::Compute)
         }
-        _ => Err("declare one of `register`, `topic` or `compute`"),
+        _ => Err("declare one of `register`, `topic`, `get` or `compute`"),
     }
+}
+
+fn json(doc: &QuantityDoc, get: &str, scale: f64, offset: f64) -> Result<Read, &'static str> {
+    if doc.kind.is_some() {
+        return Err("a JSON Pointer takes no type");
+    }
+    if !get.starts_with('/') {
+        return Err("a GET is a path on the connection's host");
+    }
+    let pointer = doc.json.clone().unwrap_or_default();
+    if !pointer.starts_with('/') {
+        return Err("a JSON Pointer starts with `/`");
+    }
+    Ok(Read::Json {
+        get: get.to_owned(),
+        pointer,
+        scale,
+        offset,
+    })
 }
 
 fn register(

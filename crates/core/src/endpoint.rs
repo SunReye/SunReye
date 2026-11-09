@@ -110,7 +110,7 @@ struct Out {
 }
 
 /// The wait before the next attempt after `failures` failed cycles in a row, at least one.
-fn backoff(failures: u32) -> Duration {
+pub(crate) fn backoff(failures: u32) -> Duration {
     let doublings = failures.saturating_sub(1).min(16);
     FIRST_BACKOFF
         .saturating_mul(1 << doublings)

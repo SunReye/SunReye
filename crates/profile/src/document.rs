@@ -264,6 +264,11 @@ pub struct QuantityDoc {
     pub register: Option<u16>,
     /// An `mqtt` topic under the connection's root; `{address}` stands for the device address.
     pub topic: Option<String>,
+    /// An `http` GET of a path on the connection's host, such as `/rpc/EM.GetStatus?id=0`;
+    /// `{address}` stands for the device address.
+    pub get: Option<String>,
+    /// A JSON Pointer (RFC 6901) into the answer to `get`, such as `/total_act_power`.
+    pub json: Option<String>,
     #[serde(rename = "type")]
     pub kind: Option<Kind>,
     pub scale: Option<f64>,
@@ -296,6 +301,7 @@ impl QuantityDoc {
                 (None, None) => None,
             },
             self.topic.as_ref().map(|_| "mqtt"),
+            self.get.as_ref().map(|_| "http"),
             self.scale_factor.map(|_| "scale-factor"),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),

@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -18,7 +18,16 @@ model?: Array<number>, register?: number,
 /**
  * An `mqtt` topic under the connection's root; `{address}` stands for the device address.
  */
-topic?: string, type?: Kind, scale?: number, 
+topic?: string, 
+/**
+ * An `http` GET of a path on the connection's host, such as `/rpc/EM.GetStatus?id=0`;
+ * `{address}` stands for the device address.
+ */
+get?: string, 
+/**
+ * A JSON Pointer (RFC 6901) into the answer to `get`, such as `/total_act_power`.
+ */
+json?: string, type?: Kind, scale?: number, 
 /**
  * The register holding the power of ten the value is scaled by, read with it (SunSpec's
  * `sunssf`).

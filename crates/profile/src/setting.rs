@@ -508,8 +508,14 @@ fn labels(
 }
 
 /// Whether every step and the read-back use the profile's binding: topics when it reads any,
-/// registers otherwise.
+/// registers otherwise. The `http` binding writes nothing.
 fn binding(recipe: &[Step], read_back: Option<Source>, quantities: &[Quantity]) -> bool {
+    if quantities
+        .iter()
+        .any(|q| matches!(q.read, Read::Json { .. }))
+    {
+        return false;
+    }
     let topics = quantities
         .iter()
         .any(|q| matches!(q.read, Read::Topic { .. }));

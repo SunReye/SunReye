@@ -5,10 +5,11 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Polled, Publish, Reach, Refusal,
-    Transport, entry,
+    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Hosting, Polled, Publish, Reach,
+    Reads, Refusal, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
+use crate::http;
 use crate::mqtt;
 use crate::transport::Endpoint;
 
@@ -20,6 +21,7 @@ fn transport(name: &str) -> rusqlite::Result<Transport> {
         "rtu-over-tcp" => Ok(Transport::RtuOverTcp),
         "solarman-v5" => Ok(Transport::SolarmanV5),
         "mqtt" => Ok(Transport::Mqtt),
+        "http" => Ok(Transport::Http),
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -30,6 +32,7 @@ const fn transport_name(transport: Transport) -> &'static str {
         Transport::RtuOverTcp => "rtu-over-tcp",
         Transport::SolarmanV5 => "solarman-v5",
         Transport::Mqtt => "mqtt",
+        Transport::Http => "http",
     }
 }
 
@@ -115,16 +118,8 @@ pub fn brokers(db: &Db) -> rusqlite::Result<Vec<Brokering>> {
         .collect::<rusqlite::Result<_>>()?;
     rows.into_iter()
         .map(|(id, host, port, root, discovery)| {
-            let username = secret(db, id, "username")?;
-            let password = secret(db, id, "password")?;
-            let credentials = username.map(|u| (u, password.unwrap_or_default()));
-            let devices = db
-                .prepare(
-                    "SELECT id, unit, profile FROM device
-                     WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
-                )?
-                .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-                .collect::<rusqlite::Result<_>>()?;
+            let credentials = credentials(db, id)?;
+            let devices = behind(db, id)?;
             Ok(Brokering {
                 id,
                 broker: mqtt::Broker {
@@ -138,6 +133,42 @@ pub fn brokers(db: &Db) -> rusqlite::Result<Vec<Brokering>> {
             })
         })
         .collect()
+}
+
+/// Every HTTP host connection with its credentials and devices, by id, for its task alone.
+pub fn hosts(db: &Db) -> rusqlite::Result<Vec<Hosting>> {
+    let rows: Vec<(u32, String, u16)> = db
+        .prepare("SELECT id, host, port FROM connection WHERE transport = 'http' ORDER BY id")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    rows.into_iter()
+        .map(|(id, host, port)| {
+            Ok(Hosting {
+                host: http::Host {
+                    host,
+                    port,
+                    credentials: credentials(db, id)?,
+                },
+                devices: behind(db, id)?,
+            })
+        })
+        .collect()
+}
+
+/// Connection `id`'s `username` and `password` secrets, when a username is set.
+fn credentials(db: &Db, id: u32) -> rusqlite::Result<Option<(String, String)>> {
+    let username = secret(db, id, "username")?;
+    let password = secret(db, id, "password")?;
+    Ok(username.map(|u| (u, password.unwrap_or_default())))
+}
+
+/// Each device's id, address and profile behind connection `id`, by id.
+fn behind(db: &Db, id: u32) -> rusqlite::Result<Vec<(u32, u8, String)>> {
+    db.prepare(
+        "SELECT id, unit, profile FROM device WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
+    )?
+    .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    .collect()
 }
 
 /// Applies a draft's secret changes to connection `id`.
@@ -206,8 +237,8 @@ pub fn change_connection(
     }
     let r = &draft.reach;
     let units = units_of(&tx, id)?;
-    let was_broker = connection(&tx, id)?.is_some_and(|c| c.reach.transport == Transport::Mqtt);
-    if (r.transport == Transport::Mqtt) != was_broker && !units.is_empty() {
+    let was = connection(&tx, id)?.map(|c| c.reach.transport.reads());
+    if Some(r.transport.reads()) != was && !units.is_empty() {
         return Ok(Err(Refusal::Transport));
     }
     let taken = units_at(&tx, r, |c, _| c != id)?;
@@ -311,14 +342,14 @@ pub fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
     .optional()
 }
 
-/// Refuses an unknown connection, a broker for a profile that reads no topics (`topics`) or the
-/// reverse, or a device address another device has at the same endpoint.
-fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft, topics: bool) -> Outcome<()> {
+/// Refuses an unknown connection, one whose transport does not carry the binding the profile
+/// `reads` through, or a device address another device has at the same endpoint.
+fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft, reads: Reads) -> Outcome<()> {
     let Some(connection) = connection(db, draft.connection)? else {
         return Ok(Err(Refusal::DeviceConnection));
     };
     let r = &connection.reach;
-    if (r.transport == Transport::Mqtt) != topics {
+    if r.transport.reads() != reads {
         return Ok(Err(Refusal::Transport));
     }
     let units = units_at(db, r, |_, d| Some(d) != id)?;
@@ -341,11 +372,11 @@ fn log_device(
 pub fn add_device(
     db: &Db,
     draft: DeviceDraft,
-    topics: bool,
+    reads: Reads,
     changed: SystemTime,
 ) -> Outcome<Device> {
     let tx = db.unchecked_transaction()?;
-    if let Err(refusal) = check_device(&tx, None, &draft, topics)? {
+    if let Err(refusal) = check_device(&tx, None, &draft, reads)? {
         return Ok(Err(refusal));
     }
     tx.execute(
@@ -368,7 +399,7 @@ pub fn change_device(
     db: &Db,
     id: u32,
     draft: DeviceDraft,
-    topics: bool,
+    reads: Reads,
     changed: SystemTime,
 ) -> Outcome<Device> {
     let tx = db.unchecked_transaction()?;
@@ -378,7 +409,7 @@ pub fn change_device(
     if stored.draft.profile != draft.profile {
         return Ok(Err(Refusal::ProfileChange));
     }
-    if let Err(refusal) = check_device(&tx, Some(id), &draft, topics)? {
+    if let Err(refusal) = check_device(&tx, Some(id), &draft, reads)? {
         return Ok(Err(refusal));
     }
     tx.execute(
@@ -408,7 +439,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     db.prepare(
         "SELECT d.id, d.unit, d.profile, c.transport, c.host, c.port
          FROM device d JOIN connection c ON c.id = d.connection
-         WHERE d.unit IS NOT NULL AND c.transport != 'mqtt' ORDER BY d.id",
+         WHERE d.unit IS NOT NULL AND c.transport NOT IN ('mqtt', 'http') ORDER BY d.id",
     )?
     .query_map([], |row| {
         let (host, port) = (row.get(4)?, row.get(5)?);
@@ -420,7 +451,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
                 Transport::ModbusTcp => Endpoint::ModbusTcp { host, port },
                 Transport::RtuOverTcp => Endpoint::RtuOverTcp { host, port },
                 Transport::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
-                Transport::Mqtt => return Err(rusqlite::Error::InvalidQuery),
+                Transport::Mqtt | Transport::Http => return Err(rusqlite::Error::InvalidQuery),
             },
         })
     })?

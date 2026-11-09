@@ -71,10 +71,10 @@ test("a misspelt field fails to compile and to load", () => {
 test("a capability outside the table fails to compile", () => {
   const profile = defineProfile({
     ...header,
-    // @ts-expect-error `http` is not in the capability table
-    requires: ["modbus", "http"],
+    // @ts-expect-error `udp` is not in the capability table
+    requires: ["modbus", "udp"],
     quantities: [],
   });
 
-  expect(() => wasm.lint(JSON.stringify(profile))).toThrow("lacks the required capability `http`");
+  expect(() => wasm.lint(JSON.stringify(profile))).toThrow("lacks the required capability `udp`");
 });

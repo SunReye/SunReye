@@ -3,6 +3,7 @@
 mod deadband;
 mod decode;
 mod deye;
+mod http;
 mod identify;
 mod lint;
 mod load;
