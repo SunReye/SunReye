@@ -200,6 +200,14 @@ _Avoid_: Rate plan, contract
 A tariff price that holds on given weekdays for a span of the plant-local wall-clock day.
 _Avoid_: Time slot, period, window
 
+**Savings**:
+The bill without the plant, the whole house load bought at the import price, less the bill with it.
+_Avoid_: Profit, yield
+
+**Payback**:
+The savings summed since the first, against the investment amount the admin enters.
+_Avoid_: Amortisation, return on investment
+
 ## Remote access
 
 **Install id**:

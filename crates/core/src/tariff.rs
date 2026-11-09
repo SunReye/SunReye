@@ -5,6 +5,7 @@
 //! The tariff module owns the `tariff` and `tariff_band` tables. A change is a new version applying
 //! from its instant, never before the change itself: editing changes only the future.
 
+mod cost;
 mod device;
 mod routes;
 mod store;
