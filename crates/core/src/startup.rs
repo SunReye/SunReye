@@ -17,6 +17,7 @@ use crate::changes::Changes;
 use crate::correction::Learner;
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
+use crate::import::{self, Imports};
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::{Location, PlantLocation};
@@ -168,6 +169,8 @@ impl From<storage::Error> for Error {
 #[derive(Debug)]
 pub struct Boot<P, A, S> {
     pub data_dir: PathBuf,
+    /// Where the admin leaves a v3 export to import (ADR 18): Home Assistant's `/share`.
+    pub share: PathBuf,
     /// The Supervisor's address, if trusted.
     pub ingress: Option<IpAddr>,
     /// The build time: the clock is unsynced until past it.
@@ -204,9 +207,7 @@ pub async fn serve(
 ) -> Result<(), Error> {
     private(&boot.data_dir)?;
     let bus = Bus::default();
-    let file = boot.data_dir.join(STORE);
-    let zone = plant_zone();
-    let storage = Storage::open(&file, boot.build, &zone, &bus)?;
+    let storage = Storage::open(&boot.data_dir.join(STORE), boot.build, &plant_zone(), &bus)?;
     let (problems, watched) = problems(&storage).await?;
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
@@ -224,6 +225,7 @@ pub async fn serve(
         (layouts.clone(), location.watch(), spot.watch()),
         &bus,
     ));
+    let places = (boot.share, boot.data_dir.join("import.tar.gz"), import::MAX);
     let api = Api {
         auth: Auth::open(storage.database(), boot.ingress).await?,
         live: Live::spawn(&bus),
@@ -234,6 +236,7 @@ pub async fn serve(
         changes: Changes::new(storage.database()),
         location,
         spot,
+        imports: Imports::new(places, &storage, &bus, profiles.catalogue()),
         profiles,
         topologies,
         tariffs,

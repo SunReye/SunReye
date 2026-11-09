@@ -238,6 +238,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where the import stands: idle, running with its progress, or its result. */
+        get: operations["import_status"];
+        put?: never;
+        /** Starts importing an archive; one import runs at a time, while the core keeps polling. */
+        post: operations["start_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The v3 archives under `/share`, by path. Symlinks are not followed. */
+        get: operations["import_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stores an uploaded v3 archive for the next import, replacing the last; answers its devices. */
+        post: operations["upload_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/investment": {
         parameters: {
             query?: never;
@@ -719,6 +771,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description A v3 device an archive holds. */
+        ArchiveDevice: {
+            /** @description Its v3 profile's id. */
+            profile: string;
+            slug: string;
+        };
+        ArchiveFiles: {
+            files: components["schemas"]["SharedArchive"][];
+        };
         /** @description The days with rolled-up history, in order. */
         Balance: {
             days: components["schemas"]["Day"][];
@@ -859,7 +920,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1106,6 +1167,52 @@ export interface components {
              * @description A `bucket`'s width in seconds.
              */
             width?: number | null;
+        };
+        /** @description The v3 devices an archive holds. */
+        ImportArchive: {
+            devices: components["schemas"]["ArchiveDevice"][];
+        };
+        ImportMapping: {
+            /**
+             * Format: int32
+             * @description The v5 device's id.
+             */
+            device: number;
+            /** @description The v3 device's slug. */
+            slug: string;
+        };
+        /** @enum {string} */
+        ImportPhase: "idle" | "running" | "done" | "failed";
+        /** @description What an import wrote and left out. */
+        ImportReport: {
+            /** @description Daily rollups written. */
+            days: number;
+            /** @description Hourly rollups written. */
+            hours: number;
+            /** @description Change points written. */
+            points: number;
+            series: number;
+            /** @description v3 devices with readings and no v5 device: not imported. */
+            unmapped: string[];
+            /** @description v3 metrics no v5 quantity reads, as `slug/key`: not imported. */
+            unread: string[];
+        };
+        /** @description An import to start. */
+        ImportStart: {
+            /** @description Each v3 device and the v5 device its history goes to. */
+            devices: components["schemas"]["ImportMapping"][];
+            /** @description The archive's path under `/share`; without it, the uploaded archive. */
+            path?: string | null;
+        };
+        /** @description Where an import stands. */
+        ImportStatus: {
+            /** @description Series written so far. */
+            done: number;
+            problem?: components["schemas"]["Code"] | null;
+            report?: components["schemas"]["ImportReport"] | null;
+            state: components["schemas"]["ImportPhase"];
+            /** @description Series the archive feeds; 0 until it is read. */
+            total: number;
         };
         /**
          * @description Why an index could not be read.
@@ -1476,6 +1583,12 @@ export interface components {
              * @description In the setting's unit, a whole number of its steps.
              */
             value: number;
+        };
+        /** @description An archive under `/share`. */
+        SharedArchive: {
+            devices: components["schemas"]["ArchiveDevice"][];
+            /** @description Its path under `/share`. */
+            path: string;
         };
         /** @description Whether spot prices are fetched, and for which bidding zone. */
         SpotPriceZone: {
@@ -2242,6 +2355,122 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    import_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportStatus"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    start_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportStart"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportStatus"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    import_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveFiles"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    upload_import: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/gzip": number[];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportArchive"];
+                };
             };
             "4XX": {
                 headers: {

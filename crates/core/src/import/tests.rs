@@ -73,9 +73,15 @@ impl Plant {
             device: DEVICE,
             profile,
         }];
-        run(fixture(), &self.storage, &self.bus, targets)
-            .await
-            .unwrap()
+        run(
+            fixture(),
+            &self.storage.importer(),
+            &self.bus,
+            targets,
+            |_, _| {},
+        )
+        .await
+        .unwrap()
     }
 
     /// Change points from `from` to `to` hours after July 1, as hours and values.
@@ -285,7 +291,14 @@ async fn a_newer_format_is_refused_before_anything_is_written() {
     let manifest = br#"{"format":"sunreye-archive","formatVersion":2}"#;
     let file = archive(dir.path(), &[("manifest.json", manifest)]);
 
-    let refused = run(file, &plant.storage, &plant.bus, Vec::new()).await;
+    let refused = run(
+        file,
+        &plant.storage.importer(),
+        &plant.bus,
+        Vec::new(),
+        |_, _| {},
+    )
+    .await;
 
     assert!(matches!(refused, Err(Error::Archive(reason)) if reason.contains("version 2")));
 }
@@ -300,7 +313,14 @@ async fn a_target_the_archive_does_not_hold_is_refused() {
         profile,
     }];
 
-    let refused = run(fixture(), &plant.storage, &plant.bus, targets).await;
+    let refused = run(
+        fixture(),
+        &plant.storage.importer(),
+        &plant.bus,
+        targets,
+        |_, _| {},
+    )
+    .await;
 
     assert!(matches!(refused, Err(Error::UnknownDevice(slug)) if slug == "elsewhere"));
 }

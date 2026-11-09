@@ -21,6 +21,7 @@ use crate::auth::Auth;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::devices::Devices;
+use crate::import::Imports;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
 use crate::location::PlantLocation;
@@ -71,6 +72,7 @@ pub struct Api {
     pub tariffs: Tariffs,
     pub cars: CarBodies,
     pub zones: storage::Zones,
+    pub imports: Imports,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -91,16 +93,7 @@ pub fn router(api: Api) -> Router {
                 .routes(routes!(problems))
                 .with_state(api.problems),
         )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(history::history))
-                .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(forecasts::forecasts))
-                .with_state(api.history.clone()),
-        )
+        .merge(history_routes(&api.history, &api.clock))
         .merge(api.topologies.clone().residual_routes(api.history))
         .merge(
             api.topologies
@@ -114,6 +107,7 @@ pub fn router(api: Api) -> Router {
         .merge(api.spot.routes(Clock::clone(&api.clock)))
         .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
+        .merge(api.imports.routes())
         .merge(api.layouts.routes(Clock::clone(&api.clock)));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(api_routes, api.clock))
@@ -129,6 +123,17 @@ pub fn router(api: Api) -> Router {
             spa::serve(&method, &uri, &headers).unwrap_or_else(|| ROUTE.into_response())
         })
         .method_not_allowed_fallback(|| async { METHOD })
+}
+
+/// History and forecasts, which read the store.
+fn history_routes(history: &storage::Reader, clock: &Clock) -> OpenApiRouter {
+    let forecasts = OpenApiRouter::new()
+        .routes(routes!(forecasts::forecasts))
+        .with_state(history.clone());
+    OpenApiRouter::new()
+        .routes(routes!(history::history))
+        .with_state((history.clone(), Clock::clone(clock)))
+        .merge(forecasts)
 }
 
 fn capability_routes(api: &Api) -> OpenApiRouter {
@@ -437,6 +442,24 @@ pub enum Code {
     IndexValue,
     #[serde(rename = "update.none")]
     UpdateNone,
+    /// An import already runs.
+    #[serde(rename = "import.busy")]
+    ImportBusy,
+    /// No archive at that path under `/share`, or none uploaded.
+    #[serde(rename = "import.path")]
+    ImportPath,
+    /// An uploaded archive past the size cap.
+    #[serde(rename = "import.size")]
+    ImportSize,
+    /// The file is no v3 archive this build reads.
+    #[serde(rename = "import.file")]
+    ImportFile,
+    /// A mapping names a v3 device the archive lacks or a v5 device not registered.
+    #[serde(rename = "import.device")]
+    ImportDevice,
+    /// The archive lacks the v3 profile of a mapped device.
+    #[serde(rename = "import.profile")]
+    ImportProfile,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
     #[serde(rename = "internal")]

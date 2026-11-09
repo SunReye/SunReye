@@ -80,6 +80,12 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "secret.value": m.problem_secret_value,
   "index.value": m.problem_index_value,
   "update.none": m.problem_update_none,
+  "import.busy": m.problem_import_busy,
+  "import.path": m.problem_import_path,
+  "import.size": m.problem_import_size,
+  "import.file": m.problem_import_file,
+  "import.device": m.problem_import_device,
+  "import.profile": m.problem_import_profile,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

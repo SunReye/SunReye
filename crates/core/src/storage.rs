@@ -373,20 +373,18 @@ impl Storage {
         policy: Policy,
         backfill: Backfill,
     ) -> Result<Backfilled, Error> {
-        if !(policy.step.is_finite() && policy.step > 0.0) {
-            return Err(Error::Step);
+        self.importer()
+            .import(device, series, policy, backfill)
+            .await
+    }
+
+    /// A handle that imports history, for the import the admin starts from the SPA (ADR 18).
+    #[must_use]
+    pub fn importer(&self) -> Importer {
+        Importer {
+            commands: self.commands.clone(),
+            bus: self.bus.clone(),
         }
-        let name = self.name(series)?;
-        self.request(|reply| {
-            Request::Rewriting(Rewriting::Import {
-                device,
-                name,
-                policy,
-                backfill,
-                reply,
-            })
-        })
-        .await?
     }
 
     /// A handle that replaces derived history, for the module that derives it.
@@ -559,6 +557,47 @@ impl Declarer {
             name,
             policy,
             reply,
+        })
+        .await?
+    }
+}
+
+/// Imports history from an older release (ADR 18).
+#[derive(Debug, Clone)]
+pub struct Importer {
+    commands: mpsc::Sender<Command>,
+    bus: Bus,
+}
+
+impl Importer {
+    /// As [`Storage::import`].
+    ///
+    /// # Errors
+    /// The step differs from the stored one or is not positive, the series is unknown, or the
+    /// file cannot be written.
+    pub async fn import(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        policy: Policy,
+        backfill: Backfill,
+    ) -> Result<Backfilled, Error> {
+        if !(policy.step.is_finite() && policy.step > 0.0) {
+            return Err(Error::Step);
+        }
+        let name = self
+            .bus
+            .series(series)
+            .ok_or(Error::UnknownSeries)?
+            .to_string();
+        request(&self.commands, |reply| {
+            Request::Rewriting(Rewriting::Import {
+                device,
+                name,
+                policy,
+                backfill,
+                reply,
+            })
         })
         .await?
     }

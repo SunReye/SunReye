@@ -20,6 +20,7 @@ use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::devices::Devices;
+use crate::import::Imports;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::PlantLocation;
@@ -38,6 +39,7 @@ mod devices;
 mod evcc;
 mod forecasts;
 mod history;
+mod import;
 mod ingress;
 mod layout;
 mod live;
@@ -61,6 +63,12 @@ fn deye() -> Inverters {
     let profile = include_str!("../../../../profiles/deye-sg05lp3.json");
     let profile = sunreye_profile::Profile::load(profile).unwrap();
     std::iter::once((crate::bus::DeviceId(1), Arc::new(profile))).collect()
+}
+
+/// Imports from `dir/share`, keeping an upload of at most 1 MiB in `dir`.
+fn imports(dir: &Path, storage: &Storage, bus: &Bus, profiles: &Profiles) -> Imports {
+    let places = (dir.join("share"), dir.join("import.tar.gz"), 1 << 20);
+    Imports::new(places, storage, bus, profiles.catalogue())
 }
 
 const HOME: &str = "192.0.2.1:50000";
@@ -131,6 +139,7 @@ impl Core {
             changes: Changes::new(storage.database()),
             location: PlantLocation::open(storage.database()).await.unwrap(),
             spot: SpotZone::open(storage.database()).await.unwrap(),
+            imports: imports(path.parent().unwrap(), &storage, &bus, &profiles),
             profiles,
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
@@ -224,6 +233,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         changes: Changes::new(storage.database()),
         location: PlantLocation::open(storage.database()).await.unwrap(),
         spot: SpotZone::open(storage.database()).await.unwrap(),
+        imports: imports(dir.path(), &storage, &Bus::default(), &profiles),
         profiles,
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),

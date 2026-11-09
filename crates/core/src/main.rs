@@ -103,20 +103,7 @@ fn import(args: impl Iterator<Item = String>) -> ExitCode {
         });
     match imported {
         Ok(report) => {
-            let written = report.written;
-            tracing::info!(
-                series = report.series,
-                points = written.points,
-                hours = written.hours,
-                days = written.days,
-                "imported"
-            );
-            for metric in report.unread {
-                tracing::warn!(metric, "no v5 quantity reads it: not imported");
-            }
-            for device in report.unmapped {
-                tracing::warn!(device, "not mapped: not imported");
-            }
+            import::log(&report);
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -134,6 +121,7 @@ async fn run(options: Options) -> Result<(), startup::Error> {
     }
     let boot = Boot {
         data_dir: options.data_dir,
+        share: std::path::PathBuf::from("/share"),
         ingress: options.ingress,
         build: build_time(),
         weather: OpenMeteo,

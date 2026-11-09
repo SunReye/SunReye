@@ -83,6 +83,11 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/viewers", Admin),
     (Method::POST, "/api/v1/viewers", Admin),
     (Method::DELETE, "/api/v1/viewers/{id}", Admin),
+    // Import from v3 (ADR 18).
+    (Method::GET, "/api/v1/import", Admin),
+    (Method::POST, "/api/v1/import", Admin),
+    (Method::GET, "/api/v1/import/files", Admin),
+    (Method::POST, "/api/v1/import/upload", Admin),
     (Method::GET, "/api/v1/tokens", Admin),
     (Method::POST, "/api/v1/tokens", Admin),
     (Method::DELETE, "/api/v1/tokens/{id}", Admin),
