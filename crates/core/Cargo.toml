@@ -10,8 +10,8 @@ name = "sunreye"
 path = "src/main.rs"
 
 [dependencies]
-# HTTP routing (ADR 2); `tokio` for the client address, `json` for request bodies.
-axum = { version = "0.8.9", default-features = false, features = ["json", "tokio"] }
+# HTTP routing (ADR 2); `tokio` for the client address, `json` for request bodies, `http1` to serve.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
 # Admin password hashes (ADR 9).
 bcrypt = "0.19.3"
 # Builds the SSE stream; axum already depends on it.
@@ -34,12 +34,18 @@ tokio = { version = "1.54.1", default-features = false, features = [
   "macros",
   "net",
   "rt",
+  "signal",
   "sync",
   "time",
 ] }
+# Logs to stderr (ADR 2).
+tracing = { version = "0.1.44", default-features = false }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 # The minimal HTTPS client on rustls (ADR 2): blocking, so a fetch runs on Tokio's blocking pool;
 # an async client would add hyper, hyper-util and tokio-rustls for an hourly request.
 ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
+# The OpenAPI document generated from the Rust types (ADR 9); utoipa-axum registers each route
+# with its description, so neither can drift from the other.
 utoipa = "6.0.0"
 utoipa-axum = "0.3.0"
 
