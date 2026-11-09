@@ -12,6 +12,8 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Capabilities.** `GET /api/v1/capabilities` returns the core version, the schema range, transports, bindings, step kinds, enabled features and per-device capabilities derived from roles. It comes from the same table the WASM exposes. The SPA renders from it and never branches on a brand or profile name.
 
+**Configuration.** Admin only. `/api/v1/connections` and `/api/v1/devices` are added with `POST`, listed with `GET`, changed with `PUT /{id}` and removed with `DELETE /{id}`; a connection in use is not removed. A connection reads back the names of its secrets, never their values; in a write, a secret with a value is set, one with `null` removed and an absent one kept. `GET /api/v1/changes` reads the change log (ADR 19).
+
 **Settings.** `PUT /api/v1/devices/{id}/settings/{key}` returns the outcome and the failing step (ADR 7).
 
 **Transport.** Plain HTTP. TLS is a documented reverse-proxy job.

@@ -2,22 +2,44 @@
   "components": {
     "schemas": {
       "Change": {
-        "description": "A layout change: every string, applying from an instant on.",
+        "description": "One entry of the change log.",
         "properties": {
-          "appliesFrom": {
-            "description": "RFC 3339.",
+          "action": {
+            "description": "`add`, `change` or `remove`.",
             "type": "string"
           },
-          "strings": {
-            "items": {
-              "$ref": "#/components/schemas/StringDraft"
-            },
-            "type": "array"
+          "actor": {
+            "type": "string"
+          },
+          "appliesFrom": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "changed": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The subject's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "description": "The subject after the change, as its own route reads it; `null` once removed."
+          },
+          "subject": {
+            "description": "`connection` or `device`.",
+            "type": "string"
           }
         },
         "required": [
+          "changed",
           "appliesFrom",
-          "strings"
+          "actor",
+          "subject",
+          "id",
+          "action"
         ],
         "type": "object"
       },
@@ -30,6 +52,75 @@
         },
         "required": [
           "code"
+        ],
+        "type": "object"
+      },
+      "Connection": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Reach"
+          },
+          {
+            "properties": {
+              "id": {
+                "description": "Stable; never reused.",
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "secrets": {
+                "description": "The names of the secrets set; their values are never read back.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "secrets"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ConnectionDraft": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Reach"
+          },
+          {
+            "properties": {
+              "secrets": {
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "description": "Credentials by name: a value sets one, `null` removes it, an absent name is kept.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "A connection as the admin enters it."
+      },
+      "Connections": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connections"
         ],
         "type": "object"
       },
@@ -114,6 +205,72 @@
           "width",
           "height",
           "bypassDiodes"
+        ],
+        "type": "object"
+      },
+      "Device": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DeviceDraft"
+          },
+          {
+            "properties": {
+              "id": {
+                "description": "Stable; never reused. The device id of its history.",
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DeviceDraft": {
+        "description": "Where a device sits and how it is read.",
+        "properties": {
+          "connection": {
+            "description": "The connection's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profile": {
+            "description": "The profile's id, such as `deye-sg05lp3`; fixed once the device is added.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "The Modbus unit id: the device address behind the connection.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "connection",
+          "profile",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "DeviceList": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
         ],
         "type": "object"
       },
@@ -226,6 +383,20 @@
         "required": [
           "appliesFrom",
           "strings"
+        ],
+        "type": "object"
+      },
+      "Log": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
         ],
         "type": "object"
       },
@@ -344,6 +515,32 @@
         ],
         "description": "Modules in series on one plane; strings on one MPPT input are in parallel."
       },
+      "Reach": {
+        "description": "How the core reaches an endpoint, without its secrets.",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/Transport"
+          }
+        },
+        "required": [
+          "name",
+          "transport",
+          "host",
+          "port"
+        ],
+        "type": "object"
+      },
       "Schemas": {
         "description": "An inclusive range of profile schemas.",
         "properties": {
@@ -425,6 +622,13 @@
           "bucket",
           "hour",
           "day"
+        ],
+        "type": "string"
+      },
+      "Transport": {
+        "description": "The wire framing on a connection's endpoint.",
+        "enum": [
+          "modbus-tcp"
         ],
         "type": "string"
       },
@@ -528,6 +732,302 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/changes": {
+      "get": {
+        "operationId": "changes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Log"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every configuration change, oldest first."
+      }
+    },
+    "/api/v1/connections": {
+      "get": {
+        "operationId": "list_connections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connections"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a connection: an endpoint and its credentials."
+      }
+    },
+    "/api/v1/connections/{id}": {
+      "delete": {
+        "operationId": "remove_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a connection no device uses."
+      },
+      "put": {
+        "operationId": "change_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Changes a connection; its devices are polled through it at once."
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "operationId": "list_devices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceList"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a device behind a connection and starts polling it."
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "operationId": "remove_device",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a device and stops polling it; its history stays under its id."
+      },
+      "put": {
+        "operationId": "change_device",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Changes a device's name, connection or unit id; its profile is fixed."
       }
     },
     "/api/v1/devices/{id}/forecasts": {

@@ -12,7 +12,7 @@ use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 use crate::transport::{Client, Endpoint, Error};
 
 /// Until a profile declares poll groups, every quantity is polled at this cadence.
-const CADENCE: Duration = Duration::from_secs(5);
+pub const CADENCE: Duration = Duration::from_secs(5);
 const TIMEOUT: Duration = Duration::from_secs(3);
 /// One missed cycle then costs 10 s of silence, under ADR 3's 15 s gap threshold.
 const FIRST_BACKOFF: Duration = CADENCE;

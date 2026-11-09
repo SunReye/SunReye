@@ -184,3 +184,78 @@ async fn the_core_trusts_ingress_from_the_address_it_was_given() {
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
 }
+
+/// Starts the core on a free port; returns its address and the sender that stops it.
+fn start(
+    data_dir: &std::path::Path,
+) -> (
+    SocketAddr,
+    oneshot::Sender<()>,
+    tokio::task::JoinHandle<Result<(), super::Error>>,
+) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let listener = TcpListener::from_std(listener).unwrap();
+    let (stop, stopped) = oneshot::channel::<()>();
+    let core = tokio::spawn(serve(
+        listener,
+        data_dir.to_owned(),
+        None,
+        SystemTime::UNIX_EPOCH,
+        async {
+            stopped.await.ok();
+        },
+    ));
+    (address, stop, core)
+}
+
+#[tokio::test]
+async fn configured_devices_are_polled_from_boot_and_strings_wire_to_their_inverters() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut device = crate::transport::fake::serve().await;
+    let (address, stop, core) = start(dir.path());
+    let json = "Content-Type: application/json\r\n";
+    let password = r#"{"password":"correct horse"}"#;
+    request(address, "POST", "/api/v1/setup", json, password).await;
+    let (_, response) = request(address, "POST", "/api/v1/login", json, password).await;
+    let headers = format!("Cookie: {}\r\n{json}", session_cookie(&response));
+    let port = device.address.port();
+    let connection = format!(
+        r#"{{"name":"gateway","transport":"modbus-tcp","host":"127.0.0.1","port":{port}}}"#
+    );
+    let (status, _) = request(
+        address,
+        "POST",
+        "/api/v1/connections",
+        &headers,
+        &connection,
+    )
+    .await;
+    assert_eq!(status, 201);
+    let deye = r#"{"name":"Deye","connection":1,"profile":"deye-sg05lp3","unit":0}"#;
+    let (status, _) = request(address, "POST", "/api/v1/devices", &headers, deye).await;
+    assert_eq!(status, 201);
+    let module = r#"{"name":"M","pmax":400,"vmp":34,"imp":11.76,"voc":41,"isc":12.5,
+        "powerCoefficient":-0.35,"voltageCoefficient":-0.27,"currentCoefficient":0.05,
+        "width":1.1,"height":1.7,"bypassDiodes":3}"#;
+    let (status, _) = request(address, "POST", "/api/v1/module-types", &headers, module).await;
+    assert_eq!(status, 201);
+    let layout = r#"{"appliesFrom":"2026-11-01T00:00:00Z","strings":[{"name":"south",
+        "moduleType":1,"device":1,"input":2,"modules":16,"optimized":0,"tilt":35,"azimuth":0,
+        "loss":2}]}"#;
+    let (status, response) = request(address, "PUT", "/api/v1/layout", &headers, layout).await;
+    assert_eq!(status, 200, "{response}");
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+    while device.reads.try_recv().is_ok() {}
+
+    let (_, stop, core) = start(dir.path());
+    let read = tokio::time::timeout(Duration::from_secs(10), device.reads.recv()).await;
+
+    let read = read.unwrap().unwrap();
+    // A fresh connection: the first core's was the device's first.
+    assert_eq!((read.connection, read.unit), (1, 0));
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+}

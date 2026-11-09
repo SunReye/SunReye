@@ -198,8 +198,9 @@ impl Model {
         let (inverters, places) = wired
             .into_iter()
             .map(|(device, inputs)| {
-                let declared = inverters
-                    .profile(DeviceId(device))
+                let profile = inverters.profile(DeviceId(device));
+                let declared = profile
+                    .as_deref()
                     .and_then(|p| p.inverter())
                     .map(|i| i.mppt.as_slice())
                     .unwrap_or_default();

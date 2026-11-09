@@ -17,10 +17,14 @@ use tower::ServiceExt;
 use super::{Api, router};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::changes::Changes;
+use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
+use crate::profiles::Catalogue;
 use crate::storage::{Problem, Storage};
 
+mod devices;
 mod forecasts;
 mod history;
 mod ingress;
@@ -65,6 +69,17 @@ impl Core {
             problems: watched,
             history: storage.reader(),
             layouts: Layouts::new(storage.database(), deye()),
+            // Its own inverters: the layout tests wire to the Deye above as device 1.
+            devices: Devices::start(
+                storage.database(),
+                storage.declarer(),
+                Catalogue::bundled().unwrap(),
+                bus.clone(),
+                Inverters::default(),
+            )
+            .await
+            .unwrap(),
+            changes: Changes::new(storage.database()),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -137,6 +152,16 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         problems: watch::channel(Vec::new()).1,
         history: storage.reader(),
         layouts: Layouts::new(storage.database(), Inverters::default()),
+        devices: Devices::start(
+            storage.database(),
+            storage.declarer(),
+            Catalogue::default(),
+            Bus::default(),
+            Inverters::default(),
+        )
+        .await
+        .unwrap(),
+        changes: Changes::new(storage.database()),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

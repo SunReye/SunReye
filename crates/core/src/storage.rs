@@ -217,18 +217,16 @@ impl Storage {
         series: SeriesId,
         policy: Policy,
     ) -> Result<(), Error> {
-        if !(policy.step.is_finite() && policy.step > 0.0) {
-            return Err(Error::Step);
+        self.declarer().declare(device, series, policy).await
+    }
+
+    /// A handle that declares series, for the module that starts devices.
+    #[must_use]
+    pub fn declarer(&self) -> Declarer {
+        Declarer {
+            commands: self.commands.clone(),
+            bus: self.bus.clone(),
         }
-        let name = self.name(series)?;
-        self.request(|reply| Request::Declare {
-            device,
-            series,
-            name,
-            policy,
-            reply,
-        })
-        .await?
     }
 
     /// Offers one reading; a reading of an undeclared series is not stored.
@@ -425,6 +423,43 @@ async fn request<T>(
         .await
         .map_err(|_| Error::Stopped)?;
     answer.await.map_err(|_| Error::Stopped)
+}
+
+/// Declares the series storage stores.
+#[derive(Debug, Clone)]
+pub struct Declarer {
+    commands: mpsc::Sender<Command>,
+    bus: Bus,
+}
+
+impl Declarer {
+    /// Stores `series` of `device` from now on, resuming its history.
+    ///
+    /// # Errors
+    /// The step differs from the stored one or is not positive, or the series is unknown.
+    pub async fn declare(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        policy: Policy,
+    ) -> Result<(), Error> {
+        if !(policy.step.is_finite() && policy.step > 0.0) {
+            return Err(Error::Step);
+        }
+        let name = self
+            .bus
+            .series(series)
+            .ok_or(Error::UnknownSeries)?
+            .to_string();
+        request(&self.commands, |reply| Request::Declare {
+            device,
+            series,
+            name,
+            policy,
+            reply,
+        })
+        .await?
+    }
 }
 
 /// Reads stored history by series, whether or not the bus has interned it since the start.
