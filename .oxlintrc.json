@@ -80,5 +80,13 @@
         ]
       }
     ]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["profiles/*.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    }
+  ]
 }

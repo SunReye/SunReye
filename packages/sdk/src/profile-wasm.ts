@@ -11,6 +11,12 @@ export interface ProfileWasm {
   readPlan(profile: string, gapTolerance: number): Block[];
   /** A spanning block of a profile file as plain blocks; throws the loader's reason. */
   split(profile: string, block: Readonly<Block>): Block[];
+  /**
+   * Each quantity's value, by key, from a register dump read through the core's read plan: a block
+   * the dump does not cover in full is unanswered. A dump is JSON, `[{ "start", "words" }]`, one
+   * run of words per entry. Throws the loader's reason.
+   */
+  decode(profile: string, dump: string): Record<string, number | null>;
   /** A profile file's warnings, as the core logs them; throws the loader's reason. */
   lint(profile: string): string[];
 }
@@ -24,6 +30,7 @@ interface Exports {
   readonly release: (ptr: number, len: number) => void;
   readonly read_plan: (profile: number, profileLen: number, gapTolerance: number) => bigint;
   readonly split: (profile: number, profileLen: number, block: number, blockLen: number) => bigint;
+  readonly decode: (profile: number, profileLen: number, dump: number, dumpLen: number) => bigint;
   readonly lint: (profile: number, profileLen: number) => bigint;
 }
 
@@ -36,6 +43,7 @@ const functions = [
   "release",
   "read_plan",
   "split",
+  "decode",
   "lint",
 ] as const;
 
@@ -70,6 +78,12 @@ function isBlock(value: unknown): value is Block {
 
 function isBlocks(value: unknown): value is Block[] {
   return Array.isArray(value) && value.every((block) => isBlock(block));
+}
+
+function isValues(value: unknown): value is Record<string, number | null> {
+  return (
+    value instanceof Object && Object.values(value).every((v) => v === null || Number(v) === v)
+  );
 }
 
 function isSchemas(value: unknown): value is Support["schema"] {
@@ -174,6 +188,13 @@ export async function loadProfileWasm(): Promise<ProfileWasm> {
         [profile, JSON.stringify(block)],
         ([ptr = 0, len = 0, at = 0, size = 0]) => wasm.split(ptr, len, at, size),
         isBlocks,
+      ),
+    decode: (profile, dump) =>
+      call(
+        wasm,
+        [profile, dump],
+        ([ptr = 0, len = 0, at = 0, size = 0]) => wasm.decode(ptr, len, at, size),
+        isValues,
       ),
     lint: (profile) => call(wasm, [profile], ([ptr = 0, len = 0]) => wasm.lint(ptr, len), isNames),
   };

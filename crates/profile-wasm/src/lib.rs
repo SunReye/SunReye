@@ -4,9 +4,18 @@
 //! returns `ptr << 32 | len` of a JSON reply, `{"ok": …}` or `{"error": "…"}`, and the host hands
 //! every buffer back to `release`.
 
-use serde::Serialize;
+use std::collections::{BTreeMap, HashMap};
+
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sunreye_profile::{Block, Profile};
+use sunreye_profile::{Block, Framing, Profile, Registers};
+
+/// Words a device answered from `start` onwards: one run of a register dump.
+#[derive(Deserialize)]
+struct Run {
+    start: u16,
+    words: Vec<u16>,
+}
 
 /// The schemas and capabilities this build loads.
 fn capabilities() -> String {
@@ -28,6 +37,38 @@ fn lint(profile: &[u8]) -> String {
 fn split(profile: &[u8], block: &[u8]) -> String {
     let block = serde_json::from_slice::<Block>(block).map_err(|e| e.to_string());
     reply(load(profile).and_then(|p| block.map(|b| p.split(b))))
+}
+
+/// Each quantity's value from a register dump, read through the core's plan: a block the dump does
+/// not cover in full counts as unanswered, as a failed read does in the core.
+fn decode(profile: &[u8], dump: &[u8]) -> String {
+    let runs = serde_json::from_slice::<Vec<Run>>(dump).map_err(|e| e.to_string());
+    reply(load(profile).and_then(|p| runs.map(|r| decoded(&p, &r))))
+}
+
+fn decoded(profile: &Profile, runs: &[Run]) -> BTreeMap<String, Option<f64>> {
+    let dump: HashMap<u16, u16> = runs
+        .iter()
+        .flat_map(|run| (run.start..=u16::MAX).zip(run.words.iter().copied()))
+        .collect();
+    let mut registers = Registers::default();
+    for block in profile.read_plan(Framing::Tcp.gap_tolerance()) {
+        let words: Option<Vec<u16>> = (block.start..)
+            .take(usize::from(block.count))
+            .map(|address| dump.get(&address).copied())
+            .collect();
+        if let Some(words) = words {
+            registers.answer(block.start, &words);
+        }
+    }
+    let mut values = vec![None; profile.quantities().len()];
+    profile.decode(&registers, &mut values);
+    profile
+        .quantities()
+        .iter()
+        .map(|q| q.key.clone())
+        .zip(values)
+        .collect()
 }
 
 fn load(profile: &[u8]) -> Result<Profile, String> {
@@ -98,6 +139,25 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let profile = unsafe { std::slice::from_raw_parts(profile, profile_len) };
         leak(super::lint(profile))
+    }
+
+    /// # Safety
+    /// Both pointer and length pairs name live buffers from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn decode(
+        profile: *const u8,
+        profile_len: usize,
+        dump: *const u8,
+        dump_len: usize,
+    ) -> u64 {
+        // SAFETY: the caller guarantees both buffers, written through `reserve`.
+        let (profile, dump) = unsafe {
+            (
+                std::slice::from_raw_parts(profile, profile_len),
+                std::slice::from_raw_parts(dump, dump_len),
+            )
+        };
+        leak(super::decode(profile, dump))
     }
 
     /// # Safety

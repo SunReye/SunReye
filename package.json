@@ -10,7 +10,9 @@
   "scripts": {
     "gate": "bun scripts/gate.ts",
     "prepare": "husky",
-    "image:smoke": "bun scripts/image-smoke.ts"
+    "image:smoke": "bun scripts/image-smoke.ts",
+    "build:profiles": "bun packages/sdk/src/cli.ts build profiles",
+    "publish:profiles": "bun scripts/publish-profiles.ts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.92.0",
