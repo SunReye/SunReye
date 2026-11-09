@@ -121,3 +121,16 @@ async fn more_than_1500_points_are_refused() {
         )
     );
 }
+
+#[tokio::test]
+async fn exactly_1500_points_are_served() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let values: Vec<(u64, f64)> = (0..1500).map(|i| (60 * i, 1.0)).collect();
+    core.issue(0, &values).await;
+
+    let (status, body) = core.forecasts(&set_cookie, &range(0, 100_000)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["points"].as_array().map(Vec::len), Some(1500));
+}
