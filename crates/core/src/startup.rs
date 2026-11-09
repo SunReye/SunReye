@@ -22,6 +22,7 @@ use crate::plant::Plant;
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
+use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
 use crate::weather::{self, Provider, Weather};
 
@@ -195,21 +196,16 @@ pub async fn serve(
     private(&boot.data_dir)?;
     let bus = Bus::default();
     let file = boot.data_dir.join("core.sqlite");
-    let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
+    let zone = plant_zone();
+    let storage = Storage::open(&file, boot.build, &zone, &bus)?;
     let (problems, watched) = problems(&storage).await?;
-    let inverters = Inverters::default();
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
-    let devices = Devices::start(
-        storage.database(),
-        storage.declarer(),
-        profiles.catalogue(),
-        bus.clone(),
-        inverters.clone(),
-    )
-    .await?;
-    let layouts = Layouts::new(storage.database(), inverters);
-    let topologies = Topologies::new(storage.database());
-    let _computed = Computed::spawn(&storage, &layouts, &topologies, &bus);
+    let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
+    let (topologies, tariffs) = (
+        Topologies::new(storage.database()),
+        Tariffs::new(storage.database()),
+    );
+    let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &zone, &bus);
     let location = PlantLocation::open(storage.database()).await?;
     let forecasting = forecast(
         &storage,
@@ -229,6 +225,7 @@ pub async fn serve(
         location,
         profiles,
         topologies,
+        tariffs,
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
@@ -241,6 +238,24 @@ pub async fn serve(
     until(listener, api::router(api), background, shutdown).await?;
     storage.shutdown().await?;
     Ok(())
+}
+
+/// The registered devices, and the PV layouts over their inverters.
+async fn devices(
+    storage: &Storage,
+    profiles: &Profiles,
+    bus: &Bus,
+) -> Result<(Devices, Layouts), Error> {
+    let inverters = Inverters::default();
+    let devices = Devices::start(
+        storage.database(),
+        storage.declarer(),
+        profiles.catalogue(),
+        bus.clone(),
+        inverters.clone(),
+    )
+    .await?;
+    Ok((devices, Layouts::new(storage.database(), inverters)))
 }
 
 /// Serves `router` on `listener` until `background` ends or `shutdown` resolves, then lets open
@@ -274,10 +289,17 @@ async fn until(
 struct Computed {
     _estimates: StringEstimates,
     _plant: Plant,
+    _tariff: TariffDevice,
 }
 
 impl Computed {
-    fn spawn(storage: &Storage, layouts: &Layouts, topologies: &Topologies, bus: &Bus) -> Self {
+    /// The tariff's bands evaluate in the plant timezone `zone`, which storage has accepted.
+    fn spawn(
+        storage: &Storage,
+        (layouts, topologies, tariffs): (&Layouts, &Topologies, &Tariffs),
+        zone: &str,
+        bus: &Bus,
+    ) -> Self {
         Self {
             _estimates: StringEstimates::spawn(
                 layouts.clone(),
@@ -286,6 +308,13 @@ impl Computed {
                 bus,
             ),
             _plant: Plant::spawn(topologies.clone(), storage.declarer(), bus),
+            _tariff: TariffDevice::spawn(
+                tariffs.clone(),
+                jiff::tz::TimeZone::get(zone).unwrap_or(jiff::tz::TimeZone::UTC),
+                storage.declarer(),
+                bus,
+                std::sync::Arc::new(SystemTime::now),
+            ),
         }
     }
 }

@@ -16,6 +16,40 @@
         ],
         "type": "object"
       },
+      "BandView": {
+        "description": "A price on given weekdays for a span of the plant-local wall-clock day. In the hour a DST\nchange skips it never applies; in the hour it repeats it applies twice.",
+        "properties": {
+          "days": {
+            "description": "ISO weekdays, Monday 1 to Sunday 7.",
+            "items": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "`HH:MM`, from 00:00.",
+            "type": "string"
+          },
+          "price": {
+            "description": "EUR/kWh.",
+            "format": "double",
+            "type": "number"
+          },
+          "to": {
+            "description": "`HH:MM`, up to 24:00; later than `from`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "days",
+          "from",
+          "to",
+          "price"
+        ],
+        "type": "object"
+      },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
         "properties": {
@@ -111,6 +145,9 @@
           "topology.claim",
           "topology.role",
           "topology.device",
+          "tariff.none",
+          "tariff.band",
+          "tariff.past",
           "location.none",
           "location.value",
           "connection.none",
@@ -1111,6 +1148,28 @@
         ],
         "type": "object"
       },
+      "ScheduleView": {
+        "description": "One flow's prices.",
+        "properties": {
+          "bands": {
+            "description": "Bands of one flow never share a minute of a weekday.",
+            "items": {
+              "$ref": "#/components/schemas/BandView"
+            },
+            "type": "array"
+          },
+          "price": {
+            "description": "EUR/kWh, signed; charged wherever no band applies.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "price",
+          "bands"
+        ],
+        "type": "object"
+      },
       "Schemas": {
         "description": "An inclusive range of profile schemas.",
         "properties": {
@@ -1289,6 +1348,29 @@
           "capabilities",
           "transports",
           "devices"
+        ],
+        "type": "object"
+      },
+      "Tariff": {
+        "description": "One tariff version, as the API reads it.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "export": {
+            "$ref": "#/components/schemas/ScheduleView",
+            "description": "What a kWh fed into the grid earns."
+          },
+          "import": {
+            "$ref": "#/components/schemas/ScheduleView",
+            "description": "What a kWh bought from the grid costs."
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "import",
+          "export"
         ],
         "type": "object"
       },
@@ -2782,6 +2864,77 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/tariff": {
+      "get": {
+        "operationId": "tariff",
+        "parameters": [
+          {
+            "description": "RFC 3339; now when absent.",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tariff"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The tariff in force at an instant."
+      },
+      "put": {
+        "operationId": "change_tariff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Change"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tariff"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Changes the tariff from an instant on. Editing changes only the future: prices already in force\nstay as they were."
       }
     },
     "/api/v1/tokens": {

@@ -25,6 +25,7 @@ use crate::location::PlantLocation;
 use crate::profiles::fake::Host;
 use crate::profiles::{Keys, Profiles};
 use crate::storage::{Problem, Storage};
+use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 
 mod access;
@@ -41,6 +42,7 @@ mod roles;
 mod screen;
 mod secrets;
 mod settings;
+mod tariff;
 mod tokens;
 mod topology;
 mod viewers;
@@ -102,6 +104,7 @@ impl Core {
             location: PlantLocation::open(storage.database()).await.unwrap(),
             profiles,
             topologies: Topologies::new(storage.database()),
+            tariffs: Tariffs::new(storage.database()),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -191,6 +194,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         location: PlantLocation::open(storage.database()).await.unwrap(),
         profiles,
         topologies: Topologies::new(storage.database()),
+        tariffs: Tariffs::new(storage.database()),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
