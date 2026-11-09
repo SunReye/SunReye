@@ -11,7 +11,7 @@ use tokio::sync::oneshot;
 use super::{Boot, Options, serve};
 use crate::location::Location;
 use crate::weather::Slot;
-use crate::weather::fake::Fake;
+use crate::weather::fake::{Fake, FakeArchive};
 
 fn parse(args: &[&str], env: &[(&str, &str)]) -> Result<Options, String> {
     let args = args.iter().map(|&a| a.to_owned());
@@ -105,17 +105,18 @@ fn startup_refuses_a_missing_data_dir_a_bad_address_and_unknown_arguments() {
     );
 }
 
-/// A core in `data_dir` whose weather provider answers nothing.
+/// A core in `data_dir` whose weather provider and archive answer nothing.
 fn boot(
     data_dir: &std::path::Path,
     ingress: Option<std::net::IpAddr>,
     build: SystemTime,
-) -> Boot<Fake> {
+) -> Boot<Fake, FakeArchive> {
     Boot {
         data_dir: data_dir.to_owned(),
         ingress,
         build,
         weather: Fake::new(Vec::new(), &[]).0,
+        archive: FakeArchive::new(Vec::new()).0,
         fetch: crate::profiles::fake::Host::new(),
         keys: None,
     }
@@ -202,11 +203,12 @@ async fn the_core_trusts_ingress_from_the_address_it_was_given() {
     core.await.unwrap().unwrap();
 }
 
-/// Starts the core on a free port with `weather` as its weather provider; returns its address
-/// and the sender that stops it.
+/// Starts the core on a free port with `weather` as its weather provider and `archive` as its
+/// archive; returns its address and the sender that stops it.
 fn start(
     data_dir: &std::path::Path,
     weather: Fake,
+    archive: FakeArchive,
 ) -> (
     SocketAddr,
     oneshot::Sender<()>,
@@ -219,6 +221,7 @@ fn start(
     let (stop, stopped) = oneshot::channel::<()>();
     let boot = Boot {
         weather,
+        archive,
         ..boot(data_dir, None, SystemTime::UNIX_EPOCH)
     };
     let core = tokio::spawn(serve(listener, boot, async {
@@ -268,13 +271,21 @@ async fn configure(address: SocketAddr, device: SocketAddr) -> String {
 async fn configured_devices_are_polled_from_boot_and_strings_wire_to_their_inverters() {
     let dir = tempfile::tempdir().unwrap();
     let mut device = crate::transport::fake::serve().await;
-    let (address, stop, core) = start(dir.path(), Fake::new(Vec::new(), &[]).0);
+    let (address, stop, core) = start(
+        dir.path(),
+        Fake::new(Vec::new(), &[]).0,
+        FakeArchive::new(Vec::new()).0,
+    );
     configure(address, device.address).await;
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
     while device.reads.try_recv().is_ok() {}
 
-    let (_, stop, core) = start(dir.path(), Fake::new(Vec::new(), &[]).0);
+    let (_, stop, core) = start(
+        dir.path(),
+        Fake::new(Vec::new(), &[]).0,
+        FakeArchive::new(Vec::new()).0,
+    );
     let read = tokio::time::timeout(Duration::from_secs(10), device.reads.recv()).await;
 
     let read = read.unwrap().unwrap();
@@ -316,13 +327,15 @@ async fn solar_targets(address: SocketAddr, headers: &str) -> usize {
 }
 
 #[tokio::test]
-async fn weather_and_the_solar_forecast_run_from_boot_once_the_plant_has_a_location() {
+async fn weather_the_solar_forecast_and_learning_run_from_boot_once_the_plant_has_a_location() {
     let dir = tempfile::tempdir().unwrap();
     let device = crate::transport::fake::serve().await;
     let (fake, mut calls) = Fake::new(weather(), &[]);
-    let (address, stop, core) = start(dir.path(), fake);
+    let (archive, mut past) = FakeArchive::new(Vec::new());
+    let (address, stop, core) = start(dir.path(), fake, archive);
     let headers = configure(address, device.address).await;
     assert!(calls.try_recv().is_err(), "fetched without a location");
+    assert!(past.try_recv().is_err(), "learned without a location");
 
     let berlin = r#"{"latitude":52.5163,"longitude":13.3777}"#;
     let (status, _) = request(address, "PUT", "/api/v1/location", &headers, berlin).await;
@@ -334,6 +347,8 @@ async fn weather_and_the_solar_forecast_run_from_boot_once_the_plant_has_a_locat
     };
     let fetched = tokio::time::timeout(Duration::from_secs(10), calls.recv()).await;
     assert_eq!(fetched.unwrap().unwrap().1, rounded);
+    let learned = tokio::time::timeout(Duration::from_secs(10), past.recv()).await;
+    assert_eq!(learned.unwrap().unwrap().1, rounded);
     let solar = async {
         while solar_targets(address, &headers).await < 2 {
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -346,7 +361,7 @@ async fn weather_and_the_solar_forecast_run_from_boot_once_the_plant_has_a_locat
     core.await.unwrap().unwrap();
 
     let (fake, mut calls) = Fake::new(weather(), &[]);
-    let (_, stop, core) = start(dir.path(), fake);
+    let (_, stop, core) = start(dir.path(), fake, FakeArchive::new(Vec::new()).0);
     let fetched = tokio::time::timeout(Duration::from_secs(10), calls.recv()).await;
 
     assert_eq!(fetched.unwrap().unwrap().1, rounded);

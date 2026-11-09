@@ -35,6 +35,12 @@ Status: accepted (2026-11-08), amended (2026-11-09)
 
 **Correction.** Carried over from 3.x and v4: an exponentially weighted grid by month and plant-local hour of measured ÷ modelled, with the model run on archive weather so cloud-prediction error is not learned, and a half-life of 30 observations. Each MPPT input learns against `pv.mppt.power`, else the inverter's `pv.power`; parallel strings share their input's factor. Hours with the inverter at its AC limit are skipped. Learning runs twice a day. The 3.x and v4 learner cases are oracles.
 
+- Each run learns the UTC days, settled 3 days, it has not learned, reaching 90 days back at first, as in 3.x and v4. A day counts as learned once one of its hours is modelled and measured, so a day the archive has not settled is fetched again. It also runs at once when the location changes.
+- An hour is the hourly rollup's mean against the model's mean at the hour's two ends, as archive weather is instantaneous and hourly.
+- An input learns against `pv.mppt.power` while it has that history in the run's days, else against `pv.power` and the inverter's model.
+- Inverter profiles declare no AC rating, so the AC limit is observed: an hour is at it when the inverter's `pv.power` peaks within 2 % of the highest hourly peak it stored in the past year while the model expects more than that peak. v4's rules stay as well: an hour is skipped when the input's model is under 3 % of its kWp, or the input's or the inverter's model or measurement reaches 85 % of its kWp.
+- Not carried over: the feed-in cap, which waits for the EMS stage, and 3.x's skill figure, which nothing reports.
+
 **Storage.** The solar forecast issues on start, after each stored weather forecast and after each layout change. Forecasts of `pv.string.power`, `pv.mppt.power` and `pv.power` go to the forecast store (ADR 15). They are stored under each inverter's device, so a series' forecast and history share one device and index. An issue runs the layout in force at each weather target and covers every string, input and inverter any layout version has, at 0 W where the version in force lacks it, so a removed string's earlier issue is superseded.
 
 ## Open

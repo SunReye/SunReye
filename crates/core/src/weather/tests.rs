@@ -5,8 +5,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use super::fake::Fake;
-use super::{Error, Slot, Weather, open_meteo};
+use super::fake::{Fake, FakeArchive};
+use super::{Error, Past, Slot, Weather, open_meteo};
 use crate::bus::{Bus, DeviceId};
 use crate::location::Location;
 use crate::storage::Storage;
@@ -238,4 +238,98 @@ fn open_meteo_asks_for_today_and_two_more_days_at_15_minutes_at_the_rounded_loca
          diffuse_radiation_instant,temperature_2m,wind_speed_10m\
          &wind_speed_unit=ms&timezone=auto&timeformat=unixtime&forecast_days=3"
     );
+}
+
+#[test]
+fn the_archive_reads_irradiance_temperature_and_wind_every_hour() {
+    let slots =
+        open_meteo::parse_archive(include_str!("../../fixtures/open-meteo-archive.json")).unwrap();
+    assert_eq!(slots.len(), 48);
+    // 2026-06-20 00:00 UTC to 2026-06-21 23:00 UTC.
+    assert_eq!(slots.first().unwrap().target, at(1_781_913_600));
+    assert_eq!(slots.last().unwrap().target, at(1_782_082_800));
+    let noon = slots
+        .iter()
+        .find(|s| s.target == at(1_782_039_600))
+        .unwrap();
+    assert_eq!(
+        *noon,
+        Slot {
+            target: at(1_782_039_600),
+            ghi: 495.1,
+            dni: 153.1,
+            dhi: 362.7,
+            temperature: 24.3,
+            wind: Some(1.52),
+        }
+    );
+}
+
+#[test]
+fn the_archive_asks_for_whole_utc_days_hourly_at_the_rounded_location() {
+    let from = jiff::civil::date(2026, 6, 20);
+    let to = jiff::civil::date(2026, 6, 21);
+    assert_eq!(
+        open_meteo::archive_url(BERLIN, from, to),
+        "https://archive-api.open-meteo.com/v1/archive?latitude=52.52&longitude=13.38\
+         &start_date=2026-06-20&end_date=2026-06-21\
+         &hourly=shortwave_radiation_instant,direct_normal_irradiance_instant,\
+         diffuse_radiation_instant,temperature_2m,wind_speed_10m\
+         &wind_speed_unit=ms&timezone=GMT&timeformat=unixtime"
+    );
+}
+
+/// An archive hour of 2026-06-21 at `hour` UTC.
+fn past(hour: u64, ghi: f64) -> Slot {
+    Slot {
+        target: at(1_781_996_400 + hour * 3600),
+        ghi,
+        dni: 153.1,
+        dhi: 362.5,
+        temperature: 24.3,
+        wind: Some(1.52),
+    }
+}
+
+#[tokio::test]
+async fn archive_weather_is_stored_as_history_and_read_back_hourly() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    // 13:00 has not settled.
+    let slots = vec![past(11, 495.1), past(12, 674.1), past(14, 400.0)];
+    let (archive, mut calls) = FakeArchive::new(slots.clone());
+    let weather = Past::new(archive, DEVICE, &bus);
+    let day = jiff::civil::date(2026, 6, 21);
+
+    weather.fetch(&storage, BERLIN, day, day).await.unwrap();
+
+    let (_, sent, from, to) = calls.recv().await.unwrap();
+    assert_eq!((sent, from, to), (BERLIN.rounded(), day, day));
+    let ghi = storage
+        .history(
+            DEVICE,
+            bus.intern("weather.ghi", None),
+            past(0, 0.0).target,
+            past(24, 0.0).target,
+        )
+        .await
+        .unwrap();
+    let values: Vec<_> = ghi.iter().map(|p| (p.time, p.value)).collect();
+    assert_eq!(
+        values,
+        [
+            (past(11, 0.0).target, Some(495.1)),
+            (past(12, 0.0).target, Some(674.1)),
+            (past(13, 0.0).target, None),
+            (past(14, 0.0).target, Some(400.0)),
+            (past(15, 0.0).target, None),
+        ]
+    );
+    let read = weather
+        .read(&storage, past(0, 0.0).target, past(24, 0.0).target)
+        .await
+        .unwrap();
+    assert_eq!(read, slots);
 }

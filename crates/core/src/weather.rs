@@ -8,16 +8,20 @@ mod open_meteo;
 use std::fmt;
 use std::future::Future;
 use std::ops::ControlFlow;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use sunreye_profile::RoleKind;
 
 use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, SeriesId};
 use crate::location::Location;
-use crate::storage::{self, Issue, Storage};
+use crate::storage::{self, ChangePoint, Issue, Policy, Storage};
 
-pub use open_meteo::OpenMeteo;
+#[cfg(test)]
+pub use open_meteo::parse_archive;
+pub use open_meteo::{OpenMeteo, OpenMeteoArchive};
 
 const HOUR: Duration = Duration::from_secs(3600);
 
@@ -42,6 +46,18 @@ pub struct Slot {
 pub trait Provider: Sync {
     /// The forecast at 15-minute resolution for today and two more days at `location`.
     fn fetch(&self, location: Location) -> impl Future<Output = Result<Vec<Slot>, Error>> + Send;
+}
+
+/// A source of past weather: Open-Meteo's archive, or a fake in tests.
+pub trait Archive: Sync {
+    /// The weather hourly at `location` over the UTC days `from` to `to`, both included; hours
+    /// the source has not settled yet are absent.
+    fn fetch(
+        &self,
+        location: Location,
+        from: jiff::civil::Date,
+        to: jiff::civil::Date,
+    ) -> impl Future<Output = Result<Vec<Slot>, Error>> + Send;
 }
 
 #[derive(Debug)]
@@ -202,6 +218,108 @@ impl<P: Provider> Weather<P> {
         }
         Ok(())
     }
+}
+
+/// Past weather (ADR 17): fetched from an archive and stored as `weather.*` history, so learning
+/// and charts read it locally.
+pub struct Past<A> {
+    archive: A,
+    device: DeviceId,
+    series: [SeriesId; QUANTITIES.len()],
+}
+
+impl<A: Archive> Past<A> {
+    pub fn new(archive: A, device: DeviceId, bus: &Bus) -> Self {
+        Self {
+            archive,
+            device,
+            series: QUANTITIES.map(|q| bus.intern(q.role, None)),
+        }
+    }
+
+    /// Fetches the UTC days `from` to `to` for the plant at `location` and stores them hourly,
+    /// replacing what was stored for those hours; an hour the archive lacks is a gap.
+    ///
+    /// # Errors
+    /// The archive or storage failed.
+    pub async fn fetch(
+        &self,
+        storage: &Storage,
+        location: Location,
+        from: jiff::civil::Date,
+        to: jiff::civil::Date,
+    ) -> Result<(), Error> {
+        let slots = self.archive.fetch(location.rounded(), from, to).await?;
+        let (Some(first), Some(last)) = (slots.first(), slots.last()) else {
+            return Ok(());
+        };
+        let hours: Vec<SystemTime> = hours(first.target, last.target + HOUR).collect();
+        for (quantity, series) in QUANTITIES.iter().zip(self.series) {
+            let policy = Policy::new(RoleKind::Measurement, None, quantity.step, HOUR);
+            storage.declare(self.device, series, policy).await?;
+            let mut points: Vec<ChangePoint> = hours
+                .iter()
+                .map(|&time| ChangePoint {
+                    time,
+                    value: slots
+                        .iter()
+                        .find(|s| s.target == time)
+                        .and_then(|s| (quantity.value)(s)),
+                })
+                .collect();
+            // Past the last hour nothing is known.
+            points.push(ChangePoint {
+                time: last.target + HOUR,
+                value: None,
+            });
+            let range = first.target..last.target + HOUR + Duration::from_secs(1);
+            storage.replace(self.device, series, range, points).await?;
+        }
+        Ok(())
+    }
+
+    /// The stored weather at each whole hour from `from` to before `to` that has irradiance and
+    /// temperature.
+    ///
+    /// # Errors
+    /// Storage failed.
+    pub async fn read(
+        &self,
+        storage: &Storage,
+        from: SystemTime,
+        to: SystemTime,
+    ) -> Result<Vec<Slot>, Error> {
+        let mut stored = Vec::with_capacity(QUANTITIES.len());
+        for series in self.series {
+            stored.push(storage.history(self.device, series, from, to).await?);
+        }
+        let at = |i: usize, time: SystemTime| {
+            let points: &Vec<ChangePoint> = stored.get(i)?;
+            points.iter().rev().find(|p| p.time <= time)?.value
+        };
+        Ok(hours(from, to)
+            .filter_map(|target| {
+                Some(Slot {
+                    target,
+                    ghi: at(0, target)?,
+                    dni: at(1, target)?,
+                    dhi: at(2, target)?,
+                    temperature: at(3, target)?,
+                    wind: at(4, target),
+                })
+            })
+            .collect())
+    }
+}
+
+/// The whole hours from `from` to before `to`.
+fn hours(from: SystemTime, to: SystemTime) -> impl Iterator<Item = SystemTime> {
+    let since = from
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let first = UNIX_EPOCH + Duration::from_secs(since.div_ceil(HOUR.as_secs()) * HOUR.as_secs());
+    std::iter::successors(Some(first), |t| Some(*t + HOUR)).take_while(move |t| *t < to)
 }
 
 #[cfg(test)]

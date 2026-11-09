@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_core::profiles::{self, Https};
 use sunreye_core::startup::{self, Boot, Options};
-use sunreye_core::weather::OpenMeteo;
+use sunreye_core::weather::{OpenMeteo, OpenMeteoArchive};
 use sunreye_core::{capture, import};
 use tokio::net::TcpListener;
 
@@ -136,6 +136,7 @@ async fn run(options: Options) -> Result<(), startup::Error> {
         ingress: options.ingress,
         build: build_time(),
         weather: OpenMeteo,
+        archive: OpenMeteoArchive,
         fetch: std::sync::Arc::new(Https),
         keys: profiles::KEYS,
     };
