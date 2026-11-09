@@ -2761,6 +2761,29 @@
         ],
         "type": "object"
       },
+      "TariffChange": {
+        "description": "A tariff change, applying from an instant on.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339, not before now; now when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "export": {
+            "$ref": "#/components/schemas/ScheduleView"
+          },
+          "import": {
+            "$ref": "#/components/schemas/ScheduleView"
+          }
+        },
+        "required": [
+          "import",
+          "export"
+        ],
+        "type": "object"
+      },
       "Tier": {
         "description": "`raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or\n`day` (plant-local) rollups.",
         "enum": [
@@ -5059,7 +5082,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Change"
+                "$ref": "#/components/schemas/TariffChange"
               }
             }
           },

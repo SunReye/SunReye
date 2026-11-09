@@ -682,3 +682,31 @@ async fn the_openapi_document_lists_every_problem_code() {
 fn quiet() -> Scanner {
     Scanner::new(Vec::new(), scan::LIMITS, || None)
 }
+
+/// Schemas share one namespace, so two types of one name would describe each other's routes.
+#[tokio::test]
+async fn each_change_body_names_its_own_schema() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+    let document = json(core.send(get("/openapi.json")).await).await;
+    let body = |path: &str| {
+        let reference =
+            document["paths"][path]["put"]["requestBody"]["content"]["application/json"]["schema"]
+                ["$ref"]
+                .as_str()
+                .unwrap()
+                .rsplit('/')
+                .next()
+                .unwrap()
+                .to_owned();
+        document["components"]["schemas"][reference]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(body("/api/v1/tariff"), ["appliesFrom", "export", "import"]);
+    assert_eq!(body("/api/v1/topology"), ["appliesFrom", "points"]);
+}

@@ -1903,6 +1903,13 @@ export interface components {
             /** @description What a kWh bought from the grid costs. */
             import: components["schemas"]["ScheduleView"];
         };
+        /** @description A tariff change, applying from an instant on. */
+        TariffChange: {
+            /** @description RFC 3339, not before now; now when absent. */
+            appliesFrom?: string | null;
+            export: components["schemas"]["ScheduleView"];
+            import: components["schemas"]["ScheduleView"];
+        };
         /**
          * @description `raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or
          *     `day` (plant-local) rollups.
@@ -3720,7 +3727,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Change"];
+                "application/json": components["schemas"]["TariffChange"];
             };
         };
         responses: {

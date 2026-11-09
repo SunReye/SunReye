@@ -181,7 +181,7 @@ async fn tariff(
 /// A tariff change, applying from an instant on.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct Change {
+struct TariffChange {
     /// RFC 3339, not before now; now when absent.
     applies_from: Option<String>,
     import: ScheduleView,
@@ -190,13 +190,13 @@ struct Change {
 
 /// Changes the tariff from an instant on. Editing changes only the future: prices already in force
 /// stay as they were.
-#[utoipa::path(put, path = "/api/v1/tariff", request_body = Change, responses(
+#[utoipa::path(put, path = "/api/v1/tariff", request_body = TariffChange, responses(
     (status = 200, body = Tariff),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn change_tariff(
     State((tariffs, clock)): TariffState,
-    body: Result<Json<Change>, JsonRejection>,
+    body: Result<Json<TariffChange>, JsonRejection>,
 ) -> Result<Json<Tariff>, Problem> {
     let Json(change) = body.map_err(|_| BODY)?;
     let now = clock();
