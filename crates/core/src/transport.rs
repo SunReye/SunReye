@@ -7,6 +7,7 @@
 #[cfg(test)]
 pub mod fake;
 mod mbap;
+mod recorder;
 mod sim;
 mod solarman;
 
@@ -16,6 +17,8 @@ use std::time::Duration;
 use sunreye_profile::Framing;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+pub use recorder::Tape;
 
 /// Where a client connects.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,19 +132,39 @@ impl Client {
     ///
     /// [`Error::Timeout`] or [`Error::Io`] when the endpoint cannot be reached.
     pub async fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<Self, Error> {
-        let mut wire: Box<dyn Wire> = match endpoint {
+        let wire: Box<dyn Wire> = match endpoint {
             Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port } => {
-                let stream =
-                    tokio::time::timeout(timeout, TcpStream::connect((host.as_str(), *port)))
-                        .await
-                        .map_err(|_| Error::Timeout)??;
-                stream.set_nodelay(true)?;
-                Box::new(stream)
+                Box::new(tcp(host, *port, timeout).await?)
             }
             Endpoint::Sim(capture) => Box::new(sim::Sim::new(capture.clone())),
         };
+        Self::over(wire, endpoint.framing(), timeout).await
+    }
+
+    /// Connects as [`Client::connect`] and records every byte on the wire to the returned tape.
+    /// The wire refuses every request but a read of holding registers, the probe included.
+    ///
+    /// # Errors
+    ///
+    /// As [`Client::connect`]; `sim` has nothing to record and is refused.
+    pub async fn recording(endpoint: &Endpoint, timeout: Duration) -> Result<(Self, Tape), Error> {
+        let (Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port }) = endpoint
+        else {
+            return Err(Error::Protocol("sim has no device to capture"));
+        };
+        let tape = Tape::default();
+        let framing = endpoint.framing();
+        let wire = recorder::Recorder::new(tcp(host, *port, timeout).await?, framing, tape.clone());
+        Ok((Self::over(Box::new(wire), framing, timeout).await?, tape))
+    }
+
+    async fn over(
+        mut wire: Box<dyn Wire>,
+        framing: Framing,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
         let mut reply = [0; solarman::MAX_FRAME];
-        let envelope = match endpoint.framing() {
+        let envelope = match framing {
             Framing::Tcp => Envelope::Mbap,
             Framing::SolarmanV5 => {
                 let discover = solarman::Logger::discover(wire.as_mut(), &mut reply);
@@ -221,6 +244,14 @@ impl Client {
             .map_err(|_| Error::Timeout)??;
         self.reply.get(pdu).ok_or(Error::Protocol("bad length"))
     }
+}
+
+async fn tcp(host: &str, port: u16, timeout: Duration) -> Result<TcpStream, Error> {
+    let stream = tokio::time::timeout(timeout, TcpStream::connect((host, port)))
+        .await
+        .map_err(|_| Error::Timeout)??;
+    stream.set_nodelay(true)?;
+    Ok(stream)
 }
 
 /// Returns where the reply's PDU sits in `reply`.

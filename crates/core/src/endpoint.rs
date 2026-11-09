@@ -17,7 +17,7 @@ use crate::transport::{Client, Endpoint, Error};
 
 /// Until a profile declares poll groups, every quantity is polled at this cadence.
 pub const CADENCE: Duration = Duration::from_secs(5);
-const TIMEOUT: Duration = Duration::from_secs(3);
+pub const TIMEOUT: Duration = Duration::from_secs(3);
 /// One missed cycle then costs 10 s of silence, under ADR 3's 15 s gap threshold.
 const FIRST_BACKOFF: Duration = CADENCE;
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
@@ -200,6 +200,29 @@ impl Polled {
         }
         drop(latest);
     }
+}
+
+/// Reads `device` through `client` as its task would, `cycles` times a cadence apart, and publishes
+/// nothing: `sunreye capture` records the wire.
+///
+/// # Errors
+///
+/// The first error of a read.
+pub async fn poll(
+    client: &mut Client,
+    framing: Framing,
+    device: Device,
+    cycles: usize,
+) -> Result<(), Error> {
+    let mut polled = Polled::new(device, framing, &Bus::default(), 0);
+    let mut words = [0; MAX_READ];
+    let mut next = Instant::now();
+    for _ in 0..cycles {
+        tokio::time::sleep_until(next).await;
+        polled.read(client, &mut words).await?;
+        next += CADENCE;
+    }
+    Ok(())
 }
 
 async fn run(

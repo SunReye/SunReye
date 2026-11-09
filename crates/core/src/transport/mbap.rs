@@ -10,13 +10,19 @@ pub const UNIT_OFFSET: usize = 6;
 pub const MAX_PDU: usize = 253;
 /// A whole frame: header and PDU.
 pub const MAX_FRAME: usize = HEADER_LEN + MAX_PDU;
-const FC_READ_HOLDING: u8 = 3;
+pub const FC_READ_HOLDING: u8 = 3;
 /// Every write is function 16, one word included: some devices refuse function 6.
 const FC_WRITE: u8 = 16;
 const EXCEPTION_FLAG: u8 = 0x80;
 /// Most words one read may ask for.
 const MAX_READ: usize = 125;
 const MAX_WRITE: u8 = 123;
+
+/// The length and function code of the request frame that `head` starts.
+pub fn request_frame(head: &[u8]) -> Option<(usize, u8)> {
+    let length = u16::from_be_bytes([*head.get(4)?, *head.get(5)?]);
+    Some((UNIT_OFFSET + usize::from(length), *head.get(HEADER_LEN)?))
+}
 
 pub fn read_request(
     transaction: u16,

@@ -41,6 +41,14 @@ const STATUS_WRONG_SERIAL: u8 = 6;
 const PROBE: [u8; 6] = [1, 3, 0, 3, 0, 6];
 const NOT_V5: Error = Error::Protocol("not a Solarman V5 frame");
 
+/// The length and function code of the request frame that `head` starts.
+pub fn request_frame(head: &[u8]) -> Option<(usize, u8)> {
+    let length = u16::from_le_bytes([*head.get(1)?, *head.get(2)?]);
+    // The RTU frame follows the business field: unit id, then function.
+    let function = *head.get(HEADER + REQUEST_BUSINESS + 1)?;
+    Some((HEADER + usize::from(length) + TRAILER, function))
+}
+
 /// The stick one connection talks to.
 #[derive(Debug)]
 pub struct Logger {
