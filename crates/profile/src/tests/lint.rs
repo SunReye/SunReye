@@ -29,3 +29,20 @@ fn the_owners_profile_has_no_warning() {
     let profile = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
     assert!(profile.warnings().is_empty(), "{:?}", profile.warnings());
 }
+
+#[test]
+fn a_scale_factor_missing_from_requires_is_a_warning() {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u16"],
+        "quantities": [{
+            "key": "a", "role": "extra.a", "register": 1, "type": "u16",
+            "scaleFactor": 2, "resolution": 0.1,
+        }],
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+    assert_eq!(
+        profile.warnings(),
+        ["`requires` lacks `scale-factor`, which the profile uses"]
+    );
+}

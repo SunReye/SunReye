@@ -71,12 +71,10 @@ test("a misspelt field fails to compile and to load", () => {
 test("a capability outside the table fails to compile", () => {
   const profile = defineProfile({
     ...header,
-    // @ts-expect-error `sunspec` is not in the capability table
-    requires: ["modbus", "sunspec"],
+    // @ts-expect-error `http` is not in the capability table
+    requires: ["modbus", "http"],
     quantities: [],
   });
 
-  expect(() => wasm.lint(JSON.stringify(profile))).toThrow(
-    "lacks the required capability `sunspec`",
-  );
+  expect(() => wasm.lint(JSON.stringify(profile))).toThrow("lacks the required capability `http`");
 });

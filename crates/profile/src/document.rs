@@ -232,12 +232,21 @@ pub struct QuantityDoc {
     pub key: String,
     pub role: String,
     pub index: Option<u32>,
+    /// The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
+    /// then counts from the model's ID register, as the SunSpec model definitions lay it out.
+    pub model: Option<Vec<u16>>,
     pub register: Option<u16>,
     /// An `mqtt` topic under the connection's root; `{address}` stands for the device address.
     pub topic: Option<String>,
     #[serde(rename = "type")]
     pub kind: Option<Kind>,
     pub scale: Option<f64>,
+    /// The register holding the power of ten the value is scaled by, read with it (SunSpec's
+    /// `sunssf`).
+    #[serde(rename = "scaleFactor")]
+    pub scale_factor: Option<u16>,
+    /// The step a value scaled by a register is stored in, as no scale fixes it (ADR 3).
+    pub resolution: Option<f64>,
     pub offset: Option<f64>,
     pub compute: Option<ExprDoc>,
     pub range: Option<Range>,
@@ -247,7 +256,26 @@ pub struct QuantityDoc {
     pub texts: Option<BTreeMap<String, f64>>,
 }
 
-/// A register's type. Double words are low word first.
+impl QuantityDoc {
+    /// The capabilities reading it uses.
+    pub fn capabilities(&self) -> impl Iterator<Item = &'static str> {
+        [
+            self.kind.map(Kind::capability),
+            match (&self.model, self.register) {
+                (Some(_), _) => Some("sunspec"),
+                (None, Some(_)) => Some("modbus"),
+                (None, None) => None,
+            },
+            self.topic.as_ref().map(|_| "mqtt"),
+            self.scale_factor.map(|_| "scale-factor"),
+            self.compute.as_ref().map(|_| "compute"),
+        ]
+        .into_iter()
+        .flatten()
+    }
+}
+
+/// A register's type. Double words are low word first, or high first in a SunSpec model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
@@ -255,6 +283,27 @@ pub enum Kind {
     U16,
     I16,
     U32,
+    /// SunSpec's accumulator: a `u32` whose 0 means unimplemented.
+    Acc32,
+}
+
+impl Kind {
+    pub const fn capability(self) -> &'static str {
+        match self {
+            Self::U16 => "u16",
+            Self::I16 => "i16",
+            Self::U32 => "u32",
+            Self::Acc32 => "acc32",
+        }
+    }
+
+    /// The registers a value of this type takes.
+    pub const fn words(self) -> u16 {
+        match self {
+            Self::U16 | Self::I16 => 1,
+            Self::U32 | Self::Acc32 => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

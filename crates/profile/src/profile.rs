@@ -8,10 +8,11 @@ use serde::Deserialize;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::plan::{self, Block};
 use crate::setting::{self, Setting};
+use crate::sunspec::Chain;
 use crate::{CAPABILITIES, SCHEMA};
 
 /// A loaded profile: its quantities in file order and its compiled read plan.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Profile {
     pub id: String,
     pub name: String,
@@ -22,6 +23,8 @@ pub struct Profile {
     inverter: Option<Inverter>,
     settings: Vec<Setting>,
     warnings: Vec<String>,
+    /// The SunSpec chain it is bound to, whose models its plan reads.
+    chain: Option<Chain>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -50,7 +53,7 @@ pub struct Mppt {
 }
 
 /// One quantity a profile reads or derives, published as a role at an optional index.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Quantity {
     pub key: String,
     pub role: String,
@@ -69,13 +72,14 @@ impl Quantity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Read {
-    Register {
-        address: u16,
-        kind: Kind,
-        scale: f64,
-        offset: f64,
+    Register(Register),
+    /// A register of the first of `models` a SunSpec chain holds, its addresses counted from the
+    /// model's ID register; unread until bound to a chain that holds it.
+    Point {
+        models: Vec<u16>,
+        register: Register,
     },
     /// A topic under the connection's root, with `{address}` unsubstituted.
     Topic {
@@ -88,8 +92,20 @@ pub enum Read {
     Compute(Expr),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Register {
+    pub address: u16,
+    pub kind: Kind,
+    pub scale: f64,
+    pub offset: f64,
+    /// The register of its power-of-ten scale factor.
+    pub scale_factor: Option<u16>,
+    /// Read as SunSpec encodes: double words high first, and its type's sentinel is no value.
+    pub sunspec: bool,
+}
+
 /// A derived value over the positions of quantities declared earlier.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Sum(Vec<usize>),
     Diff(usize, usize),
@@ -109,13 +125,55 @@ pub enum Expr {
     },
 }
 
+/// What a quantity reads through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Binding {
+    Registers,
+    Topics,
+    SunSpec,
+}
+
 impl Read {
-    /// Whether it reads a topic rather than a register; `None` for a computed quantity.
-    const fn binding(&self) -> Option<bool> {
+    /// `None` for a computed quantity.
+    const fn binding(&self) -> Option<Binding> {
         match self {
-            Self::Register { .. } => Some(false),
-            Self::Topic { .. } => Some(true),
+            Self::Register(_) => Some(Binding::Registers),
+            Self::Point { .. } => Some(Binding::SunSpec),
+            Self::Topic { .. } => Some(Binding::Topics),
             Self::Compute(_) => None,
+        }
+    }
+
+    /// Its register in `chain`, if the chain holds it whole; else itself.
+    fn bound(&self, chain: &Chain) -> Self {
+        let Self::Point { models, register } = self else {
+            return self.clone();
+        };
+        let Some(model) = chain.models().iter().find(|m| models.contains(&m.id)) else {
+            return self.clone();
+        };
+        // Registers 0 and 1 of a model are its header, which `start` follows.
+        let at = |offset: u16, words: u16| {
+            let from = offset.checked_sub(2)?;
+            (u32::from(from) + u32::from(words) <= u32::from(model.length))
+                .then(|| model.start.checked_add(from))
+                .flatten()
+        };
+        let address = at(register.address, register.kind.words());
+        let scale_factor = register.scale_factor.map(|sf| at(sf, 1));
+        match (address, scale_factor) {
+            (Some(address), None) => Self::Register(Register {
+                address,
+                sunspec: true,
+                ..*register
+            }),
+            (Some(address), Some(Some(sf))) => Self::Register(Register {
+                address,
+                scale_factor: Some(sf),
+                sunspec: true,
+                ..*register
+            }),
+            _ => self.clone(),
         }
     }
 }
@@ -211,7 +269,37 @@ impl Profile {
             inverter: doc.inverter,
             settings,
             warnings,
+            chain: None,
         })
+    }
+
+    /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
+    /// chain (see [`Profile::bind`]).
+    #[must_use]
+    pub fn reads_sunspec(&self) -> bool {
+        self.quantities
+            .iter()
+            .any(|q| q.read.binding() == Some(Binding::SunSpec))
+    }
+
+    /// The profile as it reads the device whose SunSpec model chain is `chain`: each quantity at
+    /// its register in the first of its models the chain holds, and every model in the plan. A
+    /// quantity of a model the chain lacks, or past its model's end, stays unread.
+    #[must_use]
+    pub fn bind(&self, chain: &Chain) -> Self {
+        let quantities = self
+            .quantities
+            .iter()
+            .map(|q| Quantity {
+                read: q.read.bound(chain),
+                ..q.clone()
+            })
+            .collect();
+        Self {
+            quantities,
+            chain: Some(chain.clone()),
+            ..self.clone()
+        }
     }
 
     /// What the profile should not say but may: the text the CLI, the core log and the SPA all
@@ -249,14 +337,20 @@ impl Profile {
     /// (see [`crate::Framing::gap_tolerance`]).
     #[must_use]
     pub fn read_plan(&self, gap_tolerance: u16) -> Vec<Block> {
-        plan::merge_across_gaps(&self.plan, gap_tolerance)
+        self.chain.as_ref().map_or_else(
+            || plan::merge_across_gaps(&self.plan, gap_tolerance),
+            |chain| chain.read_plan(gap_tolerance),
+        )
     }
 
     /// A spanning block's mapped registers as plain blocks: the fallback when a device refuses it
     /// with Modbus exception 2.
     #[must_use]
     pub fn split(&self, block: Block) -> Vec<Block> {
-        plan::split(&self.quantities, block)
+        self.chain.as_ref().map_or_else(
+            || plan::split(&self.quantities, block),
+            |chain| chain.split(block),
+        )
     }
 }
 
@@ -276,46 +370,28 @@ fn check(inverter: &Inverter) -> Result<(), LoadError> {
 /// Capabilities the profile uses but does not require, in table order: an older core lacking one
 /// would refuse the profile without naming the capability.
 fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
-    let quantities = doc.quantities.iter();
-    let kinds = quantities
-        .clone()
-        .filter_map(|q| q.kind)
-        .chain(doc.settings.iter().map(|s| s.kind))
-        .chain(doc.settings.iter().flat_map(|s| {
-            s.recipe.iter().filter_map(|step| {
-                if let StepDoc::Unlock(u) = step {
-                    Some(u.kind)
-                } else {
-                    None
-                }
-            })
-        }));
-    let used: Vec<&str> = kinds
-        .map(|kind| match kind {
-            Kind::U16 => "u16",
-            Kind::I16 => "i16",
-            Kind::U32 => "u32",
+    let settings = doc.settings.iter();
+    let unlocks = settings.clone().flat_map(|s| {
+        s.recipe.iter().filter_map(|step| {
+            if let StepDoc::Unlock(u) = step {
+                Some(u.kind.capability())
+            } else {
+                None
+            }
         })
+    });
+    let used: Vec<&str> = doc
+        .quantities
+        .iter()
+        .flat_map(QuantityDoc::capabilities)
+        .chain(settings.clone().map(|s| s.kind.capability()))
+        .chain(unlocks)
         .chain(
-            (quantities.clone().any(|q| q.register.is_some())
-                || doc.settings.iter().any(|s| !publishes(s)))
-            .then_some("modbus"),
-        )
-        .chain(
-            (quantities.clone().any(|q| q.topic.is_some()) || doc.settings.iter().any(publishes))
-                .then_some("mqtt"),
-        )
-        .chain(
-            quantities
+            settings
                 .clone()
-                .any(|q| q.compute.is_some())
-                .then_some("compute"),
+                .map(|s| if publishes(s) { "mqtt" } else { "modbus" }),
         )
-        .chain(
-            doc.settings
-                .iter()
-                .flat_map(|s| s.recipe.iter().map(StepDoc::capability)),
-        )
+        .chain(settings.flat_map(|s| s.recipe.iter().map(StepDoc::capability)))
         .collect();
     CAPABILITIES
         .iter()
@@ -355,7 +431,7 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
         {
             return Err(refuse("a profile reads through one binding"));
         }
-        let step = step(&read, &quantities);
+        let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
         positions.insert(doc.key.clone(), quantities.len());
         quantities.push(Quantity {
             key: doc.key,
@@ -372,7 +448,12 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
 /// `earlier` holds every input of a computed `read`.
 fn step(read: &Read, earlier: &[Quantity]) -> f64 {
     match read {
-        Read::Register { scale, .. } | Read::Topic { scale, .. } => scale.abs(),
+        Read::Register(Register { scale, .. })
+        | Read::Point {
+            register: Register { scale, .. },
+            ..
+        }
+        | Read::Topic { scale, .. } => scale.abs(),
         Read::Compute(Expr::Ratio { scale, .. }) => scale.abs() / 1000.0,
         Read::Compute(expr) => expr
             .inputs()
@@ -389,19 +470,17 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
     if doc.texts.is_some() && doc.topic.is_none() {
         return Err("only a topic maps texts");
     }
+    if doc.scale_factor.is_some() != doc.resolution.is_some() {
+        return Err("a scale factor and a resolution come together");
+    }
+    if doc.scale_factor.is_some() && doc.register.is_none() {
+        return Err("only a register takes a scale factor");
+    }
+    if doc.model.is_some() && doc.register.is_none() {
+        return Err("a SunSpec model is read at a register");
+    }
     match (doc.register, &doc.topic, &doc.compute) {
-        (Some(address), None, None) => {
-            let kind = doc.kind.ok_or("a register needs a type")?;
-            if kind == Kind::U32 && address == u16::MAX {
-                return Err("a u32 needs two registers");
-            }
-            Ok(Read::Register {
-                address,
-                kind,
-                scale,
-                offset,
-            })
-        }
+        (Some(address), None, None) => register(doc, address, scale, offset),
         (None, Some(topic), None) => {
             if doc.kind.is_some() {
                 return Err("a topic takes no type");
@@ -423,6 +502,38 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
             expr_of(expr, positions).map(Read::Compute)
         }
         _ => Err("declare one of `register`, `topic` or `compute`"),
+    }
+}
+
+fn register(
+    doc: &QuantityDoc,
+    address: u16,
+    scale: f64,
+    offset: f64,
+) -> Result<Read, &'static str> {
+    let kind = doc.kind.ok_or("a register needs a type")?;
+    if kind.words() == 2 && address == u16::MAX {
+        return Err("a double word needs two registers");
+    }
+    let register = Register {
+        address,
+        kind,
+        scale,
+        offset,
+        scale_factor: doc.scale_factor,
+        sunspec: false,
+    };
+    match &doc.model {
+        None if kind == Kind::Acc32 => Err("an acc32 is a SunSpec point"),
+        None => Ok(Read::Register(register)),
+        Some(models) if models.is_empty() => Err("list at least one SunSpec model"),
+        Some(_) if address < 2 || doc.scale_factor.is_some_and(|sf| sf < 2) => {
+            Err("registers 0 and 1 of a SunSpec model are its header")
+        }
+        Some(models) => Ok(Read::Point {
+            models: models.clone(),
+            register,
+        }),
     }
 }
 

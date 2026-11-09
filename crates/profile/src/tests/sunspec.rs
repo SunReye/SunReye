@@ -12,7 +12,8 @@ use std::collections::HashMap;
 
 use crate::sunspec::{Discovery, Model, Next};
 use crate::{Block, Framing};
-use serde_json::Value;
+use crate::{Profile, Registers};
+use serde_json::{Value, json};
 
 /// `SunS`, high word first.
 const MARKER: [u16; 2] = [0x5375, 0x6e53];
@@ -214,4 +215,150 @@ fn the_variant_is_the_model_after_the_common_model() {
     assert_eq!(chain(&inverter(40000)).variant(), Some(103));
     assert_eq!(chain(&alone).variant(), None);
     assert_eq!(chain(&headless).variant(), None);
+}
+
+/// pysunspec's test inverter: a common model, a three-phase inverter (103) and an MPPT extension
+/// (160) of three modules. Its file comments each register with the point it holds.
+fn pysunspec_inverter() -> Device {
+    let dump: Value =
+        serde_json::from_str(include_str!("sunspec-pysunspec-inverter.json")).unwrap();
+    let words: Vec<u16> = serde_json::from_value(dump["words"].clone()).unwrap();
+    let start = u16::try_from(dump["start"].as_u64().unwrap()).unwrap();
+    Device::default().with(start, &words)
+}
+
+/// A profile of SunSpec points: `register` counts from the model's ID, as the SunSpec model
+/// definitions (`sunspec/models`, `json/model_<id>.json`) lay a model out.
+fn points(quantities: &Value) -> Profile {
+    let doc = json!({
+        "schema": 1, "id": "sunspec", "name": "SunSpec", "manufacturer": "SunSpec", "version": "1.0.0",
+        "requires": ["sunspec", "u16", "i16", "u32", "acc32", "scale-factor"],
+        "quantities": quantities,
+    });
+    Profile::load(&doc.to_string()).unwrap()
+}
+
+/// Polls `device` once with `profile` bound to its chain, as the core does after connect.
+fn poll(profile: &Profile, device: &Device) -> HashMap<String, Option<f64>> {
+    let bound = profile.bind(&chain(device));
+    let mut registers = Registers::default();
+    for block in bound.read_plan(0) {
+        registers.answer(block.start, &device.read(block.start, block.count).unwrap());
+    }
+    let mut values = vec![None; bound.quantities().len()];
+    bound.decode(&registers, &mut values);
+    bound
+        .quantities()
+        .iter()
+        .map(|q| q.key.clone())
+        .zip(values)
+        .collect()
+}
+
+/// Expected values from the comments of `mbmap_test_inverter_2.xml`.
+#[test]
+fn a_point_reads_in_the_first_listed_model_of_the_chain_with_its_scale_factor() {
+    let inverter = [101, 102, 103];
+    let profile = points(&json!([
+        { "key": "w", "role": "pv.power", "model": inverter, "register": 14, "type": "i16",
+          "scaleFactor": 15, "resolution": 0.01 },
+        { "key": "hz", "role": "grid.frequency", "model": inverter, "register": 16, "type": "u16",
+          "scaleFactor": 17, "resolution": 0.001 },
+        { "key": "wh", "role": "pv.energy.total", "model": inverter, "register": 24, "type": "acc32",
+          "scale": 0.001, "scaleFactor": 26, "resolution": 0.000_001 },
+        { "key": "dcv1", "role": "pv.mppt.voltage", "index": 1, "model": [160], "register": 20,
+          "type": "u16", "scaleFactor": 3, "resolution": 0.01 },
+        { "key": "dcw2", "role": "pv.mppt.power", "index": 2, "model": [160], "register": 41,
+          "type": "u16", "scaleFactor": 4, "resolution": 0.01 },
+        { "key": "dca3", "role": "pv.mppt.current", "index": 3, "model": [160], "register": 59,
+          "type": "u16", "scaleFactor": 2, "resolution": 0.001 },
+    ]));
+
+    let values = poll(&profile, &pysunspec_inverter());
+
+    assert_eq!(values["w"], Some(2970.0));
+    assert_eq!(values["hz"], Some(59.99));
+    assert_eq!(values["wh"], Some(1234.567));
+    assert_eq!(values["dcv1"], Some(300.11));
+    assert_eq!(values["dcw2"], Some(332.0));
+    assert_eq!(values["dca3"], Some(1.3));
+}
+
+/// A point of a model the chain lacks, or past the end of its model, such as a fourth MPPT
+/// module of three, is never read.
+#[test]
+fn a_point_outside_the_chain_has_no_value() {
+    let profile = points(&json!([
+        { "key": "dcw4", "role": "pv.mppt.power", "index": 4, "model": [160], "register": 71,
+          "type": "u16", "scaleFactor": 4, "resolution": 0.01 },
+        { "key": "soc", "role": "battery.soc", "model": [802], "register": 11, "type": "u16" },
+    ]));
+
+    let values = poll(&profile, &pysunspec_inverter());
+
+    assert_eq!(values["dcw4"], None);
+    assert_eq!(values["soc"], None);
+}
+
+/// Unimplemented points hold their type's sentinel (SunSpec Information Model Specification;
+/// pysunspec2 `sunspec2/mb.py` `SUNS_UNIMPL_*` at commit bbe9e044): `int16` 0x8000, `uint16` 0xFFFF, `acc32` 0,
+/// `uint32` 0xFFFFFFFF; a `sunssf` of 0x8000 leaves its points without a scale.
+#[test]
+fn a_sentinel_reads_as_no_value() {
+    let mut words = MARKER.to_vec();
+    words.extend([1, 0, 64000, 9]);
+    words.extend([0x8000, 0xFFFF, 0, 0, 0xFFFF, 0xFFFF, 0x8000, 42, 7]);
+    words.extend([END, 0]);
+    let device = Device::default().with(40000, &words);
+    let model = [64000];
+    let profile = points(&json!([
+        { "key": "i16", "role": "extra.a", "model": model, "register": 2, "type": "i16" },
+        { "key": "u16", "role": "extra.b", "model": model, "register": 3, "type": "u16" },
+        { "key": "acc32", "role": "extra.c", "model": model, "register": 4, "type": "acc32" },
+        { "key": "u32", "role": "extra.d", "model": model, "register": 6, "type": "u32" },
+        { "key": "unscaled", "role": "extra.e", "model": model, "register": 9, "type": "u16",
+          "scaleFactor": 8, "resolution": 1 },
+        { "key": "read", "role": "extra.f", "model": model, "register": 10, "type": "u16" },
+    ]));
+
+    let values = poll(&profile, &device);
+
+    for key in ["i16", "u16", "acc32", "u32", "unscaled"] {
+        assert_eq!(values[key], None, "{key}");
+    }
+    assert_eq!(values["read"], Some(7.0));
+}
+
+/// Before discovery a SunSpec profile reads nothing: its plan compiles at connect.
+#[test]
+fn the_plan_of_a_sunspec_profile_is_the_chain_it_is_bound_to() {
+    let profile = points(&json!([
+        { "key": "w", "role": "pv.power", "model": [103], "register": 14, "type": "i16" },
+    ]));
+    let device = pysunspec_inverter();
+
+    assert!(profile.reads_sunspec());
+    assert_eq!(profile.read_plan(0), []);
+    assert_eq!(
+        profile.bind(&chain(&device)).read_plan(32),
+        chain(&device).read_plan(32)
+    );
+}
+
+/// A device that refuses the merged read with exception 2 gets each model's registers apart.
+#[test]
+fn a_refused_merged_block_splits_into_the_models_registers() {
+    let device = pysunspec_inverter();
+    let bound = points(&json!([
+        { "key": "w", "role": "pv.power", "model": [103], "register": 14, "type": "i16" },
+    ]))
+    .bind(&chain(&device));
+
+    let merged = bound.read_plan(32);
+
+    assert_eq!(merged, [block(40004, 118, true), block(40124, 68, false)]);
+    assert_eq!(
+        bound.split(block(40004, 118, true)),
+        [block(40004, 66, false), block(40072, 50, false)]
+    );
 }

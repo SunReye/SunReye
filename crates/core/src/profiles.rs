@@ -45,6 +45,7 @@ pub const OFFICIAL_INDEX: &str = "https://sunreye.github.io/SunReye/index.json";
 const BUNDLED: &[&str] = &[
     include_str!("../../../profiles/deye-sg05lp3.json"),
     include_str!("../../../profiles/evcc.json"),
+    include_str!("../../../profiles/sunspec.json"),
 ];
 
 const INTERNAL: Problem = Problem {
