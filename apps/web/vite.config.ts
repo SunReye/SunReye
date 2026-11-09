@@ -12,6 +12,8 @@ export default defineConfig({
       router: { type: "hash" },
     }),
   ],
+  // Pre-bundled up front: discovering them mid-run reloads the browser and fails the files in flight.
+  optimizeDeps: { include: ["three", "three/addons/controls/OrbitControls.js"] },
   test: {
     include: ["src/**/*.svelte.test.ts"],
     browser: {

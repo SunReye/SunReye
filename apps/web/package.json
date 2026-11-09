@@ -4,14 +4,15 @@
   "type": "module",
   "scripts": {
     "i18n": "bun scripts/i18n.ts",
-    "build": "bun run i18n && vite build",
+    "build": "bun run wasm && bun run i18n && vite build",
     "api": "SUNREYE_UPDATE_OPENAPI=1 cargo test -q -p sunreye-core --lib committed_openapi && bun run api:types",
     "api:types": "openapi-typescript ../../crates/core/openapi.json -o src/lib/api/schema.d.ts",
     "api:check": "bun run api:types --check",
     "format:check": "prettier --check \"src/**/*.svelte\"",
     "sync": "bun run i18n && svelte-kit sync",
     "check": "bun run sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test:components": "bun run i18n && vitest run"
+    "test:components": "bun run wasm && bun run i18n && vitest run",
+    "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown"
   },
   "dependencies": {
     "openapi-fetch": "0.17.0"
@@ -22,6 +23,7 @@
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/three": "0.187.0",
     "@vitest/browser-playwright": "5.1.0",
     "layerchart": "2.9.2",
     "openapi-typescript": "7.13.0",
@@ -30,6 +32,7 @@
     "prettier-plugin-svelte": "4.1.1",
     "svelte": "5.57.3",
     "svelte-check": "4.7.8",
+    "three": "0.187.0",
     "typescript": "6.0.3",
     "vite": "8.3.6",
     "vitest": "5.1.0",
