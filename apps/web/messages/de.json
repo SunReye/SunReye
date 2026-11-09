@@ -78,6 +78,8 @@
   "problem_import_file": "Die Datei ist kein SunReye-3-Export, den diese Version liest.",
   "problem_import_device": "Eine Zuordnung nennt ein SunReye-3-Gerät, das im Archiv fehlt, oder ein Gerät, das es nicht gibt.",
   "problem_import_profile": "Dem Archiv fehlt das Profil eines zugeordneten SunReye-3-Geräts.",
+  "problem_backup_name": "Gib der Sicherung einen einfachen Dateinamen: ohne Ordner, nicht mit einem Punkt am Anfang.",
+  "problem_backup_exists": "In /share gibt es schon eine Datei mit diesem Namen; eine Sicherung überschreibt keine.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",

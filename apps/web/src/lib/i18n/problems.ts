@@ -86,6 +86,8 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "import.file": m.problem_import_file,
   "import.device": m.problem_import_device,
   "import.profile": m.problem_import_profile,
+  "backup.name": m.problem_backup_name,
+  "backup.exists": m.problem_backup_exists,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

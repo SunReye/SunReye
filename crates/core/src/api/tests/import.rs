@@ -46,7 +46,11 @@ fn start(path: Option<&str>, device: &Value) -> Request<Body> {
 
 impl Core {
     /// The status and problem code of a refused request.
-    async fn refusal(&self, set_cookie: &str, request: Request<Body>) -> (StatusCode, String) {
+    pub(super) async fn refusal(
+        &self,
+        set_cookie: &str,
+        request: Request<Body>,
+    ) -> (StatusCode, String) {
         problem(self.send(with_cookie(set_cookie, request)).await).await
     }
 

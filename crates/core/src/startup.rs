@@ -11,6 +11,7 @@ use tokio::sync::{oneshot, watch};
 
 use crate::api::{self, Api};
 use crate::auth::Auth;
+use crate::backup::Backups;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
@@ -215,10 +216,32 @@ pub(crate) fn claim(dir: &std::path::Path) -> std::io::Result<Option<std::fs::Fi
     }
 }
 
-/// Makes `dir` private and claims it, for as long as the returned file is open.
-fn own(dir: &std::path::Path) -> Result<std::fs::File, Error> {
+/// Makes the data directory `dir` private, claims it for as long as the returned file is open,
+/// and opens its store.
+fn open(
+    dir: &std::path::Path,
+    build: SystemTime,
+    bus: &Bus,
+) -> Result<(std::fs::File, Storage), Error> {
     private(dir)?;
-    claim(dir)?.ok_or(Error::Running)
+    let claim = claim(dir)?.ok_or(Error::Running)?;
+    let storage = Storage::open(&dir.join(STORE), build, &plant_zone(), bus)?;
+    Ok((claim, storage))
+}
+
+/// Imports and backups, which share `/share`, and the car bodies a backup takes.
+fn files(
+    (share, data_dir): (PathBuf, &std::path::Path),
+    storage: &Storage,
+    bus: &Bus,
+    profiles: &Profiles,
+) -> (Imports, Backups, CarBodies) {
+    let places = (share.clone(), data_dir.join("import.tar.gz"), import::MAX);
+    (
+        Imports::new(places, storage, bus, profiles.catalogue()),
+        Backups::new(storage.database(), data_dir.to_owned(), share),
+        CarBodies::new(data_dir.join("cars")),
+    )
 }
 
 /// Opens the store in the data directory and serves the API on `listener` until `shutdown`
@@ -232,9 +255,8 @@ pub async fn serve(
     boot: Boot<impl Provider + Send, impl Archive + Send, impl spot::Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    let _claim = own(&boot.data_dir)?;
     let bus = Bus::default();
-    let storage = Storage::open(&boot.data_dir.join(STORE), boot.build, &plant_zone(), &bus)?;
+    let (_claim, storage) = open(&boot.data_dir, boot.build, &bus)?;
     let (problems, watched) = problems(&storage).await?;
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
@@ -252,7 +274,7 @@ pub async fn serve(
         (layouts.clone(), location.watch(), spot.watch()),
         &bus,
     ));
-    let places = (boot.share, boot.data_dir.join("import.tar.gz"), import::MAX);
+    let (imports, backups, cars) = files((boot.share, &boot.data_dir), &storage, &bus, &profiles);
     let api = Api {
         auth: Auth::open(storage.database(), boot.ingress).await?,
         live: Live::spawn(&bus),
@@ -264,11 +286,12 @@ pub async fn serve(
         changes: Changes::new(storage.database()),
         location,
         spot,
-        imports: Imports::new(places, &storage, &bus, profiles.catalogue()),
+        imports,
+        backups,
         profiles,
         topologies,
         tariffs,
-        cars: CarBodies::new(boot.data_dir.join("cars")),
+        cars,
         zones: storage.zones(),
         clock: std::sync::Arc::new(SystemTime::now),
     };

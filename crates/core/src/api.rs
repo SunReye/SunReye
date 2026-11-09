@@ -18,6 +18,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
+use crate::backup::Backups;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::correction::Corrections;
@@ -75,6 +76,7 @@ pub struct Api {
     pub cars: CarBodies,
     pub zones: storage::Zones,
     pub imports: Imports,
+    pub backups: Backups,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -110,6 +112,7 @@ pub fn router(api: Api) -> Router {
         .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
         .merge(api.imports.routes())
+        .merge(api.backups.routes())
         .merge(api.layouts.routes(Clock::clone(&api.clock)));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(api_routes, api.clock))
@@ -471,6 +474,12 @@ pub enum Code {
     /// The archive lacks the v3 profile of a mapped device.
     #[serde(rename = "import.profile")]
     ImportProfile,
+    /// A backup's name that is empty, hidden or holds a path.
+    #[serde(rename = "backup.name")]
+    BackupName,
+    /// A backup never overwrites a file.
+    #[serde(rename = "backup.exists")]
+    BackupExists,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
     #[serde(rename = "internal")]

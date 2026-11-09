@@ -3,6 +3,7 @@
 //! The store is copied by SQLite's online backup API. Credential secrets stay out unless asked
 //! (ADR 7); every other table goes in, so the core's identity (ADR 16) does too.
 
+mod routes;
 mod tar;
 
 use std::fmt;
@@ -16,6 +17,8 @@ use rusqlite::Connection;
 
 use crate::startup::{self, STORE};
 use crate::storage::{self, Database, SCHEMA};
+
+pub use self::routes::Backups;
 
 /// The car bodies' directory in the data directory and in a backup.
 const CARS: &str = "cars";

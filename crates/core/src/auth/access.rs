@@ -90,6 +90,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/import", Admin),
     (Method::GET, "/api/v1/import/files", Admin),
     (Method::POST, "/api/v1/import/upload", Admin),
+    // Backups hold the whole store (ADR 3).
+    (Method::POST, "/api/v1/backups", Admin),
     (Method::GET, "/api/v1/tokens", Admin),
     (Method::POST, "/api/v1/tokens", Admin),
     (Method::DELETE, "/api/v1/tokens/{id}", Admin),

@@ -16,6 +16,7 @@ use tower::ServiceExt;
 
 use super::{Api, router};
 use crate::auth::Auth;
+use crate::backup::Backups;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
@@ -35,6 +36,7 @@ use crate::topology::Topologies;
 use crate::weather;
 
 mod access;
+mod backup;
 mod balance;
 mod cars;
 mod corrections;
@@ -72,6 +74,11 @@ fn deye() -> Inverters {
 fn imports(dir: &Path, storage: &Storage, bus: &Bus, profiles: &Profiles) -> Imports {
     let places = (dir.join("share"), dir.join("import.tar.gz"), 1 << 20);
     Imports::new(places, storage, bus, profiles.catalogue())
+}
+
+/// Backs up into `dir/share`.
+fn backups(dir: &Path, storage: &Storage) -> Backups {
+    Backups::new(storage.database(), dir.to_owned(), dir.join("share"))
 }
 
 const HOME: &str = "192.0.2.1:50000";
@@ -145,6 +152,7 @@ impl Core {
             location: PlantLocation::open(storage.database()).await.unwrap(),
             spot: SpotZone::open(storage.database()).await.unwrap(),
             imports: imports(path.parent().unwrap(), &storage, &bus, &profiles),
+            backups: backups(path.parent().unwrap(), &storage),
             profiles,
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
@@ -244,6 +252,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         location: PlantLocation::open(storage.database()).await.unwrap(),
         spot: SpotZone::open(storage.database()).await.unwrap(),
         imports: imports(dir.path(), &storage, &Bus::default(), &profiles),
+        backups: backups(dir.path(), &storage),
         profiles,
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
