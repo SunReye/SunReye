@@ -94,7 +94,8 @@ async fn an_endpoint_that_answers_no_probe_is_listed_without_devices_and_only_re
         assert_eq!(read.function, 3);
         probed.push(read.unit);
     }
-    assert_eq!(probed, [1, 0, 2, 3, 4, 5]);
+    // The Deye profile's probe at each unit, then SunSpec's.
+    assert_eq!(probed, [1, 0, 2, 3, 4, 5, 1, 0, 2, 3, 4, 5]);
     assert!(silent.writes.try_recv().is_err(), "the scan wrote");
 }
 
@@ -178,4 +179,29 @@ async fn one_scan_runs_at_a_time() {
     let mut statuses = [first.0, second.0];
     statuses.sort();
     assert_eq!(statuses, [StatusCode::OK, StatusCode::CONFLICT]);
+}
+
+/// The built-in SunSpec binding's identify probe (ADR 5): the `SunS` marker at a base, then the
+/// chain, whose model after the common model is the variant. The map: the marker at register
+/// 40001, a common model (1) of 4 registers, a three-phase inverter model (103) of 6, the end model
+/// (0xFFFF), per the SunSpec Information Model Specification.
+#[tokio::test]
+async fn a_sunspec_device_is_proposed_with_its_variant() {
+    let mut map = vec![0x5375, 0x6e53, 1, 4, 0, 0, 0, 0, 103, 6];
+    map.extend([0; 6]);
+    map.extend([0xFFFF, 0]);
+    let inverter = fake::serve_map("127.0.0.8", Framing::Tcp, 1, 40000, &map).await;
+    let port = inverter.address.port();
+    let (core, set_cookie, _dir) = scanning(vec![(port, Framing::Tcp)], || None).await;
+
+    let (status, body) = scan(&core, &set_cookie, &json!({ "subnet": "127.0.0.8/32" })).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["endpoints"][0]["devices"],
+        json!([
+            { "profile": "deye-sg05lp3", "unit": 1 },
+            { "profile": "sunspec", "unit": 1, "variant": 103 },
+        ])
+    );
 }

@@ -1209,6 +1209,12 @@ export interface components {
             profile: string;
             /** Format: int32 */
             unit: number;
+            /**
+             * Format: int32
+             * @description The variant the probe found: for SunSpec, the device model after the common model, such
+             *     as 103 for a three-phase inverter.
+             */
+            variant?: number | null;
         };
         /** @description Modules in series on one plane; strings on one MPPT input are in parallel. */
         PvString: components["schemas"]["Wiring"] & {

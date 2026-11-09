@@ -52,6 +52,7 @@ pub struct Fake {
     framing: Framing,
     pub reads: mpsc::UnboundedReceiver<Read>,
     pub writes: mpsc::UnboundedReceiver<Write>,
+    registers: Registers,
 }
 
 type Registers = Arc<Mutex<HashMap<u16, u16>>>;
@@ -89,6 +90,19 @@ pub async fn serve_unit(host: &str, framing: Framing, unit: u8) -> Fake {
     start(host, framing, Writes::Store, Some(unit)).await
 }
 
+/// As [`serve_unit`], holding `words` from `start` where a register would read as its address.
+///
+/// # Panics
+/// No port of `host` is free.
+pub async fn serve_map(host: &str, framing: Framing, unit: u8, start: u16, words: &[u16]) -> Fake {
+    let fake = serve_unit(host, framing, unit).await;
+    fake.registers
+        .lock()
+        .unwrap()
+        .extend((start..).zip(words.iter().copied()));
+    fake
+}
+
 impl Fake {
     /// The endpoint that reaches this device.
     #[must_use]
@@ -108,6 +122,7 @@ async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -
     let (read_tx, reads) = mpsc::unbounded_channel();
     let (write_tx, written) = mpsc::unbounded_channel();
     let registers = Registers::default();
+    let held = Arc::clone(&registers);
     tokio::spawn(async move {
         let mut connection = 0;
         while let Ok((stream, _)) = listener.accept().await {
@@ -129,6 +144,7 @@ async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -
         framing,
         reads,
         writes: written,
+        registers: held,
     }
 }
 

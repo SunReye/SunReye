@@ -53,17 +53,13 @@ pub fn compile(quantities: &[Quantity]) -> Vec<Block> {
     let rest = readable(quantities)
         .into_iter()
         .filter(|a| !groups.iter().any(|g| g.covers(*a)));
-    let mut plan: Vec<Block> = groups
-        .iter()
-        .copied()
-        .chain(split_into_blocks(rest))
-        .collect();
+    let mut plan: Vec<Block> = groups.iter().copied().chain(contiguous(rest)).collect();
     plan.sort_by_key(|block| block.start);
     plan
 }
 
 pub fn split(quantities: &[Quantity], block: Block) -> Vec<Block> {
-    split_into_blocks(
+    contiguous(
         readable(quantities)
             .into_iter()
             .filter(|a| block.covers(*a)),
@@ -114,7 +110,7 @@ fn readable(quantities: &[Quantity]) -> BTreeSet<u16> {
 }
 
 /// Ascending addresses into contiguous blocks, split on gaps and at [`MAX_BLOCK`].
-fn split_into_blocks(sorted: impl IntoIterator<Item = u16>) -> Vec<Block> {
+pub fn contiguous(sorted: impl IntoIterator<Item = u16>) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
     for address in sorted {
         match blocks.last_mut() {
