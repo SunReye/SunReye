@@ -117,13 +117,35 @@
         ],
         "type": "object"
       },
+      "ForecastPoint": {
+        "properties": {
+          "issued": {
+            "description": "When the value was issued, RFC 3339, UTC.",
+            "type": "string"
+          },
+          "target": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target",
+          "issued",
+          "value"
+        ],
+        "type": "object"
+      },
       "Forecasts": {
         "description": "One series' forecasts, at most 1,500 points.",
         "properties": {
           "points": {
             "description": "By target.",
             "items": {
-              "$ref": "#/components/schemas/Point"
+              "$ref": "#/components/schemas/ForecastPoint"
             },
             "type": "array"
           }

@@ -51,11 +51,11 @@ pub struct Params {
 #[derive(Serialize, ToSchema)]
 pub struct Forecasts {
     /// By target.
-    points: Vec<Point>,
+    points: Vec<ForecastPoint>,
 }
 
 #[derive(Serialize, ToSchema)]
-struct Point {
+struct ForecastPoint {
     /// RFC 3339, UTC.
     target: String,
     /// When the value was issued, RFC 3339, UTC.
@@ -98,7 +98,7 @@ pub async fn forecasts(
 
 /// The latest issue of each target, of those issued before `before`; `stored` is by target,
 /// then issue.
-fn latest(stored: &[Forecast], before: Option<SystemTime>) -> Vec<Point> {
+fn latest(stored: &[Forecast], before: Option<SystemTime>) -> Vec<ForecastPoint> {
     let wanted = stored
         .iter()
         .filter(|f| before.is_none_or(|before| f.issued < before));
@@ -111,7 +111,7 @@ fn latest(stored: &[Forecast], before: Option<SystemTime>) -> Vec<Point> {
     }
     points
         .into_iter()
-        .map(|f| Point {
+        .map(|f| ForecastPoint {
             target: rfc3339(f.target),
             issued: rfc3339(f.issued),
             value: f.value,

@@ -233,10 +233,18 @@ export interface components {
              */
             width: number;
         };
+        ForecastPoint: {
+            /** @description When the value was issued, RFC 3339, UTC. */
+            issued: string;
+            /** @description RFC 3339, UTC. */
+            target: string;
+            /** Format: double */
+            value: number;
+        };
         /** @description One series' forecasts, at most 1,500 points. */
         Forecasts: {
             /** @description By target. */
-            points: components["schemas"]["Point"][];
+            points: components["schemas"]["ForecastPoint"][];
         };
         /** @description Values by device id, then by series name, such as `pv.mppt.power[2]`. */
         Frame: {
