@@ -44,6 +44,10 @@ mem_forget = "deny"
 exit = "deny"
 tests_outside_test_module = "deny"
 
+# bcrypt at cost 12 takes seconds unoptimised, which would stall every test that signs in.
+[profile.dev.package.blowfish]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = "fat"

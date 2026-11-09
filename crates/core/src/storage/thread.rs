@@ -16,7 +16,10 @@ const BUCKET: Tick = 600;
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
 /// Forward-only, applied in order; `user_version` counts those applied.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001.sql"),
+    include_str!("migrations/0002.sql"),
+];
 
 /// SQL a feature module runs on its own tables.
 pub type Job = Box<dyn FnOnce(&Connection) + Send>;

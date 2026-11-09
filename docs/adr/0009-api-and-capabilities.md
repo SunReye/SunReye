@@ -1,6 +1,6 @@
 # 9. API and capabilities
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -16,7 +16,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Transport.** Plain HTTP. TLS is a documented reverse-proxy job.
 
-**Auth.** The first run sets the admin password; there is no registration. Passwords use bcrypt at cost 12, as v4 did. A password longer than bcrypt's 72-byte limit is refused, never silently truncated. The SPA uses a cookie session: `HttpOnly`, `SameSite=Strict`, `Secure` when the request arrived over TLS, expiring 30 days after its last use. Failed logins back off exponentially per client address. Integrations use bearer tokens scoped `read` or `admin`. The admin creates viewer accounts, each with a name and password. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin. Under Home Assistant ingress the core trusts HA's login: a request from the Supervisor's ingress address that carries the ingress header acts as admin. This trust is switched on only in the add-on image; any other source on the same port still needs the core's login.
+**Auth.** The first run sets the admin password; there is no registration. Passwords use bcrypt at cost 12, as v4 did. A password longer than bcrypt's 72-byte limit is refused, never silently truncated. The SPA uses a cookie session: `HttpOnly`, `SameSite=Strict`, `Secure` when the request arrived over TLS (the proxy's `X-Forwarded-Proto: https`), expiring 30 days after its last use. Sessions live in memory, at most 64: a restart signs everyone out, and using a session writes nothing to flash. Failed logins back off exponentially per client address: 1 s after the first failure, doubling to 15 min, answered `429` with `Retry-After`; an attempt counts as failed until it succeeds, so concurrent guesses wait too. Integrations use bearer tokens scoped `read` or `admin`. The admin creates viewer accounts, each with a name and password. A viewer or `read` token reads live values and history. Configuration, the state of secrets, the write log and every write need admin. Under Home Assistant ingress the core trusts HA's login: a request from the Supervisor's ingress address that carries the ingress header acts as admin. This trust is switched on only in the add-on image; any other source on the same port still needs the core's login.
 
 **Live.** SSE at `/api/v1/live`: a full snapshot on connect, then deltas only, no replay. One JSON object per tick, serialised once and shared by all clients. A tick is a 1 s window that coalesces every reading changed in it, whatever the poll cadences; a tick with no change sends nothing. Live reads memory, never SQLite.
 
