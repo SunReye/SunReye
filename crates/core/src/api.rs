@@ -31,6 +31,7 @@ const METHOD: Problem = Problem {
     code: "request.method",
 };
 
+mod forecasts;
 mod history;
 
 #[derive(OpenApi)]
@@ -66,7 +67,12 @@ pub fn router(api: Api) -> Router {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(history::history))
-                .with_state((api.history, api.clock)),
+                .with_state((api.history.clone(), api.clock)),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(forecasts::forecasts))
+                .with_state(api.history),
         );
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))

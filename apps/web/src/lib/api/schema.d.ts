@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/forecasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["forecasts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{id}/history": {
         parameters: {
             query?: never;
@@ -135,6 +151,11 @@ export interface components {
         Credentials: {
             password: string;
         };
+        /** @description One series' forecasts, at most 1,500 points. */
+        Forecasts: {
+            /** @description By target. */
+            points: components["schemas"]["Point"][];
+        };
         /** @description Values by device id, then by series name, such as `pv.mppt.power[2]`. */
         Frame: {
             devices: {
@@ -232,6 +253,61 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    forecasts: {
+        parameters: {
+            query: {
+                /** @description A series such as `pv.string.power[3]`. */
+                series: string;
+                /** @description The first target, RFC 3339. */
+                from: string;
+                /** @description The instant after the last target, RFC 3339. */
+                to: string;
+                /** @description Only issues before this instant, RFC 3339; the latest issue when absent. */
+                issuedBefore?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The device id. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Forecasts"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

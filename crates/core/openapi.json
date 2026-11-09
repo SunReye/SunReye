@@ -24,6 +24,22 @@
         ],
         "type": "object"
       },
+      "Forecasts": {
+        "description": "One series' forecasts, at most 1,500 points.",
+        "properties": {
+          "points": {
+            "description": "By target.",
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "type": "object"
+      },
       "Frame": {
         "description": "Values by device id, then by series name, such as `pv.mppt.power[2]`.",
         "properties": {
@@ -226,6 +242,98 @@
             }
           },
           "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}/forecasts": {
+      "get": {
+        "operationId": "forecasts",
+        "parameters": [
+          {
+            "description": "The device id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "A series such as `pv.string.power[3]`.",
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The first target, RFC 3339.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The instant after the last target, RFC 3339.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only issues before this instant, RFC 3339; the latest issue when absent.",
+            "in": "query",
+            "name": "issuedBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forecasts"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
             "content": {
               "application/problem+json": {
                 "schema": {

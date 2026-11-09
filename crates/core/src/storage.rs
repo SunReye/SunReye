@@ -476,6 +476,31 @@ impl Reader {
         })
         .await?
     }
+
+    /// Every stored forecast of `series` with a target from `from` to before `to`, by target,
+    /// then issue.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn forecasts(
+        &self,
+        device: DeviceId,
+        series: &Series,
+        from: SystemTime,
+        to: SystemTime,
+    ) -> Result<Vec<Forecast>, Error> {
+        let name = series.to_string();
+        request(&self.0, |reply| {
+            Request::Forecasting(Forecasting::Forecasts {
+                device,
+                name,
+                from,
+                to,
+                reply,
+            })
+        })
+        .await?
+    }
 }
 
 /// The storage thread's connection, lent to the feature module that owns a table (ADR 19). Its

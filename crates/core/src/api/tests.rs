@@ -20,6 +20,7 @@ use crate::bus::Bus;
 use crate::live::Live;
 use crate::storage::{Problem, Storage};
 
+mod forecasts;
 mod history;
 mod live;
 mod screen;
