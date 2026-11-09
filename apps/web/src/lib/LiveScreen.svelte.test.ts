@@ -3,7 +3,7 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "./api/core.ts";
 import LiveScreen from "./LiveScreen.svelte";
 
-const SNAPSHOT = '{"devices":{"1":{"pv.power":950,"grid.power":-120,"battery.soc":64}}}';
+const SNAPSHOT = '{"devices":{"1":{"pv.power":1950,"grid.power":-120,"battery.soc":64}}}';
 
 /** A test core: one live snapshot, then a held stream; history answers with one point. */
 function testCore(live: Response): Transport & { readonly asked: string[] } {
@@ -32,7 +32,7 @@ function testCore(live: Response): Transport & { readonly asked: string[] } {
   };
 }
 
-test("the screen shows each live power and charts its day", async () => {
+test("the screen shows each live power in the locale's format and charts its day", async () => {
   const transport = testCore(
     new Response(`event: snapshot\ndata: ${SNAPSHOT}\n\n`, {
       headers: { "content-type": "text/event-stream" },
@@ -41,7 +41,7 @@ test("the screen shows each live power and charts its day", async () => {
 
   const screen = await render(LiveScreen, { core: connect(transport) });
 
-  await expect.element(screen.getByText("950 W")).toBeVisible();
+  await expect.element(screen.getByText("1.950 W")).toBeVisible();
   await expect.element(screen.getByText("-120 W")).toBeVisible();
   await expect.element(screen.getByText("battery.soc")).not.toBeInTheDocument();
   await expect.element(screen.getByRole("figure")).toBeVisible();

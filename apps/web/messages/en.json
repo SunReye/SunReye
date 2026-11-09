@@ -23,5 +23,6 @@
   "problem_clock_unsynced": "The clock is not synchronised; history is held.",
   "problem_internal": "Internal error in the SunReye core.",
   "problem_http": "The server answered with HTTP {status}.",
-  "problem_unknown": "Unknown error: {code}"
+  "problem_unknown": "Unknown error: {code}",
+  "chart_forecast": "{name} forecast"
 }

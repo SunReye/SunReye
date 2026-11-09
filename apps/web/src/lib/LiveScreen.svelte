@@ -2,6 +2,7 @@
   import type { Core, Live } from "./api/core";
   import DayChart from "./DayChart.svelte";
   import { problemText } from "./i18n/problems";
+  import { getLocale } from "./paraglide/runtime.js";
 
   let { core }: { core: Core } = $props();
 
@@ -13,7 +14,7 @@
     }),
   );
 
-  const watts = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+  const watts = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
 
   /** Each device's power series, sorted by name; other roles wait for their own screens. */
   const devices = $derived(
@@ -38,6 +39,7 @@
         {#each device.power as [series, value] (series)}
           <div>
             <dt>{series}</dt>
+            <!-- An SI symbol, the same in every locale. -->
             <dd>{watts.format(value)} W</dd>
           </div>
         {/each}

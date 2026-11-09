@@ -23,5 +23,6 @@
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",
-  "problem_unknown": "Unbekannter Fehler: {code}"
+  "problem_unknown": "Unbekannter Fehler: {code}",
+  "chart_forecast": "{name} (Prognose)"
 }
