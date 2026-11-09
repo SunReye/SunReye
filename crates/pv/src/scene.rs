@@ -135,6 +135,13 @@ impl Scene {
         blocks.chain(boxes).collect()
     }
 
+    /// What the scene shades with (ADR 17): each face as a fan of triangles, then the solids.
+    #[must_use]
+    pub fn occluders(&self) -> Vec<Occluder> {
+        let triangles = self.faces().into_iter().flat_map(|face| fan(&face.corners));
+        triangles.chain(self.solids()).collect()
+    }
+
     /// The round obstacles: chimneys and poles, and each tree as its trunk and its crown.
     #[must_use]
     pub fn solids(&self) -> Vec<Occluder> {
@@ -183,6 +190,19 @@ impl Scene {
             north: self.north,
         }
     }
+}
+
+/// A convex polygon as triangles sharing its first corner.
+fn fan(corners: &[Point]) -> Vec<Occluder> {
+    let Some((&first, rest)) = corners.split_first() else {
+        return Vec::new();
+    };
+    rest.windows(2)
+        .filter_map(|pair| match *pair {
+            [b, c] => Some(Occluder::Triangle([first, b, c])),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Where a footprint stands: its corner, its turn and the compass.
