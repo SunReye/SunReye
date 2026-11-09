@@ -1,0 +1,9 @@
+# The image builds the core from these alone (packaging/Dockerfile).
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates/
+!profiles/
+!apps/web/build/
+**/target/

@@ -1,0 +1,23 @@
+# The v5 add-on, beside v3's with its own slug (ADR 13). Supervisor pulls the prebuilt image;
+# `version` must name an image tag that already exists.
+name: SunReye 5
+version: 5.0.0
+slug: sunreye_v5
+description: Solar and battery monitoring for local inverters.
+url: https://github.com/SunReye/SunReye
+arch:
+  - amd64
+  - aarch64
+image: ghcr.io/sunreye/sunreye-v5-addon-{arch}
+startup: services
+boot: auto
+# The SPA in HA's sidebar; HA's login stands in for the core's (ADR 9). The live view is an SSE
+# stream, which Supervisor buffers without ingress_stream.
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:solar-power-variant
+panel_title: SunReye 5
+# Read-only, for the import from v3's export (ADR 18).
+map:
+  - share:ro
