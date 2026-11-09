@@ -114,6 +114,19 @@ impl Catalogue {
         changed.extend(settings.into_iter().map(|s| (id.to_owned(), s)));
     }
 
+    /// Every profile served, by id.
+    #[must_use]
+    pub fn profiles(&self) -> Vec<Arc<Profile>> {
+        let profiles = self.served.read().unwrap_or_else(PoisonError::into_inner);
+        let mut all: Vec<_> = profiles
+            .values()
+            .map(|held| Arc::clone(&held.profile))
+            .collect();
+        drop(profiles);
+        all.sort_by(|a, b| a.id.cmp(&b.id));
+        all
+    }
+
     #[must_use]
     pub fn get(&self, id: &str) -> Option<Arc<Profile>> {
         self.held(id).map(|held| held.profile)

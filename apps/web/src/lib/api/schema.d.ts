@@ -441,6 +441,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scans the local network for devices and proposes a profile and unit id for each (ADR 6). Read
+         *     only; an endpoint already configured is not touched.
+         */
+        post: operations["scan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -721,7 +741,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -915,6 +935,15 @@ export interface components {
         Forecasts: {
             /** @description By target. */
             points: components["schemas"]["ForecastPoint"][];
+        };
+        /** @description An endpoint that took a connection, and the devices proposed behind it. */
+        Found: {
+            /** @description Empty when no profile's identify probe was answered: the homeowner enters it by hand. */
+            devices: components["schemas"]["Proposal"][];
+            host: string;
+            /** Format: int32 */
+            port: number;
+            transport: components["schemas"]["Transport"];
         };
         /** @description Values by device id, then by series name, such as `pv.mppt.power[2]`. */
         Frame: {
@@ -1150,6 +1179,12 @@ export interface components {
         Problems: {
             problems: components["schemas"]["Condition"][];
         };
+        /** @description A device the identify probe of a profile found. */
+        Proposal: {
+            profile: string;
+            /** Format: int32 */
+            unit: number;
+        };
         /** @description Modules in series on one plane; strings on one MPPT input are in parallel. */
         PvString: components["schemas"]["Wiring"] & {
             /**
@@ -1206,6 +1241,21 @@ export interface components {
             kind: "hip";
             /** Format: double */
             pitch: number;
+        };
+        /** @description What a scan found. */
+        ScanReport: {
+            /** @description Every endpoint that took a connection, by address. */
+            endpoints: components["schemas"]["Found"][];
+            /** @description The network scanned. */
+            subnet: string;
+        };
+        /** @description What to scan. */
+        ScanRequest: {
+            /**
+             * @description A private IPv4 network of at most a /24, such as `192.168.1.0/24`; by default the /24 of
+             *     the core's own address.
+             */
+            subnet?: string | null;
         };
         /** @description The geometry of a plant and where its modules sit. */
         Scene: {
@@ -2457,6 +2507,37 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    scan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanReport"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

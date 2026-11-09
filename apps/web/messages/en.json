@@ -52,6 +52,8 @@
   "problem_device_profile": "The device names an unknown profile.",
   "problem_device_profile_change": "A device's profile cannot be changed; its history is stored in that profile.",
   "problem_device_address": "Another device already uses this unit id on the same endpoint.",
+  "problem_scan_subnet": "Scan a private network of at most 256 addresses, such as 192.168.1.0/24.",
+  "problem_scan_busy": "A scan is already running.",
   "problem_setting_none": "The device's profile declares no such setting.",
   "problem_setting_read_only": "This value is read, never written.",
   "problem_setting_value": "The value is outside the setting's range or steps.",

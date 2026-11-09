@@ -268,6 +268,8 @@
           "device.profile",
           "device.profile-change",
           "device.address",
+          "scan.subnet",
+          "scan.busy",
           "setting.none",
           "setting.read-only",
           "setting.value",
@@ -790,6 +792,36 @@
         },
         "required": [
           "points"
+        ],
+        "type": "object"
+      },
+      "Found": {
+        "description": "An endpoint that took a connection, and the devices proposed behind it.",
+        "properties": {
+          "devices": {
+            "description": "Empty when no profile's identify probe was answered: the homeowner enters it by hand.",
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "type": "array"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/Transport"
+          }
+        },
+        "required": [
+          "transport",
+          "host",
+          "port",
+          "devices"
         ],
         "type": "object"
       },
@@ -1426,6 +1458,24 @@
         ],
         "type": "object"
       },
+      "Proposal": {
+        "description": "A device the identify probe of a profile found.",
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "unit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profile",
+          "unit"
+        ],
+        "type": "object"
+      },
       "PvString": {
         "allOf": [
           {
@@ -1627,6 +1677,41 @@
             "type": "object"
           }
         ]
+      },
+      "ScanReport": {
+        "description": "What a scan found.",
+        "properties": {
+          "endpoints": {
+            "description": "Every endpoint that took a connection, by address.",
+            "items": {
+              "$ref": "#/components/schemas/Found"
+            },
+            "type": "array"
+          },
+          "subnet": {
+            "description": "The network scanned.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subnet",
+          "endpoints"
+        ],
+        "type": "object"
+      },
+      "ScanRequest": {
+        "additionalProperties": false,
+        "description": "What to scan.",
+        "properties": {
+          "subnet": {
+            "description": "A private IPv4 network of at most a /24, such as `192.168.1.0/24`; by default the /24 of\nthe core's own address.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
       },
       "Scene": {
         "additionalProperties": false,
@@ -3419,6 +3504,42 @@
           }
         },
         "summary": "The live value of a series such as `grid.power` or `grid.phase.current[2]`, from the `plant`\ndevice or one device, in EVCC's sign convention: a battery is positive when discharging. A\nseries without a live value, such as one the device does not report, is `role.none`."
+      }
+    },
+    "/api/v1/scan": {
+      "post": {
+        "operationId": "scan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanReport"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Scans the local network for devices and proposes a profile and unit id for each (ADR 6). Read\nonly; an endpoint already configured is not touched."
       }
     },
     "/api/v1/session": {

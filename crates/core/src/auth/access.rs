@@ -55,6 +55,7 @@ const ROUTES: &[(Method, &str, Access)] = &[
         Admin,
     ),
     (Method::GET, "/api/v1/writes", Admin),
+    (Method::POST, "/api/v1/scan", Admin),
     (Method::GET, "/api/v1/location", Admin),
     (Method::PUT, "/api/v1/location", Admin),
     (Method::GET, "/api/v1/changes", Admin),

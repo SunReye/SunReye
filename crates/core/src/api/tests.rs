@@ -24,6 +24,7 @@ use crate::live::Live;
 use crate::location::PlantLocation;
 use crate::profiles::fake::Host;
 use crate::profiles::{Keys, Profiles};
+use crate::scan::Scanner;
 use crate::storage::{Problem, Storage};
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
@@ -40,6 +41,7 @@ mod location;
 mod mqtt;
 mod profiles;
 mod roles;
+mod scan;
 mod screen;
 mod secrets;
 mod settings;
@@ -75,6 +77,24 @@ impl Core {
 
     /// A core that trusts Home Assistant ingress from `ingress`, and profiles signed by `keys`.
     async fn trusting(path: &Path, ingress: Option<IpAddr>, keys: Option<Keys>) -> Self {
+        Self::build(path, ingress, keys, quiet()).await
+    }
+
+    /// A signed-in core whose setup scan is `scanner`; returns it and the session's `Set-Cookie`.
+    async fn scanning(path: &Path, scanner: Scanner) -> (Self, String) {
+        let core = Self::build(path, None, None, scanner).await;
+        let setup = core.send(post("/api/v1/setup", "correct horse")).await;
+        assert_eq!(setup.status(), StatusCode::NO_CONTENT);
+        let set_cookie = core.sign_in(post("/api/v1/login", "correct horse")).await;
+        (core, set_cookie)
+    }
+
+    async fn build(
+        path: &Path,
+        ingress: Option<IpAddr>,
+        keys: Option<Keys>,
+        scanner: Scanner,
+    ) -> Self {
         let bus = Bus::default();
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database(), ingress).await.unwrap();
@@ -100,7 +120,8 @@ impl Core {
                 Inverters::default(),
             )
             .await
-            .unwrap(),
+            .unwrap()
+            .scanning(scanner),
             changes: Changes::new(storage.database()),
             location: PlantLocation::open(storage.database()).await.unwrap(),
             profiles,
@@ -607,4 +628,9 @@ async fn the_openapi_document_lists_every_problem_code() {
         schemas["Condition"]["properties"]["code"]["$ref"],
         reference
     );
+}
+
+/// A setup scan that touches nothing: no ports, and no home subnet.
+fn quiet() -> Scanner {
+    Scanner::new(Vec::new(), scan::LIMITS, || None)
 }

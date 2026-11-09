@@ -386,6 +386,10 @@ pub enum Code {
     DeviceProfileChange,
     #[serde(rename = "device.address")]
     DeviceAddress,
+    #[serde(rename = "scan.subnet")]
+    ScanSubnet,
+    #[serde(rename = "scan.busy")]
+    ScanBusy,
     #[serde(rename = "setting.none")]
     SettingNone,
     #[serde(rename = "setting.read-only")]

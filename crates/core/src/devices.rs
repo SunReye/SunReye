@@ -26,6 +26,7 @@ use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::mqtt;
 use crate::profiles::Catalogue;
+use crate::scan::{self, Scanner};
 use crate::settings::{
     self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
 };
@@ -226,6 +227,7 @@ pub struct Devices {
     running: Arc<Mutex<Vec<Running>>>,
     /// Changed only under `running`'s lock.
     brokers: Arc<std::sync::Mutex<Vec<Brokered>>>,
+    scanner: Scanner,
 }
 
 impl std::fmt::Debug for Devices {
@@ -255,11 +257,30 @@ impl Devices {
             inverters,
             running: Arc::default(),
             brokers: Arc::default(),
+            scanner: Scanner::lan(),
         };
         let mut running = devices.running.lock().await;
         devices.restart(&mut running).await?;
         drop(running);
         Ok(devices)
+    }
+
+    /// Scans with `scanner` in place of the LAN's.
+    #[cfg(test)]
+    #[must_use]
+    pub fn scanning(mut self, scanner: Scanner) -> Self {
+        self.scanner = scanner;
+        self
+    }
+
+    /// Runs the setup scan over `subnet`, leaving every configured endpoint to its task.
+    async fn scan(&self, subnet: Option<&str>) -> Result<scan::ScanReport, Problem> {
+        let configured = self.connections().await.map_err(|_| INTERNAL)?;
+        let configured = configured.into_iter().map(|c| (c.reach.host, c.reach.port));
+        let profiles = self.catalogue.profiles();
+        self.scanner
+            .run(subnet, configured.collect(), &profiles)
+            .await
     }
 
     /// Every connection, by id.
