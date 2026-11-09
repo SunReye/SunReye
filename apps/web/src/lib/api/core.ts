@@ -12,6 +12,11 @@ export type History = components["schemas"]["History"];
 
 export type Forecasts = components["schemas"]["Forecasts"];
 
+export type Statistics = components["schemas"]["Statistics"];
+
+/** A plant-local calendar period statistics are cut in (ADR 3). */
+export type Period = components["schemas"]["Period"];
+
 export type Layout = components["schemas"]["Layout"];
 
 export type StringDraft = components["schemas"]["StringDraft"];
@@ -68,6 +73,14 @@ export interface Core extends Setup, CarBodies, Imports, PvModel {
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
   history(device: number, series: string, from: Date, to: Date): Promise<History | Problem>;
+  /** One series' figures per plant-local period starting from `from` to before `to`. */
+  statistics(
+    device: number,
+    series: string,
+    period: Period,
+    from: Date,
+    to: Date,
+  ): Promise<Statistics | Problem>;
   /** The latest forecast of each target of one series from `from` to before `to`. */
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
   /** The PV layout in force now. */
@@ -113,6 +126,16 @@ export function connect(transport: Transport): Core {
     history: async (device, series, from, to) => {
       const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
         params: { path: { id: device }, query: span(series, from, to) },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+    statistics: async (device, series, period, from, to) => {
+      const { data, error, response } = await client.GET("/api/v1/devices/{id}/statistics", {
+        params: {
+          path: { id: device },
+          query: { series, period, from: from.toISOString(), to: to.toISOString() },
+        },
       });
 
       return data ?? refusal(error, response.status);
