@@ -586,7 +586,7 @@ async fn capabilities_need_a_session() {
 }
 
 #[tokio::test]
-async fn problems_report_an_unsynced_clock() {
+async fn problems_report_an_unsynced_clock_and_a_full_disk() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
     let problems = || with_cookie(&set_cookie, get("/api/v1/problems"));
@@ -595,11 +595,12 @@ async fn problems_report_an_unsynced_clock() {
         serde_json::json!({ "problems": [] })
     );
 
-    core.problems.send_replace(vec![Problem::ClockUnsynced]);
+    core.problems
+        .send_replace(vec![Problem::ClockUnsynced, Problem::StorageFull]);
 
     assert_eq!(
         json(core.send(problems()).await).await,
-        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }] })
+        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }, { "code": "storage.full" }] })
     );
 }
 

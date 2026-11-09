@@ -81,6 +81,7 @@
   "problem_backup_name": "Gib der Sicherung einen einfachen Dateinamen: ohne Ordner, nicht mit einem Punkt am Anfang.",
   "problem_backup_exists": "In /share gibt es schon eine Datei mit diesem Namen; eine Sicherung überschreibt keine.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
+  "problem_storage_full": "Der Datenträger ist voll; der Verlauf wird nicht gespeichert, Live-Werte laufen weiter.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",
   "problem_unknown": "Unbekannter Fehler: {code}",

@@ -8,7 +8,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 ## Decision
 
-**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Each install is one plant and generates a stable install id (a UUID) at first run; local tables carry no plant key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
+**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. A file without it, made by another tool, is converted by one full `VACUUM` when the core opens it; every file the core creates has it. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Each install is one plant and generates a stable install id (a UUID) at first run; local tables carry no plant key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
 
 **Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at rollup boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
 
@@ -34,11 +34,11 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 **Clock.** Low-power hosts boot without a synced clock. No change point is written at or before the last stored instant of its series; a backwards step is recorded as a gap and writing continues. Until the wall clock is later than both the build time and the last stored instant, history writing is held, live serving continues, and the API reports `clock.unsynced`.
 
-**Retention.** Hourly and daily rollups are kept forever. Change-point retention is a setting, 5 years by default. Estimated, not measured: a hybrid inverter polled every 5 s with the default deadbands stores roughly 100 to 300 MB per device-year. Expiry deletes whole blocks and returns pages in small incremental-vacuum steps, so the file shrinks.
+**Retention.** Hourly and daily rollups are kept forever. Change-point retention is a setting in whole days, 1827 by default: five years, leap days included. Estimated, not measured: a hybrid inverter polled every 5 s with the default deadbands stores roughly 100 to 300 MB per device-year. An hour expires once it ends before the last stored instant minus retention. Expiry runs at each clock tick and deletes whole blocks, at most 4096 a tick in batches of 256, each batch followed by an incremental vacuum, so the file shrinks. A rebuild starts no earlier than the first plant-local day whose change points, and the value in force at its start, are all retained: older rollups stay as they were cut.
 
 **Migrations and backup.** Forward-only numbered SQL, embedded and applied at startup in one transaction. The core refuses a database whose schema is newer than it knows. Backup uses SQLite's online backup API into a file the admin names, through the API and the CLI, without secrets unless asked (ADR 7) but always with the core's identity key (ADR 16). A backup is an uncompressed tar, mode 0600, holding `core.sqlite` and `cars/<sha256>.glb` (ADR 20); it never overwrites a file. `POST /api/v1/backups` writes it under `/share`, where the import reads (ADR 18), by a plain file name. `sunreye backup <file> [--secrets]` runs beside a running core. `sunreye restore <file>` replaces the file and `cars/` while the core is stopped: a running core holds a lock on the data directory, and a restore refuses while it does.
 
-**Full disk.** History writing stops, live serving continues, the API reports `storage.full`. A prune task deletes expired blocks in small batches.
+**Full disk.** History writing stops, live serving continues, the API reports `storage.full` until a write of change points succeeds. The change points of a failed write are lost: each of their series gets a gap at the first lost point, written with the next ones, and its next reading is stored whatever the deadband. Expiry keeps running and frees space.
 
 ## Considered options
 

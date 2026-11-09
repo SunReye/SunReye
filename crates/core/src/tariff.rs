@@ -22,7 +22,7 @@ use tokio::sync::watch;
 use crate::api::{Code, Problem};
 use crate::bus::{Bus, SeriesId};
 use crate::changes;
-use crate::storage::{Database, Declarer, Error, Reader, Rewriter, Storage};
+use crate::storage::{Database, Declarer, Error, Reader, Retention, Rewriter, Storage};
 
 pub use device::{DEVICE, TariffDevice};
 
@@ -175,6 +175,8 @@ pub struct Tariffs {
     declarer: Declarer,
     reader: Reader,
     rewriter: Rewriter,
+    /// Reprice reaches back no further than change points are kept.
+    retention: Retention,
     /// `price.import` and `price.export`.
     prices: [SeriesId; 2],
     /// `cost.import.rate`, `cost.export.rate` and `cost.savings.rate`.
@@ -193,6 +195,7 @@ impl Tariffs {
             declarer: storage.declarer(),
             reader: storage.reader(),
             rewriter: storage.rewriter(),
+            retention: storage.retention(),
             prices: device::PRICES.map(|role| bus.intern(role, None)),
             costs: device::COSTS.map(|role| bus.intern(role, None)),
         }

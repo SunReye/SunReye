@@ -199,9 +199,9 @@ async fn repricing_corrects_the_past_within_retention_and_is_logged() {
     let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
     let reprice = |tariff: &Value| send("POST", "/api/v1/tariff/reprice", tariff);
 
-    // Five years of 365.25 days before 2026-11-09 00:00 is 2021-11-08 18:00.
+    // The default retention of 1827 days before 2026-11-09 00:00 is 2021-11-08 00:00.
     let (status, body) = core
-        .ask(&set_cookie, reprice(&weeknights("2021-11-08T17:59:59Z")))
+        .ask(&set_cookie, reprice(&weeknights("2021-11-07T23:59:59Z")))
         .await;
     assert_eq!(
         (status, &body["code"]),

@@ -81,6 +81,7 @@
   "problem_backup_name": "Name the backup with a plain file name: no folder, not starting with a dot.",
   "problem_backup_exists": "A file of that name already exists in /share; a backup never overwrites one.",
   "problem_clock_unsynced": "The clock is not synchronised; history is held.",
+  "problem_storage_full": "The disk is full; history is not stored, live values continue.",
   "problem_internal": "Internal error in the SunReye core.",
   "problem_http": "The server answered with HTTP {status}.",
   "problem_unknown": "Unknown error: {code}",

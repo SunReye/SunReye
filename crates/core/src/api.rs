@@ -510,6 +510,9 @@ pub enum Code {
     BackupExists,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
+    /// The disk is full: history stops, live values continue.
+    #[serde(rename = "storage.full")]
+    StorageFull,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -518,6 +521,7 @@ impl From<storage::Problem> for Code {
     fn from(problem: storage::Problem) -> Self {
         match problem {
             storage::Problem::ClockUnsynced => Self::ClockUnsynced,
+            storage::Problem::StorageFull => Self::StorageFull,
         }
     }
 }

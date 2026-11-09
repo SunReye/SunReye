@@ -465,6 +465,7 @@
           "backup.name",
           "backup.exists",
           "clock.unsynced",
+          "storage.full",
           "internal"
         ],
         "type": "string"

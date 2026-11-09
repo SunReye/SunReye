@@ -89,6 +89,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "backup.name": m.problem_backup_name,
   "backup.exists": m.problem_backup_exists,
   "clock.unsynced": m.problem_clock_unsynced,
+  "storage.full": m.problem_storage_full,
   internal: m.problem_internal,
 };
 

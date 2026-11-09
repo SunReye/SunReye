@@ -9,6 +9,7 @@ use super::{ChangePoint, Issue, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod import;
+mod retention;
 mod rollups;
 
 /// 2026-08-26 12:00 UTC, on an hour.
