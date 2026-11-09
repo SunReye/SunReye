@@ -192,6 +192,14 @@ _Avoid_: Virtual device, coded device
 A value issued at one time about a later target time.
 _Avoid_: Prediction, projection
 
+**Tariff**:
+The prices the plant pays for a kWh bought and earns for a kWh fed in, each a base price with optional bands, applying from a date.
+_Avoid_: Rate plan, contract
+
+**Band**:
+A tariff price that holds on given weekdays for a span of the plant-local wall-clock day.
+_Avoid_: Time slot, period, window
+
 ## Remote access
 
 **Install id**:

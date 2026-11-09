@@ -39,6 +39,8 @@ pub enum Subject {
     Token,
     /// A plant topology version (ADR 14).
     Topology,
+    /// A tariff version (ADR 12).
+    Tariff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -133,7 +135,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer`, `token` or `topology`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology` or `tariff`.
     subject: String,
     /// The subject's id.
     id: u32,

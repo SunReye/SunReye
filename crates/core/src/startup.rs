@@ -22,6 +22,7 @@ use crate::plant::Plant;
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
+use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 use crate::weather::{self, Provider, Weather};
 
@@ -197,17 +198,8 @@ pub async fn serve(
     let file = boot.data_dir.join("core.sqlite");
     let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
     let (problems, watched) = problems(&storage).await?;
-    let inverters = Inverters::default();
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
-    let devices = Devices::start(
-        storage.database(),
-        storage.declarer(),
-        profiles.catalogue(),
-        bus.clone(),
-        inverters.clone(),
-    )
-    .await?;
-    let layouts = Layouts::new(storage.database(), inverters);
+    let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
     let topologies = Topologies::new(storage.database());
     let _computed = Computed::spawn(&storage, &layouts, &topologies, &bus);
     let location = PlantLocation::open(storage.database()).await?;
@@ -229,6 +221,7 @@ pub async fn serve(
         location,
         profiles,
         topologies,
+        tariffs: Tariffs::new(storage.database()),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
@@ -241,6 +234,24 @@ pub async fn serve(
     until(listener, api::router(api), background, shutdown).await?;
     storage.shutdown().await?;
     Ok(())
+}
+
+/// The registered devices, and the PV layouts over their inverters.
+async fn devices(
+    storage: &Storage,
+    profiles: &Profiles,
+    bus: &Bus,
+) -> Result<(Devices, Layouts), Error> {
+    let inverters = Inverters::default();
+    let devices = Devices::start(
+        storage.database(),
+        storage.declarer(),
+        profiles.catalogue(),
+        bus.clone(),
+        inverters.clone(),
+    )
+    .await?;
+    Ok((devices, Layouts::new(storage.database(), inverters)))
 }
 
 /// Serves `router` on `listener` until `background` ends or `shutdown` resolves, then lets open

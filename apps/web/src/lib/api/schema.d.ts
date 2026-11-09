@@ -358,6 +358,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tariff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tariff in force at an instant. */
+        get: operations["tariff"];
+        /**
+         * Changes the tariff from an instant on. Editing changes only the future: prices already in force
+         *     stay as they were.
+         */
+        put: operations["change_tariff"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tokens": {
         parameters: {
             query?: never;
@@ -472,6 +493,23 @@ export interface components {
         Balance: {
             days: components["schemas"]["Day"][];
         };
+        /**
+         * @description A price on given weekdays for a span of the plant-local wall-clock day. In the hour a DST
+         *     change skips it never applies; in the hour it repeats it applies twice.
+         */
+        BandView: {
+            /** @description ISO weekdays, Monday 1 to Sunday 7. */
+            days: number[];
+            /** @description `HH:MM`, from 00:00. */
+            from: string;
+            /**
+             * Format: double
+             * @description EUR/kWh.
+             */
+            price: number;
+            /** @description `HH:MM`, up to 24:00; later than `from`. */
+            to: string;
+        };
         /** @description The inclusive bounds of a setting's value. */
         Bounds: {
             /** Format: double */
@@ -500,7 +538,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "secret.missing" | "secret.value" | "index.value" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "secret.missing" | "secret.value" | "index.value" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -842,6 +880,16 @@ export interface components {
             profiles: components["schemas"]["Offer"][];
             url: string;
         };
+        /** @description One flow's prices. */
+        ScheduleView: {
+            /** @description Bands of one flow never share a minute of a weekday. */
+            bands: components["schemas"]["BandView"][];
+            /**
+             * Format: double
+             * @description EUR/kWh, signed; charged wherever no band applies.
+             */
+            price: number;
+        };
         /** @description An inclusive range of profile schemas. */
         Schemas: {
             /** Format: int32 */
@@ -902,6 +950,15 @@ export interface components {
             transports: string[];
             /** @description The core's version. */
             version: string;
+        };
+        /** @description One tariff version, as the API reads it. */
+        Tariff: {
+            /** @description RFC 3339, UTC. */
+            appliesFrom: string;
+            /** @description What a kWh fed into the grid earns. */
+            export: components["schemas"]["ScheduleView"];
+            /** @description What a kWh bought from the grid costs. */
+            import: components["schemas"]["ScheduleView"];
         };
         /**
          * @description `raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or
@@ -1860,6 +1917,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    tariff: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339; now when absent. */
+                at?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_tariff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Change"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tariff"];
+                };
             };
             "4XX": {
                 headers: {

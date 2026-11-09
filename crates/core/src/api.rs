@@ -26,6 +26,7 @@ use crate::location::PlantLocation;
 use crate::profiles::Profiles;
 use crate::spa;
 use crate::storage;
+use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 use crate::transport::Endpoint;
 
@@ -62,6 +63,7 @@ pub struct Api {
     pub location: PlantLocation,
     pub profiles: Profiles,
     pub topologies: Topologies,
+    pub tariffs: Tariffs,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -97,6 +99,7 @@ pub fn router(api: Api) -> Router {
                 .routes(api.devices.clone(), Clock::clone(&api.clock)),
         )
         .merge(api.devices.routes(Clock::clone(&api.clock)))
+        .merge(api.tariffs.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
@@ -346,6 +349,12 @@ pub enum Code {
     TopologyRole,
     #[serde(rename = "topology.device")]
     TopologyDevice,
+    #[serde(rename = "tariff.none")]
+    TariffNone,
+    #[serde(rename = "tariff.band")]
+    TariffBand,
+    #[serde(rename = "tariff.past")]
+    TariffPast,
     #[serde(rename = "location.none")]
     LocationNone,
     #[serde(rename = "location.value")]
