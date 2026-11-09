@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use sunreye_profile::Profile;
+use sunreye_profile::{Framing, Profile};
 
 use super::{Applied, Job, Outcome};
 use crate::bus::{Bus, DeviceId};
@@ -77,7 +77,10 @@ fn echo(at: u16) -> Vec<u8> {
 }
 
 async fn run(device: Device, job: Job, exchanges: Vec<Exchange>) -> Applied {
-    let endpoint = Endpoint::Sim(Capture { exchanges });
+    let endpoint = Endpoint::Sim(Capture {
+        framing: Framing::Tcp,
+        exchanges,
+    });
     let task = endpoint::spawn(endpoint, vec![device], Bus::default());
     task.write(job).await.unwrap()
 }

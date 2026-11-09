@@ -760,7 +760,8 @@
       "Transport": {
         "description": "The wire framing on a connection's endpoint.",
         "enum": [
-          "modbus-tcp"
+          "modbus-tcp",
+          "solarman-v5"
         ],
         "type": "string"
       },

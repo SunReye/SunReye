@@ -76,6 +76,7 @@ impl From<Refusal> for Problem {
 #[serde(rename_all = "kebab-case")]
 pub enum Transport {
     ModbusTcp,
+    SolarmanV5,
 }
 
 /// How the core reaches an endpoint, without its secrets.

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use sunreye_profile::{Profile, Unit};
+use sunreye_profile::{Framing, Profile, Unit};
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Instant;
 
@@ -81,6 +81,7 @@ async fn one_poll_cycle_publishes_typed_readings() {
     let mut readings = bus.subscribe();
     let before = SystemTime::now();
     let capture = Capture {
+        framing: Framing::Tcp,
         exchanges: one_cycle(),
     };
     let _task = spawn(Endpoint::Sim(capture), vec![device()], bus.clone());
@@ -102,7 +103,10 @@ async fn an_error_backs_off_and_the_last_good_value_reports_its_age() {
     exchanges.push(Exchange::Request(unhex("000200000006010301f40003")));
     let start = Instant::now();
     let task = spawn(
-        Endpoint::Sim(Capture { exchanges }),
+        Endpoint::Sim(Capture {
+            framing: Framing::Tcp,
+            exchanges,
+        }),
         vec![device()],
         bus.clone(),
     );
@@ -133,6 +137,116 @@ async fn an_error_backs_off_and_the_last_good_value_reports_its_age() {
     assert!(task.latest().iter().all(|(_, age)| age.is_zero()));
 }
 
+/// Registers 500, 501 and 520: one block across the gap at Solarman's tolerance of 32.
+const GAPPED: &str = r#"{
+    "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+    "requires": ["modbus", "u16", "i16"],
+    "quantities": [
+        { "key": "pv1", "role": "pv.mppt.power", "index": 1, "register": 500, "type": "u16" },
+        { "key": "battery", "role": "battery.power", "register": 501, "type": "i16" },
+        { "key": "pv2", "role": "pv.mppt.power", "index": 2, "register": 520, "type": "u16" }
+    ]
+}"#;
+
+/// The Modbus RTU CRC16, written out from its definition: reflected, polynomial 0xA001.
+fn crc16(bytes: &[u8]) -> [u8; 2] {
+    let mut crc: u16 = 0xffff;
+    for byte in bytes {
+        crc ^= u16::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xa001
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    crc.to_le_bytes()
+}
+
+/// A V5 frame from the logger `0xbce20a25`: a request (15-byte business field) or a reply (14).
+fn v5(request: bool, seq: u8, payload: &[u8]) -> Vec<u8> {
+    let (control, business) = if request {
+        (0x4510_u16, 15)
+    } else {
+        (0x1510, 14)
+    };
+    let serial = if request && seq == 0 {
+        [0; 4]
+    } else {
+        [0x25, 0x0a, 0xe2, 0xbc]
+    };
+    let mut frame = vec![0xa5];
+    frame.extend_from_slice(
+        &u16::try_from(business + payload.len())
+            .unwrap()
+            .to_le_bytes(),
+    );
+    frame.extend_from_slice(&control.to_le_bytes());
+    frame.extend_from_slice(&[seq, 0]);
+    frame.extend_from_slice(&serial);
+    frame.push(if request { 2 } else { 1 });
+    frame.resize(frame.len() + business - 1, 0);
+    frame.extend_from_slice(payload);
+    let sum = frame[1..].iter().fold(0_u8, |sum, b| sum.wrapping_add(*b));
+    frame.extend_from_slice(&[sum, 0x15]);
+    frame
+}
+
+/// An RTU frame of unit 1 with its CRC.
+fn rtu(pdu: &[u8]) -> Vec<u8> {
+    let mut frame = vec![1];
+    frame.extend_from_slice(pdu);
+    let crc = crc16(&frame);
+    frame.extend_from_slice(&crc);
+    frame
+}
+
+fn read(seq: u8, start: u16, count: u8, reply: &[u8]) -> [Exchange; 2] {
+    let [s0, s1] = start.to_be_bytes();
+    [
+        Exchange::Request(v5(true, seq, &rtu(&[3, s0, s1, 0, count]))),
+        Exchange::Reply(vec![v5(false, seq, &rtu(reply))]),
+    ]
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_merged_block_refused_with_exception_2_is_split_and_stays_split() {
+    let mut exchanges = vec![
+        Exchange::Request(v5(true, 0, &rtu(&[3, 0, 3, 0, 6]))),
+        Exchange::Reply(vec![v5(false, 0, &[6, 0])]),
+    ];
+    exchanges.extend(read(1, 500, 21, &[0x83, 2]));
+    exchanges.extend(read(2, 500, 2, &[3, 4, 0x04, 0xd2, 0xfc, 0x18]));
+    exchanges.extend(read(3, 520, 1, &[3, 2, 0, 7]));
+    exchanges.extend(read(4, 500, 2, &[3, 4, 0x04, 0xd2, 0xfc, 0x18]));
+    exchanges.extend(read(5, 520, 1, &[3, 2, 0, 8]));
+    let capture = Capture {
+        framing: Framing::SolarmanV5,
+        exchanges,
+    };
+    let device = Device {
+        profile: Arc::new(Profile::load(GAPPED).unwrap()),
+        ..device()
+    };
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let _task = spawn(Endpoint::Sim(capture), vec![device], bus.clone());
+    let values = async |readings: &mut Receiver<Reading>| {
+        cycle(readings)
+            .await
+            .iter()
+            .map(|r| r.value)
+            .collect::<Vec<_>>()
+    };
+    let two = async { (values(&mut readings).await, values(&mut readings).await) };
+    let (first, second) = tokio::time::timeout(Duration::from_secs(60), two)
+        .await
+        .expect("two cycles within a minute");
+    assert_eq!(first, [1234.0, -1000.0, 7.0]);
+    assert_eq!(second, [1234.0, -1000.0, 8.0]);
+}
+
 #[test]
 fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
     let waits: Vec<u64> = [1, 2, 3, 4, 5, 6, 40]
@@ -142,35 +256,32 @@ fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
     assert_eq!(waits, [5, 10, 20, 40, 60, 60, 60]);
 }
 
-/// The owner's plant (#623) is polled read-only: a cycle of the bundled Deye profile sends only
-/// function 3.
+/// The owner's plant (#623, #624) is polled read-only: a cycle of the bundled Deye profile sends
+/// only function 3, through the gateway and through the Solarman stick, whose probe is a read too.
 #[tokio::test]
 async fn polling_the_bundled_deye_profile_sends_only_reads() {
+    use crate::transport::fake;
     let profile = crate::profiles::Catalogue::bundled()
         .unwrap()
         .get("deye-sg05lp3")
         .unwrap();
-    let blocks = profile
-        .read_plan(sunreye_profile::Framing::Tcp.gap_tolerance())
-        .len();
-    let mut fake = crate::transport::fake::serve().await;
-    let endpoint = Endpoint::ModbusTcp {
-        host: fake.address.ip().to_string(),
-        port: fake.address.port(),
-    };
-    let device = Device {
-        id: DeviceId(1),
-        unit: 0,
-        profile,
-    };
-    let _task = spawn(endpoint, vec![device], Bus::default());
-    let mut functions = Vec::new();
-    for _ in 0..blocks {
-        functions.push(fake.reads.recv().await.unwrap().function);
+    for (mut fake, probes) in [(fake::serve().await, 0), (fake::serve_solarman().await, 1)] {
+        let endpoint = fake.endpoint();
+        let requests = profile.read_plan(endpoint.framing().gap_tolerance()).len() + probes;
+        let device = Device {
+            id: DeviceId(1),
+            unit: 0,
+            profile: Arc::clone(&profile),
+        };
+        let _task = spawn(endpoint, vec![device], Bus::default());
+        let mut functions = Vec::new();
+        for _ in 0..requests {
+            functions.push(fake.reads.recv().await.unwrap().function);
+        }
+        assert_eq!(functions, vec![3; requests]);
+        assert!(
+            fake.writes.try_recv().is_err(),
+            "a poll wrote to the device"
+        );
     }
-    assert_eq!(functions, vec![3; blocks]);
-    assert!(
-        fake.writes.try_recv().is_err(),
-        "a poll wrote to the device"
-    );
 }

@@ -4,6 +4,8 @@ use super::Error;
 
 /// Transaction (2), protocol (2), length (2), unit (1).
 pub const HEADER_LEN: usize = 7;
+/// Where the unit id starts: from it on, a request is the RTU frame without its CRC.
+pub const UNIT_OFFSET: usize = 6;
 /// A function byte plus at most 252 data bytes.
 pub const MAX_PDU: usize = 253;
 /// A whole frame: header and PDU.

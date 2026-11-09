@@ -15,6 +15,7 @@ type Outcome<T> = rusqlite::Result<Result<T, Refusal>>;
 fn transport(name: &str) -> rusqlite::Result<Transport> {
     match name {
         "modbus-tcp" => Ok(Transport::ModbusTcp),
+        "solarman-v5" => Ok(Transport::SolarmanV5),
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -22,6 +23,7 @@ fn transport(name: &str) -> rusqlite::Result<Transport> {
 const fn transport_name(transport: Transport) -> &'static str {
     match transport {
         Transport::ModbusTcp => "modbus-tcp",
+        Transport::SolarmanV5 => "solarman-v5",
     }
 }
 
@@ -300,15 +302,14 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
          WHERE d.unit IS NOT NULL ORDER BY d.id",
     )?
     .query_map([], |row| {
+        let (host, port) = (row.get(4)?, row.get(5)?);
         Ok(Polled {
             id: row.get(0)?,
             unit: row.get(1)?,
             profile: row.get(2)?,
             endpoint: match transport(&row.get::<_, String>(3)?)? {
-                Transport::ModbusTcp => Endpoint::ModbusTcp {
-                    host: row.get(4)?,
-                    port: row.get(5)?,
-                },
+                Transport::ModbusTcp => Endpoint::ModbusTcp { host, port },
+                Transport::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
             },
         })
     })?
