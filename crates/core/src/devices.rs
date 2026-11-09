@@ -35,6 +35,10 @@ const INTERNAL: Problem = Problem {
 };
 /// Who configures devices: the one admin (ADR 9).
 const ACTOR: &str = "admin";
+const COMMUNITY: Problem = Problem {
+    status: StatusCode::CONFLICT,
+    code: Code::SettingCommunity,
+};
 
 /// Why a configuration change was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,9 +312,9 @@ impl Devices {
     /// Changes to devices wait for it, so its task cannot restart mid-write.
     ///
     /// # Errors
-    /// The device or setting is unknown or read-only, the value does not fit, the device's writes
-    /// are off, the setting's minimum interval has not passed, a precondition does not hold, or
-    /// the file cannot be written.
+    /// The device or setting is unknown or read-only, its profile is a community one, the value
+    /// does not fit, the device's writes are off, the setting's minimum interval has not passed, a
+    /// precondition does not hold, or the file cannot be written.
     pub async fn write_setting(
         &self,
         id: u32,
@@ -324,10 +328,7 @@ impl Devices {
             .await
             .map_err(|_| INTERNAL)?
             .ok_or(Refusal::NoDevice)?;
-        let profile = self
-            .catalogue
-            .get(&device.draft.profile)
-            .ok_or(settings::Refusal::None)?;
+        let profile = self.write_profile(&device.draft.profile)?;
         let setting = request.key.clone();
         let last = self
             .database
@@ -373,6 +374,17 @@ impl Devices {
     /// The file cannot be read.
     pub async fn writes(&self) -> Result<Vec<log::Entry>, storage::Error> {
         self.database.run(log::entries).await
+    }
+
+    /// Profile `id`, if official: until the per-setting enable (ADR 8), a community profile
+    /// writes nothing.
+    fn write_profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
+        let profile = self.catalogue.get(id).ok_or(settings::Refusal::None)?;
+        if self.catalogue.official(id) {
+            Ok(profile)
+        } else {
+            Err(COMMUNITY)
+        }
     }
 
     fn check_profile(&self, draft: &DeviceDraft) -> Result<(), Refusal> {

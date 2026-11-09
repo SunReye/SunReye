@@ -52,6 +52,7 @@ fn live_values_and_history_are_read_and_configuration_is_admin() {
         (Method::GET, "/api/v1/devices", Access::Admin),
         (Method::GET, "/api/v1/connections", Access::Admin),
         (Method::GET, "/api/v1/writes", Access::Admin),
+        (Method::POST, "/api/v1/profile-indexes", Access::Admin),
         (
             Method::PUT,
             "/api/v1/devices/{id}/settings/{key}",

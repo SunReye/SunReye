@@ -42,6 +42,8 @@
   "problem_setting_writes_off": "Schreiben ist für dieses Gerät ausgeschaltet.",
   "problem_setting_interval": "Diese Einstellung wurde eben erst geschrieben; warte ihren Mindestabstand ab.",
   "problem_setting_precondition": "Das Gerät ist nicht in einem Zustand, in dem diese Einstellung geschrieben werden kann.",
+  "problem_setting_community": "Ein Community-Profil wird nur lesend geladen: seine Einstellungen werden nicht geschrieben.",
+  "problem_index_value": "Ein Profilindex braucht eine http- oder https-URL.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",

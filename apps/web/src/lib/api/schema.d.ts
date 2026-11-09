@@ -266,6 +266,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/profile-indexes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The official profile index, then each one the admin added, with the outcome of its last check. */
+        get: operations["indexes"];
+        put?: never;
+        /**
+         * Adds a profile index and fetches it at once; its profiles load as community profiles unless
+         *     signed by the profile key.
+         */
+        post: operations["add_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile-indexes/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Checks every index for updates: the only fetch besides adding an index, never on a timer. */
+        post: operations["check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -412,14 +450,14 @@ export interface components {
             id: number;
             /** @description The subject after the change, as its own route reads it; `null` once removed. */
             state?: unknown;
-            /** @description `connection`, `device`, `location`, `viewer` or `token`. */
+            /** @description `connection`, `device`, `index`, `location`, `viewer` or `token`. */
             subject: string;
         };
         /**
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "index.value" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -600,6 +638,14 @@ export interface components {
              */
             width?: number | null;
         };
+        /**
+         * @description Why an index could not be read.
+         * @enum {string}
+         */
+        IndexProblem: "unreachable" | "format";
+        Indexes: {
+            indexes: components["schemas"]["Report"][];
+        };
         /** @description One layout version. */
         Layout: {
             /** @description RFC 3339, UTC. */
@@ -625,6 +671,16 @@ export interface components {
         };
         ModuleTypes: {
             moduleTypes: components["schemas"]["ModuleType"][];
+        };
+        NewIndex: {
+            /** @description The `index.json` URL. */
+            url: string;
+        };
+        /** @description One entry of an index and what became of it. */
+        Offer: {
+            id: string;
+            status: components["schemas"]["Status"];
+            version: string;
         };
         /**
          * @description How a write ended.
@@ -676,6 +732,16 @@ export interface components {
             port: number;
             transport: components["schemas"]["Transport"];
         };
+        /** @description An index and the outcome of its last check. */
+        Report: {
+            /** @description Whether it was checked since the core started. */
+            checked: boolean;
+            /** @description The built-in official index. */
+            official: boolean;
+            problem?: components["schemas"]["IndexProblem"] | null;
+            profiles: components["schemas"]["Offer"][];
+            url: string;
+        };
         /** @description An inclusive range of profile schemas. */
         Schemas: {
             /** Format: int32 */
@@ -708,6 +774,11 @@ export interface components {
              */
             value: number;
         };
+        /**
+         * @description What became of one entry of an index.
+         * @enum {string}
+         */
+        Status: "loaded" | "current" | "newer-core" | "old-schema" | "unreachable" | "hash" | "signature" | "invalid";
         StringDraft: components["schemas"]["Wiring"] & {
             /**
              * Format: int32
@@ -1511,6 +1582,91 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    indexes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Indexes"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_index: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewIndex"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Report"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Indexes"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

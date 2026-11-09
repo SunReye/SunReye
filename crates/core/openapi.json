@@ -47,7 +47,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection`, `device`, `location`, `viewer` or `token`.",
+            "description": "`connection`, `device`, `index`, `location`, `viewer` or `token`.",
             "type": "string"
           }
         },
@@ -106,6 +106,8 @@
           "setting.writes-off",
           "setting.interval",
           "setting.precondition",
+          "setting.community",
+          "index.value",
           "clock.unsynced",
           "internal"
         ],
@@ -575,6 +577,28 @@
         ],
         "type": "object"
       },
+      "IndexProblem": {
+        "description": "Why an index could not be read.",
+        "enum": [
+          "unreachable",
+          "format"
+        ],
+        "type": "string"
+      },
+      "Indexes": {
+        "properties": {
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/Report"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "indexes"
+        ],
+        "type": "object"
+      },
       "Layout": {
         "description": "One layout version.",
         "properties": {
@@ -659,6 +683,38 @@
         },
         "required": [
           "moduleTypes"
+        ],
+        "type": "object"
+      },
+      "NewIndex": {
+        "properties": {
+          "url": {
+            "description": "The `index.json` URL.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "Offer": {
+        "description": "One entry of an index and what became of it.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status"
         ],
         "type": "object"
       },
@@ -791,6 +847,45 @@
         ],
         "type": "object"
       },
+      "Report": {
+        "description": "An index and the outcome of its last check.",
+        "properties": {
+          "checked": {
+            "description": "Whether it was checked since the core started.",
+            "type": "boolean"
+          },
+          "official": {
+            "description": "The built-in official index.",
+            "type": "boolean"
+          },
+          "problem": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IndexProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/Offer"
+            },
+            "type": "array"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "official",
+          "checked",
+          "profiles"
+        ],
+        "type": "object"
+      },
       "Schemas": {
         "description": "An inclusive range of profile schemas.",
         "properties": {
@@ -872,6 +967,20 @@
           "value"
         ],
         "type": "object"
+      },
+      "Status": {
+        "description": "What became of one entry of an index.",
+        "enum": [
+          "loaded",
+          "current",
+          "newer-core",
+          "old-schema",
+          "unreachable",
+          "hash",
+          "signature",
+          "invalid"
+        ],
+        "type": "string"
       },
       "StringDraft": {
         "allOf": [
@@ -1970,6 +2079,92 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/profile-indexes": {
+      "get": {
+        "operationId": "indexes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indexes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The official profile index, then each one the admin added, with the outcome of its last check."
+      },
+      "post": {
+        "operationId": "add_index",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIndex"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a profile index and fetches it at once; its profiles load as community profiles unless\nsigned by the profile key."
+      }
+    },
+    "/api/v1/profile-indexes/check": {
+      "post": {
+        "operationId": "check",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indexes"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Checks every index for updates: the only fetch besides adding an index, never on a timer."
       }
     },
     "/api/v1/session": {
