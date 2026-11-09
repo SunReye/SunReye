@@ -78,6 +78,8 @@
   "problem_import_file": "The file is no SunReye 3 export this version reads.",
   "problem_import_device": "A device mapping names a SunReye 3 device the archive lacks, or a device that does not exist.",
   "problem_import_profile": "The archive lacks the profile of a mapped SunReye 3 device.",
+  "problem_backup_name": "Name the backup with a plain file name: no folder, not starting with a dot.",
+  "problem_backup_exists": "A file of that name already exists in /share; a backup never overwrites one.",
   "problem_clock_unsynced": "The clock is not synchronised; history is held.",
   "problem_internal": "Internal error in the SunReye core.",
   "problem_http": "The server answered with HTTP {status}.",

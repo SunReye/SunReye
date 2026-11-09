@@ -482,3 +482,25 @@ async fn the_data_directory_and_its_database_are_the_cores_alone() {
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn a_second_core_on_the_same_data_directory_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel::<()>();
+    let core = tokio::spawn(serve(listener, boot(dir.path(), None, UNIX_EPOCH), async {
+        stopped.await.ok();
+    }));
+    let json = "Content-Type: application/json\r\n";
+    let password = r#"{"password":"correct horse"}"#;
+    let (status, _) = request(address, "POST", "/api/v1/setup", json, password).await;
+    assert_eq!(status, 204);
+
+    let second = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let refused = serve(second, boot(dir.path(), None, UNIX_EPOCH), async {}).await;
+
+    assert!(matches!(refused, Err(super::Error::Running)), "{refused:?}");
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+}

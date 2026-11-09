@@ -32,6 +32,43 @@
         ],
         "type": "object"
       },
+      "BackupRequest": {
+        "additionalProperties": false,
+        "description": "A backup to write.",
+        "properties": {
+          "name": {
+            "description": "The new file's name under `/share`: no path, not hidden.",
+            "type": "string"
+          },
+          "secrets": {
+            "description": "Whether it holds the connections' secrets.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "BackupWritten": {
+        "description": "A backup written.",
+        "properties": {
+          "bytes": {
+            "description": "Its size in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "Balance": {
         "description": "The days with rolled-up history, in order.",
         "properties": {
@@ -425,6 +462,8 @@
           "import.file",
           "import.device",
           "import.profile",
+          "backup.name",
+          "backup.exists",
           "clock.unsynced",
           "internal"
         ],
@@ -2865,6 +2904,42 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/backups": {
+      "post": {
+        "operationId": "back_up",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupWritten"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Backs up the store and the car bodies into a new file under `/share`, readable by the core's\nuser alone; the secrets only when asked."
+      }
+    },
     "/api/v1/balance": {
       "get": {
         "operationId": "balance",

@@ -41,7 +41,8 @@ ring = "0.17.14"
 # The MQTT client (ADR 10), without TLS: a home broker listens on the LAN. Its async event loop runs
 # on the one Tokio thread; hand-written framing would duplicate its session and keep-alive logic.
 rumqttc = { version = "0.25.1", default-features = false }
-rusqlite = { version = "0.41.1", features = ["bundled"] }
+# `backup`: SQLite's online backup API (ADR 3).
+rusqlite = { version = "0.41.1", features = ["backup", "bundled"] }
 serde.workspace = true
 serde_json.workspace = true
 sunreye-profile.workspace = true

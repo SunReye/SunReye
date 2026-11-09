@@ -11,6 +11,7 @@ use tokio::sync::{oneshot, watch};
 
 use crate::api::{self, Api};
 use crate::auth::Auth;
+use crate::backup::Backups;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
@@ -131,6 +132,8 @@ impl Options {
 pub enum Error {
     Io(std::io::Error),
     Storage(storage::Error),
+    /// Another core runs on the data directory.
+    Running,
     /// The profiles cannot be opened.
     Profiles(profiles::Error),
 }
@@ -140,6 +143,7 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Storage(e) => write!(f, "storage: {e}"),
+            Self::Running => f.write_str("another core runs on the data directory"),
             Self::Profiles(e) => write!(f, "profiles: {e}"),
         }
     }
@@ -189,25 +193,70 @@ pub struct Boot<P, A, S> {
 
 /// Creates `dir` if needed, readable by the core alone (ADR 7): its database holds the connections'
 /// secrets.
-fn private(dir: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn private(dir: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::create_dir_all(dir)?;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+/// Claims the data directory `dir` for as long as the returned file is open; `None` when a core
+/// already holds it. A restore claims it too, so it never replaces a store in use.
+pub(crate) fn claim(dir: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(dir.join("core.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// Makes the data directory `dir` private, claims it for as long as the returned file is open,
+/// and opens its store.
+fn open(
+    dir: &std::path::Path,
+    build: SystemTime,
+    bus: &Bus,
+) -> Result<(std::fs::File, Storage), Error> {
+    private(dir)?;
+    let claim = claim(dir)?.ok_or(Error::Running)?;
+    let storage = Storage::open(&dir.join(STORE), build, &plant_zone(), bus)?;
+    Ok((claim, storage))
+}
+
+/// Imports and backups, which share `/share`, and the car bodies a backup takes.
+fn files(
+    (share, data_dir): (PathBuf, &std::path::Path),
+    storage: &Storage,
+    bus: &Bus,
+    profiles: &Profiles,
+) -> (Imports, Backups, CarBodies) {
+    let places = (share.clone(), data_dir.join("import.tar.gz"), import::MAX);
+    (
+        Imports::new(places, storage, bus, profiles.catalogue()),
+        Backups::new(storage.database(), data_dir.to_owned(), share),
+        CarBodies::new(data_dir.join("cars")),
+    )
 }
 
 /// Opens the store in the data directory and serves the API on `listener` until `shutdown`
 /// resolves, then writes the open bucket.
 ///
 /// # Errors
-/// The store cannot be opened or written, or serving fails.
+/// Another core runs on the data directory, the store cannot be opened or written, or serving
+/// fails.
 pub async fn serve(
     listener: TcpListener,
     boot: Boot<impl Provider + Send, impl Archive + Send, impl spot::Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    private(&boot.data_dir)?;
     let bus = Bus::default();
-    let storage = Storage::open(&boot.data_dir.join(STORE), boot.build, &plant_zone(), &bus)?;
+    let (_claim, storage) = open(&boot.data_dir, boot.build, &bus)?;
     let (problems, watched) = problems(&storage).await?;
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
@@ -225,7 +274,7 @@ pub async fn serve(
         (layouts.clone(), location.watch(), spot.watch()),
         &bus,
     ));
-    let places = (boot.share, boot.data_dir.join("import.tar.gz"), import::MAX);
+    let (imports, backups, cars) = files((boot.share, &boot.data_dir), &storage, &bus, &profiles);
     let api = Api {
         auth: Auth::open(storage.database(), boot.ingress).await?,
         live: Live::spawn(&bus),
@@ -237,11 +286,12 @@ pub async fn serve(
         changes: Changes::new(storage.database()),
         location,
         spot,
-        imports: Imports::new(places, &storage, &bus, profiles.catalogue()),
+        imports,
+        backups,
         profiles,
         topologies,
         tariffs,
-        cars: CarBodies::new(boot.data_dir.join("cars")),
+        cars,
         zones: storage.zones(),
         clock: std::sync::Arc::new(SystemTime::now),
     };
