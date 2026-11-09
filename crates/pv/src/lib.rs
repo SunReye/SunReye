@@ -3,8 +3,10 @@
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
 mod perez;
+mod temperature;
 
 pub use perez::plane_irradiance;
+pub use temperature::cell_temperature;
 
 /// The orientation of a module's surface.
 #[derive(Debug, Clone, Copy, PartialEq)]
