@@ -1,6 +1,24 @@
 {
   "components": {
     "schemas": {
+      "Bounds": {
+        "description": "The inclusive bounds of a setting's value.",
+        "properties": {
+          "max": {
+            "format": "double",
+            "type": "number"
+          },
+          "min": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "type": "object"
+      },
       "Change": {
         "description": "One entry of the change log.",
         "properties": {
@@ -329,10 +347,23 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "settings": {
+            "description": "What its profile lets the core write, in the profile's order.",
+            "items": {
+              "$ref": "#/components/schemas/SettingSupport"
+            },
+            "type": "array"
+          },
+          "writes": {
+            "description": "Whether the admin switched its writes on (ADR 7).",
+            "type": "boolean"
           }
         },
         "required": [
-          "estimated"
+          "estimated",
+          "writes",
+          "settings"
         ],
         "type": "object"
       },
@@ -711,6 +742,46 @@
         "required": [
           "min",
           "max"
+        ],
+        "type": "object"
+      },
+      "SettingSupport": {
+        "description": "A setting a device's profile declares (ADR 5, 7).",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "range": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Bounds",
+                "description": "The bounds of a value; absent when `values` lists them."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "description": "A value is a whole number of steps.",
+            "format": "double",
+            "type": "number"
+          },
+          "values": {
+            "description": "The only values it takes, when the profile enumerates them.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "step"
         ],
         "type": "object"
       },

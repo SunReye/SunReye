@@ -321,6 +321,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The inclusive bounds of a setting's value. */
+        Bounds: {
+            /** Format: double */
+            max: number;
+            /** Format: double */
+            min: number;
+        };
         /** @description One entry of the change log. */
         Change: {
             /** @description `add`, `change` or `remove`. */
@@ -446,6 +453,10 @@ export interface components {
              *     in parallel (ADR 17).
              */
             estimated: string[];
+            /** @description What its profile lets the core write, in the profile's order. */
+            settings: components["schemas"]["SettingSupport"][];
+            /** @description Whether the admin switched its writes on (ADR 7). */
+            writes: boolean;
         };
         /** @description One attempt. */
         Entry: {
@@ -586,6 +597,18 @@ export interface components {
             max: number;
             /** Format: int32 */
             min: number;
+        };
+        /** @description A setting a device's profile declares (ADR 5, 7). */
+        SettingSupport: {
+            key: string;
+            range?: components["schemas"]["Bounds"] | null;
+            /**
+             * Format: double
+             * @description A value is a whole number of steps.
+             */
+            step: number;
+            /** @description The only values it takes, when the profile enumerates them. */
+            values?: number[] | null;
         };
         /** @description A setting's new value. */
         SettingValue: {

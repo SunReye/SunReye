@@ -194,6 +194,12 @@ impl Profile {
         self.inverter.as_ref()
     }
 
+    /// The settings in file order.
+    #[must_use]
+    pub fn settings(&self) -> &[Setting] {
+        &self.settings
+    }
+
     /// The setting `key`, when the profile declares one.
     #[must_use]
     pub fn setting(&self, key: &str) -> Option<&Setting> {

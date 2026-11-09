@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 use super::devices::send;
-use super::{Core, get};
+use super::{Core, get, problem};
 use crate::transport::fake::{self, Fake, Write, Writes};
 
 const CHARGE: &str = "battery.max_charge_current";
@@ -222,4 +222,44 @@ async fn a_timeout_is_unknown_and_never_retried() {
     entry["failedStep"] = json!(1);
     assert_eq!(written, entry);
     assert_eq!(plant.received().len(), 1);
+}
+
+#[tokio::test]
+async fn the_write_log_and_every_write_need_the_admins_session() {
+    let mut plant = Plant::new(Writes::Store, true).await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
+    let write = send("PUT", &uri, &json!({ "value": 50 }));
+
+    for request in [get("/api/v1/writes"), write] {
+        assert_eq!(
+            problem(plant.core.send(request).await).await,
+            (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+        );
+    }
+    assert_eq!(plant.received(), []);
+    assert_eq!(plant.log().await, json!([]));
+}
+
+#[tokio::test]
+async fn capabilities_list_each_devices_settings_from_its_profile() {
+    let plant = Plant::new(Writes::Store, true).await;
+
+    let (status, body) = plant
+        .core
+        .ask(&plant.set_cookie, get("/api/v1/capabilities"))
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let device = &body["devices"][plant.id.to_string()];
+    assert_eq!(device["writes"], true);
+    assert_eq!(
+        device["settings"],
+        json!([
+            { "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0 },
+            { "key": "battery.max_discharge_current", "range": { "min": 0.0, "max": 350.0 },
+                "step": 1.0 },
+            { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0 },
+            { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0 },
+        ])
+    );
 }

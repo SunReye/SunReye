@@ -223,5 +223,5 @@ async fn capabilities_mark_parallel_strings_estimated() {
     assert_eq!(status, StatusCode::OK);
     // The second string is alone on input 2: measured, not estimated.
     let estimated = [&ids[0].1, &ids[1].1].map(|id| format!("pv.string.power[{id}]"));
-    assert_eq!(body["devices"], json!({ "1": { "estimated": estimated } }));
+    assert_eq!(body["devices"]["1"]["estimated"], json!(estimated));
 }

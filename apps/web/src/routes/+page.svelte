@@ -15,6 +15,7 @@
 {#key locale}
   <header>
     <a href="#/builder">{m.nav_builder()}</a>
+    <a href="#/settings">{m.nav_settings()}</a>
     <LocaleSwitch bind:locale />
   </header>
   <LiveScreen {core} />
