@@ -21,6 +21,8 @@
     type Group,
   } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+  import { garage, type ModelLoader } from "../cars/garage.ts";
+  import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import type { View } from "./camera.ts";
   import type { Geometry } from "./pv.ts";
@@ -30,6 +32,8 @@
     geometry,
     panels = [],
     shares,
+    cars = [],
+    model,
     view,
     onview,
     onrender,
@@ -39,6 +43,10 @@
     panels?: readonly Panel[];
     /** Live, by panel, its string's share of peak; the modules are tinted by it. */
     shares?: readonly (number | null)[];
+    /** The connected cars; drawn again only when one comes, goes or changes body. */
+    cars?: readonly Parked[];
+    /** Reads an uploaded car body. */
+    model?: ModelLoader | undefined;
     view: View;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
@@ -154,6 +162,16 @@
     const resize = fit(canvas, renderer, camera, render);
     const release = keep(scene, render);
 
+    const parking = garage(
+      scene,
+      render,
+      untrack(() => model),
+    );
+
+    $effect(() => {
+      parking.park(cars);
+    });
+
     controls.addEventListener("change", render);
     controls.addEventListener("end", () => {
       onview({ position: camera.position.toArray(), target: controls.target.toArray() });
@@ -170,6 +188,7 @@
       resize.disconnect();
       controls.dispose();
       release();
+      parking.dispose();
       renderer.dispose();
     };
   }

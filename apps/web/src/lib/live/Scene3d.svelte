@@ -9,17 +9,20 @@
 
   /** three.js, the crate and what the scene needs: loaded only once it is shown. */
   async function load() {
-    const [{ default: LiveScene }, pv, moduleTypes, capabilities] = await Promise.all([
-      import("./LiveScene.svelte"),
-      import("../builder/pv.ts").then(async ({ loadPv }) =>
-        loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer())),
-      ),
-      core.moduleTypes(),
-      core.capabilities(),
-    ]);
+    const [{ default: LiveScene }, { modelLoader }, pv, moduleTypes, capabilities] =
+      await Promise.all([
+        import("./LiveScene.svelte"),
+        import("../cars/models.ts"),
+        import("../builder/pv.ts").then(async ({ loadPv }) =>
+          loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer())),
+        ),
+        core.moduleTypes(),
+        core.capabilities(),
+      ]);
 
     return {
       LiveScene,
+      model: modelLoader(core),
       pv,
       moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
       capabilities: "problem" in capabilities ? undefined : capabilities,
@@ -30,7 +33,7 @@
 <main>
   {#await load()}
     <p>{m.live_loading()}</p>
-  {:then { LiveScene, pv, moduleTypes, capabilities }}
-    <LiveScene {core} {pv} {layout} scene={layout.scene} {moduleTypes} {capabilities} />
+  {:then { LiveScene, model, pv, moduleTypes, capabilities }}
+    <LiveScene {core} {pv} {layout} scene={layout.scene} {moduleTypes} {capabilities} {model} />
   {/await}
 </main>

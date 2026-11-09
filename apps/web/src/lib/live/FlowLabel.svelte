@@ -34,16 +34,26 @@
     house: (watts: number) => m.live_house({ power: power(watts) }),
     inverter: (watts: number) => m.live_inverter({ power: power(watts) }),
     battery,
-  } satisfies Record<Quantity["kind"], (watts: number) => string>;
+  } satisfies Record<Exclude<Quantity["kind"], "car">, (watts: number) => string>;
+
+  /** A connected car charges or waits. */
+  const car = (watts: number | null): string =>
+    watts === null || watts === 0
+      ? m.live_car_connected()
+      : m.live_car_charging({ power: power(watts) });
 
   const key = (quantity: Quantity): string | number =>
-    quantity.kind === "inverter" ? quantity.device : quantity.kind;
+    quantity.kind === "inverter" || quantity.kind === "car"
+      ? `${quantity.kind}${quantity.device}`
+      : quantity.kind;
 </script>
 
 <output style:left="{at[0]}px" style:top="{at[1]}px">
   {#each quantities as quantity (key(quantity))}
-    <span>{texts[quantity.kind](quantity.watts)}</span>
-    {#if quantity.kind === "battery" && quantity.soc !== null}
+    <span
+      >{quantity.kind === "car" ? car(quantity.watts) : texts[quantity.kind](quantity.watts)}</span
+    >
+    {#if (quantity.kind === "battery" || quantity.kind === "car") && quantity.soc !== null}
       <span>{m.live_soc({ soc: format.format(quantity.soc) })}</span>
     {/if}
   {/each}

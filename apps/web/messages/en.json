@@ -219,6 +219,8 @@
   "live_battery_charge": "Battery charging {power}",
   "live_battery_discharge": "Battery discharging {power}",
   "live_battery_idle": "Battery idle",
+  "live_car_charging": "Car charging {power}",
+  "live_car_connected": "Car connected",
   "live_soc": "Charge {soc} %",
   "live_inverter": "Inverter {power}",
   "live_string": "{name}: {power}",

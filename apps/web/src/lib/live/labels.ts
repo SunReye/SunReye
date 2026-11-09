@@ -1,8 +1,9 @@
 // What the live scene shows (ADR 20): each string's power at its modules' centre, tinted by its
 // share of its own peak, and the plant's flows on labels. Pure: no three.js.
 import type { PvString, Values } from "../api/core.ts";
-import type { Equipment, Face, Mount, Point } from "../builder/pv.ts";
+import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
+import { parked, type Parked } from "../cars/parked.ts";
 
 /** The `plant` computed device's fixed id (ADR 15). */
 export const PLANT = "4294967294";
@@ -24,6 +25,9 @@ export interface Live3d {
   /** By device id, its estimated series (ADR 17). */
   readonly estimated: Readonly<Record<string, readonly string[] | undefined>>;
   readonly values: Values["devices"];
+  readonly places?: readonly CarPlace[];
+  /** By `places`; none while one is refused. */
+  readonly stands?: Geometry["stands"];
 }
 
 export interface StringLabel {
@@ -41,7 +45,13 @@ export interface StringLabel {
 export type Quantity =
   | { readonly kind: "grid" | "house"; readonly watts: number }
   | { readonly kind: "battery"; readonly watts: number; readonly soc: number | null }
-  | { readonly kind: "inverter"; readonly device: number; readonly watts: number };
+  | { readonly kind: "inverter"; readonly device: number; readonly watts: number }
+  | {
+      readonly kind: "car";
+      readonly device: number;
+      readonly watts: number | null;
+      readonly soc: number | null;
+    };
 
 export interface Label {
   readonly anchor: Point;
@@ -55,17 +65,21 @@ export interface LiveScene {
   /** By panel, its string's share; null for an unassigned module or one without a value. */
   readonly shares: readonly (number | null)[];
   readonly labels: readonly Label[];
+  /** The connected cars at their places. */
+  readonly cars: readonly Parked[];
 }
 
 export function liveScene(input: Live3d): LiveScene {
   const strings = input.strings.map((string, at) => stringLabel(input, string, at));
+  const cars = parked(input.places ?? [], input.stands, input.values);
 
   return {
     strings,
     shares: input.panels.map(({ string }) =>
       string === null || string === undefined ? null : (strings[string]?.share ?? null),
     ),
-    labels: labels(input),
+    labels: [...labels(input), ...cars.map((car) => carLabel(car))],
+    cars,
   };
 }
 
@@ -126,6 +140,11 @@ function labels(input: Live3d): Label[] {
   });
 
   return [beside, ...onMarkers];
+}
+
+/** A connected car's charge power and SOC, above it. */
+function carLabel({ device, at, above, watts, soc }: Parked): Label {
+  return { anchor: above, leader: at, quantities: [{ kind: "car", device, watts, soc }] };
 }
 
 function flow(kind: "grid" | "house", watts: number | undefined): Quantity[] {

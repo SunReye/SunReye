@@ -219,6 +219,8 @@
   "live_battery_charge": "Batterie lädt {power}",
   "live_battery_discharge": "Batterie entlädt {power}",
   "live_battery_idle": "Batterie ruht",
+  "live_car_charging": "Auto lädt {power}",
+  "live_car_connected": "Auto angeschlossen",
   "live_soc": "Ladestand {soc} %",
   "live_inverter": "Wechselrichter {power}",
   "live_string": "{name}: {power}",

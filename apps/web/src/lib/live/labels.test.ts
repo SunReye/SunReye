@@ -167,3 +167,23 @@ test("a marker carries its device's label on a leader line; the rest stays besid
     },
   ]);
 });
+
+test("a connected car carries its charge power and its vehicle's SOC above it", () => {
+  const place = { device: 7, x: 13, z: 0.5, width: 2, length: 5, rotation: 0 };
+  const stand = { at: [14, -3, 0], forward: [0, 1, 0], above: [14, -3, 2.5] } as const;
+
+  const values = {
+    ...scene.values,
+    "7": { "ev.connected": 1, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
+  };
+
+  const { labels, cars } = liveScene({ ...scene, places: [place], stands: [stand], values });
+
+  expect(cars).toHaveLength(1);
+
+  expect(labels.at(-1)).toEqual({
+    anchor: [14, -3, 2.5],
+    leader: [14, -3, 0],
+    quantities: [{ kind: "car", device: 7, watts: 7360, soc: 63 }],
+  });
+});
