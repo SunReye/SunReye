@@ -2,4 +2,5 @@
 
 pub mod bus;
 pub mod endpoint;
+pub mod storage;
 pub mod transport;
