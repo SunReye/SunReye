@@ -1,4 +1,4 @@
-//! The weather device through a fake provider.
+//! The weather device through a fake provider, and the Open-Meteo adapter on recorded responses.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::{Error, Provider, Slot, Weather};
+use super::{Error, Provider, Slot, Weather, open_meteo};
 use crate::bus::{Bus, DeviceId};
 use crate::storage::{Location, Storage};
 
@@ -152,4 +152,49 @@ async fn it_fetches_on_start_and_hourly_and_a_failed_fetch_does_not_stop_it() {
     }
     let hour = Duration::from_secs(3600);
     assert_eq!(seen, [Duration::ZERO, hour, 2 * hour]);
+}
+
+#[test]
+fn open_meteo_reads_irradiance_temperature_and_wind_every_15_minutes() {
+    let slots = open_meteo::parse(include_str!("../../fixtures/open-meteo-forecast.json")).unwrap();
+    assert_eq!(slots.len(), 288);
+    assert_eq!(slots.first().unwrap().target, at(1_794_178_800));
+    assert_eq!(slots.last().unwrap().target, at(1_794_437_100));
+    let noon = slots.iter().find(|s| s.target == at(NOON)).unwrap();
+    assert_eq!(*noon, slot(NOON, 200.8));
+}
+
+#[test]
+fn open_meteo_drops_a_slot_missing_a_value_and_keeps_one_missing_only_wind() {
+    let body = r#"{"minutely_15":{
+        "time":[1794222000,1794222900],
+        "shortwave_radiation_instant":[200.8,null],
+        "direct_normal_irradiance_instant":[167.9,160.0],
+        "diffuse_radiation_instant":[141.8,140.0],
+        "temperature_2m":[2.3,2.4],
+        "wind_speed_10m":[null,1.0]}}"#;
+    let slots = open_meteo::parse(body).unwrap();
+    assert_eq!(
+        slots,
+        [Slot {
+            wind: None,
+            ..slot(NOON, 200.8)
+        }]
+    );
+}
+
+#[test]
+fn open_meteo_refuses_a_body_without_its_series() {
+    assert!(matches!(open_meteo::parse("{}"), Err(Error::Format)));
+}
+
+#[test]
+fn open_meteo_asks_for_today_and_two_more_days_at_15_minutes_at_the_rounded_location() {
+    assert_eq!(
+        open_meteo::url(BERLIN),
+        "https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.38\
+         &minutely_15=shortwave_radiation_instant,direct_normal_irradiance_instant,\
+         diffuse_radiation_instant,temperature_2m,wind_speed_10m\
+         &wind_speed_unit=ms&timezone=auto&timeformat=unixtime&forecast_days=3"
+    );
 }

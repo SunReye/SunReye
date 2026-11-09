@@ -1,6 +1,8 @@
 //! The weather computed device (ADR 15, 17): irradiance, temperature and wind forecasts for the
 //! plant's location, fetched by its own task through an interchangeable provider.
 
+mod open_meteo;
+
 use std::fmt;
 use std::future::Future;
 use std::time::{Duration, SystemTime};
@@ -9,6 +11,8 @@ use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, SeriesId};
 use crate::storage::{self, Issue, Location, Storage};
+
+pub use open_meteo::OpenMeteo;
 
 const HOUR: Duration = Duration::from_secs(3600);
 
