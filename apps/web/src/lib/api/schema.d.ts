@@ -139,6 +139,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/settings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps
+         *     it. A refusal never reaches the device.
+         */
+        put: operations["write_setting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/layout": {
         parameters: {
             query?: never;
@@ -262,6 +282,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/writes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every write attempt, oldest first. */
+        get: operations["writes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -289,7 +326,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -379,9 +416,40 @@ export interface components {
              * @description The Modbus unit id: the device address behind the connection.
              */
             unit: number;
+            /** @description Whether settings may be written (ADR 7); off when left out. */
+            writes?: boolean;
         };
         DeviceList: {
             devices: components["schemas"]["Device"][];
+        };
+        /** @description One attempt. */
+        Entry: {
+            /** @description `admin`, or a named controller. */
+            actor: string;
+            /**
+             * Format: double
+             * @description The value read back; `null` when nothing was written or it could not be read.
+             */
+            after?: number | null;
+            /**
+             * Format: double
+             * @description The value read before writing; `null` when it could not be read or the setting is
+             *     write-only.
+             */
+            before?: number | null;
+            /** Format: int32 */
+            device: number;
+            /**
+             * Format: int32
+             * @description The recipe step that failed, counted from 1.
+             */
+            failedStep?: number | null;
+            outcome: components["schemas"]["Outcome"];
+            /** Format: double */
+            requested: number;
+            setting: string;
+            /** @description RFC 3339, UTC. */
+            time: string;
         };
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */
@@ -434,6 +502,11 @@ export interface components {
         ModuleTypes: {
             moduleTypes: components["schemas"]["ModuleType"][];
         };
+        /**
+         * @description How a write ended.
+         * @enum {string}
+         */
+        Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged";
         Point: {
             /** @description RFC 3339, UTC. */
             end: string;
@@ -481,6 +554,14 @@ export interface components {
             max: number;
             /** Format: int32 */
             min: number;
+        };
+        /** @description A setting's new value. */
+        SettingValue: {
+            /**
+             * Format: double
+             * @description In the setting's unit, a whole number of its steps.
+             */
+            value: number;
         };
         StringDraft: components["schemas"]["Wiring"] & {
             /**
@@ -553,6 +634,9 @@ export interface components {
              * @description Degrees from horizontal.
              */
             tilt: number;
+        };
+        WriteLog: {
+            writes: components["schemas"]["Entry"][];
         };
     };
     responses: never;
@@ -961,6 +1045,40 @@ export interface operations {
             };
         };
     };
+    write_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingValue"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Entry"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     layout: {
         parameters: {
             query?: {
@@ -1211,6 +1329,33 @@ export interface operations {
                 content?: never;
             };
             "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    writes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteLog"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

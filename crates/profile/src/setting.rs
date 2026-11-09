@@ -1,0 +1,154 @@
+//! Settings (ADR 5, 7): what the core may write, the steps that write it and where it reads back.
+
+use std::time::Duration;
+
+use crate::document::{Kind, Range, SettingDoc, StepDoc};
+
+/// One writable device parameter.
+#[derive(Debug, Clone)]
+pub struct Setting {
+    pub key: String,
+    kind: Kind,
+    scale: f64,
+    range: Option<Range>,
+    values: Option<Vec<f64>>,
+    min_interval: Duration,
+    recipe: Vec<Step>,
+    read_back: Option<u16>,
+}
+
+/// One step of a recipe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// Writes the value's words from `register` with function code 16: Deye ignores function code
+    /// 6 on its settings registers (measured live).
+    Write { register: u16 },
+}
+
+impl Setting {
+    /// The steps that apply it, in order.
+    #[must_use]
+    pub fn recipe(&self) -> &[Step] {
+        &self.recipe
+    }
+
+    /// The first register to read back after a write; `None` for a write-only setting.
+    #[must_use]
+    pub const fn read_back(&self) -> Option<u16> {
+        self.read_back
+    }
+
+    /// The shortest time between two writes, to spare the device's memory.
+    #[must_use]
+    pub const fn min_interval(&self) -> Duration {
+        self.min_interval
+    }
+
+    /// The registers a value takes.
+    #[must_use]
+    pub const fn width(&self) -> u16 {
+        match self.kind {
+            Kind::U16 | Kind::I16 => 1,
+            Kind::U32 => 2,
+        }
+    }
+
+    /// The words of `value`, low word first; `None` unless it is a whole number of steps of the
+    /// scale, inside the range or among the values, and fits the type.
+    #[must_use]
+    pub fn encode(&self, value: f64) -> Option<Vec<u16>> {
+        let raw = self.raw(value)?;
+        let allowed = match (&self.values, self.range) {
+            (Some(values), _) => values.iter().any(|v| self.raw(*v) == Some(raw)),
+            (None, Some(range)) => (range.min..=range.max).contains(&value),
+            (None, None) => false,
+        };
+        if !allowed {
+            return None;
+        }
+        match self.kind {
+            Kind::U16 => u16::try_from(raw).ok().map(|w| vec![w]),
+            Kind::I16 => i16::try_from(raw)
+                .ok()
+                .map(|w| vec![u16::from_ne_bytes(w.to_ne_bytes())]),
+            Kind::U32 => u32::try_from(raw)
+                .ok()
+                .map(|w| vec![(w & 0xFFFF) as u16, (w >> 16) as u16]),
+        }
+    }
+
+    /// The value `words` hold, low word first; `None` when too few were read.
+    #[must_use]
+    pub fn decode(&self, words: &[u16]) -> Option<f64> {
+        let low = *words.first()?;
+        let raw = match self.kind {
+            Kind::U16 => f64::from(low),
+            Kind::I16 => f64::from(i16::from_ne_bytes(low.to_ne_bytes())),
+            Kind::U32 => f64::from(u32::from(*words.get(1)?) << 16 | u32::from(low)),
+        };
+        Some(raw * self.scale)
+    }
+
+    /// `value` in whole steps of the scale.
+    fn raw(&self, value: f64) -> Option<i64> {
+        let steps = value / self.scale;
+        let whole = steps.round();
+        // A step count past 2^53 is not exact; no register holds one.
+        let exact = steps.is_finite() && whole.abs() < 9e15 && (steps - whole).abs() <= 1e-9;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "checked to be whole and small"
+        )]
+        exact.then_some(whole as i64)
+    }
+}
+
+pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static str)> {
+    let mut settings: Vec<Setting> = Vec::with_capacity(docs.len());
+    for doc in docs {
+        if settings.iter().any(|s| s.key == doc.key) {
+            return Err((doc.key, "the key is declared twice"));
+        }
+        settings.push(setting(doc.key.clone(), doc)?);
+    }
+    Ok(settings)
+}
+
+fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static str)> {
+    let refuse = |problem| Err((key.clone(), problem));
+    let scale = doc.scale.unwrap_or(1.0);
+    if !scale.is_finite() || scale == 0.0 {
+        return refuse("the scale must be a non-zero number");
+    }
+    if doc.range.is_none() && doc.values.is_none() {
+        return refuse("declare its `range` or its `values`");
+    }
+    if doc.range.is_some_and(|r| r.min > r.max) {
+        return refuse("the range is inverted");
+    }
+    if doc.recipe.is_empty() {
+        return refuse("the recipe has no step");
+    }
+    if doc.read_back.is_some() == doc.write_only {
+        return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
+    }
+    let recipe = doc
+        .recipe
+        .into_iter()
+        .map(|step| match step {
+            StepDoc::Write(r) => Step::Write {
+                register: r.register,
+            },
+        })
+        .collect();
+    Ok(Setting {
+        key,
+        kind: doc.kind,
+        scale,
+        range: doc.range,
+        values: doc.values,
+        min_interval: Duration::from_secs(doc.min_interval),
+        recipe,
+        read_back: doc.read_back.map(|r| r.register),
+    })
+}

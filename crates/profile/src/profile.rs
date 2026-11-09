@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range};
 use crate::plan::{self, Block};
+use crate::setting::{self, Setting};
 use crate::{CAPABILITIES, SCHEMA};
 
 /// A loaded profile: its quantities in file order and its compiled read plan.
@@ -19,6 +20,7 @@ pub struct Profile {
     quantities: Vec<Quantity>,
     plan: Vec<Block>,
     inverter: Option<Inverter>,
+    settings: Vec<Setting>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -124,6 +126,10 @@ pub enum LoadError {
         input: usize,
         problem: &'static str,
     },
+    Setting {
+        key: String,
+        problem: &'static str,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -139,6 +145,7 @@ impl fmt::Display for LoadError {
             }
             Self::Quantity { key, problem } => write!(f, "quantity `{key}`: {problem}"),
             Self::Mppt { input, problem } => write!(f, "MPPT input {input}: {problem}"),
+            Self::Setting { key, problem } => write!(f, "setting `{key}`: {problem}"),
         }
     }
 }
@@ -167,6 +174,8 @@ impl Profile {
         doc.inverter.as_ref().map_or(Ok(()), check)?;
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
+        let settings = setting::compile(doc.settings)
+            .map_err(|(key, problem)| LoadError::Setting { key, problem })?;
         Ok(Self {
             id: doc.id,
             name: doc.name,
@@ -175,6 +184,7 @@ impl Profile {
             quantities,
             plan,
             inverter: doc.inverter,
+            settings,
         })
     }
 
@@ -182,6 +192,12 @@ impl Profile {
     #[must_use]
     pub const fn inverter(&self) -> Option<&Inverter> {
         self.inverter.as_ref()
+    }
+
+    /// The setting `key`, when the profile declares one.
+    #[must_use]
+    pub fn setting(&self, key: &str) -> Option<&Setting> {
+        self.settings.iter().find(|s| s.key == key)
     }
 
     /// The quantities in file order; [`Profile::decode`] fills one value per quantity.

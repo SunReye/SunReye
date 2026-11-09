@@ -1,14 +1,18 @@
 //! Endpoint tasks (ADR 6): one task per endpoint serialises every read for every device behind it,
 //! decodes through the device's profile and publishes typed readings on the bus.
+//!
+//! A settings write (ADR 7) runs in the same task, between polls.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use sunreye_profile::{Block, Framing, Profile, Registers, Unit};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
+use crate::settings::{self, Applied, Job};
 use crate::transport::{Client, Endpoint, Error};
 
 /// Until a profile declares poll groups, every quantity is polled at this cadence.
@@ -37,7 +41,11 @@ type Latest = Arc<Mutex<Vec<Option<(Reading, Instant)>>>>;
 pub struct Task {
     handle: JoinHandle<()>,
     latest: Latest,
+    writes: mpsc::Sender<Write>,
 }
+
+/// A write waiting for the task, and where its result goes.
+type Write = (Job, oneshot::Sender<Applied>);
 
 impl Task {
     /// The last good value of every quantity read so far, with its age.
@@ -50,6 +58,13 @@ impl Task {
             .flatten()
             .map(|(reading, read)| (*reading, now - *read))
             .collect()
+    }
+
+    /// Runs `job` after the poll cycle in progress; `None` when the task has stopped.
+    pub async fn write(&self, job: Job) -> Option<Applied> {
+        let (reply, applied) = oneshot::channel();
+        self.writes.send((job, reply)).await.ok()?;
+        applied.await.ok()
     }
 }
 
@@ -76,9 +91,11 @@ pub fn spawn(endpoint: Endpoint, devices: Vec<Device>, bus: Bus) -> Task {
         bus,
         latest: Arc::clone(&latest),
     };
+    let (writes, queued) = mpsc::channel(1);
     Task {
-        handle: tokio::spawn(run(endpoint, devices, out)),
+        handle: tokio::spawn(run(endpoint, devices, out, queued)),
         latest,
+        writes,
     }
 }
 
@@ -166,13 +183,24 @@ impl Polled {
     }
 }
 
-async fn run(endpoint: Endpoint, mut devices: Vec<Polled>, out: Out) {
+async fn run(
+    endpoint: Endpoint,
+    mut devices: Vec<Polled>,
+    out: Out,
+    mut writes: mpsc::Receiver<Write>,
+) {
     let mut client = None;
     let mut words = [0; MAX_READ];
     let mut failures: u32 = 0;
     let mut next = Instant::now();
     loop {
-        tokio::time::sleep_until(next).await;
+        tokio::select! {
+            () = tokio::time::sleep_until(next) => {}
+            Some((job, reply)) = writes.recv() => {
+                reply.send(settings::run(&endpoint, &mut client, TIMEOUT, &job).await).ok();
+                continue;
+            }
+        }
         if cycle(&endpoint, &mut client, &mut devices, &out, &mut words)
             .await
             .is_ok()

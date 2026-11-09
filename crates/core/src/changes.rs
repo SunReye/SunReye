@@ -102,12 +102,12 @@ fn name(value: &impl Serialize) -> String {
         .unwrap_or_default()
 }
 
-fn seconds(time: SystemTime) -> i64 {
+pub(crate) fn seconds(time: SystemTime) -> i64 {
     let since = time.duration_since(UNIX_EPOCH).unwrap_or_default();
     i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
 }
 
-fn rfc3339(seconds: i64) -> String {
+pub(crate) fn rfc3339(seconds: i64) -> String {
     let time = UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap_or(0));
     jiff::Timestamp::try_from(time)
         .map(|t| t.to_string())

@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -16,12 +16,14 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 - A recipe declares what to read back, which may differ from the register written. Silent ignores make read-back mandatory; a lint rejects a recipe without one unless the setting is declared write-only, which always reports `unknown`.
 - A timeout is `unknown`, followed by a read-back attempt. It is never retried automatically, because a retry can double-apply a relative setting. A mismatch is shown as an error and not retried.
+- The current value is read before writing, and the equal-value skip compares register words. A failed read writes nothing and reports `unknown`.
+- A device that refuses the first step with an exception is a `mismatch`; any step failing after an earlier one wrote is `partial`.
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
 
-**Audit.** Every attempt is appended to a write log: time, device, setting, value before, value requested, outcome, failing step, actor, and `via`: the trusted device key a remote write came through (ADR 16). It is kept long and not rolled up.
+**Audit.** Every attempt that reaches the device is appended to a write log: time, device, setting, value before, value requested, value read back, outcome, failing step (counted from 1), actor, and `via`: the trusted device key a remote write came through (ADR 16). It is kept long and not rolled up.
 
-**Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped.
+**Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped. The interval runs from the setting's last attempt with any outcome but `unchanged`; a clock stepped back still waits.
 
 **Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set. They live in their own table, unencrypted: a key on the same disk would add nothing. The data directory is mode 0700 and the database 0600. A backup excludes them unless the admin includes them explicitly; a restored connection without its secret reports `secret.missing`.
 

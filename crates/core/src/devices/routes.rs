@@ -4,13 +4,14 @@ use axum::Json;
 use axum::extract::rejection::{JsonRejection, PathRejection};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use super::{Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
+use super::{ACTOR, Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::settings::{Request, log};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -30,6 +31,8 @@ impl Devices {
             .routes(routes!(change_connection, remove_connection))
             .routes(routes!(list_devices, add_device))
             .routes(routes!(change_device, remove_device))
+            .routes(routes!(write_setting))
+            .routes(routes!(writes))
             .with_state((self, clock))
     }
 }
@@ -148,4 +151,49 @@ async fn remove_device(
     let Path(id) = id.map_err(|_| PATH)?;
     devices.remove_device(id, clock()).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A setting's new value.
+#[derive(Deserialize, ToSchema)]
+struct SettingValue {
+    /// In the setting's unit, a whole number of its steps.
+    value: f64,
+}
+
+/// Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps
+/// it. A refusal never reaches the device.
+#[utoipa::path(put, path = "/api/v1/devices/{id}/settings/{key}", request_body = SettingValue,
+    params(("id" = u32, Path), ("key" = String, Path)), responses(
+    (status = 200, body = log::Entry),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn write_setting(
+    State((devices, clock)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+    body: Result<Json<SettingValue>, JsonRejection>,
+) -> Result<Json<log::Entry>, Problem> {
+    let Path((id, key)) = path.map_err(|_| PATH)?;
+    let Json(SettingValue { value }) = body.map_err(|_| BODY)?;
+    let request = Request {
+        key,
+        value,
+        actor: ACTOR,
+    };
+    let written = devices.write_setting(id, request, clock()).await?;
+    Ok(Json(written))
+}
+
+#[derive(Serialize, ToSchema)]
+struct WriteLog {
+    writes: Vec<log::Entry>,
+}
+
+/// Every write attempt, oldest first.
+#[utoipa::path(get, path = "/api/v1/writes", responses(
+    (status = 200, body = WriteLog),
+    (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn writes(State((devices, _)): DevicesState) -> Result<Json<WriteLog>, Problem> {
+    let writes = devices.writes().await.map_err(|_| INTERNAL)?;
+    Ok(Json(WriteLog { writes }))
 }

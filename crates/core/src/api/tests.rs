@@ -31,6 +31,7 @@ mod ingress;
 mod layout;
 mod live;
 mod screen;
+mod settings;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {
@@ -469,7 +470,7 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
         serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "schema": { "min": 1, "max": 1 },
-            "capabilities": ["modbus", "u16", "i16", "u32", "compute"],
+            "capabilities": ["modbus", "u16", "i16", "u32", "compute", "write"],
             "transports": ["modbus-tcp", "sim"],
         })
     );

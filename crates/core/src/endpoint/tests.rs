@@ -169,4 +169,5 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
         functions.push(fake.reads.recv().await.unwrap().function);
     }
     assert_eq!(functions, vec![3; blocks]);
+    assert!(fake.writes.try_recv().is_err(), "a poll wrote to the device");
 }
