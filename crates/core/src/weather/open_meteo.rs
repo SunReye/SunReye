@@ -5,7 +5,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use serde::Deserialize;
 
 use super::{Error, Provider, Slot};
-use crate::storage::Location;
+use crate::location::Location;
 
 const BASE: &str = "https://api.open-meteo.com/v1/forecast";
 /// Instantaneous irradiance, as the PV model transposes instants, not interval means.

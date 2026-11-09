@@ -14,6 +14,7 @@ use axum::http::StatusCode;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sunreye_profile::Profile;
+use tokio::sync::watch;
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -198,20 +199,28 @@ pub fn in_force(versions: &[Version], at: SystemTime) -> Option<&Version> {
     versions.iter().rev().find(|v| v.applies_from <= at)
 }
 
-/// The layout feature module.
+/// The layout feature module; clones share one.
 #[derive(Debug, Clone)]
 pub struct Layouts {
     database: Database,
     inverters: Inverters,
+    changed: Arc<watch::Sender<()>>,
 }
 
 impl Layouts {
     #[must_use]
-    pub const fn new(database: Database, inverters: Inverters) -> Self {
+    pub fn new(database: Database, inverters: Inverters) -> Self {
         Self {
             database,
             inverters,
+            changed: Arc::new(watch::channel(()).0),
         }
+    }
+
+    /// Marked changed by each layout change.
+    #[must_use]
+    pub fn changes(&self) -> watch::Receiver<()> {
+        self.changed.subscribe()
     }
 
     #[must_use]
@@ -270,8 +279,9 @@ impl Layouts {
             .database
             .run(move |db| insert_version(db, applies_from, strings, changed))
             .await
-            .map_err(|_| INTERNAL)?;
-        Ok(stored?)
+            .map_err(|_| INTERNAL)??;
+        self.changed.send_replace(());
+        Ok(stored)
     }
 
     fn check(&self, wiring: &Wiring) -> Result<(), Refusal> {

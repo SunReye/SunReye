@@ -20,6 +20,8 @@
   "problem_layout_string": "Eine String-ID ist unbekannt oder doppelt vergeben.",
   "problem_layout_module_type": "Ein String nennt einen unbekannten Modultyp.",
   "problem_layout_value": "Ein Wert liegt außerhalb seines physikalischen Bereichs.",
+  "problem_location_none": "Der Standort der Anlage ist noch nicht gesetzt.",
+  "problem_location_value": "Der Breitengrad muss zwischen -90 und 90 liegen, der Längengrad zwischen -180 und 180.",
   "problem_connection_none": "Diese Verbindung gibt es nicht.",
   "problem_connection_value": "Eine Verbindung braucht einen Namen, einen Host und einen Port ungleich 0.",
   "problem_connection_in_use": "Ein Gerät nutzt diese Verbindung noch.",

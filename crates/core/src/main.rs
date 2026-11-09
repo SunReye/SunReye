@@ -3,7 +3,8 @@
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_core::startup::{self, Options};
+use sunreye_core::startup::{self, Boot, Options};
+use sunreye_core::weather::OpenMeteo;
 use tokio::net::TcpListener;
 
 fn main() -> ExitCode {
@@ -44,14 +45,13 @@ async fn run(options: Options) -> Result<(), startup::Error> {
     if let Some(ingress) = options.ingress {
         tracing::info!(%ingress, "trusting Home Assistant ingress");
     }
-    startup::serve(
-        listener,
-        options.data_dir,
-        options.ingress,
-        build_time(),
-        terminated(),
-    )
-    .await?;
+    let boot = Boot {
+        data_dir: options.data_dir,
+        ingress: options.ingress,
+        build: build_time(),
+        weather: OpenMeteo,
+    };
+    startup::serve(listener, boot, terminated()).await?;
     tracing::info!("stopped");
     Ok(())
 }

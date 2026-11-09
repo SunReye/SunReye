@@ -8,10 +8,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_pv as pv;
+use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId};
 use crate::layout::{Datasheet, Inverters, Layouts, PvString, Version, in_force};
-use crate::storage::{self, Issue, Location, Storage};
+use crate::location::Location;
+use crate::storage::{self, Issue, Storage};
 
 const HOUR: Duration = Duration::from_hours(1);
 /// Today and two more days, as the weather device fetches (ADR 17).
@@ -47,7 +49,41 @@ impl SolarForecast {
         }
     }
 
-    /// Issues a forecast at `issued` for every weather target from the start of its hour on.
+    /// Issues a forecast on start, after each weather forecast announced on `weather` and after
+    /// each layout change, while the plant's `location` is set, until storage or the weather
+    /// device stops. `clock` gives each issue's time.
+    pub async fn run(
+        &self,
+        storage: &Storage,
+        location: watch::Receiver<Option<Location>>,
+        mut weather: watch::Receiver<Option<SystemTime>>,
+        clock: impl Fn() -> SystemTime + Sync,
+    ) {
+        let mut layout = self.layouts.changes();
+        loop {
+            let current = *location.borrow();
+            let refreshed = match current {
+                Some(at) => self.refresh(storage, at, clock()).await,
+                None => Ok(()),
+            };
+            match refreshed {
+                Err(storage::Error::Stopped) => return,
+                Err(e) => tracing::warn!("solar forecast: {e}"),
+                Ok(()) => {}
+            }
+            tokio::select! {
+                changed = weather.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                }
+                // The layout module outlives this task.
+                _ = layout.changed() => {}
+            }
+        }
+    }
+
+    /// Issues a forecast at `issued` for the plant at `location`, for every weather target from the start of its hour on.
     /// Every string, input and inverter any layout version has is issued, 0 W where the version
     /// in force at a target lacks it, so a removed string's earlier issue is superseded.
     ///
@@ -56,11 +92,9 @@ impl SolarForecast {
     pub async fn refresh(
         &self,
         storage: &Storage,
+        location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {
-        let Some(location) = storage.location().await? else {
-            return Ok(());
-        };
         let since = issued.duration_since(UNIX_EPOCH).unwrap_or_default();
         let from = issued - Duration::from_secs(since.as_secs() % HOUR.as_secs());
         let weather = self.weather(storage, from, from + HORIZON).await?;

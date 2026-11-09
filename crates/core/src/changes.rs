@@ -29,6 +29,8 @@ const INTERNAL: Problem = Problem {
 pub enum Subject {
     Connection,
     Device,
+    /// The plant's location, id 0.
+    Location,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -123,7 +125,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection` or `device`.
+    /// `connection`, `device` or `location`.
     subject: String,
     /// The subject's id.
     id: u32,

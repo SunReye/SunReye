@@ -1,14 +1,15 @@
 //! The weather device through a fake provider, and the Open-Meteo adapter on recorded responses.
 
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::time::Instant;
 
-use super::{Error, Provider, Slot, Weather, open_meteo};
+use super::fake::Fake;
+use super::{Error, Slot, Weather, open_meteo};
 use crate::bus::{Bus, DeviceId};
-use crate::storage::{Location, Storage};
+use crate::location::Location;
+use crate::storage::Storage;
 
 const DEVICE: DeviceId = DeviceId(3);
 /// 2026-11-09 11:00 UTC.
@@ -34,47 +35,16 @@ fn slot(target: u64, ghi: f64) -> Slot {
     }
 }
 
-/// Answers every fetch with `slots`, failing those listed in `fail`, and reports each call.
-struct Fake {
-    slots: Vec<Slot>,
-    fail: Mutex<Vec<bool>>,
-    calls: mpsc::UnboundedSender<(Instant, Location)>,
-}
-
-impl Fake {
-    fn new(
-        slots: Vec<Slot>,
-        fail: &[bool],
-    ) -> (Self, mpsc::UnboundedReceiver<(Instant, Location)>) {
-        let (calls, received) = mpsc::unbounded_channel();
-        let fail = Mutex::new(fail.iter().rev().copied().collect());
-        (Self { slots, fail, calls }, received)
-    }
-}
-
-impl Provider for Fake {
-    fn fetch(&self, location: Location) -> impl Future<Output = Result<Vec<Slot>, Error>> + Send {
-        self.calls.send((Instant::now(), location)).unwrap();
-        let failed = self.fail.lock().unwrap().pop() == Some(true);
-        std::future::ready(if failed {
-            Err(Error::Fetch("offline".into()))
-        } else {
-            Ok(self.slots.clone())
-        })
-    }
-}
-
 #[tokio::test]
 async fn a_refresh_stores_each_quantity_as_a_forecast_from_the_rounded_location() {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage =
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    storage.set_location(BERLIN).await.unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 210.0)], &[]);
     let weather = Weather::new(fake, DEVICE, &bus);
 
-    weather.refresh(&storage, at(NOON)).await.unwrap();
+    weather.refresh(&storage, BERLIN, at(NOON)).await.unwrap();
 
     let (_, sent) = calls.recv().await.unwrap();
     assert_eq!(
@@ -119,7 +89,7 @@ async fn a_refresh_stores_each_quantity_as_a_forecast_from_the_rounded_location(
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn without_a_location_nothing_is_fetched() {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
@@ -127,8 +97,12 @@ async fn without_a_location_nothing_is_fetched() {
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8)], &[]);
     let weather = Weather::new(fake, DEVICE, &bus);
+    let (_location, unset) = watch::channel(None);
 
-    weather.refresh(&storage, at(NOON)).await.unwrap();
+    tokio::select! {
+        () = weather.run(&storage, unset, || at(NOON)) => panic!("the device stopped"),
+        () = tokio::time::sleep(Duration::from_hours(3)) => {}
+    }
     drop(weather);
     assert!(calls.recv().await.is_none());
 }
@@ -139,14 +113,14 @@ async fn it_fetches_on_start_and_hourly_and_a_failed_fetch_does_not_stop_it() {
     let bus = Bus::default();
     let storage =
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    storage.set_location(BERLIN).await.unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8)], &[true]);
     let weather = Weather::new(fake, DEVICE, &bus);
+    let (_location, berlin) = watch::channel(Some(BERLIN));
     let start = Instant::now();
 
     let mut seen = Vec::new();
     tokio::select! {
-        () = weather.run(&storage, || at(NOON)) => panic!("the device stopped"),
+        () = weather.run(&storage, berlin, || at(NOON)) => panic!("the device stopped"),
         () = async {
             while seen.len() < 3 {
                 seen.push(calls.recv().await.unwrap().0 - start);
@@ -155,6 +129,70 @@ async fn it_fetches_on_start_and_hourly_and_a_failed_fetch_does_not_stop_it() {
     }
     let hour = Duration::from_secs(3600);
     assert_eq!(seen, [Duration::ZERO, hour, 2 * hour]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_location_set_or_changed_is_fetched_at_once_and_hourly_from_then() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8)], &[]);
+    let weather = Weather::new(fake, DEVICE, &bus);
+    let (location, watched) = watch::channel(None);
+    let start = Instant::now();
+    let minutes = |m| Duration::from_mins(m);
+    let hamburg = Location {
+        latitude: 53.55,
+        longitude: 10.0,
+    };
+
+    let mut seen = Vec::new();
+    tokio::select! {
+        () = weather.run(&storage, watched, || at(NOON)) => panic!("the device stopped"),
+        () = async {
+            tokio::time::sleep(minutes(10)).await;
+            location.send_replace(Some(BERLIN));
+            seen.push(calls.recv().await.unwrap());
+            tokio::time::sleep(minutes(20)).await;
+            location.send_replace(Some(hamburg));
+            seen.push(calls.recv().await.unwrap());
+            seen.push(calls.recv().await.unwrap());
+        } => {}
+    }
+    let seen: Vec<_> = seen.into_iter().map(|(at, l)| (at - start, l)).collect();
+    let berlin = BERLIN.rounded();
+    assert_eq!(
+        seen,
+        [
+            (minutes(10), berlin),
+            (minutes(30), hamburg),
+            (minutes(90), hamburg)
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn each_stored_forecast_announces_its_issue_and_a_failed_fetch_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Bus::default();
+    let storage =
+        Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let (fake, _calls) = Fake::new(vec![slot(NOON, 200.8)], &[true, false]);
+    let weather = Weather::new(fake, DEVICE, &bus);
+    let mut issues = weather.issues();
+    let (_location, berlin) = watch::channel(Some(BERLIN));
+    let start = Instant::now();
+
+    let announced = tokio::select! {
+        () = weather.run(&storage, berlin, || at(NOON)) => panic!("the device stopped"),
+        changed = issues.changed() => {
+            changed.unwrap();
+            (Instant::now() - start, *issues.borrow())
+        }
+    };
+
+    assert_eq!(announced, (Duration::from_hours(1), Some(at(NOON))));
 }
 
 #[test]

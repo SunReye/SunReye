@@ -21,6 +21,7 @@ use crate::changes::Changes;
 use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
+use crate::location::PlantLocation;
 use crate::profiles::Catalogue;
 use crate::storage::{Problem, Storage};
 
@@ -30,6 +31,7 @@ mod history;
 mod ingress;
 mod layout;
 mod live;
+mod location;
 mod screen;
 mod settings;
 
@@ -81,6 +83,7 @@ impl Core {
             .await
             .unwrap(),
             changes: Changes::new(storage.database()),
+            location: PlantLocation::open(storage.database()).await.unwrap(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -163,6 +166,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         .await
         .unwrap(),
         changes: Changes::new(storage.database()),
+        location: PlantLocation::open(storage.database()).await.unwrap(),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

@@ -113,13 +113,6 @@ pub struct Issue {
     pub values: Vec<(SystemTime, f64)>,
 }
 
-/// The plant's location in degrees, north and east positive.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Location {
-    pub latitude: f64,
-    pub longitude: f64,
-}
-
 /// A condition the API reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Problem {
@@ -351,24 +344,6 @@ impl Storage {
             })
         })
         .await?
-    }
-
-    /// Sets the plant's location.
-    ///
-    /// # Errors
-    /// The file cannot be written.
-    pub async fn set_location(&self, location: Location) -> Result<(), Error> {
-        self.request(|reply| Request::Forecasting(Forecasting::SetLocation(location, reply)))
-            .await?
-    }
-
-    /// The plant's location, if set.
-    ///
-    /// # Errors
-    /// The file cannot be read.
-    pub async fn location(&self) -> Result<Option<Location>, Error> {
-        self.request(|reply| Request::Forecasting(Forecasting::Location(reply)))
-            .await?
     }
 
     /// The problems as of every command sent before.

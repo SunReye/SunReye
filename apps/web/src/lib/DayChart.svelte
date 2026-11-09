@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { LineChart } from "layerchart/canvas";
+  import { LineChart, Points, Spline } from "layerchart/canvas";
   import type { Core } from "./api/core";
   import { m } from "./paraglide/messages.js";
+  import { getLocale } from "./paraglide/runtime.js";
 
   let { core, device, series }: { core: Core; device: number; series: readonly string[] } =
     $props();
@@ -39,6 +40,12 @@
       data: rows.filter((r) => r.series === key),
     })),
   );
+
+  /** The SPA's locale, not the browser's; a new locale renders the screen anew. */
+  const clock = new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit" });
+
+  /** Series of one point, which a line cannot draw. */
+  const dots = $derived(new Set(lines.filter((l) => l.data.length === 1).map((l) => l.key)));
 
   /** Today so far of each named series. */
   async function measured(from: Core, id: number, wanted: string, start: Date): Promise<Row[]> {
@@ -122,6 +129,15 @@
     height={240}
     legend
     padding={{ top: 4, left: 40, bottom: 52, right: 16 }}
-    props={{ spline: { fill: "none" } }}
-  />
+    props={{ xAxis: { format: (time: Date) => clock.format(time) } }}
+  >
+    {#snippet marks({ context })}
+      {#each context.series.visibleSeries as s (s.key)}
+        <Spline seriesKey={s.key} fill="none" />
+        {#if dots.has(s.key)}
+          <Points seriesKey={s.key} r={3} />
+        {/if}
+      {/each}
+    {/snippet}
+  </LineChart>
 </figure>

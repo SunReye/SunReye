@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "./api/core.ts";
 import DayChart from "./DayChart.svelte";
@@ -38,9 +38,11 @@ function testCore(points: readonly object[] = []): Transport & { readonly asked:
 
       if (url.pathname.endsWith("/forecasts")) {
         const target = "2026-11-09T11:00:00Z";
+        // Apart, so one string's point does not hide the other's.
+        const value = url.searchParams.get("series")?.endsWith("[4]") === true ? 2400 : 1200;
 
         return Promise.resolve(
-          Response.json({ points: [{ target, issued: "2026-11-09T10:00:00Z", value: 2400 }] }),
+          Response.json({ points: [{ target, issued: "2026-11-09T10:00:00Z", value }] }),
         );
       }
 
@@ -136,4 +138,33 @@ test("the day chart's last x-axis label is not clipped at the right edge", async
   const image = await drawn();
 
   expect(inked(image, image.width - 2)).toBe(0);
+});
+
+test("a forecast of a single point is drawn", async () => {
+  // No history: the first series is south's forecast, one point at 11:00.
+  await render(DayChart, { core: connect(testCore()), device: 1, series: ["pv.power"] });
+
+  await expect.poll(() => lined(pixels())).toBe(true);
+});
+
+test("the day chart's time labels follow the SPA's locale, not the browser's", async () => {
+  const fillText = vi.spyOn(CanvasRenderingContext2D.prototype, "fillText");
+
+  const labels = (): string[] =>
+    fillText.mock.calls.map(
+      (call: Readonly<Parameters<CanvasRenderingContext2D["fillText"]>>) => call[0],
+    );
+
+  try {
+    await render(DayChart, { core: connect(testCore(PEAK)), device: 1, series: ["pv.power"] });
+    await drawn();
+
+    // The SPA renders German: 24-hour times such as "12:00", never "12 PM".
+    await expect
+      .poll(() => labels().filter((l) => /^\d{2}:\d{2}$/u.test(l)).length)
+      .toBeGreaterThan(2);
+    expect(labels().filter((l) => /AM|PM/u.test(l))).toEqual([]);
+  } finally {
+    fillText.mockRestore();
+  }
 });
