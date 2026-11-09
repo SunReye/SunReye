@@ -5,6 +5,7 @@ mod deye;
 mod lint;
 mod load;
 mod plan;
+mod publish;
 mod setting;
 mod step;
 mod topic;

@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
 use serde::Serialize;
-use sunreye_profile::{Field, Profile, Setting, Step};
+use sunreye_profile::{Profile, Setting, Source, Step};
 use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
@@ -364,8 +364,11 @@ async fn snapshot(snapshot: Option<Snapshot>, before: Option<f64>) -> bool {
 /// Reads every precondition; the step, counted from 1, of one that cannot be read.
 async fn preconditions(link: &mut Link<'_>, job: &Job) -> Result<Option<u32>, Refusal> {
     for (step, number) in job.setting.recipe().iter().zip(1..) {
-        let Step::Precondition { field, values } = step else {
+        let Step::Precondition { source, values } = step else {
             continue;
+        };
+        let Source::Register(field) = source else {
+            return Ok(Some(number));
         };
         let read = link.read(field.register, 1).await;
         let Ok([word]) = read.as_deref() else {
@@ -460,6 +463,7 @@ async fn recipe(
                 tokio::time::sleep(*pause).await;
                 Ok(false)
             }
+            Step::Publish { .. } => Err(Error::Protocol("a topic is not a register")),
         };
         match result {
             Ok(written) => *wrote |= written,
@@ -504,7 +508,11 @@ impl Link<'_> {
     }
 
     /// The fields `read_back` selects of `width` registers.
-    async fn read_back(&mut self, read_back: Field, width: usize) -> Result<Vec<u16>, Error> {
+    async fn read_back(&mut self, read_back: Source, width: usize) -> Result<Vec<u16>, Error> {
+        // A profile reading topics writes through its broker, never here.
+        let Source::Register(read_back) = read_back else {
+            return Err(Error::Protocol("a topic is not a register"));
+        };
         let words = self.read(read_back.register, width).await?;
         Ok(words.into_iter().map(|w| read_back.extract(w)).collect())
     }

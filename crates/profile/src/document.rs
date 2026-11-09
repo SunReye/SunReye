@@ -71,6 +71,7 @@ pub enum StepDoc {
     Unlock(UnlockDoc),
     Delay(DelayDoc),
     SnapshotToggle(ToggleDoc),
+    Publish(PublishDoc),
 }
 
 impl StepDoc {
@@ -85,19 +86,33 @@ impl StepDoc {
             Self::Unlock(_) => "unlock",
             Self::Delay(_) => "delay",
             Self::SnapshotToggle(_) => "snapshot-toggle",
+            Self::Publish(_) => "publish",
         }
     }
 }
 
-/// A field that must hold one of `values` before anything is written.
+/// A field, or a quantity read from a topic, that must hold one of `values` before anything is
+/// written.
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Precondition", optional_fields))]
 #[serde(deny_unknown_fields)]
 pub struct PreconditionDoc {
-    pub register: u16,
+    pub register: Option<u16>,
     pub mask: Option<u16>,
+    /// The key of a quantity read from a topic, in place of a register.
+    pub quantity: Option<String>,
     pub values: Vec<u16>,
+}
+
+/// The value published, unretained, to `topic` under the connection's root; `{address}` stands
+/// for the device address.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Publish"))]
+#[serde(deny_unknown_fields)]
+pub struct PublishDoc {
+    pub topic: String,
 }
 
 /// A secret of the device's connection, written by name before the value; `finally` relocks.
@@ -156,14 +171,17 @@ pub struct MaskedDoc {
     pub mask: u16,
 }
 
-/// Where a write is read back: all of `register`, or the bits `mask` selects.
+/// Where a write is read back: all of `register`, the bits `mask` selects, or a quantity read
+/// from a topic.
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "ReadBack", optional_fields))]
 #[serde(deny_unknown_fields)]
 pub struct ReadBackDoc {
-    pub register: u16,
+    pub register: Option<u16>,
     pub mask: Option<u16>,
+    /// The key of a quantity read from a topic, in place of a register.
+    pub quantity: Option<String>,
 }
 
 /// Registers written in one request from `register`, the value's words in place of `"value"`.

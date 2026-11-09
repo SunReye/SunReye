@@ -5,7 +5,7 @@ use std::fmt;
 
 use serde::Deserialize;
 
-use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, StepDoc};
+use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::plan::{self, Block};
 use crate::setting::{self, Setting};
 use crate::{CAPABILITIES, SCHEMA};
@@ -199,7 +199,7 @@ impl Profile {
             .collect();
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
-        let settings = setting::compile(doc.settings)
+        let settings = setting::compile(doc.settings, &quantities)
             .map_err(|(key, problem)| LoadError::Setting { key, problem })?;
         Ok(Self {
             id: doc.id,
@@ -297,13 +297,12 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
             Kind::U32 => "u32",
         })
         .chain(
-            (quantities.clone().any(|q| q.register.is_some()) || !doc.settings.is_empty())
-                .then_some("modbus"),
+            (quantities.clone().any(|q| q.register.is_some())
+                || doc.settings.iter().any(|s| !publishes(s)))
+            .then_some("modbus"),
         )
         .chain(
-            quantities
-                .clone()
-                .any(|q| q.topic.is_some())
+            (quantities.clone().any(|q| q.topic.is_some()) || doc.settings.iter().any(publishes))
                 .then_some("mqtt"),
         )
         .chain(
@@ -322,6 +321,14 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
         .iter()
         .copied()
         .filter(move |name| used.contains(name) && !doc.requires.iter().any(|r| r == name))
+}
+
+/// Whether a setting writes through the `mqtt` binding.
+fn publishes(setting: &SettingDoc) -> bool {
+    setting
+        .recipe
+        .iter()
+        .any(|step| matches!(step, StepDoc::Publish(_)))
 }
 
 fn malformed(error: &serde_json::Error) -> LoadError {
