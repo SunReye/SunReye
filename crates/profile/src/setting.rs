@@ -17,6 +17,7 @@ pub struct Setting {
     min_interval: Duration,
     recipe: Vec<Step>,
     read_back: Option<Field>,
+    verified: bool,
 }
 
 /// The bits `mask` selects of `register`: where a write is read back, or what a precondition
@@ -186,6 +187,12 @@ impl Setting {
     #[must_use]
     pub const fn read_back(&self) -> Option<Field> {
         self.read_back
+    }
+
+    /// Whether its write was checked on real hardware (ADR 5).
+    #[must_use]
+    pub const fn verified(&self) -> bool {
+        self.verified
     }
 
     /// The shortest time between two writes, to spare the device's memory.
@@ -393,6 +400,7 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
         min_interval: Duration::from_secs(doc.min_interval),
         recipe,
         read_back,
+        verified: doc.verified,
     })
 }
 

@@ -40,7 +40,12 @@ export type Setting = { key: string, type: Kind, scale?: number, range?: Range, 
 /**
  * Seconds.
  */
-minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boolean, };
+minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boolean, 
+/**
+ * Its write was checked on real hardware (ADR 5); an unverified setting needs the admin's
+ * enable (ADR 8).
+ */
+verified?: boolean, };
 
 export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle };
 
