@@ -1,16 +1,18 @@
 //! The solar forecast (ADR 15, 17).
 //!
 //! The `pv` model runs over the stored weather forecast and the layout in force at each target;
-//! its results are stored as forecasts of each inverter's `pv.string.power`, `pv.mppt.power` and
+//! each MPPT input's learned correction scales it and its strings at the plant-local month and
+//! hour, and the results are stored as forecasts of each inverter's `pv.string.power`, `pv.mppt.power` and
 //! `pv.power`.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_pv as pv;
 use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId};
+use crate::correction::{Corrections, Grid, plant_hour};
 use crate::layout::{Inverters, Layouts, PvString, Version, in_force};
 use crate::location::Location;
 use crate::storage::{self, Issue, Storage};
@@ -51,10 +53,10 @@ impl SolarForecast {
 
     /// Issues a forecast on start, after each weather forecast announced on `weather` and after
     /// each layout change, while the plant's `location` is set, until storage or the weather
-    /// device stops. `clock` gives each issue's time.
+    /// device stops, with the grids from `corrections`. `clock` gives each issue's time.
     pub async fn run(
         &self,
-        storage: &Storage,
+        (storage, corrections): (&Storage, &impl Corrections),
         location: watch::Receiver<Option<Location>>,
         mut weather: watch::Receiver<Option<SystemTime>>,
         clock: impl Fn() -> SystemTime + Sync,
@@ -63,7 +65,7 @@ impl SolarForecast {
         loop {
             let current = *location.borrow();
             let refreshed = match current {
-                Some(at) => self.refresh(storage, at, clock()).await,
+                Some(at) => self.refresh(storage, corrections, at, clock()).await,
                 None => Ok(()),
             };
             match refreshed {
@@ -83,7 +85,8 @@ impl SolarForecast {
         }
     }
 
-    /// Issues a forecast at `issued` for the plant at `location`, for every weather target from the start of its hour on.
+    /// Issues a forecast at `issued` for the plant at `location`, for every weather target from the start of its hour on,
+    /// with each MPPT input's grid from `corrections` applied.
     /// Every string, input and inverter any layout version has is issued, 0 W where the version
     /// in force at a target lacks it, so a removed string's earlier issue is superseded.
     ///
@@ -92,6 +95,7 @@ impl SolarForecast {
     pub async fn refresh(
         &self,
         storage: &Storage,
+        corrections: &impl Corrections,
         location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {
@@ -104,7 +108,24 @@ impl SolarForecast {
             .flat_map(|v| &v.strings)
             .flat_map(|s| keys(s).map(|key| (key, Vec::new())))
             .collect();
-        for (target, values) in estimates(&self.layouts, &versions, location, weather).await? {
+        let inputs: HashSet<_> = versions
+            .iter()
+            .flat_map(|v| &v.strings)
+            .map(input_of)
+            .collect();
+        let mut grids = HashMap::new();
+        for input in inputs {
+            grids.insert(input, corrections.grid(input.0, input.1).await?);
+        }
+        let zone = storage.zones().watch().borrow().clone();
+        for (target, modelled) in estimates(&self.layouts, &versions, location, weather).await? {
+            let (month, hour) = plant_hour(target, &zone);
+            let factor = |input| {
+                grids
+                    .get(&input)
+                    .map_or(1.0, |g: &Grid| g.factor(month, hour))
+            };
+            let values = corrected(modelled, in_force(&versions, target), factor);
             for (key, points) in &mut series {
                 points.push((target, values.get(key).copied().unwrap_or(0.0)));
             }
@@ -185,6 +206,43 @@ pub(crate) async fn estimates(
             (target, values)
         })
         .collect())
+}
+
+/// A string's inverter device and MPPT input.
+const fn input_of(string: &PvString) -> (DeviceId, u32) {
+    (DeviceId(string.wiring.device), string.wiring.input)
+}
+
+/// The model's values with each MPPT input's learned `factor` applied to it and to its strings
+/// (ADR 17); each inverter's `pv.power` is the sum of its corrected inputs, as no AC rating caps
+/// the model.
+fn corrected(
+    mut values: HashMap<Key, f64>,
+    version: Option<&Version>,
+    factor: impl Fn((DeviceId, u32)) -> f64,
+) -> HashMap<Key, f64> {
+    let inputs: HashMap<u32, (DeviceId, u32)> = version
+        .map(|v| v.strings.iter().map(|s| (s.id, input_of(s))).collect())
+        .unwrap_or_default();
+    let mut inverters: HashMap<DeviceId, f64> = HashMap::new();
+    for ((device, role, index), value) in &mut values {
+        let input = match (*role, *index) {
+            ("pv.mppt.power", Some(n)) => (*device, n),
+            ("pv.string.power", Some(id)) => match inputs.get(&id) {
+                Some(input) => *input,
+                None => continue,
+            },
+            _ => continue,
+        };
+        *value *= factor(input);
+        if *role == "pv.mppt.power" {
+            *inverters.entry(*device).or_default() += *value;
+        }
+    }
+    for (device, power) in inverters {
+        values.insert((device, "pv.power", None), power);
+    }
+    values
 }
 
 /// The series a string contributes to.
