@@ -1,4 +1,9 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
+import type { ModuleType, StringDraft } from "../api/core.ts";
+import { isGeometry, isModules, isSun, isWatts, unwrap } from "./replies.ts";
+
+/** A string as the core's API wires it. */
+export type Wiring = Readonly<Omit<StringDraft, "id">>;
 
 /** Metres: east, north, up. */
 export type Point = readonly [number, number, number];
@@ -179,11 +184,37 @@ export interface Geometry {
     | null;
 }
 
+/** North and east positive, in degrees. */
+export interface Location {
+  readonly latitude: number;
+  readonly longitude: number;
+}
+
+/** In degrees; the azimuth 0 = south, −90 = east, 90 = west (ADR 17). */
+export interface Sun {
+  readonly zenith: number;
+  readonly azimuth: number;
+}
+
+/** A layout under a clear sky: the scene names its strings by position in `strings`. */
+export interface ClearRun {
+  readonly location: Location;
+  readonly scene: Scene;
+  readonly moduleTypes: readonly Readonly<ModuleType>[];
+  readonly strings: readonly Wiring[];
+  /** Seconds since 1970, UTC. */
+  readonly times: readonly number[];
+}
+
 export interface Pv {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   geometry(scene: Scene): Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
   modules(scene: Scene, sizes: Readonly<Record<number, Size>>): Modules;
+  /** Where the sun stands at `unix` seconds over `location`. */
+  sun(unix: number, location: Location): Sun;
+  /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
+  clearSky(run: ClearRun): number[][];
 }
 
 /** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
@@ -193,9 +224,11 @@ interface Exports {
   readonly release: (ptr: number, len: number) => void;
   readonly geometry: (input: number, inputLen: number) => bigint;
   readonly modules: (input: number, inputLen: number) => bigint;
+  readonly sun: (input: number, inputLen: number) => bigint;
+  readonly clear_sky: (input: number, inputLen: number) => bigint;
 }
 
-const functions = ["reserve", "release", "geometry", "modules"] as const;
+const functions = ["reserve", "release", "geometry", "modules", "sun", "clear_sky"] as const;
 
 function isExports(
   exports: Readonly<WebAssembly.Exports>,
@@ -216,50 +249,6 @@ function isExports(
   );
 }
 
-type Reply<T> = { readonly ok: T } | { readonly error: string };
-
-/** The `ok` of the crate's reply, or its error thrown. */
-function unwrap<T>(text: string, guard: (value: unknown) => value is Reply<T>): T {
-  const reply: unknown = JSON.parse(text);
-
-  if (!guard(reply)) throw new TypeError(`pv WASM replied ${text}`);
-
-  if ("error" in reply) throw new Error(reply.error);
-
-  return reply.ok;
-}
-
-function isFailure(value: unknown): value is { readonly error: string } {
-  return value instanceof Object && "error" in value && String(value.error) === value.error;
-}
-
-/** The glue crate's own shape is trusted past the top level's arrays. */
-function isGeometry(value: unknown): value is Reply<Geometry> {
-  return (
-    isFailure(value) ||
-    (value instanceof Object &&
-      "ok" in value &&
-      value.ok instanceof Object &&
-      "faces" in value.ok &&
-      Array.isArray(value.ok.faces) &&
-      "solids" in value.ok &&
-      Array.isArray(value.ok.solids))
-  );
-}
-
-function isModules(value: unknown): value is Reply<Modules> {
-  return (
-    isFailure(value) ||
-    (value instanceof Object &&
-      "ok" in value &&
-      value.ok instanceof Object &&
-      "roofs" in value.ok &&
-      Array.isArray(value.ok.roofs) &&
-      "grids" in value.ok &&
-      Array.isArray(value.ok.grids))
-  );
-}
-
 /** Instantiates the glue crate's release build. */
 export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   const { instance } = await WebAssembly.instantiate(bytes);
@@ -268,7 +257,10 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
   /** The reply of export `name` to the JSON `input`. */
-  const call = (name: "geometry" | "modules", input: string): string => {
+  const call = (
+    name: Exclude<(typeof functions)[number], "reserve" | "release">,
+    input: string,
+  ): string => {
     const encoded = new TextEncoder().encode(input);
     const at = wasm.reserve(encoded.length);
 
@@ -289,5 +281,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   return {
     geometry: (scene) => unwrap(call("geometry", JSON.stringify(scene)), isGeometry),
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
+    sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
+    clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
   };
 }

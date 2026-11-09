@@ -123,3 +123,66 @@ test("a carport has posts for walls and a car stands at its place's centre, nose
   expect(solids).toHaveLength(4);
   expect(stands).toEqual([{ at: [1.5, -2.5, 0], forward: [0, 1, 0], above: [1.5, -2.5, 2.5] }]);
 });
+
+const BERLIN = { latitude: 52.52, longitude: 13.38 };
+
+test("the sun over Berlin stands as NREL SPA has it", () => {
+  // 2026-06-21T11:30Z (crates/pv/fixtures/sun.csv).
+  const sun = pv.sun(1_782_041_400, BERLIN);
+
+  expect(sun.zenith).toBeCloseTo(29.377, 1);
+  expect(sun.azimuth).toBeCloseTo(10.189, 1);
+});
+
+const datasheet = {
+  id: 7,
+  name: "Owner 400",
+  pmax: 400,
+  vmp: 34,
+  imp: 11.76,
+  voc: 41,
+  isc: 12.5,
+  powerCoefficient: -0.35,
+  voltageCoefficient: -0.27,
+  currentCoefficient: 0.05,
+  width: 1.134,
+  height: 1.722,
+  bypassDiodes: 3,
+};
+
+function wired(modules: number, azimuth: number) {
+  return {
+    name: "",
+    moduleType: 7,
+    device: 1,
+    input: 1,
+    modules,
+    optimized: 0,
+    tilt: 35,
+    azimuth,
+    loss: 2,
+  };
+}
+
+test("a clear sky lights a painted south string over one entered by form facing north", () => {
+  const painted = [0, 1, 2, 3].map((column) => ({ row: 0, column, string: 0, optimized: false }));
+
+  const run = (unix: number) =>
+    pv.clearSky({
+      location: BERLIN,
+      scene: gridded(painted),
+      moduleTypes: [datasheet],
+      // The painted string's count and plane come from its modules.
+      strings: [wired(4, 90), { ...wired(4, 180), input: 2 }],
+      times: [unix],
+    });
+
+  // 2026-06-21, midnight and 11:00 UTC.
+  const [[southDark, northDark] = []] = run(1_782_000_000);
+  const [[south = 0, north = 0] = []] = run(1_782_039_600);
+
+  expect([southDark, northDark]).toEqual([0, 0]);
+  expect(south).toBeGreaterThan(north);
+  expect(south).toBeLessThan(4 * 400);
+  expect(north).toBeGreaterThan(0);
+});

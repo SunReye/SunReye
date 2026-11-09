@@ -4,11 +4,15 @@
 //! returns `ptr << 32 | len` of a JSON reply, `{"ok": …}` or `{"error": "…"}`, and the host hands
 //! every buffer back to `release`.
 
+mod clear;
+
 use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sunreye_pv::{CellPlace, Face, Misplaced, Occluder, RoofFace, Scene, Size, Surface};
+use sunreye_pv::{
+    CellPlace, Face, Location, Misplaced, Occluder, RoofFace, Scene, Size, Surface, sun_position,
+};
 
 /// The faces, solids, equipment mounts and car stands of a scene, in the shading frame: east,
 /// north, up. The mounts are `null` while a marker lies off its wall, the stands while a car
@@ -67,6 +71,54 @@ fn modules(input: &[u8]) -> String {
         "grids": grids,
         "misplaced": misplaced,
     }})
+    .to_string()
+}
+
+/// An instant and a place, as `sun` takes them.
+#[derive(Deserialize)]
+struct Instant {
+    unix: i64,
+    location: Place,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+pub struct Place {
+    latitude: f64,
+    longitude: f64,
+}
+
+impl From<Place> for Location {
+    fn from(
+        Place {
+            latitude,
+            longitude,
+        }: Place,
+    ) -> Self {
+        Self {
+            latitude,
+            longitude,
+        }
+    }
+}
+
+/// The sun's zenith and azimuth (ADR 17) at an instant over a place.
+fn sun(input: &[u8]) -> String {
+    match serde_json::from_slice::<Instant>(input) {
+        Ok(Instant { unix, location }) => {
+            let sun = sun_position(unix, location.into());
+            json!({ "ok": { "zenith": sun.zenith, "azimuth": sun.azimuth } })
+        }
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
+}
+
+/// Each string's watts under a clear sky at each of the run's times, by string position.
+fn clear_sky(input: &[u8]) -> String {
+    match serde_json::from_slice::<clear::Run>(input) {
+        Ok(run) => json!({ "ok": run.watts() }),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
     .to_string()
 }
 
@@ -156,6 +208,24 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::modules(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn sun(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::sun(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn clear_sky(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::clear_sky(input))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.
