@@ -105,7 +105,7 @@ fn addresses(quantity: &Quantity) -> Vec<u16> {
             kind: Kind::U16 | Kind::I16,
             ..
         } => vec![address],
-        Read::Compute(_) => Vec::new(),
+        Read::Compute(_) | Read::Topic { .. } => Vec::new(),
     }
 }
 
@@ -142,7 +142,7 @@ fn atomic_groups(quantities: &[Quantity]) -> Vec<Block> {
                 .flatten()
                 .copied()
                 .collect(),
-            Read::Register { .. } => addresses(quantity).into_iter().collect(),
+            Read::Register { .. } | Read::Topic { .. } => addresses(quantity).into_iter().collect(),
         };
         if let (Read::Compute(_), Some(min), Some(max), true) = (
             &quantity.read,

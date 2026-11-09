@@ -1,10 +1,14 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle";
+export type Capability = "modbus" | "mqtt" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
-export type Quantity = { key: string, role: string, index?: number, register?: number, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, };
+export type Quantity = { key: string, role: string, index?: number, register?: number, 
+/**
+ * An `mqtt` topic under the connection's root; `{address}` stands for the device address.
+ */
+topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, };
 
 export type Kind = "u16" | "i16" | "u32";
 

@@ -77,6 +77,12 @@ pub enum Read {
         scale: f64,
         offset: f64,
     },
+    /// A topic under the connection's root, with `{address}` unsubstituted.
+    Topic {
+        topic: String,
+        scale: f64,
+        offset: f64,
+    },
     Compute(Expr),
 }
 
@@ -99,6 +105,17 @@ pub enum Expr {
         min: Option<f64>,
         max: Option<f64>,
     },
+}
+
+impl Read {
+    /// Whether it reads a topic rather than a register; `None` for a computed quantity.
+    const fn binding(&self) -> Option<bool> {
+        match self {
+            Self::Register { .. } => Some(false),
+            Self::Topic { .. } => Some(true),
+            Self::Compute(_) => None,
+        }
+    }
 }
 
 impl Expr {
@@ -284,6 +301,12 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
         .chain(
             quantities
                 .clone()
+                .any(|q| q.topic.is_some())
+                .then_some("mqtt"),
+        )
+        .chain(
+            quantities
+                .clone()
                 .any(|q| q.compute.is_some())
                 .then_some("compute"),
         )
@@ -315,6 +338,14 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
             return Err(refuse("the key is declared twice"));
         }
         let read = read(&doc, &positions).map_err(refuse)?;
+        let first = quantities.iter().find_map(|q: &Quantity| q.read.binding());
+        if read
+            .binding()
+            .zip(first)
+            .is_some_and(|(this, first)| this != first)
+        {
+            return Err(refuse("a profile reads through one binding"));
+        }
         let step = step(&read, &quantities);
         positions.insert(doc.key.clone(), quantities.len());
         quantities.push(Quantity {
@@ -332,7 +363,7 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
 /// `earlier` holds every input of a computed `read`.
 fn step(read: &Read, earlier: &[Quantity]) -> f64 {
     match read {
-        Read::Register { scale, .. } => scale.abs(),
+        Read::Register { scale, .. } | Read::Topic { scale, .. } => scale.abs(),
         Read::Compute(Expr::Ratio { scale, .. }) => scale.abs() / 1000.0,
         Read::Compute(expr) => expr
             .inputs()
@@ -344,24 +375,41 @@ fn step(read: &Read, earlier: &[Quantity]) -> f64 {
 }
 
 fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &'static str> {
-    match (doc.register, doc.kind, &doc.compute) {
-        (Some(address), Some(kind), None) => {
+    let scale = doc.scale.unwrap_or(1.0);
+    let offset = doc.offset.unwrap_or(0.0);
+    match (doc.register, &doc.topic, &doc.compute) {
+        (Some(address), None, None) => {
+            let kind = doc.kind.ok_or("a register needs a type")?;
             if kind == Kind::U32 && address == u16::MAX {
                 return Err("a u32 needs two registers");
             }
             Ok(Read::Register {
                 address,
                 kind,
-                scale: doc.scale.unwrap_or(1.0),
-                offset: doc.offset.unwrap_or(0.0),
+                scale,
+                offset,
             })
         }
-        (None, None, Some(expr)) if doc.scale.is_none() && doc.offset.is_none() => {
+        (None, Some(topic), None) => {
+            if doc.kind.is_some() {
+                return Err("a topic takes no type");
+            }
+            if topic.is_empty() || topic.starts_with('/') || topic.contains(['+', '#']) {
+                return Err("a topic is a path under the root, without wildcards");
+            }
+            Ok(Read::Topic {
+                topic: topic.clone(),
+                scale,
+                offset,
+            })
+        }
+        (None, None, Some(expr)) if doc.kind.is_none() => {
+            if doc.scale.is_some() || doc.offset.is_some() {
+                return Err("a computed quantity takes no scale or offset");
+            }
             expr_of(expr, positions).map(Read::Compute)
         }
-        (None, None, Some(_)) => Err("a computed quantity takes no scale or offset"),
-        (Some(_), None, None) => Err("a register needs a type"),
-        _ => Err("declare either `register` with `type`, or `compute`"),
+        _ => Err("declare one of `register`, `topic` or `compute`"),
     }
 }
 

@@ -7,5 +7,6 @@ mod load;
 mod plan;
 mod setting;
 mod step;
+mod topic;
 mod types;
 mod unit;
