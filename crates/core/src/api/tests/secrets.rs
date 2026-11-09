@@ -239,3 +239,17 @@ async fn an_unlock_that_times_out_is_never_retried_and_still_relocks() {
     let code = CODE.parse().unwrap();
     assert_eq!(plant.received(), [write(200, code), write(200, 0)]);
 }
+
+#[test]
+fn a_connection_as_entered_never_shows_its_secrets() {
+    let draft: crate::devices::ConnectionDraft = serde_json::from_value(json!({
+        "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1", "port": 502,
+        "secrets": { "unlock": CODE },
+    }))
+    .unwrap();
+
+    let shown = format!("{draft:?}");
+
+    assert!(shown.contains("unlock"), "{shown}");
+    assert!(!shown.contains(CODE), "{shown}");
+}

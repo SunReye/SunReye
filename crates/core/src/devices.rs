@@ -104,13 +104,23 @@ pub struct Connection {
 }
 
 /// A connection as the admin enters it.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Clone, Deserialize, ToSchema)]
 pub struct ConnectionDraft {
     #[serde(flatten)]
     pub reach: Reach,
     /// Credentials by name: a value sets one, `null` removes it, an absent name is kept.
     #[serde(default)]
     pub secrets: BTreeMap<String, Option<String>>,
+}
+
+/// Shows the names of the secrets alone, so no log line can carry a value.
+impl std::fmt::Debug for ConnectionDraft {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionDraft")
+            .field("reach", &self.reach)
+            .field("secrets", &self.secrets.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 /// Where a device sits and how it is read.
