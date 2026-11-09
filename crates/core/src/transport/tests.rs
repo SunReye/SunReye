@@ -215,3 +215,23 @@ async fn a_count_outside_the_pdu_limit_is_refused_before_anything_is_sent() {
         "the capture is untouched"
     );
 }
+
+/// The setup scan's guard (ADR 6) sits on the wire, as a capture's does: a write through a
+/// read-only client never leaves, and reads still pass.
+#[tokio::test]
+async fn a_read_only_client_refuses_a_write_before_it_reaches_the_device() {
+    use super::fake;
+    for mut fake in [fake::serve().await, fake::serve_solarman().await] {
+        let mut client = Client::read_only(&fake.endpoint(), TIMEOUT).await.unwrap();
+
+        let refused = client.write_registers(1, 500, &[1]).await;
+
+        assert!(matches!(refused, Err(Error::Io(_))), "{refused:?}");
+        assert!(
+            fake.writes.try_recv().is_err(),
+            "the write reached the device"
+        );
+        let mut client = Client::read_only(&fake.endpoint(), TIMEOUT).await.unwrap();
+        assert_eq!(read(&mut client, 1, 500, 2).await, Ok(vec![500, 501]));
+    }
+}
