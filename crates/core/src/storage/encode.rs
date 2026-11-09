@@ -133,10 +133,15 @@ impl Track {
     }
 
     fn quantise(&self, value: f64) -> Option<i64> {
-        let steps = (value / self.step).round();
-        #[expect(clippy::cast_possible_truncation, reason = "bounded to ±2^53 first")]
-        (steps.abs() <= MAX_VALUE).then_some(steps as i64)
+        quantise(value, self.step)
     }
+}
+
+/// `value` in whole steps; `None` when not finite or beyond ±2^53.
+pub fn quantise(value: f64, step: f64) -> Option<i64> {
+    let steps = (value / step).round();
+    #[expect(clippy::cast_possible_truncation, reason = "bounded to ±2^53 first")]
+    (steps.abs() <= MAX_VALUE).then_some(steps as i64)
 }
 
 #[cfg(test)]

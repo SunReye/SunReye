@@ -3,6 +3,7 @@
 
 mod block;
 mod encode;
+mod forecast;
 mod thread;
 
 use std::fmt;
@@ -54,6 +55,29 @@ impl Policy {
 pub struct ChangePoint {
     pub time: SystemTime,
     pub value: Option<f64>,
+}
+
+/// A value issued at one time about a later target time (ADR 15).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Forecast {
+    pub target: SystemTime,
+    pub issued: SystemTime,
+    pub value: f64,
+}
+
+/// One issue of forecasts of a series: `(target, value)` pairs in multiples of `step`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Issue {
+    pub issued: SystemTime,
+    pub step: f64,
+    pub values: Vec<(SystemTime, f64)>,
+}
+
+/// The plant's location in degrees, north and east positive.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Location {
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 /// A condition the API reports.
@@ -200,6 +224,69 @@ impl Storage {
             reply,
         })
         .await?
+    }
+
+    /// Stores one issue of forecasts of `series`.
+    ///
+    /// # Errors
+    /// The step differs from the stored one or is not positive, or the series is unknown.
+    pub async fn forecast(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        issue: Issue,
+    ) -> Result<(), Error> {
+        if !(issue.step.is_finite() && issue.step > 0.0) {
+            return Err(Error::Step);
+        }
+        let name = self.name(series)?;
+        self.request(|reply| Request::Forecast {
+            device,
+            name,
+            issue,
+            reply,
+        })
+        .await?
+    }
+
+    /// Every stored forecast of `series` with a target from `from` to before `to`, by target,
+    /// then issue.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn forecasts(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        from: SystemTime,
+        to: SystemTime,
+    ) -> Result<Vec<Forecast>, Error> {
+        let name = self.name(series)?;
+        self.request(|reply| Request::Forecasts {
+            device,
+            name,
+            from,
+            to,
+            reply,
+        })
+        .await?
+    }
+
+    /// Sets the plant's location.
+    ///
+    /// # Errors
+    /// The file cannot be written.
+    pub async fn set_location(&self, location: Location) -> Result<(), Error> {
+        self.request(|reply| Request::SetLocation(location, reply))
+            .await?
+    }
+
+    /// The plant's location, if set.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn location(&self) -> Result<Option<Location>, Error> {
+        self.request(Request::Location).await?
     }
 
     /// The problems as of every command sent before.
