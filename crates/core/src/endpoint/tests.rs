@@ -141,3 +141,32 @@ fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
         .collect();
     assert_eq!(waits, [5, 10, 20, 40, 60, 60, 60]);
 }
+
+/// The owner's plant (#623) is polled read-only: a cycle of the bundled Deye profile sends only
+/// function 3.
+#[tokio::test]
+async fn polling_the_bundled_deye_profile_sends_only_reads() {
+    let profile = crate::profiles::Catalogue::bundled()
+        .unwrap()
+        .get("deye-sg05lp3")
+        .unwrap();
+    let blocks = profile
+        .read_plan(sunreye_profile::Framing::Tcp.gap_tolerance())
+        .len();
+    let mut fake = crate::transport::fake::serve().await;
+    let endpoint = Endpoint::ModbusTcp {
+        host: fake.address.ip().to_string(),
+        port: fake.address.port(),
+    };
+    let device = Device {
+        id: DeviceId(1),
+        unit: 0,
+        profile,
+    };
+    let _task = spawn(endpoint, vec![device], Bus::default());
+    let mut functions = Vec::new();
+    for _ in 0..blocks {
+        functions.push(fake.reads.recv().await.unwrap().function);
+    }
+    assert_eq!(functions, vec![3; blocks]);
+}
