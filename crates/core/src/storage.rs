@@ -17,8 +17,8 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
-pub use thread::Log;
 use thread::{Command, Forecasting, Request, Rewriting};
+pub use thread::{Log, SCHEMA};
 
 /// Commands the storage thread may fall behind by before senders wait.
 const QUEUE: usize = 1024;
@@ -174,6 +174,8 @@ pub enum Error {
     UnknownSeries,
     /// A plant timezone that is not an IANA name the core knows.
     Zone,
+    /// The file's schema version, newer than this build knows: a later release wrote it.
+    Newer(i64),
     /// The storage thread has stopped.
     Stopped,
 }
@@ -188,6 +190,10 @@ impl fmt::Display for Error {
             Self::Corrupt => f.write_str("a stored block cannot be read"),
             Self::UnknownSeries => f.write_str("unknown series"),
             Self::Zone => f.write_str("unknown timezone"),
+            Self::Newer(version) => write!(
+                f,
+                "the database's schema {version} is newer than this build's {SCHEMA}"
+            ),
             Self::Stopped => f.write_str("storage has stopped"),
         }
     }

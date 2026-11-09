@@ -50,6 +50,10 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0022.sql"),
 ];
 
+/// The schema version this build writes: the number of migrations.
+#[expect(clippy::cast_possible_wrap, reason = "a few dozen migrations")]
+pub const SCHEMA: i64 = MIGRATIONS.len() as i64;
+
 /// SQL a feature module runs on its own tables.
 pub type Job = Box<dyn FnOnce(&Connection) + Send>;
 
@@ -205,6 +209,9 @@ fn open(path: &Path) -> Result<Connection, Error> {
          PRAGMA cache_size = -2048;",
     )?;
     let applied: i64 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if applied > SCHEMA {
+        return Err(Error::Newer(applied));
+    }
     let tx = db.transaction()?;
     for (version, sql) in (1..).zip(MIGRATIONS).skip_while(|(v, _)| *v <= applied) {
         tx.execute_batch(sql)?;

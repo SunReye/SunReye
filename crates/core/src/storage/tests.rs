@@ -428,3 +428,21 @@ async fn a_passed_target_hour_keeps_only_its_latest_issue() {
         ]
     );
 }
+
+#[tokio::test]
+async fn a_database_with_a_newer_schema_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let newer = super::SCHEMA + 1;
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", newer)
+        .unwrap();
+
+    let opened = Storage::open(&path, epoch(), "UTC", &Bus::default());
+
+    assert!(
+        matches!(opened, Err(super::Error::Newer(v)) if v == newer),
+        "{opened:?}"
+    );
+}
