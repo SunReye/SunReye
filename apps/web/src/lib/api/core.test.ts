@@ -153,3 +153,12 @@ test("a refused history read reports the problem code", async () => {
 
   expect(history).toEqual({ problem: "history.range" });
 });
+
+test("a refusal that is no problem document reports its HTTP status", async () => {
+  const proxy = new Response("<html>Bad Gateway</html>", {
+    status: 502,
+    headers: { "content-type": "text/html" },
+  });
+
+  expect(await updates(scripted(proxy), 1)).toEqual([{ problem: "http.502" }]);
+});

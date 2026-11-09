@@ -3,6 +3,8 @@ import type { components, paths } from "./schema";
 
 type Client = ReturnType<typeof createClient<paths>>;
 
+type ProblemDetails = components["schemas"]["ProblemDetails"];
+
 export type History = components["schemas"]["History"];
 
 /** A refusal's stable code (ADR 9), such as `auth.required`. */
@@ -57,14 +59,14 @@ export function connect(transport: Transport): Core {
       };
     },
     history: async (device, series, from, to) => {
-      const { data, error } = await client.GET("/api/v1/devices/{id}/history", {
+      const { data, error, response } = await client.GET("/api/v1/devices/{id}/history", {
         params: {
           path: { id: device },
           query: { series, from: from.toISOString(), to: to.toISOString() },
         },
       });
 
-      return data ?? { problem: error.code };
+      return data ?? refusal(error, response.status);
     },
   };
 }
@@ -89,10 +91,13 @@ async function stream(
   listener: (live: Live) => void,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const { data, error } = await client.GET("/api/v1/live", { parseAs: "stream", signal });
+  const { data, error, response } = await client.GET("/api/v1/live", {
+    parseAs: "stream",
+    signal,
+  });
 
   if (error !== undefined) {
-    listener({ problem: error.code });
+    listener(refusal(error, response.status));
 
     return false;
   }
@@ -113,6 +118,11 @@ async function stream(
   await data?.pipeThrough(events()).pipeTo(fold, { signal });
 
   return values !== undefined;
+}
+
+/** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
+function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
+  return { problem: error instanceof Object ? error.code : `http.${status}` };
 }
 
 interface Message {
