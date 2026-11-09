@@ -4,10 +4,12 @@ mod decode;
 mod document;
 mod plan;
 mod profile;
+mod role;
 
 pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{LoadError, Profile, Quantity};
+pub use role::Unit;
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
