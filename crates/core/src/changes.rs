@@ -29,6 +29,8 @@ const INTERNAL: Problem = Problem {
 pub enum Subject {
     Connection,
     Device,
+    /// A profile index an admin added (ADR 8).
+    Index,
     /// The plant's location, id 0.
     Location,
 }
@@ -125,7 +127,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device` or `location`.
+    /// `connection`, `device`, `index` or `location`.
     subject: String,
     /// The subject's id.
     id: u32,

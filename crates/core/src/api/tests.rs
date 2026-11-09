@@ -22,7 +22,8 @@ use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::PlantLocation;
-use crate::profiles::Catalogue;
+use crate::profiles::Profiles;
+use crate::profiles::fake::Host;
 use crate::storage::{Problem, Storage};
 
 mod devices;
@@ -32,6 +33,7 @@ mod ingress;
 mod layout;
 mod live;
 mod location;
+mod profiles;
 mod screen;
 mod settings;
 
@@ -46,6 +48,8 @@ const HOME: &str = "192.0.2.1:50000";
 
 struct Core {
     storage: Storage,
+    /// Where the core's profile indexes are served from.
+    host: Arc<Host>,
     bus: Bus,
     problems: watch::Sender<Vec<Problem>>,
     /// The API's clock when set, else the wall clock.
@@ -66,6 +70,10 @@ impl Core {
         let (problems, watched) = watch::channel(Vec::new());
         let clock = Arc::new(Mutex::new(None));
         let set = Arc::clone(&clock);
+        let host = Host::new();
+        let profiles = Profiles::open(storage.database(), Arc::<Host>::clone(&host), None)
+            .await
+            .unwrap();
         let api = Api {
             auth,
             live: Live::spawn(&bus),
@@ -76,7 +84,7 @@ impl Core {
             devices: Devices::start(
                 storage.database(),
                 storage.declarer(),
-                Catalogue::bundled().unwrap(),
+                profiles.catalogue(),
                 bus.clone(),
                 Inverters::default(),
             )
@@ -84,10 +92,12 @@ impl Core {
             .unwrap(),
             changes: Changes::new(storage.database()),
             location: PlantLocation::open(storage.database()).await.unwrap(),
+            profiles,
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
             router: contract(router(api)).await,
+            host,
             bus,
             problems,
             clock,
@@ -150,6 +160,9 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
     )
     .unwrap();
     let auth = Auth::open(storage.database(), None).await.unwrap();
+    let profiles = Profiles::open(storage.database(), Host::new(), None)
+        .await
+        .unwrap();
     let api = Api {
         auth,
         live: Live::spawn(&Bus::default()),
@@ -159,7 +172,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         devices: Devices::start(
             storage.database(),
             storage.declarer(),
-            Catalogue::default(),
+            profiles.catalogue(),
             Bus::default(),
             Inverters::default(),
         )
@@ -167,6 +180,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         .unwrap(),
         changes: Changes::new(storage.database()),
         location: PlantLocation::open(storage.database()).await.unwrap(),
+        profiles,
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

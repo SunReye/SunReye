@@ -116,6 +116,8 @@ fn boot(
         ingress,
         build,
         weather: Fake::new(Vec::new(), &[]).0,
+        fetch: crate::profiles::fake::Host::new(),
+        keys: None,
     }
 }
 

@@ -18,7 +18,7 @@ use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::{Location, PlantLocation};
-use crate::profiles::Catalogue;
+use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
 use crate::weather::{self, Provider, Weather};
@@ -122,8 +122,8 @@ impl Options {
 pub enum Error {
     Io(std::io::Error),
     Storage(storage::Error),
-    /// A bundled profile does not load in this build.
-    Profile(sunreye_profile::LoadError),
+    /// The profiles cannot be opened.
+    Profiles(profiles::Error),
 }
 
 impl fmt::Display for Error {
@@ -131,7 +131,7 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Storage(e) => write!(f, "storage: {e}"),
-            Self::Profile(e) => write!(f, "bundled profile: {e}"),
+            Self::Profiles(e) => write!(f, "profiles: {e}"),
         }
     }
 }
@@ -141,6 +141,12 @@ impl std::error::Error for Error {}
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Self::Io(e)
+    }
+}
+
+impl From<profiles::Error> for Error {
+    fn from(e: profiles::Error) -> Self {
+        Self::Profiles(e)
     }
 }
 
@@ -160,6 +166,10 @@ pub struct Boot<P> {
     pub build: SystemTime,
     /// The weather device's provider.
     pub weather: P,
+    /// Where profile indexes are fetched from.
+    pub fetch: std::sync::Arc<dyn profiles::Fetch>,
+    /// The compiled-in profile keys.
+    pub keys: Option<profiles::Keys>,
 }
 
 /// Opens the store in the data directory and serves the API on `listener` until `shutdown`
@@ -180,10 +190,11 @@ pub async fn serve(
     let (problems, watched) = watch::channel(Vec::new());
     tick(&storage, &problems).await?;
     let inverters = Inverters::default();
+    let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let devices = Devices::start(
         storage.database(),
         storage.declarer(),
-        Catalogue::bundled().map_err(Error::Profile)?,
+        profiles.catalogue(),
         bus.clone(),
         inverters.clone(),
     )
@@ -208,6 +219,7 @@ pub async fn serve(
         devices,
         changes: Changes::new(storage.database()),
         location,
+        profiles,
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
