@@ -352,3 +352,30 @@ async fn a_string_too_long_for_the_inverter_in_the_cold_is_saved_with_a_warning(
     assert!((warnings[0]["openCircuitVoltage"].as_f64().unwrap() - 807.741).abs() < 1e-6);
     assert_eq!(warnings[0]["maxInputVoltage"], json!(800.0));
 }
+
+#[tokio::test]
+async fn equipment_markers_are_saved_with_the_scene_and_one_off_its_wall_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |along: f64| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["equipment"] = json!([{
+            "device": 1, "kind": "inverter", "block": 0, "wall": "front", "along": along,
+            "inside": false,
+        }]);
+        scene
+    };
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &with(2.0)).await;
+    let (refused, body) = core.put_scene(&set_cookie, &strings, &with(11.0)).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], with(2.0));
+    // The front wall is 10 m long.
+    assert_eq!(
+        (refused, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+    );
+}

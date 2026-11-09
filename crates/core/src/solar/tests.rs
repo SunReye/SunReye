@@ -304,6 +304,7 @@ fn walled_house(module_type: u32) -> Scene {
             setback: 0.3,
             modules: cells.collect(),
         }],
+        equipment: vec![],
     }
 }
 

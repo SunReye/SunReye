@@ -10,12 +10,16 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sunreye_pv::{CellPlace, Face, Misplaced, Occluder, RoofFace, Scene, Size, Surface};
 
-/// The faces and solids of a scene, in the shading frame: east, north, up.
+/// The faces, solids and equipment mounts of a scene, in the shading frame: east, north, up.
+/// The mounts are `null` while a marker lies off its wall.
 fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
             "faces": scene.faces().iter().map(face).collect::<Vec<_>>(),
             "solids": scene.solids().iter().map(solid).collect::<Vec<_>>(),
+            "mounts": scene.mounts().ok().map(|mounts| {
+                mounts.iter().map(|m| json!({ "at": m.at, "above": m.above })).collect::<Vec<_>>()
+            }),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
     }

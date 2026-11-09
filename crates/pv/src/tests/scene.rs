@@ -21,6 +21,7 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         blocks,
         obstacles,
         grids: vec![],
+        equipment: vec![],
     }
 }
 

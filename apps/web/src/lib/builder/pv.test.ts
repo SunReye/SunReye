@@ -43,6 +43,25 @@ test("a tree reaches the browser as a trunk under a sphere crown", () => {
   ]);
 });
 
+test("an equipment marker hangs on its wall with its label above the ridge", () => {
+  const marked: Scene = {
+    ...house,
+    equipment: [{ device: 1, kind: "inverter", block: 0, wall: "front", along: 2, inside: false }],
+  };
+
+  expect(pv.geometry(marked).mounts).toEqual([{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }]);
+  expect(pv.geometry(house).mounts).toEqual([]);
+});
+
+test("a marker off its wall has no mounts drawn", () => {
+  const off: Scene = {
+    ...house,
+    equipment: [{ device: 1, kind: "battery", block: 0, wall: "left", along: 9, inside: true }],
+  };
+
+  expect(pv.geometry(off).mounts).toBeNull();
+});
+
 test("a scene the crate cannot read throws", () => {
   // JSON has no NaN: it crosses as null.
   const broken = { ...house, north: Number.NaN };

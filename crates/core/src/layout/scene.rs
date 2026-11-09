@@ -19,6 +19,7 @@ pub fn derive(
             height: datasheet.height,
         })
     };
+    scene.mounts().map_err(|_| Refusal::Scene)?;
     let placed = scene.modules(size).map_err(|misplaced| match misplaced {
         Misplaced::Face { .. } => Refusal::Scene,
         Misplaced::ModuleType { .. } => Refusal::ModuleType,
