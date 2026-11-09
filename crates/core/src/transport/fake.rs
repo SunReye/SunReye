@@ -1,5 +1,5 @@
-//! A Modbus TCP device, or one behind a Solarman stick, on a local port, for tests: a holding
-//! register reads as its address until a write stores another value.
+//! A Modbus TCP device, or one behind an RTU gateway or a Solarman stick, on a local port, for
+//! tests: a holding register reads as its address until a write stores another value.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use super::{Endpoint, solarman};
+use super::{Endpoint, rtu, solarman};
 
 /// The fake stick's logger serial.
 const STICK: u32 = 0x1234_5678;
@@ -73,6 +73,15 @@ pub async fn serve_with(writes: Writes) -> Fake {
     start("127.0.0.1", Framing::Tcp, writes, None).await
 }
 
+/// Serves behind a transparent RTU gateway on a free local port until the runtime stops, storing
+/// writes.
+///
+/// # Panics
+/// No local port is free.
+pub async fn serve_rtu() -> Fake {
+    start("127.0.0.1", Framing::RtuOverTcp, Writes::Store, None).await
+}
+
 /// Serves behind a Solarman stick on a free local port until the runtime stops, storing writes.
 ///
 /// # Panics
@@ -110,7 +119,8 @@ impl Fake {
         let host = self.address.ip().to_string();
         let port = self.address.port();
         match self.framing {
-            Framing::Tcp | Framing::RtuOverTcp => Endpoint::ModbusTcp { host, port },
+            Framing::Tcp => Endpoint::ModbusTcp { host, port },
+            Framing::RtuOverTcp => Endpoint::RtuOverTcp { host, port },
             Framing::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
         }
     }
@@ -169,8 +179,12 @@ struct Request {
 enum Frame {
     /// The MBAP header's transaction and protocol.
     Mbap([u8; 4]),
+    Rtu,
     /// The V5 sequence, and whether the request named the stick's serial.
-    Solarman { seq: u8, addressed: bool },
+    Solarman {
+        seq: u8,
+        addressed: bool,
+    },
 }
 
 async fn receive_mbap(stream: &mut TcpStream) -> Option<Request> {
@@ -183,6 +197,29 @@ async fn receive_mbap(stream: &mut TcpStream) -> Option<Request> {
         unit: header[6],
         pdu,
         frame: Frame::Mbap([header[0], header[1], header[2], header[3]]),
+    })
+}
+
+async fn receive_rtu(stream: &mut TcpStream) -> Option<Request> {
+    let mut head = [0; 7];
+    stream.read_exact(&mut head).await.ok()?;
+    let mut frame = head.to_vec();
+    // A write carries a byte count and its data; a read ends after the count.
+    let data = if head[1] == 0x10 {
+        1 + usize::from(head[6])
+    } else {
+        0
+    };
+    frame.resize(6 + data + 2, 0);
+    stream.read_exact(&mut frame[7..]).await.ok()?;
+    let (adu, crc) = frame.split_at(frame.len() - 2);
+    if rtu::crc16(adu).to_le_bytes() != crc {
+        return None;
+    }
+    Some(Request {
+        unit: adu[0],
+        pdu: adu[1..].to_vec(),
+        frame: Frame::Rtu,
     })
 }
 
@@ -219,11 +256,16 @@ impl Request {
                 reply.push(self.unit);
                 reply.extend_from_slice(&body);
             }
+            Frame::Rtu => {
+                reply.push(self.unit);
+                reply.extend_from_slice(&body?);
+                reply.extend_from_slice(&rtu::crc16(&reply).to_le_bytes());
+            }
             Frame::Solarman { seq, addressed } => {
                 let payload = if addressed {
                     let mut rtu = vec![self.unit];
                     rtu.extend_from_slice(&body?);
-                    rtu.extend_from_slice(&solarman::crc16(&rtu).to_le_bytes());
+                    rtu.extend_from_slice(&rtu::crc16(&rtu).to_le_bytes());
                     rtu
                 } else {
                     vec![6, 0]
@@ -246,7 +288,8 @@ impl Device {
     async fn answer(self, mut stream: TcpStream) {
         loop {
             let request = match self.framing {
-                Framing::Tcp | Framing::RtuOverTcp => receive_mbap(&mut stream).await,
+                Framing::Tcp => receive_mbap(&mut stream).await,
+                Framing::RtuOverTcp => receive_rtu(&mut stream).await,
                 Framing::SolarmanV5 => receive_solarman(&mut stream).await,
             };
             let Some(request) = request else { return };

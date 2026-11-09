@@ -251,7 +251,9 @@ impl Scanner {
 
 fn address(endpoint: &Endpoint) -> (&str, u16) {
     match endpoint {
-        Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port } => (host, *port),
+        Endpoint::ModbusTcp { host, port }
+        | Endpoint::RtuOverTcp { host, port }
+        | Endpoint::SolarmanV5 { host, port } => (host, *port),
         Endpoint::Sim(_) => ("", 0),
     }
 }

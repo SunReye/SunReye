@@ -10,7 +10,7 @@ use std::task::{Context, Poll};
 use sunreye_profile::Framing;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use super::{Exchange, mbap, solarman};
+use super::{Exchange, mbap, rtu, solarman};
 
 /// The exchanges recorded so far; clones share them.
 #[derive(Debug, Clone, Default)]
@@ -38,8 +38,9 @@ pub struct Recorder<W> {
 impl<W> Recorder<W> {
     pub fn new(inner: W, framing: Framing, tape: Option<Tape>) -> Self {
         let request_frame = match framing {
+            Framing::Tcp => mbap::request_frame,
+            Framing::RtuOverTcp => rtu::request_frame,
             Framing::SolarmanV5 => solarman::request_frame,
-            Framing::Tcp | Framing::RtuOverTcp => mbap::request_frame,
         };
         Self {
             inner,

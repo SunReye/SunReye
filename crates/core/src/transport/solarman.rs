@@ -14,6 +14,7 @@ use std::ops::Range;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::Error;
+use super::rtu::crc16;
 
 const START: u8 = 0xa5;
 const END: u8 = 0x15;
@@ -283,17 +284,4 @@ pub(super) fn checksum(body: &[u8]) -> u8 {
     body.iter()
         .skip(1)
         .fold(0, |sum, byte| sum.wrapping_add(*byte))
-}
-
-/// Modbus RTU CRC16: reflected, polynomial 0xA001, seed 0xFFFF.
-pub(super) fn crc16(bytes: &[u8]) -> u16 {
-    bytes.iter().fold(0xffff, |crc, byte| {
-        (0..8).fold(crc ^ u16::from(*byte), |crc, _| {
-            if crc & 1 == 1 {
-                (crc >> 1) ^ 0xa001
-            } else {
-                crc >> 1
-            }
-        })
-    })
 }

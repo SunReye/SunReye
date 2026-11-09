@@ -318,7 +318,11 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
         .unwrap()
         .get("deye-sg05lp3")
         .unwrap();
-    for (mut fake, probes) in [(fake::serve().await, 0), (fake::serve_solarman().await, 1)] {
+    for (mut fake, probes) in [
+        (fake::serve().await, 0),
+        (fake::serve_rtu().await, 0),
+        (fake::serve_solarman().await, 1),
+    ] {
         let endpoint = fake.endpoint();
         let requests = profile.read_plan(endpoint.framing().gap_tolerance()).len() + probes;
         let device = Device {
