@@ -2,10 +2,12 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod mppt;
 mod perez;
 mod string;
 mod temperature;
 
+pub use mppt::mppt_output;
 pub use perez::plane_irradiance;
 pub use string::string_output;
 pub use temperature::cell_temperature;
@@ -77,6 +79,18 @@ pub struct StringOutput {
     pub current: f64,
     pub voltage: f64,
     pub power: f64,
+}
+
+/// One MPPT input's limits, from the inverter profile (ADR 5).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MpptLimits {
+    /// Amperes.
+    pub max_current: f64,
+    /// The voltage window, in volts.
+    pub min_voltage: f64,
+    pub max_voltage: f64,
+    /// Volts.
+    pub start_voltage: f64,
 }
 
 #[cfg(test)]
