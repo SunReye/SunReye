@@ -1265,6 +1265,12 @@ export interface components {
              */
             amount: number;
         };
+        /** @description The text a setting's value is shown as. */
+        Label: {
+            text: string;
+            /** Format: double */
+            value: number;
+        };
         /** @description One layout version. */
         Layout: {
             /** @description RFC 3339, UTC. */
@@ -1635,6 +1641,12 @@ export interface components {
             /** @description Whether trust lets it write (ADR 8); the device's `writes` switch applies as well. */
             enable: components["schemas"]["Enable"];
             key: string;
+            /** @description The text for each value the profile labels. */
+            labels?: components["schemas"]["Label"][];
+            /** @description What the settings screen calls it; the key when absent. */
+            name?: string | null;
+            /** @description The unit of its value, such as `A`. */
+            unit?: string | null;
         };
         /** @description A setting's new value. */
         SettingValue: {

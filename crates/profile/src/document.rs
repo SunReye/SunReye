@@ -57,11 +57,18 @@ pub struct IdentifyDoc {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingDoc {
     pub key: String,
+    /// What the settings screen calls it; the key when left out.
+    pub name: Option<String>,
     #[serde(rename = "type")]
     pub kind: Kind,
+    /// The unit of its value after scaling.
+    pub unit: Option<crate::Unit>,
     pub scale: Option<f64>,
     pub range: Option<Range>,
     pub values: Option<Vec<f64>>,
+    /// The text the settings screen shows for each of `values`, keyed by the value.
+    #[cfg_attr(test, ts(optional, type = "Record<string, string>"))]
+    pub labels: Option<BTreeMap<String, String>>,
     /// Seconds.
     #[cfg_attr(test, ts(type = "number"))]
     pub min_interval: u64,

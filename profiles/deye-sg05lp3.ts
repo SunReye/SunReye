@@ -1010,6 +1010,8 @@ export default defineProfile({
   settings: [
     {
       key: "battery.max_charge_current",
+      name: "Max battery charge current",
+      unit: "A",
       type: "u16",
       range: {
         min: 0,
@@ -1029,6 +1031,8 @@ export default defineProfile({
     },
     {
       key: "battery.max_discharge_current",
+      name: "Max battery discharge current",
+      unit: "A",
       type: "u16",
       range: {
         min: 0,
@@ -1048,6 +1052,8 @@ export default defineProfile({
     },
     {
       key: "battery.grid_charge",
+      name: "Grid charge",
+      labels: { 0: "Off", 1: "On" },
       type: "u16",
       values: [0, 1],
       minInterval: 60,
@@ -1064,6 +1070,8 @@ export default defineProfile({
     },
     {
       key: "work_mode",
+      name: "Work mode",
+      labels: { 0: "Selling first", 1: "Zero export to load", 2: "Zero export to CT" },
       type: "u16",
       values: [0, 1, 2],
       minInterval: 60,
@@ -1080,6 +1088,8 @@ export default defineProfile({
     },
     {
       key: "battery.discharge_lock",
+      name: "Battery discharge lock",
+      labels: { 0: "Unlocked", 1: "Locked" },
       type: "u16",
       values: [0, 1],
       minInterval: 60,

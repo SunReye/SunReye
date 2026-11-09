@@ -134,8 +134,9 @@ async fn a_community_setting_is_enabled_one_by_one_with_its_bounds_shown() {
     };
     assert_eq!(
         settings().await[0],
-        json!({ "key": "battery.max_charge_current", "range": { "min": 0.0, "max": 350.0 },
-            "step": 1.0, "enable": "community" })
+        json!({ "key": "battery.max_charge_current", "name": "Max battery charge current",
+            "unit": "A", "range": { "min": 0.0, "max": 350.0 }, "step": 1.0,
+            "enable": "community" })
     );
 
     let uri = format!(

@@ -12,6 +12,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{Stream, StreamExt, stream};
 use serde::Serialize;
+use sunreye_profile::Unit;
 use tokio::sync::watch;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
@@ -187,10 +188,27 @@ struct DeviceSupport {
 #[derive(Serialize, ToSchema)]
 struct SettingSupport {
     key: String,
+    /// What the settings screen calls it; the key when absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// The unit of its value, such as `A`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    unit: Option<Unit>,
+    /// The text for each value the profile labels.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    labels: Vec<Label>,
     #[serde(flatten)]
     declared: Declared,
     /// Whether trust lets it write (ADR 8); the device's `writes` switch applies as well.
     enable: Enable,
+}
+
+/// The text a setting's value is shown as.
+#[derive(Serialize, ToSchema)]
+struct Label {
+    value: f64,
+    text: String,
 }
 
 /// An inclusive range of profile schemas.
@@ -242,6 +260,16 @@ async fn capabilities(
 fn setting_support(setting: &sunreye_profile::Setting, enable: Enable) -> SettingSupport {
     SettingSupport {
         key: setting.key.clone(),
+        name: setting.name().map(str::to_owned),
+        unit: setting.unit(),
+        labels: setting
+            .labels()
+            .iter()
+            .map(|(value, text)| Label {
+                value: *value,
+                text: text.clone(),
+            })
+            .collect(),
         declared: Declared::from(setting),
         enable,
     }

@@ -9,7 +9,7 @@ use crate::document::{
     ProfileDoc, PublishDoc, QuantityDoc, Range, ReadBackDoc, RegisterDoc, RelockDoc, SettingDoc,
     StepDoc, ToggleDoc, UnlockDoc,
 };
-use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support};
+use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support, Unit};
 
 fn declarations() -> String {
     let cfg = Config::new().with_large_int("number");
@@ -29,6 +29,7 @@ fn declarations() -> String {
         Inverter::decl(&cfg),
         Mppt::decl(&cfg),
         SettingDoc::decl(&cfg),
+        Unit::decl(&cfg),
         StepDoc::decl(&cfg),
         RegisterDoc::decl(&cfg),
         BlockDoc::decl(&cfg),
