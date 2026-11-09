@@ -1,6 +1,6 @@
-//! The wire `sunreye capture` records through. It refuses every request but a read of holding
-//! registers before a byte of it reaches the device, so a capture cannot write whatever its caller
-//! does.
+//! The read-only wire `sunreye capture` records through, and the setup scan probes through
+//! without a tape. It refuses every request but a read of holding registers before a byte of it
+//! reaches the device, so neither can write whatever its caller does.
 
 use std::io;
 use std::pin::Pin;
@@ -29,14 +29,14 @@ impl Tape {
 #[derive(Debug)]
 pub struct Recorder<W> {
     inner: W,
-    tape: Tape,
+    tape: Option<Tape>,
     request_frame: fn(&[u8]) -> Option<(usize, u8)>,
     /// Bytes of the current request not yet written.
     left: usize,
 }
 
 impl<W> Recorder<W> {
-    pub fn new(inner: W, framing: Framing, tape: Tape) -> Self {
+    pub fn new(inner: W, framing: Framing, tape: Option<Tape>) -> Self {
         let request_frame = match framing {
             Framing::SolarmanV5 => solarman::request_frame,
             Framing::Tcp | Framing::RtuOverTcp => mbap::request_frame,
@@ -77,17 +77,14 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for Recorder<W> {
             other @ (Poll::Ready(Err(_)) | Poll::Pending) => return other,
         };
         recorder.left -= written;
-        let sent = frame.get(..written).unwrap_or_default();
-        let mut tape = recorder
-            .tape
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        match tape.last_mut() {
-            Some(Exchange::Request(request)) if !starts => request.extend_from_slice(sent),
-            _ => tape.push(Exchange::Request(sent.to_vec())),
+        if let Some(tape) = &recorder.tape {
+            let sent = frame.get(..written).unwrap_or_default();
+            let mut tape = tape.0.lock().unwrap_or_else(PoisonError::into_inner);
+            match tape.last_mut() {
+                Some(Exchange::Request(request)) if !starts => request.extend_from_slice(sent),
+                _ => tape.push(Exchange::Request(sent.to_vec())),
+            }
         }
-        drop(tape);
         Poll::Ready(Ok(written))
     }
 
@@ -110,12 +107,8 @@ impl<W: AsyncRead + Unpin> AsyncRead for Recorder<W> {
         let before = buf.filled().len();
         let polled = Pin::new(&mut recorder.inner).poll_read(cx, buf);
         let chunk = buf.filled().get(before..).unwrap_or_default();
-        if !chunk.is_empty() {
-            let mut tape = recorder
-                .tape
-                .0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
+        if let (Some(tape), false) = (&recorder.tape, chunk.is_empty()) {
+            let mut tape = tape.0.lock().unwrap_or_else(PoisonError::into_inner);
             match tape.last_mut() {
                 Some(Exchange::Reply(chunks)) => chunks.push(chunk.to_vec()),
                 _ => tape.push(Exchange::Reply(vec![chunk.to_vec()])),

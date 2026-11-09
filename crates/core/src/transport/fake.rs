@@ -69,7 +69,7 @@ pub async fn serve() -> Fake {
 /// # Panics
 /// No local port is free.
 pub async fn serve_with(writes: Writes) -> Fake {
-    start(Framing::Tcp, writes).await
+    start("127.0.0.1", Framing::Tcp, writes, None).await
 }
 
 /// Serves behind a Solarman stick on a free local port until the runtime stops, storing writes.
@@ -77,7 +77,16 @@ pub async fn serve_with(writes: Writes) -> Fake {
 /// # Panics
 /// No local port is free.
 pub async fn serve_solarman() -> Fake {
-    start(Framing::SolarmanV5, Writes::Store).await
+    start("127.0.0.1", Framing::SolarmanV5, Writes::Store, None).await
+}
+
+/// Serves on a free port of `host` until the runtime stops, answering only `unit`: a request to
+/// any other unit id goes unanswered, as on a real bus.
+///
+/// # Panics
+/// No port of `host` is free.
+pub async fn serve_unit(host: &str, framing: Framing, unit: u8) -> Fake {
+    start(host, framing, Writes::Store, Some(unit)).await
 }
 
 impl Fake {
@@ -93,8 +102,8 @@ impl Fake {
     }
 }
 
-async fn start(framing: Framing, writes: Writes) -> Fake {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+async fn start(host: &str, framing: Framing, writes: Writes, unit: Option<u8>) -> Fake {
+    let listener = TcpListener::bind((host, 0)).await.unwrap();
     let address = listener.local_addr().unwrap();
     let (read_tx, reads) = mpsc::unbounded_channel();
     let (write_tx, written) = mpsc::unbounded_channel();
@@ -106,6 +115,7 @@ async fn start(framing: Framing, writes: Writes) -> Fake {
                 connection,
                 framing,
                 writes,
+                unit,
                 registers: Arc::clone(&registers),
                 reads: read_tx.clone(),
                 written: write_tx.clone(),
@@ -126,6 +136,8 @@ struct Device {
     connection: usize,
     framing: Framing,
     writes: Writes,
+    /// The only unit id answered; every one when `None`.
+    unit: Option<u8>,
     registers: Registers,
     reads: mpsc::UnboundedSender<Read>,
     written: mpsc::UnboundedSender<Write>,
@@ -246,6 +258,9 @@ impl Device {
                 function: pdu[0],
             })
             .ok();
+        if self.unit.is_some_and(|unit| unit != request.unit) {
+            return None;
+        }
         Some(self.read(start, count))
     }
 

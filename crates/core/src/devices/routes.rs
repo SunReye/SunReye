@@ -11,6 +11,7 @@ use utoipa_axum::routes;
 
 use super::{ACTOR, Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::scan::{ScanReport, ScanRequest};
 use crate::settings::{Request, log};
 
 const BODY: Problem = Problem {
@@ -34,6 +35,7 @@ impl Devices {
             .routes(routes!(write_setting))
             .routes(routes!(enable_setting, disable_setting))
             .routes(routes!(writes))
+            .routes(routes!(scan))
             .with_state((self, clock))
     }
 }
@@ -229,4 +231,18 @@ struct WriteLog {
 async fn writes(State((devices, _)): DevicesState) -> Result<Json<WriteLog>, Problem> {
     let writes = devices.writes().await.map_err(|_| INTERNAL)?;
     Ok(Json(WriteLog { writes }))
+}
+
+/// Scans the local network for devices and proposes a profile and unit id for each (ADR 6). Read
+/// only; an endpoint already configured is not touched.
+#[utoipa::path(post, path = "/api/v1/scan", request_body = ScanRequest, responses(
+    (status = 200, body = ScanReport),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn scan(
+    State((devices, _)): DevicesState,
+    body: Result<Json<ScanRequest>, JsonRejection>,
+) -> Result<Json<ScanReport>, Problem> {
+    let Json(request) = body.map_err(|_| BODY)?;
+    Ok(Json(devices.scan(request.subnet.as_deref()).await?))
 }

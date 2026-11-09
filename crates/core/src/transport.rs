@@ -153,9 +153,33 @@ impl Client {
             return Err(Error::Protocol("sim has no device to capture"));
         };
         let tape = Tape::default();
-        let framing = endpoint.framing();
-        let wire = recorder::Recorder::new(tcp(host, *port, timeout).await?, framing, tape.clone());
-        Ok((Self::over(Box::new(wire), framing, timeout).await?, tape))
+        let client = Self::guarded(host, *port, endpoint.framing(), timeout, Some(tape.clone()));
+        Ok((client.await?, tape))
+    }
+
+    /// Connects as [`Client::connect`] over a wire that refuses every request but a read of
+    /// holding registers, the probe included: the setup scan's client (ADR 6).
+    ///
+    /// # Errors
+    ///
+    /// As [`Client::connect`]; `sim` is refused.
+    pub async fn read_only(endpoint: &Endpoint, timeout: Duration) -> Result<Self, Error> {
+        let (Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port }) = endpoint
+        else {
+            return Err(Error::Protocol("sim has no device to scan"));
+        };
+        Self::guarded(host, *port, endpoint.framing(), timeout, None).await
+    }
+
+    async fn guarded(
+        host: &str,
+        port: u16,
+        framing: Framing,
+        timeout: Duration,
+        tape: Option<Tape>,
+    ) -> Result<Self, Error> {
+        let wire = recorder::Recorder::new(tcp(host, port, timeout).await?, framing, tape);
+        Self::over(Box::new(wire), framing, timeout).await
     }
 
     async fn over(
