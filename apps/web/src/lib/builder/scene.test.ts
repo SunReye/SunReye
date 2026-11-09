@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Object3D } from "three";
 import type { Geometry } from "./pv.ts";
-import { buildScene } from "./scene.ts";
+import { buildScene, stringColour } from "./scene.ts";
 
 const house: Geometry = {
   faces: [
@@ -85,4 +85,30 @@ test("a crown is drawn at its centre and a chimney stands on its base", () => {
 
   expect(crown?.position.toArray()).toEqual([-4, 8, 0]);
   expect(chimney?.position.toArray()).toEqual([3, 4.5, 2]);
+});
+
+test("each placed module is drawn in its string's colour, unassigned ones in grey", () => {
+  const corners = [
+    [0, -1, 3],
+    [1, -1, 3],
+    [1, -2, 3],
+    [0, -2, 3],
+  ] as const;
+
+  const [painted, unassigned] = buildScene(house, [
+    { corners, string: 0 },
+    { corners },
+  ]).getObjectsByProperty("name", "module");
+
+  expect(
+    painted instanceof Mesh && painted.material instanceof MeshStandardMaterial
+      ? painted.material.color.getHex()
+      : null,
+  ).toBe(stringColour(0));
+  expect(
+    unassigned instanceof Mesh && unassigned.material instanceof MeshStandardMaterial
+      ? unassigned.material.color.getHex()
+      : null,
+  ).toBe(stringColour(null));
+  expect(stringColour(null)).not.toBe(stringColour(0));
 });

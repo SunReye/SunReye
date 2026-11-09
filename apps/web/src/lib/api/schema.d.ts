@@ -647,6 +647,31 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        /**
+         * @description A rectangular footprint with one roof. Its width runs along x and its depth along z from its
+         *     corner, before it turns.
+         */
+        Block: {
+            /** Format: double */
+            depth: number;
+            /**
+             * Format: double
+             * @description The walls' height under the roof.
+             */
+            eave: number;
+            roof: components["schemas"]["Roof"];
+            /**
+             * Format: double
+             * @description Degrees clockwise about the corner, seen from above.
+             */
+            rotation: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        };
         /** @description The inclusive bounds of a setting's value. */
         Bounds: {
             /** Format: double */
@@ -661,6 +686,19 @@ export interface components {
             lastConnectedAt?: string | null;
             /** @description Why the last attempt or session failed; kept after a reconnect. */
             lastError?: string | null;
+        };
+        /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
+        Cell: {
+            /** Format: int32 */
+            column: number;
+            optimized?: boolean;
+            /** Format: int32 */
+            row: number;
+            /**
+             * Format: int32
+             * @description The string it is painted into; unassigned, it produces nothing.
+             */
+            string?: number | null;
         };
         /** @description A topology change: every point, applying from an instant on. */
         Change: {
@@ -683,7 +721,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -917,7 +955,16 @@ export interface components {
         Layout: {
             /** @description RFC 3339, UTC. */
             appliesFrom: string;
+            scene?: components["schemas"]["Scene"] | null;
             strings: components["schemas"]["PvString"][];
+            warnings: components["schemas"]["Warning"][];
+        };
+        /** @description A layout change: every string, applying from an instant on. */
+        LayoutChange: {
+            /** @description RFC 3339. */
+            appliesFrom: string;
+            scene?: components["schemas"]["Scene"] | null;
+            strings: components["schemas"]["StringDraft"][];
         };
         /** @description The plant's location in degrees, north and east positive. */
         Location: {
@@ -928,6 +975,26 @@ export interface components {
         };
         Log: {
             changes: components["schemas"]["Change"][];
+        };
+        /** @description The modules on one roof face. */
+        ModuleGrid: {
+            /** @description The block's index in the scene. */
+            block: number;
+            /** @description The roof face's index in its block, in the order the `pv` crate lists a block's roof faces. */
+            face: number;
+            /** @description Long side across the slope. */
+            landscape: boolean;
+            /**
+             * Format: int32
+             * @description The id of the module type, which sizes the cells.
+             */
+            moduleType: number;
+            modules: components["schemas"]["Cell"][];
+            /**
+             * Format: double
+             * @description Metres kept free along every edge of the face.
+             */
+            setback: number;
         };
         ModuleType: components["schemas"]["Datasheet"] & {
             /**
@@ -942,6 +1009,45 @@ export interface components {
         NewIndex: {
             /** @description The `index.json` URL. */
             url: string;
+        };
+        /** @description Opaque things that cast shade. Positions are a box's corner, else the foot's centre. */
+        Obstacle: {
+            /** Format: double */
+            depth: number;
+            /** Format: double */
+            height: number;
+            /** @enum {string} */
+            kind: "box";
+            /** Format: double */
+            rotation: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        } | {
+            /** Format: double */
+            height: number;
+            /** @enum {string} */
+            kind: "cylinder";
+            /** Format: double */
+            radius: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        } | {
+            /** Format: double */
+            height: number;
+            /** @enum {string} */
+            kind: "tree";
+            /** Format: double */
+            radius: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
         };
         /** @description One entry of an index and what became of it. */
         Offer: {
@@ -1080,6 +1186,38 @@ export interface components {
             appliesFrom: string;
             export: components["schemas"]["ScheduleView"];
             import: components["schemas"]["ScheduleView"];
+        };
+        /** @description Pitches in degrees from horizontal. */
+        Roof: {
+            /** @enum {string} */
+            kind: "flat";
+        } | {
+            /** @enum {string} */
+            kind: "monoPitch";
+            /** Format: double */
+            pitch: number;
+        } | {
+            /** @enum {string} */
+            kind: "gable";
+            /** Format: double */
+            pitch: number;
+        } | {
+            /** @enum {string} */
+            kind: "hip";
+            /** Format: double */
+            pitch: number;
+        };
+        /** @description The geometry of a plant and where its modules sit. */
+        Scene: {
+            blocks: components["schemas"]["Block"][];
+            /** @description At most one per roof face. */
+            grids?: components["schemas"]["ModuleGrid"][];
+            /**
+             * Format: double
+             * @description The compass bearing, in degrees clockwise from true north, of the scene's forward axis, −z.
+             */
+            north: number;
+            obstacles: components["schemas"]["Obstacle"][];
         };
         /** @description One flow's prices. */
         ScheduleView: {
@@ -1225,7 +1363,28 @@ export interface components {
         Viewers: {
             viewers: components["schemas"]["Viewer"][];
         };
-        /** @description Where a string sits and what it is made of. */
+        /**
+         * @description A string whose open-circuit voltage in the cold exceeds its inverter's maximum DC input
+         *     voltage: saved all the same, since the plant may already exist (ADR 20).
+         */
+        Warning: {
+            /**
+             * Format: double
+             * @description Volts, from the inverter's profile.
+             */
+            maxInputVoltage: number;
+            /**
+             * Format: double
+             * @description Volts at −10 °C.
+             */
+            openCircuitVoltage: number;
+            /** Format: int32 */
+            string: number;
+        };
+        /**
+         * @description Where a string sits and what it is made of. With a scene, its module counts and plane are
+         *     derived: the plane is that of its first module.
+         */
         Wiring: {
             /**
              * Format: double
@@ -1868,7 +2027,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Change"];
+                "application/json": components["schemas"]["LayoutChange"];
             };
         };
         responses: {

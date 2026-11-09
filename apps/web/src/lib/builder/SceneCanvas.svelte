@@ -15,14 +15,17 @@
   import { m } from "../paraglide/messages.js";
   import type { View } from "./camera.ts";
   import type { Geometry } from "./pv.ts";
-  import { buildScene } from "./scene.ts";
+  import { buildScene, type Panel } from "./scene.ts";
 
   let {
     geometry,
+    panels = [],
     view,
     onview,
   }: {
     geometry: Geometry;
+    /** The placed modules. */
+    panels?: readonly Panel[];
     view: View;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
@@ -98,7 +101,7 @@
     });
 
     $effect(() => {
-      const next = buildScene(geometry);
+      const next = buildScene(geometry, panels);
 
       if (drawn !== undefined) {
         scene.remove(drawn);

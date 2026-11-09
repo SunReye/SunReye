@@ -20,6 +20,7 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         north: 0.0,
         blocks,
         obstacles,
+        grids: vec![],
     }
 }
 
@@ -298,5 +299,37 @@ fn a_chimney_is_an_upright_cylinder_and_a_tree_a_trunk_under_a_crown() {
                 radius: 2.0
             },
         ]
+    );
+}
+
+#[test]
+fn the_scene_shades_with_each_face_as_a_fan_of_triangles_and_its_solids() {
+    let chimney = Obstacle::Cylinder {
+        x: 3.0,
+        z: 2.0,
+        radius: 0.3,
+        height: 9.0,
+    };
+    let occluders = scene(vec![block(Roof::Flat)], vec![chimney]).occluders();
+
+    // Four walls and a roof, each a rectangle of two triangles, then the chimney.
+    assert_eq!(occluders.len(), 11);
+    assert!(occluders.contains(&Occluder::Triangle([
+        [0.0, 0.0, 3.0],
+        [10.0, 0.0, 3.0],
+        [10.0, -8.0, 3.0],
+    ])));
+    assert!(occluders.contains(&Occluder::Triangle([
+        [0.0, 0.0, 3.0],
+        [10.0, -8.0, 3.0],
+        [0.0, -8.0, 3.0],
+    ])));
+    assert_eq!(
+        occluders.last(),
+        Some(&Occluder::Cylinder {
+            base: [3.0, -2.0, 0.0],
+            radius: 0.3,
+            height: 9.0
+        })
     );
 }

@@ -14,6 +14,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sunreye-profile = { path = "crates/profile" }
 sunreye-pv = { path = "crates/pv" }
+utoipa = "6.0.0"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

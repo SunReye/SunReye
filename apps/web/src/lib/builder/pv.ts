@@ -37,12 +37,78 @@ export type Obstacle =
       readonly height: number;
     };
 
+/** A module in one cell: rows count up the slope, columns across it, from 0. */
+export interface Cell {
+  readonly row: number;
+  readonly column: number;
+  /** The string it is painted into; unassigned, it produces nothing. */
+  readonly string?: number | null;
+  readonly optimized?: boolean;
+}
+
+/** The modules on one roof face; cells are the module type's size plus a gap. */
+export interface ModuleGrid {
+  readonly block: number;
+  /** The roof face's index in its block, as `roofs` lists them. */
+  readonly face: number;
+  readonly moduleType: number;
+  /** Long side across the slope. */
+  readonly landscape: boolean;
+  /** Metres kept free along every edge. */
+  readonly setback: number;
+  readonly modules: readonly Cell[];
+}
+
 /** The scene's frame: metres, y up, origin at the first block's corner (ADR 20). */
 export interface Scene {
   /** The compass bearing of the scene's −z axis, in degrees. */
   readonly north: number;
   readonly blocks: readonly Block[];
   readonly obstacles: readonly Obstacle[];
+  /** At most one per roof face. */
+  readonly grids?: readonly ModuleGrid[];
+}
+
+/** A module's outline in metres; `height` is its long side. */
+export interface Size {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A roof face as a module grid sees it. */
+export interface RoofFace {
+  readonly block: number;
+  readonly face: number;
+  readonly tilt: number;
+  readonly azimuth: number;
+  /** Metres across and up the slope from the lowest corner on the left, seen from the front. */
+  readonly outline: readonly (readonly [number, number])[];
+}
+
+/** A cell whose module fits inside the setback. */
+export interface CellPlace {
+  readonly row: number;
+  readonly column: number;
+  /** Lower left and upper right corner in the face's outline. */
+  readonly area: readonly [readonly [number, number], readonly [number, number]];
+  readonly corners: readonly Point[];
+}
+
+/** Why the core would refuse to save the grids. */
+export type Misplaced =
+  | { readonly kind: "face" | "moduleType"; readonly grid: number }
+  | {
+      readonly kind: "setback" | "overlap";
+      readonly grid: number;
+      readonly row: number;
+      readonly column: number;
+    };
+
+/** The roofs, each grid's cells (null for a missing face or module type) and the first misfit. */
+export interface Modules {
+  readonly roofs: readonly RoofFace[];
+  readonly grids: readonly (readonly CellPlace[] | null)[];
+  readonly misplaced: Misplaced | null;
 }
 
 export interface Face {
@@ -69,6 +135,8 @@ export interface Geometry {
 export interface Pv {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   geometry(scene: Scene): Geometry;
+  /** The scene's module grids laid out, with module sizes by module type id. */
+  modules(scene: Scene, sizes: Readonly<Record<number, Size>>): Modules;
 }
 
 /** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
@@ -76,12 +144,11 @@ interface Exports {
   readonly memory: WebAssembly.Memory;
   readonly reserve: (len: number) => number;
   readonly release: (ptr: number, len: number) => void;
-  readonly geometry: (scene: number, sceneLen: number) => bigint;
+  readonly geometry: (input: number, inputLen: number) => bigint;
+  readonly modules: (input: number, inputLen: number) => bigint;
 }
 
-type Reply = { readonly ok: Geometry } | { readonly error: string };
-
-const functions = ["reserve", "release", "geometry"] as const;
+const functions = ["reserve", "release", "geometry", "modules"] as const;
 
 function isExports(
   exports: Readonly<WebAssembly.Exports>,
@@ -102,19 +169,47 @@ function isExports(
   );
 }
 
-/** The crate's reply; the glue crate's own shape is trusted past its top level. */
-function isReply(value: unknown): value is Reply {
-  if (!(value instanceof Object)) return false;
+type Reply<T> = { readonly ok: T } | { readonly error: string };
 
-  if ("error" in value) return String(value.error) === value.error;
+/** The `ok` of the crate's reply, or its error thrown. */
+function unwrap<T>(text: string, guard: (value: unknown) => value is Reply<T>): T {
+  const reply: unknown = JSON.parse(text);
 
+  if (!guard(reply)) throw new TypeError(`pv WASM replied ${text}`);
+
+  if ("error" in reply) throw new Error(reply.error);
+
+  return reply.ok;
+}
+
+function isFailure(value: unknown): value is { readonly error: string } {
+  return value instanceof Object && "error" in value && String(value.error) === value.error;
+}
+
+/** The glue crate's own shape is trusted past the top level's arrays. */
+function isGeometry(value: unknown): value is Reply<Geometry> {
   return (
-    "ok" in value &&
-    value.ok instanceof Object &&
-    "faces" in value.ok &&
-    Array.isArray(value.ok.faces) &&
-    "solids" in value.ok &&
-    Array.isArray(value.ok.solids)
+    isFailure(value) ||
+    (value instanceof Object &&
+      "ok" in value &&
+      value.ok instanceof Object &&
+      "faces" in value.ok &&
+      Array.isArray(value.ok.faces) &&
+      "solids" in value.ok &&
+      Array.isArray(value.ok.solids))
+  );
+}
+
+function isModules(value: unknown): value is Reply<Modules> {
+  return (
+    isFailure(value) ||
+    (value instanceof Object &&
+      "ok" in value &&
+      value.ok instanceof Object &&
+      "roofs" in value.ok &&
+      Array.isArray(value.ok.roofs) &&
+      "grids" in value.ok &&
+      Array.isArray(value.ok.grids))
   );
 }
 
@@ -125,29 +220,27 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
 
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
+  /** The reply of export `name` to the JSON `input`. */
+  const call = (name: "geometry" | "modules", input: string): string => {
+    const encoded = new TextEncoder().encode(input);
+    const at = wasm.reserve(encoded.length);
+
+    new Uint8Array(wasm.memory.buffer, at, encoded.length).set(encoded);
+
+    const packed = wasm[name](at, encoded.length);
+
+    wasm.release(at, encoded.length);
+
+    const [ptr, len] = [Number(packed >> 32n), Number(packed & 0xffff_ffffn)];
+    const text = new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len));
+
+    wasm.release(ptr, len);
+
+    return text;
+  };
+
   return {
-    geometry: (scene) => {
-      const input = new TextEncoder().encode(JSON.stringify(scene));
-      const at = wasm.reserve(input.length);
-
-      new Uint8Array(wasm.memory.buffer, at, input.length).set(input);
-
-      const packed = wasm.geometry(at, input.length);
-
-      wasm.release(at, input.length);
-
-      const [ptr, len] = [Number(packed >> 32n), Number(packed & 0xffff_ffffn)];
-      const text = new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len));
-
-      wasm.release(ptr, len);
-
-      const reply: unknown = JSON.parse(text);
-
-      if (!isReply(reply)) throw new TypeError(`pv WASM replied ${text}`);
-
-      if ("error" in reply) throw new Error(reply.error);
-
-      return reply.ok;
-    },
+    geometry: (scene) => unwrap(call("geometry", JSON.stringify(scene)), isGeometry),
+    modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
   };
 }

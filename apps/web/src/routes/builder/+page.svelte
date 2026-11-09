@@ -1,16 +1,35 @@
 <script lang="ts">
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
+  import { connect, http } from "../../lib/api/core";
   import Builder from "../../lib/builder/Builder.svelte";
-  import { loadPv, type Pv } from "../../lib/builder/pv";
+  import { emptyDraft } from "../../lib/builder/modules";
+  import { loadPv } from "../../lib/builder/pv";
   import { m } from "../../lib/paraglide/messages.js";
+
+  // The page's directory is the core's root, under an ingress prefix too (ADR 11).
+  const core = connect(http(new URL(".", document.baseURI).href));
 
   const webgl2 = document.createElement("canvas").getContext("webgl2") !== null;
 
-  async function load(): Promise<Pv> {
-    const response = await fetch(wasm);
+  /** The crate, the layout in force and the module types; without a layout, an empty one. */
+  async function load() {
+    const [pv, layout, moduleTypes] = await Promise.all([
+      fetch(wasm).then(async (response) => loadPv(new Uint8Array(await response.arrayBuffer()))),
+      core.layout(),
+      core.moduleTypes(),
+    ]);
 
-    return loadPv(new Uint8Array(await response.arrayBuffer()));
+    const empty = emptyDraft();
+
+    return {
+      pv,
+      start:
+        "problem" in layout
+          ? empty
+          : { scene: layout.scene ?? empty.scene, strings: layout.strings },
+      moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
+    };
   }
 </script>
 
@@ -22,8 +41,8 @@
   {#if webgl2}
     {#await load()}
       <p>{m.builder_loading()}</p>
-    {:then pv}
-      <Builder {pv} />
+    {:then { pv, start, moduleTypes }}
+      <Builder {pv} {core} {start} {moduleTypes} />
     {/await}
   {:else}
     <p>{m.builder_no_webgl()}</p>

@@ -225,3 +225,130 @@ async fn capabilities_mark_parallel_strings_estimated() {
     let estimated = [&ids[0].1, &ids[1].1].map(|id| format!("pv.string.power[{id}]"));
     assert_eq!(body["devices"]["1"]["estimated"], json!(estimated));
 }
+
+/// A 10 m × 8 m gable house at 35°; face 1 faces south.
+fn house(module_type: &Value, modules: &[Value]) -> Value {
+    json!({
+        "north": 0.0,
+        "blocks": [{
+            "x": 0.0, "z": 0.0, "width": 10.0, "depth": 8.0, "eave": 3.0, "rotation": 0.0,
+            "roof": { "kind": "gable", "pitch": 35.0 },
+        }],
+        "obstacles": [],
+        "grids": [{
+            "block": 0, "face": 1, "moduleType": module_type, "landscape": false, "setback": 0.3,
+            "modules": modules,
+        }],
+    })
+}
+
+fn cell(row: u32, column: u32, string: Option<u32>, optimized: bool) -> Value {
+    let mut cell = json!({ "row": row, "column": column, "optimized": optimized });
+    if let Some(string) = string {
+        cell["string"] = json!(string);
+    }
+    cell
+}
+
+impl Core {
+    async fn put_scene(
+        &self,
+        set_cookie: &str,
+        strings: &[Value],
+        scene: &Value,
+    ) -> (StatusCode, Value) {
+        let body =
+            json!({ "appliesFrom": "2026-11-01T00:00:00Z", "strings": strings, "scene": scene });
+        self.call(set_cookie, send("PUT", "/api/v1/layout", &body))
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_scene_derives_its_strings_planes_and_module_counts() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    // The browser's numbers are not trusted: the scene decides.
+    let mut south = string(None, "south", &module, 1, 90.0);
+    south["tilt"] = json!(5.0);
+    let scene = house(
+        &module,
+        &[
+            cell(0, 0, Some(0), false),
+            cell(0, 1, Some(0), true),
+            cell(1, 0, Some(0), false),
+            cell(1, 1, None, false),
+        ],
+    );
+
+    let (status, saved) = core.put_scene(&set_cookie, &[south], &scene).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let string = &saved["strings"][0];
+    assert_eq!(
+        (&string["modules"], &string["optimized"]),
+        (&json!(3), &json!(1))
+    );
+    assert!(
+        (string["tilt"].as_f64().unwrap() - 35.0).abs() < 1e-9,
+        "{string}"
+    );
+    assert!(string["azimuth"].as_f64().unwrap().abs() < 1e-9, "{string}");
+    assert_eq!(saved["scene"], scene);
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(read["scene"], scene);
+}
+
+#[tokio::test]
+async fn saving_refuses_modules_outside_the_setback_or_overlapping_or_unknown() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let refused = async |modules: &[Value]| {
+        let (status, body) = core
+            .put_scene(&set_cookie, &strings, &house(&module, modules))
+            .await;
+        (status, body["code"].as_str().unwrap_or_default().to_owned())
+    };
+    let unprocessable = |code: &str| (StatusCode::UNPROCESSABLE_ENTITY, code.to_owned());
+
+    // Two rows of portrait modules fit inside the setback.
+    assert_eq!(
+        refused(&[cell(2, 0, Some(0), false)]).await,
+        unprocessable("layout.setback")
+    );
+    assert_eq!(
+        refused(&[cell(0, 0, Some(0), false), cell(0, 0, None, false)]).await,
+        unprocessable("layout.overlap")
+    );
+    assert_eq!(
+        refused(&[cell(0, 0, Some(1), false)]).await,
+        unprocessable("layout.scene")
+    );
+}
+
+#[tokio::test]
+async fn a_string_too_long_for_the_inverter_in_the_cold_is_saved_with_a_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let mut long = string(None, "long", &module, 1, 0.0);
+    long["modules"] = json!(18);
+
+    let saved = core
+        .put_layout(
+            &set_cookie,
+            "2026-11-01T00:00:00Z",
+            &[long, string(None, "short", &module, 2, 0.0)],
+        )
+        .await;
+
+    // 18 × 41 V × (1 + 0.27 %/K × 35 K) at −10 °C, above the Deye's 800 V; 16 stay below.
+    let warnings = saved["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1, "{saved}");
+    assert_eq!(warnings[0]["string"], saved["strings"][0]["id"]);
+    assert!((warnings[0]["openCircuitVoltage"].as_f64().unwrap() - 807.741).abs() < 1e-6);
+    assert_eq!(warnings[0]["maxInputVoltage"], json!(800.0));
+}

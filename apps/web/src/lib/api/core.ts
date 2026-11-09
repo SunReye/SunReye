@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch";
 import { events, type Message } from "./events";
+import { body, type LayoutChange } from "./layout-change";
 import type { components, paths } from "./schema";
 
 type Client = ReturnType<typeof createClient<paths>>;
@@ -11,6 +12,10 @@ export type History = components["schemas"]["History"];
 export type Forecasts = components["schemas"]["Forecasts"];
 
 export type Layout = components["schemas"]["Layout"];
+
+export type StringDraft = components["schemas"]["StringDraft"];
+
+export type ModuleType = components["schemas"]["ModuleType"];
 
 export type Capabilities = components["schemas"]["Support"];
 
@@ -65,6 +70,10 @@ export interface Core {
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
   /** The PV layout in force now. */
   layout(): Promise<Layout | Problem>;
+  /** Every module type. */
+  moduleTypes(): Promise<readonly ModuleType[] | Problem>;
+  /** Changes the PV layout from an instant on; admin only. */
+  changeLayout(change: LayoutChange): Promise<Layout | Problem>;
   /** What the core supports, and each device's settings. */
   capabilities(): Promise<Capabilities | Problem>;
   /** Writes `value` to a device's setting through the core's one funnel; admin only. */
@@ -114,13 +123,30 @@ export function connect(transport: Transport): Core {
 
       return data ?? refusal(error, response.status);
     },
+    ...layouts(client),
+    ...settings(client),
+    ...trust(client),
+  };
+}
+
+/** The PV layout and its module types (ADR 17, 20). */
+function layouts(client: Client): Pick<Core, "layout" | "moduleTypes" | "changeLayout"> {
+  return {
     layout: async () => {
       const { data, error, response } = await client.GET("/api/v1/layout");
 
       return data ?? refusal(error, response.status);
     },
-    ...settings(client),
-    ...trust(client),
+    moduleTypes: async () => {
+      const { data, error, response } = await client.GET("/api/v1/module-types");
+
+      return data ? data.moduleTypes : refusal(error, response.status);
+    },
+    changeLayout: async (change) => {
+      const { data, error, response } = await client.PUT("/api/v1/layout", { body: body(change) });
+
+      return data ?? refusal(error, response.status);
+    },
   };
 }
 

@@ -42,7 +42,7 @@ rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde.workspace = true
 serde_json.workspace = true
 sunreye-profile.workspace = true
-sunreye-pv.workspace = true
+sunreye-pv = { workspace = true, features = ["openapi"] }
 tokio = { version = "1.54.1", default-features = false, features = [
   "io-util",
   "macros",
@@ -60,7 +60,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
 # The OpenAPI document generated from the Rust types (ADR 9); utoipa-axum registers each route
 # with its description, so neither can drift from the other.
-utoipa = "6.0.0"
+utoipa.workspace = true
 utoipa-axum = "0.3.0"
 
 [dev-dependencies]

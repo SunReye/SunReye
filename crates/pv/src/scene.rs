@@ -4,28 +4,33 @@
 //! The scene's frame is metres, y up, origin at the first block's corner; the compass turns it
 //! into the shading frame: east, north, up.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{Occluder, Point};
+use crate::{ModuleGrid, Occluder, Point};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
 /// Metres within which two corners are one.
 const EPSILON: f64 = 1e-9;
 
-/// The geometry of a plant, without its modules.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// The geometry of a plant and where its modules sit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Scene {
     /// The compass bearing, in degrees clockwise from true north, of the scene's forward axis, −z.
     pub north: f64,
     pub blocks: Vec<Block>,
     pub obstacles: Vec<Obstacle>,
+    /// At most one per roof face.
+    #[serde(default)]
+    pub grids: Vec<ModuleGrid>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
 /// corner, before it turns.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub x: f64,
@@ -40,7 +45,8 @@ pub struct Block {
 }
 
 /// Pitches in degrees from horizontal.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Roof {
     Flat,
@@ -59,7 +65,8 @@ pub enum Roof {
 }
 
 /// Opaque things that cast shade. Positions are a box's corner, else the foot's centre.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Obstacle {
     /// A neighbour or a wall.
@@ -135,6 +142,13 @@ impl Scene {
         blocks.chain(boxes).collect()
     }
 
+    /// What the scene shades with (ADR 17): each face as a fan of triangles, then the solids.
+    #[must_use]
+    pub fn occluders(&self) -> Vec<Occluder> {
+        let triangles = self.faces().into_iter().flat_map(|face| fan(&face.corners));
+        triangles.chain(self.solids()).collect()
+    }
+
     /// The round obstacles: chimneys and poles, and each tree as its trunk and its crown.
     #[must_use]
     pub fn solids(&self) -> Vec<Occluder> {
@@ -175,6 +189,25 @@ impl Scene {
             .collect()
     }
 
+    /// Each block's roof faces in the shading frame, in the order its grids name them, with the
+    /// direction of the block's width.
+    pub(crate) fn roof_faces(&self) -> impl Iterator<Item = (usize, usize, Vec<Point>, Point)> {
+        self.blocks.iter().enumerate().flat_map(|(b, block)| {
+            let frame = self.prism(block.x, block.z, block.rotation);
+            let [east, north, _] = frame.place([1.0, 0.0, 0.0]);
+            let [east0, north0, _] = frame.place([0.0; 3]);
+            let width = [east - east0, north - north0, 0.0];
+            roof(block)
+                .into_iter()
+                .enumerate()
+                .map(move |(f, corners)| {
+                    let corners = corners.into_iter().map(|p| frame.place(p)).collect();
+                    (b, f, corners, width)
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+
     const fn prism(&self, x: f64, z: f64, rotation: f64) -> Frame {
         Frame {
             x,
@@ -183,6 +216,19 @@ impl Scene {
             north: self.north,
         }
     }
+}
+
+/// A convex polygon as triangles sharing its first corner.
+fn fan(corners: &[Point]) -> Vec<Occluder> {
+    let Some((&first, rest)) = corners.split_first() else {
+        return Vec::new();
+    };
+    rest.windows(2)
+        .filter_map(|pair| match *pair {
+            [b, c] => Some(Occluder::Triangle([first, b, c])),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Where a footprint stands: its corner, its turn and the compass.
