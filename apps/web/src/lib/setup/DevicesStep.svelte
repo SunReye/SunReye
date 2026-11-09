@@ -24,6 +24,13 @@
 
   let refused = $state.raw<Problem>();
 
+  // What an earlier, partly refused add created, so adding again does not create it twice.
+  const connections = new Map<string, number>();
+  const added = new Map<string, Device>();
+
+  const key = (choice: Readonly<Choice>): string =>
+    `${choice.found.host}:${choice.found.port}/${choice.profile}/${choice.unit}`;
+
   async function scan(): Promise<void> {
     scanning = true;
     const report = await core.scan(subnet === "" ? undefined : subnet);
@@ -31,6 +38,7 @@
     scanning = false;
     refused = "problem" in report ? report : undefined;
     found = "problem" in report ? undefined : report.endpoints;
+
     choices = (found ?? []).flatMap((endpoint) =>
       endpoint.devices.map(({ profile, unit }) => ({
         found: endpoint,
@@ -48,17 +56,32 @@
     chosen: readonly Choice[],
   ): Promise<readonly (Device | Problem)[]> {
     const { host, port, transport } = endpoint;
-    const connection = await core.addConnection({ name: host, host, port, transport });
+    const connection =
+      connections.get(`${host}:${port}`) ??
+      (await core.addConnection({ name: host, host, port, transport }));
 
-    if ("problem" in connection) return [connection];
+    if (typeof connection !== "number" && "problem" in connection) return [connection];
+
+    const id = typeof connection === "number" ? connection : connection.id;
+
+    connections.set(`${host}:${port}`, id);
 
     return Promise.all(
       chosen
         .values()
         .filter((choice) => choice.found === endpoint)
-        .map(({ profile, unit, name }) =>
-          core.addDevice({ connection: connection.id, name, profile, unit }),
-        )
+        .map(async (choice) => {
+          const before = added.get(key(choice));
+
+          if (before !== undefined) return before;
+
+          const { profile, unit, name } = choice;
+          const device = await core.addDevice({ connection: id, name, profile, unit });
+
+          if (!("problem" in device)) added.set(key(choice), device);
+
+          return device;
+        })
         .toArray(),
     );
   }
@@ -89,7 +112,7 @@
     <p>{m.devices_none()}</p>
   {/if}
   <ul>
-    {#each choices as choice (`${choice.found.host}:${choice.found.port}/${choice.profile}/${choice.unit}`)}
+    {#each choices as choice (key(choice))}
       <li>
         <label>
           <input type="checkbox" bind:checked={choice.chosen} />
