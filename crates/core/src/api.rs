@@ -30,6 +30,8 @@ const METHOD: Problem = Problem {
     code: "request.method",
 };
 
+mod history;
+
 #[derive(OpenApi)]
 #[openapi(info(title = "SunReye", version = "1"))]
 struct Document;
@@ -40,7 +42,12 @@ pub struct Api {
     pub live: Live,
     /// Storage's problems, as of its last tick.
     pub problems: watch::Receiver<Vec<storage::Problem>>,
+    pub history: storage::Reader,
+    /// The wall clock: history ends at its now.
+    pub clock: Clock,
 }
+
+pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
 pub fn router(api: Api) -> Router {
     let protected = OpenApiRouter::new()
@@ -54,6 +61,11 @@ pub fn router(api: Api) -> Router {
             OpenApiRouter::new()
                 .routes(routes!(problems))
                 .with_state(api.problems),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(history::history))
+                .with_state((api.history, api.clock)),
         );
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))

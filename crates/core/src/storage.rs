@@ -16,7 +16,7 @@ use sunreye_profile::{RoleKind, Unit};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::bus::{Bus, DeviceId, Reading, SeriesId};
+use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
 use thread::{Command, Forecasting, Request};
 
 /// Commands the storage thread may fall behind by before senders wait.
@@ -251,7 +251,7 @@ impl Storage {
     /// The open bucket is not yet history.
     ///
     /// # Errors
-    /// The file cannot be read.
+    /// The series is unknown, or the file cannot be read.
     pub async fn history(
         &self,
         device: DeviceId,
@@ -259,22 +259,15 @@ impl Storage {
         from: SystemTime,
         to: SystemTime,
     ) -> Result<Vec<ChangePoint>, Error> {
-        let name = self.name(series)?;
-        self.request(|reply| Request::History {
-            device,
-            name,
-            from,
-            to,
-            reply,
-        })
-        .await?
+        let series = self.bus.series(series).ok_or(Error::UnknownSeries)?;
+        self.reader().history(device, &series, from, to).await
     }
 
     /// The rollups of `series` in `tier` that start within `range`. Hours are rolled up once
     /// closed; the current day covers its closed hours.
     ///
     /// # Errors
-    /// The file cannot be read.
+    /// The series is unknown, or the file cannot be read.
     pub async fn rollups(
         &self,
         device: DeviceId,
@@ -282,15 +275,14 @@ impl Storage {
         tier: Tier,
         range: Range<SystemTime>,
     ) -> Result<Vec<Rollup>, Error> {
-        let name = self.name(series)?;
-        self.request(|reply| Request::Rollups {
-            device,
-            name,
-            tier,
-            range,
-            reply,
-        })
-        .await?
+        let series = self.bus.series(series).ok_or(Error::UnknownSeries)?;
+        self.reader().rollups(device, &series, tier, range).await
+    }
+
+    /// A handle that reads history by series name, for the API.
+    #[must_use]
+    pub fn reader(&self) -> Reader {
+        Reader(self.commands.clone())
     }
 
     /// Rebuilds from its change points every rollup of a declared `series` that overlaps
@@ -419,9 +411,70 @@ impl Storage {
         &self,
         make: impl FnOnce(oneshot::Sender<T>) -> Request,
     ) -> Result<T, Error> {
-        let (reply, answer) = oneshot::channel();
-        self.send(Command::Request(make(reply))).await?;
-        answer.await.map_err(|_| Error::Stopped)
+        request(&self.commands, make).await
+    }
+}
+
+async fn request<T>(
+    commands: &mpsc::Sender<Command>,
+    make: impl FnOnce(oneshot::Sender<T>) -> Request,
+) -> Result<T, Error> {
+    let (reply, answer) = oneshot::channel();
+    commands
+        .send(Command::Request(make(reply)))
+        .await
+        .map_err(|_| Error::Stopped)?;
+    answer.await.map_err(|_| Error::Stopped)
+}
+
+/// Reads stored history by series, whether or not the bus has interned it since the start.
+#[derive(Debug, Clone)]
+pub struct Reader(mpsc::Sender<Command>);
+
+impl Reader {
+    /// The change points of `series` from `from` to `to`, led by the one in force at `from`;
+    /// none for a series without history. The open bucket is not yet history.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn history(
+        &self,
+        device: DeviceId,
+        series: &Series,
+        from: SystemTime,
+        to: SystemTime,
+    ) -> Result<Vec<ChangePoint>, Error> {
+        let name = series.to_string();
+        request(&self.0, |reply| Request::History {
+            device,
+            name,
+            from,
+            to,
+            reply,
+        })
+        .await?
+    }
+
+    /// The rollups of `series` in `tier` that start within `range`.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn rollups(
+        &self,
+        device: DeviceId,
+        series: &Series,
+        tier: Tier,
+        range: Range<SystemTime>,
+    ) -> Result<Vec<Rollup>, Error> {
+        let name = series.to_string();
+        request(&self.0, |reply| Request::Rollups {
+            device,
+            name,
+            tier,
+            range,
+            reply,
+        })
+        .await?
     }
 }
 
