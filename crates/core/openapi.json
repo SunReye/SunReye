@@ -1212,7 +1212,7 @@
         "type": "object"
       },
       "Frame": {
-        "description": "Values by device id, then by series name, such as `pv.mppt.power[2]`.",
+        "description": "Values by device id, then by series name, such as `pv.mppt.power[2]`. A value in a delta is\nfresh; one in `stale` is past its gap threshold (ADR 3) and keeps its last value.",
         "properties": {
           "devices": {
             "additionalProperties": {
@@ -1225,6 +1225,24 @@
               },
               "type": "object"
             },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "stale": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "description": "The age in whole seconds of each stale value, by device id, then by series name.",
             "propertyNames": {
               "type": "string"
             },
@@ -4561,7 +4579,7 @@
             }
           }
         },
-        "summary": "Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in\nwhich a value changed. There is no replay: a client that falls behind is disconnected and\nreconnects to a fresh snapshot."
+        "summary": "Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in\nwhich a value changed or went stale. There is no replay: a client that falls behind is disconnected and\nreconnects to a fresh snapshot."
       }
     },
     "/api/v1/location": {

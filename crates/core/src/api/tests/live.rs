@@ -172,6 +172,71 @@ async fn a_change_arrives_within_one_tick() {
     );
 }
 
+/// A device that dropped out keeps its last value, marked stale with its age in seconds once
+/// past the gap threshold (ADR 3), 15 s at the 5 s poll cadence: the first tick after it, with
+/// the age in whole seconds rounded down.
+#[tokio::test]
+async fn a_value_past_the_gap_threshold_is_marked_stale_with_its_age() {
+    let (_dir, core, set_cookie) = core().await;
+    core.publish(7, "grid.power", None, 300.0);
+    core.publish(7, "battery.power", None, -1000.0);
+    tokio::time::sleep(SECOND).await;
+    let mut events = core.live(&set_cookie).await;
+    events.next().await;
+    tokio::time::sleep(SECOND * 10).await;
+    core.publish(7, "battery.power", None, -1000.0);
+
+    let delta = events.next().await;
+
+    assert_eq!(
+        delta,
+        (
+            "delta".to_owned(),
+            json!({ "devices": {}, "stale": { "7": { "grid.power": 15 } } })
+        )
+    );
+}
+
+#[tokio::test]
+async fn a_snapshot_marks_a_stale_value_with_its_age() {
+    let (_dir, core, set_cookie) = core().await;
+    core.publish(7, "grid.power", None, 300.0);
+    tokio::time::sleep(SECOND * 40).await;
+
+    let mut events = core.live(&set_cookie).await;
+
+    assert_eq!(
+        events.next().await,
+        (
+            "snapshot".to_owned(),
+            json!({
+                "devices": { "7": { "grid.power": 300.0 } },
+                "stale": { "7": { "grid.power": 40 } },
+            })
+        )
+    );
+}
+
+/// A reading after the gap is sent even unchanged: a value in a delta is fresh.
+#[tokio::test]
+async fn a_stale_value_read_again_is_sent_unchanged() {
+    let (_dir, core, set_cookie) = core().await;
+    core.publish(7, "grid.power", None, 300.0);
+    tokio::time::sleep(SECOND * 20).await;
+    let mut events = core.live(&set_cookie).await;
+    events.next().await;
+
+    core.publish(7, "grid.power", None, 300.0);
+
+    assert_eq!(
+        events.next().await,
+        (
+            "delta".to_owned(),
+            json!({ "devices": { "7": { "grid.power": 300.0 } } })
+        )
+    );
+}
+
 #[tokio::test]
 async fn live_needs_a_session() {
     let (_dir, core, _) = core().await;

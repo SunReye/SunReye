@@ -452,7 +452,7 @@ export interface paths {
         };
         /**
          * Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in
-         *     which a value changed. There is no replay: a client that falls behind is disconnected and
+         *     which a value changed or went stale. There is no replay: a client that falls behind is disconnected and
          *     reconnects to a fresh snapshot.
          */
         get: operations["live_values"];
@@ -1375,9 +1375,18 @@ export interface components {
             port: number;
             transport: components["schemas"]["Transport"];
         };
-        /** @description Values by device id, then by series name, such as `pv.mppt.power[2]`. */
+        /**
+         * @description Values by device id, then by series name, such as `pv.mppt.power[2]`. A value in a delta is
+         *     fresh; one in `stale` is past its gap threshold (ADR 3) and keeps its last value.
+         */
         Frame: {
             devices: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** @description The age in whole seconds of each stale value, by device id, then by series name. */
+            stale?: {
                 [key: string]: {
                     [key: string]: number;
                 };

@@ -327,7 +327,7 @@ async fn problems(
 }
 
 /// Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in
-/// which a value changed. There is no replay: a client that falls behind is disconnected and
+/// which a value changed or went stale. There is no replay: a client that falls behind is disconnected and
 /// reconnects to a fresh snapshot.
 #[utoipa::path(get, path = "/api/v1/live", responses(
     (status = 200, body = Frame, content_type = "text/event-stream"),
