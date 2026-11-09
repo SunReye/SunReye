@@ -127,7 +127,7 @@ fn write(start: u16, word: u16) -> Write {
 
 /// Every log line, at every level, written while it lives.
 #[derive(Clone, Default)]
-struct Lines(Arc<Mutex<Vec<u8>>>);
+pub(super) struct Lines(pub(super) Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for Lines {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {

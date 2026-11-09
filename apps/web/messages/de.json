@@ -43,6 +43,7 @@
   "problem_connection_in_use": "Ein Gerät nutzt diese Verbindung noch.",
   "problem_device_none": "Dieses Gerät gibt es nicht.",
   "problem_device_connection": "Das Gerät nennt eine unbekannte Verbindung.",
+  "problem_device_transport": "Das Gerät kann über diese Verbindung nicht gelesen werden.",
   "problem_device_profile": "Das Gerät nennt ein unbekanntes Profil.",
   "problem_device_profile_change": "Das Profil eines Geräts lässt sich nicht ändern; sein Verlauf ist in diesem Profil gespeichert.",
   "problem_device_address": "Ein anderes Gerät nutzt diese Unit-ID bereits am selben Endpunkt.",

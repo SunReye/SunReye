@@ -10,7 +10,7 @@ mod routes;
 mod store;
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 use std::time::SystemTime;
 
 use axum::http::StatusCode;
@@ -24,6 +24,7 @@ use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
+use crate::mqtt;
 use crate::profiles::Catalogue;
 use crate::settings::{
     self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
@@ -51,6 +52,8 @@ enum Refusal {
     DeviceConnection,
     /// The device names no known profile.
     Profile,
+    /// The device's connection is a broker, through which no profile reads yet.
+    Transport,
     /// A device's profile is fixed: its history is stored in that profile's steps.
     ProfileChange,
     /// Another device has the unit id on the same endpoint.
@@ -66,6 +69,7 @@ impl From<Refusal> for Problem {
             Refusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
             Refusal::DeviceConnection => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection),
             Refusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
+            Refusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
             Refusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
             Refusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
         };
@@ -79,6 +83,8 @@ impl From<Refusal> for Problem {
 pub enum Transport {
     ModbusTcp,
     SolarmanV5,
+    /// An MQTT broker (ADR 10); its credentials are the secrets `username` and `password`.
+    Mqtt,
 }
 
 /// How the core reaches an endpoint, without its secrets.
@@ -99,8 +105,34 @@ pub struct Connection {
     pub reach: Reach,
     /// The names of the secrets set; their values are never read back.
     pub secrets: Vec<String>,
+    /// A broker's client as observed; listed only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<BrokerStatus>,
 }
 
+/// A broker connection's client as observed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokerStatus {
+    pub connected: bool,
+    /// Why the last attempt or session failed; kept after a reconnect.
+    pub last_error: Option<String>,
+    /// RFC 3339, UTC.
+    pub last_connected_at: Option<String>,
+}
+
+impl From<mqtt::Status> for BrokerStatus {
+    fn from(status: mqtt::Status) -> Self {
+        Self {
+            connected: status.connected,
+            last_error: status.last_error,
+            last_connected_at: status
+                .last_connected_at
+                .and_then(|t| jiff::Timestamp::try_from(t).ok())
+                .map(|t| t.to_string()),
+        }
+    }
+}
 /// A connection as the admin enters it.
 #[derive(Clone, Deserialize, ToSchema)]
 pub struct ConnectionDraft {
@@ -168,6 +200,13 @@ struct Writing<'a> {
     profile: Arc<Profile>,
 }
 
+/// A broker connection's client and the broker it was started for.
+struct Brokered {
+    id: u32,
+    broker: mqtt::Broker,
+    client: mqtt::Client,
+}
+
 /// An endpoint task and the devices it polls.
 struct Running {
     endpoint: Endpoint,
@@ -185,6 +224,8 @@ pub struct Devices {
     inverters: Inverters,
     /// Held across a change and its restart, so changes apply in order.
     running: Arc<Mutex<Vec<Running>>>,
+    /// Changed only under `running`'s lock.
+    brokers: Arc<std::sync::Mutex<Vec<Brokered>>>,
 }
 
 impl std::fmt::Debug for Devices {
@@ -213,6 +254,7 @@ impl Devices {
             bus,
             inverters,
             running: Arc::default(),
+            brokers: Arc::default(),
         };
         let mut running = devices.running.lock().await;
         devices.restart(&mut running).await?;
@@ -225,7 +267,16 @@ impl Devices {
     /// # Errors
     /// The file cannot be read.
     pub async fn connections(&self) -> Result<Vec<Connection>, storage::Error> {
-        self.database.run(store::connections).await
+        let mut connections = self.database.run(store::connections).await?;
+        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        for connection in &mut connections {
+            connection.status = brokers
+                .iter()
+                .find(|b| b.id == connection.id)
+                .map(|b| b.client.status().into());
+        }
+        drop(brokers);
+        Ok(connections)
     }
 
     /// Every device, by id.
@@ -601,6 +652,7 @@ impl Devices {
     /// Brings the endpoint tasks in line with the configured devices: a task whose devices
     /// changed stops before its replacement connects, as a single-slot endpoint needs.
     async fn restart(&self, running: &mut Vec<Running>) -> Result<(), storage::Error> {
+        self.restart_brokers().await?;
         let wanted = by_endpoint(self.database.run(store::polled).await?);
         running.retain(|r| {
             wanted
@@ -632,6 +684,24 @@ impl Devices {
             });
         }
         self.inverters.replace(inverters);
+        Ok(())
+    }
+
+    /// Brings the broker clients in line with the broker connections: a changed one is replaced.
+    async fn restart_brokers(&self) -> Result<(), storage::Error> {
+        let wanted = self.database.run(store::brokers).await?;
+        let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        brokers.retain(|b| wanted.iter().any(|(id, w)| *id == b.id && *w == b.broker));
+        for (id, broker) in wanted {
+            if !brokers.iter().any(|b| b.id == id) {
+                brokers.push(Brokered {
+                    id,
+                    client: mqtt::spawn(broker.clone()),
+                    broker,
+                });
+            }
+        }
+        drop(brokers);
         Ok(())
     }
 

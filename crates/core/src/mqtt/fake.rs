@@ -20,6 +20,8 @@ pub struct Connect {
 pub struct Fake {
     pub address: SocketAddr,
     pub connects: mpsc::UnboundedReceiver<Connect>,
+    /// One message per accepted session the client closed.
+    pub hung_up: mpsc::UnboundedReceiver<()>,
     close: broadcast::Sender<()>,
 }
 
@@ -39,27 +41,32 @@ pub async fn serve(code: u8) -> Fake {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (sent, connects) = mpsc::unbounded_channel();
+    let (hangs_up, hung_up) = mpsc::unbounded_channel();
     let (close, _) = broadcast::channel(1);
     let closing = close.clone();
     tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
-            tokio::spawn(session(socket, code, sent.clone(), closing.subscribe()));
+            let channels = (sent.clone(), hangs_up.clone(), closing.subscribe());
+            tokio::spawn(session(socket, code, channels));
         }
     });
     Fake {
         address,
         connects,
+        hung_up,
         close,
     }
 }
 
-async fn session(
-    mut socket: TcpStream,
-    code: u8,
-    connects: mpsc::UnboundedSender<Connect>,
-    mut close: broadcast::Receiver<()>,
-) {
+type Channels = (
+    mpsc::UnboundedSender<Connect>,
+    mpsc::UnboundedSender<()>,
+    broadcast::Receiver<()>,
+);
+
+async fn session(mut socket: TcpStream, code: u8, channels: Channels) {
+    let (connects, hangs_up, mut close) = channels;
     let Some((0x10, body)) = packet(&mut socket).await else {
         return;
     };
@@ -73,7 +80,10 @@ async fn session(
             read = packet(&mut socket) => match read {
                 Some((0xC0, _)) => socket.write_all(&[0xD0, 0]).await.unwrap(),
                 Some(_) => {}
-                None => return,
+                None => {
+                    let _sent = hangs_up.send(());
+                    return;
+                }
             },
             _ = close.recv() => return,
         }

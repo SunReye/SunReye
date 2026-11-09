@@ -68,6 +68,32 @@
         ],
         "type": "object"
       },
+      "BrokerStatus": {
+        "description": "A broker connection's client as observed.",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "lastConnectedAt": {
+            "description": "RFC 3339, UTC.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "description": "Why the last attempt or session failed; kept after a reconnect.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "connected"
+        ],
+        "type": "object"
+      },
       "Change": {
         "description": "A topology change: every point, applying from an instant on.",
         "properties": {
@@ -155,6 +181,7 @@
           "connection.in-use",
           "device.none",
           "device.connection",
+          "device.transport",
           "device.profile",
           "device.profile-change",
           "device.address",
@@ -207,6 +234,17 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "status": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BrokerStatus",
+                    "description": "A broker's client as observed; listed only."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -1462,7 +1500,8 @@
         "description": "The wire framing on a connection's endpoint.",
         "enum": [
           "modbus-tcp",
-          "solarman-v5"
+          "solarman-v5",
+          "mqtt"
         ],
         "type": "string"
       },
