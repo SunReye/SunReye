@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{LoadError, Profile, Step};
+use crate::{Field, LoadError, Profile, Step};
 use serde_json::{Value, json};
 
 fn doc(settings: &Value) -> Value {
@@ -38,7 +38,13 @@ fn a_setting_declares_its_recipe_read_back_and_minimum_interval() {
     let setting = profile.setting("current").unwrap();
 
     assert_eq!(setting.recipe(), [Step::Write { register: 108 }]);
-    assert_eq!(setting.read_back(), Some(109));
+    assert_eq!(
+        setting.read_back(),
+        Some(Field {
+            register: 109,
+            mask: 0xFFFF
+        })
+    );
     assert_eq!(setting.min_interval(), Duration::from_mins(1));
     assert!(profile.setting("voltage").is_none());
 }
@@ -143,5 +149,239 @@ fn a_setting_is_bounded_and_has_steps() {
     assert_eq!(
         refusal(&json!([current(), current()])).1,
         "the key is declared twice"
+    );
+}
+
+fn with_recipe(recipe: &Value) -> Value {
+    let mut setting = current();
+    setting["recipe"] = recipe.clone();
+    setting
+}
+
+fn warnings(settings: &Value, requires: &Value) -> Vec<String> {
+    let mut doc = doc(settings);
+    doc["requires"] = requires.clone();
+    Profile::load(&doc.to_string()).unwrap().warnings().to_vec()
+}
+
+#[test]
+fn a_delay_waits_between_steps_for_at_most_ten_seconds() {
+    let recipe = json!([{ "write": { "register": 108 } }, { "delay": { "ms": 500 } }]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe(),
+        [
+            Step::Write { register: 108 },
+            Step::Delay(Duration::from_millis(500))
+        ]
+    );
+    let long = json!([{ "write": { "register": 108 } }, { "delay": { "ms": 10_001 } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&long)])).1,
+        "a delay is at most 10000 ms: the device's polls wait for it"
+    );
+    assert_eq!(
+        warnings(
+            &json!([with_recipe(&recipe)]),
+            &json!(["modbus", "u16", "write"])
+        ),
+        ["`requires` lacks `delay`, which the profile uses"]
+    );
+}
+
+#[test]
+fn a_block_write_carries_the_value_once_among_fixed_words() {
+    let recipe = json!([{ "writeBlock": { "register": 100, "words": [1, "value", 0, 7] } }]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe(),
+        [Step::WriteBlock {
+            register: 100,
+            head: vec![1],
+            tail: vec![0, 7],
+        }]
+    );
+    for words in [json!([1, 0]), json!(["value", 1, "value"])] {
+        let recipe = json!([{ "writeBlock": { "register": 100, "words": words } }]);
+        assert_eq!(
+            refusal(&json!([with_recipe(&recipe)])).1,
+            "a block carries `value` exactly once"
+        );
+    }
+    let mut words = vec![json!(0); 123];
+    words.push(json!("value"));
+    let long = json!([{ "writeBlock": { "register": 100, "words": words } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&long)])).1,
+        "a block is at most 123 registers"
+    );
+    assert_eq!(
+        warnings(&json!([with_recipe(&recipe)]), &json!(["modbus", "u16"])),
+        ["`requires` lacks `write-block`, which the profile uses"]
+    );
+}
+
+/// A two-bit field at bits 4 and 5 of register 141, read back through the same mask.
+fn mode() -> Value {
+    json!({
+        "key": "current", "type": "u16", "values": [0, 1, 2, 3], "minInterval": 60,
+        "recipe": [{ "rmw": { "register": 141, "mask": 0x30 } }],
+        "readBack": { "register": 141, "mask": 0x30 },
+    })
+}
+
+#[test]
+fn a_masked_write_takes_only_values_its_field_holds_and_reads_back_through_its_mask() {
+    let mut wide = mode();
+    wide["values"] = json!([0, 4]);
+    let profile = load(&json!([mode()])).unwrap();
+    let mode = profile.setting("current").unwrap();
+    let wide = load(&json!([wide])).unwrap();
+
+    assert_eq!(
+        mode.recipe(),
+        [Step::Rmw {
+            register: 141,
+            mask: 0x30
+        }]
+    );
+    assert_eq!(
+        mode.read_back(),
+        Some(Field {
+            register: 141,
+            mask: 0x30
+        })
+    );
+    assert_eq!(mode.read_back().unwrap().extract(0x1223), 2);
+    assert_eq!(mode.encode(3.0), Some(vec![3]));
+    assert_eq!(wide.setting("current").unwrap().encode(4.0), None);
+    assert_eq!(
+        warnings(&json!([self::mode()]), &json!(["modbus", "u16"])),
+        ["`requires` lacks `rmw`, which the profile uses"]
+    );
+}
+
+#[test]
+fn a_mask_is_non_zero_over_an_unsigned_register() {
+    let mut empty = mode();
+    empty["recipe"] = json!([{ "rmw": { "register": 141, "mask": 0 } }]);
+    assert_eq!(
+        refusal(&json!([empty])).1,
+        "a mask selects at least one bit"
+    );
+    let mut unread = mode();
+    unread["readBack"]["mask"] = json!(0);
+    assert_eq!(
+        refusal(&json!([unread])).1,
+        "a mask selects at least one bit"
+    );
+    for kind in ["i16", "u32"] {
+        let mut signed = mode();
+        signed["type"] = json!(kind);
+        assert_eq!(
+            refusal(&json!([signed])).1,
+            "a masked register holds a `u16`"
+        );
+        let mut read = mode();
+        read["type"] = json!(kind);
+        read["recipe"] = json!([{ "write": { "register": 141 } }]);
+        assert_eq!(refusal(&json!([read])).1, "a masked register holds a `u16`");
+    }
+}
+
+#[test]
+fn activation_comes_last_after_the_value_is_written() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+    ]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe(),
+        [
+            Step::Write { register: 108 },
+            Step::Activate {
+                register: 110,
+                value: 1
+            }
+        ]
+    );
+    assert_eq!(
+        warnings(
+            &json!([with_recipe(&recipe)]),
+            &json!(["modbus", "u16", "write"])
+        ),
+        ["`requires` lacks `activate`, which the profile uses"]
+    );
+    let early = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+        { "delay": { "ms": 100 } },
+    ]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&early)])).1,
+        "`activate` is the last step, after one that writes the value"
+    );
+    let alone =
+        json!([{ "delay": { "ms": 100 } }, { "activate": { "register": 110, "value": 1 } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&alone)])).1,
+        "`activate` is the last step, after one that writes the value"
+    );
+}
+
+#[test]
+fn preconditions_come_before_every_other_step() {
+    let recipe = json!([
+        { "precondition": { "register": 40, "values": [1, 2] } },
+        { "precondition": { "register": 41, "mask": 0x0C, "values": [3] } },
+        { "write": { "register": 108 } },
+    ]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe()[..2],
+        [
+            Step::Precondition {
+                field: Field {
+                    register: 40,
+                    mask: 0xFFFF
+                },
+                values: vec![1, 2],
+            },
+            Step::Precondition {
+                field: Field {
+                    register: 41,
+                    mask: 0x0C
+                },
+                values: vec![3],
+            },
+        ]
+    );
+    assert_eq!(
+        warnings(
+            &json!([with_recipe(&recipe)]),
+            &json!(["modbus", "u16", "write"])
+        ),
+        ["`requires` lacks `precondition`, which the profile uses"]
+    );
+    let late = json!([
+        { "write": { "register": 108 } },
+        { "precondition": { "register": 40, "values": [1] } },
+    ]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&late)])).1,
+        "a precondition comes before every other step"
+    );
+    let empty = json!([
+        { "precondition": { "register": 40, "values": [] } },
+        { "write": { "register": 108 } },
+    ]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&empty)])).1,
+        "a precondition lists the values it allows"
     );
 }

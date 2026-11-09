@@ -8,7 +8,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 ## Decision
 
-**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault.
+**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition`, is not logged and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
 
 **Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run even after a failure. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live).
 
@@ -17,7 +17,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - A recipe declares what to read back, which may differ from the register written. Silent ignores make read-back mandatory; a lint rejects a recipe without one unless the setting is declared write-only, which always reports `unknown`.
 - A timeout is `unknown`, followed by a read-back attempt. It is never retried automatically, because a retry can double-apply a relative setting. A mismatch is shown as an error and not retried.
 - The current value is read before writing, and the equal-value skip compares register words. A failed read writes nothing and reports `unknown`.
-- A device that refuses the first step with an exception is a `mismatch`; any step failing after an earlier one wrote is `partial`.
+- A device that refuses a step with an exception before any write was acknowledged is a `mismatch`; any step failing after an acknowledged write is `partial`.
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
 

@@ -13,13 +13,25 @@ pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
-pub use setting::{Setting, Step};
+pub use setting::{Field, Setting, Step};
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
 
 /// What this build can load: bindings, decoders, computed quantities and recipe step kinds.
-pub const CAPABILITIES: &[&str] = &["modbus", "u16", "i16", "u32", "compute", "write"];
+pub const CAPABILITIES: &[&str] = &[
+    "modbus",
+    "u16",
+    "i16",
+    "u32",
+    "compute",
+    "write",
+    "write-block",
+    "rmw",
+    "activate",
+    "precondition",
+    "delay",
+];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both
 /// report (ADR 5, 9).

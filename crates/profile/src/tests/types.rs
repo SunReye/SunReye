@@ -5,7 +5,8 @@ use std::path::Path;
 use ts_rs::{Config, TS};
 
 use crate::document::{
-    ExprDoc, Kind, ProfileDoc, QuantityDoc, Range, RegisterDoc, SettingDoc, StepDoc,
+    ActivateDoc, BlockDoc, DelayDoc, ExprDoc, Kind, MaskedDoc, PreconditionDoc, ProfileDoc,
+    QuantityDoc, Range, ReadBackDoc, RegisterDoc, SettingDoc, StepDoc,
 };
 use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support};
 
@@ -28,6 +29,12 @@ fn declarations() -> String {
         SettingDoc::decl(&cfg),
         StepDoc::decl(&cfg),
         RegisterDoc::decl(&cfg),
+        BlockDoc::decl(&cfg),
+        DelayDoc::decl(&cfg),
+        ActivateDoc::decl(&cfg),
+        PreconditionDoc::decl(&cfg),
+        MaskedDoc::decl(&cfg),
+        ReadBackDoc::decl(&cfg),
         Block::decl(&cfg),
         Support::decl(&cfg),
         Schemas::decl(&cfg),

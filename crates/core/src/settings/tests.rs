@@ -2,11 +2,12 @@
 //! retry or a stray request fails the replay.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use sunreye_profile::{Framing, Profile};
 
-use super::{Applied, Job, Outcome};
+use super::{Applied, Job, Outcome, Refusal};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{self, Device};
 use crate::transport::{Capture, Endpoint, Exchange};
@@ -77,6 +78,10 @@ fn echo(at: u16) -> Vec<u8> {
 }
 
 async fn run(device: Device, job: Job, exchanges: Vec<Exchange>) -> Applied {
+    attempt(device, job, exchanges).await.unwrap()
+}
+
+async fn attempt(device: Device, job: Job, exchanges: Vec<Exchange>) -> Result<Applied, Refusal> {
     let endpoint = Endpoint::Sim(Capture {
         framing: Framing::Tcp,
         exchanges,
@@ -151,6 +156,176 @@ async fn a_write_only_setting_is_written_unread_and_unknown() {
             before: None,
             after: None,
             failed_step: None,
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_delay_holds_the_next_step_back() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "delay": { "ms": 500 } },
+        { "write": { "register": 109 } },
+    ]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &echo(108)),
+        write(3, 109, 50, &echo(109)),
+        read(4, 108, 50),
+    ]
+    .concat();
+    let start = tokio::time::Instant::now();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+    assert!(start.elapsed() >= Duration::from_millis(500));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_after_steps_that_wrote_nothing_is_a_mismatch() {
+    let recipe = json!([{ "delay": { "ms": 500 } }, { "write": { "register": 108 } }]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &[0x90, 3]),
+        read(3, 108, 108),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Mismatch,
+            before: Some(108.0),
+            after: Some(108.0),
+            failed_step: Some(2),
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_block_write_sends_the_value_among_its_fixed_words_in_one_request() {
+    let recipe = json!([{ "writeBlock": { "register": 107, "words": [1, "value", 9] } }]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        [
+            Exchange::Request(frame(2, &[0x10, 0, 107, 0, 3, 6, 0, 1, 0, 50, 0, 9])),
+            Exchange::Reply(vec![frame(2, &[0x10, 0, 107, 0, 3])]),
+        ],
+        read(3, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_masked_write_changes_only_its_bits_and_reads_back_through_its_mask() {
+    let mode = json!({
+        "key": "current", "type": "u16", "values": [0, 1, 2, 3], "minInterval": 60,
+        "recipe": [{ "rmw": { "register": 141, "mask": 0x30 } }],
+        "readBack": { "register": 141, "mask": 0x30 },
+    });
+    let (device, job) = job(&mode, 2.0);
+    let exchanges = [
+        read(1, 141, 0x1203),
+        // The step reads the register again: its other bits may have moved since.
+        read(2, 141, 0x1213),
+        write(3, 141, 0x1223, &echo(141)),
+        read(4, 141, 0x1223),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Verified,
+            before: Some(0.0),
+            after: Some(2.0),
+            failed_step: None,
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn activation_writes_the_enable_field_after_the_value() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+    ]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &echo(108)),
+        write(3, 110, 1, &echo(110)),
+        read(4, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}
+
+fn guarded() -> Value {
+    current(&json!([
+        { "precondition": { "register": 40, "mask": 0x0C, "values": [1, 2] } },
+        { "write": { "register": 108 } },
+    ]))
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_holds_lets_the_recipe_run() {
+    let (device, job) = job(&guarded(), 50.0);
+    let exchanges = [
+        read(1, 40, 0xF8),
+        read(2, 108, 108),
+        write(3, 108, 50, &echo(108)),
+        read(4, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_fails_refuses_the_write_before_anything_is_written() {
+    let (device, job) = job(&guarded(), 50.0);
+
+    // Bits 2 and 3 hold 3; the capture ends there, so any later request fails the replay.
+    let refused = attempt(device, job, read(1, 40, 0x0C).to_vec()).await;
+
+    assert_eq!(refused, Err(Refusal::Precondition));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_cannot_be_read_writes_nothing_and_is_unknown() {
+    let (device, job) = job(&guarded(), 50.0);
+    let exchanges = vec![
+        Exchange::Request(frame(1, &[3, 0, 40, 0, 1])),
+        Exchange::Reply(vec![frame(1, &[0x83, 2])]),
+    ];
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Unknown,
+            before: None,
+            after: None,
+            failed_step: Some(1),
         }
     );
 }

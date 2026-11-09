@@ -99,6 +99,7 @@
           "setting.value",
           "setting.writes-off",
           "setting.interval",
+          "setting.precondition",
           "clock.unsynced",
           "internal"
         ],

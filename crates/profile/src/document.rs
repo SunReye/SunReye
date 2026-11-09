@@ -45,7 +45,7 @@ pub struct SettingDoc {
     #[cfg_attr(test, ts(type = "number"))]
     pub min_interval: u64,
     pub recipe: Vec<StepDoc>,
-    pub read_back: Option<RegisterDoc>,
+    pub read_back: Option<ReadBackDoc>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub write_only: bool,
@@ -57,6 +57,98 @@ pub struct SettingDoc {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum StepDoc {
     Write(RegisterDoc),
+    WriteBlock(BlockDoc),
+    Rmw(MaskedDoc),
+    Activate(ActivateDoc),
+    Precondition(PreconditionDoc),
+    Delay(DelayDoc),
+}
+
+impl StepDoc {
+    /// The capability a profile using this step kind requires.
+    pub const fn capability(&self) -> &'static str {
+        match self {
+            Self::Write(_) => "write",
+            Self::WriteBlock(_) => "write-block",
+            Self::Rmw(_) => "rmw",
+            Self::Activate(_) => "activate",
+            Self::Precondition(_) => "precondition",
+            Self::Delay(_) => "delay",
+        }
+    }
+}
+
+/// A field that must hold one of `values` before anything is written.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Precondition", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct PreconditionDoc {
+    pub register: u16,
+    pub mask: Option<u16>,
+    pub values: Vec<u16>,
+}
+
+/// The enable field written last, once the value is in place.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Activate"))]
+#[serde(deny_unknown_fields)]
+pub struct ActivateDoc {
+    pub register: u16,
+    pub value: u16,
+}
+
+/// The bits `mask` selects of `register`.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Masked"))]
+#[serde(deny_unknown_fields)]
+pub struct MaskedDoc {
+    pub register: u16,
+    pub mask: u16,
+}
+
+/// Where a write is read back: all of `register`, or the bits `mask` selects.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "ReadBack", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct ReadBackDoc {
+    pub register: u16,
+    pub mask: Option<u16>,
+}
+
+/// Registers written in one request from `register`, the value's words in place of `"value"`.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "WriteBlock"))]
+#[serde(deny_unknown_fields)]
+pub struct BlockDoc {
+    pub register: u16,
+    #[cfg_attr(test, ts(type = "Array<number | \"value\">"))]
+    pub words: Vec<BlockWord>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum BlockWord {
+    Word(u16),
+    Value(ValueMark),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ValueMark {
+    Value,
+}
+
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Delay"))]
+#[serde(deny_unknown_fields)]
+pub struct DelayDoc {
+    pub ms: u32,
 }
 
 #[derive(Deserialize)]

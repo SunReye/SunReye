@@ -309,7 +309,8 @@ impl Devices {
     ///
     /// # Errors
     /// The device or setting is unknown or read-only, the value does not fit, the device's writes
-    /// are off, the setting's minimum interval has not passed, or the file cannot be written.
+    /// are off, the setting's minimum interval has not passed, a precondition does not hold, or
+    /// the file cannot be written.
     pub async fn write_setting(
         &self,
         id: u32,
@@ -344,7 +345,8 @@ impl Devices {
             setting,
             words,
         };
-        let applied = task.write(job).await.ok_or(INTERNAL)?;
+        // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
+        let applied = task.write(job).await.ok_or(INTERNAL)??;
         // Logged before the lock is released: the next write's interval check reads this entry.
         let logged = self
             .database
