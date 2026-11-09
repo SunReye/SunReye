@@ -75,7 +75,8 @@ pub struct Api {
     pub topologies: Topologies,
     pub tariffs: Tariffs,
     pub cars: CarBodies,
-    pub zones: storage::Zones,
+    /// The plant timezone and change-point retention.
+    pub storage: storage::Settings,
     pub imports: Imports,
     pub backups: Backups,
     /// The wall clock: history ends at its now.
@@ -110,7 +111,14 @@ pub fn router(api: Api) -> Router {
         .merge(api.cars.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
         .merge(api.spot.routes(Clock::clone(&api.clock)))
-        .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
+        .merge(crate::zone::routes(
+            api.storage.zones.clone(),
+            Clock::clone(&api.clock),
+        ))
+        .merge(crate::retention::routes(
+            api.storage.retention,
+            Clock::clone(&api.clock),
+        ))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
         .merge(api.imports.routes())
         .merge(api.backups.routes())
@@ -146,7 +154,7 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
         )
         .merge(api.corrections.clone().routes(
             api.location.watch(),
-            api.zones.watch(),
+            api.storage.zones.watch(),
             Clock::clone(&api.clock),
         ))
 }
@@ -434,6 +442,9 @@ pub enum Code {
     LocationNone,
     #[serde(rename = "location.value")]
     LocationValue,
+    /// A retention of no days.
+    #[serde(rename = "retention.value")]
+    RetentionValue,
     #[serde(rename = "zone.value")]
     ZoneValue,
     #[serde(rename = "connection.none")]
@@ -510,6 +521,9 @@ pub enum Code {
     BackupExists,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
+    /// The disk is full: history stops, live values continue.
+    #[serde(rename = "storage.full")]
+    StorageFull,
     #[serde(rename = "internal")]
     Internal,
 }
@@ -518,6 +532,7 @@ impl From<storage::Problem> for Code {
     fn from(problem: storage::Problem) -> Self {
         match problem {
             storage::Problem::ClockUnsynced => Self::ClockUnsynced,
+            storage::Problem::StorageFull => Self::StorageFull,
         }
     }
 }

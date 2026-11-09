@@ -1,6 +1,6 @@
 //! The live stream over SSE (ADR 9).
 
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::BodyDataStream;
 use axum::http::{StatusCode, header};
@@ -9,9 +9,13 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 use super::{Core, get, with_cookie};
+use sunreye_profile::RoleKind;
+
 use crate::bus::{DeviceId, Reading};
+use crate::storage::{Policy, Problem};
 
 const SECOND: Duration = Duration::from_secs(1);
+const MINUTE: Duration = Duration::from_secs(60);
 
 /// A signed-in core with paused time.
 async fn core() -> (TempDir, Core, String) {
@@ -174,4 +178,57 @@ async fn live_needs_a_session() {
     let response = core.send(get("/api/v1/live")).await;
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn live_values_flow_while_the_disk_is_full() {
+    let (_dir, core, set_cookie) = core().await;
+    let power = core.bus.intern("battery.power", None);
+    let policy = Policy::new(RoleKind::Measurement, None, 1.0, SECOND);
+    core.storage
+        .declare(DeviceId(7), power, policy)
+        .await
+        .unwrap();
+    // The file may grow no further, its free pages returned first.
+    core.storage
+        .database()
+        .run(|db| {
+            db.prepare("PRAGMA incremental_vacuum")?
+                .query_map([], |_| Ok(()))?
+                .for_each(drop);
+            let pages: i64 = db.query_row("PRAGMA page_count", [], |row| row.get(0))?;
+            db.pragma_update(None, "max_page_count", pages)
+        })
+        .await
+        .unwrap();
+    // A minute of changes from the next minute on, all written in one bucket.
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let start = UNIX_EPOCH + MINUTE * (u32::try_from(now.as_secs() / 60).unwrap() + 1);
+    for i in 0..600_u32 {
+        let reading = Reading {
+            device: DeviceId(7),
+            series: power,
+            value: f64::from(i),
+            unit: None,
+            time: start + SECOND / 10 * i,
+        };
+        core.storage.record(reading).await.unwrap();
+    }
+    core.storage.tick(start + 2 * MINUTE).await.unwrap();
+    assert_eq!(
+        core.storage.problems().await.unwrap(),
+        [Problem::StorageFull]
+    );
+
+    core.publish(7, "battery.power", None, -1000.0);
+    tokio::time::sleep(SECOND).await;
+    let mut events = core.live(&set_cookie).await;
+
+    assert_eq!(
+        events.next().await,
+        (
+            "snapshot".to_owned(),
+            json!({ "devices": { "7": { "battery.power": -1000.0 } } })
+        )
+    );
 }

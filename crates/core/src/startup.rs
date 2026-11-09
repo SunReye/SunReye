@@ -292,7 +292,7 @@ pub async fn serve(
         topologies,
         tariffs,
         cars,
-        zones: storage.zones(),
+        storage: storage.settings(),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {

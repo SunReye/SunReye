@@ -22,8 +22,8 @@ pub use thread::{Log, SCHEMA};
 
 /// Commands the storage thread may fall behind by before senders wait.
 const QUEUE: usize = 1024;
-/// How long change points are kept: the setting's default (ADR 3), five years of 365.25 days.
-pub const RETENTION: Duration = Duration::from_hours(5 * 8766);
+/// How long change points are kept until the admin sets it (ADR 3): five years, leap days included.
+const RETENTION: Duration = Duration::from_hours(24 * 1827);
 
 /// How one series of one device is stored.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -148,6 +148,8 @@ pub struct Backfilled {
 pub enum Problem {
     /// The wall clock is not past the build time or the last stored instant: history is held.
     ClockUnsynced,
+    /// The disk took no more history at the last write: history stops, live values continue.
+    StorageFull,
 }
 
 impl Problem {
@@ -155,6 +157,7 @@ impl Problem {
     pub const fn code(self) -> &'static str {
         match self {
             Self::ClockUnsynced => "clock.unsynced",
+            Self::StorageFull => "storage.full",
         }
     }
 }
@@ -215,6 +218,7 @@ pub struct Storage {
     bus: Bus,
     feed: JoinHandle<()>,
     zone: std::sync::Arc<watch::Sender<jiff::tz::TimeZone>>,
+    retention: std::sync::Arc<watch::Sender<Duration>>,
 }
 
 impl Drop for Storage {
@@ -232,14 +236,33 @@ impl Storage {
     /// The zone is unknown, or the file cannot be opened or migrated.
     pub fn open(path: &Path, build: SystemTime, zone: &str, bus: &Bus) -> Result<Self, Error> {
         let tz = jiff::tz::TimeZone::get(zone).map_err(|_| Error::Zone)?;
-        let (commands, current) = thread::spawn(path, build, (zone.to_owned(), tz), QUEUE)?;
+        let (commands, current, kept) = thread::spawn(path, build, (zone.to_owned(), tz), QUEUE)?;
         let feed = tokio::spawn(feed(bus.subscribe(), commands.clone()));
         Ok(Self {
             commands,
             bus: bus.clone(),
             feed,
             zone: std::sync::Arc::new(watch::channel(current).0),
+            retention: std::sync::Arc::new(watch::channel(kept).0),
         })
+    }
+
+    /// Handles to the plant timezone and change-point retention, for the API.
+    #[must_use]
+    pub fn settings(&self) -> Settings {
+        Settings {
+            zones: self.zones(),
+            retention: self.retention(),
+        }
+    }
+
+    /// A handle that reads and sets change-point retention (ADR 3).
+    #[must_use]
+    pub fn retention(&self) -> Retention {
+        Retention {
+            commands: self.commands.clone(),
+            current: std::sync::Arc::clone(&self.retention),
+        }
     }
 
     /// A handle that reads and sets the plant timezone (ADR 3).
@@ -527,6 +550,44 @@ impl Zones {
         let zone = (name.to_owned(), tz.clone());
         request(&self.commands, |reply| Request::Zone { zone, log, reply }).await??;
         self.current.send_replace(tz);
+        Ok(())
+    }
+}
+
+/// Storage's own settings, which the admin sets (ADR 3).
+#[derive(Debug, Clone)]
+pub struct Settings {
+    pub zones: Zones,
+    pub retention: Retention,
+}
+
+/// How long change points are kept (ADR 3); rollups are kept forever.
+#[derive(Debug, Clone)]
+pub struct Retention {
+    commands: mpsc::Sender<Command>,
+    current: std::sync::Arc<watch::Sender<Duration>>,
+}
+
+impl Retention {
+    /// The retention in force.
+    #[must_use]
+    pub fn get(&self) -> Duration {
+        *self.current.borrow()
+    }
+
+    /// Keeps change points for `keep` from now on, kept across restarts; `log` runs in the same
+    /// transaction. Older ones expire at the next tick.
+    ///
+    /// # Errors
+    /// The file cannot be written.
+    pub async fn set(&self, keep: Duration, log: thread::Log) -> Result<(), Error> {
+        request(&self.commands, |reply| Request::Retention {
+            keep,
+            log,
+            reply,
+        })
+        .await??;
+        self.current.send_replace(keep);
         Ok(())
     }
 }

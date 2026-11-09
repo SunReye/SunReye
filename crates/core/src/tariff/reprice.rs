@@ -12,7 +12,7 @@ use crate::api::{Code, Problem};
 use crate::bus::Series;
 use crate::changes::Action;
 use crate::plant;
-use crate::storage::{ChangePoint, Error, RETENTION};
+use crate::storage::{ChangePoint, Error};
 
 const RETAINED: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -31,7 +31,7 @@ impl Tariffs {
     /// It applies from before change-point retention, a band is not one span of a day or overlaps
     /// another of its flow, or the file cannot be written.
     pub async fn reprice(&self, version: Version, now: SystemTime) -> Result<Version, Problem> {
-        if version.applies_from + RETENTION < now {
+        if version.applies_from + self.retention.get() < now {
             return Err(RETAINED);
         }
         if !(version.import.valid() && version.export.valid()) {

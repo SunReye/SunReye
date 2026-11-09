@@ -12,8 +12,8 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::encode::{Point, Tick, Track, quantise, ticks};
 use super::{
-    Backfill, Backfilled, ChangePoint, Error, Forecast, Issue, Policy, Problem, Rollup, Tier,
-    block, forecast,
+    Backfill, Backfilled, ChangePoint, Error, Forecast, Issue, Policy, Problem, RETENTION, Rollup,
+    Tier, block, forecast,
 };
 use crate::bus::{DeviceId, Reading, SeriesId};
 
@@ -24,6 +24,12 @@ mod rollups;
 const BUCKET: Tick = 600;
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
+/// `PRAGMA auto_vacuum` of a file that returns freed pages on request.
+const INCREMENTAL: i64 = 2;
+/// Expired blocks deleted per transaction, each followed by an incremental vacuum.
+const BATCH: usize = 256;
+/// Expired blocks deleted per tick, so a shortened retention never holds the thread for long.
+const PRUNE: usize = 16 * BATCH;
 /// Forward-only, applied in order; `user_version` counts those applied.
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
@@ -97,6 +103,12 @@ pub enum Request {
         log: Log,
         reply: oneshot::Sender<Result<(), Error>>,
     },
+    /// Change points are kept for `keep` from now on (ADR 3); `log` commits with it.
+    Retention {
+        keep: Duration,
+        log: Log,
+        reply: oneshot::Sender<Result<(), Error>>,
+    },
     Run(Job),
     Shutdown(oneshot::Sender<Result<(), Error>>),
 }
@@ -145,13 +157,13 @@ pub enum Forecasting {
 
 /// Opens the file and starts the thread; the returned sender feeds it.
 /// `zone` is the plant timezone, by name and resolved, unless the admin stored one; the zone in
-/// force is returned beside the sender.
+/// force and the retention in force are returned beside the sender.
 pub fn spawn(
     path: &Path,
     build: SystemTime,
     zone: (String, TimeZone),
     queue: usize,
-) -> Result<(mpsc::Sender<Command>, TimeZone), Error> {
+) -> Result<(mpsc::Sender<Command>, TimeZone, Duration), Error> {
     let db = open(path)?;
     let stored: Option<String> = db
         .query_row("SELECT value FROM meta WHERE key = 'zone'", [], |row| {
@@ -175,6 +187,9 @@ pub fn spawn(
     };
     let flushed = meta("flushed")?.unwrap_or(0);
     let rolled = meta("rolled")?;
+    let retention = meta("retention")?
+        .and_then(|seconds| u64::try_from(seconds).ok())
+        .map_or(RETENTION, Duration::from_secs);
     let store = Store {
         db,
         tracks: HashMap::new(),
@@ -188,13 +203,15 @@ pub fn spawn(
         unsynced: false,
         zone,
         rolled,
+        retention,
+        full: false,
     };
     let (sender, receiver) = mpsc::channel(queue);
     std::thread::Builder::new()
         .name("storage".into())
         .spawn(move || store.run(receiver))
         .map_err(|_| Error::Stopped)?;
-    Ok((sender, current))
+    Ok((sender, current, retention))
 }
 
 fn open(path: &Path) -> Result<Connection, Error> {
@@ -218,6 +235,12 @@ fn open(path: &Path) -> Result<Connection, Error> {
         tx.pragma_update(None, "user_version", version)?;
     }
     tx.commit()?;
+    // A file made before its first table without incremental vacuum, such as by another tool,
+    // converts by one full vacuum: expiry could not shrink it otherwise (ADR 3).
+    let vacuum: i64 = db.query_row("PRAGMA auto_vacuum", [], |row| row.get(0))?;
+    if vacuum != INCREMENTAL {
+        db.execute_batch("PRAGMA auto_vacuum = INCREMENTAL; VACUUM;")?;
+    }
     Ok(db)
 }
 
@@ -240,6 +263,22 @@ fn private(path: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Returns the file's free pages to the file system.
+fn vacuum(db: &Connection) -> Result<(), Error> {
+    // Each step frees one page and yields a row.
+    let mut vacuum = db.prepare_cached("PRAGMA incremental_vacuum")?;
+    let mut steps = vacuum.query([])?;
+    while steps.next()?.is_some() {}
+    Ok(())
+}
+
+fn is_full(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Sqlite(rusqlite::Error::SqliteFailure(e, _)) if e.code == rusqlite::ErrorCode::DiskFull
+    )
 }
 
 fn tick(time: SystemTime) -> Option<Tick> {
@@ -281,6 +320,10 @@ struct Store {
     zone: (String, TimeZone),
     /// Hours before this instant are rolled up; `None` before any history.
     rolled: Option<Tick>,
+    /// How long change points are kept.
+    retention: Duration,
+    /// The last write of points found the disk full.
+    full: bool,
 }
 
 impl Store {
@@ -302,12 +345,26 @@ impl Store {
         // Every sender is gone without a shutdown: the open bucket is lost, as in a crash.
     }
 
-    fn store_zone(&self, name: &str, log: Log) -> Result<(), Error> {
+    fn set_zone(&mut self, zone: (String, TimeZone), log: Log) -> Result<(), Error> {
+        self.store_meta("zone", &zone.0, log)?;
+        self.zone = zone;
+        Ok(())
+    }
+
+    fn retain(&mut self, keep: Duration, log: Log) -> Result<(), Error> {
+        let seconds = i64::try_from(keep.as_secs()).unwrap_or(i64::MAX);
+        self.store_meta("retention", &seconds, log)?;
+        self.retention = keep;
+        Ok(())
+    }
+
+    /// Stores a setting of storage's own, with its change-log entry.
+    fn store_meta(&self, key: &str, value: &dyn rusqlite::ToSql, log: Log) -> Result<(), Error> {
         let tx = self.db.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO meta (key, value) VALUES ('zone', ?1)
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            [name],
+            params![key, value],
         )?;
         log(&tx)?;
         tx.commit()?;
@@ -349,14 +406,14 @@ impl Store {
             Request::Forecasting(request) => self.forecasting(request),
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
-                reply.send(unsynced.into_iter().collect()).ok();
+                let full = self.full.then_some(Problem::StorageFull);
+                reply.send(unsynced.into_iter().chain(full).collect()).ok();
             }
             Request::Zone { zone, log, reply } => {
-                let stored = self.store_zone(&zone.0, log);
-                if stored.is_ok() {
-                    self.zone = zone;
-                }
-                reply.send(stored).ok();
+                reply.send(self.set_zone(zone, log)).ok();
+            }
+            Request::Retention { keep, log, reply } => {
+                reply.send(self.retain(keep, log)).ok();
             }
             Request::Run(job) => job(&self.db),
             // Handled by `run`, which stops.
@@ -368,7 +425,31 @@ impl Store {
         if let Some(now) = self.synced(now) {
             self.advance(now);
             self.clock = self.clock.max(now);
+            // Retried at the next tick.
+            self.prune().ok();
         }
+    }
+
+    /// The first hour whose change points are retained: every hour before it is past retention.
+    fn horizon(&self) -> Tick {
+        let cutoff = self.clock.saturating_sub(ticks(self.retention));
+        cutoff.div_euclid(HOUR)
+    }
+
+    /// Deletes up to [`PRUNE`] expired blocks in batches, returning their pages to the file
+    /// system after each.
+    fn prune(&self) -> Result<(), Error> {
+        let horizon = self.horizon();
+        let stored = self
+            .db
+            .prepare_cached("SELECT device, series FROM step")?
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut budget = PRUNE;
+        for (device, series) in stored {
+            budget = budget.saturating_sub(self.expire(device, series, horizon, budget)?);
+        }
+        Ok(())
     }
 
     /// `time` as a tick if the clock is synced, else `None` with the problem raised.
@@ -408,7 +489,7 @@ impl Store {
             self.pending
                 .extend(self.scratch.drain(..).map(|point| (device.0, id, point)));
         }
-        // A failed write loses the bucket: memory stays bounded.
+        // A failed write loses the bucket, which `flush` marks: memory stays bounded.
         self.flush(now).ok();
         let hour = now.div_euclid(HOUR);
         if hour > self.packed && self.pack(hour).is_ok() {
@@ -417,15 +498,55 @@ impl Store {
     }
 
     /// Writes the pending points and rolls up every hour closed before `now`, in one
-    /// transaction.
+    /// transaction. Points that cannot be written are lost: each series they belong to gets a
+    /// gap at the first, written with the next points, and stores its next value afresh.
     fn flush(&mut self, now: Tick) -> Result<(), Error> {
-        let pending = std::mem::take(&mut self.pending);
+        let mut pending = std::mem::take(&mut self.pending);
+        let written = self.write(&pending, now);
+        match &written {
+            Ok(()) => {
+                if !pending.is_empty() {
+                    self.full = false;
+                }
+                pending.clear();
+                // Unchecked work is redone by the next checkpoint.
+                self.db
+                    .query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_| Ok(()))
+                    .ok();
+            }
+            Err(e) => {
+                self.full = is_full(e);
+                self.lose(&mut pending);
+            }
+        }
+        self.pending = pending;
+        written
+    }
+
+    /// Turns the points of a failed write into one gap per series at its first point.
+    fn lose(&mut self, pending: &mut Vec<(u32, i64, Point)>) {
+        pending.sort_by_key(|&(device, series, point)| (device, series, point.time));
+        pending.dedup_by_key(|&mut (device, series, _)| (device, series));
+        for (_, _, point) in pending.iter_mut() {
+            point.value = None;
+        }
+        for ((device, _), stored) in &mut self.tracks {
+            if pending
+                .iter()
+                .any(|&(d, s, _)| (d, s) == (device.0, stored.id))
+            {
+                stored.track.rebase(None);
+            }
+        }
+    }
+
+    fn write(&mut self, pending: &[(u32, i64, Point)], now: Tick) -> Result<(), Error> {
         let mut tx = self.db.unchecked_transaction()?;
         {
             let mut insert = tx.prepare_cached(
                 "INSERT INTO hot (device, series, time, value) VALUES (?1, ?2, ?3, ?4)",
             )?;
-            for (device, series, point) in &pending {
+            for (device, series, point) in pending {
                 insert.execute(params![device, series, point.time, point.value])?;
             }
         }
@@ -436,7 +557,7 @@ impl Store {
         )?;
         // A rollup that fails is retried on the next flush; the points are written regardless.
         let rollup = tx.savepoint()?;
-        let rolled = if let Ok(rolled) = self.roll(&rollup, &pending, now) {
+        let rolled = if let Ok(rolled) = self.roll(&rollup, pending, now) {
             rollup.commit()?;
             rolled
         } else {
@@ -445,10 +566,6 @@ impl Store {
         };
         tx.commit()?;
         self.rolled = rolled;
-        self.pending = pending;
-        self.pending.clear();
-        self.db
-            .query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_| Ok(()))?;
         Ok(())
     }
 
@@ -621,6 +738,33 @@ impl Store {
                 value: value as f64 * step,
             })
             .collect())
+    }
+
+    /// Deletes up to `budget` blocks of one series before hour `horizon`; returns how many.
+    fn expire(
+        &self,
+        device: i64,
+        series: i64,
+        horizon: Tick,
+        budget: usize,
+    ) -> Result<usize, Error> {
+        let mut delete = self.db.prepare_cached(
+            "DELETE FROM block WHERE device = ?1 AND series = ?2 AND hour IN (
+               SELECT hour FROM block WHERE device = ?1 AND series = ?2 AND hour < ?3
+               ORDER BY hour LIMIT ?4
+             )",
+        )?;
+        let mut expired = 0;
+        while expired < budget {
+            let batch = i64::try_from(BATCH.min(budget - expired)).unwrap_or(0);
+            let deleted = delete.execute(params![device, series, horizon, batch])?;
+            if deleted == 0 {
+                break;
+            }
+            expired += deleted;
+            vacuum(&self.db)?;
+        }
+        Ok(expired)
     }
 
     /// The id and step of a series stored for `device`.

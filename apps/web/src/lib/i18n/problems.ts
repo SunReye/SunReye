@@ -56,6 +56,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "car.uri": m.problem_car_uri,
   "car.none": m.problem_car_none,
   "zone.value": m.problem_zone_value,
+  "retention.value": m.problem_retention_value,
   "connection.none": m.problem_connection_none,
   "connection.value": m.problem_connection_value,
   "connection.in-use": m.problem_connection_in_use,
@@ -89,6 +90,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "backup.name": m.problem_backup_name,
   "backup.exists": m.problem_backup_exists,
   "clock.unsynced": m.problem_clock_unsynced,
+  "storage.full": m.problem_storage_full,
   internal: m.problem_internal,
 };
 

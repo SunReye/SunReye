@@ -106,7 +106,7 @@ impl Store {
         let Some(limit) = self.rolled else {
             return Ok(());
         };
-        let from = floor(tick(from).unwrap_or(0));
+        let from = floor(tick(from).unwrap_or(0)).max(self.rebuildable());
         let to = tick(to).unwrap_or(0).min(limit);
         let tx = self.db.unchecked_transaction()?;
         self.recompute(&tx, (device.0, stored.id, stored.kind), from..to, limit)?;
@@ -158,6 +158,15 @@ impl Store {
             stored.track.rebase(last.and_then(|p| p.value));
         }
         Ok(())
+    }
+
+    /// The first day start from which every hour and day still has the change points it was
+    /// rolled up from, the value in force at its start included: rollups before it are kept.
+    fn rebuildable(&self) -> Tick {
+        let hour = (self.horizon() + 1) * HOUR;
+        rollup::days(&self.zone.1, hour, hour + 1)
+            .first()
+            .map_or(hour, |day| if day.start == hour { hour } else { day.end })
     }
 
     pub(super) fn rollups(

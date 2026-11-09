@@ -51,6 +51,7 @@ mod live;
 mod location;
 mod mqtt;
 mod profiles;
+mod retention;
 mod roles;
 mod scan;
 mod screen;
@@ -157,7 +158,7 @@ impl Core {
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
             cars: CarBodies::new(path.with_file_name("cars")),
-            zones: storage.zones(),
+            storage: storage.settings(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -257,7 +258,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
         cars: CarBodies::new(dir.path().join("cars")),
-        zones: storage.zones(),
+        storage: storage.settings(),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
@@ -586,7 +587,7 @@ async fn capabilities_need_a_session() {
 }
 
 #[tokio::test]
-async fn problems_report_an_unsynced_clock() {
+async fn problems_report_an_unsynced_clock_and_a_full_disk() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
     let problems = || with_cookie(&set_cookie, get("/api/v1/problems"));
@@ -595,11 +596,12 @@ async fn problems_report_an_unsynced_clock() {
         serde_json::json!({ "problems": [] })
     );
 
-    core.problems.send_replace(vec![Problem::ClockUnsynced]);
+    core.problems
+        .send_replace(vec![Problem::ClockUnsynced, Problem::StorageFull]);
 
     assert_eq!(
         json(core.send(problems()).await).await,
-        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }] })
+        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }, { "code": "storage.full" }] })
     );
 }
 
