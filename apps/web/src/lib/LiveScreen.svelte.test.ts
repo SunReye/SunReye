@@ -53,12 +53,12 @@ test("the screen shows each live power and charts its day", async () => {
     ]);
 });
 
-test("a refused stream shows its problem code", async () => {
+test("a refused stream shows its problem in German", async () => {
   const transport = testCore(
     Response.json({ status: 401, code: "auth.required" }, { status: 401 }),
   );
 
   const screen = await render(LiveScreen, { core: connect(transport) });
 
-  await expect.element(screen.getByRole("alert")).toHaveTextContent("auth.required");
+  await expect.element(screen.getByRole("alert")).toHaveTextContent("Bitte melde dich an.");
 });

@@ -3,19 +3,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "i18n": "bun scripts/i18n.ts",
+    "build": "bun run i18n && vite build",
     "api": "SUNREYE_UPDATE_OPENAPI=1 cargo test -q -p sunreye-core --lib committed_openapi && bun run api:types",
     "api:types": "openapi-typescript ../../crates/core/openapi.json -o src/lib/api/schema.d.ts",
     "api:check": "bun run api:types --check",
     "format:check": "prettier --check \"src/**/*.svelte\"",
-    "sync": "svelte-kit sync",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test:components": "vitest run"
+    "sync": "bun run i18n && svelte-kit sync",
+    "check": "bun run sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test:components": "bun run i18n && vitest run"
   },
   "dependencies": {
     "openapi-fetch": "0.17.0"
   },
   "devDependencies": {
+    "@inlang/paraglide-js": "3.2.1",
+    "@inlang/plugin-message-format": "4.6.0",
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",

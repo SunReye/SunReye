@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Core, Live } from "./api/core";
   import DayChart from "./DayChart.svelte";
+  import { problemText } from "./i18n/problems";
 
   let { core }: { core: Core } = $props();
 
@@ -29,7 +30,7 @@
 
 <main>
   {#if live !== undefined && "problem" in live}
-    <p role="alert">{live.problem}</p>
+    <p role="alert">{problemText(live.problem)}</p>
   {/if}
   {#each devices as device (device.id)}
     <section>
