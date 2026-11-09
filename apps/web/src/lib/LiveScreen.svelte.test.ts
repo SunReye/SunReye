@@ -70,6 +70,22 @@ test("an EVCC loadpoint shows on its own card, not as a charted power", async ()
   expect(transport.asked.filter((path) => path.includes("/history"))).toEqual([]);
 });
 
+test("the spot-price device shows on its own card, not charted", async () => {
+  const spot = '{"devices":{"4294967292":{"price.spot":0.12}}}';
+
+  const transport = testCore(
+    new Response(`event: snapshot\ndata: ${spot}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const screen = await render(LiveScreen, { core: connect(transport) });
+
+  await expect.element(screen.getByRole("heading", { name: "Börsenstrompreis" })).toBeVisible();
+  await expect.element(screen.getByText("12,00 ct/kWh")).toBeVisible();
+  expect(transport.asked.filter((path) => path.includes("/history"))).toEqual([]);
+});
+
 test("a refused stream shows its problem in German", async () => {
   const transport = testCore(
     Response.json({ status: 401, code: "auth.required" }, { status: 401 }),
