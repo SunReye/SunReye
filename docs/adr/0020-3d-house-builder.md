@@ -1,0 +1,43 @@
+# 20. 3D house builder
+
+Status: accepted (2026-11-09)
+
+## Context
+
+The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs. Homeowners think in roofs. Shading, optimizers and strings that span roof faces cannot be described as one plane per string. The owner wants to build the house, place modules like a PV planner, see each string's production in 3D, and make that live scene the dashboard.
+
+## Decision
+
+**What it is.** An editor for the geometry of the PV layout. The layout stays the source of truth; the form stays for anyone who does not want 3D. The admin edits; viewers, and the cloud web app later, see the scene read-only.
+
+**Scene.** The scene is part of the PV layout, owned by the layout feature module (ADR 19). Saving it is one configuration change with an effective-from date. Planes and strings are derived from it and are not edited separately once a scene exists. Units are metres, y up, origin at the first block's corner; a compass dial rotates the scene to true north. Plane azimuths follow ADR 17. No map or satellite tiles: they would send the home's address to a tile service.
+
+- **Blocks.** A rectangular footprint (width, depth, eave height, rotation) with one roof: flat, mono-pitch, gable or hip, at a pitch. A plant has several blocks. Dormers, larger L-shapes and free-form polygons wait.
+- **Modules.** The admin defines the roofs first, then places modules freely on a grid on each roof face, like a PV planner. A cell is the module's size plus a gap; each face has an edge setback and a portrait or landscape orientation. Strings are painted onto modules and may span faces. Optimizers are set per module.
+- **Obstacles.** Opaque boxes (a neighbour, a wall), cylinders (a chimney, a pole) and trees (a trunk with a sphere crown), each with position, size and height.
+- **Equipment.** Markers for inverters and batteries, each linked to its device and placed on a block's wall, inside or outside.
+- **Car places.** A parking footprint, optionally under a carport whose roof carries modules, linked to one EVCC loadpoint device (ADR 10). It shows the car while one is connected.
+- **Car bodies.** SunReye draws its own low-poly bodies per class: sedan, hatchback, SUV, van, pickup. A small catalogue maps model names to a class and a colour (Tesla Model 3 Highland: sedan, pearl white); a matching EVCC vehicle title selects it, otherwise the admin picks. The admin may upload a GLB per catalogue entry or car place: at most 20 MB, no external URIs, scaled to the place's length and set on the ground, stored in the data directory and included in backups.
+
+**Editing.** Undo and redo until save. Saving checks that modules sit inside their face's setback and do not overlap. Unassigned modules are shown and produce nothing. A string whose open-circuit voltage at −10 °C exceeds the inverter's maximum DC input voltage (ADR 5) raises a warning, never a refusal, because the plant may already exist.
+
+**Physics.** Shading is computed in the `pv` crate (ADR 17), per bypass-diode substring, against blocks, obstacles and carport roofs; diffuse light stays unshaded. The core's forecast and the browser run the same code, so the scene and the forecast never disagree. three.js only draws.
+
+**Rendering.** three.js directly, without a Svelte wrapper. The scene is built by pure functions from the layout and drawn by one thin component. It needs WebGL2. It redraws only on a live tick or a camera move, never in a continuous loop. An orbit camera offers preset views (north, east, south, west, top, isometric); each viewer's last view is kept in their browser. The `pv` crate reaches the browser through its own WASM glue crate (ADR 2). Desktop and tablet edit; a phone views.
+
+**Time slider.** A date and time slider moves the sun and the shadows. Per-string production comes from measured values or estimates for past dates, the forecast for today and the next two days, and a clear-sky run of the `pv` crate in the browser for any other date. Once readings exist, each MPPT input's learned correction and its residual over the last 30 days are shown, so a misplaced face or a missing obstacle shows where it is drawn. Nothing changes the scene automatically.
+
+**Live dashboard.** When a scene exists, the dashboard opens on it, updated by live ticks (ADR 9): each string's power, tinted by its share of its own peak and labelled at its centre (estimates carry "≈"); each inverter's AC power; the battery's power, direction and SOC; the car's charging power and the vehicle's SOC when EVCC reports them; grid import or export and house consumption from the `plant` device. Equipment labels float above their markers on leader lines, readable through walls; without markers they sit beside the house. The 2D power flow serves when there is no scene, no WebGL2 or the low-power switch is on, and a toggle switches between them per browser.
+
+## Considered options
+
+- **A viewer only.** Rejected: a picture on top of typed numbers adds nothing the form does not have.
+- **Free-form roof modelling.** Rejected for now: parametric blocks give exact planes and work on a tablet.
+- **Shading in three.js.** Rejected: the forecast and the scene would disagree.
+- **Threlte.** Rejected: a wrapper that must follow every Svelte major.
+- **Map tiles to trace the roof.** Rejected: privacy, licensing and network.
+- **Bundled realistic car models.** Rejected: brand replicas carry copyright and design rights; uploads cover owners who want one.
+
+## Consequences
+
+The builder ships after 5.0.0 (ADR 1). The `pv` crate models every module, which also improves the forecast of plants entered by form. Inverter profiles gain their maximum DC input voltage. The dashboard loads three.js when a scene exists.

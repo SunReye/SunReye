@@ -136,6 +136,18 @@ _Avoid_: Array, panel group
 The datasheet values of one PV module model.
 _Avoid_: Panel model
 
+**Scene**:
+The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
+_Avoid_: Model, 3D view
+
+**Block**:
+A rectangular building footprint with one roof.
+_Avoid_: Building, house
+
+**Car place**:
+A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
+_Avoid_: Garage, charger
+
 **Computed device**:
 A device whose readings the core computes or fetches instead of polling hardware: a tariff, a price feed, a forecast, the plant aggregates.
 _Avoid_: Virtual device, coded device
