@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { chromium } from "playwright";
+import { answers, type Check, report, run } from "./smoke.ts";
 
 const CORE = "127.0.0.1:18099";
 const PROXY = "127.0.0.1:18100";
@@ -31,17 +32,6 @@ const INGRESS = `server {
 }
 `;
 
-type Check = readonly [name: string, ok: boolean];
-
-async function run(command: readonly string[]): Promise<string> {
-  const child = Bun.spawn([...command], { stdout: "pipe", stderr: "inherit" });
-  const output = await new Response(child.stdout).text();
-
-  if ((await child.exited) !== 0) throw new Error(`failed: ${command.join(" ")}`);
-
-  return output.trim();
-}
-
 async function build(target: string): Promise<void> {
   process.stderr.write(`building ${IMAGE}:${target}\n`);
 
@@ -59,20 +49,6 @@ async function build(target: string): Promise<void> {
     `${IMAGE}:${target}`,
     ".",
   ]);
-}
-
-/** Whether `url` answers, polling every 100 ms for up to `attempts` tries. */
-async function answers(url: string, attempts: number): Promise<boolean> {
-  const up = await fetch(url).then(
-    (response) => response.ok,
-    () => false,
-  );
-
-  if (up || attempts <= 1) return up;
-
-  await Bun.sleep(100);
-
-  return answers(url, attempts - 1);
 }
 
 /** Starts `target` on the host network; returns the container id once the core answers. */
@@ -244,9 +220,7 @@ async function main(): Promise<number> {
       ...(await addonChecks()),
     ]);
 
-    for (const [name, ok] of checks) process.stderr.write(`${ok ? "ok  " : "FAIL"} ${name}\n`);
-
-    return checks.every(([, ok]) => ok) ? 0 : 1;
+    return report(checks);
   } finally {
     await run(["docker", "image", "rm", `${IMAGE}:core`, `${IMAGE}:addon`]);
   }

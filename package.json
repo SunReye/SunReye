@@ -12,7 +12,9 @@
     "prepare": "husky",
     "image:smoke": "bun scripts/image-smoke.ts",
     "build:profiles": "bun packages/sdk/src/cli.ts build profiles",
-    "publish:profiles": "bun scripts/publish-profiles.ts"
+    "publish:profiles": "bun scripts/publish-profiles.ts",
+    "release": "bun scripts/release.ts",
+    "release:rehearse": "bun scripts/release-rehearsal.ts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.92.0",

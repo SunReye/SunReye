@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildProfiles } from "../packages/sdk/src/build.ts";
+import { git, tryGit } from "./git.ts";
 
 const branch = "profiles-dist";
 
@@ -54,26 +55,6 @@ export function compiledKeys(trust: string): Keys | undefined {
   if (active !== undefined && backup !== undefined) return { active, backup };
 
   throw new Error(`trust.rs: KEYS is not None or Some(Keys { active: [..], backup: [..] })`);
-}
-
-/** Whether git succeeds in `cwd`. A git hook exports `GIT_DIR` and kin, which would aim every
- * command at the checkout running the hook, so they are dropped. */
-function tryGit(cwd: string, args: readonly string[]): Bun.SyncSubprocess<"pipe", "pipe"> {
-  const env = Object.fromEntries(
-    Object.keys(process.env)
-      .filter((name) => !name.startsWith("GIT_"))
-      .map((name) => [name, process.env[name]]),
-  );
-
-  return Bun.spawnSync(["git", ...args], { cwd, env });
-}
-
-function git(cwd: string, args: readonly string[]): string {
-  const done = tryGit(cwd, args);
-
-  if (done.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${done.stderr.toString()}`);
-
-  return done.stdout.toString();
 }
 
 /** A fresh work tree on `profiles-dist` as the remote holds it, or on a new orphan branch. */

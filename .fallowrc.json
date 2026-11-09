@@ -8,6 +8,7 @@
     "target/**",
     "**/.svelte-kit/**"
   ],
+  "ignoreBinaries": ["systemd-analyze"],
   "ignoreDependencies": ["@oxlint/plugins", "@inlang/plugin-message-format"],
   "rules": {
     "unused-files": "error",
