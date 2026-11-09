@@ -14,7 +14,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{Error, Report, Target, run};
+use super::{Error, Options, OptionsError, Report, Target, run};
 use crate::bus::{Bus, DeviceId};
 use crate::profiles::Catalogue;
 use crate::storage::{Aggregate, Backfilled, Storage, Tier};
@@ -303,4 +303,33 @@ async fn a_target_the_archive_does_not_hold_is_refused() {
     let refused = run(fixture(), &plant.storage, &plant.bus, targets).await;
 
     assert!(matches!(refused, Err(Error::UnknownDevice(slug)) if slug == "elsewhere"));
+}
+
+fn args(line: &str) -> Vec<String> {
+    line.split_whitespace().map(str::to_owned).collect()
+}
+
+#[test]
+fn the_command_takes_the_file_each_device_mapping_and_the_data_directory() {
+    let options = Options::parse(
+        args("export.tar.gz --device deye-sun15k-sg05lp3=1 --device=meter=4"),
+        |name| (name == "SUNREYE_DATA_DIR").then(|| "/data".to_owned()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        options,
+        Options {
+            file: PathBuf::from("export.tar.gz"),
+            data_dir: PathBuf::from("/data"),
+            devices: vec![(SLUG.to_owned(), 1), ("meter".to_owned(), 4)],
+        }
+    );
+}
+
+#[test]
+fn the_command_refuses_a_mapping_without_a_device_id() {
+    let refused = Options::parse(args("x.tar.gz --data-dir /d --device meter=four"), |_| None);
+
+    assert_eq!(refused, Err(OptionsError::Device("meter=four".to_owned())));
 }

@@ -15,7 +15,10 @@ use sunreye_profile::Profile;
 use self::archive::{Config, Line, Tier};
 use self::convert::Linear;
 use crate::bus::{Bus, DeviceId};
+use crate::devices;
 use crate::endpoint::CADENCE;
+use crate::profiles::{Https, KEYS, Profiles};
+use crate::startup;
 use crate::storage::{self, Backfill, Backfilled, Held, Policy, Storage};
 
 /// A v3 device, by its slug, and the v5 device its history goes to.
@@ -47,6 +50,9 @@ pub enum Error {
     UnknownDevice(String),
     /// The archive does not carry the v3 profile of a target's device.
     NoProfile(String),
+    /// A mapping names a v5 device that is not registered, or whose profile is not known.
+    UnknownTarget(u32),
+    Profiles(String),
     Storage(storage::Error),
 }
 
@@ -56,6 +62,8 @@ impl fmt::Display for Error {
             Self::Archive(reason) => f.write_str(reason),
             Self::UnknownDevice(slug) => write!(f, "the archive holds no device `{slug}`"),
             Self::NoProfile(id) => write!(f, "the archive carries no v3 profile `{id}`"),
+            Self::UnknownTarget(id) => write!(f, "no v5 device {id} with a known profile"),
+            Self::Profiles(e) => write!(f, "profiles: {e}"),
             Self::Storage(e) => write!(f, "storage: {e}"),
         }
     }
@@ -73,6 +81,92 @@ impl From<rusqlite::Error> for Error {
     fn from(e: rusqlite::Error) -> Self {
         Self::Storage(storage::Error::Sqlite(e))
     }
+}
+
+/// What `sunreye import` imports, and where.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Options {
+    pub file: PathBuf,
+    pub data_dir: PathBuf,
+    /// Each v3 device slug and the id of the v5 device it maps to.
+    pub devices: Vec<(String, u32)>,
+}
+
+/// Why the options were refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OptionsError {
+    Missing(&'static str),
+    NoValue(&'static str),
+    Device(String),
+    Unknown(String),
+}
+
+impl fmt::Display for OptionsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing(what) => write!(f, "{what} is required"),
+            Self::NoValue(flag) => write!(f, "--{flag} needs a value"),
+            Self::Device(value) => write!(f, "--device: `{value}` is not <v3 slug>=<v5 device id>"),
+            Self::Unknown(arg) => write!(f, "unknown argument `{arg}`"),
+        }
+    }
+}
+
+impl std::error::Error for OptionsError {}
+
+impl Options {
+    /// Reads the archive's path, then `--device <slug>=<id>` for each device mapped and
+    /// `--data-dir`, which falls back to `SUNREYE_DATA_DIR` from `env`.
+    ///
+    /// # Errors
+    /// No file, no device or no data directory, a malformed mapping, or an unknown argument.
+    pub fn parse(
+        args: impl IntoIterator<Item = String>,
+        env: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, OptionsError> {
+        let (mut file, mut data_dir, mut devices) = (None, None, Vec::new());
+        let mut args = args.into_iter();
+        while let Some(arg) = args.next() {
+            if !arg.starts_with("--") && file.is_none() {
+                file = Some(PathBuf::from(arg));
+                continue;
+            }
+            let (name, inline) = match arg.split_once('=') {
+                Some((name, value)) => (name, Some(value.to_owned())),
+                None => (arg.as_str(), None),
+            };
+            let flag = match name {
+                "--device" => "device",
+                "--data-dir" => "data-dir",
+                _ => return Err(OptionsError::Unknown(arg)),
+            };
+            let value = inline
+                .or_else(|| args.next())
+                .ok_or(OptionsError::NoValue(flag))?;
+            if flag == "device" {
+                devices.push(mapping(&value).ok_or(OptionsError::Device(value))?);
+            } else {
+                data_dir = Some(value);
+            }
+        }
+        if devices.is_empty() {
+            return Err(OptionsError::Missing("--device"));
+        }
+        let data_dir = data_dir
+            .or_else(|| env("SUNREYE_DATA_DIR"))
+            .ok_or(OptionsError::Missing("--data-dir or SUNREYE_DATA_DIR"))?;
+        Ok(Self {
+            file: file.ok_or(OptionsError::Missing("the archive's path"))?,
+            data_dir: PathBuf::from(data_dir),
+            devices,
+        })
+    }
+}
+
+/// `slug=id`.
+fn mapping(value: &str) -> Option<(String, u32)> {
+    let (slug, id) = value.rsplit_once('=')?;
+    (!slug.is_empty()).then(|| Some((slug.to_owned(), id.parse().ok()?)))?
 }
 
 /// One v5 series the archive feeds: its device, its profile and quantity, and the conversion.
@@ -125,6 +219,42 @@ impl Plan {
 struct Staged {
     db: Connection,
     plan: Plan,
+}
+
+/// `sunreye import`: imports into the store in the data directory, which no running core holds
+/// open, then writes and closes it.
+///
+/// # Errors
+/// The store or the profiles cannot be opened, a mapping names an unknown device, or the import
+/// failed.
+pub async fn command(options: Options, build: SystemTime) -> Result<Report, Error> {
+    let bus = Bus::default();
+    let file = options.data_dir.join(startup::STORE);
+    let storage = Storage::open(&file, build, &startup::plant_zone(), &bus)?;
+    let profiles = Profiles::open(storage.database(), Arc::new(Https), KEYS)
+        .await
+        .map_err(|e| Error::Profiles(e.to_string()))?;
+    let catalogue = profiles.catalogue();
+    let registered = devices::registered(&storage.database()).await?;
+    let targets = options
+        .devices
+        .into_iter()
+        .map(|(slug, id)| {
+            let profile = registered
+                .iter()
+                .find(|d| d.id == id)
+                .and_then(|d| catalogue.get(&d.draft.profile))
+                .ok_or(Error::UnknownTarget(id))?;
+            Ok(Target {
+                slug,
+                device: DeviceId(id),
+                profile,
+            })
+        })
+        .collect::<Result<_, Error>>()?;
+    let report = run(options.file, &storage, &bus, targets).await?;
+    storage.shutdown().await?;
+    Ok(report)
 }
 
 /// Imports the archive at `file` into `storage`, each target's v3 device into its v5 device.

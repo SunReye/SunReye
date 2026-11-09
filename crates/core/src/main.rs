@@ -4,10 +4,10 @@ use std::io::Write as _;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_core::capture;
 use sunreye_core::profiles::{self, Https};
 use sunreye_core::startup::{self, Boot, Options};
 use sunreye_core::weather::OpenMeteo;
+use sunreye_core::{capture, import};
 use tokio::net::TcpListener;
 
 fn main() -> ExitCode {
@@ -18,6 +18,9 @@ fn main() -> ExitCode {
     let mut args = std::env::args().skip(1).peekable();
     if args.next_if(|arg| arg == "capture").is_some() {
         return capture(args);
+    }
+    if args.next_if(|arg| arg == "import").is_some() {
+        return import(args);
     }
     let options = match Options::parse(args, |name| std::env::var(name).ok()) {
         Ok(options) => options,
@@ -74,6 +77,49 @@ fn capture(args: impl Iterator<Item = String>) -> ExitCode {
         },
         Err(e) => {
             tracing::error!("capture: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `sunreye import` (ADR 18): imports a v3 export into the store while the core is stopped.
+fn import(args: impl Iterator<Item = String>) -> ExitCode {
+    let options = match import::Options::parse(args, |name| std::env::var(name).ok()) {
+        Ok(options) => options,
+        Err(e) => {
+            tracing::error!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    let imported = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())
+        .and_then(|runtime| {
+            runtime
+                .block_on(import::command(options, build_time()))
+                .map_err(|e| e.to_string())
+        });
+    match imported {
+        Ok(report) => {
+            let written = report.written;
+            tracing::info!(
+                series = report.series,
+                points = written.points,
+                hours = written.hours,
+                days = written.days,
+                "imported"
+            );
+            for metric in report.unread {
+                tracing::warn!(metric, "no v5 quantity reads it: not imported");
+            }
+            for device in report.unmapped {
+                tracing::warn!(device, "not mapped: not imported");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            tracing::error!("import: {e}");
             ExitCode::FAILURE
         }
     }
