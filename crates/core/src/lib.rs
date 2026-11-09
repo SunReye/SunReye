@@ -20,6 +20,7 @@ pub mod scan;
 pub mod settings;
 pub mod solar;
 mod spa;
+pub mod spot;
 pub mod startup;
 pub mod storage;
 pub mod subscriber;
