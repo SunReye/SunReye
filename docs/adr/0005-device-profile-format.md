@@ -30,6 +30,8 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 - The unit id belongs to the device (ADR 6), not the profile.
 - An inverter profile declares its MPPT inputs: count, maximum input current, voltage window and start voltage, and the inverter's maximum DC input voltage, from the datasheet (ADR 17, 20).
 - Storage class (`series`, `config`, `none`) and a deadband per role (ADR 3, 4).
+- A quantity reads one register or computes over quantities declared before it (sum, difference, add and subtract, ratio, clamp; the owner's Deye). File order is evaluation order, so a cycle cannot be written and decoding is one pass. A missing input reads as 0, as in v4.
+- Unknown fields are refused: a field this core does not know may change what a register means. Absent optional fields keep their schema 1 meaning (holding space, base 0, low word first) so admitting them stays additive.
 
 **Read plan.** Compiled once at load, or at connect for SunSpec. Contiguous registers coalesce into blocks of at most 120. A framing-specific gap tolerance merges blocks when a round trip costs more than the wasted registers: `tcp` 0, `rtu-over-tcp` 0, `solarman-v5` 32 (measured on one stick in v4: about 199 ms per read busy, 2 ms per register). The inputs of a computed role are read in one transaction for a single device snapshot. A merged block refused with Modbus exception 2 is split and the split remembered. A flat list of decode operations runs per poll with no allocation. The same plan serves the CLI's "decode this dump".
 
