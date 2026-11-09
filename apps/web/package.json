@@ -1,0 +1,23 @@
+{
+  "name": "@sunreye/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test:components": "vitest run"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "4.0.1",
+    "@sveltejs/kit": "3.1.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@vitest/browser-playwright": "5.1.0",
+    "playwright": "1.65.0",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.8",
+    "typescript": "6.0.3",
+    "vite": "8.3.6",
+    "vitest": "5.1.0",
+    "vitest-browser-svelte": "3.1.0"
+  }
+}

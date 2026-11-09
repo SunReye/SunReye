@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "5.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+sunreye-profile = { path = "crates/profile" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+# A panic is an outage beside grid hardware.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+# Every exception is #[expect(lint, reason = "…")], which fails once unneeded.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+float_cmp = "deny"
+lossy_float_literal = "deny"
+let_underscore_must_use = "deny"
+wildcard_enum_match_arm = "deny"
+clone_on_ref_ptr = "deny"
+mem_forget = "deny"
+exit = "deny"
+tests_outside_test_module = "deny"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

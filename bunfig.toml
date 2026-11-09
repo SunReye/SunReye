@@ -1,0 +1,3 @@
+[test]
+# Component tests run in a real browser through Vitest (ADR 11).
+pathIgnorePatterns = ["**/*.svelte.test.ts", "**/node_modules/**"]

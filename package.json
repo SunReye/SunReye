@@ -1,0 +1,20 @@
+{
+  "name": "sunreye",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@oxlint/plugins": "1.92.0",
+    "@types/bun": "1.4.4",
+    "fallow": "3.41.0",
+    "husky": "9.1.7",
+    "oxfmt": "0.77.0",
+    "oxlint": "1.92.0",
+    "typescript": "6.0.3"
+  }
+}

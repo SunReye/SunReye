@@ -1,0 +1,7 @@
+{
+  "name": "@sunreye/sdk",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": "./src/profile-wasm.ts"
+}
