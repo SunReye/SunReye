@@ -25,6 +25,9 @@ bcrypt = "0.19.3"
 futures-util = { version = "0.3.34", default-features = false }
 # Session tokens; bcrypt already depends on it.
 getrandom = "0.4.3"
+# Reads v3's `sunreye-archive` (ADR 18), a tar inside gzip with gzipped members; the pure-Rust
+# backend. The tar subset it uses is read by hand.
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 # Plant-local days across DST; the bundled database serves hosts without one.
 jiff = { version = "0.2.41", default-features = false, features = [
   "std",

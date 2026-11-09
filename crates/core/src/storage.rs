@@ -116,6 +116,33 @@ pub struct Issue {
     pub values: Vec<(SystemTime, f64)>,
 }
 
+/// History of one series from an older release (ADR 18), each list in time order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Backfill {
+    /// Readings, each held from its instant.
+    pub raw: Vec<Held>,
+    /// Values of whole UTC hours, by the hour's start: a mean, or a counter's value.
+    pub hours: Vec<(SystemTime, f64)>,
+    /// Values of whole UTC days, by the day's start.
+    pub days: Vec<(SystemTime, f64)>,
+}
+
+/// A reading and how long its value was held; `None` when that was not recorded.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Held {
+    pub time: SystemTime,
+    pub value: f64,
+    pub hold: Option<Duration>,
+}
+
+/// What an import wrote: change points, hourly and daily rollups.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Backfilled {
+    pub points: usize,
+    pub hours: usize,
+    pub days: usize,
+}
+
 /// A condition the API reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Problem {
@@ -329,6 +356,37 @@ impl Storage {
         points: Vec<ChangePoint>,
     ) -> Result<(), Error> {
         self.rewriter().replace(device, series, range, points).await
+    }
+
+    /// Writes `backfill` as the history of `series` before its first stored change point, in
+    /// `policy`'s step and deadband (ADR 18). Raw readings become change points; an hour or day
+    /// becomes a rollup only where no raw reading falls. A second import of the same history
+    /// writes nothing.
+    ///
+    /// # Errors
+    /// The step differs from the stored one or is not positive, the series is unknown, or the
+    /// file cannot be written.
+    pub async fn import(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        policy: Policy,
+        backfill: Backfill,
+    ) -> Result<Backfilled, Error> {
+        if !(policy.step.is_finite() && policy.step > 0.0) {
+            return Err(Error::Step);
+        }
+        let name = self.name(series)?;
+        self.request(|reply| {
+            Request::Rewriting(Rewriting::Import {
+                device,
+                name,
+                policy,
+                backfill,
+                reply,
+            })
+        })
+        .await?
     }
 
     /// A handle that replaces derived history, for the module that derives it.

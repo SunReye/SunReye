@@ -11,9 +11,13 @@ use sunreye_profile::RoleKind;
 use tokio::sync::{mpsc, oneshot};
 
 use super::encode::{Point, Tick, Track, quantise, ticks};
-use super::{ChangePoint, Error, Forecast, Issue, Policy, Problem, Rollup, Tier, block, forecast};
+use super::{
+    Backfill, Backfilled, ChangePoint, Error, Forecast, Issue, Policy, Problem, Rollup, Tier,
+    block, forecast,
+};
 use crate::bus::{DeviceId, Reading, SeriesId};
 
+mod import;
 mod rollups;
 
 /// A bucket: 60 s in ticks.
@@ -105,6 +109,14 @@ pub enum Rewriting {
         range: Range<SystemTime>,
         points: Vec<ChangePoint>,
         reply: oneshot::Sender<Result<(), Error>>,
+    },
+    /// History from an older release (ADR 18).
+    Import {
+        device: DeviceId,
+        name: String,
+        policy: Policy,
+        backfill: Backfill,
+        reply: oneshot::Sender<Result<Backfilled, Error>>,
     },
 }
 
@@ -527,6 +539,17 @@ impl Store {
             } => {
                 reply
                     .send(self.replace(device, series, range, &points))
+                    .ok();
+            }
+            Rewriting::Import {
+                device,
+                name,
+                policy,
+                backfill,
+                reply,
+            } => {
+                reply
+                    .send(self.import(device, &name, &policy, &backfill))
                     .ok();
             }
         }

@@ -270,6 +270,14 @@ impl std::fmt::Debug for Devices {
     }
 }
 
+/// Every registered device, by id, without starting any: for the commands beside the core.
+///
+/// # Errors
+/// The file cannot be read.
+pub async fn registered(database: &Database) -> Result<Vec<Device>, storage::Error> {
+    database.run(store::devices).await
+}
+
 impl Devices {
     /// Starts polling every configured device, and keeps `inverters` to the devices whose profile
     /// describes an inverter. Must be called inside a Tokio runtime.

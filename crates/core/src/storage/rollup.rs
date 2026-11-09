@@ -109,6 +109,72 @@ fn counter(points: &[Point], start: Tick, end: Tick) -> Option<Sums> {
     })
 }
 
+/// Rollups of values each held for a whole window of `width` from its start, as an older
+/// release's buckets are (ADR 18); `values` are in time order. A counter rises from the window
+/// before when that one adjoins, and a drop is a reset.
+pub fn buckets(kind: RoleKind, values: &[(Tick, i64)], width: Tick) -> Vec<(Tick, Sums)> {
+    let mut previous: Option<(Tick, i64)> = None;
+    let mut rolled = Vec::new();
+    for &(start, value) in values {
+        let sums = match kind {
+            RoleKind::Measurement => Sums::Measurement {
+                duration: width,
+                sum: value.saturating_mul(width),
+                min: value,
+                max: value,
+            },
+            RoleKind::Counter => {
+                let before = previous.filter(|p| p.0 + width == start).map(|p| p.1);
+                let first = before.unwrap_or(value);
+                Sums::Counter {
+                    first,
+                    last: value,
+                    delta: (value - first).max(0),
+                }
+            }
+            RoleKind::Status => return Vec::new(),
+        };
+        rolled.push((start, sums));
+        previous = Some((start, value));
+    }
+    rolled
+}
+
+/// The rollup of adjoining windows, in time order; `None` for none, or for windows of both kinds.
+pub fn fold(windows: &[Sums]) -> Option<Sums> {
+    let (first, rest) = windows.split_first()?;
+    rest.iter()
+        .try_fold(*first, |total, window| match (total, *window) {
+            (
+                Sums::Measurement {
+                    duration,
+                    sum,
+                    min,
+                    max,
+                },
+                Sums::Measurement {
+                    duration: d,
+                    sum: s,
+                    min: lo,
+                    max: hi,
+                },
+            ) => Some(Sums::Measurement {
+                duration: duration + d,
+                sum: sum.saturating_add(s),
+                min: min.min(lo),
+                max: max.max(hi),
+            }),
+            (Sums::Counter { first, delta, .. }, Sums::Counter { last, delta: d, .. }) => {
+                Some(Sums::Counter {
+                    first,
+                    last,
+                    delta: delta + d,
+                })
+            }
+            _ => None,
+        })
+}
+
 /// One plant-local day.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Day {

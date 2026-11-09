@@ -24,7 +24,7 @@ fn hours(time: SystemTime) -> f64 {
     }
 }
 
-fn measured(rollups: &[Rollup]) -> Vec<Measured> {
+pub(super) fn measured(rollups: &[Rollup]) -> Vec<Measured> {
     rollups
         .iter()
         .map(|r| match r.aggregate {
@@ -48,7 +48,7 @@ fn measured(rollups: &[Rollup]) -> Vec<Measured> {
 }
 
 /// A counter rollup as hours from `T0`, first, last and delta.
-fn counted(rollups: &[Rollup]) -> Vec<(f64, f64, f64, f64)> {
+pub(super) fn counted(rollups: &[Rollup]) -> Vec<(f64, f64, f64, f64)> {
     rollups
         .iter()
         .map(|r| match r.aggregate {
@@ -60,7 +60,7 @@ fn counted(rollups: &[Rollup]) -> Vec<(f64, f64, f64, f64)> {
         .collect()
 }
 
-async fn rollups(
+pub(super) async fn rollups(
     storage: &Storage,
     series: SeriesId,
     tier: Tier,

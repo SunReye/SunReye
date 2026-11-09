@@ -29,6 +29,8 @@ use crate::weather::{self, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
     SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
+/// The store's file in the data directory.
+pub(crate) const STORE: &str = "core.sqlite";
 /// Storage closes a bucket and marks silent series once a minute (ADR 3).
 const MINUTE: Duration = Duration::from_secs(60);
 /// How long open requests may finish after a shutdown signal; live streams never do.
@@ -196,7 +198,7 @@ pub async fn serve(
 ) -> Result<(), Error> {
     private(&boot.data_dir)?;
     let bus = Bus::default();
-    let file = boot.data_dir.join("core.sqlite");
+    let file = boot.data_dir.join(STORE);
     let zone = plant_zone();
     let storage = Storage::open(&file, boot.build, &zone, &bus)?;
     let (problems, watched) = problems(&storage).await?;
@@ -331,7 +333,8 @@ async fn forecast(
 }
 
 /// The host's zone stands in until the admin sets the plant timezone.
-fn plant_zone() -> String {
+/// The host's zone, which days are cut in until the admin sets the plant's.
+pub(crate) fn plant_zone() -> String {
     jiff::tz::TimeZone::system()
         .iana_name()
         .unwrap_or("UTC")

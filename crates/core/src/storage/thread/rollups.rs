@@ -54,7 +54,7 @@ impl Store {
     }
 
     /// Rewrites the hours from `from` to `to` and the days they touch, each cut off at `limit`.
-    fn recompute(
+    pub(super) fn recompute(
         &self,
         db: &Connection,
         (device, series, kind): (u32, i64, RoleKind),
@@ -334,16 +334,16 @@ fn window(points: &[Point], start: Tick, end: Tick) -> &[Point] {
 }
 
 /// The start of the hour `time` falls in.
-const fn floor(time: Tick) -> Tick {
+pub(super) const fn floor(time: Tick) -> Tick {
     time.div_euclid(HOUR) * HOUR
 }
 
 /// The index of the first hour starting at or after `time`.
-fn ceil(time: Tick) -> Tick {
+pub(super) fn ceil(time: Tick) -> Tick {
     time.div_euclid(HOUR) + Tick::from(time.rem_euclid(HOUR) != 0)
 }
 
-const fn columns(sums: Sums) -> Columns {
+pub(super) const fn columns(sums: Sums) -> Columns {
     match sums {
         Sums::Measurement {
             duration,

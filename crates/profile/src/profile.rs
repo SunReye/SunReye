@@ -70,6 +70,29 @@ impl Quantity {
     pub const fn step(&self) -> f64 {
         self.step
     }
+
+    /// Its value as `raw · scale + offset` of the register at `address`: `(address, scale,
+    /// offset)`. `None` unless read from a register with a fixed scale.
+    #[must_use]
+    pub const fn linear(&self) -> Option<(u16, f64, f64)> {
+        match &self.read {
+            Read::Register(r) if r.scale_factor.is_none() => Some((r.address, r.scale, r.offset)),
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } | Read::Compute(_) => None,
+        }
+    }
+
+    /// The positions of the quantities it is computed from, and whether it is a sum or difference
+    /// of them. `None` unless computed.
+    #[must_use]
+    pub fn computed(&self) -> Option<(Vec<usize>, bool)> {
+        match &self.read {
+            Read::Compute(expr) => Some((
+                expr.inputs(),
+                matches!(expr, Expr::Sum(_) | Expr::Diff(..) | Expr::Combine { .. }),
+            )),
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
