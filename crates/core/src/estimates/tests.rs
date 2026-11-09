@@ -122,6 +122,7 @@ impl Plant {
             value: watts,
             unit: Some(sunreye_profile::Unit::Watt),
             time: at(time),
+            cadence: crate::endpoint::CADENCE,
         });
     }
 }

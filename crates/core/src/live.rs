@@ -8,7 +8,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tokio::time::MissedTickBehavior;
+use tokio::time::{Instant, MissedTickBehavior};
 use utoipa::ToSchema;
 
 use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
@@ -24,6 +24,8 @@ pub struct Frame {
 }
 
 type Values = BTreeMap<(u32, SeriesId), f64>;
+/// Each value with when it was read and its gap threshold.
+type Seen = BTreeMap<(u32, SeriesId), (f64, Instant, Duration)>;
 
 /// A handle to the live task; clones share it, and the last one dropped stops it.
 #[derive(Debug, Clone)]
@@ -45,7 +47,7 @@ impl Drop for Inner {
 /// Held under one lock so a client's snapshot and its first delta neither overlap nor miss.
 #[derive(Debug)]
 struct Shared {
-    values: Values,
+    values: Seen,
     deltas: broadcast::Sender<Arc<str>>,
 }
 
@@ -54,7 +56,7 @@ impl Live {
     #[must_use]
     pub fn spawn(bus: &Bus) -> Self {
         let shared = Arc::new(Mutex::new(Shared {
-            values: Values::new(),
+            values: Seen::new(),
             deltas: broadcast::channel(BACKLOG).0,
         }));
         let task = tokio::spawn(run(bus.clone(), Arc::clone(&shared)));
@@ -69,13 +71,14 @@ impl Live {
     #[must_use]
     pub fn subscribe(&self) -> (String, broadcast::Receiver<Arc<str>>) {
         let shared = self.0.shared.lock().unwrap_or_else(PoisonError::into_inner);
-        let snapshot = serialise(&self.0.bus, &shared.values);
+        let values = shared.values.iter().map(|(&k, &(v, ..))| (k, v)).collect();
+        let snapshot = serialise(&self.0.bus, &values);
         let deltas = shared.deltas.subscribe();
         drop(shared);
         (snapshot, deltas)
     }
 
-    /// The latest value of `series` from `device`, as of the last tick.
+    /// The latest value of `series` from `device`, as of the last tick; `None` once stale.
     #[must_use]
     pub fn value(&self, device: DeviceId, series: &Series) -> Option<f64> {
         let shared = self.0.shared.lock().unwrap_or_else(PoisonError::into_inner);
@@ -83,7 +86,7 @@ impl Live {
             .values
             .iter()
             .find(|&(&(d, id), _)| d == device.0 && self.0.bus.series(id).as_ref() == Some(series))
-            .map(|(_, &value)| value)
+            .and_then(|(_, &(value, seen, gap))| (seen.elapsed() <= gap).then_some(value))
     }
 }
 
@@ -91,14 +94,16 @@ async fn run(bus: Bus, shared: Arc<Mutex<Shared>>) {
     let mut readings = bus.subscribe();
     let mut tick = tokio::time::interval(TICK);
     tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
-    let mut pending = Values::new();
+    let mut pending = Seen::new();
     loop {
         tokio::select! {
             // Readings first, so a tick sees every reading that arrived before it.
             biased;
             reading = readings.recv() => match reading {
-                Ok(Reading { device: DeviceId(device), series, value, .. }) => {
-                    pending.insert((device, series), value);
+                Ok(reading) => {
+                    let Reading { device: DeviceId(device), series, value, .. } = reading;
+                    let entry = (value, Instant::now(), reading.gap_threshold());
+                    pending.insert((device, series), entry);
                 }
                 // Live values only need the latest; the next reading catches up.
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
@@ -110,15 +115,15 @@ async fn run(bus: Bus, shared: Arc<Mutex<Shared>>) {
 }
 
 /// Folds `pending` into the values and sends the series whose value changed.
-fn publish(bus: &Bus, shared: &Mutex<Shared>, pending: &mut Values) {
+fn publish(bus: &Bus, shared: &Mutex<Shared>, pending: &mut Seen) {
     if pending.is_empty() {
         return;
     }
     let mut shared = shared.lock().unwrap_or_else(PoisonError::into_inner);
     let mut delta = Values::new();
-    for (key, value) in std::mem::take(pending) {
-        let old = shared.values.insert(key, value);
-        if old.is_none_or(|old| old.to_bits() != value.to_bits()) {
+    for (key, entry @ (value, ..)) in std::mem::take(pending) {
+        let old = shared.values.insert(key, entry);
+        if old.is_none_or(|(old, ..)| old.to_bits() != value.to_bits()) {
             delta.insert(key, value);
         }
     }

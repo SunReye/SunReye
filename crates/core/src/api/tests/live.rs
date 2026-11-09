@@ -33,6 +33,7 @@ impl Core {
             value,
             unit: None,
             time: SystemTime::now(),
+            cadence: crate::endpoint::CADENCE,
         });
     }
 
@@ -211,6 +212,7 @@ async fn live_values_flow_while_the_disk_is_full() {
             value: f64::from(i),
             unit: None,
             time: start + SECOND / 10 * i,
+            cadence: crate::endpoint::CADENCE,
         };
         core.storage.record(reading).await.unwrap();
     }

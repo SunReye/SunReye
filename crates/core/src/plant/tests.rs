@@ -84,6 +84,7 @@ impl Site {
                 value,
                 unit: Some(Unit::Watt),
                 time: at(seconds),
+                cadence: crate::endpoint::CADENCE,
             });
         }
     }

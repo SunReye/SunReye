@@ -58,6 +58,7 @@ impl Running {
             value,
             unit: None,
             time,
+            cadence: crate::endpoint::CADENCE,
         });
     }
 

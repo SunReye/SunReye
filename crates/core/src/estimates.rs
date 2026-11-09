@@ -162,6 +162,7 @@ impl Task {
             value,
             unit: Some(Unit::Watt),
             time: measured.time,
+            cadence: measured.cadence,
         });
     }
 }

@@ -3,13 +3,15 @@
 
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use sunreye_profile::Unit;
 use tokio::sync::broadcast;
 
 /// Readings a subscriber may fall behind by before it loses the oldest.
 const CAPACITY: usize = 1024;
+/// The gap threshold's floor (ADR 3).
+const MIN_GAP: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(pub u32);
@@ -62,6 +64,16 @@ pub struct Reading {
     pub value: f64,
     pub unit: Option<Unit>,
     pub time: SystemTime,
+    /// How often its publisher sends the series again, which sets its gap threshold (ADR 3).
+    pub cadence: Duration,
+}
+
+impl Reading {
+    /// The silence after which the reading no longer holds (ADR 3): three cadences, at least 15 s.
+    #[must_use]
+    pub fn gap_threshold(&self) -> Duration {
+        self.cadence.saturating_mul(3).max(MIN_GAP)
+    }
 }
 
 /// A handle to the one bus; clones share it.

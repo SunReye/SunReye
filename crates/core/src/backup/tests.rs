@@ -61,6 +61,7 @@ impl Data {
                 value,
                 unit: None,
                 time: at(seconds),
+                cadence: crate::endpoint::CADENCE,
             };
             storage.record(reading).await.unwrap();
         }

@@ -168,6 +168,7 @@ impl Task {
             value,
             unit: Some(unit),
             time,
+            cadence: CADENCE,
         });
     }
 }

@@ -245,6 +245,7 @@ impl<P: Provider> SpotPrices<P> {
             value: price.value,
             unit: None,
             time: at,
+            cadence: SLOT,
         });
         ControlFlow::Continue(())
     }

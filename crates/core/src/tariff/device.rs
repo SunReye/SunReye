@@ -199,6 +199,7 @@ impl Task {
                 value,
                 unit: None,
                 time: reading.time,
+                cadence: endpoint::CADENCE,
             });
         }
     }
@@ -221,6 +222,7 @@ impl Task {
                 value,
                 unit: None,
                 time: at,
+                cadence: CADENCE,
             });
         }
     }
