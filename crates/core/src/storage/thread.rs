@@ -1,22 +1,30 @@
 //! The storage thread: the one owner of the SQLite connection.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use jiff::tz::TimeZone;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use sunreye_profile::RoleKind;
 use tokio::sync::{mpsc, oneshot};
 
 use super::encode::{Point, Tick, Track, ticks};
-use super::{ChangePoint, Error, Policy, Problem, block};
+use super::{ChangePoint, Error, Policy, Problem, Rollup, Tier, block};
 use crate::bus::{DeviceId, Reading, SeriesId};
+
+mod rollups;
 
 /// A bucket: 60 s in ticks.
 const BUCKET: Tick = 600;
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
 /// Forward-only, applied in order; `user_version` counts those applied.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001.sql"),
+    include_str!("migrations/0002.sql"),
+];
 
 pub enum Command {
     Reading(Reading),
@@ -39,19 +47,41 @@ pub enum Request {
         to: SystemTime,
         reply: oneshot::Sender<Result<Vec<ChangePoint>, Error>>,
     },
+    Rollups {
+        device: DeviceId,
+        name: String,
+        tier: Tier,
+        range: Range<SystemTime>,
+        reply: oneshot::Sender<Result<Vec<Rollup>, Error>>,
+    },
+    Rebuild {
+        device: DeviceId,
+        series: SeriesId,
+        range: Range<SystemTime>,
+        reply: oneshot::Sender<Result<(), Error>>,
+    },
     Problems(oneshot::Sender<Vec<Problem>>),
     Shutdown(oneshot::Sender<Result<(), Error>>),
 }
 
 /// Opens the file and starts the thread; the returned sender feeds it.
-pub fn spawn(path: &Path, build: SystemTime, queue: usize) -> Result<mpsc::Sender<Command>, Error> {
+/// `zone` is the plant timezone, by name and resolved.
+pub fn spawn(
+    path: &Path,
+    build: SystemTime,
+    zone: (String, TimeZone),
+    queue: usize,
+) -> Result<mpsc::Sender<Command>, Error> {
     let db = open(path)?;
-    let flushed: Tick = db
-        .query_row("SELECT value FROM meta WHERE key = 'flushed'", [], |row| {
-            row.get(0)
-        })
-        .optional()?
-        .unwrap_or(0);
+    let meta = |key: &str| -> Result<Option<Tick>, Error> {
+        Ok(db
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
+            .optional()?)
+    };
+    let flushed = meta("flushed")?.unwrap_or(0);
+    let rolled = meta("rolled")?;
     let store = Store {
         db,
         tracks: HashMap::new(),
@@ -63,6 +93,8 @@ pub fn spawn(path: &Path, build: SystemTime, queue: usize) -> Result<mpsc::Sende
         restart: flushed,
         clock: flushed,
         unsynced: false,
+        zone,
+        rolled,
     };
     let (sender, receiver) = mpsc::channel(queue);
     std::thread::Builder::new()
@@ -105,6 +137,7 @@ fn time(tick: Tick) -> SystemTime {
 struct Stored {
     /// Its id in the `series` table.
     id: i64,
+    kind: RoleKind,
     track: Track,
 }
 
@@ -126,6 +159,10 @@ struct Store {
     clock: Tick,
     /// The last instant offered was not past `floor`.
     unsynced: bool,
+    /// The plant timezone days are cut in: its name and the zone.
+    zone: (String, TimeZone),
+    /// Hours before this instant are rolled up; `None` before any history.
+    rolled: Option<Tick>,
 }
 
 impl Store {
@@ -135,7 +172,7 @@ impl Store {
                 Command::Reading(reading) => self.reading(&reading),
                 Command::Tick(now) => self.tick(now),
                 Command::Request(Request::Shutdown(reply)) => {
-                    let flushed = self.flush();
+                    let flushed = self.flush(self.clock);
                     // The connection closes before the caller hears back.
                     drop(self);
                     reply.send(flushed).ok();
@@ -168,6 +205,23 @@ impl Store {
                 reply,
             } => {
                 reply.send(self.history(device, &name, from, to)).ok();
+            }
+            Request::Rollups {
+                device,
+                name,
+                tier,
+                range,
+                reply,
+            } => {
+                reply.send(self.rollups(device, &name, tier, range)).ok();
+            }
+            Request::Rebuild {
+                device,
+                series,
+                range,
+                reply,
+            } => {
+                reply.send(self.rebuild(device, series, range)).ok();
             }
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
@@ -223,16 +277,18 @@ impl Store {
                 .extend(self.scratch.drain(..).map(|point| (device.0, id, point)));
         }
         // A failed write loses the bucket: memory stays bounded.
-        self.flush().ok();
+        self.flush(now).ok();
         let hour = now.div_euclid(HOUR);
         if hour > self.packed && self.pack(hour).is_ok() {
             self.packed = hour;
         }
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    /// Writes the pending points and rolls up every hour closed before `now`, in one
+    /// transaction.
+    fn flush(&mut self, now: Tick) -> Result<(), Error> {
         let pending = std::mem::take(&mut self.pending);
-        let tx = self.db.transaction()?;
+        let mut tx = self.db.unchecked_transaction()?;
         {
             let mut insert = tx.prepare_cached(
                 "INSERT INTO hot (device, series, time, value) VALUES (?1, ?2, ?3, ?4)",
@@ -246,7 +302,17 @@ impl Store {
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             [self.clock],
         )?;
+        // A rollup that fails is retried on the next flush; the points are written regardless.
+        let rollup = tx.savepoint()?;
+        let rolled = if let Ok(rolled) = self.roll(&rollup, &pending, now) {
+            rollup.commit()?;
+            rolled
+        } else {
+            drop(rollup);
+            self.rolled
+        };
         tx.commit()?;
+        self.rolled = rolled;
         self.pending = pending;
         self.pending.clear();
         self.db
@@ -296,7 +362,7 @@ impl Store {
     ) -> Result<(), Error> {
         if self.tracks.contains_key(&(device, series)) {
             // Points pending under the old policy are written before it changes.
-            self.flush()?;
+            self.flush(self.clock)?;
         }
         let id = self.series_id(name)?;
         let step: Option<f64> = self
@@ -321,7 +387,9 @@ impl Store {
         }
         let last = self.last(device.0, id)?;
         let track = Track::resume(policy, last, self.restart);
-        self.tracks.insert((device, series), Stored { id, track });
+        let kind = policy.kind;
+        self.tracks
+            .insert((device, series), Stored { id, kind, track });
         Ok(())
     }
 
@@ -364,44 +432,9 @@ impl Store {
         if hot.is_some() {
             return Ok(hot);
         }
-        Ok(self
-            .block_before(device, series, Tick::MAX)?
+        Ok(block_before(&self.db, device, series, Tick::MAX)?
             .last()
             .copied())
-    }
-
-    /// The points of the last block before `hour`.
-    fn block_before(&self, device: u32, series: i64, hour: Tick) -> Result<Vec<Point>, Error> {
-        self.decode_blocks(
-            "SELECT hour, data FROM block WHERE device = ?1 AND series = ?2 AND hour < ?3
-             ORDER BY hour DESC LIMIT 1",
-            params![device, series, hour],
-        )
-    }
-
-    /// The points of the blocks from hour `from` to hour `to`, inclusive.
-    fn blocks(&self, device: u32, series: i64, from: Tick, to: Tick) -> Result<Vec<Point>, Error> {
-        self.decode_blocks(
-            "SELECT hour, data FROM block WHERE device = ?1 AND series = ?2
-             AND hour >= ?3 AND hour <= ?4 ORDER BY hour",
-            params![device, series, from, to],
-        )
-    }
-
-    fn decode_blocks(
-        &self,
-        sql: &str,
-        params: &[&dyn rusqlite::ToSql],
-    ) -> Result<Vec<Point>, Error> {
-        let mut statement = self.db.prepare_cached(sql)?;
-        let mut rows = statement.query(params)?;
-        let mut points = Vec::new();
-        while let Some(row) = rows.next()? {
-            let hour: Tick = row.get(0)?;
-            let data: Vec<u8> = row.get(1)?;
-            points.extend(block::decode(hour * HOUR, &data).ok_or(Error::Corrupt)?);
-        }
-        Ok(points)
     }
 
     fn history(
@@ -411,45 +444,13 @@ impl Store {
         from: SystemTime,
         to: SystemTime,
     ) -> Result<Vec<ChangePoint>, Error> {
-        let found = self
-            .db
-            .query_row(
-                "SELECT series.id, step.step FROM series JOIN step ON step.series = series.id
-                 WHERE series.name = ?1 AND step.device = ?2",
-                params![name, device.0],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?)),
-            )
-            .optional()?;
-        let Some((series, step)) = found else {
+        let Some((series, step)) = lookup(&self.db, device, name)? else {
             return Ok(Vec::new());
         };
         let from = tick(from).unwrap_or(0);
         let to = tick(to).unwrap_or(0);
-        let device = device.0;
-        let mut points = self.block_before(device, series, from.div_euclid(HOUR))?;
-        points.extend(self.blocks(device, series, from.div_euclid(HOUR), to.div_euclid(HOUR))?);
-        let hot = self
-            .db
-            .prepare_cached(
-                "SELECT time, value FROM hot WHERE device = ?1 AND series = ?2 AND time < ?3
-                 ORDER BY time",
-            )?
-            .query_map(params![device, series, to], |row| {
-                Ok(Point {
-                    time: row.get(0)?,
-                    value: row.get(1)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        points.extend(hot);
-        // A late gap waits in `hot` while its hour is already a block.
-        points.sort_by_key(|p| p.time);
-        let start = points.partition_point(|p| p.time < from).saturating_sub(1);
-        Ok(points
-            .get(start..)
-            .unwrap_or_default()
+        Ok(points(&self.db, device.0, series, from, to)?
             .iter()
-            .filter(|p| p.time < to)
             .map(|p| ChangePoint {
                 time: time(p.time),
                 #[expect(clippy::cast_precision_loss, reason = "values are bounded to ±2^53")]
@@ -457,6 +458,102 @@ impl Store {
             })
             .collect())
     }
+}
+
+/// The id and step of a device's series, if it has history.
+fn lookup(db: &Connection, device: DeviceId, name: &str) -> Result<Option<(i64, f64)>, Error> {
+    Ok(db
+        .query_row(
+            "SELECT series.id, step.step FROM series JOIN step ON step.series = series.id
+             WHERE series.name = ?1 AND step.device = ?2",
+            params![name, device.0],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}
+
+/// The points of a series from `from` to `to`, led by the one in force at `from`.
+fn points(
+    db: &Connection,
+    device: u32,
+    series: i64,
+    from: Tick,
+    to: Tick,
+) -> Result<Vec<Point>, Error> {
+    let mut points = block_before(db, device, series, from.div_euclid(HOUR))?;
+    points.extend(blocks(
+        db,
+        device,
+        series,
+        from.div_euclid(HOUR),
+        to.div_euclid(HOUR),
+    )?);
+    let hot = db
+        .prepare_cached(
+            "SELECT time, value FROM hot WHERE device = ?1 AND series = ?2 AND time < ?3
+             ORDER BY time",
+        )?
+        .query_map(params![device, series, to], |row| {
+            Ok(Point {
+                time: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    points.extend(hot);
+    // A late gap waits in `hot` while its hour is already a block.
+    points.sort_by_key(|p| p.time);
+    let start = points.partition_point(|p| p.time < from).saturating_sub(1);
+    points.drain(..start);
+    points.retain(|p| p.time < to);
+    Ok(points)
+}
+
+/// The points of the last block before `hour`.
+fn block_before(
+    db: &Connection,
+    device: u32,
+    series: i64,
+    hour: Tick,
+) -> Result<Vec<Point>, Error> {
+    decode_blocks(
+        db,
+        "SELECT hour, data FROM block WHERE device = ?1 AND series = ?2 AND hour < ?3
+             ORDER BY hour DESC LIMIT 1",
+        params![device, series, hour],
+    )
+}
+
+/// The points of the blocks from hour `from` to hour `to`, inclusive.
+fn blocks(
+    db: &Connection,
+    device: u32,
+    series: i64,
+    from: Tick,
+    to: Tick,
+) -> Result<Vec<Point>, Error> {
+    decode_blocks(
+        db,
+        "SELECT hour, data FROM block WHERE device = ?1 AND series = ?2
+             AND hour >= ?3 AND hour <= ?4 ORDER BY hour",
+        params![device, series, from, to],
+    )
+}
+
+fn decode_blocks(
+    db: &Connection,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> Result<Vec<Point>, Error> {
+    let mut statement = db.prepare_cached(sql)?;
+    let mut rows = statement.query(params)?;
+    let mut points = Vec::new();
+    while let Some(row) = rows.next()? {
+        let hour: Tick = row.get(0)?;
+        let data: Vec<u8> = row.get(1)?;
+        points.extend(block::decode(hour * HOUR, &data).ok_or(Error::Corrupt)?);
+    }
+    Ok(points)
 }
 
 /// Writes one hour's points, merged with any block already stored for that hour.

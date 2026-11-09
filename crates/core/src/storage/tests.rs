@@ -3,19 +3,29 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use sunreye_profile::RoleKind;
+
 use super::{ChangePoint, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
+
+mod rollups;
 
 /// 2026-08-26 12:00 UTC, on an hour.
 const T0: u64 = 1_787_745_600;
 const DEVICE: DeviceId = DeviceId(7);
 
 fn at(seconds: f64) -> SystemTime {
-    UNIX_EPOCH + Duration::from_secs(T0) + Duration::from_secs_f64(seconds)
+    let t0 = UNIX_EPOCH + Duration::from_secs(T0);
+    if seconds < 0.0 {
+        t0 - Duration::from_secs_f64(-seconds)
+    } else {
+        t0 + Duration::from_secs_f64(seconds)
+    }
 }
 
 fn policy() -> Policy {
     Policy {
+        kind: RoleKind::Measurement,
         step: 0.1,
         deadband: 0.0,
         cadence: Duration::from_secs(5),
@@ -35,7 +45,7 @@ impl Plant {
     }
 
     async fn open(&self, path: &Path, build: SystemTime) -> Storage {
-        let storage = Storage::open(path, build, &self.bus).unwrap();
+        let storage = Storage::open(path, build, "UTC", &self.bus).unwrap();
         storage.declare(DEVICE, self.power, policy()).await.unwrap();
         storage
     }
