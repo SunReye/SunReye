@@ -18,6 +18,7 @@ use crate::changes::Changes;
 use crate::correction::{Corrections, Learner};
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
+use crate::identity::Identity;
 use crate::import::{self, Imports};
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
@@ -260,6 +261,8 @@ pub async fn serve(
 ) -> Result<(), Error> {
     let bus = Bus::default();
     let (_claim, storage) = open(&boot.data_dir, boot.build, &bus)?;
+    // The relay is not built yet (ADR 16); the identity it needs exists from the first run.
+    Identity::open(&storage.database()).await?;
     let (problems, watched) = problems(&storage).await?;
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;

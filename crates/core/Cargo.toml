@@ -56,8 +56,8 @@ tokio = { version = "1.54.1", default-features = false, features = [
   "sync",
   "time",
 ] }
-# Logs to stderr (ADR 2).
-tracing = { version = "0.1.44", default-features = false }
+# Logs to stderr (ADR 2); `std` hands the subscriber to the storage thread.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 # The minimal HTTPS client on rustls (ADR 2): blocking, so a fetch runs on Tokio's blocking pool;
 # an async client would add hyper, hyper-util and tokio-rustls for an hourly request.
@@ -66,6 +66,12 @@ ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
 # with its description, so neither can drift from the other.
 utoipa.workspace = true
 utoipa-axum = "0.3.0"
+# X25519 for the core's static Noise key (ADR 16); ring generates X25519 keys only as ephemeral, so
+# none can be stored. The Noise crate `snow` builds on the same dalek curve.
+x25519-dalek = { version = "3.0.0", default-features = false, features = [
+  "static_secrets",
+  "zeroize",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

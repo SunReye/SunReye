@@ -11,6 +11,7 @@ pub mod correction;
 pub mod devices;
 pub mod endpoint;
 pub mod estimates;
+pub mod identity;
 pub mod import;
 pub mod layout;
 pub mod live;

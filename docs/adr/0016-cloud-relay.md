@@ -1,6 +1,6 @@
 # 16. Cloud relay
 
-Status: accepted (2026-11-08), amended (2026-11-08): design accepted, build deferred
+Status: accepted (2026-11-08), amended (2026-11-08): design accepted, build deferred; amended (2026-11-09): install id format
 
 ## Context
 
@@ -18,7 +18,7 @@ Homeowners who cannot set up a VPN want an app, and businesses that sold the sof
 
 **Tunnel.** The core keeps one outbound WebSocket to its Durable Object. A client opens a WebSocket to the same object, which splices frames per session and never decrypts. Inside, client and core run `Noise_IK_25519_ChaChaPoly_BLAKE2s` (the `snow` crate); clients run the same crate compiled to WASM. The client pins the core's static key. The client's static key is its device key, and the first handshake message carries the account's signature over it. The relay sees ciphertext, sizes and timing. It stores routing metadata only: install id, account, and whether the core is connected.
 
-**Core identity.** At first run the core generates its X25519 static key alongside the install id. The trusted-keys table holds Ed25519 account keys, each with a role (`admin` or `viewer`) and a revoked flag. Backups always include both, unlike credential secrets (ADR 7), so a restore keeps every pairing.
+**Core identity.** At first run the core generates its X25519 static key alongside the install id, a random version 4 UUID. The private key stays in the store, which is the core's alone (ADR 7), and never reaches a response or a log line. The trusted-keys table holds Ed25519 account keys, each with a role (`admin` or `viewer`) and a revoked flag. Backups always include both, unlike credential secrets (ADR 7), so a restore keeps every pairing.
 
 **Keys.**
 

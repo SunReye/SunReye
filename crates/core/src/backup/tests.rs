@@ -7,6 +7,7 @@ use sunreye_profile::RoleKind;
 
 use super::{Error, Options, OptionsError, command, restore, write};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
+use crate::identity::Identity;
 use crate::startup::STORE;
 use crate::storage::{ChangePoint, Policy, Storage};
 
@@ -125,6 +126,22 @@ async fn secret(storage: &Storage) {
         .unwrap();
 }
 
+/// Creates the core's identity and trusts one account as `admin`.
+async fn trust(storage: &Storage) -> Identity {
+    let identity = Identity::open(&storage.database()).await.unwrap();
+    storage
+        .database()
+        .run(|db| {
+            db.execute(
+                "INSERT INTO trusted_key (key, role) VALUES (?1, 'admin')",
+                [[7u8; 32]],
+            )
+        })
+        .await
+        .unwrap();
+    identity
+}
+
 fn holds(file: &Path, value: &str) -> bool {
     let bytes = std::fs::read(file).unwrap();
     bytes.windows(value.len()).any(|w| w == value.as_bytes())
@@ -182,6 +199,7 @@ async fn every_table_but_the_secrets_is_backed_up() {
     let storage = data.open().await;
     data.record(&storage).await;
     secret(&storage).await;
+    let identity = trust(&storage).await;
     let file = dir.path().join("sunreye.tar");
     write(&storage.database(), &data.dir, &file, false)
         .await
@@ -197,6 +215,14 @@ async fn every_table_but_the_secrets_is_backed_up() {
         .map(|(name, count)| (name.clone(), if name == "secret" { 0 } else { count }))
         .collect();
     assert_eq!(tables(&restored.join(STORE)), expected);
+    // The core's identity (ADR 16) goes in, so a restore keeps every pairing.
+    let carried = |table: &str| expected.iter().any(|(name, n)| name == table && *n == 1);
+    assert!(
+        carried("identity") && carried("trusted_key"),
+        "{expected:?}"
+    );
+    let storage = Data::new(&restored).open().await;
+    assert_eq!(Identity::open(&storage.database()).await.unwrap(), identity);
 }
 
 #[tokio::test]

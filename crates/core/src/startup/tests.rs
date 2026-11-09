@@ -505,3 +505,118 @@ async fn a_second_core_on_the_same_data_directory_is_refused() {
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
 }
+
+/// Every log line, as the core writes them to stderr.
+#[derive(Clone, Default)]
+struct Lines(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Lines {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// `bytes` as lowercase hex, and as base64 in the standard and the URL alphabet, unpadded.
+fn spellings(bytes: &[u8]) -> [String; 3] {
+    use std::fmt::Write as _;
+    const STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let hex = bytes.iter().fold(String::new(), |mut hex, b| {
+        write!(hex, "{b:02x}").unwrap();
+        hex
+    });
+    let mut base64 = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        for i in 0..=chunk.len() {
+            base64.push(char::from(STANDARD[(n >> (18 - 6 * i) & 63) as usize]));
+        }
+    }
+    let url = base64.replace('+', "-").replace('/', "_");
+    [hex, base64, url]
+}
+
+/// Sets the admin up, signs in and answers every GET route the core's document lists without a
+/// path parameter; returns each response.
+async fn sweep(address: SocketAddr) -> Vec<(u16, String)> {
+    let json = "Content-Type: application/json\r\n";
+    let password = r#"{"password":"correct horse"}"#;
+    let mut responses = vec![request(address, "POST", "/api/v1/setup", json, password).await];
+    let login = request(address, "POST", "/api/v1/login", json, password).await;
+    let cookie = format!("Cookie: {}\r\n", session_cookie(&login.1));
+    let (_, document) = request(address, "GET", "/openapi.json", "", "").await;
+    let document: serde_json::Value =
+        serde_json::from_str(&document[document.find("\r\n\r\n").unwrap() + 4..]).unwrap();
+    // The live stream never ends, and carries readings only.
+    let paths = document["paths"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(path, item)| {
+            item.get("get").is_some() && !path.contains('{') && *path != "/api/v1/live"
+        });
+    for (path, _) in paths {
+        responses.push(request(address, "GET", path, &cookie, "").await);
+    }
+    responses.push(login);
+    responses
+}
+
+#[tokio::test]
+async fn the_first_run_creates_a_static_key_that_no_response_or_log_line_holds() {
+    use tracing_subscriber::util::SubscriberInitExt as _;
+    let lines = Lines::default();
+    let writer = lines.clone();
+    let _logging = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(move || writer.clone())
+        .finish()
+        .set_default();
+    tracing::trace!("capturing");
+    let dir = tempfile::tempdir().unwrap();
+    let (address, stop, core) = start(
+        dir.path(),
+        Fake::new(Vec::new(), &[]).0,
+        FakeArchive::new(Vec::new()).0,
+    );
+
+    let responses = sweep(address).await;
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+
+    let db = rusqlite::Connection::open(dir.path().join("core.sqlite")).unwrap();
+    let key: Vec<u8> = db
+        .query_row("SELECT static_key FROM identity", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(key.len(), 32);
+    assert!(responses.len() > 20, "{}", responses.len());
+    assert!(
+        responses.iter().all(|(status, _)| *status < 500),
+        "{responses:?}"
+    );
+    let logged = lines.0.lock().unwrap().clone();
+    assert!(String::from_utf8_lossy(&logged).contains("capturing"));
+    let seen: Vec<&[u8]> = responses
+        .iter()
+        .map(|(_, response)| response.as_bytes())
+        .chain([logged.as_slice()])
+        .collect();
+    let holds = |text: &[u8], value: &[u8]| text.windows(value.len()).any(|w| w == value);
+    for spelling in spellings(&key) {
+        assert!(
+            seen.iter().all(|text| !holds(text, spelling.as_bytes())),
+            "{spelling}"
+        );
+    }
+    assert!(seen.iter().all(|text| !holds(text, &key)));
+}
