@@ -353,3 +353,41 @@ async fn weather_and_the_solar_forecast_run_from_boot_once_the_plant_has_a_locat
     stop.send(()).unwrap();
     core.await.unwrap().unwrap();
 }
+
+/// The permission bits of `path`.
+fn mode(path: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+#[tokio::test]
+async fn the_data_directory_and_its_database_are_the_cores_alone() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    // Left open by an earlier build or by hand: the core closes them.
+    std::fs::create_dir(&data).unwrap();
+    std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let file = data.join("core.sqlite");
+    std::fs::write(&file, "").unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel::<()>();
+    let core = tokio::spawn(serve(listener, boot(&data, None, UNIX_EPOCH), async {
+        stopped.await.ok();
+    }));
+    let json = "Content-Type: application/json\r\n";
+    let password = r#"{"password":"correct horse"}"#;
+    let (status, _) = request(address, "POST", "/api/v1/setup", json, password).await;
+    assert_eq!(status, 204);
+
+    let wal = data.join("core.sqlite-wal");
+    assert_eq!(
+        (mode(&data), mode(&file), mode(&wal)),
+        (0o700, 0o600, 0o600)
+    );
+
+    stop.send(()).unwrap();
+    core.await.unwrap().unwrap();
+}

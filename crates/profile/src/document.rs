@@ -61,6 +61,7 @@ pub enum StepDoc {
     Rmw(MaskedDoc),
     Activate(ActivateDoc),
     Precondition(PreconditionDoc),
+    Unlock(UnlockDoc),
     Delay(DelayDoc),
 }
 
@@ -73,6 +74,7 @@ impl StepDoc {
             Self::Rmw(_) => "rmw",
             Self::Activate(_) => "activate",
             Self::Precondition(_) => "precondition",
+            Self::Unlock(_) => "unlock",
             Self::Delay(_) => "delay",
         }
     }
@@ -87,6 +89,31 @@ pub struct PreconditionDoc {
     pub register: u16,
     pub mask: Option<u16>,
     pub values: Vec<u16>,
+}
+
+/// A secret of the device's connection, written by name before the value; `finally` relocks.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Unlock"))]
+#[serde(deny_unknown_fields)]
+pub struct UnlockDoc {
+    pub register: u16,
+    #[serde(rename = "type")]
+    pub kind: Kind,
+    /// The secret's name on the connection; its value never appears in a profile.
+    pub secret: String,
+    /// Fixed writes that relock, run even after a failure.
+    pub finally: Vec<RelockDoc>,
+}
+
+/// Fixed words written from `register` in one request.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Relock"))]
+#[serde(deny_unknown_fields)]
+pub struct RelockDoc {
+    pub register: u16,
+    pub words: Vec<u16>,
 }
 
 /// The enable field written last, once the value is in place.

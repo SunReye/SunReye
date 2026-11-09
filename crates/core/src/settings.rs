@@ -48,6 +48,10 @@ pub enum Refusal {
     Interval,
     /// A precondition read from the device does not hold.
     Precondition,
+    /// The device's connection holds no secret of the name its unlock step names.
+    SecretMissing,
+    /// The secret is not a whole number of the unlock step's type.
+    SecretValue,
 }
 
 impl From<Refusal> for Problem {
@@ -59,6 +63,8 @@ impl From<Refusal> for Problem {
             Refusal::WritesOff => (StatusCode::CONFLICT, Code::SettingWritesOff),
             Refusal::Interval => (StatusCode::TOO_MANY_REQUESTS, Code::SettingInterval),
             Refusal::Precondition => (StatusCode::CONFLICT, Code::SettingPrecondition),
+            Refusal::SecretMissing => (StatusCode::CONFLICT, Code::SecretMissing),
+            Refusal::SecretValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::SecretValue),
         };
         Self { status, code }
     }
@@ -79,6 +85,25 @@ pub struct Job {
     pub unit: u8,
     pub setting: Setting,
     pub words: Vec<u16>,
+    /// The words of the secret its unlock step writes; `None` without one.
+    pub unlock: Option<Secret>,
+}
+
+/// The words of a connection's secret. Debug output never shows them, so neither does a log.
+#[derive(Clone)]
+pub struct Secret(Vec<u16>);
+
+impl Secret {
+    #[must_use]
+    pub const fn new(words: Vec<u16>) -> Self {
+        Self(words)
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(..)")
+    }
 }
 
 /// What a write did on the device.
@@ -122,6 +147,20 @@ pub fn check(
         return Err(Refusal::Interval);
     }
     Ok((setting.clone(), words))
+}
+
+/// The words `setting`'s unlock step writes, from `secret`, the value its connection holds under
+/// the step's name; `None` without an unlock step.
+///
+/// # Errors
+/// The secret is not set, or is not a code of the step's type.
+pub fn unlock(setting: &Setting, secret: Option<&str>) -> Result<Option<Secret>, Refusal> {
+    let Some(unlock) = setting.unlock() else {
+        return Ok(None);
+    };
+    let secret = secret.ok_or(Refusal::SecretMissing)?;
+    let words = unlock.encode(secret).ok_or(Refusal::SecretValue)?;
+    Ok(Some(Secret(words)))
 }
 
 /// Runs `job` on `client`, connecting to `endpoint` when it has none.
@@ -220,8 +259,37 @@ impl Failure {
     }
 }
 
+/// Runs the recipe, then its relock once the unlock was sent, even after a failure. Nothing is
+/// retried. A failing relock is named counting on from the recipe's last step.
 async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
     let mut wrote = false;
+    let mut unlocked = false;
+    let result = recipe(link, job, &mut wrote, &mut unlocked).await;
+    if !unlocked {
+        return result;
+    }
+    let mut relocked = Ok(());
+    let after = u32::try_from(job.setting.recipe().len()).unwrap_or(u32::MAX);
+    for (relock, number) in job.setting.finally().iter().zip(after.saturating_add(1)..) {
+        if let Err(error) = link.write(relock.register, &relock.words).await
+            && relocked.is_ok()
+        {
+            relocked = Err(Failure {
+                step: number,
+                error,
+                wrote,
+            });
+        }
+    }
+    result.and(relocked)
+}
+
+async fn recipe(
+    link: &mut Link<'_>,
+    job: &Job,
+    wrote: &mut bool,
+    unlocked: &mut bool,
+) -> Result<(), Failure> {
     for (step, number) in job.setting.recipe().iter().zip(1..) {
         let result = match step {
             Step::Write { register } => link.write(*register, &job.words).await,
@@ -235,6 +303,18 @@ async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
             }
             Step::Rmw { register, mask } => link.rmw(*register, *mask, &job.words).await,
             Step::Activate { register, value } => link.write(*register, &[*value]).await,
+            Step::Unlock(unlock) => {
+                let Some(Secret(code)) = &job.unlock else {
+                    return Err(Failure {
+                        step: number,
+                        error: Error::Protocol("no secret to unlock with"),
+                        wrote: *wrote,
+                    });
+                };
+                *unlocked = true;
+                // Not a write of the setting: its value is unchanged.
+                link.write(unlock.register, code).await.map(|_| false)
+            }
             // Read before the recipe began.
             Step::Precondition { .. } => Ok(false),
             Step::Delay(pause) => {
@@ -243,12 +323,12 @@ async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
             }
         };
         match result {
-            Ok(written) => wrote |= written,
+            Ok(written) => *wrote |= written,
             Err(error) => {
                 return Err(Failure {
                     step: number,
                     error,
-                    wrote,
+                    wrote: *wrote,
                 });
             }
         }

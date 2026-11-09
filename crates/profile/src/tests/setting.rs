@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{Field, LoadError, Profile, Step};
+use crate::{Field, LoadError, Profile, Relock, Step};
 use serde_json::{Value, json};
 
 fn doc(settings: &Value) -> Value {
@@ -383,5 +383,78 @@ fn preconditions_come_before_every_other_step() {
     assert_eq!(
         refusal(&json!([with_recipe(&empty)])).1,
         "a precondition lists the values it allows"
+    );
+}
+
+/// SMA's Grid Guard: a code in a double word, relocked by writing 0 over it.
+fn grid_guard() -> Value {
+    json!({ "unlock": { "register": 43090, "type": "u32", "secret": "gridGuard",
+        "finally": [{ "register": 43090, "words": [0, 0] }] } })
+}
+
+#[test]
+fn an_unlock_writes_a_named_secret_and_declares_its_relock() {
+    let recipe = json!([
+        { "precondition": { "register": 40, "values": [1] } },
+        grid_guard(),
+        { "write": { "register": 108 } },
+    ]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    let setting = profile.setting("current").unwrap();
+    let Step::Unlock(unlock) = &setting.recipe()[1] else {
+        panic!("expected an unlock, got {:?}", setting.recipe()[1]);
+    };
+    assert_eq!(
+        (unlock.register, unlock.secret.as_str()),
+        (43090, "gridGuard")
+    );
+    assert_eq!(
+        setting.finally(),
+        [Relock {
+            register: 43090,
+            words: vec![0, 0]
+        }]
+    );
+    // A double word is low word first; a code that is not a whole number of the type is refused.
+    assert_eq!(unlock.encode("70000"), Some(vec![4464, 1]));
+    for code in ["", "abc", "-1", "4294967296", "1.5", " 1"] {
+        assert_eq!(unlock.encode(code), None, "{code:?}");
+    }
+    assert_eq!(
+        warnings(
+            &json!([with_recipe(&recipe)]),
+            &json!(["modbus", "u16", "write", "precondition"])
+        ),
+        [
+            "`requires` lacks `u32`, which the profile uses",
+            "`requires` lacks `unlock`, which the profile uses"
+        ]
+    );
+}
+
+#[test]
+fn a_recipe_unlocks_once_before_it_writes() {
+    let late = json!([{ "write": { "register": 108 } }, grid_guard()]);
+    let twice = json!([grid_guard(), grid_guard(), { "write": { "register": 108 } }]);
+    for recipe in [late, twice] {
+        assert_eq!(
+            refusal(&json!([with_recipe(&recipe)])).1,
+            "an unlock comes once, after the preconditions and before every write"
+        );
+    }
+    let mut unnamed = grid_guard();
+    unnamed["unlock"]["secret"] = json!("");
+    let recipe = json!([unnamed, { "write": { "register": 108 } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&recipe)])).1,
+        "an unlock names its secret"
+    );
+    let mut empty = grid_guard();
+    empty["unlock"]["finally"] = json!([{ "register": 43090, "words": [] }]);
+    let recipe = json!([empty, { "write": { "register": 108 } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&recipe)])).1,
+        "a relock writes 1 to 123 registers"
     );
 }

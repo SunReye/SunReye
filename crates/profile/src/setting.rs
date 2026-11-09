@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use crate::document::{BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc};
+use crate::document::{
+    BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc, UnlockDoc,
+};
 
 /// One writable device parameter.
 #[derive(Debug, Clone)]
@@ -52,8 +54,49 @@ pub enum Step {
     Precondition { field: Field, values: Vec<u16> },
     /// Writes `value` to the enable field `register`, last, once the value is in place.
     Activate { register: u16, value: u16 },
+    /// Writes a secret of the device's connection, by name; its relock runs even after a failure.
+    Unlock(Unlock),
     /// Waits before the next step; the endpoint's polls wait with it.
     Delay(Duration),
+}
+
+/// Unlocks the device with a secret its connection holds by name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unlock {
+    pub register: u16,
+    kind: Kind,
+    /// The secret's name on the connection.
+    pub secret: String,
+    finally: Vec<Relock>,
+}
+
+impl Unlock {
+    /// The words of the secret `code`, low word first; `None` unless it is a whole number in
+    /// decimal digits that fits the type.
+    #[must_use]
+    pub fn encode(&self, code: &str) -> Option<Vec<u16>> {
+        if code.is_empty() || !code.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+            return None;
+        }
+        match self.kind {
+            Kind::U16 => code.parse::<u16>().ok().map(|w| vec![w]),
+            Kind::I16 => code
+                .parse::<i16>()
+                .ok()
+                .map(|w| vec![u16::from_ne_bytes(w.to_ne_bytes())]),
+            Kind::U32 => code
+                .parse::<u32>()
+                .ok()
+                .map(|w| vec![(w & 0xFFFF) as u16, (w >> 16) as u16]),
+        }
+    }
+}
+
+/// Fixed words written from `register` in one request, to relock.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relock {
+    pub register: u16,
+    pub words: Vec<u16>,
 }
 
 impl Step {
@@ -61,7 +104,10 @@ impl Step {
     const fn writes_value(&self) -> bool {
         match self {
             Self::Write { .. } | Self::WriteBlock { .. } | Self::Rmw { .. } => true,
-            Self::Activate { .. } | Self::Delay(_) | Self::Precondition { .. } => false,
+            Self::Activate { .. }
+            | Self::Delay(_)
+            | Self::Precondition { .. }
+            | Self::Unlock(_) => false,
         }
     }
 }
@@ -95,6 +141,24 @@ impl Setting {
     #[must_use]
     pub fn recipe(&self) -> &[Step] {
         &self.recipe
+    }
+
+    /// Its unlock step, if it has one.
+    #[must_use]
+    pub fn unlock(&self) -> Option<&Unlock> {
+        self.recipe.iter().find_map(|step| {
+            if let Step::Unlock(unlock) = step {
+                Some(unlock)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// The relock steps of its unlock, run even after a failure; empty without an unlock.
+    #[must_use]
+    pub fn finally(&self) -> &[Relock] {
+        self.unlock().map_or(&[], |unlock| &unlock.finally)
     }
 
     /// Where a write is read back; `None` for a write-only setting.
@@ -268,37 +332,42 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
     })
 }
 
+fn step(doc: StepDoc, kind: Kind) -> Result<Step, &'static str> {
+    match doc {
+        StepDoc::Write(r) => Ok(Step::Write {
+            register: r.register,
+        }),
+        StepDoc::WriteBlock(b) => block(&b, kind),
+        StepDoc::Rmw(m) => mask(m.mask, kind).map(|mask| Step::Rmw {
+            register: m.register,
+            mask,
+        }),
+        StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
+            Err("a delay is at most 10000 ms: the device's polls wait for it")
+        }
+        StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
+        StepDoc::Precondition(p) if p.values.is_empty() => {
+            Err("a precondition lists the values it allows")
+        }
+        StepDoc::Precondition(p) => Ok(Step::Precondition {
+            field: Field {
+                register: p.register,
+                mask: p.mask.map_or(Ok(0xFFFF), nonzero)?,
+            },
+            values: p.values,
+        }),
+        StepDoc::Activate(a) => Ok(Step::Activate {
+            register: a.register,
+            value: a.value,
+        }),
+        StepDoc::Unlock(u) => unlock(u),
+    }
+}
+
 fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
     let steps: Vec<Step> = docs
         .into_iter()
-        .map(|step| match step {
-            StepDoc::Write(r) => Ok(Step::Write {
-                register: r.register,
-            }),
-            StepDoc::WriteBlock(b) => block(&b, kind),
-            StepDoc::Rmw(m) => mask(m.mask, kind).map(|mask| Step::Rmw {
-                register: m.register,
-                mask,
-            }),
-            StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
-                Err("a delay is at most 10000 ms: the device's polls wait for it")
-            }
-            StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
-            StepDoc::Precondition(p) if p.values.is_empty() => {
-                Err("a precondition lists the values it allows")
-            }
-            StepDoc::Precondition(p) => Ok(Step::Precondition {
-                field: Field {
-                    register: p.register,
-                    mask: p.mask.map_or(Ok(0xFFFF), nonzero)?,
-                },
-                values: p.values,
-            }),
-            StepDoc::Activate(a) => Ok(Step::Activate {
-                register: a.register,
-                value: a.value,
-            }),
-        })
+        .map(|doc| step(doc, kind))
         .collect::<Result<_, _>>()?;
     let checks = steps
         .iter()
@@ -310,6 +379,9 @@ fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
         .any(|s| matches!(s, Step::Precondition { .. }))
     {
         return Err("a precondition comes before every other step");
+    }
+    if !unlocks_first(&steps, checks) {
+        return Err("an unlock comes once, after the preconditions and before every write");
     }
     let last = steps.len() - 1;
     for (at, step) in steps.iter().enumerate() {
@@ -326,4 +398,44 @@ fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<Field, &'static str> {
         register: doc.register,
         mask: doc.mask.map_or(Ok(0xFFFF), |m| mask(m, kind))?,
     })
+}
+
+/// Whether the one unlock, if any, is the first step after the preconditions.
+fn unlocks_first(steps: &[Step], checks: usize) -> bool {
+    let mut at = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches!(s, Step::Unlock(_)))
+        .map(|(at, _)| at);
+    match (at.next(), at.next()) {
+        (None, _) => true,
+        (Some(at), None) => at == checks,
+        (Some(_), Some(_)) => false,
+    }
+}
+
+fn unlock(doc: UnlockDoc) -> Result<Step, &'static str> {
+    if doc.secret.is_empty() {
+        return Err("an unlock names its secret");
+    }
+    if doc
+        .finally
+        .iter()
+        .any(|r| r.words.is_empty() || r.words.len() > MAX_BLOCK)
+    {
+        return Err("a relock writes 1 to 123 registers");
+    }
+    Ok(Step::Unlock(Unlock {
+        register: doc.register,
+        kind: doc.kind,
+        secret: doc.secret,
+        finally: doc
+            .finally
+            .into_iter()
+            .map(|r| Relock {
+                register: r.register,
+                words: r.words,
+            })
+            .collect(),
+    }))
 }

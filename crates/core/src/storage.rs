@@ -132,6 +132,8 @@ impl Problem {
 #[derive(Debug)]
 pub enum Error {
     Sqlite(rusqlite::Error),
+    /// The file's permissions cannot be set.
+    Io(std::io::Error),
     /// A series was declared with a step other than the one its history is stored in.
     StepChanged,
     /// A step that is not a positive finite number.
@@ -150,6 +152,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sqlite(e) => write!(f, "sqlite: {e}"),
+            Self::Io(e) => write!(f, "{e}"),
             Self::StepChanged => f.write_str("the series is stored in another step"),
             Self::Step => f.write_str("the step must be positive and finite"),
             Self::Corrupt => f.write_str("a stored block cannot be read"),

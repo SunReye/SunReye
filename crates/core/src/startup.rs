@@ -172,6 +172,14 @@ pub struct Boot<P> {
     pub keys: Option<profiles::Keys>,
 }
 
+/// Creates `dir` if needed, readable by the core alone (ADR 7): its database holds the connections'
+/// secrets.
+fn private(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::create_dir_all(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
 /// Opens the store in the data directory and serves the API on `listener` until `shutdown`
 /// resolves, then writes the open bucket.
 ///
@@ -182,7 +190,7 @@ pub async fn serve(
     boot: Boot<impl Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    std::fs::create_dir_all(&boot.data_dir)?;
+    private(&boot.data_dir)?;
     let bus = Bus::default();
     let file = boot.data_dir.join("core.sqlite");
     let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
