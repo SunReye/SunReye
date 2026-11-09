@@ -1,4 +1,5 @@
 import createClient from "openapi-fetch";
+import { events, type Message } from "./events";
 import type { components, paths } from "./schema";
 
 type Client = ReturnType<typeof createClient<paths>>;
@@ -14,6 +15,12 @@ export type Layout = components["schemas"]["Layout"];
 export type Capabilities = components["schemas"]["Support"];
 
 export type Setting = components["schemas"]["SettingSupport"];
+
+/** A setting's declared values: a range or its values, and a step. */
+export type Declared = components["schemas"]["Declared"];
+
+/** An update waiting for a profile served, with what it changes (ADR 8). */
+export type Update = components["schemas"]["Update"];
 
 /** One write attempt as the write log keeps it (ADR 7). */
 export type Attempt = components["schemas"]["Entry"];
@@ -64,6 +71,12 @@ export interface Core {
   write(device: number, key: string, value: number): Promise<Attempt | Problem>;
   /** Every write attempt, oldest first; admin only. */
   writes(): Promise<WriteLog | Problem>;
+  /** Enables a device's setting as declared now, or withdraws the enable; admin only. */
+  enable(device: number, key: string, on: boolean): Promise<Problem | undefined>;
+  /** The profile updates waiting for the admin; admin only. */
+  updates(): Promise<readonly Update[] | Problem>;
+  /** Applies the update waiting for profile `id`; admin only. */
+  apply(id: string): Promise<Update | Problem>;
 }
 
 /** The wait before reconnecting after a refusal or a failure. */
@@ -107,6 +120,35 @@ export function connect(transport: Transport): Core {
       return data ?? refusal(error, response.status);
     },
     ...settings(client),
+    ...trust(client),
+  };
+}
+
+/** Per-setting enables and profile updates (ADR 8). */
+function trust(client: Client): Pick<Core, "enable" | "updates" | "apply"> {
+  return {
+    enable: async (device, key, on) => {
+      const path = "/api/v1/devices/{id}/settings/{key}/enabled";
+      const params = { path: { id: device, key } };
+
+      const { error, response } = on
+        ? await client.PUT(path, { params })
+        : await client.DELETE(path, { params });
+
+      return response.ok ? undefined : refusal(error ?? "", response.status);
+    },
+    updates: async () => {
+      const { data, error, response } = await client.GET("/api/v1/profile-updates");
+
+      return data ? data.updates : refusal(error, response.status);
+    },
+    apply: async (id) => {
+      const { data, error, response } = await client.POST("/api/v1/profile-updates/{id}", {
+        params: { path: { id } },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
   };
 }
 
@@ -186,47 +228,6 @@ async function stream(
 /** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
 function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
   return { problem: error instanceof Object ? error.code : `http.${status}` };
-}
-
-interface Message {
-  readonly name: string;
-  readonly data: string;
-}
-
-/** Server-sent events from a body's bytes; comments and keep-alives yield nothing. */
-function events(): TransformStream<Uint8Array, Message> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  return new TransformStream({
-    transform: (chunk, controller) => {
-      buffer += decoder.decode(chunk, { stream: true });
-      const blocks = buffer.split("\n\n");
-      buffer = blocks.pop() ?? "";
-
-      for (const block of blocks) {
-        const parsed = message(block);
-
-        if (parsed.data !== "") controller.enqueue(parsed);
-      }
-    },
-  });
-}
-
-function message(block: string): Message {
-  const fields = block.split("\n").map((line) => {
-    const colon = line.indexOf(":");
-
-    return [line.slice(0, colon), line.slice(colon + 1).trimStart()] as const;
-  });
-
-  return {
-    name: fields.find(([field]) => field === "event")?.[1] ?? "message",
-    data: fields
-      .filter(([field]) => field === "data")
-      .map(([, value]) => value)
-      .join("\n"),
-  };
 }
 
 function parseFrame(json: string): Values | undefined {
