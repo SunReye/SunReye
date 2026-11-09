@@ -45,7 +45,7 @@ pub struct SettingDoc {
     #[cfg_attr(test, ts(type = "number"))]
     pub min_interval: u64,
     pub recipe: Vec<StepDoc>,
-    pub read_back: Option<RegisterDoc>,
+    pub read_back: Option<ReadBackDoc>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub write_only: bool,
@@ -58,6 +58,7 @@ pub struct SettingDoc {
 pub enum StepDoc {
     Write(RegisterDoc),
     WriteBlock(BlockDoc),
+    Rmw(MaskedDoc),
     Delay(DelayDoc),
 }
 
@@ -67,9 +68,30 @@ impl StepDoc {
         match self {
             Self::Write(_) => "write",
             Self::WriteBlock(_) => "write-block",
+            Self::Rmw(_) => "rmw",
             Self::Delay(_) => "delay",
         }
     }
+}
+
+/// The bits `mask` selects of `register`.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Masked"))]
+#[serde(deny_unknown_fields)]
+pub struct MaskedDoc {
+    pub register: u16,
+    pub mask: u16,
+}
+
+/// Where a write is read back: all of `register`, or the bits `mask` selects.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "ReadBack", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct ReadBackDoc {
+    pub register: u16,
+    pub mask: Option<u16>,
 }
 
 /// Registers written in one request from `register`, the value's words in place of `"value"`.

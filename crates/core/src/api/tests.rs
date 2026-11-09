@@ -474,7 +474,7 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
         serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "schema": { "min": 1, "max": 1 },
-            "capabilities": ["modbus", "u16", "i16", "u32", "compute", "write", "write-block", "delay"],
+            "capabilities": ["modbus", "u16", "i16", "u32", "compute", "write", "write-block", "rmw", "delay"],
             "transports": ["modbus-tcp", "solarman-v5", "sim"],
             "devices": {},
         })

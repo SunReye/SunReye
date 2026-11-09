@@ -35,7 +35,17 @@ test("the profile WASM reports the current schema", () => {
 test("the profile WASM reports the schemas and capabilities it loads", () => {
   expect(profile.capabilities()).toEqual({
     schema: { min: 1, max: 1 },
-    capabilities: ["modbus", "u16", "i16", "u32", "compute", "write", "write-block", "delay"],
+    capabilities: [
+      "modbus",
+      "u16",
+      "i16",
+      "u32",
+      "compute",
+      "write",
+      "write-block",
+      "rmw",
+      "delay",
+    ],
   });
 });
 

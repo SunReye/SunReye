@@ -221,3 +221,33 @@ async fn a_block_write_sends_the_value_among_its_fixed_words_in_one_request() {
 
     assert_eq!(applied.outcome, Outcome::Verified);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_masked_write_changes_only_its_bits_and_reads_back_through_its_mask() {
+    let mode = json!({
+        "key": "current", "type": "u16", "values": [0, 1, 2, 3], "minInterval": 60,
+        "recipe": [{ "rmw": { "register": 141, "mask": 0x30 } }],
+        "readBack": { "register": 141, "mask": 0x30 },
+    });
+    let (device, job) = job(&mode, 2.0);
+    let exchanges = [
+        read(1, 141, 0x1203),
+        // The step reads the register again: its other bits may have moved since.
+        read(2, 141, 0x1213),
+        write(3, 141, 0x1223, &echo(141)),
+        read(4, 141, 0x1223),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Verified,
+            before: Some(0.0),
+            after: Some(2.0),
+            failed_step: None,
+        }
+    );
+}

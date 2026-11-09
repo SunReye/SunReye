@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::document::{BlockDoc, BlockWord, Kind, Range, SettingDoc, StepDoc};
+use crate::document::{BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc};
 
 /// One writable device parameter.
 #[derive(Debug, Clone)]
@@ -14,7 +14,23 @@ pub struct Setting {
     values: Option<Vec<f64>>,
     min_interval: Duration,
     recipe: Vec<Step>,
-    read_back: Option<u16>,
+    read_back: Option<ReadBack>,
+}
+
+/// Where a write is read back: the bits `mask` selects of `register`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadBack {
+    pub register: u16,
+    /// `0xFFFF` when the whole register is read back.
+    pub mask: u16,
+}
+
+impl ReadBack {
+    /// The bits of `word` the mask selects, shifted down to bit 0.
+    #[must_use]
+    pub const fn field(&self, word: u16) -> u16 {
+        (word & self.mask) >> self.mask.trailing_zeros()
+    }
 }
 
 /// One step of a recipe.
@@ -29,6 +45,8 @@ pub enum Step {
         head: Vec<u16>,
         tail: Vec<u16>,
     },
+    /// Reads `register` and writes it back with the value's word in the bits `mask` selects.
+    Rmw { register: u16, mask: u16 },
     /// Waits before the next step; the endpoint's polls wait with it.
     Delay(Duration),
 }
@@ -64,9 +82,9 @@ impl Setting {
         &self.recipe
     }
 
-    /// The first register to read back after a write; `None` for a write-only setting.
+    /// Where a write is read back; `None` for a write-only setting.
     #[must_use]
-    pub const fn read_back(&self) -> Option<u16> {
+    pub const fn read_back(&self) -> Option<ReadBack> {
         self.read_back
     }
 
@@ -92,7 +110,15 @@ impl Setting {
             (None, Some(range)) => (range.min..=range.max).contains(&value),
             (None, None) => false,
         };
-        if !allowed {
+        let fits = self.recipe.iter().all(|step| {
+            if let Step::Rmw { mask, .. } = *step {
+                u16::try_from(raw)
+                    .is_ok_and(|w| u32::from(w) << mask.trailing_zeros() & !u32::from(mask) == 0)
+            } else {
+                true
+            }
+        });
+        if !allowed || !fits {
             return None;
         }
         match self.kind {
@@ -150,6 +176,16 @@ pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static 
     Ok(settings)
 }
 
+fn mask(mask: u16, kind: Kind) -> Result<u16, &'static str> {
+    if kind != Kind::U16 {
+        return Err("a masked register holds a `u16`");
+    }
+    if mask == 0 {
+        return Err("a mask selects at least one bit");
+    }
+    Ok(mask)
+}
+
 fn block(doc: &BlockDoc, kind: Kind) -> Result<Step, &'static str> {
     let words: Vec<Option<u16>> = doc
         .words
@@ -194,20 +230,12 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
     if doc.read_back.is_some() == doc.write_only {
         return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
     }
-    let recipe = doc
-        .recipe
-        .into_iter()
-        .map(|step| match step {
-            StepDoc::Write(r) => Ok(Step::Write {
-                register: r.register,
-            }),
-            StepDoc::WriteBlock(b) => block(&b, doc.kind),
-            StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
-                Err("a delay is at most 10000 ms: the device's polls wait for it")
-            }
-            StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
-        })
-        .collect::<Result<_, _>>()
+    let kind = doc.kind;
+    let recipe = recipe(doc.recipe, kind).map_err(|problem| (key.clone(), problem))?;
+    let read_back = doc
+        .read_back
+        .map(|r| read_back(&r, kind))
+        .transpose()
         .map_err(|problem| (key.clone(), problem))?;
     Ok(Setting {
         key,
@@ -217,6 +245,32 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
         values: doc.values,
         min_interval: Duration::from_secs(doc.min_interval),
         recipe,
-        read_back: doc.read_back.map(|r| r.register),
+        read_back,
+    })
+}
+
+fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
+    docs.into_iter()
+        .map(|step| match step {
+            StepDoc::Write(r) => Ok(Step::Write {
+                register: r.register,
+            }),
+            StepDoc::WriteBlock(b) => block(&b, kind),
+            StepDoc::Rmw(m) => mask(m.mask, kind).map(|mask| Step::Rmw {
+                register: m.register,
+                mask,
+            }),
+            StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
+                Err("a delay is at most 10000 ms: the device's polls wait for it")
+            }
+            StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
+        })
+        .collect()
+}
+
+fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<ReadBack, &'static str> {
+    Ok(ReadBack {
+        register: doc.register,
+        mask: doc.mask.map_or(Ok(0xFFFF), |m| mask(m, kind))?,
     })
 }

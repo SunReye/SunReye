@@ -13,7 +13,7 @@ pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
-pub use setting::{Setting, Step};
+pub use setting::{ReadBack, Setting, Step};
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
@@ -27,6 +27,7 @@ pub const CAPABILITIES: &[&str] = &[
     "compute",
     "write",
     "write-block",
+    "rmw",
     "delay",
 ];
 

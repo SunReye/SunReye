@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{LoadError, Profile, Step};
+use crate::{LoadError, Profile, ReadBack, Step};
 use serde_json::{Value, json};
 
 fn doc(settings: &Value) -> Value {
@@ -38,7 +38,13 @@ fn a_setting_declares_its_recipe_read_back_and_minimum_interval() {
     let setting = profile.setting("current").unwrap();
 
     assert_eq!(setting.recipe(), [Step::Write { register: 108 }]);
-    assert_eq!(setting.read_back(), Some(109));
+    assert_eq!(
+        setting.read_back(),
+        Some(ReadBack {
+            register: 109,
+            mask: 0xFFFF
+        })
+    );
     assert_eq!(setting.min_interval(), Duration::from_mins(1));
     assert!(profile.setting("voltage").is_none());
 }
@@ -215,4 +221,72 @@ fn a_block_write_carries_the_value_once_among_fixed_words() {
         warnings(&json!([with_recipe(&recipe)]), &json!(["modbus", "u16"])),
         ["`requires` lacks `write-block`, which the profile uses"]
     );
+}
+
+/// A two-bit field at bits 4 and 5 of register 141, read back through the same mask.
+fn mode() -> Value {
+    json!({
+        "key": "current", "type": "u16", "values": [0, 1, 2, 3], "minInterval": 60,
+        "recipe": [{ "rmw": { "register": 141, "mask": 0x30 } }],
+        "readBack": { "register": 141, "mask": 0x30 },
+    })
+}
+
+#[test]
+fn a_masked_write_takes_only_values_its_field_holds_and_reads_back_through_its_mask() {
+    let mut wide = mode();
+    wide["values"] = json!([0, 4]);
+    let profile = load(&json!([mode()])).unwrap();
+    let mode = profile.setting("current").unwrap();
+    let wide = load(&json!([wide])).unwrap();
+
+    assert_eq!(
+        mode.recipe(),
+        [Step::Rmw {
+            register: 141,
+            mask: 0x30
+        }]
+    );
+    assert_eq!(
+        mode.read_back(),
+        Some(ReadBack {
+            register: 141,
+            mask: 0x30
+        })
+    );
+    assert_eq!(mode.read_back().unwrap().field(0x1223), 2);
+    assert_eq!(mode.encode(3.0), Some(vec![3]));
+    assert_eq!(wide.setting("current").unwrap().encode(4.0), None);
+    assert_eq!(
+        warnings(&json!([self::mode()]), &json!(["modbus", "u16"])),
+        ["`requires` lacks `rmw`, which the profile uses"]
+    );
+}
+
+#[test]
+fn a_mask_is_non_zero_over_an_unsigned_register() {
+    let mut empty = mode();
+    empty["recipe"] = json!([{ "rmw": { "register": 141, "mask": 0 } }]);
+    assert_eq!(
+        refusal(&json!([empty])).1,
+        "a mask selects at least one bit"
+    );
+    let mut unread = mode();
+    unread["readBack"]["mask"] = json!(0);
+    assert_eq!(
+        refusal(&json!([unread])).1,
+        "a mask selects at least one bit"
+    );
+    for kind in ["i16", "u32"] {
+        let mut signed = mode();
+        signed["type"] = json!(kind);
+        assert_eq!(
+            refusal(&json!([signed])).1,
+            "a masked register holds a `u16`"
+        );
+        let mut read = mode();
+        read["type"] = json!(kind);
+        read["recipe"] = json!([{ "write": { "register": 141 } }]);
+        assert_eq!(refusal(&json!([read])).1, "a masked register holds a `u16`");
+    }
 }

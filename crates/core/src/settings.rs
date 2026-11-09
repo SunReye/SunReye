@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
 use serde::Serialize;
-use sunreye_profile::{Profile, Setting, Step};
+use sunreye_profile::{Profile, ReadBack, Setting, Step};
 use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
@@ -152,7 +152,7 @@ pub async fn run(
         }
         return applied;
     };
-    let Ok(before) = link.read(read_back, width).await else {
+    let Ok(before) = link.read_back(read_back, width).await else {
         return applied;
     };
     applied.before = job.setting.decode(&before);
@@ -161,7 +161,7 @@ pub async fn run(
         return applied;
     }
     let result = steps(&mut link, job).await;
-    let after = link.read(read_back, width).await.ok();
+    let after = link.read_back(read_back, width).await.ok();
     applied.after = after.as_deref().and_then(|w| job.setting.decode(w));
     applied.outcome = match (&result, after) {
         (Err(failure), _) => failure.outcome(),
@@ -205,6 +205,7 @@ async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
                 let words = [head.as_slice(), &job.words, tail].concat();
                 link.write(*register, &words).await
             }
+            Step::Rmw { register, mask } => link.rmw(*register, *mask, &job.words).await,
             Step::Delay(pause) => {
                 tokio::time::sleep(*pause).await;
                 Ok(false)
@@ -239,6 +240,23 @@ impl Link<'_> {
         self.exchange(async |c: &mut Client| c.write_registers(unit, register, words).await)
             .await
             .map(|()| true)
+    }
+
+    /// Reads `register` afresh and writes it back with the low bits of `words` in the bits `mask`
+    /// selects; the value fits the mask, as [`sunreye_profile::Setting::encode`] checked.
+    async fn rmw(&mut self, register: u16, mask: u16, words: &[u16]) -> Result<bool, Error> {
+        let [current] = self.read(register, 1).await?[..] else {
+            return Err(Error::Protocol("a masked register is one word"));
+        };
+        let value = words.first().copied().unwrap_or_default() << mask.trailing_zeros();
+        self.write(register, &[current & !mask | value & mask])
+            .await
+    }
+
+    /// The fields `read_back` selects of `width` registers.
+    async fn read_back(&mut self, read_back: ReadBack, width: usize) -> Result<Vec<u16>, Error> {
+        let words = self.read(read_back.register, width).await?;
+        Ok(words.into_iter().map(|w| read_back.field(w)).collect())
     }
 
     /// `width` holding registers from `start`.
