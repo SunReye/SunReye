@@ -8,7 +8,7 @@ use sunreye_core::profiles::{self, Https};
 use sunreye_core::spot::EnergyCharts;
 use sunreye_core::startup::{self, Boot, Options};
 use sunreye_core::weather::{OpenMeteo, OpenMeteoArchive};
-use sunreye_core::{capture, import};
+use sunreye_core::{backup, capture, import};
 use tokio::net::TcpListener;
 
 fn main() -> ExitCode {
@@ -22,6 +22,12 @@ fn main() -> ExitCode {
     }
     if args.next_if(|arg| arg == "import").is_some() {
         return import(args);
+    }
+    if args.next_if(|arg| arg == "backup").is_some() {
+        return backup(args);
+    }
+    if args.next_if(|arg| arg == "restore").is_some() {
+        return restore(args);
     }
     let options = match Options::parse(args, |name| std::env::var(name).ok()) {
         Ok(options) => options,
@@ -108,6 +114,48 @@ fn import(args: impl Iterator<Item = String>) -> ExitCode {
         }
         Err(e) => {
             tracing::error!("import: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `sunreye backup` (ADR 3): backs up the store and car bodies, the core running or not.
+fn backup(args: impl Iterator<Item = String>) -> ExitCode {
+    let options = match backup::Options::backup(args, |name| std::env::var(name).ok()) {
+        Ok(options) => options,
+        Err(e) => {
+            tracing::error!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    match backup::command(&options) {
+        Ok(bytes) => {
+            tracing::info!(file = %options.file.display(), bytes, secrets = options.secrets, "backed up");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            tracing::error!("backup: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `sunreye restore` (ADR 3): replaces the store and car bodies while the core is stopped.
+fn restore(args: impl Iterator<Item = String>) -> ExitCode {
+    let options = match backup::Options::restore(args, |name| std::env::var(name).ok()) {
+        Ok(options) => options,
+        Err(e) => {
+            tracing::error!("{e}");
+            return ExitCode::from(2);
+        }
+    };
+    match backup::restore(&options.file, &options.data_dir) {
+        Ok(()) => {
+            tracing::info!(file = %options.file.display(), "restored");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            tracing::error!("restore: {e}");
             ExitCode::FAILURE
         }
     }

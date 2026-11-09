@@ -131,6 +131,8 @@ impl Options {
 pub enum Error {
     Io(std::io::Error),
     Storage(storage::Error),
+    /// Another core runs on the data directory.
+    Running,
     /// The profiles cannot be opened.
     Profiles(profiles::Error),
 }
@@ -140,6 +142,7 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Storage(e) => write!(f, "storage: {e}"),
+            Self::Running => f.write_str("another core runs on the data directory"),
             Self::Profiles(e) => write!(f, "profiles: {e}"),
         }
     }
@@ -189,23 +192,47 @@ pub struct Boot<P, A, S> {
 
 /// Creates `dir` if needed, readable by the core alone (ADR 7): its database holds the connections'
 /// secrets.
-fn private(dir: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn private(dir: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::create_dir_all(dir)?;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+/// Claims the data directory `dir` for as long as the returned file is open; `None` when a core
+/// already holds it. A restore claims it too, so it never replaces a store in use.
+pub(crate) fn claim(dir: &std::path::Path) -> std::io::Result<Option<std::fs::File>> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(dir.join("core.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// Makes `dir` private and claims it, for as long as the returned file is open.
+fn own(dir: &std::path::Path) -> Result<std::fs::File, Error> {
+    private(dir)?;
+    claim(dir)?.ok_or(Error::Running)
 }
 
 /// Opens the store in the data directory and serves the API on `listener` until `shutdown`
 /// resolves, then writes the open bucket.
 ///
 /// # Errors
-/// The store cannot be opened or written, or serving fails.
+/// Another core runs on the data directory, the store cannot be opened or written, or serving
+/// fails.
 pub async fn serve(
     listener: TcpListener,
     boot: Boot<impl Provider + Send, impl Archive + Send, impl spot::Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    private(&boot.data_dir)?;
+    let _claim = own(&boot.data_dir)?;
     let bus = Bus::default();
     let storage = Storage::open(&boot.data_dir.join(STORE), boot.build, &plant_zone(), &bus)?;
     let (problems, watched) = problems(&storage).await?;
