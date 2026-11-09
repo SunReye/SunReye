@@ -109,6 +109,15 @@
   });
 </script>
 
+<!-- The canvas build ships no `.lc-path` stylesheet, so an unset line fill resolves to black. -->
 <figure>
-  <LineChart data={rows} x="time" y="power" series={lines} height={240} legend />
+  <LineChart
+    data={rows}
+    x="time"
+    y="power"
+    series={lines}
+    height={240}
+    legend
+    props={{ spline: { fill: "none" } }}
+  />
 </figure>

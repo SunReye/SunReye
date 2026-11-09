@@ -15,8 +15,15 @@ const LAYOUT = {
   ],
 };
 
-/** A test core: the layout, one forecast point per string and no history. */
-function testCore(): Transport & { readonly asked: string[] } {
+/** A morning-to-evening triangle peaking at 1000 W. */
+const PEAK = [
+  { start: "2026-11-09T06:00:00Z", end: "2026-11-09T06:01:00Z", mean: 0 },
+  { start: "2026-11-09T12:00:00Z", end: "2026-11-09T12:01:00Z", mean: 1000 },
+  { start: "2026-11-09T18:00:00Z", end: "2026-11-09T18:01:00Z", mean: 0 },
+];
+
+/** A test core: the layout, one forecast point per string, and `points` as every history. */
+function testCore(points: readonly object[] = []): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
 
   return {
@@ -37,7 +44,7 @@ function testCore(): Transport & { readonly asked: string[] } {
         );
       }
 
-      return Promise.resolve(Response.json({ tier: "raw", points: [] }));
+      return Promise.resolve(Response.json({ tier: "raw", points }));
     },
   };
 }
@@ -59,4 +66,59 @@ test("the day chart shows each of its inverter's strings' forecast", async () =>
     ]);
   await expect.element(chart.getByText("south (Prognose)")).toBeVisible();
   await expect.element(chart.getByText("north (Prognose)")).toBeVisible();
+});
+
+interface Pixels {
+  readonly width: number;
+  readonly height: number;
+  readonly data: ArrayLike<number>;
+}
+
+const NONE: Pixels = { width: 0, height: 0, data: [] };
+
+/** The rendered chart's canvas pixels. */
+function pixels(): Pixels {
+  const canvas = document.querySelector("figure canvas");
+
+  return canvas instanceof HTMLCanvasElement
+    ? (canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height) ?? NONE)
+    : NONE;
+}
+
+/** Whether `image` holds an opaque pixel of the first series' colour, #4e79a7. */
+function lined(image: Pixels): boolean {
+  for (let i = 0; i < image.data.length; i += 4) {
+    const [r, g, b, a] = [0, 1, 2, 3].map((k) => image.data[i + k]);
+
+    if (a === 255 && r === 0x4e && g === 0x79 && b === 0xa7) return true;
+  }
+
+  return false;
+}
+
+/** The chart's pixels, once the first series' line has been drawn. */
+async function drawn(): Promise<Pixels> {
+  await expect.poll(() => lined(pixels())).toBe(true);
+
+  return pixels();
+}
+
+/** The share of `image`'s pixels in columns `[from, to)` that carry any ink. */
+function inked(image: Pixels, from = 0, to = image.width): number {
+  let ink = 0;
+
+  for (let y = 0; y < image.height; y++) {
+    for (let x = from; x < to; x++) {
+      if ((image.data[(y * image.width + x) * 4 + 3] ?? 0) > 0) ink++;
+    }
+  }
+
+  return ink / (image.height * (to - from));
+}
+
+test("the day chart draws its lines without filling beneath them", async () => {
+  await render(DayChart, { core: connect(testCore(PEAK)), device: 1, series: ["pv.power"] });
+
+  // A filled triangle covers a fifth of the plot; strokes, grid and labels stay far below.
+  expect(inked(await drawn())).toBeLessThan(0.1);
 });
