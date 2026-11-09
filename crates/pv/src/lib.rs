@@ -2,11 +2,13 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod inverter;
 mod mppt;
 mod perez;
 mod string;
 mod temperature;
 
+pub use inverter::inverter_power;
 pub use mppt::mppt_output;
 pub use perez::plane_irradiance;
 pub use string::string_output;

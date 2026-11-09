@@ -1,7 +1,7 @@
 //! MPPT inputs and the inverter against hand-worked arithmetic.
 
 use super::fixtures::assert_close;
-use crate::{MpptLimits, StringOutput, mppt_output};
+use crate::{MpptLimits, StringOutput, inverter_power, mppt_output};
 
 const SOUTH: StringOutput = StringOutput {
     current: 5.0,
@@ -108,4 +108,15 @@ fn without_limits_nothing_is_capped() {
 
     assert_close(output.current, 9.0, "current");
     assert_close(output.power, 4420.0, "power");
+}
+
+#[test]
+fn inverter_power_is_the_sum_of_its_inputs() {
+    // 2500 W + 1920 W under a 5 kW rating
+    assert_close(inverter_power(&[SOUTH, NORTH], 5000.0), 4420.0, "power");
+}
+
+#[test]
+fn inverter_power_is_capped_at_its_ac_rating() {
+    assert_close(inverter_power(&[SOUTH, NORTH], 4000.0), 4000.0, "power");
 }
