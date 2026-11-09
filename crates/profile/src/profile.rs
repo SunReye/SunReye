@@ -9,6 +9,7 @@ use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::identify::{self, Field as IdentifyField};
 use crate::plan::{self, Block};
+use crate::role::RoleKind;
 use crate::setting::{self, Setting};
 use crate::sunspec::Chain;
 use crate::{CAPABILITIES, SCHEMA};
@@ -66,6 +67,25 @@ pub struct Quantity {
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
     step: f64,
+    deadband: Option<f64>,
+}
+
+/// Why a deadband does not fit a quantity (ADR 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeadbandRefusal {
+    /// A counter or an enum stores every change.
+    Kind,
+    /// Below the quantisation step, or not a finite number.
+    Step,
+}
+
+impl DeadbandRefusal {
+    const fn problem(self) -> &'static str {
+        match self {
+            Self::Kind => "a counter or enum has no deadband",
+            Self::Step => "a deadband is below the quantisation step",
+        }
+    }
 }
 
 impl Quantity {
@@ -74,6 +94,27 @@ impl Quantity {
     #[must_use]
     pub const fn step(&self) -> f64 {
         self.step
+    }
+
+    /// The deadband its profile declares for this hardware, in its role's unit.
+    #[must_use]
+    pub const fn deadband(&self) -> Option<f64> {
+        self.deadband
+    }
+
+    /// Whether `deadband` may apply to it: never below its step, and none for a counter or enum.
+    ///
+    /// # Errors
+    /// The quantity is a counter or enum, or `deadband` is below its step.
+    pub fn admits(&self, deadband: f64) -> Result<(), DeadbandRefusal> {
+        if self.kind() != RoleKind::Measurement {
+            return Err(DeadbandRefusal::Kind);
+        }
+        // A tolerance for a deadband written as the step, such as 0.1 on a 0.1 scale.
+        if !(deadband.is_finite() && deadband >= self.step * (1.0 - 1e-9)) {
+            return Err(DeadbandRefusal::Step);
+        }
+        Ok(())
     }
 
     /// Its value as `raw · scale + offset` of the register at `address`: `(address, scale,
@@ -484,14 +525,24 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
         }
         let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
         positions.insert(doc.key.clone(), quantities.len());
-        quantities.push(Quantity {
+        let quantity = Quantity {
             key: doc.key,
             role: doc.role,
             index: doc.index,
             read,
             range: doc.range,
             step,
-        });
+            deadband: doc.deadband,
+        };
+        if let Some(deadband) = quantity.deadband
+            && let Err(refusal) = quantity.admits(deadband)
+        {
+            return Err(LoadError::Quantity {
+                key: quantity.key,
+                problem: refusal.problem(),
+            });
+        }
+        quantities.push(quantity);
     }
     Ok(quantities)
 }

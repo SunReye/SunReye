@@ -40,6 +40,7 @@ mod backup;
 mod balance;
 mod cars;
 mod corrections;
+mod deadbands;
 mod devices;
 mod evcc;
 mod forecasts;
@@ -566,7 +567,7 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
         serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "schema": { "min": 1, "max": 1 },
-            "capabilities": ["modbus", "mqtt", "sunspec", "u16", "i16", "u32", "acc32", "scale-factor", "compute", "write", "write-block", "rmw", "activate", "precondition", "unlock", "delay", "snapshot-toggle", "publish"],
+            "capabilities": ["modbus", "mqtt", "sunspec", "u16", "i16", "u32", "acc32", "scale-factor", "compute", "deadband", "write", "write-block", "rmw", "activate", "precondition", "unlock", "delay", "snapshot-toggle", "publish"],
             "transports": ["modbus-tcp", "rtu-over-tcp", "solarman-v5", "sim"],
             "devices": {},
         })

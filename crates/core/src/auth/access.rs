@@ -59,6 +59,13 @@ const ROUTES: &[(Method, &str, Access)] = &[
         "/api/v1/devices/{id}/settings/{key}/enabled",
         Admin,
     ),
+    (Method::GET, "/api/v1/devices/{id}/deadbands", Admin),
+    (Method::PUT, "/api/v1/devices/{id}/deadbands/{role}", Admin),
+    (
+        Method::DELETE,
+        "/api/v1/devices/{id}/deadbands/{role}",
+        Admin,
+    ),
     (Method::GET, "/api/v1/writes", Admin),
     (Method::POST, "/api/v1/scan", Admin),
     (Method::GET, "/api/v1/location", Admin),

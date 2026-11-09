@@ -465,6 +465,12 @@ pub enum Code {
     DeviceProfileChange,
     #[serde(rename = "device.address")]
     DeviceAddress,
+    #[serde(rename = "deadband.role")]
+    DeadbandRole,
+    #[serde(rename = "deadband.kind")]
+    DeadbandKind,
+    #[serde(rename = "deadband.step")]
+    DeadbandStep,
     #[serde(rename = "scan.subnet")]
     ScanSubnet,
     #[serde(rename = "scan.busy")]

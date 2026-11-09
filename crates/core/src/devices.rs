@@ -6,6 +6,7 @@
 //! the tasks of the endpoints it touches restart, and the series of a device are declared to
 //! storage in its profile's steps before it is polled.
 
+mod deadband;
 mod routes;
 mod store;
 
@@ -22,7 +23,7 @@ use utoipa::ToSchema;
 use crate::api::{Code, Problem};
 use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
-use crate::endpoint::{self, CADENCE, Task};
+use crate::endpoint::{self, Task};
 use crate::layout::Inverters;
 use crate::mqtt;
 use crate::profiles::Catalogue;
@@ -32,9 +33,10 @@ use crate::settings::{
     self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, publish,
     snapshot,
 };
-use crate::storage::{self, Database, Declarer, Policy};
+use crate::storage::{self, Database, Declarer};
 use crate::subscriber::{self, Subscriber};
 use crate::transport::Endpoint;
+use deadband::RoleDeadband;
 
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -63,6 +65,12 @@ enum Refusal {
     ProfileChange,
     /// Another device has the unit id on the same endpoint.
     Address,
+    /// The device's profile reads no quantity of the role.
+    DeadbandRole,
+    /// A counter or enum takes no deadband.
+    DeadbandKind,
+    /// A deadband below the role's quantisation step.
+    DeadbandStep,
 }
 
 impl From<Refusal> for Problem {
@@ -77,6 +85,9 @@ impl From<Refusal> for Problem {
             Refusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
             Refusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
             Refusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
+            Refusal::DeadbandRole => (StatusCode::NOT_FOUND, Code::DeadbandRole),
+            Refusal::DeadbandKind => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandKind),
+            Refusal::DeadbandStep => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandStep),
         };
         Self { status, code }
     }
@@ -508,6 +519,53 @@ impl Devices {
             .await
     }
 
+    /// Each role of device `id` with the deadband it is stored with, in its profile's order.
+    ///
+    /// # Errors
+    /// The device or its profile is unknown, or the file cannot be read.
+    pub async fn deadbands(&self, id: u32) -> Result<Vec<RoleDeadband>, Problem> {
+        let device = self.device(id).await?;
+        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        let overrides = self
+            .database
+            .run(move |db| deadband::overrides(db, id))
+            .await
+            .map_err(|_| INTERNAL)?;
+        Ok(deadband::deadbands(&profile, &overrides))
+    }
+
+    /// Overrides the deadband of `role` of device `id`, or removes the override with `None`. The
+    /// device's series are stored with it at once, after their pending change points are written.
+    ///
+    /// # Errors
+    /// The device or role is unknown, the role is a counter or enum, the deadband is below its
+    /// step, or the file cannot be written.
+    pub async fn set_deadband(
+        &self,
+        id: u32,
+        role: String,
+        deadband: Option<f64>,
+        changed: SystemTime,
+    ) -> Result<(), Problem> {
+        let running = self.running.lock().await;
+        let device = self.device(id).await?;
+        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        match deadband {
+            Some(deadband) => deadband::check(&profile, &role, deadband)?,
+            None if profile.quantities().iter().any(|q| q.role == role) => {}
+            None => return Err(Refusal::DeadbandRole.into()),
+        }
+        self.database
+            .run(move |db| deadband::set(db, id, &role, deadband, changed))
+            .await
+            .map_err(|_| INTERNAL)?;
+        self.declare(DeviceId(id), &profile)
+            .await
+            .map_err(|_| INTERNAL)?;
+        drop(running);
+        Ok(())
+    }
+
     /// The one funnel (ADR 7): writes `request` to device `id` through its endpoint task, and
     /// appends the attempt to the write log. A snapshot toggle writes its target instead: 1 stores
     /// the target's value and writes the locked one, 0 writes the stored value back.
@@ -849,12 +907,17 @@ impl Devices {
         })
     }
 
-    /// Declares every series of `device` in its profile's steps. A series storage refuses, such as
-    /// one stored in another step, is logged and not stored.
+    /// Declares every series of `device` in its profile's steps, with its deadbands. A series
+    /// storage refuses, such as one stored in another step, is logged and not stored.
     async fn declare(&self, device: DeviceId, profile: &Profile) -> Result<(), storage::Error> {
+        let id = device.0;
+        let overrides = self
+            .database
+            .run(move |db| deadband::overrides(db, id))
+            .await?;
         for q in profile.quantities() {
             let series = self.bus.intern(&q.role, q.index);
-            let policy = Policy::new(q.kind(), q.unit(), q.step(), CADENCE);
+            let policy = deadband::policy(q, &overrides);
             match self.declarer.declare(device, series, policy).await {
                 Ok(()) => {}
                 Err(storage::Error::Stopped) => return Err(storage::Error::Stopped),

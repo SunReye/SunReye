@@ -1,5 +1,6 @@
 //! Tests through the public interface only.
 
+mod deadband;
 mod decode;
 mod deye;
 mod identify;
