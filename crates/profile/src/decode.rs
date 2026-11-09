@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::ADDRESS;
 use crate::document::{Kind, Range};
-use crate::profile::{Expr, Profile, Read};
+use crate::profile::{Expr, Profile, Read, Register};
 
 /// The words a device answered in one poll, by address. Reuse it across polls: `clear` keeps its
 /// capacity, so a steady poll allocates nothing.
@@ -35,19 +35,11 @@ impl Profile {
     pub fn decode(&self, registers: &Registers, values: &mut [Option<f64>]) {
         for (position, quantity) in self.quantities().iter().enumerate() {
             let value = match &quantity.read {
-                Read::Register {
-                    address,
-                    kind,
-                    scale,
-                    offset,
-                    scale_factor,
-                } => raw(*kind, *address, registers)
-                    .zip(power(*scale_factor, registers))
-                    .map(|(raw, power)| scaled(power(raw), *scale, *offset))
+                Read::Register(register) => read(register, registers)
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
-                Read::Topic { .. } => None,
+                Read::Point { .. } | Read::Topic { .. } => None,
             };
             if let Some(slot) = values.get_mut(position) {
                 *slot = value;
@@ -72,7 +64,7 @@ impl Profile {
             .enumerate()
             .filter_map(|(position, q)| match &q.read {
                 Read::Topic { topic, .. } => Some((position, topic.replace(ADDRESS, &address))),
-                Read::Register { .. } | Read::Compute(_) => None,
+                Read::Register(_) | Read::Point { .. } | Read::Compute(_) => None,
             })
             .collect()
     }
@@ -127,33 +119,54 @@ fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
     }
 }
 
-fn raw(kind: Kind, address: u16, registers: &Registers) -> Option<f64> {
-    let low = registers.word(address)?;
-    match kind {
-        Kind::U16 => Some(f64::from(low)),
-        Kind::I16 => Some(f64::from(i16::from_ne_bytes(low.to_ne_bytes()))),
-        Kind::U32 => {
-            let high = registers.word(address.checked_add(1)?)?;
-            Some(f64::from(u32::from(high) << 16 | u32::from(low)))
+/// `None` while a word is unanswered, or for a SunSpec sentinel.
+fn read(register: &Register, registers: &Registers) -> Option<f64> {
+    let Register {
+        address,
+        kind,
+        scale,
+        offset,
+        scale_factor,
+        sunspec,
+    } = *register;
+    let first = registers.word(address)?;
+    let raw = match kind {
+        Kind::U16 => (!sunspec || first != 0xFFFF).then_some(f64::from(first))?,
+        Kind::I16 => {
+            let value = i16::from_ne_bytes(first.to_ne_bytes());
+            (!sunspec || value != i16::MIN).then_some(f64::from(value))?
         }
-    }
-}
-
-/// Applies the power of ten in the register `scale_factor`; `None` while that is unanswered.
-fn power(scale_factor: Option<u16>, registers: &Registers) -> Option<impl Fn(f64) -> f64> {
+        Kind::U32 | Kind::Acc32 => {
+            let second = registers.word(address.checked_add(1)?)?;
+            let (high, low) = if sunspec {
+                (first, second)
+            } else {
+                (second, first)
+            };
+            let value = u32::from(high) << 16 | u32::from(low);
+            let sentinel = match kind {
+                Kind::Acc32 => Some(0),
+                Kind::U32 if sunspec => Some(u32::MAX),
+                Kind::U16 | Kind::I16 | Kind::U32 => None,
+            };
+            (sentinel != Some(value)).then_some(f64::from(value))?
+        }
+    };
     let exponent = match scale_factor {
-        Some(address) => i32::from(i16::from_ne_bytes(registers.word(address)?.to_ne_bytes())),
+        Some(at) => {
+            let exponent = i16::from_ne_bytes(registers.word(at)?.to_ne_bytes());
+            (!sunspec || exponent != i16::MIN).then_some(i32::from(exponent))?
+        }
         None => 0,
     };
     // Dividing by 10^n keeps 5999 at -2 exactly 59.99, which multiplying by 0.01 does not.
     let factor = 10_f64.powi(exponent.abs());
-    Some(move |raw: f64| {
-        if exponent < 0 {
-            raw / factor
-        } else {
-            raw * factor
-        }
-    })
+    let powered = if exponent < 0 {
+        raw / factor
+    } else {
+        raw * factor
+    };
+    Some(scaled(powered, scale, offset))
 }
 
 #[expect(

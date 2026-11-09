@@ -6,8 +6,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::Kind;
-use crate::profile::{Quantity, Read};
+use crate::profile::{Quantity, Read, Register};
 
 /// Most registers one request may ask for; Modbus caps a read at 125.
 const MAX_BLOCK: u16 = 120;
@@ -42,7 +41,7 @@ impl Block {
         u32::from(self.start) + u32::from(self.count)
     }
 
-    fn covers(self, address: u16) -> bool {
+    pub(crate) fn covers(self, address: u16) -> bool {
         address >= self.start && u32::from(address) < self.end()
     }
 }
@@ -91,19 +90,16 @@ fn mergeable(last: Block, next: Block, tolerance: u16) -> bool {
 
 fn addresses(quantity: &Quantity) -> Vec<u16> {
     match quantity.read {
-        Read::Register {
+        Read::Register(Register {
             address,
             kind,
             scale_factor,
             ..
-        } => {
-            let words = match kind {
-                Kind::U32 => [Some(address), address.checked_add(1)],
-                Kind::U16 | Kind::I16 => [Some(address), None],
-            };
-            words.into_iter().flatten().chain(scale_factor).collect()
-        }
-        Read::Compute(_) | Read::Topic { .. } => Vec::new(),
+        }) => (0..kind.words())
+            .map_while(|word| address.checked_add(word))
+            .chain(scale_factor)
+            .collect(),
+        Read::Point { .. } | Read::Compute(_) | Read::Topic { .. } => Vec::new(),
     }
 }
 
@@ -140,7 +136,9 @@ fn atomic_groups(quantities: &[Quantity]) -> Vec<Block> {
                 .flatten()
                 .copied()
                 .collect(),
-            Read::Register { .. } | Read::Topic { .. } => addresses(quantity).into_iter().collect(),
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } => {
+                addresses(quantity).into_iter().collect()
+            }
         };
         if let (Read::Compute(_), Some(min), Some(max), true) = (
             &quantity.read,

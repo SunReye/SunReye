@@ -56,11 +56,21 @@ impl Chain {
     /// of at most `gap_tolerance` (see [`crate::Framing::gap_tolerance`]).
     #[must_use]
     pub fn read_plan(&self, gap_tolerance: u16) -> Vec<Block> {
-        let registers = self
-            .models
+        plan::merge_across_gaps(&plan::contiguous(self.registers()), gap_tolerance)
+    }
+
+    /// A merged block's model registers as plain blocks: the fallback when a device refuses it
+    /// with Modbus exception 2.
+    #[must_use]
+    pub fn split(&self, block: Block) -> Vec<Block> {
+        plan::contiguous(self.registers().filter(|a| block.covers(*a)))
+    }
+
+    /// Every model's registers but the headers, ascending.
+    fn registers(&self) -> impl Iterator<Item = u16> + '_ {
+        self.models
             .iter()
-            .flat_map(|m| (0..m.length).map_while(move |offset| m.start.checked_add(offset)));
-        plan::merge_across_gaps(&plan::contiguous(registers), gap_tolerance)
+            .flat_map(|m| (0..m.length).map_while(move |offset| m.start.checked_add(offset)))
     }
 }
 

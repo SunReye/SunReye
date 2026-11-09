@@ -232,6 +232,9 @@ pub struct QuantityDoc {
     pub key: String,
     pub role: String,
     pub index: Option<u32>,
+    /// The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
+    /// then counts from the model's ID register, as the SunSpec model definitions lay it out.
+    pub model: Option<Vec<u16>>,
     pub register: Option<u16>,
     /// An `mqtt` topic under the connection's root; `{address}` stands for the device address.
     pub topic: Option<String>,
@@ -258,7 +261,11 @@ impl QuantityDoc {
     pub fn capabilities(&self) -> impl Iterator<Item = &'static str> {
         [
             self.kind.map(Kind::capability),
-            self.register.map(|_| "modbus"),
+            match (&self.model, self.register) {
+                (Some(_), _) => Some("sunspec"),
+                (None, Some(_)) => Some("modbus"),
+                (None, None) => None,
+            },
             self.topic.as_ref().map(|_| "mqtt"),
             self.scale_factor.map(|_| "scale-factor"),
             self.compute.as_ref().map(|_| "compute"),
@@ -268,7 +275,7 @@ impl QuantityDoc {
     }
 }
 
-/// A register's type. Double words are low word first.
+/// A register's type. Double words are low word first, or high first in a SunSpec model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
@@ -276,6 +283,8 @@ pub enum Kind {
     U16,
     I16,
     U32,
+    /// SunSpec's accumulator: a `u32` whose 0 means unimplemented.
+    Acc32,
 }
 
 impl Kind {
@@ -284,6 +293,15 @@ impl Kind {
             Self::U16 => "u16",
             Self::I16 => "i16",
             Self::U32 => "u32",
+            Self::Acc32 => "acc32",
+        }
+    }
+
+    /// The registers a value of this type takes.
+    pub const fn words(self) -> u16 {
+        match self {
+            Self::U16 | Self::I16 => 1,
+            Self::U32 | Self::Acc32 => 2,
         }
     }
 }

@@ -111,7 +111,7 @@ impl Unlock {
                 .parse::<i16>()
                 .ok()
                 .map(|w| vec![u16::from_ne_bytes(w.to_ne_bytes())]),
-            Kind::U32 => code
+            Kind::U32 | Kind::Acc32 => code
                 .parse::<u32>()
                 .ok()
                 .map(|w| vec![(w & 0xFFFF) as u16, (w >> 16) as u16]),
@@ -263,7 +263,7 @@ impl Setting {
             Kind::I16 => i16::try_from(raw)
                 .ok()
                 .map(|w| vec![u16::from_ne_bytes(w.to_ne_bytes())]),
-            Kind::U32 => u32::try_from(raw)
+            Kind::U32 | Kind::Acc32 => u32::try_from(raw)
                 .ok()
                 .map(|w| vec![(w & 0xFFFF) as u16, (w >> 16) as u16]),
         }
@@ -276,7 +276,7 @@ impl Setting {
         let raw = match self.kind {
             Kind::U16 => f64::from(low),
             Kind::I16 => f64::from(i16::from_ne_bytes(low.to_ne_bytes())),
-            Kind::U32 => f64::from(u32::from(*words.get(1)?) << 16 | u32::from(low)),
+            Kind::U32 | Kind::Acc32 => f64::from(u32::from(*words.get(1)?) << 16 | u32::from(low)),
         };
         Some(raw * self.scale)
     }
@@ -296,10 +296,7 @@ impl Setting {
 }
 
 const fn width(kind: Kind) -> u16 {
-    match kind {
-        Kind::U16 | Kind::I16 => 1,
-        Kind::U32 => 2,
-    }
+    kind.words()
 }
 
 pub fn compile(
@@ -426,6 +423,9 @@ fn setting(
     let toggles = matches!(doc.recipe.as_slice(), [StepDoc::SnapshotToggle(_)]);
     if !toggles && doc.read_back.is_some() == doc.write_only {
         return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
+    }
+    if doc.kind == Kind::Acc32 {
+        return refuse("an acc32 is read, never written");
     }
     let kind = doc.kind;
     let recipe = recipe(doc.recipe, kind, quantities).map_err(|problem| (key.clone(), problem))?;

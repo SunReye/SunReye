@@ -47,11 +47,11 @@ fn another_schema_is_refused_by_its_number() {
 #[test]
 fn a_missing_capability_is_refused_by_name() {
     let mut needs = doc(&json!([]));
-    needs["requires"] = json!(["modbus", "sunspec"]);
+    needs["requires"] = json!(["modbus", "http"]);
     let error = load(&needs).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "this build lacks the required capability `sunspec`"
+        "this build lacks the required capability `http`"
     );
 }
 
@@ -97,7 +97,7 @@ fn a_key_is_declared_once() {
 #[test]
 fn a_u32_cannot_start_at_the_last_register() {
     let edge = json!([{ "key": "a", "role": "extra.a", "register": 65535, "type": "u32" }]);
-    assert_eq!(refusal(&edge).1, "a u32 needs two registers");
+    assert_eq!(refusal(&edge).1, "a double word needs two registers");
 }
 
 #[test]
@@ -116,4 +116,33 @@ fn an_mppt_voltage_window_must_not_be_inverted() {
         load(&inverted).unwrap_err().to_string(),
         "MPPT input 1: the voltage window is inverted"
     );
+}
+
+#[test]
+fn a_sunspec_point_is_refused_where_it_cannot_be_read() {
+    let model = json!([103]);
+    let cases = [
+        (
+            json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "acc32" }]),
+            "an acc32 is a SunSpec point",
+        ),
+        (
+            json!([{ "key": "a", "role": "extra.a", "model": model, "register": 1, "type": "u16" }]),
+            "registers 0 and 1 of a SunSpec model are its header",
+        ),
+        (
+            json!([{ "key": "a", "role": "extra.a", "model": [], "register": 2, "type": "u16" }]),
+            "list at least one SunSpec model",
+        ),
+        (
+            json!([
+                { "key": "a", "role": "extra.a", "register": 2, "type": "u16" },
+                { "key": "b", "role": "extra.b", "model": model, "register": 2, "type": "u16" },
+            ]),
+            "a profile reads through one binding",
+        ),
+    ];
+    for (quantities, problem) in cases {
+        assert_eq!(refusal(&quantities).1, problem);
+    }
 }

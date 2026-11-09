@@ -26,9 +26,11 @@ pub const SCHEMA: u32 = 1;
 pub const CAPABILITIES: &[&str] = &[
     "modbus",
     "mqtt",
+    "sunspec",
     "u16",
     "i16",
     "u32",
+    "acc32",
     "scale-factor",
     "compute",
     "write",
