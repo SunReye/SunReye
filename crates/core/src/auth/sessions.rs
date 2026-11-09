@@ -2,7 +2,6 @@
 //! nothing to flash.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -69,12 +68,17 @@ impl Sessions {
 }
 
 /// 32 random bytes as hex.
-fn random_token() -> Option<String> {
+pub(super) fn random_token() -> Option<String> {
     let mut bytes = [0; 32];
     getrandom::fill(&mut bytes).ok()?;
-    let mut token = String::with_capacity(64);
-    for byte in bytes {
-        write!(token, "{byte:02x}").ok()?;
-    }
-    Some(token)
+    Some(hex(&bytes))
+}
+
+/// `bytes` as lowercase hex.
+pub(super) fn hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .flat_map(|b| [b >> 4, b & 15])
+        .filter_map(|nibble| char::from_digit(u32::from(nibble), 16))
+        .collect()
 }

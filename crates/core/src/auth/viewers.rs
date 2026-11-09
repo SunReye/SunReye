@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::sessions::Grant;
-use super::{Auth, BODY, INTERNAL, PASSWORD, blocking, hash};
+use super::{Auth, BODY, INTERNAL, PASSWORD, PATH, blocking, hash};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::changes::{self, Action, Entry, Subject};
 
@@ -28,10 +28,6 @@ const NAME: Problem = Problem {
 const VALUE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::ViewerValue,
-};
-const PATH: Problem = Problem {
-    status: StatusCode::BAD_REQUEST,
-    code: Code::RequestPath,
 };
 
 /// A viewer as the admin adds it.

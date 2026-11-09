@@ -47,6 +47,9 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/viewers", Admin),
     (Method::POST, "/api/v1/viewers", Admin),
     (Method::DELETE, "/api/v1/viewers/{id}", Admin),
+    (Method::GET, "/api/v1/tokens", Admin),
+    (Method::POST, "/api/v1/tokens", Admin),
+    (Method::DELETE, "/api/v1/tokens/{id}", Admin),
 ];
 
 /// What the route `path`, as routed with its `{parameters}`, requires for `method`; `None`

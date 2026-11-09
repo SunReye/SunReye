@@ -4,6 +4,7 @@
 use axum::http::{Method, StatusCode};
 use serde_json::Value;
 
+use super::tokens::bearer;
 use super::{Core, get, json, problem, with_cookie};
 use crate::auth::{Access, access};
 
@@ -105,4 +106,32 @@ async fn a_viewer_reaches_every_read_route_and_no_admin_route() {
         .await;
 
     check_every_route(&core, "a viewer", |request| with_cookie(&viewer, request)).await;
+}
+
+#[tokio::test]
+async fn a_read_token_reaches_every_read_route_and_no_admin_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let (_, token) = core.token(&admin, "evcc", "read").await;
+
+    check_every_route(&core, "a read token", |request| bearer(&token, request)).await;
+}
+
+#[tokio::test]
+async fn an_admin_token_reaches_every_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    // Token 1 is the one `DELETE /api/v1/tokens/{id}` removes.
+    core.token(&admin, "spare", "read").await;
+    let (_, token) = core.token(&admin, "script", "admin").await;
+
+    for (method, path) in operations(&core).await {
+        let response = core.send(bearer(&token, request(&method, &path))).await;
+
+        let status = response.status();
+        assert!(
+            status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+            "an admin token was refused {method} {path}: {status}"
+        );
+    }
 }

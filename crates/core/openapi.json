@@ -47,7 +47,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection`, `device`, `location` or `viewer`.",
+            "description": "`connection`, `device`, `location`, `viewer` or `token`.",
             "type": "string"
           }
         },
@@ -79,6 +79,8 @@
           "viewer.none",
           "viewer.name",
           "viewer.value",
+          "token.none",
+          "token.value",
           "history.range",
           "history.counter",
           "forecast.range",
@@ -188,6 +190,45 @@
           "connections"
         ],
         "type": "object"
+      },
+      "Created": {
+        "allOf": [
+          {
+            "description": "A token as the API reads it: never the token.",
+            "properties": {
+              "id": {
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/Scope"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "scope"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "token": {
+                "description": "Sent as `Authorization: Bearer <token>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "token"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A token just created: the only time the token is shown."
       },
       "Credentials": {
         "description": "A sign-in: the admin's password alone, or a viewer's name and password.",
@@ -769,6 +810,14 @@
         ],
         "type": "object"
       },
+      "Scope": {
+        "description": "What a token may do.",
+        "enum": [
+          "read",
+          "admin"
+        ],
+        "type": "string"
+      },
       "SettingSupport": {
         "description": "A setting a device's profile declares (ADR 5, 7).",
         "properties": {
@@ -897,6 +946,59 @@
           "day"
         ],
         "type": "string"
+      },
+      "Token": {
+        "description": "A token as the API reads it: never the token.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "TokenDraft": {
+        "description": "A token as the admin creates it.",
+        "properties": {
+          "name": {
+            "description": "What it is for, such as `evcc`.",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "Tokens": {
+        "properties": {
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "type": "object"
       },
       "Transport": {
         "description": "The wire framing on a connection's endpoint.",
@@ -1917,6 +2019,95 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/tokens": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Creates a token and shows it, once."
+      }
+    },
+    "/api/v1/tokens/{id}": {
+      "delete": {
+        "operationId": "remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a token; a request carrying it is refused from now on."
       }
     },
     "/api/v1/viewers": {

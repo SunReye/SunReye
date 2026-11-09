@@ -23,6 +23,8 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "viewer.none": m.problem_viewer_none,
   "viewer.name": m.problem_viewer_name,
   "viewer.value": m.problem_viewer_value,
+  "token.none": m.problem_token_none,
+  "token.value": m.problem_token_value,
   "history.range": m.problem_history_range,
   "history.counter": m.problem_history_counter,
   "forecast.range": m.problem_forecast_range,

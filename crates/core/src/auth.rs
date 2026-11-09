@@ -3,6 +3,7 @@
 mod access;
 mod backoff;
 mod sessions;
+mod tokens;
 mod viewers;
 
 pub use access::{Access, access};
@@ -27,6 +28,7 @@ use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{Grant, IDLE, Sessions};
+use tokens::{Known, Scope};
 
 /// bcrypt's work factor, as v4 used.
 const COST: u32 = 12;
@@ -64,6 +66,10 @@ const PASSWORD: Problem = Problem {
 const FORBIDDEN: Problem = Problem {
     status: StatusCode::FORBIDDEN,
     code: Code::AuthForbidden,
+};
+const PATH: Problem = Problem {
+    status: StatusCode::BAD_REQUEST,
+    code: Code::RequestPath,
 };
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -107,6 +113,7 @@ struct Inner {
     /// The admin's bcrypt hash; `None` until the first run sets it.
     admin: Mutex<Option<String>>,
     sessions: Mutex<Sessions>,
+    tokens: Mutex<Known>,
     backoff: Mutex<Backoff>,
 }
 
@@ -114,12 +121,14 @@ impl Auth {
     /// `ingress` is the Home Assistant Supervisor's address, set only in the add-on image.
     ///
     /// # Errors
-    /// The stored admin cannot be read.
+    /// The stored admin or tokens cannot be read.
     pub async fn open(database: Database, ingress: Option<IpAddr>) -> Result<Self, Error> {
-        let admin = database
+        let (admin, tokens) = database
             .run(|db| {
-                db.query_row("SELECT hash FROM admin", [], |row| row.get(0))
-                    .optional()
+                let admin = db
+                    .query_row("SELECT hash FROM admin", [], |row| row.get(0))
+                    .optional()?;
+                Ok((admin, tokens::load(db)?))
             })
             .await?;
         Ok(Self(Arc::new(Inner {
@@ -127,6 +136,7 @@ impl Auth {
             ingress,
             admin: Mutex::new(admin),
             sessions: Mutex::default(),
+            tokens: Mutex::new(tokens),
             backoff: Mutex::default(),
         })))
     }
@@ -143,6 +153,8 @@ impl Auth {
                 OpenApiRouter::new()
                     .routes(routes!(viewers::list, viewers::add))
                     .routes(routes!(viewers::remove))
+                    .routes(routes!(tokens::list, tokens::add))
+                    .routes(routes!(tokens::remove))
                     .with_state((self.clone(), clock)),
             )
             .merge(api)
@@ -175,6 +187,25 @@ impl Auth {
             .backoff
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn tokens(&self) -> std::sync::MutexGuard<'_, Known> {
+        self.0.tokens.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Who signed `headers`: a bearer token, else a live session, whose use renews it.
+    fn identify(&self, headers: &HeaderMap) -> Result<Caller, Problem> {
+        if let Some(token) = bearer(headers) {
+            let scope = self.tokens().get(&tokens::digest(token)).map(|&(_, s)| s);
+            return scope.map(Caller::Token).ok_or(REQUIRED);
+        }
+        let session = session_token(headers)
+            .and_then(|token| Some((self.sessions().touch(&token, Instant::now())?, token)));
+        match session {
+            Some((grant, token)) => Ok(Caller::Session(grant, token)),
+            None if self.admin().is_none() => Err(SETUP),
+            None => Err(REQUIRED),
+        }
     }
 
     fn sessions(&self) -> std::sync::MutexGuard<'_, Sessions> {
@@ -319,22 +350,43 @@ async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Respon
     if auth.via_ingress(&request) {
         return next.run(request).await;
     }
-    let session = session_token(request.headers())
-        .and_then(|token| Some((auth.sessions().touch(&token, Instant::now())?, token)));
-    let Some((grant, token)) = session else {
-        let problem = if auth.admin().is_none() {
-            SETUP
-        } else {
-            REQUIRED
-        };
-        return problem.into_response();
+    let caller = match auth.identify(request.headers()) {
+        Ok(caller) => caller,
+        Err(problem) => return problem.into_response(),
     };
-    if access == Access::Admin && grant != Grant::Admin {
+    if access == Access::Admin && !caller.admin() {
         return FORBIDDEN.into_response();
     }
-    // Using a session renews its cookie.
     let tls = over_tls(request.headers());
-    with_cookie(&token, tls, next.run(request).await)
+    let response = next.run(request).await;
+    match caller {
+        // Using a session renews its cookie.
+        Caller::Session(_, token) => with_cookie(&token, tls, response),
+        Caller::Token(_) => response,
+    }
+}
+
+/// Who a request comes from.
+enum Caller {
+    /// A browser session, with its token.
+    Session(Grant, String),
+    Token(Scope),
+}
+
+impl Caller {
+    const fn admin(&self) -> bool {
+        matches!(
+            self,
+            Self::Session(Grant::Admin, _) | Self::Token(Scope::Admin)
+        )
+    }
+}
+
+/// The token of an `Authorization: Bearer` header.
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
+    scheme.eq_ignore_ascii_case("bearer").then(|| token.trim())
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {

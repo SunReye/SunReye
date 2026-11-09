@@ -300,6 +300,10 @@ pub enum Code {
     ViewerName,
     #[serde(rename = "viewer.value")]
     ViewerValue,
+    #[serde(rename = "token.none")]
+    TokenNone,
+    #[serde(rename = "token.value")]
+    TokenValue,
     #[serde(rename = "history.range")]
     HistoryRange,
     #[serde(rename = "history.counter")]

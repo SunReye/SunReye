@@ -15,6 +15,8 @@
   "problem_viewer_none": "This viewer does not exist.",
   "problem_viewer_name": "A viewer with this name already exists.",
   "problem_viewer_value": "A viewer needs a name of at most 64 bytes.",
+  "problem_token_none": "This token does not exist.",
+  "problem_token_value": "A token needs a name of at most 64 bytes.",
   "problem_history_range": "This range is empty or too long.",
   "problem_history_counter": "A counter has no means over this range.",
   "problem_forecast_range": "This forecast range is empty or too long.",

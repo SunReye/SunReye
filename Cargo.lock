@@ -779,6 +779,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "jiff",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",
