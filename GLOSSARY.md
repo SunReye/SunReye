@@ -63,7 +63,7 @@ One value a profile declares: read from a register or computed from earlier quan
 _Avoid_: Metric, point, field
 
 **Read plan**:
-The list of register blocks the core compiles from a profile at load time.
+The list of register blocks the core compiles from a profile at load time, or for SunSpec at connect.
 _Avoid_: Poll list
 
 ## Quantities and storage

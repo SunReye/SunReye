@@ -6,6 +6,7 @@ mod plan;
 mod profile;
 mod role;
 mod setting;
+pub mod sunspec;
 
 use serde::Serialize;
 
