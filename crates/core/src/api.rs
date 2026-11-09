@@ -89,8 +89,9 @@ pub fn router(api: Api) -> Router {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(forecasts::forecasts))
-                .with_state(api.history),
+                .with_state(api.history.clone()),
         )
+        .merge(api.topologies.clone().residual_routes(api.history))
         .merge(
             api.topologies
                 .routes(api.devices.clone(), Clock::clone(&api.clock)),

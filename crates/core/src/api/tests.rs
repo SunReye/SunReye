@@ -28,6 +28,7 @@ use crate::storage::{Problem, Storage};
 use crate::topology::Topologies;
 
 mod access;
+mod balance;
 mod devices;
 mod forecasts;
 mod history;

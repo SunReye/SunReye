@@ -26,6 +26,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/capabilities", Read),
     (Method::GET, "/api/v1/devices/{id}/history", Read),
     (Method::GET, "/api/v1/devices/{id}/forecasts", Read),
+    // History of the plant's points (ADR 14).
+    (Method::GET, "/api/v1/balance", Read),
     // The scene viewers see read-only (ADR 20).
     (Method::GET, "/api/v1/layout", Read),
     (Method::GET, "/api/v1/module-types", Read),

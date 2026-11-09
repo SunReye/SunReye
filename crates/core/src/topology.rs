@@ -4,6 +4,7 @@
 //! Point ids are never reused; a change is a new version applying from its instant, and the plant
 //! device reads the version in force at each reading.
 
+mod residuals;
 mod routes;
 mod store;
 
