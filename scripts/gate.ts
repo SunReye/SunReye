@@ -8,6 +8,8 @@ const web = ["bun", "run", "--cwd", "apps/web"];
 const steps: readonly Command[] = [
   // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
   [...web, "sync"],
+  // The core embeds the SPA's build (ADR 11), so every cargo step needs it.
+  [...web, "build"],
   // Formatting
   ["cargo", "fmt", "--all", "--check"],
   ["oxfmt", "--check"],

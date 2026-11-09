@@ -4,7 +4,7 @@
 use std::convert::Infallible;
 
 use axum::extract::State;
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -18,6 +18,7 @@ use utoipa_axum::routes;
 
 use crate::auth::Auth;
 use crate::live::{Frame, Live};
+use crate::spa;
 use crate::storage;
 use crate::transport::Endpoint;
 
@@ -77,7 +78,9 @@ pub fn router(api: Api) -> Router {
             "/openapi.json",
             get(|| async { ([(header::CONTENT_TYPE, "application/json")], document) }),
         )
-        .fallback(|| async { ROUTE })
+        .fallback(|method: Method, uri: Uri, headers: HeaderMap| async move {
+            spa::serve(&method, &uri, &headers).unwrap_or_else(|| ROUTE.into_response())
+        })
         .method_not_allowed_fallback(|| async { METHOD })
 }
 

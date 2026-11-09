@@ -5,6 +5,7 @@ pub mod auth;
 pub mod bus;
 pub mod endpoint;
 pub mod live;
+mod spa;
 pub mod startup;
 pub mod storage;
 pub mod transport;

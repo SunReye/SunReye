@@ -22,6 +22,7 @@ use crate::storage::{Problem, Storage};
 
 mod history;
 mod live;
+mod screen;
 
 const HOME: &str = "192.0.2.1:50000";
 
