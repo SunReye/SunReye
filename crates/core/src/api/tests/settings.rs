@@ -260,6 +260,129 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
                 "step": 1.0 },
             { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0 },
             { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0 },
+            { "key": "battery.discharge_lock", "values": [0.0, 1.0], "step": 1.0 },
         ])
     );
+}
+
+const LOCK: &str = "battery.discharge_lock";
+const DISCHARGE: &str = "battery.max_discharge_current";
+
+/// The write log entry of a write to the lock's target.
+fn discharge(before: &Value, requested: f64, after: &Value, outcome: &str, plant: &Plant) -> Value {
+    let mut entry = plant.entry(before, requested, after, outcome);
+    entry["setting"] = json!(DISCHARGE);
+    entry
+}
+
+fn written(value: u16) -> Write {
+    Write {
+        unit: 1,
+        start: 109,
+        words: vec![value],
+    }
+}
+
+#[tokio::test]
+async fn the_discharge_lock_writes_zero_and_its_release_restores_the_value_it_held() {
+    let mut plant = Plant::new(Writes::Store, true).await;
+    let start = UNIX_EPOCH + Duration::from_hours(498_384);
+
+    // Register 109 holds 109 before the lock.
+    let (status, engaged) = plant.write(LOCK, json!(1)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        engaged,
+        discharge(&json!(109.0), 0.0, &json!(0.0), "verified", &plant)
+    );
+    assert_eq!(plant.received(), [written(0)]);
+
+    plant.core.set_clock(start + Duration::from_secs(60));
+    let (status, released) = plant.write(LOCK, json!(0)).await;
+    assert_eq!(status, StatusCode::OK);
+    let mut restored = discharge(&json!(0.0), 109.0, &json!(109.0), "verified", &plant);
+    restored["time"] = json!("2026-11-09T00:01:00Z");
+    assert_eq!(released, restored);
+    assert_eq!(plant.received(), [written(109)]);
+    assert_eq!(plant.log().await, json!([engaged, released]));
+}
+
+#[tokio::test]
+async fn releasing_the_lock_with_no_stored_value_is_refused_before_the_device() {
+    let mut plant = Plant::new(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.write(LOCK, json!(0)).await,
+        refused(StatusCode::CONFLICT, "setting.no-snapshot")
+    );
+    assert_eq!(
+        plant.write(LOCK, json!(2)).await,
+        refused(StatusCode::UNPROCESSABLE_ENTITY, "setting.value")
+    );
+    assert_eq!(plant.received(), []);
+    assert_eq!(plant.log().await, json!([]));
+}
+
+#[tokio::test]
+async fn a_verified_release_clears_the_stored_value_and_a_second_release_is_refused() {
+    let plant = Plant::new(Writes::Store, true).await;
+    let start = UNIX_EPOCH + Duration::from_hours(498_384);
+    assert_eq!(plant.write(LOCK, json!(1)).await.0, StatusCode::OK);
+    plant.core.set_clock(start + Duration::from_secs(60));
+    assert_eq!(plant.write(LOCK, json!(0)).await.1["outcome"], "verified");
+
+    plant.core.set_clock(start + Duration::from_secs(120));
+    assert_eq!(
+        plant.write(LOCK, json!(0)).await,
+        refused(StatusCode::CONFLICT, "setting.no-snapshot")
+    );
+}
+
+#[tokio::test]
+async fn engaging_an_engaged_lock_keeps_the_value_stored_first() {
+    let mut plant = Plant::new(Writes::Store, true).await;
+    let start = UNIX_EPOCH + Duration::from_hours(498_384);
+    assert_eq!(plant.write(LOCK, json!(1)).await.0, StatusCode::OK);
+
+    plant.core.set_clock(start + Duration::from_secs(60));
+    // The target already holds 0: nothing is written, and 0 is not stored over 109.
+    assert_eq!(plant.write(LOCK, json!(1)).await.1["outcome"], "unchanged");
+    plant.core.set_clock(start + Duration::from_secs(120));
+    assert_eq!(plant.write(LOCK, json!(0)).await.1["requested"], 109.0);
+    assert_eq!(plant.received(), [written(0), written(109)]);
+}
+
+#[tokio::test]
+async fn the_value_is_stored_before_the_write_so_a_lock_that_never_answered_still_releases() {
+    let mut plant = Plant::new(Writes::Silent, true).await;
+    let start = UNIX_EPOCH + Duration::from_hours(498_384);
+
+    assert_eq!(plant.write(LOCK, json!(1)).await.1["outcome"], "unknown");
+
+    plant.core.set_clock(start + Duration::from_secs(60));
+    // The silent device kept 109, so restoring it writes nothing.
+    let (status, released) = plant.write(LOCK, json!(0)).await;
+    assert_eq!(status, StatusCode::OK);
+    let mut restored = discharge(&json!(109.0), 109.0, &Value::Null, "unchanged", &plant);
+    restored["time"] = json!("2026-11-09T00:01:00Z");
+    assert_eq!(released, restored);
+    assert_eq!(plant.received(), [written(0)]);
+}
+
+#[tokio::test]
+async fn a_release_the_device_ignores_keeps_the_stored_value_for_a_retry() {
+    let mut plant = Plant::new(Writes::First, true).await;
+    let start = UNIX_EPOCH + Duration::from_hours(498_384);
+    assert_eq!(plant.write(LOCK, json!(1)).await.1["outcome"], "verified");
+
+    for minute in 1..=2 {
+        plant.core.set_clock(start + Duration::from_mins(minute));
+        let (status, released) = plant.write(LOCK, json!(0)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            (&released["requested"], &released["outcome"]),
+            (&json!(109.0), &json!("mismatch"))
+        );
+    }
+    assert_eq!(plant.received(), [written(0), written(109), written(109)]);
 }

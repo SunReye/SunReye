@@ -3,14 +3,15 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "requires": [
     "modbus",
     "u16",
     "i16",
     "u32",
     "compute",
-    "write"
+    "write",
+    "snapshot-toggle"
   ],
   "inverter": {
     "maxInputVoltage": 800,
@@ -1115,6 +1116,23 @@
       "readBack": {
         "register": 142
       }
+    },
+    {
+      "key": "battery.discharge_lock",
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "recipe": [
+        {
+          "snapshotToggle": {
+            "target": "battery.max_discharge_current",
+            "locked": 0
+          }
+        }
+      ]
     }
   ]
 }

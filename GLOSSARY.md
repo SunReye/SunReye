@@ -114,6 +114,10 @@ _Avoid_: Guard, check
 The result of a write: `verified`, `mismatch`, `unknown`, `partial`, or `unchanged` when no write was needed.
 _Avoid_: Status, result
 
+**Snapshot toggle**:
+A setting that locks another setting at a fixed value and, on release, restores the value it held before. Deye's battery discharge lock is one.
+_Avoid_: Composite control, switch
+
 **Live control**:
 A write the device reverts unless it is refreshed. Only a controller under a lease may use it.
 _Avoid_: Remote control, setpoint

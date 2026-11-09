@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crate::document::{
-    BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc, UnlockDoc,
+    BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc, ToggleDoc, UnlockDoc,
 };
 
 /// One writable device parameter.
@@ -37,7 +37,7 @@ impl Field {
 }
 
 /// One step of a recipe.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Step {
     /// Writes the value's words from `register` with function code 16: Deye ignores function code
     /// 6 on its settings registers (measured live).
@@ -58,6 +58,17 @@ pub enum Step {
     Unlock(Unlock),
     /// Waits before the next step; the endpoint's polls wait with it.
     Delay(Duration),
+    /// Locks another setting at a fixed value and restores it on release; the only step.
+    SnapshotToggle(Toggle),
+}
+
+/// A switch over another setting: 1 stores the target's value and writes `locked`, 0 writes the
+/// stored value back. Each write is the target's, through the funnel.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Toggle {
+    /// The key of the setting it locks.
+    pub target: String,
+    pub locked: f64,
 }
 
 /// Unlocks the device with a secret its connection holds by name.
@@ -107,7 +118,8 @@ impl Step {
             Self::Activate { .. }
             | Self::Delay(_)
             | Self::Precondition { .. }
-            | Self::Unlock(_) => false,
+            | Self::Unlock(_)
+            | Self::SnapshotToggle(_) => false,
         }
     }
 }
@@ -159,6 +171,15 @@ impl Setting {
     #[must_use]
     pub fn finally(&self) -> &[Relock] {
         self.unlock().map_or(&[], |unlock| &unlock.finally)
+    }
+
+    /// The setting it locks, when it is a snapshot toggle.
+    #[must_use]
+    pub const fn toggle(&self) -> Option<&Toggle> {
+        match self.recipe.as_slice() {
+            [Step::SnapshotToggle(toggle)] => Some(toggle),
+            _ => None,
+        }
     }
 
     /// Where a write is read back; `None` for a write-only setting.
@@ -252,7 +273,46 @@ pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static 
         }
         settings.push(setting(doc.key.clone(), doc)?);
     }
+    for setting in &settings {
+        let Some(toggle) = setting.toggle() else {
+            continue;
+        };
+        let problem = match settings.iter().find(|s| s.key == toggle.target) {
+            None => "a snapshot toggle targets a setting of the profile",
+            Some(target) if target.toggle().is_some() => {
+                "a snapshot toggle's target is not a toggle"
+            }
+            Some(target) if target.read_back.is_none() => "a snapshot toggle's target reads back",
+            Some(target) if target.encode(toggle.locked).is_none() => {
+                "a snapshot toggle's locked value is one its target takes"
+            }
+            Some(_) => continue,
+        };
+        return Err((setting.key.clone(), problem));
+    }
     Ok(settings)
+}
+
+/// A snapshot toggle's own rules: the only step, switched by 0 and 1, read back through its
+/// target.
+fn toggle(doc: &SettingDoc) -> Result<(), &'static str> {
+    if !doc
+        .recipe
+        .iter()
+        .any(|s| matches!(s, StepDoc::SnapshotToggle(_)))
+    {
+        return Ok(());
+    }
+    if doc.recipe.len() != 1 {
+        return Err("a snapshot toggle is its setting's only step");
+    }
+    if doc.read_back.is_some() || doc.write_only {
+        return Err("a snapshot toggle reads back through its target");
+    }
+    if doc.range.is_some() || doc.values.as_deref() != Some(&[0.0, 1.0]) {
+        return Err("a snapshot toggle takes the values 0 and 1");
+    }
+    Ok(())
 }
 
 fn mask(mask: u16, kind: Kind) -> Result<u16, &'static str> {
@@ -310,7 +370,11 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
     if doc.recipe.is_empty() {
         return refuse("the recipe has no step");
     }
-    if doc.read_back.is_some() == doc.write_only {
+    if let Err(problem) = toggle(&doc) {
+        return refuse(problem);
+    }
+    let toggles = matches!(doc.recipe.as_slice(), [StepDoc::SnapshotToggle(_)]);
+    if !toggles && doc.read_back.is_some() == doc.write_only {
         return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
     }
     let kind = doc.kind;
@@ -361,6 +425,9 @@ fn step(doc: StepDoc, kind: Kind) -> Result<Step, &'static str> {
             value: a.value,
         }),
         StepDoc::Unlock(u) => unlock(u),
+        StepDoc::SnapshotToggle(ToggleDoc { target, locked }) => {
+            Ok(Step::SnapshotToggle(Toggle { target, locked }))
+        }
     }
 }
 

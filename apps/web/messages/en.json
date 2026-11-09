@@ -49,6 +49,7 @@
   "problem_setting_interval": "This setting was written too recently; wait for its minimum interval.",
   "problem_setting_precondition": "The device is not in a state that allows this setting to be written.",
   "problem_setting_community": "A community profile loads read-only: its settings are not written.",
+  "problem_setting_no_snapshot": "The lock is not engaged: no value is stored to restore.",
   "problem_secret_missing": "The connection holds no secret of the name this setting's unlock needs.",
   "problem_secret_value": "The connection's secret is not a code this setting's unlock can write.",
   "problem_index_value": "A profile index needs an http or https URL.",

@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay";
+export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
@@ -42,7 +42,7 @@ export type Setting = { key: string, type: Kind, scale?: number, range?: Range, 
  */
 minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boolean, };
 
-export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay };
+export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle };
 
 export type Register = { register: number, };
 
@@ -65,6 +65,12 @@ secret: string,
 finally: Array<Relock>, };
 
 export type Relock = { register: number, words: Array<number>, };
+
+export type SnapshotToggle = { 
+/**
+ * The key of the setting it locks.
+ */
+target: string, locked: number, };
 
 export type Masked = { register: number, mask: number, };
 

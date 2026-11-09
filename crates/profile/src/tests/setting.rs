@@ -458,3 +458,91 @@ fn a_recipe_unlocks_once_before_it_writes() {
         "a relock writes 1 to 123 registers"
     );
 }
+
+/// Deye's battery discharge lock: 1 writes 0 to `current`, 0 restores what it held.
+fn lock() -> Value {
+    json!({
+        "key": "lock", "type": "u16", "values": [0, 1], "minInterval": 60,
+        "recipe": [{ "snapshotToggle": { "target": "current", "locked": 0 } }],
+    })
+}
+
+#[test]
+fn a_snapshot_toggle_locks_another_setting_at_a_value_it_takes() {
+    let profile = load(&json!([current(), lock()])).unwrap();
+
+    let toggle = profile.setting("lock").unwrap().toggle().unwrap();
+
+    assert_eq!((toggle.target.as_str(), toggle.locked), ("current", 0.0));
+    assert!(profile.setting("current").unwrap().toggle().is_none());
+    assert_eq!(
+        warnings(
+            &json!([current(), lock()]),
+            &json!(["modbus", "u16", "write"])
+        ),
+        ["`requires` lacks `snapshot-toggle`, which the profile uses"]
+    );
+}
+
+#[test]
+fn a_snapshot_toggle_is_its_settings_only_step_and_reads_back_through_its_target() {
+    let mut late = lock();
+    late["recipe"] = json!([{ "delay": { "ms": 10 } }, lock()["recipe"][0]]);
+    let mut read = lock();
+    read["readBack"] = json!({ "register": 108 });
+    let mut silent = lock();
+    silent["writeOnly"] = json!(true);
+    let mut ranged = lock();
+    ranged.as_object_mut().unwrap().remove("values");
+    ranged["range"] = json!({ "min": 0, "max": 1 });
+    let mut three = lock();
+    three["values"] = json!([0, 1, 2]);
+    for (setting, problem) in [
+        (late, "a snapshot toggle is its setting's only step"),
+        (read, "a snapshot toggle reads back through its target"),
+        (silent, "a snapshot toggle reads back through its target"),
+        (ranged, "a snapshot toggle takes the values 0 and 1"),
+        (three, "a snapshot toggle takes the values 0 and 1"),
+    ] {
+        assert_eq!(
+            refusal(&json!([current(), setting])),
+            ("lock".into(), problem)
+        );
+    }
+}
+
+#[test]
+fn a_snapshot_toggle_targets_a_readable_setting_that_takes_its_locked_value() {
+    let mut unread = current();
+    unread.as_object_mut().unwrap().remove("readBack");
+    unread["writeOnly"] = json!(true);
+    let mut outside = lock();
+    outside["recipe"][0]["snapshotToggle"]["locked"] = json!(351);
+    let mut nested = lock();
+    nested["key"] = json!("nested");
+    nested["recipe"][0]["snapshotToggle"]["target"] = json!("lock");
+    for (settings, problem) in [
+        (
+            json!([lock()]),
+            "a snapshot toggle targets a setting of the profile",
+        ),
+        (
+            json!([unread, lock()]),
+            "a snapshot toggle's target reads back",
+        ),
+        (
+            json!([current(), outside]),
+            "a snapshot toggle's locked value is one its target takes",
+        ),
+        (
+            json!([current(), lock(), nested]),
+            "a snapshot toggle's target is not a toggle",
+        ),
+    ] {
+        let key = settings.as_array().unwrap().last().unwrap()["key"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(refusal(&settings), (key, problem));
+    }
+}

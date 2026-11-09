@@ -18,7 +18,7 @@ const COMMUNITY: &str = "https://example.org/profiles/index.json";
 fn deye(id: &str, version: &str) -> Vec<u8> {
     DEYE.replace("\"deye-sg05lp3\"", &format!("\"{id}\""))
         .replace(
-            "\"version\": \"2.2.0\"",
+            "\"version\": \"2.2.1\"",
             &format!("\"version\": \"{version}\""),
         )
         .into_bytes()
@@ -95,7 +95,7 @@ async fn opening_fetches_nothing_and_the_embedded_snapshot_works_offline() {
     let reports = profiles.check().await.unwrap();
 
     assert_eq!(plant.host.fetched(), vec![OFFICIAL_INDEX.to_owned()]);
-    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
     assert!(profiles.catalogue().official("deye-sg05lp3"));
     assert_eq!(reports[0].problem, Some(super::IndexProblem::Unreachable));
 }
@@ -128,7 +128,7 @@ async fn a_signed_higher_version_replaces_the_bundled_one_and_outlives_a_restart
 #[tokio::test]
 async fn a_version_not_above_the_one_served_is_not_downloaded() {
     let plant = Plant::new();
-    let same = deye("deye-sg05lp3", "2.2.0");
+    let same = deye("deye-sg05lp3", "2.2.1");
     plant.official(&[(&same, Some(&plant.signer.active))]);
     let profiles = plant.open().await;
 
@@ -158,7 +158,7 @@ async fn a_hash_mismatch_is_refused_and_the_last_good_copy_is_served() {
         statuses(&reports[0]),
         vec![("deye-sg05lp3".to_owned(), Status::Hash)]
     );
-    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
 }
 
 #[tokio::test]
@@ -184,7 +184,7 @@ async fn a_signature_over_other_bytes_cannot_replace_an_official_profile() {
         statuses(&reports[0]),
         vec![("deye-sg05lp3".to_owned(), Status::Signature)]
     );
-    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
 }
 
 #[tokio::test]
@@ -231,11 +231,11 @@ async fn a_revocation_signed_by_the_backup_switches_trust_to_the_backup() {
     );
     assert!(profiles.catalogue().official("other-inverter"));
     // The copy the revoked key signed no longer counts as official: the snapshot is served again.
-    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
     plant.host.serve(OFFICIAL_INDEX, index(&[]));
     let reopened = plant.open().await;
     reopened.check().await.unwrap();
-    assert_eq!(version(&reopened, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&reopened, "deye-sg05lp3").as_deref(), Some("2.2.1"));
     assert!(reopened.catalogue().official("other-inverter"));
 }
 
@@ -342,5 +342,5 @@ async fn a_community_profile_never_replaces_an_official_one() {
         statuses(&report),
         vec![("deye-sg05lp3".to_owned(), Status::Signature)]
     );
-    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.0"));
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
 }

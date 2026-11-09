@@ -379,6 +379,8 @@ pub enum Code {
     SettingPrecondition,
     #[serde(rename = "setting.community")]
     SettingCommunity,
+    #[serde(rename = "setting.no-snapshot")]
+    SettingNoSnapshot,
     #[serde(rename = "secret.missing")]
     SecretMissing,
     #[serde(rename = "secret.value")]

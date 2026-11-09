@@ -46,6 +46,7 @@ Each step kind is its own capability (`write-block` for `writeBlock`).
 - `rmw` reads its register afresh and writes it back with the value in the bits its `mask` selects. A value that overflows the mask is refused. `readBack` takes a `mask` too, so it compares only the field. A masked register holds a `u16`.
 - `activate` writes a fixed word to an enable field. It is the last step, after one that writes the value.
 - `delay` waits at most 10 s: every device on the endpoint waits with it.
+- `snapshotToggle` names a `target` setting and the `locked` value it writes there. It is its setting's only step; the setting takes the values 0 and 1 and declares no `readBack` or `writeOnly`, since each write is the target's. The target is another setting of the profile, not a toggle, reads back and takes the locked value.
 
 **Official profiles.** A profile is official when it is signed (ADR 8) and a capture of a real device, recorded by `sunreye capture` (ADR 6), replays in `sim` and passes its tests. Each writable setting carries `verified: true` only once its write was checked on real hardware. An unverified setting stays off until an admin enables it, as in a community profile.
 
