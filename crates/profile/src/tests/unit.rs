@@ -1,9 +1,17 @@
 //! A quantity's unit is its role's, from ADR 4's table.
 
-use crate::{Profile, Unit};
+use crate::{Profile, Quantity, RoleKind, Unit};
 use serde_json::json;
 
 fn units(roles: &[(&str, Option<u32>)]) -> Vec<Option<Unit>> {
+    load(roles)
+        .quantities()
+        .iter()
+        .map(Quantity::unit)
+        .collect()
+}
+
+fn load(roles: &[(&str, Option<u32>)]) -> Profile {
     let quantities: Vec<_> = roles
         .iter()
         .enumerate()
@@ -16,12 +24,7 @@ fn units(roles: &[(&str, Option<u32>)]) -> Vec<Option<Unit>> {
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
         "requires": ["modbus"], "quantities": quantities,
     });
-    Profile::load(&doc.to_string())
-        .unwrap()
-        .quantities()
-        .iter()
-        .map(crate::Quantity::unit)
-        .collect()
+    Profile::load(&doc.to_string()).unwrap()
 }
 
 #[test]
@@ -53,5 +56,29 @@ fn a_status_role_and_an_extra_have_no_unit() {
     assert_eq!(
         units(&[("battery.mode", None), ("extra.radiator_temp", None)]),
         [None, None]
+    );
+}
+
+#[test]
+fn each_role_carries_its_kind_from_adr_4() {
+    let profile = load(&[
+        ("pv.mppt.power", Some(1)),
+        ("grid.energy.imported.total", None),
+        ("ev.session.energy", None),
+        ("battery.mode", None),
+        ("ev.charging", None),
+        ("extra.radiator_temp", None),
+    ]);
+    let kinds: Vec<RoleKind> = profile.quantities().iter().map(Quantity::kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            RoleKind::Measurement,
+            RoleKind::Counter,
+            RoleKind::Counter,
+            RoleKind::Status,
+            RoleKind::Status,
+            RoleKind::Measurement,
+        ]
     );
 }

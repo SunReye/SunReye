@@ -14,7 +14,28 @@ pub enum Unit {
     Celsius,
 }
 
+/// What a role's values are (ADR 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleKind {
+    Measurement,
+    /// A monotonic lifetime total.
+    Counter,
+    /// An enum.
+    Status,
+}
+
 impl Quantity {
+    /// The kind of the role it publishes; an extra or a role ADR 4 lacks is a measurement.
+    #[must_use]
+    pub fn kind(&self) -> RoleKind {
+        match self.role.as_str() {
+            "battery.mode" | "ev.connected" | "ev.charging" => RoleKind::Status,
+            "ev.session.energy" => RoleKind::Counter,
+            role if role.rsplit('.').next() == Some("total") => RoleKind::Counter,
+            _ => RoleKind::Measurement,
+        }
+    }
+
     /// The unit of the role it publishes; none for a status, an extra or a role ADR 4 lacks.
     #[must_use]
     pub fn unit(&self) -> Option<Unit> {

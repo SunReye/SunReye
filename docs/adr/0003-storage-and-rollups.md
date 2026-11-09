@@ -1,6 +1,6 @@
 # 3. Storage and rollups
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -13,16 +13,16 @@ History for years on flash storage, on hardware where memory and write volume ma
 **Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at rollup boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
 
 - The deadband compares against the last stored value, never the last reading, so the stored series is never wrong by more than the deadband.
-- The gap threshold is three times the poll group's cadence and at least 15 s. A silence beyond it is a gap, not a held value.
+- The gap threshold is three times the poll group's cadence and at least 15 s. A silence beyond it is a gap, not a held value. The gap begins one cadence after the last reading; after a restart, one cadence after the last flush, until which a held value counts as read.
 - Counters and enums never get a deadband.
 - A profile's storage class decides the destination: `series`, `config` (a change-log table, one row per change) or `none`.
 - Optional hardware (a generator) is persisted only after any of its readings is non-zero.
 - Non-finite readings are never stored. Readings become history, including a computed device's (ADR 15); forecasts never do.
 - The pending change points are written on shutdown and on a profile or deadband change.
 
-**Layout.** Two stages. Each flush writes the minute's change points into a hot table keyed by integer device id, series id and time. A series is the interned pair of role and index, such as `pv.mppt.power[2]`; an unindexed role is a series of its own. Rollups and the API address series the same way. One owned task packs every closed hour, per device and series, into one block row and deletes the hot rows; an hour without a change writes nothing. A block holds the first change point, then zigzag variable-length deltas of time (at 100 ms resolution) and of value. Reads merge hot rows with blocks and carry the last value forward from the previous block. No general-purpose compressor: zstd or lz4 would add a dependency for a small gain on data that is already delta-encoded.
+**Layout.** Two stages. Each flush writes the minute's change points into a hot table keyed by integer device id, series id and time. A series is the interned pair of role and index, such as `pv.mppt.power[2]`; an unindexed role is a series of its own. Rollups and the API address series the same way. One owned task packs every closed hour, per device and series, into one block row and deletes the hot rows; an hour without a change writes nothing. A block holds a format version byte, then per change point the zigzag variable-length delta of time (at 100 ms resolution, the first from the hour's start) and one word: 1 for a gap, else the zigzag delta of value from the previous value, shifted left once. Hot rows use the same 100 ms instants. Reads merge hot rows with blocks and carry the last value forward from the previous block. No general-purpose compressor: zstd or lz4 would add a dependency for a small gain on data that is already delta-encoded.
 
-**Values.** Fixed-point integers, never floats. The scale is the point's quantisation step from the profile, so nothing the register can express is lost; a float register declares its resolution (ADR 5). Counters are stored as integer deltas.
+**Values.** Fixed-point integers, never floats. The scale is the point's quantisation step from the profile, so nothing the register can express is lost; a float register declares its resolution (ADR 5). The step is stored per device and series; a profile that changes it is refused until a rescale of stored values exists. Counters are stored as integer deltas.
 
 **Flush.** At most one bucket of change points is held in memory. One transaction is written when each bucket closes. A crash or power cut loses at most the open 60 s of history, a deliberate trade. Live values and every consumer of the bus read memory.
 
