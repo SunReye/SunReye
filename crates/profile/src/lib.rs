@@ -15,6 +15,9 @@ pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
 pub use setting::{Field, Relock, Setting, Source, Step, Toggle, Unlock};
 
+/// Where a topic names the device address.
+pub const ADDRESS: &str = "{address}";
+
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
 

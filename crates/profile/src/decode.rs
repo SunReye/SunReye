@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::ADDRESS;
 use crate::document::{Kind, Range};
 use crate::profile::{Expr, Profile, Read};
 
@@ -109,9 +110,6 @@ impl Profile {
         }
     }
 }
-
-/// Where a topic names the device address.
-const ADDRESS: &str = "{address}";
 
 fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
     if !texts.is_empty() {

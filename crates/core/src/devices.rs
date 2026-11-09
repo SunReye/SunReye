@@ -28,7 +28,8 @@ use crate::mqtt;
 use crate::profiles::Catalogue;
 use crate::scan::{self, Scanner};
 use crate::settings::{
-    self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
+    self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, publish,
+    snapshot,
 };
 use crate::storage::{self, Database, Declarer, Policy};
 use crate::subscriber::{self, Subscriber};
@@ -593,11 +594,6 @@ impl Devices {
         let permit = self.permit(writing, &request.key).await?;
         let (setting, words) = settings::check(profile, &request, permit, last, now)?;
         let unlock = self.unlock(device.draft.connection, &setting).await?;
-        let task = running
-            .iter()
-            .find(|r| r.devices.iter().any(|d| d.id == id))
-            .map(|r| &r.task)
-            .ok_or(INTERNAL)?;
         let job = Job {
             unit: device.draft.unit,
             setting,
@@ -605,8 +601,17 @@ impl Devices {
             unlock,
             snapshot,
         };
+        let task = running
+            .iter()
+            .find(|r| r.devices.iter().any(|d| d.id == id))
+            .map(|r| &r.task);
         // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
-        let applied = task.write(job).await.ok_or(INTERNAL)??;
+        let applied = if let Some(task) = task {
+            task.write(job).await.ok_or(INTERNAL)??
+        } else {
+            let writer = self.writer(id).ok_or(INTERNAL)?;
+            publish::run(writer, job, publish::READ_BACK).await?
+        };
         // Logged before the running lock is released: the next write's interval check reads it.
         self.database
             .run(move |db| {
@@ -622,6 +627,14 @@ impl Devices {
             })
             .await
             .map_err(|_| INTERNAL)
+    }
+
+    /// What writes device `id` behind a broker; `None` when no broker reads it.
+    fn writer(&self, id: u32) -> Option<subscriber::Writer> {
+        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        brokers
+            .iter()
+            .find_map(|b| b.subscriber.writer(DeviceId(id)))
     }
 
     /// What lets setting `key` of the device being written write; an undeclared key is refused

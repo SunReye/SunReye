@@ -6,6 +6,7 @@
 
 pub mod enable;
 pub mod log;
+pub mod publish;
 pub mod snapshot;
 
 use std::pin::Pin;

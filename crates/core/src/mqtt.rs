@@ -51,7 +51,14 @@ pub struct Client {
     handle: JoinHandle<()>,
     status: watch::Receiver<Status>,
     messages: broadcast::Sender<Message>,
+    publisher: Publisher,
+}
+
+/// Publishes through a client while it runs.
+#[derive(Debug, Clone)]
+pub struct Publisher {
     requests: AsyncClient,
+    status: watch::Receiver<Status>,
 }
 
 /// Why a message was not sent: the client is not connected, or its queue is full.
@@ -77,6 +84,13 @@ impl Client {
         self.messages.subscribe()
     }
 
+    #[must_use]
+    pub fn publisher(&self) -> Publisher {
+        self.publisher.clone()
+    }
+}
+
+impl Publisher {
     /// Publishes `payload` to `topic`, unretained and at most once (`QoS` 0): a message queued
     /// across a reconnect is never sent twice.
     ///
@@ -119,9 +133,12 @@ pub fn spawn(broker: Broker, filters: Vec<String>) -> Client {
     let (requests, events) = AsyncClient::new(options, QUEUE);
     Client {
         handle: tokio::spawn(run(requests.clone(), events, filters, out)),
+        publisher: Publisher {
+            requests,
+            status: status.clone(),
+        },
         status,
         messages,
-        requests,
     }
 }
 

@@ -32,6 +32,7 @@ use crate::topology::Topologies;
 mod access;
 mod balance;
 mod devices;
+mod evcc;
 mod forecasts;
 mod history;
 mod ingress;
