@@ -97,3 +97,29 @@ test("a module beyond the setback comes back misplaced", () => {
 
   expect(misplaced).toEqual({ kind: "setback", grid: 0, row: 2, column: 0 });
 });
+
+test("a carport has posts for walls and a car stands at its place's centre, nose forward", () => {
+  const carport: Scene = {
+    north: 0,
+    blocks: [
+      {
+        x: 0,
+        z: 0,
+        width: 3,
+        depth: 5,
+        eave: 2.2,
+        rotation: 0,
+        roof: { kind: "flat" },
+        open: true,
+      },
+    ],
+    obstacles: [],
+    carPlaces: [{ device: 2, x: 0.25, z: 0, width: 2.5, length: 5, rotation: 0 }],
+  };
+
+  const { faces, solids, stands } = pv.geometry(carport);
+
+  expect(faces.map(({ surface }) => surface)).toEqual(["roof"]);
+  expect(solids).toHaveLength(4);
+  expect(stands).toEqual([{ at: [1.5, -2.5, 0], forward: [0, 1, 0], above: [1.5, -2.5, 2.5] }]);
+});

@@ -697,6 +697,8 @@ export interface components {
              * @description The walls' height under the roof.
              */
             eave: number;
+            /** @description A carport: a post at each corner instead of walls. */
+            open?: boolean;
             roof: components["schemas"]["Roof"];
             /**
              * Format: double
@@ -710,6 +712,14 @@ export interface components {
             /** Format: double */
             z: number;
         };
+        /** @description A stylised body the browser draws. */
+        Body: {
+            class: components["schemas"]["BodyClass"];
+            /** @description `#rrggbb`. */
+            colour: string;
+        };
+        /** @enum {string} */
+        BodyClass: "sedan" | "hatchback" | "suv" | "van" | "pickup";
         /** @description The inclusive bounds of a setting's value. */
         Bounds: {
             /** Format: double */
@@ -724,6 +734,36 @@ export interface components {
             lastConnectedAt?: string | null;
             /** @description Why the last attempt or session failed; kept after a reconnect. */
             lastError?: string | null;
+        };
+        /**
+         * @description A parking footprint: its width runs along x and its length along z from its corner, before
+         *     it turns.
+         */
+        CarPlace: {
+            body?: components["schemas"]["Body"] | null;
+            /**
+             * Format: int32
+             * @description The EVCC loadpoint device's id (ADR 10).
+             */
+            device: number;
+            /**
+             * Format: double
+             * @description An uploaded body is scaled to it.
+             */
+            length: number;
+            /** @description The uploaded GLB's id, its SHA-256 in hex. */
+            model?: string | null;
+            /**
+             * Format: double
+             * @description Degrees clockwise about the corner, seen from above.
+             */
+            rotation: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
         };
         /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
         Cell: {
@@ -1314,6 +1354,7 @@ export interface components {
         /** @description The geometry of a plant and where its modules sit. */
         Scene: {
             blocks: components["schemas"]["Block"][];
+            carPlaces?: components["schemas"]["CarPlace"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
             /** @description At most one per roof face. */

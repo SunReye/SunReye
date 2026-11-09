@@ -379,3 +379,40 @@ async fn equipment_markers_are_saved_with_the_scene_and_one_off_its_wall_is_refu
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
     );
 }
+
+#[tokio::test]
+async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_string() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "carport", &module, 1, 0.0)];
+    let with = |colour: &str| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["blocks"].as_array_mut().unwrap().push(json!({
+            "x": 12.0, "z": 0.0, "width": 3.0, "depth": 5.0, "eave": 2.2, "rotation": 0.0,
+            "roof": { "kind": "flat" }, "open": true,
+        }));
+        scene["grids"].as_array_mut().unwrap().push(json!({
+            "block": 1, "face": 0, "moduleType": module, "landscape": false, "setback": 0.1,
+            "modules": [cell(0, 0, Some(0), false), cell(0, 1, Some(0), false)],
+        }));
+        scene["carPlaces"] = json!([{
+            "device": 2, "x": 12.25, "z": 0.0, "width": 2.5, "length": 5.0, "rotation": 0.0,
+            "body": { "class": "sedan", "colour": colour },
+        }]);
+        scene
+    };
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with("#f2f2ee"))
+        .await;
+    let (refused, body) = core.put_scene(&set_cookie, &strings, &with("pearl")).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], with("#f2f2ee"));
+    assert_eq!(saved["strings"][0]["modules"], json!(3));
+    assert_eq!(
+        (refused, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+    );
+}

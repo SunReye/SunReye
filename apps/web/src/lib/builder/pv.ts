@@ -17,6 +17,8 @@ export interface Block {
   /** Degrees clockwise about the corner, seen from above. */
   readonly rotation: number;
   readonly roof: Roof;
+  /** A carport: a post at each corner instead of walls. */
+  readonly open?: boolean;
 }
 
 export type Obstacle =
@@ -74,6 +76,21 @@ export interface Equipment {
   readonly inside: boolean;
 }
 
+export type BodyClass = "sedan" | "hatchback" | "suv" | "van" | "pickup";
+
+/** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
+export interface CarPlace {
+  readonly device: number;
+  readonly x: number;
+  readonly z: number;
+  readonly width: number;
+  readonly length: number;
+  readonly rotation: number;
+  /** The admin's pick of body, colour `#rrggbb`, and the id of an uploaded GLB. */
+  readonly body?: { readonly class: BodyClass; readonly colour: string } | null;
+  readonly model?: string | null;
+}
+
 /** The scene's frame: metres, y up, origin at the first block's corner (ADR 20). */
 export interface Scene {
   /** The compass bearing of the scene's −z axis, in degrees. */
@@ -83,6 +100,7 @@ export interface Scene {
   /** At most one per roof face. */
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
+  readonly carPlaces?: readonly CarPlace[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -154,6 +172,11 @@ export interface Geometry {
   readonly solids: readonly Solid[];
   /** By the scene's equipment; null while a marker lies off its wall. */
   readonly mounts?: readonly Mount[] | null;
+  /** By car place: its centre on the ground, its nose's direction and its label; null while one
+   * is refused. */
+  readonly stands?:
+    | readonly { readonly at: Point; readonly forward: Point; readonly above: Point }[]
+    | null;
 }
 
 export interface Pv {

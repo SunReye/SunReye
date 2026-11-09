@@ -14,10 +14,12 @@ fn house(equipment: Vec<Equipment>) -> Scene {
             eave: 3.0,
             rotation: 0.0,
             roof: Roof::Gable { pitch: 45.0 },
+            open: false,
         }],
         obstacles: vec![],
         grids: vec![],
         equipment,
+        car_places: vec![],
     }
 }
 

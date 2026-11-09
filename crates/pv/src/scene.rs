@@ -6,10 +6,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Equipment, ModuleGrid, Occluder, Point};
+use crate::{CarPlace, Equipment, ModuleGrid, Occluder, Point};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
+/// A carport post's radius in metres.
+const POST: f64 = 0.06;
 /// Metres within which two corners are one.
 const EPSILON: f64 = 1e-9;
 
@@ -28,6 +30,8 @@ pub struct Scene {
     /// Markers for inverters and batteries.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub equipment: Vec<Equipment>,
+    #[serde(default, rename = "carPlaces", skip_serializing_if = "Vec::is_empty")]
+    pub car_places: Vec<CarPlace>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
@@ -45,6 +49,14 @@ pub struct Block {
     /// Degrees clockwise about the corner, seen from above.
     pub rotation: f64,
     pub roof: Roof,
+    /// A carport: a post at each corner instead of walls.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub open: bool,
+}
+
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde's signature")]
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Pitches in degrees from horizontal.
@@ -132,11 +144,15 @@ impl Scene {
     pub fn faces(&self) -> Vec<Face> {
         let blocks = self.blocks.iter().flat_map(|block| {
             let roofs = roof(block);
-            self.prism(block.x, block.z, block.rotation).faces(
+            let mut faces = self.prism(block.x, block.z, block.rotation).faces(
                 [block.width, block.depth],
                 roofs,
                 [Surface::Wall, Surface::Roof],
-            )
+            );
+            if block.open {
+                faces.retain(|face| face.surface != Surface::Wall);
+            }
+            faces
         });
         let boxes = self.obstacles.iter().flat_map(|obstacle| match *obstacle {
             Obstacle::Box {
@@ -163,9 +179,15 @@ impl Scene {
         triangles.chain(self.solids()).collect()
     }
 
-    /// The round obstacles: chimneys and poles, and each tree as its trunk and its crown.
+    /// The round obstacles: chimneys and poles, each tree as its trunk and its crown, and each
+    /// carport's posts.
     #[must_use]
     pub fn solids(&self) -> Vec<Occluder> {
+        let posts = self
+            .blocks
+            .iter()
+            .filter(|block| block.open)
+            .flat_map(|block| self.posts(block));
         self.obstacles
             .iter()
             .flat_map(|obstacle| match *obstacle {
@@ -198,6 +220,29 @@ impl Scene {
                             radius,
                         },
                     ]
+                }
+            })
+            .chain(posts)
+            .collect()
+    }
+
+    /// A post at each corner of a carport, up to its roof's highest corner there.
+    fn posts(&self, block: &Block) -> Vec<Occluder> {
+        let frame = self.prism(block.x, block.z, block.rotation);
+        let roofs = roof(block);
+        footprint(block.width, block.depth)
+            .into_iter()
+            .map(|[u, w]| {
+                let height = roofs
+                    .iter()
+                    .flatten()
+                    .filter(|[pu, _, pw]| (pu - u).hypot(pw - w) < EPSILON)
+                    .map(|[_, up, _]| *up)
+                    .fold(block.eave, f64::max);
+                Occluder::Cylinder {
+                    base: frame.place([u, 0.0, w]),
+                    radius: POST,
+                    height,
                 }
             })
             .collect()

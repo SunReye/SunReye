@@ -208,6 +208,14 @@ _Avoid_: Pin, icon
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
 _Avoid_: Garage, charger
 
+**Carport**:
+An open block: a post at each corner instead of walls, under a roof that carries modules like any other.
+_Avoid_: Shelter
+
+**Car body**:
+What the scene draws for a connected car: a stylised body of one class in one colour, or a GLB the admin uploaded.
+_Avoid_: Car model (a model is a catalogue entry's name)
+
 **Computed device**:
 A device whose readings the core computes or fetches instead of polling hardware: a tariff, a price feed, a forecast, the plant aggregates.
 _Avoid_: Virtual device, coded device

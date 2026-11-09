@@ -63,6 +63,10 @@
             "format": "double",
             "type": "number"
           },
+          "open": {
+            "description": "A carport: a post at each corner instead of walls.",
+            "type": "boolean"
+          },
           "roof": {
             "$ref": "#/components/schemas/Roof"
           },
@@ -94,6 +98,34 @@
           "roof"
         ],
         "type": "object"
+      },
+      "Body": {
+        "additionalProperties": false,
+        "description": "A stylised body the browser draws.",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/BodyClass"
+          },
+          "colour": {
+            "description": "`#rrggbb`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "class",
+          "colour"
+        ],
+        "type": "object"
+      },
+      "BodyClass": {
+        "enum": [
+          "sedan",
+          "hatchback",
+          "suv",
+          "van",
+          "pickup"
+        ],
+        "type": "string"
       },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
@@ -136,6 +168,67 @@
         },
         "required": [
           "connected"
+        ],
+        "type": "object"
+      },
+      "CarPlace": {
+        "additionalProperties": false,
+        "description": "A parking footprint: its width runs along x and its length along z from its corner, before\nit turns.",
+        "properties": {
+          "body": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Body",
+                "description": "The admin's pick, when no catalogue entry matches the vehicle."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device": {
+            "description": "The EVCC loadpoint device's id (ADR 10).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "description": "An uploaded body is scaled to it.",
+            "format": "double",
+            "type": "number"
+          },
+          "model": {
+            "description": "The uploaded GLB's id, its SHA-256 in hex.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rotation": {
+            "description": "Degrees clockwise about the corner, seen from above.",
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "device",
+          "x",
+          "z",
+          "width",
+          "length",
+          "rotation"
         ],
         "type": "object"
       },
@@ -1786,6 +1879,12 @@
           "blocks": {
             "items": {
               "$ref": "#/components/schemas/Block"
+            },
+            "type": "array"
+          },
+          "carPlaces": {
+            "items": {
+              "$ref": "#/components/schemas/CarPlace"
             },
             "type": "array"
           },

@@ -18,7 +18,7 @@
     onremove: (() => void) | undefined;
   } = $props();
 
-  type Numeric = { [K in keyof Block]: Block[K] extends number ? K : never }[keyof Block];
+  type Numeric = { [K in keyof Block]-?: Block[K] extends number ? K : never }[keyof Block];
 
   const fields: readonly (readonly [Numeric, () => string])[] = [
     ["x", m.field_x],
