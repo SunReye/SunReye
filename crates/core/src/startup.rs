@@ -21,6 +21,7 @@ use crate::location::{Location, PlantLocation};
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
+use crate::topology::Topologies;
 use crate::weather::{self, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
@@ -186,9 +187,7 @@ pub async fn serve(
     let bus = Bus::default();
     let file = boot.data_dir.join("core.sqlite");
     let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
-    // Problems are known before the first request.
-    let (problems, watched) = watch::channel(Vec::new());
-    tick(&storage, &problems).await?;
+    let (problems, watched) = problems(&storage).await?;
     let inverters = Inverters::default();
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let devices = Devices::start(
@@ -220,6 +219,7 @@ pub async fn serve(
         changes: Changes::new(storage.database()),
         location,
         profiles,
+        topologies: Topologies::new(storage.database()),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
@@ -283,6 +283,17 @@ fn plant_zone() -> String {
         .iana_name()
         .unwrap_or("UTC")
         .to_owned()
+}
+
+type Problems = watch::Sender<Vec<storage::Problem>>;
+
+/// Storage's problems, known before the first request.
+async fn problems(
+    storage: &Storage,
+) -> Result<(Problems, watch::Receiver<Vec<storage::Problem>>), storage::Error> {
+    let (problems, watched) = watch::channel(Vec::new());
+    tick(storage, &problems).await?;
+    Ok((problems, watched))
 }
 
 /// Ticks storage once a minute, from a minute after the first tick.

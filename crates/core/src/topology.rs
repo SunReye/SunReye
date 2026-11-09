@@ -1,29 +1,197 @@
 //! Plant topology (ADR 14): a tree of measurement points, rooted at the grid connection.
+//!
+//! The topology module owns the `point`, `topology`, `topology_point` and `topology_claim` tables.
+//! Point ids are never reused; a change is a new version applying from its instant, and the plant
+//! device reads the version in force at each reading.
 
-use std::collections::BTreeMap;
+mod routes;
+mod store;
+
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use axum::http::StatusCode;
+use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
+use utoipa::ToSchema;
+
+use crate::api::{Code, Problem};
+use crate::storage::{Database, Error};
+
+const INTERNAL: Problem = Problem {
+    status: StatusCode::INTERNAL_SERVER_ERROR,
+    code: Code::Internal,
+};
+
+/// Why a topology was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Refusal {
+    /// Not one tree: no points, the first is not the root, or a parent is not an earlier point.
+    Tree,
+    /// A kept id no point ever had, or one named twice.
+    Point,
+    /// A point without a claim, claims of different roles on one point, or a device's role
+    /// claimed twice.
+    Claim,
+    /// Not a power role, or `grid.power` anywhere but the root.
+    Role,
+    /// A claim names no registered device.
+    Device,
+}
+
+impl From<Refusal> for Problem {
+    fn from(refusal: Refusal) -> Self {
+        let code = match refusal {
+            Refusal::Tree => Code::TopologyTree,
+            Refusal::Point => Code::TopologyPoint,
+            Refusal::Claim => Code::TopologyClaim,
+            Refusal::Role => Code::TopologyRole,
+            Refusal::Device => Code::TopologyDevice,
+        };
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            code,
+        }
+    }
+}
 
 /// A device measuring a point, by the power role it measures there.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Claim {
+    /// The device's id.
     pub device: u32,
+    /// Its power role at the point, such as `grid.power`.
     pub role: String,
 }
 
 /// A measurement point.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct Point {
+    /// Stable; never reused.
     pub id: u32,
     pub name: String,
-    /// `None` for the root.
+    /// The parent point's id; `null` for the root, the grid connection.
     pub parent: Option<u32>,
+    /// In order: the first with a reading is read.
     pub claims: Vec<Claim>,
 }
 
 impl Point {
+    /// Claimed by more than one device: flagged, never summed.
     #[must_use]
     pub const fn contested(&self) -> bool {
         self.claims.len() > 1
     }
+}
+
+/// A point as the admin enters it.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PointDraft {
+    /// A point kept from an earlier version; absent for a new point.
+    pub id: Option<u32>,
+    pub name: String,
+    /// The index in `points` of an earlier point; `null` for the root, which comes first.
+    pub parent: Option<usize>,
+    pub claims: Vec<Claim>,
+}
+
+/// One topology version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Version {
+    pub applies_from: SystemTime,
+    /// Each parent before its children, the root first.
+    pub points: Vec<Point>,
+}
+
+/// The version in force at `at`; `versions` in the order [`Topologies::versions`] returns.
+#[must_use]
+pub fn in_force(versions: &[Version], at: SystemTime) -> Option<&Version> {
+    versions.iter().rev().find(|v| v.applies_from <= at)
+}
+
+/// The topology feature module; clones share one.
+#[derive(Debug, Clone)]
+pub struct Topologies {
+    database: Database,
+    changed: Arc<watch::Sender<()>>,
+}
+
+impl Topologies {
+    #[must_use]
+    pub fn new(database: Database) -> Self {
+        Self {
+            database,
+            changed: Arc::new(watch::channel(()).0),
+        }
+    }
+
+    /// Marked changed by each topology change.
+    #[must_use]
+    pub fn changes(&self) -> watch::Receiver<()> {
+        self.changed.subscribe()
+    }
+
+    /// Every version, by the instant it applies from, a later change after an earlier one.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn versions(&self) -> Result<Vec<Version>, Error> {
+        self.database.run(store::versions).await
+    }
+
+    /// Appends a version applying from `applies_from`, logged as changed at `changed`; new points
+    /// get fresh ids. `devices` are the registered device ids.
+    ///
+    /// # Errors
+    /// The points are not one measured tree, a claim names an unknown device or role, a kept id is
+    /// unknown, or the file cannot be written.
+    pub async fn change(
+        &self,
+        applies_from: SystemTime,
+        points: Vec<PointDraft>,
+        devices: &[u32],
+        changed: SystemTime,
+    ) -> Result<Version, Problem> {
+        check(&points, devices)?;
+        let stored = self
+            .database
+            .run(move |db| store::insert(db, applies_from, points, changed))
+            .await
+            .map_err(|_| INTERNAL)??;
+        self.changed.send_replace(());
+        Ok(stored)
+    }
+}
+
+/// Refuses drafts that are not one tree measured by known devices' power roles.
+fn check(points: &[PointDraft], devices: &[u32]) -> Result<(), Refusal> {
+    if points.is_empty() {
+        return Err(Refusal::Tree);
+    }
+    for (index, point) in points.iter().enumerate() {
+        let rooted = point.parent.map_or(index == 0, |parent| parent < index);
+        if !rooted {
+            return Err(Refusal::Tree);
+        }
+    }
+    let mut claimed = HashSet::new();
+    for (index, point) in points.iter().enumerate() {
+        let role = point.claims.first().ok_or(Refusal::Claim)?.role.as_str();
+        let kind = kind(role).ok_or(Refusal::Role)?;
+        if (index == 0) != (kind == Kind::Grid) {
+            return Err(Refusal::Role);
+        }
+        for claim in &point.claims {
+            if claim.role != role || !claimed.insert((claim.device, role)) {
+                return Err(Refusal::Claim);
+            }
+            if !devices.contains(&claim.device) {
+                return Err(Refusal::Device);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// What a power role measures at its point.

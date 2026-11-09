@@ -20,44 +20,43 @@
         "type": "object"
       },
       "Change": {
-        "description": "One entry of the change log.",
+        "description": "A topology change: every point, applying from an instant on.",
         "properties": {
-          "action": {
-            "description": "`add`, `change` or `remove`.",
-            "type": "string"
-          },
-          "actor": {
-            "type": "string"
-          },
           "appliesFrom": {
-            "description": "RFC 3339, UTC.",
+            "description": "RFC 3339.",
             "type": "string"
           },
-          "changed": {
-            "description": "RFC 3339, UTC.",
-            "type": "string"
-          },
-          "id": {
-            "description": "The subject's id.",
+          "points": {
+            "description": "The root first, each parent before its children.",
+            "items": {
+              "$ref": "#/components/schemas/PointDraft"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "points"
+        ],
+        "type": "object"
+      },
+      "Claim": {
+        "description": "A device measuring a point, by the power role it measures there.",
+        "properties": {
+          "device": {
+            "description": "The device's id.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
           },
-          "state": {
-            "description": "The subject after the change, as its own route reads it; `null` once removed."
-          },
-          "subject": {
-            "description": "`connection`, `device`, `index`, `location`, `viewer` or `token`.",
+          "role": {
+            "description": "Its power role at the point, such as `grid.power`.",
             "type": "string"
           }
         },
         "required": [
-          "changed",
-          "appliesFrom",
-          "actor",
-          "subject",
-          "id",
-          "action"
+          "device",
+          "role"
         ],
         "type": "object"
       },
@@ -90,6 +89,12 @@
           "layout.string",
           "layout.module-type",
           "layout.value",
+          "topology.none",
+          "topology.tree",
+          "topology.point",
+          "topology.claim",
+          "topology.role",
+          "topology.device",
           "location.none",
           "location.value",
           "connection.none",
@@ -764,6 +769,83 @@
         ],
         "type": "object"
       },
+      "PointDraft": {
+        "description": "A point as the admin enters it.",
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "A point kept from an earlier version; absent for a new point.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "description": "The index in `points` of an earlier point; `null` for the root, which comes first.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "claims"
+        ],
+        "type": "object"
+      },
+      "PointView": {
+        "description": "One point of a topology version.",
+        "properties": {
+          "claims": {
+            "description": "In order: the first with a reading is read.",
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "type": "array"
+          },
+          "contested": {
+            "description": "Claimed by more than one device: flagged, never summed (ADR 14).",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Stable; never reused.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "description": "The parent point's id; `null` for the root.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "claims",
+          "contested"
+        ],
+        "type": "object"
+      },
       "ProblemDetails": {
         "description": "The body of a refusal.",
         "properties": {
@@ -1107,6 +1189,27 @@
         },
         "required": [
           "tokens"
+        ],
+        "type": "object"
+      },
+      "Topology": {
+        "description": "One topology version, as the API reads it.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "points": {
+            "description": "Each parent before its children, the root first.",
+            "items": {
+              "$ref": "#/components/schemas/PointView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "points"
         ],
         "type": "object"
       },
@@ -2304,6 +2407,77 @@
           }
         },
         "summary": "Removes a token; a request carrying it is refused from now on."
+      }
+    },
+    "/api/v1/topology": {
+      "get": {
+        "operationId": "topology",
+        "parameters": [
+          {
+            "description": "RFC 3339; now when absent.",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topology"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The topology in force at an instant."
+      },
+      "put": {
+        "operationId": "change_topology",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Change"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topology"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Changes the topology from an instant on; new points get fresh ids. Aggregates already stored\nkeep the topology they were computed with (ADR 14)."
       }
     },
     "/api/v1/viewers": {

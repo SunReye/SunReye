@@ -372,6 +372,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The topology in force at an instant. */
+        get: operations["topology"];
+        /**
+         * Changes the topology from an instant on; new points get fresh ids. Aggregates already stored
+         *     keep the topology they were computed with (ADR 14).
+         */
+        put: operations["change_topology"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/viewers": {
         parameters: {
             query?: never;
@@ -434,30 +455,28 @@ export interface components {
             /** Format: double */
             min: number;
         };
-        /** @description One entry of the change log. */
+        /** @description A topology change: every point, applying from an instant on. */
         Change: {
-            /** @description `add`, `change` or `remove`. */
-            action: string;
-            actor: string;
-            /** @description RFC 3339, UTC. */
+            /** @description RFC 3339. */
             appliesFrom: string;
-            /** @description RFC 3339, UTC. */
-            changed: string;
+            /** @description The root first, each parent before its children. */
+            points: components["schemas"]["PointDraft"][];
+        };
+        /** @description A device measuring a point, by the power role it measures there. */
+        Claim: {
             /**
              * Format: int32
-             * @description The subject's id.
+             * @description The device's id.
              */
-            id: number;
-            /** @description The subject after the change, as its own route reads it; `null` once removed. */
-            state?: unknown;
-            /** @description `connection`, `device`, `index`, `location`, `viewer` or `token`. */
-            subject: string;
+            device: number;
+            /** @description Its power role at the point, such as `grid.power`. */
+            role: string;
         };
         /**
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "index.value" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "index.value" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -702,6 +721,36 @@ export interface components {
             /** @description RFC 3339, UTC. */
             start: string;
         };
+        /** @description A point as the admin enters it. */
+        PointDraft: {
+            claims: components["schemas"]["Claim"][];
+            /**
+             * Format: int32
+             * @description A point kept from an earlier version; absent for a new point.
+             */
+            id?: number | null;
+            name: string;
+            /** @description The index in `points` of an earlier point; `null` for the root, which comes first. */
+            parent?: number | null;
+        };
+        /** @description One point of a topology version. */
+        PointView: {
+            /** @description In order: the first with a reading is read. */
+            claims: components["schemas"]["Claim"][];
+            /** @description Claimed by more than one device: flagged, never summed (ADR 14). */
+            contested: boolean;
+            /**
+             * Format: int32
+             * @description Stable; never reused.
+             */
+            id: number;
+            name: string;
+            /**
+             * Format: int32
+             * @description The parent point's id; `null` for the root.
+             */
+            parent?: number | null;
+        };
         /** @description The body of a refusal. */
         ProblemDetails: {
             /** @description A stable machine code, such as `auth.required`. */
@@ -824,6 +873,13 @@ export interface components {
         };
         Tokens: {
             tokens: components["schemas"]["Token"][];
+        };
+        /** @description One topology version, as the API reads it. */
+        Topology: {
+            /** @description RFC 3339, UTC. */
+            appliesFrom: string;
+            /** @description Each parent before its children, the root first. */
+            points: components["schemas"]["PointView"][];
         };
         /**
          * @description The wire framing on a connection's endpoint.
@@ -1806,6 +1862,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    topology: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339; now when absent. */
+                at?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topology"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_topology: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Change"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topology"];
+                };
             };
             "4XX": {
                 headers: {

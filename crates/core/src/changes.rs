@@ -37,6 +37,8 @@ pub enum Subject {
     Viewer,
     /// A bearer token (ADR 9).
     Token,
+    /// A plant topology version (ADR 14).
+    Topology,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -131,7 +133,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer` or `token`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token` or `topology`.
     subject: String,
     /// The subject's id.
     id: u32,
