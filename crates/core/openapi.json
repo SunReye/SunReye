@@ -148,6 +148,7 @@
           "tariff.none",
           "tariff.band",
           "tariff.past",
+          "tariff.retention",
           "location.none",
           "location.value",
           "connection.none",
@@ -1145,6 +1146,27 @@
           "official",
           "checked",
           "profiles"
+        ],
+        "type": "object"
+      },
+      "Reprice": {
+        "description": "A tariff applying from a date, even a past one.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339, within change-point retention.",
+            "type": "string"
+          },
+          "export": {
+            "$ref": "#/components/schemas/ScheduleView"
+          },
+          "import": {
+            "$ref": "#/components/schemas/ScheduleView"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "import",
+          "export"
         ],
         "type": "object"
       },
@@ -2935,6 +2957,42 @@
           }
         },
         "summary": "Changes the tariff from an instant on. Editing changes only the future: prices already in force\nstay as they were."
+      }
+    },
+    "/api/v1/tariff/reprice": {
+      "post": {
+        "operationId": "reprice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reprice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tariff"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Corrects the past: the tariff applies from its date, and the prices and the `cost.*` rates are\nrebuilt from then on from stored history. Refused before change-point retention."
       }
     },
     "/api/v1/tokens": {

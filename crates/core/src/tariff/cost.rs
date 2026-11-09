@@ -1,6 +1,9 @@
 //! Cost rates (ADR 12): what the plant pays, earns and saves, in EUR/h.
 
+use std::time::SystemTime;
+
 use super::Prices;
+use crate::storage::ChangePoint;
 
 /// Signed rates in EUR/h.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,6 +30,33 @@ impl Rates {
             savings: (load / 1000.0).mul_add(prices.import, export - import),
         }
     }
+}
+
+/// The rates over the change points of the plant's `grid.power` and `load.power` and of
+/// `price.import` and `price.export`, each led by the one in force at `from`: one per instant
+/// any input changes, from `from` on; `None` while any input is a gap or has no value yet.
+#[must_use]
+pub fn replay(inputs: [&[ChangePoint]; 4], from: SystemTime) -> Vec<(SystemTime, Option<Rates>)> {
+    let mut changes: Vec<(SystemTime, usize, Option<f64>)> = inputs
+        .iter()
+        .enumerate()
+        .flat_map(|(input, points)| {
+            points
+                .iter()
+                .map(move |p| (p.time.max(from), input, p.value))
+        })
+        .collect();
+    changes.sort_by_key(|&(time, ..)| time);
+    let mut meter = Meter::default();
+    changes
+        .chunk_by(|a, b| a.0 == b.0)
+        .filter_map(|group| {
+            for &(_, input, value) in group {
+                meter.set(input, value);
+            }
+            Some((group.first()?.0, meter.rates()))
+        })
+        .collect()
 }
 
 /// The latest value of each input: `grid.power`, `load.power`, `price.import`, `price.export`.

@@ -8,7 +8,6 @@
 
 use std::time::{Duration, SystemTime};
 
-use jiff::tz::TimeZone;
 use sunreye_profile::RoleKind;
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
@@ -19,7 +18,7 @@ use crate::api::Clock;
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 use crate::endpoint;
 use crate::plant;
-use crate::storage::{Declarer, Policy};
+use crate::storage::{Error, Policy};
 
 /// Computed device ids count down from `u32::MAX`, the weather device's (ADR 15).
 pub const DEVICE: DeviceId = DeviceId(u32::MAX - 2);
@@ -27,8 +26,10 @@ pub const DEVICE: DeviceId = DeviceId(u32::MAX - 2);
 const CADENCE: Duration = Duration::from_secs(60);
 /// EUR/kWh to a thousandth of a cent, as fine as a day-ahead price in EUR/MWh.
 const STEP: f64 = 0.000_01;
+/// What a kWh bought costs and a kWh fed in earns.
+pub const PRICES: [&str; 2] = ["price.import", "price.export"];
 /// The rates, in EUR/h to a thousandth of a cent: paid, earned and saved.
-const COSTS: [&str; 3] = ["cost.import.rate", "cost.export.rate", "cost.savings.rate"];
+pub const COSTS: [&str; 3] = ["cost.import.rate", "cost.export.rate", "cost.savings.rate"];
 /// A plant reading older than the gap threshold (ADR 3) no longer prices its flow.
 const STALE: Duration = Duration::from_secs(15);
 
@@ -43,21 +44,16 @@ impl Drop for TariffDevice {
 }
 
 impl TariffDevice {
-    /// Starts publishing the tariff's prices, its bands on the wall clock of the plant timezone
-    /// `zone`. Must be called inside a Tokio runtime.
+    /// Starts publishing the tariff's prices and the plant's cost rates. Must be called inside a
+    /// Tokio runtime.
     #[must_use]
-    pub fn spawn(
-        tariffs: Tariffs,
-        zone: TimeZone,
-        declarer: Declarer,
-        bus: &Bus,
-        clock: Clock,
-    ) -> Self {
+    pub fn spawn(tariffs: Tariffs, clock: Clock) -> Self {
+        let bus = tariffs.bus.clone();
         let inputs = [
             (plant::DEVICE, bus.intern("grid.power", None)),
             (plant::DEVICE, bus.intern("load.power", None)),
-            (DEVICE, bus.intern("price.import", None)),
-            (DEVICE, bus.intern("price.export", None)),
+            (DEVICE, tariffs.prices[0]),
+            (DEVICE, tariffs.prices[1]),
         ];
         let task = Task {
             changes: tariffs.changes(),
@@ -65,20 +61,28 @@ impl TariffDevice {
             inputs,
             meter: Meter::default(),
             flows: [None; 2],
-            costs: COSTS.map(|role| bus.intern(role, None)),
-            tariffs,
-            zone,
-            declarer,
-            series: [
-                bus.intern("price.import", None),
-                bus.intern("price.export", None),
-            ],
-            bus: bus.clone(),
+            bus,
             declared: false,
             clock,
+            tariffs,
         };
         Self(tokio::spawn(task.run()))
     }
+}
+
+/// Declares the prices and the rates to storage. The rates follow the plant, so they share its
+/// cadence.
+///
+/// # Errors
+/// A series is stored in another step, or storage has stopped.
+pub async fn declare(tariffs: &Tariffs) -> Result<(), Error> {
+    let prices = Policy::new(RoleKind::Measurement, None, STEP, CADENCE);
+    let costs = Policy::new(RoleKind::Measurement, None, STEP, endpoint::CADENCE);
+    let all = tariffs.prices.map(|s| (s, prices));
+    for (series, policy) in all.into_iter().chain(tariffs.costs.map(|s| (s, costs))) {
+        tariffs.declarer.declare(DEVICE, series, policy).await?;
+    }
+    Ok(())
 }
 
 enum Wake {
@@ -96,13 +100,7 @@ struct Task {
     meter: Meter,
     /// When the plant's grid power and house load were last read.
     flows: [Option<SystemTime>; 2],
-    /// `cost.import.rate`, `cost.export.rate` and `cost.savings.rate`.
-    costs: [SeriesId; 3],
-    zone: TimeZone,
-    declarer: Declarer,
     bus: Bus,
-    /// `price.import` and `price.export`.
-    series: [SeriesId; 2],
     declared: bool,
     clock: Clock,
 }
@@ -157,16 +155,10 @@ impl Task {
         })
     }
 
-    /// Declared once: a refusal, such as another step, stands until a restart. The rates follow
-    /// the plant, so they share its cadence.
+    /// Declared once: a refusal, such as another step, stands until a restart.
     async fn declare(&self) {
-        let prices = Policy::new(RoleKind::Measurement, None, STEP, CADENCE);
-        let costs = Policy::new(RoleKind::Measurement, None, STEP, endpoint::CADENCE);
-        let all = self.series.map(|s| (s, prices));
-        for (series, policy) in all.into_iter().chain(self.costs.map(|s| (s, costs))) {
-            if let Err(e) = self.declarer.declare(DEVICE, series, policy).await {
-                tracing::warn!("tariff value not stored: {e}");
-            }
+        if let Err(e) = declare(&self.tariffs).await {
+            tracing::warn!("tariff value not stored: {e}");
         }
     }
 
@@ -200,7 +192,7 @@ impl Task {
             self.declare().await;
         }
         let values = [rates.import, rates.export, rates.savings];
-        for (series, value) in self.costs.into_iter().zip(values) {
+        for (series, value) in self.tariffs.costs.into_iter().zip(values) {
             self.bus.publish(Reading {
                 device: DEVICE,
                 series,
@@ -216,8 +208,13 @@ impl Task {
             self.declared = true;
             self.declare().await;
         }
-        let prices = version.prices(&self.zone, at);
-        for (series, value) in self.series.into_iter().zip([prices.import, prices.export]) {
+        let prices = version.prices(&self.tariffs.zone, at);
+        for (series, value) in self
+            .tariffs
+            .prices
+            .into_iter()
+            .zip([prices.import, prices.export])
+        {
             self.bus.publish(Reading {
                 device: DEVICE,
                 series,

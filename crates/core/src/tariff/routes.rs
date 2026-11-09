@@ -32,6 +32,7 @@ impl Tariffs {
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(tariff, change_tariff))
+            .routes(routes!(reprice))
             .with_state((self, clock))
     }
 }
@@ -199,6 +200,36 @@ async fn change_tariff(
         export: change.export.try_into()?,
     };
     let version = tariffs.change(version, now).await?;
+    Ok(Json((&version).into()))
+}
+
+/// A tariff applying from a date, even a past one.
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+struct Reprice {
+    /// RFC 3339, within change-point retention.
+    applies_from: String,
+    import: ScheduleView,
+    export: ScheduleView,
+}
+
+/// Corrects the past: the tariff applies from its date, and the prices and the `cost.*` rates are
+/// rebuilt from then on from stored history. Refused before change-point retention.
+#[utoipa::path(post, path = "/api/v1/tariff/reprice", request_body = Reprice, responses(
+    (status = 200, body = Tariff),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn reprice(
+    State((tariffs, clock)): TariffState,
+    body: Result<Json<Reprice>, JsonRejection>,
+) -> Result<Json<Tariff>, Problem> {
+    let Json(reprice) = body.map_err(|_| BODY)?;
+    let version = Version {
+        applies_from: instant(&reprice.applies_from).ok_or(BODY)?,
+        import: reprice.import.try_into()?,
+        export: reprice.export.try_into()?,
+    };
+    let version = tariffs.reprice(version, clock()).await?;
     Ok(Json((&version).into()))
 }
 

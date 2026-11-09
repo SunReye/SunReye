@@ -7,6 +7,7 @@
 
 mod cost;
 mod device;
+mod reprice;
 mod routes;
 mod store;
 
@@ -18,8 +19,9 @@ use jiff::tz::TimeZone;
 use tokio::sync::watch;
 
 use crate::api::{Code, Problem};
+use crate::bus::{Bus, SeriesId};
 use crate::changes;
-use crate::storage::{Database, Error};
+use crate::storage::{Database, Declarer, Error, Reader, Rewriter, Storage};
 
 pub use device::{DEVICE, TariffDevice};
 
@@ -166,14 +168,32 @@ impl Schedule {
 pub struct Tariffs {
     database: Database,
     changed: Arc<watch::Sender<()>>,
+    /// The plant timezone the bands evaluate in.
+    zone: TimeZone,
+    bus: Bus,
+    declarer: Declarer,
+    reader: Reader,
+    rewriter: Rewriter,
+    /// `price.import` and `price.export`.
+    prices: [SeriesId; 2],
+    /// `cost.import.rate`, `cost.export.rate` and `cost.savings.rate`.
+    costs: [SeriesId; 3],
 }
 
 impl Tariffs {
+    /// The tariff over `storage`, its bands on the wall clock of the plant timezone `zone`.
     #[must_use]
-    pub fn new(database: Database) -> Self {
+    pub fn new(storage: &Storage, bus: &Bus, zone: TimeZone) -> Self {
         Self {
-            database,
+            database: storage.database(),
             changed: Arc::new(watch::channel(()).0),
+            zone,
+            bus: bus.clone(),
+            declarer: storage.declarer(),
+            reader: storage.reader(),
+            rewriter: storage.rewriter(),
+            prices: device::PRICES.map(|role| bus.intern(role, None)),
+            costs: device::COSTS.map(|role| bus.intern(role, None)),
         }
     }
 
@@ -206,7 +226,7 @@ impl Tariffs {
         }
         let stored = self
             .database
-            .run(move |db| store::insert(db, version, changed))
+            .run(move |db| store::insert(db, version, changed, changes::Action::Change))
             .await
             .map_err(|_| INTERNAL)?;
         self.changed.send_replace(());

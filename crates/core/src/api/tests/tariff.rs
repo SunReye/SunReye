@@ -160,3 +160,36 @@ async fn a_band_that_is_not_one_span_of_a_day_or_overlaps_another_is_refused() {
     let (status, _) = core.put_tariff(&set_cookie, &touching).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn repricing_corrects_the_past_within_retention_and_is_logged() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    let reprice = |tariff: &Value| send("POST", "/api/v1/tariff/reprice", tariff);
+
+    // Five years of 365.25 days before 2026-11-09 00:00 is 2021-11-08 18:00.
+    let (status, body) = core
+        .ask(&set_cookie, reprice(&weeknights("2021-11-08T17:59:59Z")))
+        .await;
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("tariff.retention"))
+    );
+
+    let november = weeknights("2026-11-01T00:00:00Z");
+    let (status, repriced) = core.ask(&set_cookie, reprice(&november)).await;
+    assert_eq!((status, &repriced), (StatusCode::OK, &november));
+    assert_eq!(
+        core.tariff_at(&set_cookie, "2026-11-02T00:00:00Z").await,
+        (StatusCode::OK, november)
+    );
+    let (_, log) = core.ask(&set_cookie, get("/api/v1/changes")).await;
+    assert_eq!(
+        log,
+        json!({ "changes": [{
+            "changed": "2026-11-09T00:00:00Z", "appliesFrom": "2026-11-01T00:00:00Z",
+            "actor": "admin", "subject": "tariff", "id": 1, "action": "reprice",
+            "state": repriced,
+        }] })
+    );
+}

@@ -16,8 +16,13 @@ fn time(seconds: i64) -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap_or(0))
 }
 
-/// Appends a version and its change log entry; returns it as stored, to the second.
-pub fn insert(db: &Connection, version: Version, changed: SystemTime) -> rusqlite::Result<Version> {
+/// Appends a version and its change log entry as `action`; returns it as stored, to the second.
+pub fn insert(
+    db: &Connection,
+    version: Version,
+    changed: SystemTime,
+    action: Action,
+) -> rusqlite::Result<Version> {
     let tx = db.unchecked_transaction()?;
     let version = Version {
         applies_from: time(changes::seconds(version.applies_from)),
@@ -52,7 +57,7 @@ pub fn insert(db: &Connection, version: Version, changed: SystemTime) -> rusqlit
     let entry = Entry {
         subject: Subject::Tariff,
         id: u32::try_from(tariff).unwrap_or(u32::MAX),
-        action: Action::Change,
+        action,
         state: serde_json::to_value(Tariff::from(&version)).ok(),
         actor: ACTOR,
         changed,

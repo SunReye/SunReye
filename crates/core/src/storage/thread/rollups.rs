@@ -137,12 +137,17 @@ impl Store {
             params![device.0, id],
             |row| row.get(0),
         )?;
-        let points = quantised(replacement, step, from..to);
+        let mut new = quantised(replacement, step, from..to);
+        // A first value equal to the one already in force is no change either.
+        let before = points(&self.db, device.0, id, from, from)?;
+        if !new.is_empty() && before.first().map(|p| p.value) == new.first().map(|p| p.value) {
+            new.remove(0);
+        }
         let inside = |time: Tick| (from..to).contains(&time);
         self.pending
             .retain(|&(d, s, p)| !(d == device.0 && s == id && inside(p.time)));
         let tx = self.db.unchecked_transaction()?;
-        rewrite(&tx, (device.0, id), from..to, &points)?;
+        rewrite(&tx, (device.0, id), from..to, &new)?;
         if let Some(limit) = self.rolled {
             self.recompute(&tx, (device.0, id, kind), floor(from)..to.min(limit), limit)?;
         }

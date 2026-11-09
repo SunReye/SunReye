@@ -53,6 +53,8 @@ pub enum Action {
     Add,
     Change,
     Remove,
+    /// A tariff applying from the past, its prices and costs rebuilt (ADR 12).
+    Reprice,
 }
 
 /// One configuration change.
@@ -143,7 +145,7 @@ struct Change {
     subject: String,
     /// The subject's id.
     id: u32,
-    /// `add`, `change` or `remove`.
+    /// `add`, `change`, `remove` or `reprice`.
     action: String,
     /// The subject after the change, as its own route reads it; `null` once removed.
     state: Option<serde_json::Value>,

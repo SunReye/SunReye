@@ -203,9 +203,14 @@ pub async fn serve(
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
     let (topologies, tariffs) = (
         Topologies::new(storage.database()),
-        Tariffs::new(storage.database()),
+        Tariffs::new(
+            &storage,
+            &bus,
+            // Storage has accepted the plant timezone.
+            jiff::tz::TimeZone::get(&zone).unwrap_or(jiff::tz::TimeZone::UTC),
+        ),
     );
-    let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &zone, &bus);
+    let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &bus);
     let location = PlantLocation::open(storage.database()).await?;
     let forecasting = forecast(
         &storage,
@@ -293,11 +298,9 @@ struct Computed {
 }
 
 impl Computed {
-    /// The tariff's bands evaluate in the plant timezone `zone`, which storage has accepted.
     fn spawn(
         storage: &Storage,
         (layouts, topologies, tariffs): (&Layouts, &Topologies, &Tariffs),
-        zone: &str,
         bus: &Bus,
     ) -> Self {
         Self {
@@ -308,13 +311,7 @@ impl Computed {
                 bus,
             ),
             _plant: Plant::spawn(topologies.clone(), storage.declarer(), bus),
-            _tariff: TariffDevice::spawn(
-                tariffs.clone(),
-                jiff::tz::TimeZone::get(zone).unwrap_or(jiff::tz::TimeZone::UTC),
-                storage.declarer(),
-                bus,
-                std::sync::Arc::new(SystemTime::now),
-            ),
+            _tariff: TariffDevice::spawn(tariffs.clone(), std::sync::Arc::new(SystemTime::now)),
         }
     }
 }

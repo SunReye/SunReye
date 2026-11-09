@@ -44,6 +44,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "tariff.none": m.problem_tariff_none,
   "tariff.band": m.problem_tariff_band,
   "tariff.past": m.problem_tariff_past,
+  "tariff.retention": m.problem_tariff_retention,
   "location.none": m.problem_location_none,
   "location.value": m.problem_location_value,
   "connection.none": m.problem_connection_none,

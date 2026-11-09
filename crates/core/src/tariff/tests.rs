@@ -12,6 +12,8 @@ use crate::bus::{Bus, Reading};
 use crate::plant;
 use crate::storage::Storage;
 
+mod reprice;
+
 fn instant(text: &str) -> SystemTime {
     text.parse::<jiff::Timestamp>().unwrap().into()
 }
@@ -273,7 +275,7 @@ fn site(start: &str) -> Site {
         &bus,
     )
     .unwrap();
-    let tariffs = Tariffs::new(storage.database());
+    let tariffs = Tariffs::new(&storage, &bus, berlin());
     frozen(tariffs.change(
         night_rate("2026-01-01T00:00:00Z"),
         instant("2026-01-01T00:00:00Z"),
@@ -283,7 +285,7 @@ fn site(start: &str) -> Site {
     let paused = tokio::time::Instant::now();
     let clock = Arc::new(move || start + paused.elapsed());
     let readings = bus.subscribe();
-    let device = TariffDevice::spawn(tariffs.clone(), berlin(), storage.declarer(), &bus, clock);
+    let device = TariffDevice::spawn(tariffs.clone(), clock);
     Site {
         _dir: dir,
         bus,
