@@ -10,8 +10,10 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sunreye_profile::RoleKind;
 use tokio::sync::{mpsc, oneshot};
 
-use super::encode::{Point, Tick, Track, ticks};
-use super::{ChangePoint, Error, Policy, Problem, Rollup, Tier, block};
+use super::encode::{Point, Tick, Track, quantise, ticks};
+use super::{
+    ChangePoint, Error, Forecast, Issue, Location, Policy, Problem, Rollup, Tier, block, forecast,
+};
 use crate::bus::{DeviceId, Reading, SeriesId};
 
 mod rollups;
@@ -25,6 +27,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
     include_str!("migrations/0002.sql"),
     include_str!("migrations/0003.sql"),
+    include_str!("migrations/0004.sql"),
 ];
 
 /// SQL a feature module runs on its own tables.
@@ -64,9 +67,29 @@ pub enum Request {
         range: Range<SystemTime>,
         reply: oneshot::Sender<Result<(), Error>>,
     },
+    Forecasting(Forecasting),
     Problems(oneshot::Sender<Vec<Problem>>),
     Run(Job),
     Shutdown(oneshot::Sender<Result<(), Error>>),
+}
+
+/// Forecasts and the plant location (ADR 15).
+pub enum Forecasting {
+    Forecast {
+        device: DeviceId,
+        name: String,
+        issue: Issue,
+        reply: oneshot::Sender<Result<(), Error>>,
+    },
+    Forecasts {
+        device: DeviceId,
+        name: String,
+        from: SystemTime,
+        to: SystemTime,
+        reply: oneshot::Sender<Result<Vec<Forecast>, Error>>,
+    },
+    SetLocation(Location, oneshot::Sender<Result<(), Error>>),
+    Location(oneshot::Sender<Result<Option<Location>, Error>>),
 }
 
 /// Opens the file and starts the thread; the returned sender feeds it.
@@ -228,6 +251,7 @@ impl Store {
             } => {
                 reply.send(self.rebuild(device, series, range)).ok();
             }
+            Request::Forecasting(request) => self.forecasting(request),
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
                 reply.send(unsynced.into_iter().collect()).ok();
@@ -371,26 +395,7 @@ impl Store {
             self.flush(self.clock)?;
         }
         let id = self.series_id(name)?;
-        let step: Option<f64> = self
-            .db
-            .query_row(
-                "SELECT step FROM step WHERE device = ?1 AND series = ?2",
-                params![device.0, id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match step {
-            Some(step) if (step - policy.step).abs() > step * 1e-9 => {
-                return Err(Error::StepChanged);
-            }
-            Some(_) => {}
-            None => {
-                self.db.execute(
-                    "INSERT INTO step (device, series, step) VALUES (?1, ?2, ?3)",
-                    params![device.0, id, policy.step],
-                )?;
-            }
-        }
+        self.step(device, id, policy.step)?;
         let last = self.last(device.0, id)?;
         let track = Track::resume(policy, last, self.restart);
         let kind = policy.kind;
@@ -399,6 +404,117 @@ impl Store {
         Ok(())
     }
 
+    /// Records the step `series` of `device` is stored in, refusing another.
+    fn step(&self, device: DeviceId, series: i64, step: f64) -> Result<(), Error> {
+        let stored: Option<f64> = self
+            .db
+            .query_row(
+                "SELECT step FROM step WHERE device = ?1 AND series = ?2",
+                params![device.0, series],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match stored {
+            Some(stored) if (stored - step).abs() > stored * 1e-9 => Err(Error::StepChanged),
+            Some(_) => Ok(()),
+            None => {
+                self.db.execute(
+                    "INSERT INTO step (device, series, step) VALUES (?1, ?2, ?3)",
+                    params![device.0, series, step],
+                )?;
+                Ok(())
+            }
+        }
+    }
+
+    fn forecasting(&mut self, request: Forecasting) {
+        match request {
+            Forecasting::Forecast {
+                device,
+                name,
+                issue,
+                reply,
+            } => {
+                reply.send(self.forecast(device, &name, &issue)).ok();
+            }
+            Forecasting::Forecasts {
+                device,
+                name,
+                from,
+                to,
+                reply,
+            } => {
+                reply.send(self.forecasts(device, &name, from, to)).ok();
+            }
+            Forecasting::SetLocation(location, reply) => {
+                reply.send(self.set_location(location)).ok();
+            }
+            Forecasting::Location(reply) => {
+                reply.send(self.location()).ok();
+            }
+        }
+    }
+
+    fn forecast(&mut self, device: DeviceId, name: &str, issue: &Issue) -> Result<(), Error> {
+        let series = self.series_id(name)?;
+        self.step(device, series, issue.step)?;
+        let issued = tick(issue.issued).unwrap_or(0);
+        let points = issue
+            .values
+            .iter()
+            .filter_map(|&(target, value)| Some((tick(target)?, quantise(value, issue.step)?)));
+        let tx = self.db.transaction()?;
+        forecast::write(&tx, device.0, series, issued, points)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn forecasts(
+        &self,
+        device: DeviceId,
+        name: &str,
+        from: SystemTime,
+        to: SystemTime,
+    ) -> Result<Vec<Forecast>, Error> {
+        let Some((series, step)) = lookup(&self.db, device, name)? else {
+            return Ok(Vec::new());
+        };
+        let from = tick(from).unwrap_or(0);
+        let to = tick(to).unwrap_or(0);
+        Ok(forecast::read(&self.db, device.0, series, from, to)?
+            .into_iter()
+            .map(|(target, issued, value)| Forecast {
+                target: time(target),
+                issued: time(issued),
+                #[expect(clippy::cast_precision_loss, reason = "values are bounded to ±2^53")]
+                value: value as f64 * step,
+            })
+            .collect())
+    }
+
+    fn set_location(&self, location: Location) -> Result<(), Error> {
+        self.db.execute(
+            "INSERT INTO location (id, latitude, longitude) VALUES (0, ?1, ?2)
+             ON CONFLICT (id) DO UPDATE SET latitude = excluded.latitude,
+             longitude = excluded.longitude",
+            params![location.latitude, location.longitude],
+        )?;
+        Ok(())
+    }
+
+    fn location(&self) -> Result<Option<Location>, Error> {
+        Ok(self
+            .db
+            .query_row("SELECT latitude, longitude FROM location", [], |row| {
+                Ok(Location {
+                    latitude: row.get(0)?,
+                    longitude: row.get(1)?,
+                })
+            })
+            .optional()?)
+    }
+
+    /// The id and step of a series stored for `device`.
     fn series_id(&self, name: &str) -> Result<i64, Error> {
         let id = self
             .db

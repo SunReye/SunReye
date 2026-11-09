@@ -23,6 +23,8 @@ allow = [
 confidence-threshold = 0.9
 # The list anticipates dependencies the skeleton does not have yet.
 unused-allowed-license = "allow"
+# Mozilla's root certificates as data, for the HTTPS client (ADR 2): a permissive data licence.
+exceptions = [{ crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] }]
 
 [bans]
 multiple-versions = "warn"

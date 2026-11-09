@@ -1,6 +1,6 @@
 # 4. Roles and conventions
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -31,6 +31,8 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `load.energy.total`, `backup.energy.total`, `generator.energy.total` | kWh | counter | |
 | `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | |
 | `ev.connected`, `ev.charging` | | status | |
+| `weather.ghi`, `weather.dni`, `weather.dhi` | W/m² | measurement; global, direct normal and diffuse irradiance (ADR 17) | |
+| `weather.temperature`, `weather.wind` | °C, m/s | measurement | |
 
 - **Plant values.** A role has no rule for combining devices. Plant-level values come only from the `plant` computed device and its topology (ADR 14), which weights `battery.soc` by `battery.capacity`.
 - **Reserved namespaces** for the workspace, with roles added by amendment as devices need them: `load.circuit` (indexed sub-meters), `heatpump` (power, thermal energy, SG Ready state), `heat` (thermal energy in kWh), `gas` and `water` (volume counters in m³), `weather` (global, direct and diffuse irradiance in W/m², temperature, wind; ADR 17), `forecast` (future values of any role, ADR 15), `price` (import and export in EUR/kWh), `cost` (signed rates in EUR/h, ADR 12) and `plan` (EMS decisions).

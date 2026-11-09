@@ -25,6 +25,7 @@ jiff = { version = "0.2.41", default-features = false, features = [
 ] }
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde.workspace = true
+serde_json.workspace = true
 sunreye-profile.workspace = true
 tokio = { version = "1.54.1", default-features = false, features = [
   "io-util",
@@ -33,9 +34,11 @@ tokio = { version = "1.54.1", default-features = false, features = [
   "sync",
   "time",
 ] }
+# The minimal HTTPS client on rustls (ADR 2): blocking, so a fetch runs on Tokio's blocking pool;
+# an async client would add hyper, hyper-util and tokio-rustls for an hourly request.
+ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
-serde_json = "1.0.154"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt", "test-util"] }

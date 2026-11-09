@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::RoleKind;
 
-use super::{ChangePoint, Policy, Problem, Storage};
+use super::{ChangePoint, Issue, Location, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod rollups;
@@ -331,4 +331,117 @@ async fn a_feature_module_runs_its_sql_on_the_storage_connection() {
         .unwrap();
 
     assert_eq!(journal, "wal");
+}
+
+/// A forecast as seconds since `T0`: target, issue, value.
+type Issued = (f64, f64, f64);
+
+async fn forecasts(storage: &Storage, series: SeriesId) -> Vec<Issued> {
+    let seconds = |time: SystemTime| time.duration_since(at(0.0)).unwrap().as_secs_f64();
+    storage
+        .forecasts(DEVICE, series, epoch(), at(86_400.0))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|f| {
+            (
+                seconds(f.target),
+                seconds(f.issued),
+                (f.value * 1e6).round() / 1e6,
+            )
+        })
+        .collect()
+}
+
+async fn issue(storage: &Storage, series: SeriesId, issued: f64, values: &[(f64, f64)]) {
+    let issue = Issue {
+        issued: at(issued),
+        step: 0.1,
+        values: values.iter().map(|&(t, v)| (at(t), v)).collect(),
+    };
+    storage.forecast(DEVICE, series, issue).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_forecast_reads_back_with_its_issue_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite");
+    let plant = Plant::new();
+    let storage = plant.open(&path, epoch()).await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    issue(&storage, ghi, 60.0, &[(900.0, 412.34), (1800.0, 405.0)]).await;
+    storage.shutdown().await.unwrap();
+
+    let storage = plant.open(&path, epoch()).await;
+    assert_eq!(
+        forecasts(&storage, ghi).await,
+        [(900.0, 60.0, 412.3), (1800.0, 60.0, 405.0)]
+    );
+}
+
+#[tokio::test]
+async fn an_issue_keeps_its_targets_from_the_start_of_its_hour() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant
+        .open(&dir.path().join("history.sqlite"), epoch())
+        .await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    issue(
+        &storage,
+        ghi,
+        3720.0,
+        &[(2700.0, 1.0), (3600.0, 2.0), (4500.0, 3.0)],
+    )
+    .await;
+    assert_eq!(
+        forecasts(&storage, ghi).await,
+        [(3600.0, 3720.0, 2.0), (4500.0, 3720.0, 3.0)]
+    );
+}
+
+#[tokio::test]
+async fn a_passed_target_hour_keeps_only_its_latest_issue() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant
+        .open(&dir.path().join("history.sqlite"), epoch())
+        .await;
+    let ghi = plant.bus.intern("weather.ghi", None);
+    let hours = [(0.0, 1.0), (1800.0, 1.0), (3600.0, 1.0), (7200.0, 1.0)];
+    issue(&storage, ghi, 0.0, &hours).await;
+    let hours = [(0.0, 2.0), (1800.0, 2.0), (3600.0, 2.0), (7200.0, 2.0)];
+    issue(&storage, ghi, 60.0, &hours).await;
+    issue(&storage, ghi, 3660.0, &[(3600.0, 3.0), (7200.0, 3.0)]).await;
+    issue(&storage, ghi, 7260.0, &[(7200.0, 4.0)]).await;
+    assert_eq!(
+        forecasts(&storage, ghi).await,
+        [
+            (0.0, 60.0, 2.0),
+            (1800.0, 60.0, 2.0),
+            (3600.0, 3660.0, 3.0),
+            (7200.0, 0.0, 1.0),
+            (7200.0, 60.0, 2.0),
+            (7200.0, 3660.0, 3.0),
+            (7200.0, 7260.0, 4.0),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_plant_location_is_stored() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite");
+    let plant = Plant::new();
+    let storage = plant.open(&path, epoch()).await;
+    assert_eq!(storage.location().await.unwrap(), None);
+    let berlin = Location {
+        latitude: 52.516_3,
+        longitude: 13.377_7,
+    };
+    storage.set_location(berlin).await.unwrap();
+    storage.shutdown().await.unwrap();
+
+    let storage = plant.open(&path, epoch()).await;
+    assert_eq!(storage.location().await.unwrap(), Some(berlin));
 }
