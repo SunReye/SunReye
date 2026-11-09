@@ -152,6 +152,10 @@ _Avoid_: Model, 3D view
 A rectangular building footprint with one roof.
 _Avoid_: Building, house
 
+**Obstacle**:
+An opaque box, cylinder or tree in the scene that casts shade on the modules.
+_Avoid_: Shader, object
+
 **Car place**:
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
 _Avoid_: Garage, charger

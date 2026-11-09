@@ -6,6 +6,7 @@ mod diode;
 mod estimate;
 mod mppt;
 mod perez;
+mod scene;
 mod shade;
 mod string;
 mod sun;
@@ -14,6 +15,7 @@ mod temperature;
 pub use estimate::estimate;
 pub use mppt::{input_output, module_counts_differ};
 pub use perez::plane_irradiance;
+pub use scene::{Block, Face, Obstacle, Roof, Scene, Surface};
 pub use sun::sun_position;
 pub use temperature::cell_temperature;
 

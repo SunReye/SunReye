@@ -814,6 +814,9 @@ dependencies = [
 [[package]]
 name = "sunreye-pv"
 version = "5.0.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "syn"

@@ -4,6 +4,7 @@ mod fixtures;
 mod input;
 mod lint;
 mod perez;
+mod scene;
 mod shade;
 mod string;
 mod sun;
