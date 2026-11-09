@@ -17,8 +17,8 @@ const CAPABILITIES = {
       estimated: [],
       writes: true,
       settings: [
-        { key: CHARGE, range: { min: 0, max: 350 }, step: 1 },
-        { key: "work_mode", values: [0, 1, 2], step: 1 },
+        { key: CHARGE, range: { min: 0, max: 350 }, step: 1, enable: "on" },
+        { key: "work_mode", values: [0, 1, 2], step: 1, enable: "on" },
       ],
     },
   },
@@ -50,6 +50,7 @@ function problem(status: number, code: string): Response {
 function testCore(
   log: () => Response,
   write: () => Response = () => Response.json(attempt({})),
+  read: Readonly<Record<string, () => Response>> = {},
 ): Transport & { readonly writes: string[] } {
   const writes: string[] = [];
 
@@ -58,10 +59,15 @@ function testCore(
     writes,
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
+      const answer = request.method === "GET" ? read[path] : undefined;
+
+      if (answer !== undefined) return answer();
 
       if (path === "/api/v1/capabilities") return Response.json(CAPABILITIES);
 
       if (path === "/api/v1/writes") return log();
+
+      if (path === "/api/v1/profile-updates") return Response.json({ updates: [] });
 
       writes.push(`${request.method} ${path} ${await request.text()}`);
 
@@ -157,7 +163,9 @@ test("a device whose writes are off says so and offers no write", async () => {
     base: "http://core.test/",
     fetch: (request) =>
       Promise.resolve(
-        request.url.endsWith("/capabilities") ? Response.json(off) : Response.json({ writes: [] }),
+        request.url.endsWith("/capabilities")
+          ? Response.json(off)
+          : Response.json({ writes: [], updates: [] }),
       ),
   };
 
@@ -167,4 +175,89 @@ test("a device whose writes are off says so and offers no write", async () => {
     .element(screen.getByText(/Schreiben ist für dieses Gerät ausgeschaltet/u))
     .toBeVisible();
   await expect.element(screen.getByRole("button", { name: `${CHARGE} schreiben` })).toBeDisabled();
+});
+
+test("a setting that needs the admin's enable shows its bounds and is enabled in one click", async () => {
+  const off = structuredClone(CAPABILITIES);
+  const charge = off.devices["3"].settings[0];
+
+  if (charge) charge.enable = "off";
+
+  let capabilities = off;
+
+  const transport = testCore(
+    () => Response.json({ writes: [] }),
+    () => {
+      capabilities = CAPABILITIES;
+
+      return new Response(null, { status: 204 });
+    },
+    { "/api/v1/capabilities": () => Response.json(capabilities) },
+  );
+
+  const screen = await render(SettingsScreen, { core: connect(transport) });
+
+  await expect
+    .element(screen.getByText("Nicht auf Hardware geprüft: wird erst nach Freigabe geschrieben."))
+    .toBeVisible();
+  await expect.element(screen.getByText("Erlaubt: 0 bis 350, Schritt 1")).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: `${CHARGE} schreiben` })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: `${CHARGE} freigeben` }));
+
+  expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${CHARGE}/enabled `]);
+  await expect.element(screen.getByRole("button", { name: `${CHARGE} schreiben` })).toBeEnabled();
+  await expect
+    .element(screen.getByRole("button", { name: `Freigabe von ${CHARGE} zurücknehmen` }))
+    .toBeVisible();
+});
+
+test("an update shows what it changes and is applied in one click", async () => {
+  const update = {
+    id: "box",
+    from: "1.0.0",
+    to: "1.1.0",
+    settings: [
+      {
+        key: CHARGE,
+        change: "changed",
+        before: { range: { min: 0, max: 350 }, step: 1 },
+        after: { range: { min: 0, max: 400 }, step: 1 },
+      },
+      { key: "work_mode", change: "removed", before: { values: [0, 1, 2], step: 1 }, after: null },
+    ],
+    quantities: [{ key: "battery.power", change: "added" }],
+  };
+
+  let updates = [update];
+
+  const transport = testCore(
+    () => Response.json({ writes: [] }),
+    () => {
+      updates = [];
+
+      return Response.json(update);
+    },
+    { "/api/v1/profile-updates": () => Response.json({ updates }) },
+  );
+
+  const screen = await render(SettingsScreen, { core: connect(transport) });
+
+  const diff = screen.getByRole("table", { name: "box: 1.0.0 → 1.1.0" });
+  await expect.element(diff).toBeVisible();
+  const charge = diff.getByRole("row", { name: new RegExp(CHARGE, "u") });
+  await expect
+    .element(charge)
+    .toHaveTextContent(`${CHARGE}geändert0 bis 350, Schritt 10 bis 400, Schritt 1`);
+  await expect
+    .element(diff.getByRole("row", { name: /work_mode/u }))
+    .toHaveTextContent("work_modeentferntWerte 0, 1, 2–");
+  await expect
+    .element(diff.getByRole("row", { name: /battery\.power/u }))
+    .toHaveTextContent("battery.powerhinzugefügt");
+
+  await userEvent.click(screen.getByRole("button", { name: "Update für box anwenden" }));
+
+  expect(transport.writes).toEqual(["POST /api/v1/profile-updates/box "]);
+  await expect.element(diff).not.toBeInTheDocument();
 });

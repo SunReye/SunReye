@@ -1,6 +1,6 @@
 # 8. Profile distribution and trust
 
-Status: accepted (2026-11-08), amended (2026-11-08, 2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-08, 2026-11-09, 2026-11-09)
 
 ## Context
 
@@ -18,9 +18,9 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 **Keys.** One signing key per purpose: profiles, web bundles (ADR 16) and release artifacts (ADR 13). Each has an active key and a backup kept offline. Signatures are Ed25519 over the exact file bytes, never over re-serialised JSON; the index's SHA-256 covers the same bytes. The core compiles in the profile key and its backup. A revocation of the active key, signed by the backup, is published in the index; the core then trusts only the backup, and remembers it. A fetched copy the active key signed then counts as community. The public keys are compiled in as `KEYS` in `crates/core/src/profiles/trust.rs`; until the owner's key ceremony sets them it is `None` and no fetched profile is official. The ceremony writes them as `Some(Keys { active: [..], backup: [..] })`, 32 byte literals each, the shape `publish:profiles` reads. The official index is `https://sunreye.github.io/SunReye/index.json`.
 
-**Trust.** Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown. Until that enable exists, a community profile writes nothing (`setting.community`). The same per-setting enable applies to an official setting marked `verified: false` (ADR 5).
+**Trust.** Official profiles are those whose signature verifies. A profile from any other index loads read-only; the admin enables a write per setting with its declared bounds shown. Until that enable exists, a community profile writes nothing (`setting.community`). The same per-setting enable applies to an official setting not marked `verified: true` (ADR 5), refused as `setting.not-enabled`. An enable belongs to one device's setting, beside its `writes` switch, and covers the declaration as it was enabled: the core stores a fingerprint of it, so any changed declaration is off again, whichever way the profile changed. Capabilities report each setting's `enable`: `verified`, `on`, `off` or `community`.
 
-**Updates.** Applying an update is an admin click, shown as a diff. A change to a writable setting (added, a different register, bounds or unit) switches that setting's writes off until re-enabled. Official profiles follow the same rule: a fix never silently widens what the core may write.
+**Updates.** Applying an update is an admin click, shown as a diff. A check serves a profile it has not served before at once; a verified newer copy of one it serves waits, stored, as an update (`available`) until the admin applies it. The diff lists the settings and quantities the update adds, removes or changes, with each setting's bounds before and after. A change to a writable setting (added, or any part of its declaration, such as its register, bounds or unit) switches that setting's writes off until re-enabled. Official profiles follow the same rule: a fix never silently widens what the core may write, so a verified setting an applied update added or changed also needs the enable. A new bundled snapshot ships with a core release, which the admin installs, and is not diffed; an enable still covers only the declaration it was given. Applying is logged as subject `profile`, id 0, its state naming the profile and version; applying with nothing waiting is `update.none`.
 
 **Compatibility.** An entry whose schema is above the core's range, or that requires a capability the core lacks, is listed as "needs a newer core" and not downloaded. Official profiles are published in the current schema and, while it is supported, the previous one.
 

@@ -4,6 +4,7 @@
 //! [`crate::devices::Devices::write_setting`] is the one funnel; [`run`] is the only code that
 //! issues a write.
 
+pub mod enable;
 pub mod log;
 pub mod snapshot;
 
@@ -56,6 +57,10 @@ pub enum Refusal {
     SecretValue,
     /// A snapshot toggle released with no value stored to restore.
     NoSnapshot,
+    /// The setting needs the admin's enable and has none (ADR 8).
+    NotEnabled,
+    /// The setting is a community profile's and the admin has not enabled it (ADR 8).
+    Community,
 }
 
 impl From<Refusal> for Problem {
@@ -70,9 +75,94 @@ impl From<Refusal> for Problem {
             Refusal::SecretMissing => (StatusCode::CONFLICT, Code::SecretMissing),
             Refusal::SecretValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::SecretValue),
             Refusal::NoSnapshot => (StatusCode::CONFLICT, Code::SettingNoSnapshot),
+            Refusal::NotEnabled => (StatusCode::CONFLICT, Code::SettingNotEnabled),
+            Refusal::Community => (StatusCode::CONFLICT, Code::SettingCommunity),
         };
         Self { status, code }
     }
+}
+
+/// Whether a setting may be written, as far as trust goes (ADR 8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Enable {
+    /// An official setting verified on hardware: it writes with no enable.
+    Verified,
+    /// The admin enabled it as it is declared now.
+    On,
+    /// An official setting that needs the admin's enable.
+    Off,
+    /// A community profile's setting that needs the admin's enable.
+    Community,
+}
+
+/// Where `setting` stands, as far as trust goes (ADR 8).
+#[derive(Debug, Clone, Copy)]
+pub struct Standing<'a> {
+    /// Its profile is official.
+    pub official: bool,
+    /// An applied update added or changed it.
+    pub changed: bool,
+    /// The fingerprint the admin enabled it with, if at all.
+    pub enabled: Option<&'a str>,
+}
+
+impl Enable {
+    #[must_use]
+    pub fn of(setting: &Setting, standing: Standing<'_>) -> Self {
+        let Standing {
+            official,
+            changed,
+            enabled,
+        } = standing;
+        if official && setting.verified() && !changed {
+            Self::Verified
+        } else if enabled == Some(enable::fingerprint(setting).as_str()) {
+            Self::On
+        } else if official {
+            Self::Off
+        } else {
+            Self::Community
+        }
+    }
+}
+
+/// A setting's declared values: what a write may carry.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct Declared {
+    /// The bounds of a value; absent when `values` lists them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<Bounds>,
+    /// The only values it takes, when the profile enumerates them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<f64>>,
+    /// A value is a whole number of steps.
+    pub step: f64,
+}
+
+/// The inclusive bounds of a setting's value.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ToSchema)]
+pub struct Bounds {
+    pub min: f64,
+    pub max: f64,
+}
+
+impl From<&Setting> for Declared {
+    fn from(setting: &Setting) -> Self {
+        Self {
+            range: setting.range().map(|(min, max)| Bounds { min, max }),
+            values: setting.values().map(<[f64]>::to_vec),
+            step: setting.step(),
+        }
+    }
+}
+
+/// What lets a device's setting write: the device's switch (ADR 7) and the setting's enable
+/// (ADR 8).
+#[derive(Debug, Clone, Copy)]
+pub struct Permit {
+    pub writes: bool,
+    pub enable: Enable,
 }
 
 /// A write as its actor asks for it.
@@ -147,14 +237,15 @@ pub struct Applied {
     pub failed_step: Option<u32>,
 }
 
-/// Checks `request` against the profile, the device's switch and the setting's last write.
+/// Checks `request` against the profile, the device's switch, the setting's enable and its last
+/// write.
 ///
 /// # Errors
 /// The [`Refusal`] that stops the write.
 pub fn check(
     profile: &Profile,
     request: &Request,
-    writes: bool,
+    permit: Permit,
     last: Option<SystemTime>,
     now: SystemTime,
 ) -> Result<(Setting, Vec<u16>), Refusal> {
@@ -167,8 +258,13 @@ pub fn check(
         });
     };
     let words = setting.encode(request.value).ok_or(Refusal::Value)?;
-    if !writes {
+    if !permit.writes {
         return Err(Refusal::WritesOff);
+    }
+    match permit.enable {
+        Enable::Verified | Enable::On => {}
+        Enable::Off => return Err(Refusal::NotEnabled),
+        Enable::Community => return Err(Refusal::Community),
     }
     // A clock stepped back behind the last write still waits.
     let since = last.map(|last| now.duration_since(last).unwrap_or(Duration::ZERO));

@@ -59,9 +59,11 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "setting.precondition": m.problem_setting_precondition,
   "setting.community": m.problem_setting_community,
   "setting.no-snapshot": m.problem_setting_no_snapshot,
+  "setting.not-enabled": m.problem_setting_not_enabled,
   "secret.missing": m.problem_secret_missing,
   "secret.value": m.problem_secret_value,
   "index.value": m.problem_index_value,
+  "update.none": m.problem_update_none,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

@@ -546,3 +546,15 @@ fn a_snapshot_toggle_targets_a_readable_setting_that_takes_its_locked_value() {
         assert_eq!(refusal(&settings), (key, problem));
     }
 }
+
+#[test]
+fn a_setting_is_unverified_unless_it_was_checked_on_hardware() {
+    let mut checked = current();
+    checked["key"] = json!("checked");
+    checked["verified"] = json!(true);
+
+    let profile = load(&json!([current(), checked])).unwrap();
+
+    assert!(!profile.setting("current").unwrap().verified());
+    assert!(profile.setting("checked").unwrap().verified());
+}

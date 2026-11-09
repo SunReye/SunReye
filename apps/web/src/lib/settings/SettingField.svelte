@@ -23,6 +23,9 @@
 
   // An enumerated setting starts at its first value; a ranged one waits for the admin's.
   let value = $derived<number | null>(setting.values?.[0] ?? null);
+
+  // The device's switch, and trust once verified or enabled (ADR 8).
+  const writable = $derived(writes && (setting.enable === "verified" || setting.enable === "on"));
   let pending = $state(false);
   let result = $state.raw<Attempt | Problem>();
 
@@ -57,7 +60,7 @@
       bind:value
     />
   {/if}
-  <button disabled={!writes || pending}>{m.settings_write({ key: setting.key })}</button>
+  <button disabled={!writable || pending}>{m.settings_write({ key: setting.key })}</button>
   {#if result !== undefined && "problem" in result}
     <p role="alert">{problemText(result.problem)}</p>
   {:else if result !== undefined}

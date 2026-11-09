@@ -25,7 +25,9 @@ use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::profiles::Catalogue;
-use crate::settings::{self, Job, Outcome, Request, Secret, Snapshot, log, snapshot};
+use crate::settings::{
+    self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
+};
 use crate::storage::{self, Database, Declarer, Policy};
 use crate::transport::Endpoint;
 
@@ -35,10 +37,6 @@ const INTERNAL: Problem = Problem {
 };
 /// Who configures devices: the one admin (ADR 9).
 const ACTOR: &str = "admin";
-const COMMUNITY: Problem = Problem {
-    status: StatusCode::CONFLICT,
-    code: Code::SettingCommunity,
-};
 
 /// Why a configuration change was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +153,14 @@ struct Polled {
     endpoint: Endpoint,
 }
 
+/// A device's writes switch and its profile's settings with their enables, in the profile's order.
+#[derive(Debug, Clone)]
+pub struct Writable {
+    pub id: u32,
+    pub writes: bool,
+    pub settings: Vec<(Setting, Enable)>,
+}
+
 /// A device being written, with its profile and the endpoint tasks, held while it is.
 struct Writing<'a> {
     running: &'a [Running],
@@ -230,19 +236,81 @@ impl Devices {
         self.database.run(store::devices).await
     }
 
-    /// Every device with its writes switch and its profile, by id.
+    /// Every device with its writes switch and its settings, by id.
     ///
     /// # Errors
     /// The file cannot be read.
-    pub async fn writable(&self) -> Result<Vec<(u32, bool, Arc<Profile>)>, storage::Error> {
-        let devices = self.devices().await?;
-        Ok(devices
-            .into_iter()
-            .filter_map(|d| {
-                let profile = self.catalogue.get(&d.draft.profile)?;
-                Some((d.id, d.draft.writes, profile))
-            })
-            .collect())
+    pub async fn writable(&self) -> Result<Vec<Writable>, storage::Error> {
+        let mut writable = Vec::new();
+        for device in self.devices().await? {
+            let Some(profile) = self.catalogue.get(&device.draft.profile) else {
+                continue;
+            };
+            let mut settings = Vec::new();
+            for setting in profile.settings() {
+                let enable = self.enable(&device, setting).await?;
+                settings.push((setting.clone(), enable));
+            }
+            writable.push(Writable {
+                id: device.id,
+                writes: device.draft.writes,
+                settings,
+            });
+        }
+        Ok(writable)
+    }
+
+    /// Enables the writes of setting `key` of device `id` as it is declared now (ADR 8), or
+    /// disables them.
+    ///
+    /// # Errors
+    /// The device or setting is unknown or read-only, or the file cannot be written.
+    pub async fn enable_setting(
+        &self,
+        id: u32,
+        key: String,
+        on: bool,
+        changed: SystemTime,
+    ) -> Result<(), Problem> {
+        let device = self.device(id).await?;
+        let profile = self.profile(&device.draft.profile)?;
+        let fingerprint = match profile.setting(&key) {
+            Some(setting) => enable::fingerprint(setting),
+            None if profile.quantities().iter().any(|q| q.key == key) => {
+                return Err(settings::Refusal::ReadOnly.into());
+            }
+            None => return Err(settings::Refusal::None.into()),
+        };
+        let fingerprint = on.then_some(fingerprint);
+        self.database
+            .run(move |db| enable::set(db, id, &key, fingerprint.as_deref(), changed))
+            .await
+            .map_err(|_| INTERNAL)
+    }
+
+    /// Whether `setting` of `device` may be written, as far as trust goes.
+    async fn enable(&self, device: &Device, setting: &Setting) -> Result<Enable, storage::Error> {
+        let (id, key) = (device.id, setting.key.clone());
+        let enabled = self
+            .database
+            .run(move |db| enable::stored(db, id, &key))
+            .await?;
+        let profile = &device.draft.profile;
+        let standing = Standing {
+            official: self.catalogue.official(profile),
+            changed: self.catalogue.changed(profile, &setting.key),
+            enabled: enabled.as_deref(),
+        };
+        Ok(Enable::of(setting, standing))
+    }
+
+    async fn device(&self, id: u32) -> Result<Device, Problem> {
+        let device = self
+            .database
+            .run(move |db| store::device(db, id))
+            .await
+            .map_err(|_| INTERNAL)?;
+        Ok(device.ok_or(Refusal::NoDevice)?)
     }
 
     /// Adds a connection with a fresh id.
@@ -330,8 +398,8 @@ impl Devices {
     /// Changes to devices wait for it, so its task cannot restart mid-write.
     ///
     /// # Errors
-    /// The device or setting is unknown or read-only, its profile is a community one, the value
-    /// does not fit, the device's writes are off, the setting's minimum interval has not passed, its
+    /// The device or setting is unknown or read-only, the value does not fit, the device's writes
+    /// are off, the setting needs an enable it lacks, its minimum interval has not passed, its
     /// unlock's secret is not set or not a code, a precondition does not hold, a toggle is released
     /// with no value stored, or the file cannot be written.
     pub async fn write_setting(
@@ -341,13 +409,8 @@ impl Devices {
         now: SystemTime,
     ) -> Result<log::Entry, Problem> {
         let running = self.running.lock().await;
-        let device = self
-            .database
-            .run(move |db| store::device(db, id))
-            .await
-            .map_err(|_| INTERNAL)?
-            .ok_or(Refusal::NoDevice)?;
-        let profile = self.write_profile(&device.draft.profile)?;
+        let device = self.device(id).await?;
+        let profile = self.profile(&device.draft.profile)?;
         let writing = Writing {
             running: &running,
             device,
@@ -375,14 +438,9 @@ impl Devices {
         now: SystemTime,
     ) -> Result<log::Entry, Problem> {
         let id = writing.device.id;
-        // The toggle takes 0 or 1 and writes only when the device's writes are on.
-        let (_, words) = settings::check(
-            &writing.profile,
-            &request,
-            writing.device.draft.writes,
-            None,
-            now,
-        )?;
+        let permit = self.permit(writing, &request.key).await?;
+        // The toggle takes 0 or 1 and writes only when the device's writes and it are enabled.
+        let (_, words) = settings::check(&writing.profile, &request, permit, None, now)?;
         let key = request.key;
         let stored = {
             let key = key.clone();
@@ -444,7 +502,8 @@ impl Devices {
             .run(move |db| log::last_write(db, id, &setting))
             .await
             .map_err(|_| INTERNAL)?;
-        let (setting, words) = settings::check(profile, &request, device.draft.writes, last, now)?;
+        let permit = self.permit(writing, &request.key).await?;
+        let (setting, words) = settings::check(profile, &request, permit, last, now)?;
         let unlock = self.unlock(device.draft.connection, &setting).await?;
         let task = running
             .iter()
@@ -477,6 +536,22 @@ impl Devices {
             .map_err(|_| INTERNAL)
     }
 
+    /// What lets setting `key` of the device being written write; an undeclared key is refused
+    /// by the check before its enable counts.
+    async fn permit(&self, writing: &Writing<'_>, key: &str) -> Result<Permit, Problem> {
+        let enable = match writing.profile.setting(key) {
+            Some(setting) => self
+                .enable(&writing.device, setting)
+                .await
+                .map_err(|_| INTERNAL)?,
+            None => Enable::Off,
+        };
+        Ok(Permit {
+            writes: writing.device.draft.writes,
+            enable,
+        })
+    }
+
     /// The words of the secret `setting`'s unlock names, from `connection`.
     async fn unlock(&self, connection: u32, setting: &Setting) -> Result<Option<Secret>, Problem> {
         let Some(name) = setting.unlock().map(|unlock| unlock.secret.clone()) else {
@@ -498,15 +573,9 @@ impl Devices {
         self.database.run(log::entries).await
     }
 
-    /// Profile `id`, if official: until the per-setting enable (ADR 8), a community profile
-    /// writes nothing.
-    fn write_profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
-        let profile = self.catalogue.get(id).ok_or(settings::Refusal::None)?;
-        if self.catalogue.official(id) {
-            Ok(profile)
-        } else {
-            Err(COMMUNITY)
-        }
+    /// Profile `id`; a device whose profile is gone has no settings.
+    fn profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
+        Ok(self.catalogue.get(id).ok_or(settings::Refusal::None)?)
     }
 
     fn check_profile(&self, draft: &DeviceDraft) -> Result<(), Refusal> {

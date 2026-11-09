@@ -49,6 +49,11 @@ pub struct SettingDoc {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub write_only: bool,
+    /// Its write was checked on real hardware (ADR 5); an unverified setting needs the admin's
+    /// enable (ADR 8).
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub verified: bool,
 }
 
 #[derive(Deserialize)]

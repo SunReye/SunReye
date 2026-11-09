@@ -25,7 +25,7 @@ fn locked() -> Vec<u8> {
         "version": "1.0.0", "requires": ["modbus", "u16", "write", "unlock"], "quantities": [],
         "settings": [{
             "key": "current", "type": "u16", "range": { "min": 0, "max": 350 },
-            "minInterval": 60, "readBack": { "register": 108 },
+            "minInterval": 60, "readBack": { "register": 108 }, "verified": true,
             "recipe": [
                 { "unlock": { "register": 200, "type": "u16", "secret": "unlock",
                     "finally": [{ "register": 200, "words": [0] }] } },

@@ -2,9 +2,14 @@
 //! time, and profiles fetched from an index on an admin's action, verified and kept as the last
 //! good copy.
 //!
-//! The profiles module owns the `profile_index`, `fetched_profile` and `profile_key_revoked`
-//! tables. It never fetches on its own: only adding an index or checking for updates does.
+//! A newer copy of a profile already served waits as an update until the admin applies it; the
+//! settings it adds or changes then need the admin's enable.
+//!
+//! The profiles module owns the `profile_index`, `fetched_profile`, `profile_update`,
+//! `profile_setting_changed` and `profile_key_revoked` tables. It never fetches on its own: only
+//! adding an index or checking for updates does.
 
+mod diff;
 #[cfg(test)]
 pub(crate) mod fake;
 mod fetch;
@@ -13,7 +18,7 @@ mod routes;
 mod store;
 mod trust;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::SystemTime;
 
@@ -29,6 +34,7 @@ use index::{Fit, Index, Listed, Version};
 use store::Fetched;
 use trust::{Trust, unhex};
 
+pub use diff::{Delta, QuantityChange, SettingChange, Update};
 pub use fetch::{Fetch, Https};
 pub use trust::{KEYS, Keys};
 
@@ -41,6 +47,10 @@ const BUNDLED: &[&str] = &[include_str!("../../../profiles/deye-sg05lp3.json")];
 const INTERNAL: Problem = Problem {
     status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     code: Code::Internal,
+};
+const NO_UPDATE: Problem = Problem {
+    status: axum::http::StatusCode::NOT_FOUND,
+    code: Code::UpdateNone,
 };
 
 /// A loaded profile and whether it is official.
@@ -68,10 +78,16 @@ impl Held {
 
 type Served = HashMap<String, Held>;
 
+/// Settings applied updates added or changed, as (profile, setting).
+type Changed = HashSet<(String, String)>;
+
 /// The profiles served, by id; clones share one catalogue, so a fetched profile reaches every
 /// holder.
 #[derive(Debug, Clone, Default)]
-pub struct Catalogue(Arc<RwLock<Served>>);
+pub struct Catalogue {
+    served: Arc<RwLock<Served>>,
+    changed: Arc<RwLock<Changed>>,
+}
 
 impl Catalogue {
     /// Loads the bundled profiles.
@@ -79,7 +95,23 @@ impl Catalogue {
     /// # Errors
     /// A bundled profile does not load in this build.
     pub fn bundled() -> Result<Self, LoadError> {
-        Ok(Self(Arc::new(RwLock::new(bundled()?))))
+        Ok(Self {
+            served: Arc::new(RwLock::new(bundled()?)),
+            changed: Arc::default(),
+        })
+    }
+
+    /// Whether an applied update added or changed `setting` of profile `id`: verified or not,
+    /// it then needs the admin's enable (ADR 8).
+    #[must_use]
+    pub fn changed(&self, id: &str, setting: &str) -> bool {
+        let changed = self.changed.read().unwrap_or_else(PoisonError::into_inner);
+        changed.contains(&(id.to_owned(), setting.to_owned()))
+    }
+
+    fn mark(&self, id: &str, settings: Vec<String>) {
+        let mut changed = self.changed.write().unwrap_or_else(PoisonError::into_inner);
+        changed.extend(settings.into_iter().map(|s| (id.to_owned(), s)));
     }
 
     #[must_use]
@@ -94,16 +126,16 @@ impl Catalogue {
     }
 
     fn held(&self, id: &str) -> Option<Held> {
-        let profiles = self.0.read().unwrap_or_else(PoisonError::into_inner);
+        let profiles = self.served.read().unwrap_or_else(PoisonError::into_inner);
         profiles.get(id).cloned()
     }
 
     fn replace(&self, profiles: Served) {
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = profiles;
+        *self.served.write().unwrap_or_else(PoisonError::into_inner) = profiles;
     }
 
     fn insert(&self, held: Held) {
-        let mut profiles = self.0.write().unwrap_or_else(PoisonError::into_inner);
+        let mut profiles = self.served.write().unwrap_or_else(PoisonError::into_inner);
         profiles.insert(held.profile.id.clone(), held);
     }
 }
@@ -126,8 +158,10 @@ fn bundled() -> Result<Served, LoadError> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Status {
-    /// Verified, loaded and now served.
+    /// A profile not served before: verified, loaded and now served.
     Loaded,
+    /// A newer copy of a profile served: verified and waiting for the admin to apply it.
+    Available,
     /// The version served is the same or higher; not downloaded.
     Current,
     /// Its schema is above this core's range or it needs a capability this core lacks; not
@@ -248,6 +282,14 @@ impl Profiles {
         };
         let trust = profiles.state.lock().await.trust;
         profiles.reload(trust).await?;
+        let changed = profiles
+            .database
+            .run(store::changed)
+            .await
+            .map_err(Error::Storage)?;
+        for (id, setting) in changed {
+            profiles.catalogue.mark(&id, vec![setting]);
+        }
         Ok(profiles)
     }
 
@@ -375,9 +417,11 @@ impl Profiles {
             return Ok(Status::Invalid);
         };
         let current = self.catalogue.held(&listed.id);
-        if current
-            .as_ref()
-            .is_some_and(|held| held.version() >= version)
+        let waiting = self.waiting(trust, &listed.id).await?;
+        if [current.as_ref(), waiting.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|held| held.version() >= version)
         {
             return Ok(Status::Current);
         }
@@ -399,13 +443,101 @@ impl Profiles {
         if !held.replaces(current.as_ref()) {
             return Ok(Status::Signature);
         }
-        let id = listed.id.clone();
+        self.receive(held, fetched, current.is_some()).await
+    }
+
+    /// Keeps a verified copy: as the update to the profile `served`, else served at once.
+    async fn receive(&self, held: Held, fetched: Fetched, served: bool) -> Result<Status, Problem> {
+        let id = held.profile.id.clone();
+        if served {
+            self.database
+                .run(move |db| store::wait(db, &id, &fetched))
+                .await
+                .map_err(|_| INTERNAL)?;
+            return Ok(Status::Available);
+        }
         self.database
             .run(move |db| store::keep(db, &id, &fetched))
             .await
             .map_err(|_| INTERNAL)?;
         self.catalogue.insert(held);
         Ok(Status::Loaded)
+    }
+
+    /// The update waiting for profile `id` that would replace the one served, under `trust`.
+    async fn waiting(&self, trust: Trust, id: &str) -> Result<Option<Held>, Problem> {
+        let key = id.to_owned();
+        let waiting = self
+            .database
+            .run(move |db| store::waiting(db, &key))
+            .await
+            .map_err(|_| INTERNAL)?;
+        let current = self.catalogue.held(id);
+        Ok(waiting
+            .and_then(|fetched| load(trust, &fetched))
+            .filter(|held| held.profile.id == id && held.replaces(current.as_ref())))
+    }
+
+    /// Every update waiting for a profile served, with what it changes.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn updates(&self) -> Result<Vec<Update>, Problem> {
+        let trust = self.state.lock().await.trust;
+        let waiting = self
+            .database
+            .run(store::updates)
+            .await
+            .map_err(|_| INTERNAL)?;
+        Ok(waiting
+            .iter()
+            .filter_map(|(id, fetched)| {
+                let current = self.catalogue.held(id)?;
+                let held = load(trust, fetched)
+                    .filter(|held| held.profile.id == *id && held.replaces(Some(&current)))?;
+                Some(Update::between(&current.profile, &held.profile))
+            })
+            .collect())
+    }
+
+    /// Serves the update waiting for profile `id`. Each setting it adds or changes is off until
+    /// the admin enables it (ADR 8).
+    ///
+    /// # Errors
+    /// No update waits for `id`, or the file cannot be written.
+    pub async fn apply(&self, id: &str, time: SystemTime) -> Result<Update, Problem> {
+        let state = self.state.lock().await;
+        let held = self.waiting(state.trust, id).await?.ok_or(NO_UPDATE)?;
+        let current = self.catalogue.held(id).ok_or(NO_UPDATE)?;
+        let update = Update::between(&current.profile, &held.profile);
+        let changed = update.touched();
+        let key = id.to_owned();
+        let fetched = self
+            .database
+            .run(move |db| store::waiting(db, &key))
+            .await
+            .map_err(|_| INTERNAL)?
+            .ok_or(NO_UPDATE)?;
+        let applied = changed.clone();
+        let version = update.to.clone();
+        let key = id.to_owned();
+        self.database
+            .run(move |db| {
+                let applied = store::Applied {
+                    id: &key,
+                    version: &version,
+                    fetched: &fetched,
+                    changed: &applied,
+                    time,
+                };
+                store::apply(db, &applied)
+            })
+            .await
+            .map_err(|_| INTERNAL)?;
+        self.catalogue.mark(id, changed);
+        self.catalogue.insert(held);
+        drop(state);
+        Ok(update)
     }
 
     /// Serves the bundled snapshot and every stored copy under `trust`.

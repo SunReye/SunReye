@@ -129,9 +129,11 @@
           "setting.precondition",
           "setting.community",
           "setting.no-snapshot",
+          "setting.not-enabled",
           "secret.missing",
           "secret.value",
           "index.value",
+          "update.none",
           "clock.unsynced",
           "internal"
         ],
@@ -381,6 +383,50 @@
         ],
         "type": "object"
       },
+      "Declared": {
+        "description": "A setting's declared values: what a write may carry.",
+        "properties": {
+          "range": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Bounds",
+                "description": "The bounds of a value; absent when `values` lists them."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "description": "A value is a whole number of steps.",
+            "format": "double",
+            "type": "number"
+          },
+          "values": {
+            "description": "The only values it takes, when the profile enumerates them.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "step"
+        ],
+        "type": "object"
+      },
+      "Delta": {
+        "enum": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "type": "string"
+      },
       "Device": {
         "allOf": [
           {
@@ -478,6 +524,16 @@
           "settings"
         ],
         "type": "object"
+      },
+      "Enable": {
+        "description": "Whether a setting may be written, as far as trust goes (ADR 8).",
+        "enum": [
+          "verified",
+          "on",
+          "off",
+          "community"
+        ],
+        "type": "string"
       },
       "Entry": {
         "description": "One attempt.",
@@ -975,6 +1031,21 @@
         ],
         "description": "Modules in series on one plane; strings on one MPPT input are in parallel."
       },
+      "QuantityChange": {
+        "properties": {
+          "change": {
+            "$ref": "#/components/schemas/Delta"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "change"
+        ],
+        "type": "object"
+      },
       "Reach": {
         "description": "How the core reaches an endpoint, without its secrets.",
         "properties": {
@@ -1068,45 +1139,64 @@
         ],
         "type": "string"
       },
-      "SettingSupport": {
-        "description": "A setting a device's profile declares (ADR 5, 7).",
+      "SettingChange": {
         "properties": {
-          "key": {
-            "type": "string"
-          },
-          "range": {
+          "after": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/Bounds",
-                "description": "The bounds of a value; absent when `values` lists them."
+                "$ref": "#/components/schemas/Declared"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "step": {
-            "description": "A value is a whole number of steps.",
-            "format": "double",
-            "type": "number"
-          },
-          "values": {
-            "description": "The only values it takes, when the profile enumerates them.",
-            "items": {
-              "format": "double",
-              "type": "number"
-            },
-            "type": [
-              "array",
-              "null"
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Declared"
+              },
+              {
+                "type": "null"
+              }
             ]
+          },
+          "change": {
+            "$ref": "#/components/schemas/Delta"
+          },
+          "key": {
+            "type": "string"
           }
         },
         "required": [
           "key",
-          "step"
+          "change"
         ],
         "type": "object"
+      },
+      "SettingSupport": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Declared"
+          },
+          {
+            "properties": {
+              "enable": {
+                "$ref": "#/components/schemas/Enable",
+                "description": "Whether trust lets it write (ADR 8); the device's `writes` switch applies as well."
+              },
+              "key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "enable"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A setting a device's profile declares (ADR 5, 7)."
       },
       "SettingValue": {
         "description": "A setting's new value.",
@@ -1126,6 +1216,7 @@
         "description": "What became of one entry of an index.",
         "enum": [
           "loaded",
+          "available",
           "current",
           "newer-core",
           "old-schema",
@@ -1292,6 +1383,58 @@
           "solarman-v5"
         ],
         "type": "string"
+      },
+      "Update": {
+        "description": "A served profile and the update waiting for it, as the admin reviews it.",
+        "properties": {
+          "from": {
+            "description": "The version served.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "quantities": {
+            "description": "The quantities it changes, in the same order.",
+            "items": {
+              "$ref": "#/components/schemas/QuantityChange"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "description": "The settings it changes, in the served profile's order, then those it adds.",
+            "items": {
+              "$ref": "#/components/schemas/SettingChange"
+            },
+            "type": "array"
+          },
+          "to": {
+            "description": "The version the update serves.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "settings",
+          "quantities"
+        ],
+        "type": "object"
+      },
+      "Updates": {
+        "properties": {
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/Update"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "updates"
+        ],
+        "type": "object"
       },
       "Viewer": {
         "description": "A viewer as the API reads it: never its password.",
@@ -2031,6 +2174,80 @@
         "summary": "Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps\nit. A refusal never reaches the device."
       }
     },
+    "/api/v1/devices/{id}/settings/{key}/enabled": {
+      "delete": {
+        "operationId": "disable_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Withdraws the admin's enable of a setting."
+      },
+      "put": {
+        "operationId": "enable_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's\nsetting, or an official one not verified on hardware, writes only while enabled; a changed\ndeclaration is off again until re-enabled."
+      }
+    },
     "/api/v1/layout": {
       "get": {
         "operationId": "layout",
@@ -2386,6 +2603,68 @@
           }
         },
         "summary": "Checks every index for updates: the only fetch besides adding an index, never on a timer."
+      }
+    },
+    "/api/v1/profile-updates": {
+      "get": {
+        "operationId": "updates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Updates"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The updates a check found for profiles served, each with what it changes; none is served\nuntil the admin applies it."
+      }
+    },
+    "/api/v1/profile-updates/{id}": {
+      "post": {
+        "operationId": "apply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Update"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Applies the update waiting for a profile. Each setting it adds or changes is off until the\nadmin enables it again (ADR 8)."
       }
     },
     "/api/v1/roles/{role}": {

@@ -101,7 +101,7 @@ async fn opening_fetches_nothing_and_the_embedded_snapshot_works_offline() {
 }
 
 #[tokio::test]
-async fn a_signed_higher_version_replaces_the_bundled_one_and_outlives_a_restart() {
+async fn a_signed_higher_version_waits_for_the_admin_then_serves_and_outlives_a_restart() {
     let plant = Plant::new();
     let newer = deye("deye-sg05lp3", "2.3.0");
     plant.official(&[(&newer, Some(&plant.signer.active))]);
@@ -111,9 +111,16 @@ async fn a_signed_higher_version_replaces_the_bundled_one_and_outlives_a_restart
 
     assert_eq!(
         statuses(&reports[0]),
-        vec![("deye-sg05lp3".to_owned(), Status::Loaded)]
+        vec![("deye-sg05lp3".to_owned(), Status::Available)]
+    );
+    assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.2.1"));
+    let applied = profiles.apply("deye-sg05lp3", UNIX_EPOCH).await.unwrap();
+    assert_eq!(
+        (applied.from.as_str(), applied.to.as_str()),
+        ("2.2.1", "2.3.0")
     );
     assert_eq!(version(&profiles, "deye-sg05lp3").as_deref(), Some("2.3.0"));
+    assert_eq!(profiles.updates().await.unwrap(), []);
     let fetched = plant.host.fetched().len();
     let reopened = plant.open().await;
     assert_eq!(version(&reopened, "deye-sg05lp3").as_deref(), Some("2.3.0"));
@@ -122,6 +129,47 @@ async fn a_signed_higher_version_replaces_the_bundled_one_and_outlives_a_restart
         plant.host.fetched().len(),
         fetched,
         "a restart fetches nothing"
+    );
+}
+
+#[tokio::test]
+async fn an_update_lists_what_it_changes_and_waits_across_a_restart() {
+    let plant = Plant::new();
+    let mut newer: Value = serde_json::from_slice(&deye("deye-sg05lp3", "2.3.0")).unwrap();
+    newer["settings"][0]["range"]["max"] = json!(300);
+    newer["settings"].as_array_mut().unwrap().remove(3);
+    let newer = serde_json::to_vec(&newer).unwrap();
+    plant.official(&[(&newer, Some(&plant.signer.active))]);
+    let profiles = plant.open().await;
+    profiles.check().await.unwrap();
+
+    let updates = plant.open().await.updates().await.unwrap();
+
+    let listed = serde_json::to_value(&updates).unwrap();
+    assert_eq!(
+        listed,
+        json!([{ "id": "deye-sg05lp3", "from": "2.2.1", "to": "2.3.0",
+            "settings": [
+                { "key": "battery.max_charge_current", "change": "changed",
+                    "before": { "range": { "min": 0.0, "max": 350.0 }, "step": 1.0 },
+                    "after": { "range": { "min": 0.0, "max": 300.0 }, "step": 1.0 } },
+                { "key": "work_mode", "change": "removed",
+                    "before": { "values": [0.0, 1.0, 2.0], "step": 1.0 }, "after": null },
+            ],
+            "quantities": [] }])
+    );
+}
+
+#[tokio::test]
+async fn applying_with_no_update_waiting_is_refused() {
+    let plant = Plant::new();
+    let profiles = plant.open().await;
+
+    let refused = profiles.apply("deye-sg05lp3", UNIX_EPOCH).await;
+
+    assert_eq!(
+        refused.map(|_| ()).unwrap_err().code,
+        crate::api::Code::UpdateNone
     );
 }
 
@@ -194,6 +242,7 @@ async fn a_revocation_signed_by_the_backup_switches_trust_to_the_backup() {
     plant.official(&[(&by_active, Some(&plant.signer.active))]);
     let profiles = plant.open().await;
     profiles.check().await.unwrap();
+    profiles.apply("deye-sg05lp3", UNIX_EPOCH).await.unwrap();
     let by_backup = deye("other-inverter", "1.0.0");
     let newer_by_active = deye("deye-sg05lp3", "2.4.0");
     let entries = [
@@ -256,7 +305,7 @@ async fn a_revocation_the_backup_did_not_sign_is_ignored() {
 
     assert_eq!(
         statuses(&reports[0]),
-        vec![("deye-sg05lp3".to_owned(), Status::Loaded)]
+        vec![("deye-sg05lp3".to_owned(), Status::Available)]
     );
 }
 

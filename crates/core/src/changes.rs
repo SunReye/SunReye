@@ -39,6 +39,10 @@ pub enum Subject {
     Token,
     /// A plant topology version (ADR 14).
     Topology,
+    /// A setting's write enable (ADR 8); the id is the device's, the state names the setting.
+    Enable,
+    /// A profile update the admin applied (ADR 8); id 0, the state names the profile.
+    Profile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -133,7 +137,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer`, `token` or `topology`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable` or `profile`.
     subject: String,
     /// The subject's id.
     id: u32,

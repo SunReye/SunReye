@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Capabilities, Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
+  import SettingEnable from "./SettingEnable.svelte";
   import SettingField from "./SettingField.svelte";
 
   let {
@@ -8,11 +9,14 @@
     id,
     device,
     onwritten,
+    onchanged,
   }: {
     core: Core;
     id: string;
     device: Capabilities["devices"][string];
     onwritten: () => void;
+    /** After the admin enabled a setting or withdrew the enable. */
+    onchanged: () => void;
   } = $props();
 </script>
 
@@ -23,5 +27,6 @@
   {/if}
   {#each device.settings as setting (setting.key)}
     <SettingField {core} device={Number(id)} {setting} writes={device.writes} {onwritten} />
+    <SettingEnable {core} device={Number(id)} {setting} {onchanged} />
   {/each}
 </section>

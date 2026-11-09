@@ -6,7 +6,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 
-use super::devices::send;
+use super::devices::{delete, send};
 use super::{Core, get, problem};
 use crate::transport::fake::{self, Fake, Write, Writes};
 
@@ -21,8 +21,27 @@ struct Plant {
     _dir: tempfile::TempDir,
 }
 
+/// Every setting the owner's Deye declares; none is verified on hardware.
+const SETTINGS: [&str; 5] = [
+    CHARGE,
+    "battery.max_discharge_current",
+    "battery.grid_charge",
+    "work_mode",
+    "battery.discharge_lock",
+];
+
 impl Plant {
+    /// The plant with every setting enabled by the admin (ADR 8).
     async fn new(writes: Writes, on: bool) -> Self {
+        let plant = Self::bare(writes, on).await;
+        for key in SETTINGS {
+            assert_eq!(plant.enable("PUT", key).await.0, StatusCode::NO_CONTENT);
+        }
+        plant
+    }
+
+    /// The plant with no setting enabled.
+    async fn bare(writes: Writes, on: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
         core.set_clock(UNIX_EPOCH + Duration::from_hours(498_384));
@@ -43,6 +62,31 @@ impl Plant {
             id: body["id"].clone(),
             _dir: dir,
         }
+    }
+
+    /// Enables (`PUT`) or disables (`DELETE`) the writes of setting `key`.
+    async fn enable(&self, method: &str, key: &str) -> (StatusCode, Value) {
+        let uri = format!("/api/v1/devices/{}/settings/{key}/enabled", self.id);
+        let request = if method == "DELETE" {
+            delete(&uri)
+        } else {
+            send(method, &uri, &json!({}))
+        };
+        self.core.ask(&self.set_cookie, request).await
+    }
+
+    async fn capability(&self, key: &str) -> Value {
+        let (_, body) = self
+            .core
+            .ask(&self.set_cookie, get("/api/v1/capabilities"))
+            .await;
+        let settings = body["devices"][self.id.to_string()]["settings"].clone();
+        let found = settings
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["key"] == key);
+        found.unwrap().clone()
     }
 
     async fn write(&self, key: &str, value: Value) -> (StatusCode, Value) {
@@ -255,14 +299,82 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
     assert_eq!(
         device["settings"],
         json!([
-            { "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0 },
+            { "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0,
+                "enable": "on" },
             { "key": "battery.max_discharge_current", "range": { "min": 0.0, "max": 350.0 },
-                "step": 1.0 },
-            { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0 },
-            { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0 },
-            { "key": "battery.discharge_lock", "values": [0.0, 1.0], "step": 1.0 },
+                "step": 1.0, "enable": "on" },
+            { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0, "enable": "on" },
+            { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0, "enable": "on" },
+            { "key": "battery.discharge_lock", "values": [0.0, 1.0], "step": 1.0,
+                "enable": "on" },
         ])
     );
+}
+
+#[tokio::test]
+async fn an_unverified_setting_writes_only_while_the_admin_has_it_enabled() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    assert_eq!(
+        plant.capability(CHARGE).await,
+        json!({ "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0,
+            "enable": "off" })
+    );
+    assert_eq!(
+        plant.write(CHARGE, json!(50)).await,
+        refused(StatusCode::CONFLICT, "setting.not-enabled")
+    );
+
+    assert_eq!(plant.enable("PUT", CHARGE).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(plant.capability(CHARGE).await["enable"], "on");
+    assert_eq!(
+        plant.write(CHARGE, json!(50)).await.1["outcome"],
+        "verified"
+    );
+
+    assert_eq!(
+        plant.enable("DELETE", CHARGE).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(plant.capability(CHARGE).await["enable"], "off");
+    plant
+        .core
+        .set_clock(UNIX_EPOCH + Duration::from_hours(498_385));
+    assert_eq!(
+        plant.write(CHARGE, json!(60)).await,
+        refused(StatusCode::CONFLICT, "setting.not-enabled")
+    );
+    assert_eq!(plant.received(), [written_charge(50)]);
+}
+
+#[tokio::test]
+async fn only_a_declared_setting_of_a_known_device_is_enabled() {
+    let plant = Plant::bare(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.enable("PUT", "battery.bogus").await,
+        refused(StatusCode::NOT_FOUND, "setting.none")
+    );
+    assert_eq!(
+        plant.enable("PUT", "battery.power").await,
+        refused(StatusCode::CONFLICT, "setting.read-only")
+    );
+    let uri = format!("/api/v1/devices/42/settings/{CHARGE}/enabled");
+    let (status, body) = plant
+        .core
+        .ask(&plant.set_cookie, send("PUT", &uri, &json!({})))
+        .await;
+    assert_eq!(
+        (status, body),
+        refused(StatusCode::NOT_FOUND, "device.none")
+    );
+}
+
+fn written_charge(value: u16) -> Write {
+    Write {
+        unit: 1,
+        start: 108,
+        words: vec![value],
+    }
 }
 
 const LOCK: &str = "battery.discharge_lock";

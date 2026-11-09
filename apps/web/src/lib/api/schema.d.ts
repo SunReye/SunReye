@@ -179,6 +179,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/settings/{key}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's
+         *     setting, or an official one not verified on hardware, writes only while enabled; a changed
+         *     declaration is off again until re-enabled.
+         */
+        put: operations["enable_setting"];
+        post?: never;
+        /** Withdraws the admin's enable of a setting. */
+        delete: operations["disable_setting"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/layout": {
         parameters: {
             query?: never;
@@ -318,6 +340,46 @@ export interface paths {
         put?: never;
         /** Checks every index for updates: the only fetch besides adding an index, never on a timer. */
         post: operations["check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The updates a check found for profiles served, each with what it changes; none is served
+         *     until the admin applies it.
+         */
+        get: operations["updates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profile-updates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Applies the update waiting for a profile. Each setting it adds or changes is off until the
+         *     admin enables it again (ADR 8).
+         */
+        post: operations["apply"];
         delete?: never;
         options?: never;
         head?: never;
@@ -521,7 +583,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "secret.missing" | "secret.value" | "index.value" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -616,6 +678,19 @@ export interface components {
             /** @description RFC 3339, UTC. */
             start: string;
         };
+        /** @description A setting's declared values: what a write may carry. */
+        Declared: {
+            range?: components["schemas"]["Bounds"] | null;
+            /**
+             * Format: double
+             * @description A value is a whole number of steps.
+             */
+            step: number;
+            /** @description The only values it takes, when the profile enumerates them. */
+            values?: number[] | null;
+        };
+        /** @enum {string} */
+        Delta: "added" | "removed" | "changed";
         Device: components["schemas"]["DeviceDraft"] & {
             /**
              * Format: int32
@@ -655,6 +730,11 @@ export interface components {
             /** @description Whether the admin switched its writes on (ADR 7). */
             writes: boolean;
         };
+        /**
+         * @description Whether a setting may be written, as far as trust goes (ADR 8).
+         * @enum {string}
+         */
+        Enable: "verified" | "on" | "off" | "community";
         /** @description One attempt. */
         Entry: {
             /** @description `admin`, or a named controller. */
@@ -845,6 +925,10 @@ export interface components {
              */
             id: number;
         };
+        QuantityChange: {
+            change: components["schemas"]["Delta"];
+            key: string;
+        };
         /** @description How the core reaches an endpoint, without its secrets. */
         Reach: {
             host: string;
@@ -875,17 +959,17 @@ export interface components {
          * @enum {string}
          */
         Scope: "read" | "admin";
-        /** @description A setting a device's profile declares (ADR 5, 7). */
-        SettingSupport: {
+        SettingChange: {
+            after?: components["schemas"]["Declared"] | null;
+            before?: components["schemas"]["Declared"] | null;
+            change: components["schemas"]["Delta"];
             key: string;
-            range?: components["schemas"]["Bounds"] | null;
-            /**
-             * Format: double
-             * @description A value is a whole number of steps.
-             */
-            step: number;
-            /** @description The only values it takes, when the profile enumerates them. */
-            values?: number[] | null;
+        };
+        /** @description A setting a device's profile declares (ADR 5, 7). */
+        SettingSupport: components["schemas"]["Declared"] & {
+            /** @description Whether trust lets it write (ADR 8); the device's `writes` switch applies as well. */
+            enable: components["schemas"]["Enable"];
+            key: string;
         };
         /** @description A setting's new value. */
         SettingValue: {
@@ -899,7 +983,7 @@ export interface components {
          * @description What became of one entry of an index.
          * @enum {string}
          */
-        Status: "loaded" | "current" | "newer-core" | "old-schema" | "unreachable" | "hash" | "signature" | "invalid";
+        Status: "loaded" | "available" | "current" | "newer-core" | "old-schema" | "unreachable" | "hash" | "signature" | "invalid";
         StringDraft: components["schemas"]["Wiring"] & {
             /**
              * Format: int32
@@ -958,6 +1042,21 @@ export interface components {
          * @enum {string}
          */
         Transport: "modbus-tcp" | "solarman-v5";
+        /** @description A served profile and the update waiting for it, as the admin reviews it. */
+        Update: {
+            /** @description The version served. */
+            from: string;
+            id: string;
+            /** @description The quantities it changes, in the same order. */
+            quantities: components["schemas"]["QuantityChange"][];
+            /** @description The settings it changes, in the served profile's order, then those it adds. */
+            settings: components["schemas"]["SettingChange"][];
+            /** @description The version the update serves. */
+            to: string;
+        };
+        Updates: {
+            updates: components["schemas"]["Update"][];
+        };
         /** @description A viewer as the API reads it: never its password. */
         Viewer: {
             /** Format: int32 */
@@ -1490,6 +1589,62 @@ export interface operations {
             };
         };
     };
+    enable_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    disable_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     layout: {
         parameters: {
             query?: {
@@ -1824,6 +1979,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Indexes"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Updates"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Update"];
                 };
             };
             "4XX": {

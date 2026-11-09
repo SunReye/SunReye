@@ -24,6 +24,7 @@ use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
 use crate::location::PlantLocation;
 use crate::profiles::Profiles;
+use crate::settings::{Declared, Enable};
 use crate::spa;
 use crate::storage;
 use crate::topology::Topologies;
@@ -159,14 +160,10 @@ struct DeviceSupport {
 #[derive(Serialize, ToSchema)]
 struct SettingSupport {
     key: String,
-    /// The bounds of a value; absent when `values` lists them.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    range: Option<Bounds>,
-    /// The only values it takes, when the profile enumerates them.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    values: Option<Vec<f64>>,
-    /// A value is a whole number of steps.
-    step: f64,
+    #[serde(flatten)]
+    declared: Declared,
+    /// Whether trust lets it write (ADR 8); the device's `writes` switch applies as well.
+    enable: Enable,
 }
 
 /// An inclusive range of profile schemas.
@@ -174,13 +171,6 @@ struct SettingSupport {
 struct Schemas {
     min: u32,
     max: u32,
-}
-
-/// The inclusive bounds of a setting's value.
-#[derive(Serialize, ToSchema)]
-struct Bounds {
-    min: f64,
-    max: f64,
 }
 
 #[utoipa::path(get, path = "/api/v1/capabilities", responses(
@@ -199,10 +189,14 @@ async fn capabilities(
             .map(|id| format!("pv.string.power[{id}]"))
             .collect();
     }
-    for (device, writes, profile) in devices.writable().await.map_err(|_| INTERNAL)? {
-        let entry = support.entry(device.to_string()).or_default();
-        entry.writes = writes;
-        entry.settings = profile.settings().iter().map(setting_support).collect();
+    for device in devices.writable().await.map_err(|_| INTERNAL)? {
+        let entry = support.entry(device.id.to_string()).or_default();
+        entry.writes = device.writes;
+        entry.settings = device
+            .settings
+            .iter()
+            .map(|(setting, enable)| setting_support(setting, *enable))
+            .collect();
     }
     let devices = support;
     let support = sunreye_profile::SUPPORT;
@@ -218,12 +212,11 @@ async fn capabilities(
     }))
 }
 
-fn setting_support(setting: &sunreye_profile::Setting) -> SettingSupport {
+fn setting_support(setting: &sunreye_profile::Setting, enable: Enable) -> SettingSupport {
     SettingSupport {
         key: setting.key.clone(),
-        range: setting.range().map(|(min, max)| Bounds { min, max }),
-        values: setting.values().map(<[f64]>::to_vec),
-        step: setting.step(),
+        declared: Declared::from(setting),
+        enable,
     }
 }
 
@@ -386,12 +379,16 @@ pub enum Code {
     SettingCommunity,
     #[serde(rename = "setting.no-snapshot")]
     SettingNoSnapshot,
+    #[serde(rename = "setting.not-enabled")]
+    SettingNotEnabled,
     #[serde(rename = "secret.missing")]
     SecretMissing,
     #[serde(rename = "secret.value")]
     SecretValue,
     #[serde(rename = "index.value")]
     IndexValue,
+    #[serde(rename = "update.none")]
+    UpdateNone,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
     #[serde(rename = "internal")]
