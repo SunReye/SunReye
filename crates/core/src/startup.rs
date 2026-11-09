@@ -17,9 +17,11 @@ use crate::devices::Devices;
 use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
-use crate::location::PlantLocation;
+use crate::location::{Location, PlantLocation};
 use crate::profiles::Catalogue;
+use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
+use crate::weather::{self, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
     SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
@@ -148,24 +150,32 @@ impl From<storage::Error> for Error {
     }
 }
 
-/// Opens the store in `data_dir` and serves the API on `listener` until `shutdown` resolves,
-/// then writes the open bucket.
-///
-/// `ingress` is the Supervisor's address, if trusted. `build` is the build time: the clock is
-/// unsynced until past it.
+/// What the core starts from, besides its listener.
+#[derive(Debug)]
+pub struct Boot<P> {
+    pub data_dir: PathBuf,
+    /// The Supervisor's address, if trusted.
+    pub ingress: Option<IpAddr>,
+    /// The build time: the clock is unsynced until past it.
+    pub build: SystemTime,
+    /// The weather device's provider.
+    pub weather: P,
+}
+
+/// Opens the store in the data directory and serves the API on `listener` until `shutdown`
+/// resolves, then writes the open bucket.
 ///
 /// # Errors
 /// The store cannot be opened or written, or serving fails.
 pub async fn serve(
     listener: TcpListener,
-    data_dir: PathBuf,
-    ingress: Option<IpAddr>,
-    build: SystemTime,
+    boot: Boot<impl Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    std::fs::create_dir_all(&data_dir)?;
+    std::fs::create_dir_all(&boot.data_dir)?;
     let bus = Bus::default();
-    let storage = Storage::open(&data_dir.join("core.sqlite"), build, &plant_zone(), &bus)?;
+    let file = boot.data_dir.join("core.sqlite");
+    let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
     // Problems are known before the first request.
     let (problems, watched) = watch::channel(Vec::new());
     tick(&storage, &problems).await?;
@@ -181,18 +191,46 @@ pub async fn serve(
     let layouts = Layouts::new(storage.database(), inverters);
     let _estimates =
         StringEstimates::spawn(layouts.clone(), storage.reader(), storage.declarer(), &bus);
+    let location = PlantLocation::open(storage.database()).await?;
+    let forecasting = forecast(
+        &storage,
+        boot.weather,
+        layouts.clone(),
+        location.watch(),
+        &bus,
+    );
     let api = Api {
-        auth: Auth::open(storage.database(), ingress).await?,
+        auth: Auth::open(storage.database(), boot.ingress).await?,
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
         layouts,
         devices,
         changes: Changes::new(storage.database()),
-        location: PlantLocation::open(storage.database()).await?,
+        location,
         clock: std::sync::Arc::new(SystemTime::now),
     };
-    let app = api::router(api).into_make_service_with_connect_info::<SocketAddr>();
+    let background = async {
+        tokio::select! {
+            stopped = clock(&storage, &problems) => stopped,
+            // Both stop only once storage has.
+            () = forecasting => Ok(()),
+        }
+    };
+    until(listener, api::router(api), background, shutdown).await?;
+    storage.shutdown().await?;
+    Ok(())
+}
+
+/// Serves `router` on `listener` until `background` ends or `shutdown` resolves, then lets open
+/// requests finish for a grace period.
+async fn until(
+    listener: TcpListener,
+    router: axum::Router,
+    background: impl Future<Output = Result<(), storage::Error>>,
+    shutdown: impl Future<Output = ()>,
+) -> Result<(), Error> {
+    let app = router.into_make_service_with_connect_info::<SocketAddr>();
     let (stop, stopped) = oneshot::channel::<()>();
     let server = axum::serve(listener, app).with_graceful_shutdown(async {
         stopped.await.ok();
@@ -200,7 +238,7 @@ pub async fn serve(
     let mut server = std::pin::pin!(server.into_future());
     tokio::select! {
         result = &mut server => result?,
-        stopped = clock(&storage, &problems) => stopped?,
+        stopped = background => stopped?,
         () = shutdown => {
             stop.send(()).ok();
             if let Ok(result) = tokio::time::timeout(GRACE, &mut server).await {
@@ -208,8 +246,23 @@ pub async fn serve(
             }
         }
     }
-    storage.shutdown().await?;
     Ok(())
+}
+
+/// Runs the weather device and the solar forecast until storage stops.
+async fn forecast(
+    storage: &Storage,
+    provider: impl Provider,
+    layouts: Layouts,
+    location: watch::Receiver<Option<Location>>,
+    bus: &Bus,
+) {
+    let weather = Weather::new(provider, weather::DEVICE, bus);
+    let solar = SolarForecast::new(layouts, weather::DEVICE, bus);
+    tokio::join!(
+        weather.run(storage, location.clone(), SystemTime::now),
+        solar.run(storage, location, weather.issues(), SystemTime::now),
+    );
 }
 
 /// The plant timezone is not configurable yet; the host's stands in.

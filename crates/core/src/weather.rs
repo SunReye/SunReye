@@ -1,10 +1,13 @@
 //! The weather computed device (ADR 15, 17): irradiance, temperature and wind forecasts for the
 //! plant's location, fetched by its own task through an interchangeable provider.
 
+#[cfg(test)]
+pub mod fake;
 mod open_meteo;
 
 use std::fmt;
 use std::future::Future;
+use std::ops::ControlFlow;
 use std::time::{Duration, SystemTime};
 
 use tokio::sync::watch;
@@ -17,6 +20,10 @@ use crate::storage::{self, Issue, Storage};
 pub use open_meteo::OpenMeteo;
 
 const HOUR: Duration = Duration::from_secs(3600);
+
+/// The weather device's id: computed devices count down from the top, registered devices up
+/// from 1 (ADR 15).
+pub const DEVICE: DeviceId = DeviceId(u32::MAX);
 
 /// The weather at one 15-minute target, irradiance in W/m².
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -104,6 +111,7 @@ pub struct Weather<P> {
     provider: P,
     device: DeviceId,
     series: [SeriesId; QUANTITIES.len()],
+    issued: watch::Sender<Option<SystemTime>>,
 }
 
 impl<P: Provider> Weather<P> {
@@ -112,31 +120,61 @@ impl<P: Provider> Weather<P> {
             provider,
             device,
             series: QUANTITIES.map(|q| bus.intern(q.role, None)),
+            issued: watch::channel(None).0,
         }
     }
 
-    /// Fetches on start and hourly for the plant's `location`, while set, until storage stops.
-    /// A failed fetch keeps the last good forecast.
+    /// The issue time of the latest forecast stored, announced as each is stored.
+    pub fn issues(&self) -> watch::Receiver<Option<SystemTime>> {
+        self.issued.subscribe()
+    }
+
+    /// Fetches for the plant's `location` while one is set: on start, at once when it changes,
+    /// and hourly from then, until storage or the location stops. A failed fetch keeps the last
+    /// good forecast.
     pub async fn run(
         &self,
         storage: &Storage,
-        location: watch::Receiver<Option<Location>>,
+        mut location: watch::Receiver<Option<Location>>,
         clock: impl Fn() -> SystemTime + Sync,
     ) {
         let mut next = Instant::now();
         loop {
-            let current = *location.borrow();
-            let refreshed = match current {
-                Some(at) => self.refresh(storage, at, clock()).await,
-                None => Ok(()),
-            };
-            if matches!(refreshed, Err(Error::Storage(storage::Error::Stopped))) {
+            let current = *location.borrow_and_update();
+            if let Some(at) = current
+                && self.announce(storage, at, clock()).await.is_break()
+            {
                 return;
             }
             next += HOUR;
             // Armed only after the refresh, so no timer is pending while it waits on storage.
-            tokio::time::sleep_until(next).await;
+            tokio::select! {
+                () = tokio::time::sleep_until(next) => {}
+                changed = location.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                    next = Instant::now();
+                }
+            }
         }
+    }
+
+    /// Refreshes and announces the issue; breaks once storage has stopped.
+    async fn announce(
+        &self,
+        storage: &Storage,
+        location: Location,
+        issued: SystemTime,
+    ) -> ControlFlow<()> {
+        match self.refresh(storage, location, issued).await {
+            Ok(()) => {
+                self.issued.send_replace(Some(issued));
+            }
+            Err(Error::Storage(storage::Error::Stopped)) => return ControlFlow::Break(()),
+            Err(e) => tracing::warn!("weather: {e}"),
+        }
+        ControlFlow::Continue(())
     }
 
     /// Fetches one forecast for the plant at `location` and stores it as issued at `issued`.

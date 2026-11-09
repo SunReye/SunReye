@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_pv as pv;
+use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId};
 use crate::layout::{Datasheet, Inverters, Layouts, PvString, Version, in_force};
@@ -45,6 +46,40 @@ impl SolarForecast {
             layouts,
             weather,
             bus: bus.clone(),
+        }
+    }
+
+    /// Issues a forecast on start, after each weather forecast announced on `weather` and after
+    /// each layout change, while the plant's `location` is set, until storage or the weather
+    /// device stops. `clock` gives each issue's time.
+    pub async fn run(
+        &self,
+        storage: &Storage,
+        location: watch::Receiver<Option<Location>>,
+        mut weather: watch::Receiver<Option<SystemTime>>,
+        clock: impl Fn() -> SystemTime + Sync,
+    ) {
+        let mut layout = self.layouts.changes();
+        loop {
+            let current = *location.borrow();
+            let refreshed = match current {
+                Some(at) => self.refresh(storage, at, clock()).await,
+                None => Ok(()),
+            };
+            match refreshed {
+                Err(storage::Error::Stopped) => return,
+                Err(e) => tracing::warn!("solar forecast: {e}"),
+                Ok(()) => {}
+            }
+            tokio::select! {
+                changed = weather.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                }
+                // The layout module outlives this task.
+                _ = layout.changed() => {}
+            }
         }
     }
 

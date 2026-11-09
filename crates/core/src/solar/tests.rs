@@ -2,9 +2,11 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::Profile;
+use tokio::sync::watch;
 
 use super::SolarForecast;
 use crate::bus::{Bus, DeviceId};
@@ -254,4 +256,62 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
     let (plain, optimized) = (power(0).await, power(1).await);
     // Equal modules in one sun: each optimizer delivers its module's own peak less 1 %.
     assert_near(optimized, 0.99 * plain, "optimized");
+}
+
+impl Plant {
+    /// Waits until the inverter's `pv.power` at noon has `count` issues; returns their times.
+    async fn issues(&self, count: usize) -> Vec<SystemTime> {
+        let series = self.bus.intern("pv.power", None);
+        let read = async || {
+            self.storage
+                .forecasts(INVERTER, series, at(NOON), at(NOON + 1))
+                .await
+                .unwrap()
+        };
+        let wait = async {
+            let mut stored = read().await;
+            while stored.len() < count {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                stored = read().await;
+            }
+            stored
+        };
+        let stored = tokio::time::timeout(Duration::from_secs(10), wait)
+            .await
+            .unwrap();
+        stored.iter().map(|f| f.issued).collect()
+    }
+}
+
+/// Issue times a second apart from an hour before noon, one per call.
+fn ticking() -> impl Fn() -> SystemTime + Sync {
+    let calls = AtomicU64::new(0);
+    move || at(NOON - HOUR + calls.fetch_add(1, Ordering::Relaxed))
+}
+
+#[tokio::test]
+async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change() {
+    let plant = plant(&[NOON]).await;
+    let drafts = vec![plant.string(None, 1, 0.0, 16)];
+    let layout = plant.layouts.change(at(0), drafts, at(0)).await.unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+    let (_location, berlin) = watch::channel(Some(BERLIN));
+    let (weather, issues) = watch::channel(None);
+
+    let check = async {
+        assert_eq!(plant.issues(1).await, [at(NOON - HOUR)]);
+        weather.send_replace(Some(at(NOON - HOUR)));
+        assert_eq!(plant.issues(2).await.len(), 2);
+        let kept = plant.string(Some(layout.strings[0].id), 2, 0.0, 16);
+        plant
+            .layouts
+            .change(at(0), vec![kept], at(0))
+            .await
+            .unwrap();
+        assert_eq!(plant.issues(3).await.len(), 3);
+    };
+    tokio::select! {
+        () = forecast.run(&plant.storage, berlin, issues, ticking()) => panic!("it stopped"),
+        () = check => {}
+    }
 }
