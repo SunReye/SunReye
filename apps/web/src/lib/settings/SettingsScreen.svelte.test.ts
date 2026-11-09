@@ -17,8 +17,8 @@ const CAPABILITIES = {
       estimated: [],
       writes: true,
       settings: [
-        { key: CHARGE, range: { min: 0, max: 350 }, step: 1 },
-        { key: "work_mode", values: [0, 1, 2], step: 1 },
+        { key: CHARGE, range: { min: 0, max: 350 }, step: 1, enable: "on" },
+        { key: "work_mode", values: [0, 1, 2], step: 1, enable: "on" },
       ],
     },
   },

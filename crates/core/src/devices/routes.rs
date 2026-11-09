@@ -32,6 +32,7 @@ impl Devices {
             .routes(routes!(list_devices, add_device))
             .routes(routes!(change_device, remove_device))
             .routes(routes!(write_setting))
+            .routes(routes!(enable_setting, disable_setting))
             .routes(routes!(writes))
             .with_state((self, clock))
     }
@@ -181,6 +182,38 @@ async fn write_setting(
     };
     let written = devices.write_setting(id, request, clock()).await?;
     Ok(Json(written))
+}
+
+/// Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's
+/// setting, or an official one not verified on hardware, writes only while enabled; a changed
+/// declaration is off again until re-enabled.
+#[utoipa::path(put, path = "/api/v1/devices/{id}/settings/{key}/enabled",
+    params(("id" = u32, Path), ("key" = String, Path)), responses(
+    (status = 204),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn enable_setting(
+    State((devices, clock)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+) -> Result<StatusCode, Problem> {
+    let Path((id, key)) = path.map_err(|_| PATH)?;
+    devices.enable_setting(id, key, true, clock()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Withdraws the admin's enable of a setting.
+#[utoipa::path(delete, path = "/api/v1/devices/{id}/settings/{key}/enabled",
+    params(("id" = u32, Path), ("key" = String, Path)), responses(
+    (status = 204),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn disable_setting(
+    State((devices, clock)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+) -> Result<StatusCode, Problem> {
+    let Path((id, key)) = path.map_err(|_| PATH)?;
+    devices.enable_setting(id, key, false, clock()).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Serialize, ToSchema)]

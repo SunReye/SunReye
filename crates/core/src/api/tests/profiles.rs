@@ -4,9 +4,9 @@
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::http::StatusCode;
-use serde_json::json;
+use serde_json::{Value, json};
 
-use super::devices::send;
+use super::devices::{gateway, send};
 use super::{Core, get};
 use crate::profiles::fake::entry;
 
@@ -102,5 +102,57 @@ async fn a_setting_of_a_community_profile_is_not_written() {
     assert_eq!(
         (status, &body["code"]),
         (StatusCode::CONFLICT, &json!("setting.community"))
+    );
+}
+
+#[tokio::test]
+async fn a_community_setting_is_enabled_one_by_one_with_its_bounds_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    community(&core);
+    core.ask(
+        &set_cookie,
+        send("POST", "/api/v1/profile-indexes", &json!({ "url": INDEX })),
+    )
+    .await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let device = json!({ "name": "Deye", "connection": connection, "profile": "my-deye",
+        "unit": 1, "writes": true });
+    let (_, device) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &device))
+        .await;
+    let settings = async || {
+        let (_, body) = core.ask(&set_cookie, get("/api/v1/capabilities")).await;
+        body["devices"][device["id"].to_string()]["settings"].clone()
+    };
+    assert_eq!(
+        settings().await[0],
+        json!({ "key": "battery.max_charge_current", "range": { "min": 0.0, "max": 350.0 },
+            "step": 1.0, "enable": "community" })
+    );
+
+    let uri = format!(
+        "/api/v1/devices/{}/settings/battery.max_charge_current/enabled",
+        device["id"]
+    );
+    let (status, _) = core.ask(&set_cookie, send("PUT", &uri, &json!({}))).await;
+
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let enables: Vec<Value> = settings()
+        .await
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["enable"].clone())
+        .collect();
+    assert_eq!(
+        enables,
+        [
+            json!("on"),
+            json!("community"),
+            json!("community"),
+            json!("community"),
+            json!("community"),
+        ]
     );
 }

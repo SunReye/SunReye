@@ -128,6 +128,7 @@
           "setting.precondition",
           "setting.community",
           "setting.no-snapshot",
+          "setting.not-enabled",
           "secret.missing",
           "secret.value",
           "index.value",
@@ -477,6 +478,16 @@
           "settings"
         ],
         "type": "object"
+      },
+      "Enable": {
+        "description": "Whether a setting may be written, as far as trust goes (ADR 8).",
+        "enum": [
+          "verified",
+          "on",
+          "off",
+          "community"
+        ],
+        "type": "string"
       },
       "Entry": {
         "description": "One attempt.",
@@ -1070,6 +1081,10 @@
       "SettingSupport": {
         "description": "A setting a device's profile declares (ADR 5, 7).",
         "properties": {
+          "enable": {
+            "$ref": "#/components/schemas/Enable",
+            "description": "Whether trust lets it write (ADR 8); the device's `writes` switch applies as well."
+          },
           "key": {
             "type": "string"
           },
@@ -1103,7 +1118,8 @@
         },
         "required": [
           "key",
-          "step"
+          "step",
+          "enable"
         ],
         "type": "object"
       },
@@ -2028,6 +2044,80 @@
           }
         },
         "summary": "Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps\nit. A refusal never reaches the device."
+      }
+    },
+    "/api/v1/devices/{id}/settings/{key}/enabled": {
+      "delete": {
+        "operationId": "disable_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Withdraws the admin's enable of a setting."
+      },
+      "put": {
+        "operationId": "enable_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's\nsetting, or an official one not verified on hardware, writes only while enabled; a changed\ndeclaration is off again until re-enabled."
       }
     },
     "/api/v1/layout": {
