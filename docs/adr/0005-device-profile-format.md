@@ -1,6 +1,6 @@
 # 5. Device profile format
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -28,7 +28,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 - SunSpec is a built-in binding: find the base (40001, then 50001, then 1), check `SunS`, walk the model chain to `0xFFFF`, read scale factors with their values, treat sentinels as absent, map standard models to roles. One generic SunSpec profile covers conforming devices; vendor profiles add only what SunSpec lacks.
 - Variants by device type, chosen by an identify probe (a magic register: `SunS`, `0xE3DC`, or a device-type register).
 - The unit id belongs to the device (ADR 6), not the profile.
-- An inverter profile declares its MPPT inputs: count, maximum input current, voltage window and start voltage, from the datasheet (ADR 17).
+- An inverter profile declares its MPPT inputs: count, maximum input current, voltage window and start voltage, and the inverter's maximum DC input voltage, from the datasheet (ADR 17, 20).
 - Storage class (`series`, `config`, `none`) and a deadband per role (ADR 3, 4).
 
 **Read plan.** Compiled once at load, or at connect for SunSpec. Contiguous registers coalesce into blocks of at most 120. A framing-specific gap tolerance merges blocks when a round trip costs more than the wasted registers: `tcp` 0, `rtu-over-tcp` 0, `solarman-v5` 32 (measured on one stick in v4: about 199 ms per read busy, 2 ms per register). The inputs of a computed role are read in one transaction for a single device snapshot. A merged block refused with Modbus exception 2 is split and the split remembered. A flat list of decode operations runs per poll with no allocation. The same plan serves the CLI's "decode this dump".
