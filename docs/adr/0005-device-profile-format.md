@@ -24,7 +24,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Read side.**
 
-- Per point: register space (holding or input), an address base per profile, type (int and uint 16/32/64, float 32/64, string, bitfield, enum with arbitrary values, a register split into bytes), word order fixed per group or read from a register, a static scale or a scale factor read from a register, sentinels by type. A float point declares its stored resolution; a lint requires it.
+- Per point: register space (holding or input), an address base per profile, type (int and uint 16/32/64, float 32/64, string, bitfield, enum with arbitrary values, a register split into bytes), word order fixed per group or read from a register, a static scale or a scale factor read from a register, sentinels by type. A float point declares its stored resolution; a lint requires it. A register's quantisation step (ADR 3) is the magnitude of its scale. A computed quantity takes the finest step of its inputs; a ratio, which has none, a thousandth of its scale.
 - SunSpec is a built-in binding: find the base (40001, then 50001, then 1), check `SunS`, walk the model chain to `0xFFFF`, read scale factors with their values, treat sentinels as absent, map standard models to roles. One generic SunSpec profile covers conforming devices; vendor profiles add only what SunSpec lacks.
 - Variants by device type, chosen by an identify probe (a magic register: `SunS`, `0xE3DC`, or a device-type register).
 - The unit id belongs to the device (ADR 6), not the profile.

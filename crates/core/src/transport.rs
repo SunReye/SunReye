@@ -3,6 +3,8 @@
 //! A client speaks Modbus TCP framing to an endpoint, over a TCP socket or over `sim`, which replays
 //! a capture. The framing is the same over both, so a capture checks the bytes a real device sees.
 
+#[cfg(test)]
+pub mod fake;
 mod mbap;
 mod sim;
 

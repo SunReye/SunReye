@@ -3,9 +3,12 @@
 pub mod api;
 pub mod auth;
 pub mod bus;
+pub mod changes;
+pub mod devices;
 pub mod endpoint;
 pub mod layout;
 pub mod live;
+pub mod profiles;
 pub mod solar;
 mod spa;
 pub mod startup;

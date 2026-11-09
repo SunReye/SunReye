@@ -12,8 +12,11 @@ use tokio::sync::{oneshot, watch};
 use crate::api::{self, Api};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::changes::Changes;
+use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
+use crate::profiles::Catalogue;
 use crate::storage::{self, Storage};
 
 const DEFAULT_LISTEN: SocketAddr =
@@ -115,6 +118,8 @@ impl Options {
 pub enum Error {
     Io(std::io::Error),
     Storage(storage::Error),
+    /// A bundled profile does not load in this build.
+    Profile(sunreye_profile::LoadError),
 }
 
 impl fmt::Display for Error {
@@ -122,6 +127,7 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Storage(e) => write!(f, "storage: {e}"),
+            Self::Profile(e) => write!(f, "bundled profile: {e}"),
         }
     }
 }
@@ -161,13 +167,23 @@ pub async fn serve(
     // Problems are known before the first request.
     let (problems, watched) = watch::channel(Vec::new());
     tick(&storage, &problems).await?;
+    let inverters = Inverters::default();
+    let devices = Devices::start(
+        storage.database(),
+        storage.declarer(),
+        Catalogue::bundled().map_err(Error::Profile)?,
+        bus.clone(),
+        inverters.clone(),
+    )
+    .await?;
     let api = Api {
         auth: Auth::open(storage.database(), ingress).await?,
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
-        // Devices and their profiles arrive with device configuration (#623).
-        layouts: Layouts::new(storage.database(), Inverters::default()),
+        layouts: Layouts::new(storage.database(), inverters),
+        devices,
+        changes: Changes::new(storage.database()),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let app = api::router(api).into_make_service_with_connect_info::<SocketAddr>();

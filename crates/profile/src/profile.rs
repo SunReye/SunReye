@@ -52,6 +52,16 @@ pub struct Quantity {
     pub index: Option<u32>,
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
+    step: f64,
+}
+
+impl Quantity {
+    /// The quantisation step it is stored in, in its role's unit (ADR 3): a register's scale; for a
+    /// computed quantity the finest step of its inputs, and for a ratio a thousandth of its scale.
+    #[must_use]
+    pub const fn step(&self) -> f64 {
+        self.step
+    }
 }
 
 #[derive(Debug)]
@@ -224,6 +234,7 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
             return Err(refuse("the key is declared twice"));
         }
         let read = read(&doc, &positions).map_err(refuse)?;
+        let step = step(&read, &quantities);
         positions.insert(doc.key.clone(), quantities.len());
         quantities.push(Quantity {
             key: doc.key,
@@ -231,9 +242,24 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
             index: doc.index,
             read,
             range: doc.range,
+            step,
         });
     }
     Ok(quantities)
+}
+
+/// `earlier` holds every input of a computed `read`.
+fn step(read: &Read, earlier: &[Quantity]) -> f64 {
+    match read {
+        Read::Register { scale, .. } => scale.abs(),
+        Read::Compute(Expr::Ratio { scale, .. }) => scale.abs() / 1000.0,
+        Read::Compute(expr) => expr
+            .inputs()
+            .into_iter()
+            .filter_map(|at| earlier.get(at))
+            .map(|q| q.step)
+            .fold(f64::INFINITY, f64::min),
+    }
 }
 
 fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &'static str> {

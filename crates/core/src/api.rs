@@ -17,6 +17,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
+use crate::changes::Changes;
+use crate::devices::Devices;
 use crate::layout::Layouts;
 use crate::live::{Frame, Live};
 use crate::spa;
@@ -47,6 +49,8 @@ pub struct Api {
     pub problems: watch::Receiver<Vec<storage::Problem>>,
     pub history: storage::Reader,
     pub layouts: Layouts,
+    pub devices: Devices,
+    pub changes: Changes,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -76,6 +80,8 @@ pub fn router(api: Api) -> Router {
                 .routes(routes!(forecasts::forecasts))
                 .with_state(api.history),
         )
+        .merge(api.devices.routes(Clock::clone(&api.clock)))
+        .merge(api.changes.routes())
         .merge(api.layouts.routes(api.clock));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))

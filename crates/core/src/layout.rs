@@ -4,7 +4,7 @@
 //! Ids are never reused; a change is a new version applying from its instant.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
@@ -71,20 +71,28 @@ impl From<Refusal> for Problem {
     }
 }
 
-/// The inverters strings may be wired to, by device, with their profiles.
+/// The inverters strings may be wired to, by device, with their profiles. Clones share one set,
+/// which the devices module replaces as devices change.
 #[derive(Debug, Clone, Default)]
-pub struct Inverters(Arc<HashMap<DeviceId, Arc<Profile>>>);
+pub struct Inverters(Arc<RwLock<HashMap<DeviceId, Arc<Profile>>>>);
 
 impl FromIterator<(DeviceId, Arc<Profile>)> for Inverters {
     fn from_iter<I: IntoIterator<Item = (DeviceId, Arc<Profile>)>>(iter: I) -> Self {
-        Self(Arc::new(iter.into_iter().collect()))
+        Self(Arc::new(RwLock::new(iter.into_iter().collect())))
     }
 }
 
 impl Inverters {
     #[must_use]
-    pub fn profile(&self, device: DeviceId) -> Option<&Profile> {
-        self.0.get(&device).map(AsRef::as_ref)
+    pub fn profile(&self, device: DeviceId) -> Option<Arc<Profile>> {
+        let inverters = self.0.read().unwrap_or_else(PoisonError::into_inner);
+        inverters.get(&device).cloned()
+    }
+
+    /// Replaces the set for every clone.
+    pub fn replace(&self, inverters: impl IntoIterator<Item = (DeviceId, Arc<Profile>)>) {
+        let inverters = inverters.into_iter().collect();
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = inverters;
     }
 }
 
