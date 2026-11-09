@@ -184,6 +184,7 @@ async fn write_setting(
         key,
         value,
         actor: ACTOR,
+        via: None,
     };
     let written = devices.write_setting(id, request, clock()).await?;
     Ok(Json(written))

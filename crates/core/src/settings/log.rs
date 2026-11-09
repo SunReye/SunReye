@@ -29,6 +29,9 @@ pub struct Entry {
     pub failed_step: Option<u32>,
     /// `admin`, or a named controller.
     pub actor: String,
+    /// The trusted device key a remote write came through (ADR 16); `null` for a write made at
+    /// home.
+    pub via: Option<String>,
 }
 
 /// An attempt as the funnel records it.
@@ -39,6 +42,7 @@ pub struct Attempt<'a> {
     pub requested: f64,
     pub applied: Applied,
     pub actor: &'a str,
+    pub via: Option<&'a str>,
 }
 
 /// Appends `attempt` and returns its entry.
@@ -50,8 +54,8 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
     let outcome = name(applied.outcome);
     db.execute(
         "INSERT INTO write_log
-         (time, device, setting, before, requested, after, outcome, failed_step, actor)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         (time, device, setting, before, requested, after, outcome, failed_step, actor, via)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             seconds(attempt.time),
             attempt.device,
@@ -62,6 +66,7 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
             outcome,
             applied.failed_step,
             attempt.actor,
+            attempt.via,
         ],
     )?;
     Ok(Entry {
@@ -74,6 +79,7 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
         outcome: applied.outcome,
         failed_step: applied.failed_step,
         actor: attempt.actor.to_owned(),
+        via: attempt.via.map(str::to_owned),
     })
 }
 
@@ -105,7 +111,7 @@ pub fn last_write(
 /// The file cannot be read.
 pub fn entries(db: &Connection) -> rusqlite::Result<Vec<Entry>> {
     db.prepare(
-        "SELECT time, device, setting, before, requested, after, outcome, failed_step, actor
+        "SELECT time, device, setting, before, requested, after, outcome, failed_step, actor, via
          FROM write_log ORDER BY id",
     )?
     .query_map([], |row| {
@@ -119,6 +125,7 @@ pub fn entries(db: &Connection) -> rusqlite::Result<Vec<Entry>> {
             outcome: outcome(&row.get::<_, String>(6)?)?,
             failed_step: row.get(7)?,
             actor: row.get(8)?,
+            via: row.get(9)?,
         })
     })?
     .collect()
@@ -144,3 +151,6 @@ fn outcome(name: &str) -> rusqlite::Result<Outcome> {
         _ => return Err(rusqlite::Error::InvalidQuery),
     })
 }
+
+#[cfg(test)]
+mod tests;

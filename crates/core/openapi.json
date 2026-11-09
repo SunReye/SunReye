@@ -970,6 +970,13 @@
           "time": {
             "description": "RFC 3339, UTC.",
             "type": "string"
+          },
+          "via": {
+            "description": "The trusted device key a remote write came through (ADR 16); `null` for a write made at\nhome.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [

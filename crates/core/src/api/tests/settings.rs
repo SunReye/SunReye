@@ -120,7 +120,7 @@ impl Plant {
         json!({
             "time": "2026-11-09T00:00:00Z", "device": self.id, "setting": CHARGE,
             "before": before, "requested": requested, "after": after, "outcome": outcome,
-            "failedStep": null, "actor": "admin",
+            "failedStep": null, "actor": "admin", "via": null,
         })
     }
 }

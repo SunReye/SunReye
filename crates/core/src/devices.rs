@@ -628,6 +628,7 @@ impl Devices {
             key: toggle.target.clone(),
             value,
             actor: request.actor,
+            via: request.via.clone(),
         };
         if words == [1] {
             // An engaged toggle keeps the value it stored first: the target now holds the lock.
@@ -708,6 +709,7 @@ impl Devices {
                     requested: request.value,
                     applied,
                     actor: request.actor,
+                    via: request.via.as_deref(),
                 };
                 log::append(db, &attempt)
             })

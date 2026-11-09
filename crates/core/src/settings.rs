@@ -173,6 +173,8 @@ pub struct Request {
     pub value: f64,
     /// `admin`, or a named controller.
     pub actor: &'static str,
+    /// The trusted device key a remote write comes through (ADR 16); `None` at home.
+    pub via: Option<String>,
 }
 
 /// A write that passed its checks: the setting and the words of its value.
