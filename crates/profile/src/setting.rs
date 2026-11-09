@@ -47,8 +47,20 @@ pub enum Step {
     },
     /// Reads `register` and writes it back with the value's word in the bits `mask` selects.
     Rmw { register: u16, mask: u16 },
+    /// Writes `value` to the enable field `register`, last, once the value is in place.
+    Activate { register: u16, value: u16 },
     /// Waits before the next step; the endpoint's polls wait with it.
     Delay(Duration),
+}
+
+impl Step {
+    /// Whether it writes the setting's value, as opposed to a fixed word or nothing.
+    const fn writes_value(&self) -> bool {
+        match self {
+            Self::Write { .. } | Self::WriteBlock { .. } | Self::Rmw { .. } => true,
+            Self::Activate { .. } | Self::Delay(_) => false,
+        }
+    }
 }
 
 /// The longest delay: polls of every device on the endpoint wait for it.
@@ -250,7 +262,8 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
 }
 
 fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
-    docs.into_iter()
+    let steps: Vec<Step> = docs
+        .into_iter()
         .map(|step| match step {
             StepDoc::Write(r) => Ok(Step::Write {
                 register: r.register,
@@ -264,8 +277,20 @@ fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
                 Err("a delay is at most 10000 ms: the device's polls wait for it")
             }
             StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
+            StepDoc::Activate(a) => Ok(Step::Activate {
+                register: a.register,
+                value: a.value,
+            }),
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+    let last = steps.len() - 1;
+    for (at, step) in steps.iter().enumerate() {
+        let valued = steps.iter().take(at).any(Step::writes_value);
+        if matches!(step, Step::Activate { .. }) && (at != last || !valued) {
+            return Err("`activate` is the last step, after one that writes the value");
+        }
+    }
+    Ok(steps)
 }
 
 fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<ReadBack, &'static str> {

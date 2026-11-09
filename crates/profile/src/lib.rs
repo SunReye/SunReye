@@ -28,6 +28,7 @@ pub const CAPABILITIES: &[&str] = &[
     "write",
     "write-block",
     "rmw",
+    "activate",
     "delay",
 ];
 

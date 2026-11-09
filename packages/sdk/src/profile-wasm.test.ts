@@ -44,6 +44,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "write",
       "write-block",
       "rmw",
+      "activate",
       "delay",
     ],
   });

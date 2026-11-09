@@ -59,6 +59,7 @@ pub enum StepDoc {
     Write(RegisterDoc),
     WriteBlock(BlockDoc),
     Rmw(MaskedDoc),
+    Activate(ActivateDoc),
     Delay(DelayDoc),
 }
 
@@ -69,9 +70,20 @@ impl StepDoc {
             Self::Write(_) => "write",
             Self::WriteBlock(_) => "write-block",
             Self::Rmw(_) => "rmw",
+            Self::Activate(_) => "activate",
             Self::Delay(_) => "delay",
         }
     }
+}
+
+/// The enable field written last, once the value is in place.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Activate"))]
+#[serde(deny_unknown_fields)]
+pub struct ActivateDoc {
+    pub register: u16,
+    pub value: u16,
 }
 
 /// The bits `mask` selects of `register`.

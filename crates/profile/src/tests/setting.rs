@@ -290,3 +290,45 @@ fn a_mask_is_non_zero_over_an_unsigned_register() {
         assert_eq!(refusal(&json!([read])).1, "a masked register holds a `u16`");
     }
 }
+
+#[test]
+fn activation_comes_last_after_the_value_is_written() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+    ]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe(),
+        [
+            Step::Write { register: 108 },
+            Step::Activate {
+                register: 110,
+                value: 1
+            }
+        ]
+    );
+    assert_eq!(
+        warnings(
+            &json!([with_recipe(&recipe)]),
+            &json!(["modbus", "u16", "write"])
+        ),
+        ["`requires` lacks `activate`, which the profile uses"]
+    );
+    let early = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+        { "delay": { "ms": 100 } },
+    ]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&early)])).1,
+        "`activate` is the last step, after one that writes the value"
+    );
+    let alone =
+        json!([{ "delay": { "ms": 100 } }, { "activate": { "register": 110, "value": 1 } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&alone)])).1,
+        "`activate` is the last step, after one that writes the value"
+    );
+}

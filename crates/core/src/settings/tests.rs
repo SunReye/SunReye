@@ -251,3 +251,23 @@ async fn a_masked_write_changes_only_its_bits_and_reads_back_through_its_mask() 
         }
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn activation_writes_the_enable_field_after_the_value() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "activate": { "register": 110, "value": 1 } },
+    ]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &echo(108)),
+        write(3, 110, 1, &echo(110)),
+        read(4, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}

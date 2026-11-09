@@ -206,6 +206,7 @@ async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
                 link.write(*register, &words).await
             }
             Step::Rmw { register, mask } => link.rmw(*register, *mask, &job.words).await,
+            Step::Activate { register, value } => link.write(*register, &[*value]).await,
             Step::Delay(pause) => {
                 tokio::time::sleep(*pause).await;
                 Ok(false)
