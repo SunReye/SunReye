@@ -10,8 +10,14 @@ name = "sunreye"
 path = "src/main.rs"
 
 [dependencies]
-# HTTP routing (ADR 2); `tokio` for the client address, `json` for request bodies, `http1` to serve.
-axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+# HTTP routing (ADR 2); `tokio` for the client address, `json` for request bodies, `query` for
+# query strings, `http1` to serve.
+axum = { version = "0.8.9", default-features = false, features = [
+  "http1",
+  "json",
+  "query",
+  "tokio",
+] }
 # Admin password hashes (ADR 9).
 bcrypt = "0.19.3"
 # Builds the SSE stream; axum already depends on it.

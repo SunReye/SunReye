@@ -149,6 +149,7 @@ pub async fn serve(
         auth: Auth::open(storage.database()).await?,
         live: Live::spawn(&bus),
         problems: watched,
+        history: storage.reader(),
     };
     let app = api::router(api).into_make_service_with_connect_info::<SocketAddr>();
     let (stop, stopped) = oneshot::channel::<()>();

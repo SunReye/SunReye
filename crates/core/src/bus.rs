@@ -25,6 +25,25 @@ pub struct Series {
     pub index: Option<u32>,
 }
 
+impl Series {
+    /// The series a name such as `pv.mppt.power[2]` names; `None` for a malformed index.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        let (role, index) = match name.strip_suffix(']') {
+            Some(indexed) => {
+                let (role, index) = indexed.split_once('[')?;
+                (role, Some(index.parse().ok()?))
+            }
+            None => (name, None),
+        };
+        let valid = !role.is_empty() && !role.contains(['[', ']']);
+        valid.then(|| Self {
+            role: role.to_owned(),
+            index,
+        })
+    }
+}
+
 /// Named like `pv.mppt.power[2]`; an unindexed role is its own name.
 impl fmt::Display for Series {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

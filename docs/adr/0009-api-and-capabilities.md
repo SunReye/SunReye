@@ -20,7 +20,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Live.** SSE at `/api/v1/live`: a full `snapshot` event on connect, then `delta` events only, no replay; a client that falls behind is disconnected and reconnects to a snapshot. One JSON object per tick, serialised once and shared by all clients. A tick is a 1 s window that coalesces every reading changed in it, whatever the poll cadences; a tick with no change sends nothing. Live reads memory, never SQLite.
 
-**History.** By device, series (ADR 3) and range. The server picks the rollup tier so a series has at most 1,500 points (about one per pixel of a wide chart), returns time-weighted means and names the tier. Raw intervals only for short ranges.
+**History.** `GET /api/v1/devices/{id}/history` by `series` (ADR 3, such as `pv.mppt.power[2]`) and the range `from` to before `to`, RFC 3339 instants. The server picks the tier so a series has at most 1,500 points (about one per pixel of a wide chart), returns time-weighted means and names the tier: `raw` intervals for a range of up to a day that holds at most 1,500 of them, else `hour` up to 1,499 hours, else `day` up to 1,498 days of 23 hours. Each point is an interval or a whole rollup with its own start and end, so the first may begin before `from`; a gap has no point. A longer or empty range is refused as `history.range`, and a counter past raw intervals as `history.counter`: its rollups hold a delta, not a mean.
 
 **Forecasts.** `GET /api/v1/devices/{id}/forecasts` by series and range, with the same 1,500-point cap. It returns the latest issue by default; `issuedBefore` selects an earlier one, so forecast accuracy can be compared (ADR 15).
 

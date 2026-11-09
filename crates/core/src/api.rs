@@ -30,6 +30,8 @@ const METHOD: Problem = Problem {
     code: "request.method",
 };
 
+mod history;
+
 #[derive(OpenApi)]
 #[openapi(info(title = "SunReye", version = "1"))]
 struct Document;
@@ -40,6 +42,7 @@ pub struct Api {
     pub live: Live,
     /// Storage's problems, as of its last tick.
     pub problems: watch::Receiver<Vec<storage::Problem>>,
+    pub history: storage::Reader,
 }
 
 pub fn router(api: Api) -> Router {
@@ -54,6 +57,11 @@ pub fn router(api: Api) -> Router {
             OpenApiRouter::new()
                 .routes(routes!(problems))
                 .with_state(api.problems),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(history::history))
+                .with_state(api.history),
         );
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))

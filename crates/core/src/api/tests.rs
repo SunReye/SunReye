@@ -19,12 +19,13 @@ use crate::bus::Bus;
 use crate::live::Live;
 use crate::storage::{Problem, Storage};
 
+mod history;
 mod live;
 
 const HOME: &str = "192.0.2.1:50000";
 
 struct Core {
-    _storage: Storage,
+    storage: Storage,
     bus: Bus,
     problems: watch::Sender<Vec<Problem>>,
     router: Router,
@@ -40,12 +41,13 @@ impl Core {
             auth,
             live: Live::spawn(&bus),
             problems: watched,
+            history: storage.reader(),
         };
         Self {
             router: contract(router(api)).await,
             bus,
             problems,
-            _storage: storage,
+            storage,
         }
     }
 
@@ -104,6 +106,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         auth,
         live: Live::spawn(&Bus::default()),
         problems: watch::channel(Vec::new()).1,
+        history: storage.reader(),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
 
