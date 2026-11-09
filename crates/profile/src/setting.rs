@@ -23,7 +23,12 @@ pub enum Step {
     /// Writes the value's words from `register` with function code 16: Deye ignores function code
     /// 6 on its settings registers (measured live).
     Write { register: u16 },
+    /// Waits before the next step; the endpoint's polls wait with it.
+    Delay(Duration),
 }
+
+/// The longest delay: polls of every device on the endpoint wait for it.
+const MAX_DELAY_MS: u32 = 10_000;
 
 impl Setting {
     /// The bounds a value must lie within; `None` when the setting declares its values instead.
@@ -154,11 +159,16 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
         .recipe
         .into_iter()
         .map(|step| match step {
-            StepDoc::Write(r) => Step::Write {
+            StepDoc::Write(r) => Ok(Step::Write {
                 register: r.register,
-            },
+            }),
+            StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
+                Err("a delay is at most 10000 ms: the device's polls wait for it")
+            }
+            StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        .map_err(|problem| (key.clone(), problem))?;
     Ok(Setting {
         key,
         kind: doc.kind,

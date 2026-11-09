@@ -2,6 +2,7 @@
 //! retry or a stray request fails the replay.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use sunreye_profile::{Framing, Profile};
@@ -151,6 +152,53 @@ async fn a_write_only_setting_is_written_unread_and_unknown() {
             before: None,
             after: None,
             failed_step: None,
+        }
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_delay_holds_the_next_step_back() {
+    let recipe = json!([
+        { "write": { "register": 108 } },
+        { "delay": { "ms": 500 } },
+        { "write": { "register": 109 } },
+    ]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &echo(108)),
+        write(3, 109, 50, &echo(109)),
+        read(4, 108, 50),
+    ]
+    .concat();
+    let start = tokio::time::Instant::now();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+    assert!(start.elapsed() >= Duration::from_millis(500));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_after_steps_that_wrote_nothing_is_a_mismatch() {
+    let recipe = json!([{ "delay": { "ms": 500 } }, { "write": { "register": 108 } }]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        write(2, 108, 50, &[0x90, 3]),
+        read(3, 108, 108),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Mismatch,
+            before: Some(108.0),
+            after: Some(108.0),
+            failed_step: Some(2),
         }
     );
 }

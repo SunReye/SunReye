@@ -22,7 +22,7 @@ use crate::transport::{Client, Endpoint, Error};
 pub enum Outcome {
     /// The read-back holds the requested value.
     Verified,
-    /// The read-back holds another value, or the device refused the first step.
+    /// The read-back holds another value, or the device refused a step before anything was written.
     Mismatch,
     /// The device's state is not known: a step timed out, the read-back failed, or the setting is
     /// write-only.
@@ -139,9 +139,9 @@ pub async fn run(
     };
     let Some(read_back) = job.setting.read_back() else {
         // Write-only: nothing to compare with, before or after.
-        if let Err((step, error)) = steps(endpoint, client, timeout, job).await {
-            applied.outcome = failed(step, &error);
-            applied.failed_step = Some(step);
+        if let Err(failure) = steps(endpoint, client, timeout, job).await {
+            applied.outcome = failure.outcome();
+            applied.failed_step = Some(failure.step);
         }
         return applied;
     };
@@ -157,21 +157,31 @@ pub async fn run(
     let after = read(endpoint, client, timeout, job, read_back).await.ok();
     applied.after = after.as_deref().and_then(|w| job.setting.decode(w));
     applied.outcome = match (&result, after) {
-        (Err((step, error)), _) => failed(*step, error),
+        (Err(failure), _) => failure.outcome(),
         (Ok(()), Some(after)) if after == job.words => Outcome::Verified,
         (Ok(()), Some(_)) => Outcome::Mismatch,
         (Ok(()), None) => Outcome::Unknown,
     };
-    applied.failed_step = result.err().map(|(step, _)| step);
+    applied.failed_step = result.err().map(|failure| failure.step);
     applied
 }
 
-/// The outcome of a recipe that stopped at `step`, counted from 1.
-const fn failed(step: u32, error: &Error) -> Outcome {
-    match (step, error) {
-        (1, Error::Exception(_)) => Outcome::Mismatch,
-        (1, _) => Outcome::Unknown,
-        _ => Outcome::Partial,
+/// Where a recipe stopped.
+struct Failure {
+    /// Counted from 1.
+    step: u32,
+    error: Error,
+    /// An earlier write was acknowledged.
+    wrote: bool,
+}
+
+impl Failure {
+    const fn outcome(&self) -> Outcome {
+        match (self.wrote, &self.error) {
+            (true, _) => Outcome::Partial,
+            (false, Error::Exception(_)) => Outcome::Mismatch,
+            (false, _) => Outcome::Unknown,
+        }
     }
 }
 
@@ -180,7 +190,8 @@ async fn steps(
     client: &mut Option<Client>,
     timeout: Duration,
     job: &Job,
-) -> Result<(), (u32, Error)> {
+) -> Result<(), Failure> {
+    let mut wrote = false;
     for (step, number) in job.setting.recipe().iter().zip(1..) {
         let result = match *step {
             Step::Write { register } => {
@@ -189,9 +200,23 @@ async fn steps(
                     c.write_registers(job.unit, register, words).await
                 })
                 .await
+                .map(|()| true)
+            }
+            Step::Delay(pause) => {
+                tokio::time::sleep(pause).await;
+                Ok(false)
             }
         };
-        result.map_err(|error| (number, error))?;
+        match result {
+            Ok(written) => wrote |= written,
+            Err(error) => {
+                return Err(Failure {
+                    step: number,
+                    error,
+                    wrote,
+                });
+            }
+        }
     }
     Ok(())
 }

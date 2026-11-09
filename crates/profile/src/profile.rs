@@ -5,7 +5,7 @@ use std::fmt;
 
 use serde::Deserialize;
 
-use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range};
+use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, StepDoc};
 use crate::plan::{self, Block};
 use crate::setting::{self, Setting};
 use crate::{CAPABILITIES, SCHEMA};
@@ -278,7 +278,11 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
                 .any(|q| q.compute.is_some())
                 .then_some("compute"),
         )
-        .chain((!doc.settings.is_empty()).then_some("write"))
+        .chain(
+            doc.settings
+                .iter()
+                .flat_map(|s| s.recipe.iter().map(StepDoc::capability)),
+        )
         .collect();
     CAPABILITIES
         .iter()

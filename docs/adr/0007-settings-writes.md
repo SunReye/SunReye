@@ -17,7 +17,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - A recipe declares what to read back, which may differ from the register written. Silent ignores make read-back mandatory; a lint rejects a recipe without one unless the setting is declared write-only, which always reports `unknown`.
 - A timeout is `unknown`, followed by a read-back attempt. It is never retried automatically, because a retry can double-apply a relative setting. A mismatch is shown as an error and not retried.
 - The current value is read before writing, and the equal-value skip compares register words. A failed read writes nothing and reports `unknown`.
-- A device that refuses the first step with an exception is a `mismatch`; any step failing after an earlier one wrote is `partial`.
+- A device that refuses a step with an exception before any write was acknowledged is a `mismatch`; any step failing after an acknowledged write is `partial`.
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
 

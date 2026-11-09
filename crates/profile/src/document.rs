@@ -57,6 +57,25 @@ pub struct SettingDoc {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum StepDoc {
     Write(RegisterDoc),
+    Delay(DelayDoc),
+}
+
+impl StepDoc {
+    /// The capability a profile using this step kind requires.
+    pub const fn capability(&self) -> &'static str {
+        match self {
+            Self::Write(_) => "write",
+            Self::Delay(_) => "delay",
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Delay"))]
+#[serde(deny_unknown_fields)]
+pub struct DelayDoc {
+    pub ms: u32,
 }
 
 #[derive(Deserialize)]
