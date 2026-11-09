@@ -4,6 +4,7 @@ pub mod api;
 pub mod auth;
 pub mod bus;
 pub mod endpoint;
+pub mod layout;
 pub mod live;
 mod spa;
 pub mod startup;

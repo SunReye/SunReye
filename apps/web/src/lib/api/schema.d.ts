@@ -52,6 +52,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The layout in force at an instant. */
+        get: operations["layout"];
+        /** Changes the layout from an instant on; new strings get fresh ids. */
+        put: operations["change_layout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/live": {
         parameters: {
             query?: never;
@@ -84,6 +102,23 @@ export interface paths {
         put?: never;
         /** Signs the admin in to a session cookie. */
         post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/module-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_module_types"];
+        put?: never;
+        /** Adds a module type; the admin enters its datasheet, there is no catalogue. */
+        post: operations["add_module_type"];
         delete?: never;
         options?: never;
         head?: never;
@@ -144,12 +179,59 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description A layout change: every string, applying from an instant on. */
+        Change: {
+            /** @description RFC 3339. */
+            appliesFrom: string;
+            strings: components["schemas"]["StringDraft"][];
+        };
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: string;
         };
         Credentials: {
             password: string;
+        };
+        /** @description A PV module model's datasheet values. */
+        Datasheet: {
+            /** Format: int32 */
+            bypassDiodes: number;
+            /** Format: double */
+            currentCoefficient: number;
+            /** Format: double */
+            height: number;
+            /** Format: double */
+            imp: number;
+            /** Format: double */
+            isc: number;
+            name: string;
+            /**
+             * Format: double
+             * @description Watts at standard test conditions.
+             */
+            pmax: number;
+            /**
+             * Format: double
+             * @description Of Pmax, Voc and Isc, in %/K.
+             */
+            powerCoefficient: number;
+            /**
+             * Format: double
+             * @description Volts and amperes at the maximum power point.
+             */
+            vmp: number;
+            /**
+             * Format: double
+             * @description Open-circuit volts and short-circuit amperes.
+             */
+            voc: number;
+            /** Format: double */
+            voltageCoefficient: number;
+            /**
+             * Format: double
+             * @description Metres.
+             */
+            width: number;
         };
         /** @description One series' forecasts, at most 1,500 points. */
         Forecasts: {
@@ -174,6 +256,22 @@ export interface components {
              * @description A `bucket`'s width in seconds.
              */
             width?: number | null;
+        };
+        /** @description One layout version. */
+        Layout: {
+            /** @description RFC 3339, UTC. */
+            appliesFrom: string;
+            strings: components["schemas"]["PvString"][];
+        };
+        ModuleType: components["schemas"]["Datasheet"] & {
+            /**
+             * Format: int32
+             * @description Stable; never reused.
+             */
+            id: number;
+        };
+        ModuleTypes: {
+            moduleTypes: components["schemas"]["ModuleType"][];
         };
         Point: {
             /** @description RFC 3339, UTC. */
@@ -200,12 +298,27 @@ export interface components {
         Problems: {
             problems: components["schemas"]["Condition"][];
         };
+        /** @description Modules in series on one plane; strings on one MPPT input are in parallel. */
+        PvString: components["schemas"]["Wiring"] & {
+            /**
+             * Format: int32
+             * @description Stable; never reused. The `pv.string.power` index.
+             */
+            id: number;
+        };
         /** @description An inclusive range of profile schemas. */
         Schemas: {
             /** Format: int32 */
             max: number;
             /** Format: int32 */
             min: number;
+        };
+        StringDraft: components["schemas"]["Wiring"] & {
+            /**
+             * Format: int32
+             * @description A string kept from an earlier version; absent for a new string.
+             */
+            id?: number | null;
         };
         /**
          * @description What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,
@@ -226,6 +339,47 @@ export interface components {
          * @enum {string}
          */
         Tier: "raw" | "bucket" | "hour" | "day";
+        /** @description Where a string sits and what it is made of. */
+        Wiring: {
+            /**
+             * Format: double
+             * @description Degrees: 0 south, −90 east, 90 west.
+             */
+            azimuth: number;
+            /**
+             * Format: int32
+             * @description The inverter's device id.
+             */
+            device: number;
+            /**
+             * Format: int32
+             * @description The MPPT input, from 1, as the `pv.mppt.*` index.
+             */
+            input: number;
+            /**
+             * Format: double
+             * @description Wiring, soiling and mismatch, in %.
+             */
+            loss: number;
+            /**
+             * Format: int32
+             * @description A module type id.
+             */
+            moduleType: number;
+            /** Format: int32 */
+            modules: number;
+            name: string;
+            /**
+             * Format: int32
+             * @description How many of its modules have an optimizer.
+             */
+            optimized: number;
+            /**
+             * Format: double
+             * @description Degrees from horizontal.
+             */
+            tilt: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -370,6 +524,67 @@ export interface operations {
             };
         };
     };
+    layout: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339; now when absent. */
+                at?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    change_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Change"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     live_values: {
         parameters: {
             query?: never;
@@ -416,6 +631,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list_module_types: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleTypes"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add_module_type: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Datasheet"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleType"];
+                };
             };
             "4XX": {
                 headers: {
