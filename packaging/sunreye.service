@@ -1,0 +1,29 @@
+# The core as a systemd service (ADR 13). Install the release binary as /usr/local/bin/sunreye,
+# this file as /etc/systemd/system/sunreye.service, then `systemctl enable --now sunreye`.
+[Unit]
+Description=SunReye solar and battery monitoring
+Documentation=https://github.com/SunReye/SunReye
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/sunreye
+# The data directory has no default (ADR 2); systemd creates /var/lib/sunreye for the service.
+StateDirectory=sunreye
+Environment=SUNREYE_DATA_DIR=%S/sunreye
+DynamicUser=yes
+# Serial Modbus adapters belong to dialout.
+SupplementaryGroups=dialout
+Restart=on-failure
+RestartSec=5
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
