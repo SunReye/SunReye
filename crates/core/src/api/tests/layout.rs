@@ -25,7 +25,13 @@ fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
     from(HOME, request)
 }
 
-fn string(id: Option<u64>, name: &str, module_type: &Value, input: u32, azimuth: f64) -> Value {
+pub(super) fn string(
+    id: Option<u64>,
+    name: &str,
+    module_type: &Value,
+    input: u32,
+    azimuth: f64,
+) -> Value {
     let mut string = json!({
         "name": name, "moduleType": module_type, "device": 1, "input": input, "modules": 16,
         "optimized": 0, "tilt": 35.0, "azimuth": azimuth, "loss": 2.0,
@@ -43,7 +49,7 @@ impl Core {
     }
 
     /// Adds the owner's module type; returns its id.
-    async fn module_type(&self, set_cookie: &str) -> Value {
+    pub(super) async fn module_type(&self, set_cookie: &str) -> Value {
         let (status, body) = self
             .call(
                 set_cookie,
@@ -54,7 +60,12 @@ impl Core {
         body["id"].clone()
     }
 
-    async fn put_layout(&self, set_cookie: &str, applies_from: &str, strings: &[Value]) -> Value {
+    pub(super) async fn put_layout(
+        &self,
+        set_cookie: &str,
+        applies_from: &str,
+        strings: &[Value],
+    ) -> Value {
         let body = json!({ "appliesFrom": applies_from, "strings": strings });
         let (status, body) = self
             .call(set_cookie, send("PUT", "/api/v1/layout", &body))

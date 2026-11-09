@@ -12,13 +12,15 @@
 
   const webgl2 = document.createElement("canvas").getContext("webgl2") !== null;
 
-  /** The crate, the layout in force and the module types; without a layout, an empty one. */
+  /** The crate, the layout in force, the module types and the plant's location; without a layout,
+   * an empty one. */
   async function load() {
-    const [pv, layout, moduleTypes, devices] = await Promise.all([
+    const [pv, layout, moduleTypes, devices, location] = await Promise.all([
       fetch(wasm).then(async (response) => loadPv(new Uint8Array(await response.arrayBuffer()))),
       core.layout(),
       core.moduleTypes(),
       core.devices(),
+      core.location(),
     ]);
 
     const empty = emptyDraft();
@@ -32,6 +34,8 @@
       moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
       // A viewer lists no devices; they view and place nothing.
       devices: "problem" in devices ? [] : devices,
+      // Admin only, and unset before setup: the sun then stays put.
+      location: "problem" in location ? undefined : location,
     };
   }
 </script>
@@ -44,8 +48,8 @@
   {#if webgl2}
     {#await load()}
       <p>{m.builder_loading()}</p>
-    {:then { pv, start, moduleTypes, devices }}
-      <Builder {pv} {core} {start} {moduleTypes} {devices} />
+    {:then { pv, start, moduleTypes, devices, location }}
+      <Builder {pv} {core} {start} {moduleTypes} {devices} {location} />
     {/await}
   {:else}
     <p>{m.builder_no_webgl()}</p>

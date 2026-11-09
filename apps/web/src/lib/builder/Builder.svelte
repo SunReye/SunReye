@@ -17,8 +17,8 @@
   import { painted, panels, type Draft } from "./modules.ts";
   import Editor from "./Editor.svelte";
   import Outcome from "./Outcome.svelte";
-  import type { Pv } from "./pv.ts";
-  import Stage from "./Stage.svelte";
+  import type { Location, Pv } from "./pv.ts";
+  import View from "./View.svelte";
   import { provideUploader } from "./upload.ts";
 
   let {
@@ -27,6 +27,7 @@
     start,
     moduleTypes,
     devices,
+    location,
   }: {
     pv: Pv;
     core: Core;
@@ -35,6 +36,8 @@
     moduleTypes: readonly ModuleType[];
     /** What equipment markers may name. */
     devices: readonly Device[];
+    /** Unknown to a viewer: the sun stays put and no clear sky is run. */
+    location?: Location | undefined;
   } = $props();
 
   // Desktop and tablet edit; a phone views (ADR 20).
@@ -82,7 +85,7 @@
   }
 </script>
 
-<Stage {core} {geometry} panels={drawn} places={draft.scene.carPlaces ?? []} {devices} />
+<View {pv} {core} {draft} {geometry} panels={drawn} {moduleTypes} {devices} {location} />
 {#if phone.current}
   <p>{m.builder_view_only()}</p>
 {:else}

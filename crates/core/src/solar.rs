@@ -12,7 +12,7 @@ use sunreye_pv as pv;
 use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId};
-use crate::correction::{Corrections, Grid, plant_hour};
+use crate::correction::{Grid, Grids, plant_hour};
 use crate::layout::{Inverters, Layouts, PvString, Version, in_force};
 use crate::location::Location;
 use crate::storage::{self, Issue, Storage};
@@ -56,7 +56,7 @@ impl SolarForecast {
     /// device stops, with the grids from `corrections`. `clock` gives each issue's time.
     pub async fn run(
         &self,
-        (storage, corrections): (&Storage, &impl Corrections),
+        (storage, corrections): (&Storage, &impl Grids),
         location: watch::Receiver<Option<Location>>,
         mut weather: watch::Receiver<Option<SystemTime>>,
         clock: impl Fn() -> SystemTime + Sync,
@@ -95,7 +95,7 @@ impl SolarForecast {
     pub async fn refresh(
         &self,
         storage: &Storage,
-        corrections: &impl Corrections,
+        corrections: &impl Grids,
         location: Location,
         issued: SystemTime,
     ) -> Result<(), storage::Error> {

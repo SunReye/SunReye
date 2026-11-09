@@ -19,6 +19,7 @@ use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
+use crate::correction::Corrections;
 use crate::devices::Devices;
 use crate::import::Imports;
 use crate::layout::{Inverters, Layouts};
@@ -31,10 +32,12 @@ use crate::spot::SpotZone;
 use crate::storage::{Problem, Storage};
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
+use crate::weather;
 
 mod access;
 mod balance;
 mod cars;
+mod corrections;
 mod devices;
 mod evcc;
 mod forecasts;
@@ -119,12 +122,14 @@ impl Core {
         let profiles = Profiles::open(storage.database(), Arc::<Host>::clone(&host), keys)
             .await
             .unwrap();
+        let layouts = Layouts::new(storage.database(), deye());
         let api = Api {
             auth,
             live: Live::spawn(&bus),
             problems: watched,
             history: storage.reader(),
-            layouts: Layouts::new(storage.database(), deye()),
+            corrections: Corrections::new(layouts.clone(), weather::DEVICE, &storage),
+            layouts,
             // Its own inverters: the layout tests wire to the Deye above as device 1.
             devices: Devices::start(
                 storage.database(),
@@ -221,6 +226,11 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         problems: watch::channel(Vec::new()).1,
         history: storage.reader(),
         layouts: Layouts::new(storage.database(), Inverters::default()),
+        corrections: Corrections::new(
+            Layouts::new(storage.database(), Inverters::default()),
+            weather::DEVICE,
+            &storage,
+        ),
         devices: Devices::start(
             storage.database(),
             storage.declarer(),

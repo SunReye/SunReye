@@ -129,6 +129,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["corrections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices": {
         parameters: {
             query?: never;
@@ -945,6 +961,10 @@ export interface components {
         Connections: {
             connections: components["schemas"]["Connection"][];
         };
+        /** @description Every MPPT input any layout version wires a string to. */
+        CorrectionList: {
+            inputs: components["schemas"]["InputCorrection"][];
+        };
         /** @description A token just created: the only time the token is shown. */
         Created: {
             /** Format: int32 */
@@ -1222,6 +1242,21 @@ export interface components {
         Indexes: {
             indexes: components["schemas"]["Report"][];
         };
+        InputCorrection: {
+            /**
+             * Format: int32
+             * @description The inverter.
+             */
+            device: number;
+            /** @description The learned cells; an unlearned month and hour applies 1. */
+            factors: components["schemas"]["LearnedCell"][];
+            /**
+             * Format: int32
+             * @description The `pv.mppt.*` index.
+             */
+            input: number;
+            recent?: components["schemas"]["RecentEnergy"] | null;
+        };
         /** @description The investment payback is measured against. */
         Investment: {
             /**
@@ -1244,6 +1279,21 @@ export interface components {
             appliesFrom: string;
             scene?: components["schemas"]["Scene"] | null;
             strings: components["schemas"]["StringDraft"][];
+        };
+        /** @description The multiplier for a plant-local month and hour. */
+        LearnedCell: {
+            /** Format: double */
+            factor: number;
+            /**
+             * Format: int32
+             * @description 0 to 23.
+             */
+            hour: number;
+            /**
+             * Format: int32
+             * @description 1 to 12.
+             */
+            month: number;
         };
         /** @description The plant's location in degrees, north and east positive. */
         Location: {
@@ -1474,6 +1524,16 @@ export interface components {
              */
             topicRoot?: string | null;
             transport: components["schemas"]["Transport"];
+        };
+        /**
+         * @description In kWh, over the whole hours of the last 30 days the input is modelled on archive weather and
+         *     measured, short of the inverter's AC limit; the model uncorrected.
+         */
+        RecentEnergy: {
+            /** Format: double */
+            measured: number;
+            /** Format: double */
+            modelled: number;
         };
         /** @description An index and the outcome of its last check. */
         Report: {
@@ -2041,6 +2101,41 @@ export interface operations {
                 content?: never;
             };
             "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    corrections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionList"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

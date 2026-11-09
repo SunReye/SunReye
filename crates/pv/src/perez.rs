@@ -72,12 +72,12 @@ fn sky_diffuse(plane: Plane, sky: &Sky, cos_aoi: f64) -> f64 {
 }
 
 /// Kasten and Young 1989.
-fn relative_airmass(zenith: f64) -> f64 {
+pub fn relative_airmass(zenith: f64) -> f64 {
     1.0 / 0.50572f64.mul_add((96.07995 - zenith).powf(-1.6364), zenith.to_radians().cos())
 }
 
 /// Spencer 1971, as pvlib's `get_extra_radiation`.
-fn extraterrestrial(day_of_year: u16) -> f64 {
+pub fn extraterrestrial(day_of_year: u16) -> f64 {
     let b = 2.0 * std::f64::consts::PI / 365.0 * (f64::from(day_of_year) - 1.0);
     let distance = 7.7e-05f64.mul_add(
         (2.0 * b).sin(),

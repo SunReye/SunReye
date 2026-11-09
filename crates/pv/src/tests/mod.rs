@@ -1,3 +1,4 @@
+mod clear_sky;
 mod diode;
 mod equipment;
 mod estimate;

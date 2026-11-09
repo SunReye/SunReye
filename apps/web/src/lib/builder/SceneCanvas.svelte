@@ -33,6 +33,7 @@
     panels = [],
     shares,
     cars = [],
+    sun,
     model,
     view,
     onview,
@@ -45,6 +46,9 @@
     shares?: readonly (number | null)[];
     /** The connected cars; drawn again only when one comes, goes or changes body. */
     cars?: readonly Parked[];
+    /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun.
+     * Without it nothing casts a shadow. */
+    sun?: Point | null | undefined;
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
@@ -57,6 +61,14 @@
   /** Metres of ground around the origin. */
   const GROUND = 100;
 
+  /** Metres from the origin to the sun light, beyond the tallest tree. */
+  const SUN_DISTANCE = 80;
+
+  /** The fixed sun's place, from the south-west. */
+  const SOUTH_WEST: readonly [number, number, number] = [-20, 40, 30];
+
+  const SUN_INTENSITY = 2;
+
   function dispose(group: Group): void {
     group.traverse((part) => {
       if (part instanceof Mesh) {
@@ -66,23 +78,54 @@
     });
   }
 
-  /** A sky, a sun from the south-west and the ground. */
-  function lit(scene: Scene): Scene {
-    const sun = new DirectionalLight(0xffffff, 2);
+  /** A sky, a sun from the south-west and the ground; the sun is returned to move. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds in place.
+  function lit(scene: Scene): DirectionalLight {
+    const light = new DirectionalLight(0xffffff, SUN_INTENSITY);
 
     const ground = new Mesh(
       new CircleGeometry(GROUND, 48),
       new MeshStandardMaterial({ color: 0xa8b89a }),
     );
 
-    sun.position.set(-20, 40, 30);
+    light.position.set(...SOUTH_WEST);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     // A hair below the footprints, so the floor never flickers through them.
     ground.position.y = -0.01;
     scene.background = new Color(0xdce6ef);
-    scene.add(new HemisphereLight(0xdde8f5, 0x4a4a40, 1.6), sun, ground);
+    scene.add(new HemisphereLight(0xdde8f5, 0x4a4a40, 1.6), light, ground);
 
-    return scene;
+    return light;
+  }
+
+  /** Sets the light toward `toward`, dark below the horizon; a null sun stays south-west. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js moves it in place.
+  function shine(light: DirectionalLight, toward: Point | null): void {
+    if (toward === null) {
+      light.position.set(...SOUTH_WEST);
+      light.intensity = SUN_INTENSITY;
+
+      return;
+    }
+
+    const [east, north, up] = toward;
+
+    light.position.set(...toThree([east * SUN_DISTANCE, north * SUN_DISTANCE, up * SUN_DISTANCE]));
+    light.intensity = up > 0 ? SUN_INTENSITY : 0;
+  }
+
+  /** Lets the light cast shadows over the ground's middle. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
+  function shadowing(renderer: WebGLRenderer, light: DirectionalLight): void {
+    const half = GROUND / 2;
+
+    renderer.shadowMap.enabled = true;
+    light.castShadow = true;
+    light.shadow.mapSize.set(2048, 2048);
+    Object.assign(light.shadow.camera, { left: -half, right: half, top: half, bottom: -half });
+    light.shadow.camera.far = SUN_DISTANCE * 2;
+    light.shadow.camera.updateProjectionMatrix();
   }
 
   function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
@@ -114,13 +157,38 @@
     return resize;
   }
 
+  /** Moves the light with the sun, if given one; whether the scene casts shadows. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
+  function follow(renderer: WebGLRenderer, light: DirectionalLight, render: () => void): boolean {
+    // Shadows cost a pass per draw: only a scene given a sun casts them.
+    const shadowed = untrack(() => sun !== undefined);
+
+    if (shadowed) shadowing(renderer, light);
+
+    $effect(() => {
+      if (sun !== undefined) {
+        shine(light, sun);
+        render();
+      }
+    });
+
+    return shadowed;
+  }
+
   /** Keeps the drawn meshes in step with the geometry and the live tints; returns their disposal. */
-  function keep(scene: Scene, render: () => void): () => void {
+  function keep(scene: Scene, render: () => void, shadowed: boolean): () => void {
     let drawn: Group | undefined;
 
     $effect(() => {
       const next = buildScene(geometry, panels);
       const live = untrack(() => shares);
+
+      if (shadowed) {
+        next.traverse((part) => {
+          part.castShadow = true;
+          part.receiveShadow = true;
+        });
+      }
 
       if (live !== undefined) tint(next, live);
 
@@ -151,7 +219,7 @@
   function stage(canvas: HTMLCanvasElement): () => void {
     const renderer = new WebGLRenderer({ canvas, antialias: true });
     const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
-    const scene = lit(new Scene());
+    const scene = new Scene();
     const controls = new OrbitControls(camera, canvas);
 
     const render = (): void => {
@@ -160,7 +228,7 @@
     };
 
     const resize = fit(canvas, renderer, camera, render);
-    const release = keep(scene, render);
+    const release = keep(scene, render, follow(renderer, lit(scene), render));
 
     const parking = garage(
       scene,

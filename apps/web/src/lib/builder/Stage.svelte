@@ -5,7 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
-  import type { CarPlace, Geometry } from "./pv.ts";
+  import type { CarPlace, Geometry, Point } from "./pv.ts";
   import SceneCanvas from "./SceneCanvas.svelte";
   import type { Panel } from "./scene.ts";
 
@@ -13,12 +13,15 @@
     core,
     geometry,
     panels,
+    sun,
     places,
     devices,
   }: {
     core: Core;
     geometry: Geometry;
     panels: readonly Panel[];
+    /** Toward the sun at the slider's instant; null where it is unknown. */
+    sun?: Point | null;
     places: readonly CarPlace[];
     /** Names the cars' loadpoints. */
     devices: readonly Device[];
@@ -77,6 +80,7 @@
   <SceneCanvas
     {geometry}
     {panels}
+    {sun}
     {cars}
     {model}
     view={kept ?? presetView("isometric", geometry)}

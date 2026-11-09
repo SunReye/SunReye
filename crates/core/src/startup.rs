@@ -14,7 +14,7 @@ use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
-use crate::correction::Learner;
+use crate::correction::{Corrections, Learner};
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
 use crate::import::{self, Imports};
@@ -231,6 +231,7 @@ pub async fn serve(
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
+        corrections: Corrections::new(layouts.clone(), weather::DEVICE, &storage),
         layouts,
         devices,
         changes: Changes::new(storage.database()),
@@ -341,12 +342,13 @@ async fn forecast(
 ) {
     let weather = Weather::new(provider, weather::DEVICE, bus);
     let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
+    let corrections = Corrections::new(layouts.clone(), weather::DEVICE, storage);
     let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
     let spot = SpotPrices::new(spot, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
         solar.run(
-            (storage, &learner),
+            (storage, &corrections),
             location.clone(),
             weather.issues(),
             SystemTime::now

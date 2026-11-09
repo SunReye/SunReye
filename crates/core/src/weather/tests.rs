@@ -327,9 +327,13 @@ async fn archive_weather_is_stored_as_history_and_read_back_hourly() {
             (past(15, 0.0).target, None),
         ]
     );
-    let read = weather
-        .read(&storage, past(0, 0.0).target, past(24, 0.0).target)
-        .await
-        .unwrap();
+    let read = super::archived(
+        &storage.reader(),
+        DEVICE,
+        past(0, 0.0).target,
+        past(24, 0.0).target,
+    )
+    .await
+    .unwrap();
     assert_eq!(read, slots);
 }
