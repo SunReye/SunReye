@@ -75,7 +75,7 @@ pub(super) fn random_token() -> Option<String> {
 }
 
 /// `bytes` as lowercase hex.
-pub(super) fn hex(bytes: &[u8]) -> String {
+pub fn hex(bytes: &[u8]) -> String {
     bytes
         .iter()
         .flat_map(|b| [b >> 4, b & 15])

@@ -40,6 +40,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/car-bodies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stores a GLB of at most 20 MB with every buffer and image embedded; the same file twice is
+         *     one body.
+         */
+        post: operations["upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/car-bodies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An uploaded body. */
+        get: operations["body"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/changes": {
         parameters: {
             query?: never;
@@ -799,7 +836,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1495,6 +1532,11 @@ export interface components {
         Updates: {
             updates: components["schemas"]["Update"][];
         };
+        /** @description A stored body's id. */
+        Uploaded: {
+            /** @description Its SHA-256 in hex. */
+            id: string;
+        };
         /** @description A viewer as the API reads it: never its password. */
         Viewer: {
             /** Format: int32 */
@@ -1644,6 +1686,67 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "model/gltf-binary": number[];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Uploaded"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    body: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The body's SHA-256 in hex */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": number[];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

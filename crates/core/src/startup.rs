@@ -12,6 +12,7 @@ use tokio::sync::{oneshot, watch};
 use crate::api::{self, Api};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
@@ -226,6 +227,7 @@ pub async fn serve(
         profiles,
         topologies,
         tariffs,
+        cars: CarBodies::new(boot.data_dir.join("cars")),
         zones: storage.zones(),
         clock: std::sync::Arc::new(SystemTime::now),
     };

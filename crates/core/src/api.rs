@@ -18,6 +18,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
+use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::devices::Devices;
 use crate::layout::{Layouts, Version, in_force};
@@ -66,6 +67,7 @@ pub struct Api {
     pub profiles: Profiles,
     pub topologies: Topologies,
     pub tariffs: Tariffs,
+    pub cars: CarBodies,
     pub zones: storage::Zones,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
@@ -105,6 +107,7 @@ pub fn router(api: Api) -> Router {
         .merge(api.devices.routes(Clock::clone(&api.clock)))
         .merge(api.tariffs.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
+        .merge(api.cars.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
         .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
@@ -344,6 +347,17 @@ pub enum Code {
     LayoutSetback,
     #[serde(rename = "layout.overlap")]
     LayoutOverlap,
+    /// An uploaded car body past 20 MB.
+    #[serde(rename = "car.size")]
+    CarSize,
+    /// An uploaded car body that is no glTF 2.0 binary container.
+    #[serde(rename = "car.file")]
+    CarFile,
+    /// An uploaded car body naming a `uri`: its buffers and images must be embedded.
+    #[serde(rename = "car.uri")]
+    CarUri,
+    #[serde(rename = "car.none")]
+    CarNone,
     #[serde(rename = "topology.none")]
     TopologyNone,
     #[serde(rename = "topology.tree")]
