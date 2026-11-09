@@ -1,9 +1,7 @@
 import type { Block, Support } from "./generated.ts";
 
-const wasmPath = new URL(
-  "../../../target/wasm32-unknown-unknown/release/sunreye_profile_wasm.wasm",
-  import.meta.url,
-);
+// `bun run wasm` builds it; the package ships it.
+const wasmPath = new URL("../dist/profile.wasm", import.meta.url);
 
 export interface ProfileWasm {
   schema(): number;

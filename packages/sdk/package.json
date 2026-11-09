@@ -1,10 +1,17 @@
 {
   "name": "@sunreye/sdk",
+  "version": "5.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "dist/profile.wasm"
+  ],
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
-    "types": "SUNREYE_UPDATE_TYPES=1 cargo test -q -p sunreye-profile committed_sdk_types"
+    "types": "SUNREYE_UPDATE_TYPES=1 cargo test -q -p sunreye-profile committed_sdk_types",
+    "wasm": "cargo build --locked --release -p sunreye-profile-wasm --target wasm32-unknown-unknown && mkdir -p dist && cp ../../target/wasm32-unknown-unknown/release/sunreye_profile_wasm.wasm dist/profile.wasm"
   }
 }
