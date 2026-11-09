@@ -62,6 +62,14 @@ _Avoid_: Profile version (a profile has its own semver)
 One value a profile declares: read from a register or computed from earlier quantities, and published as a role.
 _Avoid_: Metric, point, field
 
+**Scale factor**:
+A register holding the signed power of ten a quantity's raw value is scaled by, read with the value: SunSpec's `sunssf`.
+_Avoid_: Exponent, multiplier
+
+**Sentinel**:
+The raw value a register type holds when the device does not implement it, such as SunSpec's 0x8000 for a signed word. It reads as no value.
+_Avoid_: NaN, null value
+
 **Read plan**:
 The list of register blocks the core compiles from a profile at load time, or for SunSpec at connect.
 _Avoid_: Poll list
