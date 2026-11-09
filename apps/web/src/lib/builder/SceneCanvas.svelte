@@ -1,4 +1,12 @@
+<script lang="ts" module>
+  import type { Point } from "./pv.ts";
+
+  /** Pixels from the canvas's top left corner. */
+  export type Projector = (point: Point) => readonly [number, number] | null;
+</script>
+
 <script lang="ts">
+  import { untrack } from "svelte";
   import {
     CircleGeometry,
     Color,
@@ -8,6 +16,7 @@
     MeshStandardMaterial,
     PerspectiveCamera,
     Scene,
+    Vector3,
     WebGLRenderer,
     type Group,
   } from "three";
@@ -15,20 +24,26 @@
   import { m } from "../paraglide/messages.js";
   import type { View } from "./camera.ts";
   import type { Geometry } from "./pv.ts";
-  import { buildScene, type Panel } from "./scene.ts";
+  import { buildScene, tint, toThree, type Panel } from "./scene.ts";
 
   let {
     geometry,
     panels = [],
+    shares,
     view,
     onview,
+    onrender,
   }: {
     geometry: Geometry;
     /** The placed modules. */
     panels?: readonly Panel[];
+    /** Live, by panel, its string's share of peak; the modules are tinted by it. */
+    shares?: readonly (number | null)[];
     view: View;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
+    /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
+    onrender?: (project: Projector) => void;
   } = $props();
 
   /** Metres of ground around the origin. */
@@ -62,6 +77,16 @@
     return scene;
   }
 
+  function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
+    return (point) => {
+      const at = new Vector3(...toThree(point)).project(camera);
+
+      return at.z > 1
+        ? null
+        : [((at.x + 1) / 2) * canvas.clientWidth, ((1 - at.y) / 2) * canvas.clientHeight];
+    };
+  }
+
   /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
   function fit(
     canvas: HTMLCanvasElement,
@@ -81,27 +106,15 @@
     return resize;
   }
 
-  /** Draws on a change of geometry or view, a camera move or a resize; never in a loop (ADR 20). */
-  function stage(canvas: HTMLCanvasElement): () => void {
-    const renderer = new WebGLRenderer({ canvas, antialias: true });
-    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
-    const scene = lit(new Scene());
-    const controls = new OrbitControls(camera, canvas);
-
-    const render = (): void => {
-      renderer.render(scene, camera);
-    };
-
-    const resize = fit(canvas, renderer, camera, render);
+  /** Keeps the drawn meshes in step with the geometry and the live tints; returns their disposal. */
+  function keep(scene: Scene, render: () => void): () => void {
     let drawn: Group | undefined;
-
-    controls.addEventListener("change", render);
-    controls.addEventListener("end", () => {
-      onview({ position: camera.position.toArray(), target: controls.target.toArray() });
-    });
 
     $effect(() => {
       const next = buildScene(geometry, panels);
+      const live = untrack(() => shares);
+
+      if (live !== undefined) tint(next, live);
 
       if (drawn !== undefined) {
         scene.remove(drawn);
@@ -111,6 +124,39 @@
       scene.add(next);
       drawn = next;
       render();
+    });
+
+    // A live tick recolours the modules it already drew: one draw, nothing rebuilt.
+    $effect(() => {
+      if (shares !== undefined && drawn !== undefined) {
+        tint(drawn, shares);
+        render();
+      }
+    });
+
+    return () => {
+      if (drawn !== undefined) dispose(drawn);
+    };
+  }
+
+  /** Draws on a change of geometry or view, a camera move or a resize; never in a loop (ADR 20). */
+  function stage(canvas: HTMLCanvasElement): () => void {
+    const renderer = new WebGLRenderer({ canvas, antialias: true });
+    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
+    const scene = lit(new Scene());
+    const controls = new OrbitControls(camera, canvas);
+
+    const render = (): void => {
+      renderer.render(scene, camera);
+      onrender?.(projector(canvas, camera.clone()));
+    };
+
+    const resize = fit(canvas, renderer, camera, render);
+    const release = keep(scene, render);
+
+    controls.addEventListener("change", render);
+    controls.addEventListener("end", () => {
+      onview({ position: camera.position.toArray(), target: controls.target.toArray() });
     });
 
     $effect(() => {
@@ -123,9 +169,7 @@
     return () => {
       resize.disconnect();
       controls.dispose();
-
-      if (drawn !== undefined) dispose(drawn);
-
+      release();
       renderer.dispose();
     };
   }

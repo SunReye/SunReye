@@ -3,6 +3,7 @@
 import {
   BoxGeometry,
   BufferGeometry,
+  Color,
   CylinderGeometry,
   DoubleSide,
   Float32BufferAttribute,
@@ -32,6 +33,25 @@ const UNASSIGNED = 0x6b6f76;
 export interface Panel {
   readonly corners: readonly Point[];
   readonly string?: number | null;
+}
+
+/** A string's tint in no sun and in full sun: its share of peak blends one into the other. */
+const DIM = new Color(0x39424e);
+const SUN = new Color(0xffb000);
+
+/** The tint of a string at `share` of its peak; unassigned, or without a value, grey. */
+export function shareColour(share: number | null): number {
+  return share === null ? UNASSIGNED : DIM.clone().lerp(SUN, share).getHex();
+}
+
+/** Recolours the group's modules by their strings' shares of peak, in `buildScene`'s order. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
+export function tint(group: Group, shares: readonly (number | null)[]): void {
+  for (const [i, mesh] of group.getObjectsByProperty("name", "module").entries()) {
+    if (mesh instanceof Mesh && mesh.material instanceof MeshStandardMaterial) {
+      mesh.material.color.setHex(shareColour(shares[i] ?? null));
+    }
+  }
 }
 
 /** `stringColour` as CSS. */

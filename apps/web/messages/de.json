@@ -197,5 +197,21 @@
   "wall_back": "Hinten",
   "wall_left": "Links",
   "equipment_along": "Abstand vom linken Ende (m)",
-  "equipment_inside": "Innen"
+  "equipment_inside": "Innen",
+  "live_scene": "Live-Ansicht des Hauses",
+  "live_grid_import": "Netzbezug {power}",
+  "live_grid_export": "Einspeisung {power}",
+  "live_house": "Hausverbrauch {power}",
+  "live_battery_charge": "Batterie lädt {power}",
+  "live_battery_discharge": "Batterie entlädt {power}",
+  "live_battery_idle": "Batterie ruht",
+  "live_soc": "Ladestand {soc} %",
+  "live_inverter": "Wechselrichter {power}",
+  "live_string": "{name}: {power}",
+  "live_string_estimated": "{name}: ≈ {power}",
+  "live_string_none": "{name}: –",
+  "live_loading": "Die 3D-Ansicht wird geladen …",
+  "live_show_2d": "2D-Ansicht",
+  "live_show_3d": "3D-Ansicht",
+  "live_low_power": "Stromsparmodus"
 }

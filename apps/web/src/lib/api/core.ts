@@ -16,6 +16,8 @@ export type Layout = components["schemas"]["Layout"];
 
 export type StringDraft = components["schemas"]["StringDraft"];
 
+export type PvString = components["schemas"]["PvString"];
+
 export type ModuleType = components["schemas"]["ModuleType"];
 
 export type Capabilities = components["schemas"]["Support"];
