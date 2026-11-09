@@ -286,6 +286,10 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "writes": {
+            "description": "Whether settings may be written (ADR 7); off when left out.",
+            "type": "boolean"
           }
         },
         "required": [

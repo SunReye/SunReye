@@ -379,6 +379,8 @@ export interface components {
              * @description The Modbus unit id: the device address behind the connection.
              */
             unit: number;
+            /** @description Whether settings may be written (ADR 7); off when left out. */
+            writes?: boolean;
         };
         DeviceList: {
             devices: components["schemas"]["Device"][];

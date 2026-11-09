@@ -130,6 +130,7 @@ async fn devices_keep_their_ids_and_a_removed_id_is_never_reused() {
     let (_, listed) = core.ask(&set_cookie, get("/api/v1/devices")).await;
     let mut roof = moved;
     roof["id"] = first;
+    roof["writes"] = json!(false);
     assert_eq!(listed["devices"][0], roof);
     assert_eq!(listed["devices"][1]["id"], third);
 }
@@ -255,7 +256,7 @@ async fn every_configuration_change_appends_to_the_change_log() {
             })),
             entry("device", &device, "add", json!({
                 "id": device, "name": "Deye", "connection": id, "profile": "deye-sg05lp3",
-                "unit": 0,
+                "unit": 0, "writes": false,
             })),
             entry("device", &device, "remove", Value::Null),
         ] })
@@ -315,4 +316,40 @@ async fn devices_behind_one_endpoint_share_one_task_and_their_readings_are_store
         .await
         .unwrap();
     assert_eq!(history.iter().find_map(|p| p.value), Some(5.87));
+}
+
+#[tokio::test]
+async fn a_devices_writes_are_off_until_the_admin_turns_them_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let device = core.deye(&set_cookie, &connection, 0).await;
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/devices")).await;
+    assert_eq!(listed["devices"][0]["writes"], json!(false));
+
+    let mut on = deye(&connection, "deye-sg05lp3", 0);
+    on["writes"] = json!(true);
+    let (status, changed) = core
+        .ask(
+            &set_cookie,
+            send("PUT", &format!("/api/v1/devices/{device}"), &on),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(changed["writes"], json!(true));
+    let (_, log) = core.ask(&set_cookie, get("/api/v1/changes")).await;
+    assert_eq!(log["changes"][2]["state"]["writes"], json!(true));
+    // A change that leaves the switch out turns writes off.
+    let (_, changed) = core
+        .ask(
+            &set_cookie,
+            send(
+                "PUT",
+                &format!("/api/v1/devices/{device}"),
+                &deye(&connection, "deye-sg05lp3", 0),
+            ),
+        )
+        .await;
+    assert_eq!(changed["writes"], json!(false));
 }

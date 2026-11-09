@@ -189,7 +189,7 @@ fn units_at(
 }
 
 pub fn devices(db: &Db) -> rusqlite::Result<Vec<Device>> {
-    db.prepare("SELECT id, name, connection, profile, unit FROM device ORDER BY id")?
+    db.prepare("SELECT id, name, connection, profile, unit, writes FROM device ORDER BY id")?
         .query_map([], device_row)?
         .collect()
 }
@@ -202,13 +202,14 @@ fn device_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Device> {
             connection: row.get(2)?,
             profile: row.get(3)?,
             unit: row.get(4)?,
+            writes: row.get(5)?,
         },
     })
 }
 
 fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
     db.query_row(
-        "SELECT id, name, connection, profile, unit FROM device WHERE id = ?1",
+        "SELECT id, name, connection, profile, unit, writes FROM device WHERE id = ?1",
         [id],
         device_row,
     )
@@ -244,8 +245,14 @@ pub fn add_device(db: &Db, draft: DeviceDraft, changed: SystemTime) -> Outcome<D
         return Ok(Err(refusal));
     }
     tx.execute(
-        "INSERT INTO device (name, connection, profile, unit) VALUES (?1, ?2, ?3, ?4)",
-        params![draft.name, draft.connection, draft.profile, draft.unit],
+        "INSERT INTO device (name, connection, profile, unit, writes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            draft.name,
+            draft.connection,
+            draft.profile,
+            draft.unit,
+            draft.writes
+        ],
     )?;
     let device = Device { id: id(&tx), draft };
     log_device(&tx, &device, Action::Add, changed)?;
@@ -265,8 +272,8 @@ pub fn change_device(db: &Db, id: u32, draft: DeviceDraft, changed: SystemTime) 
         return Ok(Err(refusal));
     }
     tx.execute(
-        "UPDATE device SET name = ?2, connection = ?3, unit = ?4 WHERE id = ?1",
-        params![id, draft.name, draft.connection, draft.unit],
+        "UPDATE device SET name = ?2, connection = ?3, unit = ?4, writes = ?5 WHERE id = ?1",
+        params![id, draft.name, draft.connection, draft.unit, draft.writes],
     )?;
     let device = Device { id, draft };
     log_device(&tx, &device, Action::Change, changed)?;

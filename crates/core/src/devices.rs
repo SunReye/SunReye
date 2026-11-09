@@ -117,6 +117,9 @@ pub struct DeviceDraft {
     pub profile: String,
     /// The Modbus unit id: the device address behind the connection.
     pub unit: u8,
+    /// Whether settings may be written (ADR 7); off when left out.
+    #[serde(default)]
+    pub writes: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
