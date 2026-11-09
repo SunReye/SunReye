@@ -66,6 +66,14 @@ _Avoid_: Metric, point, field
 The list of register blocks the core compiles from a profile at load time, or for SunSpec at connect.
 _Avoid_: Poll list
 
+**Identify probe**:
+The read that tells which profile, and which variant of it, a device answers to: a magic register such as `SunS`, or a device-type register.
+_Avoid_: Fingerprint, detection
+
+**Variant**:
+The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases.
+_Avoid_: Model (a SunSpec model is a register block)
+
 ## Quantities and storage
 
 **Role**:

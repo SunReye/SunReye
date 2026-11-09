@@ -25,6 +25,7 @@ use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
 use crate::devices::Transport;
+use crate::sunspec;
 use crate::transport::{Client, Endpoint, Error};
 
 /// The ports a setup scan tries: Modbus TCP on 502, 1502 and 6607, and the Solarman logger's
@@ -195,6 +196,10 @@ struct Found {
 struct Proposal {
     profile: String,
     unit: u8,
+    /// The variant the probe found: for SunSpec, the device model after the common model, such
+    /// as 103 for a three-phase inverter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variant: Option<u16>,
 }
 
 const SUBNET: Problem = Problem {
@@ -274,28 +279,64 @@ async fn sweep(targets: Vec<Endpoint>, profiles: &[Arc<Profile>], limits: Limits
         .await
 }
 
-/// Probes each profile's first planned register at each of [`UNITS`], one word at a time.
+/// One identify probe.
+enum Probe<'a> {
+    /// One word of a profile's first planned register.
+    Register(&'a Profile, u16),
+    /// The built-in SunSpec binding's: the `SunS` marker, then the model chain.
+    SunSpec,
+}
+
+impl Probe<'_> {
+    /// What `unit` answered; `None` when it answered but not as this probe looks for.
+    async fn run(&self, client: &mut Client, unit: u8) -> Result<Option<Proposal>, Error> {
+        match self {
+            Self::Register(profile, start) => {
+                match client.read_holding(unit, *start, &mut [0]).await {
+                    Ok(()) => Ok(Some(Proposal {
+                        profile: profile.id.clone(),
+                        unit,
+                        variant: None,
+                    })),
+                    Err(Error::Exception(_)) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+            Self::SunSpec => Ok(sunspec::discover(client, unit)
+                .await?
+                .map(|chain| Proposal {
+                    profile: sunspec::PROFILE.to_owned(),
+                    unit,
+                    variant: chain.variant(),
+                })),
+        }
+    }
+}
+
+/// Runs each profile's probe, then SunSpec's, at each of [`UNITS`], one request at a time.
 async fn identify(endpoint: Endpoint, profiles: &[Arc<Profile>], limits: Limits) -> Found {
+    let framing = endpoint.framing();
+    let probes = profiles
+        .iter()
+        .filter_map(|profile| {
+            let first = profile.read_plan(framing.gap_tolerance()).first()?.start;
+            Some(Probe::Register(profile, first))
+        })
+        .chain([Probe::SunSpec]);
     let mut devices = Vec::new();
     let mut client = None;
-    'profiles: for profile in profiles {
-        let plan = profile.read_plan(endpoint.framing().gap_tolerance());
-        let Some(first) = plan.first() else { continue };
+    'probes: for probe in probes {
         for unit in UNITS {
             let mut connected = match client.take() {
                 Some(connected) => connected,
                 None => match Client::read_only(&endpoint, limits.probe).await {
                     Ok(connected) => connected,
-                    Err(_) => break 'profiles,
+                    Err(_) => break 'probes,
                 },
             };
-            let answered = connected.read_holding(unit, first.start, &mut [0]).await;
-            if answered.is_ok() {
-                let profile = profile.id.clone();
-                devices.push(Proposal { profile, unit });
-            }
-            // After any other error the wire may hold half a reply: reconnect.
-            if matches!(answered, Ok(()) | Err(Error::Exception(_))) {
+            // After an error the wire may hold half a reply: reconnect.
+            if let Ok(found) = probe.run(&mut connected, unit).await {
+                devices.extend(found);
                 client = Some(connected);
             }
         }

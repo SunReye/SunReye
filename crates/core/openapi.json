@@ -1517,6 +1517,15 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "variant": {
+            "description": "The variant the probe found: for SunSpec, the device model after the common model, such\nas 103 for a three-phase inverter.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
