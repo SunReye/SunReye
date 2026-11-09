@@ -13,6 +13,13 @@ use crate::profiles::fake::{Signer, entry};
 const INDEX: &str = "https://example.org/index.json";
 
 /// The owner's Deye, published as a community profile `my-deye` by `INDEX`.
+/// The bundled Deye's version, which each change to its source bumps.
+fn bundled_version() -> String {
+    let profile: Value =
+        serde_json::from_str(include_str!("../../../../../profiles/deye-sg05lp3.json")).unwrap();
+    profile["version"].as_str().unwrap().to_owned()
+}
+
 fn community(core: &Core) {
     let profile = include_str!("../../../../../profiles/deye-sg05lp3.json")
         .replace("\"deye-sg05lp3\"", "\"my-deye\"")
@@ -37,7 +44,7 @@ async fn the_admin_adds_an_index_which_is_fetched_listed_and_logged() {
         .await;
 
     let added = json!({ "url": INDEX, "official": false, "checked": true, "problem": null,
-        "profiles": [{ "id": "my-deye", "version": "2.2.1", "status": "loaded" }] });
+        "profiles": [{ "id": "my-deye", "version": bundled_version(), "status": "loaded" }] });
     assert_eq!((status, &report), (StatusCode::OK, &added));
     let (_, listed) = core.ask(&set_cookie, get("/api/v1/profile-indexes")).await;
     assert_eq!(listed["indexes"][1], added);

@@ -7,6 +7,8 @@ export default defineProfile({
   manufacturer: "Deye",
   version: "2.2.0",
   requires: ["modbus", "u16", "i16", "u32", "compute", "write", "snapshot-toggle"],
+  // Register 0, the device type: a low-voltage three-phase hybrid (Deye three-phase protocol V105).
+  identify: [{ register: 0, values: [0x0500] }],
   inverter: {
     maxInputVoltage: 800,
     mppt: [

@@ -2,7 +2,7 @@
   "profiles": [
     {
       "id": "deye-sg05lp3",
-      "version": "2.2.1",
+      "version": "2.2.2",
       "schema": 1,
       "requires": [
         "modbus",
@@ -13,7 +13,7 @@
         "write",
         "snapshot-toggle"
       ],
-      "sha256": "6bce71f99926e9b2bbf3206b3a6bd78ed309ac4837c4464381118c40b3d8b1d6",
+      "sha256": "9900ed0fec4dd2edc31d0dab1afd5fa13d125cb0cc99ac0c917575a552e5134a",
       "url": "deye-sg05lp3.json"
     },
     {

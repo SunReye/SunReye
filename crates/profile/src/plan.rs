@@ -12,7 +12,7 @@ use crate::profile::{Quantity, Read, Register};
 const MAX_BLOCK: u16 = 120;
 
 /// One read request: `count` registers from `start`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Block {
     pub start: u16,
