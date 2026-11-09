@@ -5,14 +5,23 @@
 
   let { core, ondone }: { core: Core; ondone: (devices: readonly Device[]) => void } = $props();
 
-  /** A device the scan proposed, as the admin confirms and names it. */
+  /**
+   * A device the scan proposed, as the admin confirms and names it; or, at an endpoint no profile
+   * recognised, one the admin enters by hand.
+   */
   interface Choice {
+    /** Fixed while the admin types a manual entry's profile and unit. */
+    readonly key: string;
     readonly found: Found;
-    readonly profile: string;
-    readonly unit: number;
+    readonly manual: boolean;
+    profile: string;
+    unit: number;
     chosen: boolean;
     name: string;
   }
+
+  /** Where a manual entry starts: the usual Modbus unit. */
+  const UNIT = 1;
 
   let subnet = $state("");
 
@@ -28,9 +37,6 @@
   const connections = new Map<string, number>();
   const added = new Map<string, Device>();
 
-  const key = (choice: Readonly<Choice>): string =>
-    `${choice.found.host}:${choice.found.port}/${choice.profile}/${choice.unit}`;
-
   async function scan(): Promise<void> {
     scanning = true;
     const report = await core.scan(subnet === "" ? undefined : subnet);
@@ -39,15 +45,25 @@
     refused = "problem" in report ? report : undefined;
     found = "problem" in report ? undefined : report.endpoints;
 
-    choices = (found ?? []).flatMap((endpoint) =>
-      endpoint.devices.map(({ profile, unit }) => ({
+    choices = (found ?? []).flatMap((endpoint): Choice[] => {
+      const at = `${endpoint.host}:${endpoint.port}`;
+
+      if (endpoint.devices.length === 0) {
+        const manual = { profile: "", unit: UNIT, name: "" };
+
+        return [{ key: `${at}/manual`, found: endpoint, manual: true, chosen: false, ...manual }];
+      }
+
+      return endpoint.devices.map(({ profile, unit }) => ({
+        key: `${at}/${profile}/${unit}`,
         found: endpoint,
+        manual: false,
         profile,
         unit,
         chosen: false,
         name: profile,
-      })),
-    );
+      }));
+    });
   }
 
   /** Adds each chosen endpoint as a connection, then its chosen devices behind it. */
@@ -71,14 +87,14 @@
         .values()
         .filter((choice) => choice.found === endpoint)
         .map(async (choice) => {
-          const before = added.get(key(choice));
+          const before = added.get(choice.key);
 
           if (before !== undefined) return before;
 
           const { profile, unit, name } = choice;
           const device = await core.addDevice({ connection: id, name, profile, unit });
 
-          if (!("problem" in device)) added.set(key(choice), device);
+          if (!("problem" in device)) added.set(choice.key, device);
 
           return device;
         })
@@ -112,25 +128,38 @@
     <p>{m.devices_none()}</p>
   {/if}
   <ul>
-    {#each choices as choice (key(choice))}
+    {#each choices as choice (choice.key)}
+      {@const at = { host: choice.found.host, port: choice.found.port }}
       <li>
-        <label>
-          <input type="checkbox" bind:checked={choice.chosen} />
-          {m.devices_confirm({
-            profile: choice.profile,
-            host: choice.found.host,
-            port: choice.found.port,
-            unit: choice.unit,
-          })}
-        </label>
-        <label>
-          {m.devices_name({ profile: choice.profile })}
-          <input required bind:value={choice.name} />
-        </label>
+        {#if choice.manual}
+          <p>{m.devices_unknown(at)}</p>
+          <label>
+            <input type="checkbox" bind:checked={choice.chosen} />
+            {m.devices_manual(at)}
+          </label>
+          <label>
+            {m.devices_manual_profile(at)}
+            <input required bind:value={choice.profile} />
+          </label>
+          <label>
+            {m.devices_manual_unit(at)}
+            <input type="number" min="0" required bind:value={choice.unit} />
+          </label>
+          <label>
+            {m.devices_manual_name(at)}
+            <input required bind:value={choice.name} />
+          </label>
+        {:else}
+          <label>
+            <input type="checkbox" bind:checked={choice.chosen} />
+            {m.devices_confirm({ ...at, profile: choice.profile, unit: choice.unit })}
+          </label>
+          <label>
+            {m.devices_name({ profile: choice.profile })}
+            <input required bind:value={choice.name} />
+          </label>
+        {/if}
       </li>
-    {/each}
-    {#each found.filter((endpoint) => endpoint.devices.length === 0) as endpoint (`${endpoint.host}:${endpoint.port}`)}
-      <li>{m.devices_unknown({ host: endpoint.host, port: endpoint.port })}</li>
     {/each}
   </ul>
   <button type="button" disabled={!choices.some((choice) => choice.chosen)} onclick={add}>

@@ -111,3 +111,22 @@ test("adding again after a refused device does not add its connection twice", as
   ]);
   expect(done.mock.calls[0]?.[0]).toEqual([ADDED]);
 });
+
+test("the admin enters by hand an endpoint no profile recognises", async () => {
+  const transport = testCore();
+  const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await screen.getByRole("checkbox", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
+  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.30:502"), "sunspec-meter");
+  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.30:502"), "3");
+  await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.30:502"), "Zähler");
+  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+
+  await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(transport.calls.slice(1)).toEqual([
+    '/api/v1/connections {"name":"192.168.1.30","host":"192.168.1.30","port":502,"transport":"modbus-tcp"}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec-meter","unit":3}',
+  ]);
+});
