@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "Balance": {
+        "description": "The days with rolled-up history, in order.",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/Day"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "type": "object"
+      },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
         "properties": {
@@ -330,6 +345,38 @@
           "width",
           "height",
           "bypassDiodes"
+        ],
+        "type": "object"
+      },
+      "Day": {
+        "description": "One plant-local day.",
+        "properties": {
+          "end": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "points": {
+            "description": "Each consuming point with a residual.",
+            "items": {
+              "$ref": "#/components/schemas/PointResidual"
+            },
+            "type": "array"
+          },
+          "residual": {
+            "description": "In kWh, the sum of `points`: zero when the tree explains the day.",
+            "format": "double",
+            "type": "number"
+          },
+          "start": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "residual",
+          "points"
         ],
         "type": "object"
       },
@@ -805,6 +852,27 @@
         "required": [
           "name",
           "claims"
+        ],
+        "type": "object"
+      },
+      "PointResidual": {
+        "description": "The energy a consuming point gave out that its measured children do not explain.",
+        "properties": {
+          "point": {
+            "description": "The point's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "residual": {
+            "description": "In kWh.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "point",
+          "residual"
         ],
         "type": "object"
       },
@@ -1364,6 +1432,52 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/balance": {
+      "get": {
+        "operationId": "balance",
+        "parameters": [
+          {
+            "description": "The first instant, RFC 3339: a day starting from it on is read.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The instant after the last, RFC 3339.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Balance"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The residual per plant-local day (ADR 14): energy a consuming point gave out that its\nmeasured children do not explain, so a missing or misplaced point."
+      }
+    },
     "/api/v1/capabilities": {
       "get": {
         "operationId": "capabilities",
