@@ -20,6 +20,7 @@ use utoipa_axum::routes;
 use crate::auth::Auth;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
+use crate::correction::Corrections;
 use crate::devices::Devices;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
@@ -62,6 +63,7 @@ pub struct Api {
     pub problems: watch::Receiver<Vec<storage::Problem>>,
     pub history: storage::Reader,
     pub layouts: Layouts,
+    pub corrections: Corrections,
     pub devices: Devices,
     pub changes: Changes,
     pub location: PlantLocation,
@@ -80,6 +82,7 @@ pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>
 pub fn router(api: Api) -> Router {
     let api_routes = OpenApiRouter::new()
         .merge(capability_routes(&api))
+        .merge(stored_routes(&api))
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(live_values))
@@ -90,16 +93,6 @@ pub fn router(api: Api) -> Router {
             OpenApiRouter::new()
                 .routes(routes!(problems))
                 .with_state(api.problems),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(history::history))
-                .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(forecasts::forecasts))
-                .with_state(api.history.clone()),
         )
         .merge(api.topologies.clone().residual_routes(api.history))
         .merge(
@@ -129,6 +122,26 @@ pub fn router(api: Api) -> Router {
             spa::serve(&method, &uri, &headers).unwrap_or_else(|| ROUTE.into_response())
         })
         .method_not_allowed_fallback(|| async { METHOD })
+}
+
+/// History, forecasts and the learned corrections: what storage holds, read like history.
+fn stored_routes(api: &Api) -> OpenApiRouter {
+    OpenApiRouter::new()
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(history::history))
+                .with_state((api.history.clone(), Clock::clone(&api.clock))),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(forecasts::forecasts))
+                .with_state(api.history.clone()),
+        )
+        .merge(api.corrections.clone().routes(
+            api.location.watch(),
+            api.zones.watch(),
+            Clock::clone(&api.clock),
+        ))
 }
 
 fn capability_routes(api: &Api) -> OpenApiRouter {

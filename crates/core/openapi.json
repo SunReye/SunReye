@@ -485,6 +485,21 @@
         ],
         "type": "object"
       },
+      "CorrectionList": {
+        "description": "Every MPPT input any layout version wires a string to.",
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/InputCorrection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "inputs"
+        ],
+        "type": "object"
+      },
       "Created": {
         "allOf": [
           {
@@ -1055,6 +1070,46 @@
         ],
         "type": "object"
       },
+      "InputCorrection": {
+        "properties": {
+          "device": {
+            "description": "The inverter.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "factors": {
+            "description": "The learned cells; an unlearned month and hour applies 1.",
+            "items": {
+              "$ref": "#/components/schemas/LearnedCell"
+            },
+            "type": "array"
+          },
+          "input": {
+            "description": "The `pv.mppt.*` index.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecentEnergy",
+                "description": "The last 30 days measured against the model, absent until both exist."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "device",
+          "input",
+          "factors"
+        ],
+        "type": "object"
+      },
       "Investment": {
         "description": "The investment payback is measured against.",
         "properties": {
@@ -1135,6 +1190,33 @@
         "required": [
           "appliesFrom",
           "strings"
+        ],
+        "type": "object"
+      },
+      "LearnedCell": {
+        "description": "The multiplier for a plant-local month and hour.",
+        "properties": {
+          "factor": {
+            "format": "double",
+            "type": "number"
+          },
+          "hour": {
+            "description": "0 to 23.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "month": {
+            "description": "1 to 12.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "hour",
+          "factor"
         ],
         "type": "object"
       },
@@ -1730,6 +1812,24 @@
           "transport",
           "host",
           "port"
+        ],
+        "type": "object"
+      },
+      "RecentEnergy": {
+        "description": "In kWh, over the whole hours of the last 30 days the input is modelled on archive weather and\nmeasured, short of the inverter's AC limit; the model uncorrected.",
+        "properties": {
+          "measured": {
+            "format": "double",
+            "type": "number"
+          },
+          "modelled": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "measured",
+          "modelled"
         ],
         "type": "object"
       },
@@ -2859,6 +2959,40 @@
           }
         },
         "summary": "Changes a connection; its devices are polled through it at once."
+      }
+    },
+    "/api/v1/corrections": {
+      "get": {
+        "operationId": "corrections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/devices": {

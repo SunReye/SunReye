@@ -12,6 +12,7 @@
 //! The correction module owns the `correction_cell` and `correction_state` tables.
 
 mod grid;
+mod routes;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::ControlFlow;
@@ -26,12 +27,12 @@ use tokio::time::Instant;
 
 pub use grid::{Cell, Grid, Hour};
 
-use crate::bus::{Bus, DeviceId};
+use crate::bus::{Bus, DeviceId, Series};
 use crate::layout::{Layouts, Version, in_force};
 use crate::location::Location;
 use crate::solar::{self, Key};
-use crate::storage::{self, Aggregate, Database, Storage, Tier};
-use crate::weather::{Archive, Error, Past, Slot};
+use crate::storage::{self, Aggregate, Database, Reader, Storage, Tier};
+use crate::weather::{self, Archive, Error, Past, Slot};
 
 const HOUR: Duration = Duration::from_hours(1);
 const DAY: Duration = Duration::from_hours(24);
@@ -49,12 +50,41 @@ const AT_LIMIT: f64 = 0.98;
 /// An inverter's MPPT input: its device and `pv.mppt.*` index.
 type Input = (DeviceId, u32);
 
+/// How far back each input's measured power is compared with the model (ADR 20).
+const RECENT: Duration = Duration::from_hours(30 * 24);
+
 /// The correction learner, the one writer of the learned grids.
 pub struct Learner<A> {
     past: Past<A>,
+    corrections: Corrections,
+}
+
+/// The learned grids and the model on stored archive weather, as the builder reads them.
+#[derive(Clone)]
+pub struct Corrections {
     layouts: Layouts,
     database: Database,
-    bus: Bus,
+    history: Reader,
+    weather: DeviceId,
+}
+
+/// An MPPT input's learned grid, and its last 30 days measured against the model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputReport {
+    pub device: DeviceId,
+    pub input: u32,
+    pub grid: Grid,
+    /// None without a location, or without an hour both modelled and measured.
+    pub recent: Option<Recent>,
+}
+
+/// Energy over the hours an input is both modelled on archive weather and measured, in kWh.
+/// Hours at the inverter's AC limit are left out, as learning leaves them out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Recent {
+    pub measured: f64,
+    /// Uncorrected, so a misplaced face or a missing obstacle shows.
+    pub modelled: f64,
 }
 
 impl<A: Archive> Learner<A> {
@@ -68,9 +98,7 @@ impl<A: Archive> Learner<A> {
     ) -> Self {
         Self {
             past: Past::new(archive, weather, bus),
-            layouts,
-            database: storage.database(),
-            bus: bus.clone(),
+            corrections: Corrections::new(layouts, weather, storage),
         }
     }
 
@@ -138,24 +166,18 @@ impl<A: Archive> Learner<A> {
         zone: &TimeZone,
         now: SystemTime,
     ) -> Result<(), Error> {
-        let through = self.database.run(learned_through).await?;
+        let c = &self.corrections;
+        let through = c.database.run(learned_through).await?;
         let Some((first, last)) = window(through, now) else {
             return Ok(());
         };
         self.past.fetch(storage, location, first, last).await?;
         let (from, to) = (midnight(first), midnight(last) + DAY);
-        let weather = self.past.read(storage, from, to).await?;
-        let versions = self.layouts.versions().await?;
-        let plant = Plant {
-            modelled: Modelled::new(&self.layouts, &versions, location, weather).await?,
-            nameplates: Nameplates::new(&self.layouts).await?,
-            versions,
-            zone: zone.clone(),
-        };
-        let mut grids = self.database.run(grids).await?;
+        let plant = c.plant(location, zone, from..to).await?;
+        let mut grids = c.database.run(grids).await?;
         let mut learned = None;
-        for input in plant.inputs() {
-            let measured = self.measured(storage, input, from..to).await?;
+        for input in inputs(&plant.versions) {
+            let measured = c.measured(input, from..to).await?;
             let grid = grids.entry(input).or_default();
             learned = learned.max(plant.fold(grid, &measured, input, hours(from, to)));
         }
@@ -163,7 +185,7 @@ impl<A: Archive> Learner<A> {
             return Ok(());
         };
         let day = utc_date(learned).to_string();
-        self.database.run(move |db| save(db, &grids, &day)).await?;
+        c.database.run(move |db| save(db, &grids, &day)).await?;
         Ok(())
     }
 
@@ -171,22 +193,99 @@ impl<A: Archive> Learner<A> {
     ///
     /// # Errors
     /// The file cannot be read.
+    #[cfg(test)]
     pub async fn grid(&self, device: DeviceId, input: u32) -> Result<Grid, storage::Error> {
-        let mut grids = self.database.run(grids).await?;
+        let mut grids = self.corrections.database.run(grids).await?;
         Ok(grids.remove(&(device, input)).unwrap_or_default())
+    }
+}
+
+impl Corrections {
+    /// Reads the grids and the archive weather stored under the weather device `weather`.
+    #[must_use]
+    pub fn new(layouts: Layouts, weather: DeviceId, storage: &Storage) -> Self {
+        Self {
+            layouts,
+            database: storage.database(),
+            history: storage.reader(),
+            weather,
+        }
+    }
+
+    /// Every MPPT input any layout version wires a string to, with its grid and, at `location`,
+    /// its whole hours of the 30 days before `now` measured against the model. Hours are cut in
+    /// the plant `zone`.
+    ///
+    /// # Errors
+    /// Storage failed.
+    pub async fn report(
+        &self,
+        location: Option<Location>,
+        zone: &TimeZone,
+        now: SystemTime,
+    ) -> Result<Vec<InputReport>, storage::Error> {
+        let since = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+        let to = now - Duration::from_secs(since.as_secs() % HOUR.as_secs());
+        let from = to - RECENT;
+        let plant = match location {
+            Some(at) => Some(self.plant(at, zone, from..to).await?),
+            None => None,
+        };
+        let versions = self.layouts.versions().await?;
+        let mut grids = self.database.run(grids).await?;
+        let mut reports = Vec::new();
+        for (device, input) in inputs(&versions) {
+            let recent = match &plant {
+                Some(plant) => {
+                    let measured = self.measured((device, input), from..to).await?;
+                    plant.recent(&measured, (device, input), hours(from, to))
+                }
+                None => None,
+            };
+            reports.push(InputReport {
+                device,
+                input,
+                grid: grids.remove(&(device, input)).unwrap_or_default(),
+                recent,
+            });
+        }
+        Ok(reports)
+    }
+
+    /// The layout versions, and the model on the archive weather stored for `range`.
+    async fn plant(
+        &self,
+        location: Location,
+        zone: &TimeZone,
+        range: std::ops::Range<SystemTime>,
+    ) -> Result<Plant, storage::Error> {
+        let weather =
+            weather::archived(&self.history, self.weather, range.start, range.end).await?;
+        let versions = self.layouts.versions().await?;
+        Ok(Plant {
+            modelled: Modelled::new(&self.layouts, &versions, location, weather).await?,
+            nameplates: Nameplates::new(&self.layouts).await?,
+            versions,
+            zone: zone.clone(),
+        })
     }
 
     /// The hourly means the input learns against: its `pv.mppt.power` while stored, else its
     /// inverter's `pv.power`; with the inverter's `pv.power` and its highest hourly peak.
     async fn measured(
         &self,
-        storage: &Storage,
         (device, input): Input,
         range: std::ops::Range<SystemTime>,
     ) -> Result<Measured, storage::Error> {
         let rollups = async |role: &str, index, range: std::ops::Range<SystemTime>| {
-            let series = self.bus.intern(role, index);
-            let stored = storage.rollups(device, series, Tier::Hour, range).await?;
+            let series = Series {
+                role: role.to_owned(),
+                index,
+            };
+            let stored = self
+                .history
+                .rollups(device, &series, Tier::Hour, range)
+                .await?;
             Ok::<_, storage::Error>(
                 stored
                     .into_iter()
@@ -291,14 +390,34 @@ enum Observed {
     Hour(Hour, f64, f64),
 }
 
+/// Every MPPT input any version wires a string to.
+fn inputs(versions: &[Version]) -> BTreeSet<Input> {
+    versions
+        .iter()
+        .flat_map(|v| &v.strings)
+        .map(|s| (DeviceId(s.wiring.device), s.wiring.input))
+        .collect()
+}
+
 impl Plant {
-    /// Every MPPT input any version wires a string to.
-    fn inputs(&self) -> BTreeSet<Input> {
-        self.versions
-            .iter()
-            .flat_map(|v| &v.strings)
-            .map(|s| (DeviceId(s.wiring.device), s.wiring.input))
-            .collect()
+    /// The energy of `hours` the input is modelled and measured in, short of the AC limit.
+    fn recent(
+        &self,
+        measured: &Measured,
+        input: Input,
+        hours: impl Iterator<Item = SystemTime>,
+    ) -> Option<Recent> {
+        let observed: Vec<Hour> = hours
+            .filter_map(|start| match self.observe(measured, input, start)? {
+                Observed::Hour(hour, ..) => Some(hour),
+                Observed::AtLimit => None,
+            })
+            .collect();
+        // Watt-hour means of whole hours, in kWh.
+        (!observed.is_empty()).then(|| Recent {
+            measured: observed.iter().map(|h| h.measured).sum::<f64>() / 1000.0,
+            modelled: observed.iter().map(|h| h.modelled).sum::<f64>() / 1000.0,
+        })
     }
 
     /// Folds into `grid` each of `hours` the input is modelled and measured in, in order; the

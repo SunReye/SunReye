@@ -11,7 +11,7 @@ use sunreye_profile::{Profile, RoleKind, Unit};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use super::Learner;
+use super::{Corrections, Learner};
 use crate::bus::{Bus, DeviceId};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
@@ -402,4 +402,58 @@ async fn it_learns_once_the_plant_has_a_location_and_twice_a_day_from_then() {
             Duration::from_hours(37)
         ]
     );
+}
+
+#[tokio::test]
+async fn each_input_reports_its_grid_and_its_last_30_days_measured_against_the_model() {
+    let plant = plant().await;
+    let modelled = plant.modelled("pv.mppt.power", Some(1)).await;
+    plant
+        .measure("pv.mppt.power", Some(1), &modelled, |w| 0.8 * w)
+        .await;
+    let (archive, _calls) = FakeArchive::new(archive());
+    let learner = plant.learner(archive);
+    learner
+        .learn(&plant.storage, BERLIN, &berlin(), at(NOW))
+        .await
+        .unwrap();
+    let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
+
+    let reports = corrections
+        .report(Some(BERLIN), &berlin(), at(NOW))
+        .await
+        .unwrap();
+
+    let [report] = reports.as_slice() else {
+        panic!("{} inputs", reports.len());
+    };
+    assert_eq!((report.device, report.input), (INVERTER, 1));
+    assert_eq!(report.grid, learner.grid(INVERTER, 1).await.unwrap());
+    let recent = report.recent.unwrap();
+    // Two June days of 6.4 kWp: tens of kWh.
+    assert!(recent.modelled > 10.0, "{recent:?}");
+    assert!(
+        (recent.measured / recent.modelled - 0.8).abs() < 1e-2,
+        "{recent:?}"
+    );
+}
+
+#[tokio::test]
+async fn without_a_location_or_readings_nothing_is_compared() {
+    let plant = plant().await;
+    let corrections = Corrections::new(plant.layouts.clone(), WEATHER, &plant.storage);
+
+    let unplaced = corrections.report(None, &berlin(), at(NOW)).await.unwrap();
+    let unread = corrections
+        .report(Some(BERLIN), &berlin(), at(NOW))
+        .await
+        .unwrap();
+
+    for reports in [unplaced, unread] {
+        let [report] = reports.as_slice() else {
+            panic!("{} inputs", reports.len());
+        };
+        assert_eq!(report.grid, super::Grid::default());
+        assert_eq!(report.recent, None);
+    }
 }

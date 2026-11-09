@@ -15,7 +15,7 @@ use sunreye_profile::RoleKind;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::bus::{Bus, DeviceId, SeriesId};
+use crate::bus::{Bus, DeviceId, Series, SeriesId};
 use crate::location::Location;
 use crate::storage::{self, ChangePoint, Issue, Policy, Storage};
 
@@ -277,39 +277,43 @@ impl<A: Archive> Past<A> {
         }
         Ok(())
     }
+}
 
-    /// The stored weather at each whole hour from `from` to before `to` that has irradiance and
-    /// temperature.
-    ///
-    /// # Errors
-    /// Storage failed.
-    pub async fn read(
-        &self,
-        storage: &Storage,
-        from: SystemTime,
-        to: SystemTime,
-    ) -> Result<Vec<Slot>, Error> {
-        let mut stored = Vec::with_capacity(QUANTITIES.len());
-        for series in self.series {
-            stored.push(storage.history(self.device, series, from, to).await?);
-        }
-        let at = |i: usize, time: SystemTime| {
-            let points: &Vec<ChangePoint> = stored.get(i)?;
-            points.iter().rev().find(|p| p.time <= time)?.value
+/// The stored weather of `device` at each whole hour from `from` to before `to` that has
+/// irradiance and temperature.
+///
+/// # Errors
+/// Storage failed.
+pub async fn archived(
+    reader: &storage::Reader,
+    device: DeviceId,
+    from: SystemTime,
+    to: SystemTime,
+) -> Result<Vec<Slot>, storage::Error> {
+    let mut stored = Vec::with_capacity(QUANTITIES.len());
+    for quantity in &QUANTITIES {
+        let series = Series {
+            role: quantity.role.to_owned(),
+            index: None,
         };
-        Ok(hours(from, to)
-            .filter_map(|target| {
-                Some(Slot {
-                    target,
-                    ghi: at(0, target)?,
-                    dni: at(1, target)?,
-                    dhi: at(2, target)?,
-                    temperature: at(3, target)?,
-                    wind: at(4, target),
-                })
-            })
-            .collect())
+        stored.push(reader.history(device, &series, from, to).await?);
     }
+    let at = |i: usize, time: SystemTime| {
+        let points: &Vec<ChangePoint> = stored.get(i)?;
+        points.iter().rev().find(|p| p.time <= time)?.value
+    };
+    Ok(hours(from, to)
+        .filter_map(|target| {
+            Some(Slot {
+                target,
+                ghi: at(0, target)?,
+                dni: at(1, target)?,
+                dhi: at(2, target)?,
+                temperature: at(3, target)?,
+                wind: at(4, target),
+            })
+        })
+        .collect())
 }
 
 /// The whole hours from `from` to before `to`.

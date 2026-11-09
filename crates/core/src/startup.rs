@@ -14,7 +14,7 @@ use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
-use crate::correction::Learner;
+use crate::correction::{Corrections, Learner};
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
@@ -229,6 +229,7 @@ pub async fn serve(
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
+        corrections: Corrections::new(layouts.clone(), weather::DEVICE, &storage),
         layouts,
         devices,
         changes: Changes::new(storage.database()),
