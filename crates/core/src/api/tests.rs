@@ -2,7 +2,8 @@
 
 use std::net::SocketAddr;
 use std::path::Path;
-use std::time::UNIX_EPOCH;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Body;
@@ -28,6 +29,8 @@ struct Core {
     storage: Storage,
     bus: Bus,
     problems: watch::Sender<Vec<Problem>>,
+    /// The API's clock when set, else the wall clock.
+    clock: Arc<Mutex<Option<SystemTime>>>,
     router: Router,
 }
 
@@ -37,18 +40,26 @@ impl Core {
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database()).await.unwrap();
         let (problems, watched) = watch::channel(Vec::new());
+        let clock = Arc::new(Mutex::new(None));
+        let set = Arc::clone(&clock);
         let api = Api {
             auth,
             live: Live::spawn(&bus),
             problems: watched,
             history: storage.reader(),
+            clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
             router: contract(router(api)).await,
             bus,
             problems,
+            clock,
             storage,
         }
+    }
+
+    fn set_clock(&self, now: SystemTime) {
+        *self.clock.lock().unwrap() = Some(now);
     }
 
     async fn send(&self, request: Request<Body>) -> Response<Body> {
@@ -107,6 +118,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         live: Live::spawn(&Bus::default()),
         problems: watch::channel(Vec::new()).1,
         history: storage.reader(),
+        clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
 

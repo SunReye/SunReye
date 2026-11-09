@@ -43,6 +43,19 @@ async fn core(kind: RoleKind, cadence: u64) -> (TempDir, Core, String) {
 impl Core {
     /// Stores the readings, as seconds from `T0` and values, and flushes them a day later.
     async fn store(&self, readings: impl IntoIterator<Item = (u64, f64)>) {
+        let last = self.record(readings).await;
+        self.storage.tick(at(last + 86_400)).await.unwrap();
+    }
+
+    /// Stores the readings and sets the clock to `now` seconds from `T0`.
+    async fn store_until(&self, readings: impl IntoIterator<Item = (u64, f64)>, now: u64) {
+        self.record(readings).await;
+        self.storage.tick(at(now)).await.unwrap();
+        self.set_clock(at(now));
+    }
+
+    /// Records the readings; returns the last one's seconds from `T0`.
+    async fn record(&self, readings: impl IntoIterator<Item = (u64, f64)>) -> u64 {
         let series = self.bus.intern(POWER.0, POWER.1);
         let mut last = 0;
         for (seconds, value) in readings {
@@ -56,7 +69,7 @@ impl Core {
             self.storage.record(reading).await.unwrap();
             last = seconds;
         }
-        self.storage.tick(at(last + 86_400)).await.unwrap();
+        last
     }
 
     /// The history of `pv.mppt.power[2]` from `from` to `to` seconds after `T0`.
@@ -128,25 +141,83 @@ async fn a_range_over_a_day_returns_hourly_time_weighted_means() {
 }
 
 #[tokio::test]
-async fn a_short_range_over_1500_intervals_falls_back_to_hours() {
+async fn a_short_range_over_1500_intervals_returns_minute_means() {
     let (_dir, core, set_cookie) = core(RoleKind::Measurement, 5).await;
-    // 2,160 intervals alternating between 1 kW and 2 kW.
-    core.store(steady(0, 10_800, 5, |t| {
-        if t % 10 == 0 { 1000.0 } else { 2000.0 }
+    // Alternating 1 kW and 2 kW, 4 kW for half a minute before a gap, and again after it.
+    let value = |t| match t {
+        5400.. => 4000.0,
+        _ if t % 10 == 0 => 1000.0,
+        _ => 2000.0,
+    };
+    let after = steady(
+        6000,
+        10_800,
+        5,
+        |t| if t % 10 == 0 { 1000.0 } else { 2000.0 },
+    );
+    core.store(steady(0, 5430, 5, value).into_iter().chain(after))
+        .await;
+
+    let (status, body) = core.history(&set_cookie, 30, 10_800).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (&body["tier"], &body["width"]),
+        (&json!("bucket"), &json!(60))
+    );
+    let points = body["points"].as_array().unwrap();
+    // 90 minutes, the one cut by the gap, then 80 after it.
+    assert_eq!(points.len(), 171);
+    assert_eq!(
+        points[0],
+        json!({ "start": instant(0), "end": instant(60), "mean": 1500.0 })
+    );
+    // The gap is not part of the mean.
+    assert_eq!(
+        points[90],
+        json!({ "start": instant(5400), "end": instant(5460), "mean": 4000.0 })
+    );
+    assert_eq!(
+        points[91],
+        json!({ "start": instant(6000), "end": instant(6060), "mean": 1500.0 })
+    );
+}
+
+#[tokio::test]
+async fn a_counter_bucket_is_the_time_weighted_mean_of_its_readings() {
+    let (_dir, core, set_cookie) = core(RoleKind::Counter, 5).await;
+    core.store(steady(0, 7600, 5, |t| {
+        f64::from(1000 + u32::try_from(t).unwrap())
     }))
     .await;
 
-    let (status, body) = core.history(&set_cookie, 0, 10_800).await;
+    let (_, body) = core.history(&set_cookie, 0, 7600).await;
 
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tier"], "bucket");
+    assert_eq!(
+        body["points"][0],
+        json!({ "start": instant(0), "end": instant(60), "mean": 1027.5 })
+    );
+}
+
+#[tokio::test]
+async fn the_hour_in_progress_is_read_from_change_points() {
+    let (_dir, core, set_cookie) = core(RoleKind::Measurement, 60).await;
+    // 1 kW for three hours, then 3 kW for the first half of the fourth, still being read.
+    let readings = steady(0, 12_600, 60, |t| if t < 10_800 { 1000.0 } else { 3000.0 });
+    core.store_until(readings, 12_660).await;
+
+    let (_, body) = core.history(&set_cookie, 0, 2 * 86_400).await;
+
     assert_eq!(
         body,
         json!({
             "tier": "hour",
             "points": [
-                { "start": instant(0), "end": instant(3600), "mean": 1500.0 },
-                { "start": instant(3600), "end": instant(7200), "mean": 1500.0 },
-                { "start": instant(7200), "end": instant(10_800), "mean": 1500.0 },
+                { "start": instant(0), "end": instant(3600), "mean": 1000.0 },
+                { "start": instant(3600), "end": instant(7200), "mean": 1000.0 },
+                { "start": instant(7200), "end": instant(10_800), "mean": 1000.0 },
+                { "start": instant(10_800), "end": instant(14_400), "mean": 3000.0 },
             ],
         })
     );

@@ -2,7 +2,7 @@
 //! exceeds 1,500 points.
 
 use std::ops::Range;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::rejection::{PathRejection, QueryRejection};
@@ -11,14 +11,15 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::{Problem, ProblemDetails};
+use super::{Clock, Problem, ProblemDetails};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{self, Aggregate, ChangePoint, Reader, Rollup};
 
 const MAX_POINTS: usize = 1500;
+const MINUTE: Duration = Duration::from_mins(1);
 const HOUR: Duration = Duration::from_hours(1);
 const DAY: Duration = Duration::from_hours(24);
-/// The longest range read as raw intervals.
+/// The longest range read as raw intervals, or past 1,500 of them as minutes: 1,441 at most.
 const RAW_SPAN: Duration = DAY;
 /// The longest range of hours: the hour it starts in and 1,499 more.
 #[expect(clippy::cast_possible_truncation, reason = "1,499 fits")]
@@ -63,15 +64,20 @@ pub struct Params {
 #[derive(Serialize, ToSchema)]
 pub struct History {
     tier: Tier,
+    /// A `bucket`'s width in seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<u64>,
     /// In time order; a gap has no point.
     points: Vec<Point>,
 }
 
-/// `raw` intervals between change points, or `hour` (UTC) or `day` (plant-local) rollups.
-#[derive(Serialize, ToSchema)]
+/// `raw` intervals between change points, UTC-aligned buckets of them, or `hour` (UTC) or
+/// `day` (plant-local) rollups.
+#[derive(Serialize, ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum Tier {
     Raw,
+    Bucket,
     Hour,
     Day,
 }
@@ -96,7 +102,7 @@ struct Point {
     ),
 )]
 pub async fn history(
-    State(reader): State<Reader>,
+    State((reader, clock)): State<(Reader, Clock)>,
     device: Result<Path<u32>, PathRejection>,
     params: Result<Query<Params>, QueryRejection>,
 ) -> Result<Json<History>, Problem> {
@@ -108,35 +114,93 @@ pub async fn history(
     if span.is_zero() || span > DAY_SPAN {
         return Err(RANGE);
     }
-    let device = DeviceId(device);
-    if span <= RAW_SPAN {
-        let points = reader
-            .history(device, &series, range.start, range.end)
+    let read = Read {
+        reader,
+        device: DeviceId(device),
+        series,
+        range,
+        now: clock(),
+    };
+    let history = if span <= RAW_SPAN {
+        read.short().await?
+    } else {
+        read.rolled_up(span).await?
+    };
+    Ok(Json(history))
+}
+
+/// One history request.
+struct Read {
+    reader: Reader,
+    device: DeviceId,
+    series: Series,
+    range: Range<SystemTime>,
+    now: SystemTime,
+}
+
+impl Read {
+    /// Raw intervals, or minute means past 1,500 of them.
+    async fn short(&self) -> Result<History, Problem> {
+        let (range, now) = (&self.range, self.now);
+        // Whole minutes, so buckets need no second read.
+        let window = floor(range.start, MINUTE)..ceil(range.end, MINUTE);
+        let points = self.change_points(window.clone()).await?;
+        let raw = intervals(&points, range.start..range.end.min(now));
+        if raw.len() <= MAX_POINTS {
+            let points = raw.iter().map(|&(start, end, mean)| Point {
+                start: rfc3339(start),
+                end: rfc3339(end),
+                mean,
+            });
+            return Ok(History {
+                tier: Tier::Raw,
+                width: None,
+                points: points.collect(),
+            });
+        }
+        let intervals = intervals(&points, window.start..window.end.min(now));
+        Ok(History {
+            tier: Tier::Bucket,
+            width: Some(MINUTE.as_secs()),
+            points: buckets(&intervals, window.start, MINUTE),
+        })
+    }
+
+    /// Hourly or daily rollups; the hour in progress is read from change points (ADR 3).
+    async fn rolled_up(&self, span: Duration) -> Result<History, Problem> {
+        let range = &self.range;
+        // Rollups from a tier's longest window early, for the window the range starts in.
+        let (tier, lead, name) = if span <= HOUR_SPAN {
+            (storage::Tier::Hour, HOUR, Tier::Hour)
+        } else {
+            (storage::Tier::Day, 2 * DAY, Tier::Day)
+        };
+        let start = range.start.checked_sub(lead).unwrap_or(range.start);
+        let rollups = self
+            .reader
+            .rollups(self.device, &self.series, tier, start..range.end)
             .await
             .map_err(|_| INTERNAL)?;
-        let points = raw(&points, &range);
-        if points.len() <= MAX_POINTS {
-            return Ok(Json(History {
-                tier: Tier::Raw,
-                points,
-            }));
+        let mut points = rolled(&rollups, range.start)?;
+        let tail = floor(range.start, HOUR).max(rollups.last().map_or(UNIX_EPOCH, |r| r.end));
+        let end = range.end.min(self.now);
+        if name == Tier::Hour && tail < end {
+            let change = self.change_points(tail..end).await?;
+            points.extend(buckets(&intervals(&change, tail..end), tail, HOUR));
         }
+        Ok(History {
+            tier: name,
+            width: None,
+            points,
+        })
     }
-    // Rollups from a tier's longest window early, for the window the range starts in.
-    let (tier, lead, name) = if span <= HOUR_SPAN {
-        (storage::Tier::Hour, HOUR, Tier::Hour)
-    } else {
-        (storage::Tier::Day, 2 * DAY, Tier::Day)
-    };
-    let start = range.start.checked_sub(lead).unwrap_or(range.start);
-    let rollups = reader
-        .rollups(device, &series, tier, start..range.end)
-        .await
-        .map_err(|_| INTERNAL)?;
-    Ok(Json(History {
-        tier: name,
-        points: rolled(&rollups, range.start)?,
-    }))
+
+    async fn change_points(&self, range: Range<SystemTime>) -> Result<Vec<ChangePoint>, Problem> {
+        self.reader
+            .history(self.device, &self.series, range.start, range.end)
+            .await
+            .map_err(|_| INTERNAL)
+    }
 }
 
 /// The rollups that end after `from`, as their means. A counter's rollup has no mean.
@@ -166,19 +230,68 @@ fn rfc3339(time: SystemTime) -> String {
         .unwrap_or_default()
 }
 
+/// A value and the span it held.
+type Interval = (SystemTime, SystemTime, f64);
+
 /// The intervals between change points, clipped to `range`; a gap is no interval.
-fn raw(points: &[ChangePoint], range: &Range<SystemTime>) -> Vec<Point> {
+fn intervals(points: &[ChangePoint], range: Range<SystemTime>) -> Vec<Interval> {
     let ends = points.iter().skip(1).map(|p| p.time).chain([range.end]);
     points
         .iter()
         .zip(ends)
         .filter_map(|(point, end)| {
             let (start, end) = (point.time.max(range.start), end.min(range.end));
-            Some(Point {
-                start: rfc3339(start),
-                end: rfc3339(end),
-                mean: point.value.filter(|_| start < end)?,
-            })
+            Some((start, end, point.value.filter(|_| start < end)?))
         })
         .collect()
+}
+
+/// Time-weighted means over buckets of `width` from `origin`; gaps are not part of a mean, and
+/// a bucket without a value has no point.
+fn buckets(intervals: &[Interval], origin: SystemTime, width: Duration) -> Vec<Point> {
+    let bound =
+        |index: u64| origin + width.saturating_mul(u32::try_from(index).unwrap_or(u32::MAX));
+    // Bucket index, Σ value·seconds and Σ seconds, in time order.
+    let mut sums: Vec<(u64, f64, f64)> = Vec::new();
+    for &(mut start, end, value) in intervals {
+        while start < end {
+            let index = seconds(start, origin) / width.as_secs();
+            let until = end.min(bound(index + 1));
+            let held = until
+                .duration_since(start)
+                .unwrap_or_default()
+                .as_secs_f64();
+            match sums.last_mut() {
+                Some(last) if last.0 == index => {
+                    last.1 = value.mul_add(held, last.1);
+                    last.2 += held;
+                }
+                _ => sums.push((index, value * held, held)),
+            }
+            start = until;
+        }
+    }
+    sums.into_iter()
+        .map(|(index, sum, held)| Point {
+            start: rfc3339(bound(index)),
+            end: rfc3339(bound(index + 1)),
+            mean: sum / held,
+        })
+        .collect()
+}
+
+fn seconds(time: SystemTime, since: SystemTime) -> u64 {
+    time.duration_since(since).unwrap_or_default().as_secs()
+}
+
+/// `time` rounded down to a multiple of `width` since the epoch.
+fn floor(time: SystemTime, width: Duration) -> SystemTime {
+    let seconds = seconds(time, UNIX_EPOCH);
+    UNIX_EPOCH + Duration::from_secs(seconds - seconds % width.as_secs())
+}
+
+/// `time` rounded up to a multiple of `width` since the epoch.
+fn ceil(time: SystemTime, width: Duration) -> SystemTime {
+    let down = floor(time, width);
+    if down < time { down + width } else { down }
 }
