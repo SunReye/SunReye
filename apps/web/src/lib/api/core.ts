@@ -11,6 +11,15 @@ export type Forecasts = components["schemas"]["Forecasts"];
 
 export type Layout = components["schemas"]["Layout"];
 
+export type Capabilities = components["schemas"]["Support"];
+
+export type Setting = components["schemas"]["SettingSupport"];
+
+/** One write attempt as the write log keeps it (ADR 7). */
+export type Attempt = components["schemas"]["Entry"];
+
+export type WriteLog = components["schemas"]["WriteLog"];
+
 /** A refusal's stable code (ADR 9), such as `auth.required`. */
 export interface Problem {
   readonly problem: string;
@@ -49,6 +58,12 @@ export interface Core {
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
   /** The PV layout in force now. */
   layout(): Promise<Layout | Problem>;
+  /** What the core supports, and each device's settings. */
+  capabilities(): Promise<Capabilities | Problem>;
+  /** Writes `value` to a device's setting through the core's one funnel; admin only. */
+  write(device: number, key: string, value: number): Promise<Attempt | Problem>;
+  /** Every write attempt, oldest first; admin only. */
+  writes(): Promise<WriteLog | Problem>;
 }
 
 /** The wait before reconnecting after a refusal or a failure. */
@@ -88,6 +103,31 @@ export function connect(transport: Transport): Core {
     },
     layout: async () => {
       const { data, error, response } = await client.GET("/api/v1/layout");
+
+      return data ?? refusal(error, response.status);
+    },
+    ...settings(client),
+  };
+}
+
+/** Capabilities, setting writes and the write log. */
+function settings(client: Client): Pick<Core, "capabilities" | "write" | "writes"> {
+  return {
+    capabilities: async () => {
+      const { data, error, response } = await client.GET("/api/v1/capabilities");
+
+      return data ?? refusal(error, response.status);
+    },
+    write: async (device, key, value) => {
+      const { data, error, response } = await client.PUT("/api/v1/devices/{id}/settings/{key}", {
+        params: { path: { id: device, key } },
+        body: { value },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+    writes: async () => {
+      const { data, error, response } = await client.GET("/api/v1/writes");
 
       return data ?? refusal(error, response.status);
     },
