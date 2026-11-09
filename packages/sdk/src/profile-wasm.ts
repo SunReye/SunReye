@@ -13,17 +13,12 @@ export interface ProfileWasm {
   split(profile: string, block: Readonly<Block>): Block[];
   /**
    * Each quantity's value, by key, from a register dump read through the core's read plan: a block
-   * the dump does not cover in full is unanswered. Throws the loader's reason.
+   * the dump does not cover in full is unanswered. A dump is JSON, `[{ "start", "words" }]`, one
+   * run of words per entry. Throws the loader's reason.
    */
-  decode(profile: string, dump: readonly Run[]): Record<string, number | null>;
+  decode(profile: string, dump: string): Record<string, number | null>;
   /** A profile file's warnings, as the core logs them; throws the loader's reason. */
   lint(profile: string): string[];
-}
-
-/** Words a device answered from `start` onwards: one run of a register dump. */
-export interface Run {
-  readonly start: number;
-  readonly words: readonly number[];
 }
 
 /** The ABI of crates/profile-wasm: replies are `ptr << 32 | len` of JSON in linear memory. */
@@ -197,7 +192,7 @@ export async function loadProfileWasm(): Promise<ProfileWasm> {
     decode: (profile, dump) =>
       call(
         wasm,
-        [profile, JSON.stringify(dump)],
+        [profile, dump],
         ([ptr = 0, len = 0, at = 0, size = 0]) => wasm.decode(ptr, len, at, size),
         isValues,
       ),

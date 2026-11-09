@@ -83,7 +83,7 @@ test("a dump of v4's recorded Deye cases decodes to v4's readings", async () => 
   expect(v4Cases).toHaveLength(6);
 
   for (const c of v4Cases) {
-    expect(profile.decode(deye, c.runs), c.name).toEqual(c.readings);
+    expect(profile.decode(deye, JSON.stringify(c.runs)), c.name).toEqual(c.readings);
   }
 });
 
@@ -94,12 +94,12 @@ test("a dump that lacks one register of a planned block decodes nothing from tha
     { key: "c", role: "extra.c", register: 9, type: "u16" },
   ]);
 
-  expect(
-    profile.decode(doc, [
-      { start: 1, words: [7] },
-      { start: 9, words: [3] },
-    ]),
-  ).toEqual({
+  const dump = JSON.stringify([
+    { start: 1, words: [7] },
+    { start: 9, words: [3] },
+  ]);
+
+  expect(profile.decode(doc, dump)).toEqual({
     a: null,
     b: null,
     c: 3,

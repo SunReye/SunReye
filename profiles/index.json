@@ -1,0 +1,19 @@
+{
+  "profiles": [
+    {
+      "id": "deye-sg05lp3",
+      "version": "2.2.0",
+      "schema": 1,
+      "requires": [
+        "modbus",
+        "u16",
+        "i16",
+        "u32",
+        "compute",
+        "write"
+      ],
+      "sha256": "97958e19ab4f2d1cf9ee41a432c13575506984e50dbffe06e600906a6da279ae",
+      "url": "deye-sg05lp3.json"
+    }
+  ]
+}
