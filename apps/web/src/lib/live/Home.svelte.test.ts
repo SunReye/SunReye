@@ -28,3 +28,16 @@ test("the overview links to the status and logs", async () => {
     .element(screen.getByRole("link", { name: "Status" }))
     .toHaveAttribute("href", "#/status");
 });
+
+test("the overview links to the tariff and savings", async () => {
+  const core = connect({
+    base: "http://core.test/",
+    fetch: () => Promise.resolve(new Response(null, { status: 404 })),
+  });
+
+  const screen = await render(Home, { core, layout: null });
+
+  await expect
+    .element(screen.getByRole("link", { name: "Tarif und Ersparnis" }))
+    .toHaveAttribute("href", "#/tariff");
+});

@@ -299,3 +299,67 @@ async fn an_investment_that_is_not_a_positive_amount_is_refused() {
         );
     }
 }
+
+#[tokio::test]
+async fn costs_are_served_per_plant_local_day_with_their_total() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    // 2 kW fed in for two hours while the house uses 500 W; the next day 1 kW bought for an hour
+    // while it uses 1.5 kW.
+    core.flows(
+        "2026-11-01T00:00:00Z",
+        &[
+            (0, Some((-2000.0, 500.0))),
+            (7200, None),
+            (86_400, Some((1000.0, 1500.0))),
+            (90_000, None),
+        ],
+    )
+    .await;
+    let fixed = json!({
+        "appliesFrom": "2026-11-01T00:00:00Z",
+        "import": { "price": 0.30, "bands": [] },
+        "export": { "price": 0.08, "bands": [] },
+    });
+    let (status, _) = core
+        .ask(&set_cookie, send("POST", "/api/v1/tariff/reprice", &fixed))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let uri = "/api/v1/costs?from=2026-11-01T00:00:00Z&to=2026-11-08T00:00:00Z";
+    let (status, costs) = core.ask(&set_cookie, get(uri)).await;
+
+    assert_eq!(status, StatusCode::OK, "{costs}");
+    // Saved on the 1st: 2 h × (0.5 kW × 0.30 + 2 kW × 0.08) = 0.62; on the 2nd: 1.5 kWh × 0.30
+    // less the 0.30 paid = 0.15.
+    assert_eq!(
+        costs,
+        json!({
+            "days": [
+                {
+                    "start": "2026-11-01T00:00:00Z", "end": "2026-11-02T00:00:00Z",
+                    "paid": 0.0, "earned": 0.32, "saved": 0.62,
+                },
+                {
+                    "start": "2026-11-02T00:00:00Z", "end": "2026-11-03T00:00:00Z",
+                    "paid": 0.3, "earned": 0.0, "saved": 0.15,
+                },
+            ],
+            "total": { "paid": 0.3, "earned": 0.32, "saved": 0.77 },
+        })
+    );
+}
+
+#[tokio::test]
+async fn costs_over_an_empty_range_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+
+    let uri = "/api/v1/costs?from=2026-11-08T00:00:00Z&to=2026-11-01T00:00:00Z";
+    let (status, body) = core.ask(&set_cookie, get(uri)).await;
+
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("history.range"))
+    );
+}

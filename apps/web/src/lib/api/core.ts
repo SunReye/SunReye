@@ -7,6 +7,7 @@ import { body, type LayoutChange } from "./layout-change";
 import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
 import type { components, paths } from "./schema";
+import { tariffs, type Tariffs } from "./tariff";
 
 export type History = components["schemas"]["History"];
 
@@ -52,6 +53,8 @@ export type { Live, Values } from "./live";
 
 export type { Corrections } from "./model";
 
+export type { BiddingZone, ScheduleChange, SpotPriceZone, Tariff, TariffChange } from "./tariff";
+
 /**
  * How the SPA reaches a core (ADR 11): plain HTTP to its own core now, the relay's tunnel later.
  * The live stream goes through it too, as a streamed response body.
@@ -68,7 +71,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -155,6 +158,7 @@ export function connect(transport: Transport): Core {
     ...imports(client),
     ...pvModel(client),
     ...status(client),
+    ...tariffs(client),
   };
 }
 
