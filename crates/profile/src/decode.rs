@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 use crate::document::{Kind, Range};
 use crate::profile::{Expr, Profile, Read};
 
@@ -42,11 +44,73 @@ impl Profile {
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
+                Read::Topic { .. } => None,
             };
             if let Some(slot) = values.get_mut(position) {
                 *slot = value;
             }
         }
+    }
+    /// Whether it reads through the `mqtt` binding: a device behind a broker needs one that does.
+    #[must_use]
+    pub fn reads_topics(&self) -> bool {
+        self.quantities()
+            .iter()
+            .any(|q| matches!(q.read, Read::Topic { .. }))
+    }
+
+    /// The topic of every quantity read from one, with `address` in place of its address mark,
+    /// by position in [`Profile::quantities`].
+    #[must_use]
+    pub fn topics(&self, address: u32) -> Vec<(usize, String)> {
+        let address = address.to_string();
+        self.quantities()
+            .iter()
+            .enumerate()
+            .filter_map(|(position, q)| match &q.read {
+                Read::Topic { topic, .. } => Some((position, topic.replace(ADDRESS, &address))),
+                Read::Register { .. } | Read::Compute(_) => None,
+            })
+            .collect()
+    }
+
+    /// Takes `payload`, a message on the topic of quantity `position`, into `values`, and
+    /// recomputes every computed quantity. A number is scaled, `true` and `false` read as 1 and 0,
+    /// and anything else, such as `null` or an empty payload, is no value.
+    pub fn receive(&self, position: usize, payload: &[u8], values: &mut [Option<f64>]) {
+        let Some(quantity) = self.quantities().get(position) else {
+            return;
+        };
+        let Read::Topic { scale, offset, .. } = quantity.read else {
+            return;
+        };
+        let value = parse(payload)
+            .map(|raw| scaled(raw, scale, offset))
+            .filter(|value| value.is_finite())
+            .map(|value| clamped(quantity.range, value));
+        if let Some(slot) = values.get_mut(position) {
+            *slot = value;
+        }
+        for (at, quantity) in self.quantities().iter().enumerate() {
+            let Read::Compute(expr) = &quantity.read else {
+                continue;
+            };
+            let value = clamped(quantity.range, evaluate(expr, values));
+            if let Some(slot) = values.get_mut(at) {
+                *slot = Some(value);
+            }
+        }
+    }
+}
+
+/// Where a topic names the device address.
+const ADDRESS: &str = "{address}";
+
+fn parse(payload: &[u8]) -> Option<f64> {
+    match serde_json::from_slice(payload).ok()? {
+        Value::Number(n) => n.as_f64(),
+        Value::Bool(on) => Some(f64::from(u8::from(on))),
+        Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
     }
 }
 

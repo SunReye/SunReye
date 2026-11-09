@@ -42,7 +42,10 @@ pub use trust::{KEYS, Keys};
 pub const OFFICIAL_INDEX: &str = "https://sunreye.github.io/SunReye/index.json";
 
 /// The official profiles, as `profiles/` holds them at build time.
-const BUNDLED: &[&str] = &[include_str!("../../../profiles/deye-sg05lp3.json")];
+const BUNDLED: &[&str] = &[
+    include_str!("../../../profiles/deye-sg05lp3.json"),
+    include_str!("../../../profiles/evcc.json"),
+];
 
 const INTERNAL: Problem = Problem {
     status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,

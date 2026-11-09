@@ -869,7 +869,8 @@ export interface components {
             profile: string;
             /**
              * Format: int32
-             * @description The Modbus unit id: the device address behind the connection.
+             * @description The device address behind the connection: a Modbus unit id, or the index a broker's
+             *     profile names, such as an EVCC loadpoint's.
              */
             unit: number;
             /** @description Whether settings may be written (ADR 7); off when left out. */
@@ -1203,6 +1204,11 @@ export interface components {
             name: string;
             /** Format: int32 */
             port: number;
+            /**
+             * @description A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a
+             *     broker and refused for any other transport.
+             */
+            topicRoot?: string | null;
             transport: components["schemas"]["Transport"];
         };
         /** @description An index and the outcome of its last check. */

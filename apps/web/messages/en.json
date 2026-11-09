@@ -185,5 +185,12 @@
   "log_after": "Read back",
   "log_outcome": "Outcome",
   "log_step": "Failed step",
-  "log_actor": "Actor"
+  "log_actor": "Actor",
+  "evcc_title": "Loadpoint",
+  "evcc_charging": "Charging",
+  "evcc_connected": "Plugged in",
+  "evcc_empty": "No vehicle",
+  "evcc_power": "Charge power",
+  "evcc_soc": "Vehicle SOC",
+  "evcc_session": "This session"
 }

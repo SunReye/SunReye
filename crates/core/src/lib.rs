@@ -20,6 +20,7 @@ pub mod solar;
 mod spa;
 pub mod startup;
 pub mod storage;
+pub mod subscriber;
 pub mod tariff;
 pub mod topology;
 pub mod transport;

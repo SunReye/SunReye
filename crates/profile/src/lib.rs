@@ -21,6 +21,7 @@ pub const SCHEMA: u32 = 1;
 /// What this build can load: bindings, decoders, computed quantities and recipe step kinds.
 pub const CAPABILITIES: &[&str] = &[
     "modbus",
+    "mqtt",
     "u16",
     "i16",
     "u32",

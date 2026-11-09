@@ -213,6 +213,8 @@ pub struct QuantityDoc {
     pub role: String,
     pub index: Option<u32>,
     pub register: Option<u16>,
+    /// An `mqtt` topic under the connection's root; `{address}` stands for the device address.
+    pub topic: Option<String>,
     #[serde(rename = "type")]
     pub kind: Option<Kind>,
     pub scale: Option<f64>,

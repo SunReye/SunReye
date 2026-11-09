@@ -74,7 +74,7 @@ fn a_quantity_reads_a_register_or_computes_never_both() {
     let both = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16", "compute": { "sum": [] } }]);
     assert_eq!(
         refusal(&both).1,
-        "declare either `register` with `type`, or `compute`"
+        "declare one of `register`, `topic` or `compute`"
     );
     let untyped = json!([{ "key": "a", "role": "extra.a", "register": 1 }]);
     assert_eq!(refusal(&untyped).1, "a register needs a type");

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Core, Live } from "./api/core";
   import DayChart from "./DayChart.svelte";
+  import EvccCard from "./EvccCard.svelte";
   import { problemText } from "./i18n/problems";
   import { getLocale } from "./paraglide/runtime.js";
 
@@ -16,11 +17,13 @@
 
   const watts = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
 
-  /** Each device's power series, sorted by name; other roles wait for their own screens. */
+  /** Each device's values; an EVCC loadpoint is told by its `ev.charge.power`. */
   const devices = $derived(
     live !== undefined && "devices" in live
       ? Object.entries(live.devices).map(([id, values]) => ({
           id: Number(id),
+          values,
+          loadpoint: "ev.charge.power" in values,
           power: Object.entries(values)
             .filter(([series]) => series.endsWith(".power"))
             .toSorted(([a], [b]) => a.localeCompare(b)),
@@ -34,18 +37,22 @@
     <p role="alert">{problemText(live.problem)}</p>
   {/if}
   {#each devices as device (device.id)}
-    <section>
-      <dl>
-        {#each device.power as [series, value] (series)}
-          <div>
-            <dt>{series}</dt>
-            <!-- An SI symbol, the same in every locale. -->
-            <dd>{watts.format(value)} W</dd>
-          </div>
-        {/each}
-      </dl>
-      <DayChart {core} device={device.id} series={device.power.map(([series]) => series)} />
-    </section>
+    {#if device.loadpoint}
+      <EvccCard values={device.values} />
+    {:else}
+      <section>
+        <dl>
+          {#each device.power as [series, value] (series)}
+            <div>
+              <dt>{series}</dt>
+              <!-- An SI symbol, the same in every locale. -->
+              <dd>{watts.format(value)} W</dd>
+            </div>
+          {/each}
+        </dl>
+        <DayChart {core} device={device.id} series={device.power.map(([series]) => series)} />
+      </section>
+    {/if}
   {/each}
 </main>
 

@@ -15,6 +15,16 @@
       ],
       "sha256": "6bce71f99926e9b2bbf3206b3a6bd78ed309ac4837c4464381118c40b3d8b1d6",
       "url": "deye-sg05lp3.json"
+    },
+    {
+      "id": "evcc",
+      "version": "1.0.0",
+      "schema": 1,
+      "requires": [
+        "mqtt"
+      ],
+      "sha256": "530f14266d27ca9c9fd80f6e71199ed2798e342c2a713512b908e0eb6fa0df8d",
+      "url": "evcc.json"
     }
   ]
 }
