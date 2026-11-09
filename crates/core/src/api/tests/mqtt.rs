@@ -184,6 +184,33 @@ async fn an_evcc_loadpoint_is_read_by_its_index_under_the_topic_root() {
     assert_eq!((power, energy), (json!(11040.0), json!(2.5)));
 }
 
+/// EVCC publishes the connected vehicle's configured title as plain text; the catalogue's entry
+/// 1 is the Tesla Model 3 Highland (ADR 20).
+#[tokio::test]
+async fn a_vehicle_title_in_the_catalogue_reads_as_its_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let fake = fake::serve(0).await;
+    fake.retain("evcc/loadpoints/1/vehicleTitle", "Tesla Model 3 Highland");
+    let connection = core.connection(&set_cookie, &broker(&fake)).await;
+    let (_, device) = core
+        .ask(
+            &set_cookie,
+            send("POST", "/api/v1/devices", &loadpoint(&connection, 1)),
+        )
+        .await;
+    let id = &device["id"];
+
+    let model = core
+        .read_role(
+            &set_cookie,
+            &format!("/api/v1/roles/ev.vehicle.model?device={id}"),
+        )
+        .await;
+
+    assert_eq!(model, json!(1.0));
+}
+
 impl Core {
     /// The value at `uri` once it is live, within two seconds.
     async fn read_role(&self, set_cookie: &str, uri: &str) -> Value {

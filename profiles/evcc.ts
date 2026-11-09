@@ -6,6 +6,16 @@ import { defineProfile } from "../packages/sdk/src/index.ts";
 // change clears it (https://docs.evcc.io/en/features/battery).
 const MODES = { off: 0, now: 1, minpv: 2, pv: 3 };
 
+// A vehicle's configured title, published as plain text, reads as its entry in the SPA's car
+// catalogue (apps/web/src/lib/cars/catalogue.ts), which a test keeps in step.
+const MODELS = {
+  "Tesla Model 3 Highland": 1,
+  "Tesla Model Y": 2,
+  "Volkswagen ID.3": 3,
+  "Volkswagen ID. Buzz": 4,
+  "Ford F-150 Lightning": 5,
+};
+
 export default defineProfile({
   schema: 1,
   id: "evcc",
@@ -21,6 +31,12 @@ export default defineProfile({
       role: "ev.session.energy",
       topic: "loadpoints/{address}/sessionEnergy",
       scale: 0.001,
+    },
+    {
+      key: "vehicleTitle",
+      role: "ev.vehicle.model",
+      topic: "loadpoints/{address}/vehicleTitle",
+      enum: MODELS,
     },
     { key: "connected", role: "ev.connected", topic: "loadpoints/{address}/connected" },
     { key: "charging", role: "ev.charging", topic: "loadpoints/{address}/charging" },
