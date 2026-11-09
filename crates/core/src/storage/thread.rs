@@ -46,6 +46,9 @@ const MIGRATIONS: &[&str] = &[
 /// SQL a feature module runs on its own tables.
 pub type Job = Box<dyn FnOnce(&Connection) + Send>;
 
+/// SQL run inside the transaction of a storage write, such as its change-log entry (ADR 19).
+pub type Log = Box<dyn FnOnce(&Connection) -> rusqlite::Result<()> + Send>;
+
 pub enum Command {
     Reading(Reading),
     Tick(SystemTime),
@@ -77,6 +80,12 @@ pub enum Request {
     Rewriting(Rewriting),
     Forecasting(Forecasting),
     Problems(oneshot::Sender<Vec<Problem>>),
+    /// Days from now on are cut in `zone` (ADR 3); `log` commits with it.
+    Zone {
+        zone: (String, TimeZone),
+        log: Log,
+        reply: oneshot::Sender<Result<(), Error>>,
+    },
     Run(Job),
     Shutdown(oneshot::Sender<Result<(), Error>>),
 }
@@ -116,14 +125,28 @@ pub enum Forecasting {
 }
 
 /// Opens the file and starts the thread; the returned sender feeds it.
-/// `zone` is the plant timezone, by name and resolved.
+/// `zone` is the plant timezone, by name and resolved, unless the admin stored one; the zone in
+/// force is returned beside the sender.
 pub fn spawn(
     path: &Path,
     build: SystemTime,
     zone: (String, TimeZone),
     queue: usize,
-) -> Result<mpsc::Sender<Command>, Error> {
+) -> Result<(mpsc::Sender<Command>, TimeZone), Error> {
     let db = open(path)?;
+    let stored: Option<String> = db
+        .query_row("SELECT value FROM meta WHERE key = 'zone'", [], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    let zone = match stored {
+        Some(name) => {
+            let tz = TimeZone::get(&name).map_err(|_| Error::Zone)?;
+            (name, tz)
+        }
+        None => zone,
+    };
+    let current = zone.1.clone();
     let meta = |key: &str| -> Result<Option<Tick>, Error> {
         Ok(db
             .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
@@ -152,7 +175,7 @@ pub fn spawn(
         .name("storage".into())
         .spawn(move || store.run(receiver))
         .map_err(|_| Error::Stopped)?;
-    Ok(sender)
+    Ok((sender, current))
 }
 
 fn open(path: &Path) -> Result<Connection, Error> {
@@ -257,6 +280,18 @@ impl Store {
         // Every sender is gone without a shutdown: the open bucket is lost, as in a crash.
     }
 
+    fn store_zone(&self, name: &str, log: Log) -> Result<(), Error> {
+        let tx = self.db.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO meta (key, value) VALUES ('zone', ?1)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            [name],
+        )?;
+        log(&tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn answer(&mut self, request: Request) {
         match request {
             Request::Declare {
@@ -293,6 +328,13 @@ impl Store {
             Request::Problems(reply) => {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
                 reply.send(unsynced.into_iter().collect()).ok();
+            }
+            Request::Zone { zone, log, reply } => {
+                let stored = self.store_zone(&zone.0, log);
+                if stored.is_ok() {
+                    self.zone = zone;
+                }
+                reply.send(stored).ok();
             }
             Request::Run(job) => job(&self.db),
             // Handled by `run`, which stops.

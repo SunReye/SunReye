@@ -93,7 +93,7 @@ impl Tariffs {
         let mut points: [Vec<ChangePoint>; 2] = [Vec::new(), Vec::new()];
         let mut at = from;
         while at < to {
-            let prices = in_force(versions, at).map(|v| v.prices(&self.zone, at));
+            let prices = in_force(versions, at).map(|v| v.prices(&self.zone.borrow(), at));
             let values = [prices.map(|p| p.import), prices.map(|p| p.export)];
             for (points, value) in points.iter_mut().zip(values) {
                 let changed = points.last().is_none_or(|p| p.value != value);

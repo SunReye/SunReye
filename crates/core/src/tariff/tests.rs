@@ -275,7 +275,7 @@ fn site(start: &str) -> Site {
         &bus,
     )
     .unwrap();
-    let tariffs = Tariffs::new(&storage, &bus, berlin());
+    let tariffs = Tariffs::new(&storage, &bus, tokio::sync::watch::channel(berlin()).1);
     frozen(tariffs.change(
         night_rate("2026-01-01T00:00:00Z"),
         instant("2026-01-01T00:00:00Z"),

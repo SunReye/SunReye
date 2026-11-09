@@ -66,6 +66,7 @@ pub struct Api {
     pub profiles: Profiles,
     pub topologies: Topologies,
     pub tariffs: Tariffs,
+    pub zones: storage::Zones,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -105,6 +106,7 @@ pub fn router(api: Api) -> Router {
         .merge(api.tariffs.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
+        .merge(crate::zone::routes(api.zones, Clock::clone(&api.clock)))
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
         .merge(api.layouts.routes(Clock::clone(&api.clock)));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
@@ -368,6 +370,8 @@ pub enum Code {
     LocationNone,
     #[serde(rename = "location.value")]
     LocationValue,
+    #[serde(rename = "zone.value")]
+    ZoneValue,
     #[serde(rename = "connection.none")]
     ConnectionNone,
     #[serde(rename = "connection.value")]

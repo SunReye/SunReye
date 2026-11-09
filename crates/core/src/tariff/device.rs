@@ -208,7 +208,7 @@ impl Task {
             self.declared = true;
             self.declare().await;
         }
-        let prices = version.prices(&self.tariffs.zone, at);
+        let prices = version.prices(&self.tariffs.zone.borrow(), at);
         for (series, value) in self
             .tariffs
             .prices

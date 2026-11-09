@@ -203,12 +203,7 @@ pub async fn serve(
     let (devices, layouts) = devices(&storage, &profiles, &bus).await?;
     let (topologies, tariffs) = (
         Topologies::new(storage.database()),
-        Tariffs::new(
-            &storage,
-            &bus,
-            // Storage has accepted the plant timezone.
-            jiff::tz::TimeZone::get(&zone).unwrap_or(jiff::tz::TimeZone::UTC),
-        ),
+        Tariffs::new(&storage, &bus, storage.zones().watch()),
     );
     let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &bus);
     let location = PlantLocation::open(storage.database()).await?;
@@ -231,6 +226,7 @@ pub async fn serve(
         profiles,
         topologies,
         tariffs,
+        zones: storage.zones(),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
@@ -332,7 +328,7 @@ async fn forecast(
     );
 }
 
-/// The plant timezone is not configurable yet; the host's stands in.
+/// The host's zone stands in until the admin sets the plant timezone.
 fn plant_zone() -> String {
     jiff::tz::TimeZone::system()
         .iana_name()

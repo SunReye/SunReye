@@ -169,8 +169,8 @@ impl Schedule {
 pub struct Tariffs {
     database: Database,
     changed: Arc<watch::Sender<()>>,
-    /// The plant timezone the bands evaluate in.
-    zone: TimeZone,
+    /// The plant timezone the bands evaluate in, now and after each change.
+    zone: watch::Receiver<TimeZone>,
     bus: Bus,
     declarer: Declarer,
     reader: Reader,
@@ -184,7 +184,7 @@ pub struct Tariffs {
 impl Tariffs {
     /// The tariff over `storage`, its bands on the wall clock of the plant timezone `zone`.
     #[must_use]
-    pub fn new(storage: &Storage, bus: &Bus, zone: TimeZone) -> Self {
+    pub fn new(storage: &Storage, bus: &Bus, zone: watch::Receiver<TimeZone>) -> Self {
         Self {
             database: storage.database(),
             changed: Arc::new(watch::channel(()).0),
