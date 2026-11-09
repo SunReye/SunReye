@@ -15,7 +15,7 @@ const LAYOUT = {
   ],
 };
 
-/** A morning-to-evening triangle peaking at 1000 W. */
+/** A morning-to-evening triangle peaking at 1000 W: four-digit y-axis labels. */
 const PEAK = [
   { start: "2026-11-09T06:00:00Z", end: "2026-11-09T06:01:00Z", mean: 0 },
   { start: "2026-11-09T12:00:00Z", end: "2026-11-09T12:01:00Z", mean: 1000 },
@@ -121,4 +121,19 @@ test("the day chart draws its lines without filling beneath them", async () => {
 
   // A filled triangle covers a fifth of the plot; strokes, grid and labels stay far below.
   expect(inked(await drawn())).toBeLessThan(0.1);
+});
+
+// Clipped text runs off the canvas' edge, leaving ink in its outermost columns.
+test("the day chart's y-axis labels are not clipped at the left edge", async () => {
+  await render(DayChart, { core: connect(testCore(PEAK)), device: 1, series: ["pv.power"] });
+
+  expect(inked(await drawn(), 0, 2)).toBe(0);
+});
+
+test("the day chart's last x-axis label is not clipped at the right edge", async () => {
+  await render(DayChart, { core: connect(testCore(PEAK)), device: 1, series: ["pv.power"] });
+
+  const image = await drawn();
+
+  expect(inked(image, image.width - 2)).toBe(0);
 });
