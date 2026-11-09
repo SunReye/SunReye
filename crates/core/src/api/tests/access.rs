@@ -1,10 +1,10 @@
 //! Who reaches which route (ADR 9): every route of the served document is classified, and a
 //! viewer or `read` token never reaches an admin route.
 
-use axum::http::Method;
+use axum::http::{Method, StatusCode};
 use serde_json::Value;
 
-use super::{Core, get, json};
+use super::{Core, get, json, problem, with_cookie};
 use crate::auth::{Access, access};
 
 /// Every operation the served OpenAPI document describes, as `(method, path)`.
@@ -60,4 +60,49 @@ fn live_values_and_history_are_read_and_configuration_is_admin() {
     ] {
         assert_eq!(access(&method, path), Some(expected), "{method} {path}");
     }
+}
+
+/// A request to `path` with each parameter filled in.
+fn request(method: &Method, path: &str) -> axum::http::Request<axum::body::Body> {
+    let uri = path.replace("{id}", "1").replace("{key}", "x");
+    let request = axum::http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    super::from(super::HOME, request)
+}
+
+/// Sends every operation of the document as `who` and checks what each answers.
+async fn check_every_route(core: &Core, who: &str, sign: impl Fn(Request) -> Request) {
+    for (method, path) in operations(core).await {
+        let access = access(&method, &path).unwrap();
+        let response = core.send(sign(request(&method, &path))).await;
+        let status = response.status();
+        match access {
+            Access::Admin => assert_eq!(
+                problem(response).await,
+                (StatusCode::FORBIDDEN, "auth.forbidden".to_owned()),
+                "{who} reached {method} {path}"
+            ),
+            Access::Read | Access::Public => assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "{who} was refused {method} {path}: {status}"
+            ),
+        }
+    }
+}
+
+type Request = axum::http::Request<axum::body::Body>;
+
+#[tokio::test]
+async fn a_viewer_reaches_every_read_route_and_no_admin_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.viewer(&admin, "grandma", "sunny days").await;
+    let viewer = core
+        .sign_in(super::viewers::login("grandma", "sunny days"))
+        .await;
+
+    check_every_route(&core, "a viewer", |request| with_cookie(&viewer, request)).await;
 }

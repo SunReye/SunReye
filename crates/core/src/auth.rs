@@ -3,6 +3,7 @@
 mod access;
 mod backoff;
 mod sessions;
+mod viewers;
 
 pub use access::{Access, access};
 
@@ -22,10 +23,10 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
-use sessions::{IDLE, Sessions};
+use sessions::{Grant, IDLE, Sessions};
 
 /// bcrypt's work factor, as v4 used.
 const COST: u32 = 12;
@@ -60,6 +61,10 @@ const PASSWORD: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::AuthPassword,
 };
+const FORBIDDEN: Problem = Problem {
+    status: StatusCode::FORBIDDEN,
+    code: Code::AuthForbidden,
+};
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
@@ -69,14 +74,22 @@ const INTERNAL: Problem = Problem {
     code: Code::Internal,
 };
 
+/// The admin's password, set on the first run.
 #[derive(Deserialize, ToSchema)]
-pub struct Credentials {
+pub struct Password {
     password: String,
 }
 
-/// The password of a request body.
-fn password(body: Result<Json<Credentials>, JsonRejection>) -> Result<String, Problem> {
-    let Json(Credentials { password }) = body.map_err(|_| BODY)?;
+/// A sign-in: the admin's password alone, or a viewer's name and password.
+#[derive(Deserialize, ToSchema)]
+pub struct Credentials {
+    /// A viewer's name; absent for the admin.
+    #[serde(default)]
+    name: Option<String>,
+    password: String,
+}
+
+fn checked(password: String) -> Result<String, Problem> {
     if password.len() > LONGEST {
         return Err(PASSWORD);
     }
@@ -118,13 +131,20 @@ impl Auth {
         })))
     }
 
-    /// The sign-in routes beside `api`, each guarded as the access table classifies it.
-    pub fn routes(&self, api: OpenApiRouter) -> OpenApiRouter {
+    /// The sign-in and viewer routes beside `api`, each guarded as the access table classifies
+    /// it.
+    pub fn routes(&self, api: OpenApiRouter, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(session))
             .routes(routes!(setup))
             .routes(routes!(login))
             .with_state(self.clone())
+            .merge(
+                OpenApiRouter::new()
+                    .routes(routes!(viewers::list, viewers::add))
+                    .routes(routes!(viewers::remove))
+                    .with_state((self.clone(), clock)),
+            )
             .merge(api)
             .layer(middleware::from_fn_with_state(self.clone(), guard))
     }
@@ -175,15 +195,16 @@ async fn session() -> StatusCode {
 }
 
 /// The first run sets the admin password; there is no registration.
-#[utoipa::path(post, path = "/api/v1/setup", request_body = Credentials, responses(
+#[utoipa::path(post, path = "/api/v1/setup", request_body = Password, responses(
     (status = 204, description = "The admin password is set"),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn setup(
     State(auth): State<Auth>,
-    body: Result<Json<Credentials>, JsonRejection>,
+    body: Result<Json<Password>, JsonRejection>,
 ) -> Result<StatusCode, Problem> {
-    let password = password(body)?;
+    let Json(Password { password }) = body.map_err(|_| BODY)?;
+    let password = checked(password)?;
     if auth.admin().is_some() {
         return Err(CONFIGURED);
     }
@@ -229,7 +250,7 @@ impl IntoResponse for Refused {
     }
 }
 
-/// Signs the admin in to a session cookie.
+/// Signs the admin, or a viewer by name, in to a session cookie.
 #[utoipa::path(post, path = "/api/v1/login", request_body = Credentials, responses(
     (status = 204, description = "Signed in; the cookie is set"),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
@@ -240,8 +261,11 @@ async fn login(
     headers: HeaderMap,
     body: Result<Json<Credentials>, JsonRejection>,
 ) -> Result<Response, Refused> {
-    let password = password(body)?;
-    let admin = auth.admin().ok_or(SETUP)?;
+    let Json(Credentials { name, password }) = body.map_err(|_| BODY)?;
+    let password = checked(password)?;
+    if name.is_none() && auth.admin().is_none() {
+        return Err(SETUP.into());
+    }
     let address = client.ip();
     let wait = auth.backoff().wait(address, Instant::now());
     if let Some(wait) = wait {
@@ -252,12 +276,26 @@ async fn login(
     }
     // Counted as failed until it succeeds, so concurrent guesses wait too.
     auth.backoff().fail(address, Instant::now());
-    let matches = blocking(move || bcrypt::verify(password, &admin)).await?;
+    let (grant, hash) = match name {
+        None => (Grant::Admin, auth.admin().ok_or(SETUP)?),
+        Some(name) => auth
+            .0
+            .database
+            .run(move |db| viewers::find(db, &name))
+            .await
+            .map_err(|_| INTERNAL)?
+            .map(|(id, hash)| (Grant::Viewer(id), hash))
+            .ok_or(CREDENTIALS)?,
+    };
+    let matches = blocking(move || bcrypt::verify(password, &hash)).await?;
     if !matches {
         return Err(CREDENTIALS.into());
     }
     auth.backoff().succeed(address);
-    let token = auth.sessions().start(Instant::now()).ok_or(INTERNAL)?;
+    let token = auth
+        .sessions()
+        .start(grant, Instant::now())
+        .ok_or(INTERNAL)?;
     let tls = over_tls(&headers);
     Ok(with_cookie(
         &token,
@@ -277,24 +315,24 @@ async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Respon
     if access == Access::Public {
         return next.run(request).await;
     }
-    require(&auth, request, next).await
-}
-
-/// Refuses a request without a live session, and renews the cookie of one with it. An ingress
-/// request from the Supervisor needs neither: Home Assistant signed its user in.
-async fn require(auth: &Auth, request: Request, next: Next) -> Response {
+    // Home Assistant signed the user of an ingress request in.
     if auth.via_ingress(&request) {
         return next.run(request).await;
     }
-    if auth.admin().is_none() {
-        return SETUP.into_response();
-    }
-    let Some(token) = session_token(request.headers()) else {
-        return REQUIRED.into_response();
+    let session = session_token(request.headers())
+        .and_then(|token| Some((auth.sessions().touch(&token, Instant::now())?, token)));
+    let Some((grant, token)) = session else {
+        let problem = if auth.admin().is_none() {
+            SETUP
+        } else {
+            REQUIRED
+        };
+        return problem.into_response();
     };
-    if !auth.sessions().touch(&token, Instant::now()) {
-        return REQUIRED.into_response();
+    if access == Access::Admin && grant != Grant::Admin {
+        return FORBIDDEN.into_response();
     }
+    // Using a session renews its cookie.
     let tls = over_tls(request.headers());
     with_cookie(&token, tls, next.run(request).await)
 }

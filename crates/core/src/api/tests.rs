@@ -35,6 +35,7 @@ mod live;
 mod location;
 mod screen;
 mod settings;
+mod viewers;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {

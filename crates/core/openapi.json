@@ -47,7 +47,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection`, `device` or `location`.",
+            "description": "`connection`, `device`, `location` or `viewer`.",
             "type": "string"
           }
         },
@@ -75,6 +75,10 @@
           "auth.backoff",
           "auth.configured",
           "auth.password",
+          "auth.forbidden",
+          "viewer.none",
+          "viewer.name",
+          "viewer.value",
           "history.range",
           "history.counter",
           "forecast.range",
@@ -186,7 +190,15 @@
         "type": "object"
       },
       "Credentials": {
+        "description": "A sign-in: the admin's password alone, or a viewer's name and password.",
         "properties": {
+          "name": {
+            "description": "A viewer's name; absent for the admin.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "password": {
             "type": "string"
           }
@@ -619,6 +631,18 @@
         ],
         "type": "string"
       },
+      "Password": {
+        "description": "The admin's password, set on the first run.",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
       "Point": {
         "properties": {
           "end": {
@@ -881,6 +905,55 @@
           "solarman-v5"
         ],
         "type": "string"
+      },
+      "Viewer": {
+        "description": "A viewer as the API reads it: never its password.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ViewerDraft": {
+        "description": "A viewer as the admin adds it.",
+        "properties": {
+          "name": {
+            "description": "What the viewer signs in with; unique.",
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "password"
+        ],
+        "type": "object"
+      },
+      "Viewers": {
+        "properties": {
+          "viewers": {
+            "items": {
+              "$ref": "#/components/schemas/Viewer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "viewers"
+        ],
+        "type": "object"
       },
       "Wiring": {
         "description": "Where a string sits and what it is made of.",
@@ -1709,7 +1782,7 @@
             }
           }
         },
-        "summary": "Signs the admin in to a session cookie."
+        "summary": "Signs the admin, or a viewer by name, in to a session cookie."
       }
     },
     "/api/v1/module-types": {
@@ -1823,7 +1896,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Credentials"
+                "$ref": "#/components/schemas/Password"
               }
             }
           },
@@ -1844,6 +1917,95 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/viewers": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewers"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewer"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a viewer, who reads live values and history."
+      }
+    },
+    "/api/v1/viewers/{id}": {
+      "delete": {
+        "operationId": "remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a viewer and ends its sessions."
       }
     },
     "/api/v1/writes": {

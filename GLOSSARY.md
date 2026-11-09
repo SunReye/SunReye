@@ -200,6 +200,10 @@ _Avoid_: Service, component
 One browser's sign-in, carried by a cookie and ended by 30 days without use.
 _Avoid_: Login, token
 
+**Viewer**:
+A local account the admin creates that reads live values and history and changes nothing.
+_Avoid_: User, guest
+
 **Capability**:
 A statement of what the core, a profile or a device supports, published in one document.
 _Avoid_: Feature flag

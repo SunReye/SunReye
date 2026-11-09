@@ -26,7 +26,7 @@ pub(super) fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
     from(HOME, request)
 }
 
-fn delete(uri: &str) -> Request<Body> {
+pub(super) fn delete(uri: &str) -> Request<Body> {
     from(HOME, Request::delete(uri).body(Body::empty()).unwrap())
 }
 
