@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::document::{Kind, Range, SettingDoc, StepDoc};
+use crate::document::{BlockDoc, BlockWord, Kind, Range, SettingDoc, StepDoc};
 
 /// One writable device parameter.
 #[derive(Debug, Clone)]
@@ -18,17 +18,26 @@ pub struct Setting {
 }
 
 /// One step of a recipe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
     /// Writes the value's words from `register` with function code 16: Deye ignores function code
     /// 6 on its settings registers (measured live).
     Write { register: u16 },
+    /// Writes `head`, the value's words and `tail` from `register` in one request.
+    WriteBlock {
+        register: u16,
+        head: Vec<u16>,
+        tail: Vec<u16>,
+    },
     /// Waits before the next step; the endpoint's polls wait with it.
     Delay(Duration),
 }
 
 /// The longest delay: polls of every device on the endpoint wait for it.
 const MAX_DELAY_MS: u32 = 10_000;
+
+/// The most registers function code 16 writes in one request.
+const MAX_BLOCK: usize = 123;
 
 impl Setting {
     /// The bounds a value must lie within; `None` when the setting declares its values instead.
@@ -70,10 +79,7 @@ impl Setting {
     /// The registers a value takes.
     #[must_use]
     pub const fn width(&self) -> u16 {
-        match self.kind {
-            Kind::U16 | Kind::I16 => 1,
-            Kind::U32 => 2,
-        }
+        width(self.kind)
     }
 
     /// The words of `value`, low word first; `None` unless it is a whole number of steps of the
@@ -126,6 +132,13 @@ impl Setting {
     }
 }
 
+const fn width(kind: Kind) -> u16 {
+    match kind {
+        Kind::U16 | Kind::I16 => 1,
+        Kind::U32 => 2,
+    }
+}
+
 pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static str)> {
     let mut settings: Vec<Setting> = Vec::with_capacity(docs.len());
     for doc in docs {
@@ -135,6 +148,32 @@ pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static 
         settings.push(setting(doc.key.clone(), doc)?);
     }
     Ok(settings)
+}
+
+fn block(doc: &BlockDoc, kind: Kind) -> Result<Step, &'static str> {
+    let words: Vec<Option<u16>> = doc
+        .words
+        .iter()
+        .map(|w| match w {
+            BlockWord::Word(w) => Some(*w),
+            BlockWord::Value(_) => None,
+        })
+        .collect();
+    let mut marks = words
+        .iter()
+        .enumerate()
+        .filter_map(|(at, w)| w.is_none().then_some(at));
+    let (Some(at), None) = (marks.next(), marks.next()) else {
+        return Err("a block carries `value` exactly once");
+    };
+    if words.len() - 1 + usize::from(width(kind)) > MAX_BLOCK {
+        return Err("a block is at most 123 registers");
+    }
+    Ok(Step::WriteBlock {
+        register: doc.register,
+        head: words.iter().take(at).flatten().copied().collect(),
+        tail: words.iter().skip(at + 1).flatten().copied().collect(),
+    })
 }
 
 fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static str)> {
@@ -162,6 +201,7 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
             StepDoc::Write(r) => Ok(Step::Write {
                 register: r.register,
             }),
+            StepDoc::WriteBlock(b) => block(&b, doc.kind),
             StepDoc::Delay(d) if d.ms > MAX_DELAY_MS => {
                 Err("a delay is at most 10000 ms: the device's polls wait for it")
             }

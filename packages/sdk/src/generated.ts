@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "delay";
+export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "delay";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
@@ -42,9 +42,11 @@ export type Setting = { key: string, type: Kind, scale?: number, range?: Range, 
  */
 minInterval: number, recipe: Array<Step>, readBack?: Register, writeOnly?: boolean, };
 
-export type Step = { "write": Register } | { "delay": Delay };
+export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "delay": Delay };
 
 export type Register = { register: number, };
+
+export type WriteBlock = { register: number, words: Array<number | "value">, };
 
 export type Delay = { ms: number, };
 

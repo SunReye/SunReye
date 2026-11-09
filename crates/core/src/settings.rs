@@ -131,21 +131,28 @@ pub async fn run(
     timeout: Duration,
     job: &Job,
 ) -> Applied {
+    let mut link = Link {
+        endpoint,
+        client,
+        timeout,
+        unit: job.unit,
+    };
     let mut applied = Applied {
         outcome: Outcome::Unknown,
         before: None,
         after: None,
         failed_step: None,
     };
+    let width = usize::from(job.setting.width());
     let Some(read_back) = job.setting.read_back() else {
         // Write-only: nothing to compare with, before or after.
-        if let Err(failure) = steps(endpoint, client, timeout, job).await {
+        if let Err(failure) = steps(&mut link, job).await {
             applied.outcome = failure.outcome();
             applied.failed_step = Some(failure.step);
         }
         return applied;
     };
-    let Ok(before) = read(endpoint, client, timeout, job, read_back).await else {
+    let Ok(before) = link.read(read_back, width).await else {
         return applied;
     };
     applied.before = job.setting.decode(&before);
@@ -153,8 +160,8 @@ pub async fn run(
         applied.outcome = Outcome::Unchanged;
         return applied;
     }
-    let result = steps(endpoint, client, timeout, job).await;
-    let after = read(endpoint, client, timeout, job, read_back).await.ok();
+    let result = steps(&mut link, job).await;
+    let after = link.read(read_back, width).await.ok();
     applied.after = after.as_deref().and_then(|w| job.setting.decode(w));
     applied.outcome = match (&result, after) {
         (Err(failure), _) => failure.outcome(),
@@ -185,25 +192,21 @@ impl Failure {
     }
 }
 
-async fn steps(
-    endpoint: &Endpoint,
-    client: &mut Option<Client>,
-    timeout: Duration,
-    job: &Job,
-) -> Result<(), Failure> {
+async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
     let mut wrote = false;
     for (step, number) in job.setting.recipe().iter().zip(1..) {
-        let result = match *step {
-            Step::Write { register } => {
-                let words = &job.words;
-                exchange(endpoint, client, timeout, async |c: &mut Client| {
-                    c.write_registers(job.unit, register, words).await
-                })
-                .await
-                .map(|()| true)
+        let result = match step {
+            Step::Write { register } => link.write(*register, &job.words).await,
+            Step::WriteBlock {
+                register,
+                head,
+                tail,
+            } => {
+                let words = [head.as_slice(), &job.words, tail].concat();
+                link.write(*register, &words).await
             }
             Step::Delay(pause) => {
-                tokio::time::sleep(pause).await;
+                tokio::time::sleep(*pause).await;
                 Ok(false)
             }
         };
@@ -221,38 +224,50 @@ async fn steps(
     Ok(())
 }
 
-async fn read(
-    endpoint: &Endpoint,
-    client: &mut Option<Client>,
+/// The device a recipe talks to, through its endpoint task's client.
+struct Link<'a> {
+    endpoint: &'a Endpoint,
+    client: &'a mut Option<Client>,
     timeout: Duration,
-    job: &Job,
-    start: u16,
-) -> Result<Vec<u16>, Error> {
-    let mut words = vec![0; usize::from(job.setting.width())];
-    exchange(endpoint, client, timeout, async |c: &mut Client| {
-        c.read_holding(job.unit, start, &mut words).await
-    })
-    .await?;
-    Ok(words)
+    unit: u8,
 }
 
-/// One request on `client`, connected first when it has none. An error other than an exception
-/// drops the connection: the wire may hold half a reply.
-async fn exchange(
-    endpoint: &Endpoint,
-    client: &mut Option<Client>,
-    timeout: Duration,
-    request: impl AsyncFnOnce(&mut Client) -> Result<(), Error>,
-) -> Result<(), Error> {
-    let connected = match client {
-        Some(connected) => connected,
-        None => client.insert(Client::connect(endpoint, timeout).await?),
-    };
-    let result = request(connected).await;
-    if matches!(result, Err(ref e) if !matches!(e, Error::Exception(_))) {
-        *client = None;
+impl Link<'_> {
+    /// Writes `words` from `register`; `Ok(true)` once acknowledged.
+    async fn write(&mut self, register: u16, words: &[u16]) -> Result<bool, Error> {
+        let unit = self.unit;
+        self.exchange(async |c: &mut Client| c.write_registers(unit, register, words).await)
+            .await
+            .map(|()| true)
     }
-    result
+
+    /// `width` holding registers from `start`.
+    async fn read(&mut self, start: u16, width: usize) -> Result<Vec<u16>, Error> {
+        let unit = self.unit;
+        let mut words = vec![0; width];
+        self.exchange(async |c: &mut Client| c.read_holding(unit, start, &mut words).await)
+            .await?;
+        Ok(words)
+    }
+
+    /// One request, connected first when there is no client. An error other than an exception
+    /// drops the connection: the wire may hold half a reply.
+    async fn exchange(
+        &mut self,
+        request: impl AsyncFnOnce(&mut Client) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let connected = match self.client {
+            Some(connected) => connected,
+            None => self
+                .client
+                .insert(Client::connect(self.endpoint, self.timeout).await?),
+        };
+        let result = request(connected).await;
+        if matches!(result, Err(ref e) if !matches!(e, Error::Exception(_))) {
+            *self.client = None;
+        }
+        result
+    }
 }
 
 #[cfg(test)]

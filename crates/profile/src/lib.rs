@@ -19,7 +19,16 @@ pub use setting::{Setting, Step};
 pub const SCHEMA: u32 = 1;
 
 /// What this build can load: bindings, decoders, computed quantities and recipe step kinds.
-pub const CAPABILITIES: &[&str] = &["modbus", "u16", "i16", "u32", "compute", "write", "delay"];
+pub const CAPABILITIES: &[&str] = &[
+    "modbus",
+    "u16",
+    "i16",
+    "u32",
+    "compute",
+    "write",
+    "write-block",
+    "delay",
+];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both
 /// report (ADR 5, 9).

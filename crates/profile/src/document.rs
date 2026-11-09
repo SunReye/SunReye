@@ -57,6 +57,7 @@ pub struct SettingDoc {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum StepDoc {
     Write(RegisterDoc),
+    WriteBlock(BlockDoc),
     Delay(DelayDoc),
 }
 
@@ -65,9 +66,34 @@ impl StepDoc {
     pub const fn capability(&self) -> &'static str {
         match self {
             Self::Write(_) => "write",
+            Self::WriteBlock(_) => "write-block",
             Self::Delay(_) => "delay",
         }
     }
+}
+
+/// Registers written in one request from `register`, the value's words in place of `"value"`.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "WriteBlock"))]
+#[serde(deny_unknown_fields)]
+pub struct BlockDoc {
+    pub register: u16,
+    #[cfg_attr(test, ts(type = "Array<number | \"value\">"))]
+    pub words: Vec<BlockWord>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum BlockWord {
+    Word(u16),
+    Value(ValueMark),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ValueMark {
+    Value,
 }
 
 #[derive(Deserialize)]

@@ -202,3 +202,22 @@ async fn a_refusal_after_steps_that_wrote_nothing_is_a_mismatch() {
         }
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_block_write_sends_the_value_among_its_fixed_words_in_one_request() {
+    let recipe = json!([{ "writeBlock": { "register": 107, "words": [1, "value", 9] } }]);
+    let (device, job) = job(&current(&recipe), 50.0);
+    let exchanges = [
+        read(1, 108, 108),
+        [
+            Exchange::Request(frame(2, &[0x10, 0, 107, 0, 3, 6, 0, 1, 0, 50, 0, 9])),
+            Exchange::Reply(vec![frame(2, &[0x10, 0, 107, 0, 3])]),
+        ],
+        read(3, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}

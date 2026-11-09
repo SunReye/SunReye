@@ -183,3 +183,36 @@ fn a_delay_waits_between_steps_for_at_most_ten_seconds() {
         ["`requires` lacks `delay`, which the profile uses"]
     );
 }
+
+#[test]
+fn a_block_write_carries_the_value_once_among_fixed_words() {
+    let recipe = json!([{ "writeBlock": { "register": 100, "words": [1, "value", 0, 7] } }]);
+    let profile = load(&json!([with_recipe(&recipe)])).unwrap();
+
+    assert_eq!(
+        profile.setting("current").unwrap().recipe(),
+        [Step::WriteBlock {
+            register: 100,
+            head: vec![1],
+            tail: vec![0, 7],
+        }]
+    );
+    for words in [json!([1, 0]), json!(["value", 1, "value"])] {
+        let recipe = json!([{ "writeBlock": { "register": 100, "words": words } }]);
+        assert_eq!(
+            refusal(&json!([with_recipe(&recipe)])).1,
+            "a block carries `value` exactly once"
+        );
+    }
+    let mut words = vec![json!(0); 123];
+    words.push(json!("value"));
+    let long = json!([{ "writeBlock": { "register": 100, "words": words } }]);
+    assert_eq!(
+        refusal(&json!([with_recipe(&long)])).1,
+        "a block is at most 123 registers"
+    );
+    assert_eq!(
+        warnings(&json!([with_recipe(&recipe)]), &json!(["modbus", "u16"])),
+        ["`requires` lacks `write-block`, which the profile uses"]
+    );
+}
