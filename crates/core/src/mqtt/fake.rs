@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 /// A CONNECT the broker received, and when.
@@ -28,6 +29,7 @@ pub struct Fake {
     close: broadcast::Sender<()>,
     retained: Retained,
     published: broadcast::Sender<(String, String)>,
+    listener: JoinHandle<()>,
 }
 
 /// The retained message of each topic, as (topic, payload).
@@ -37,6 +39,12 @@ impl Fake {
     /// Closes every open session.
     pub fn close(&self) {
         let _closed = self.close.send(());
+    }
+
+    /// Stops accepting connections and closes every open session: the broker is gone.
+    pub fn shut(&self) {
+        self.listener.abort();
+        self.close();
     }
 
     /// Keeps `payload` as `topic`'s retained message, sent to each later subscription, and sends
@@ -71,7 +79,7 @@ pub async fn serve(code: u8) -> Fake {
     let session_close = close.clone();
     let session_published = published.clone();
     let session_retained = Arc::clone(&retained);
-    tokio::spawn(async move {
+    let listener = tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
             let channels = Channels {
@@ -91,6 +99,7 @@ pub async fn serve(code: u8) -> Fake {
         close,
         retained,
         published,
+        listener,
     }
 }
 

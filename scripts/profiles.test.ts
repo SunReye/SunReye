@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { buildProfiles } from "../packages/sdk/src/build.ts";
 import { loadProfileWasm } from "../packages/sdk/src/index.ts";
 import deye from "../profiles/deye-sg05lp3.ts";
+import evcc from "../profiles/evcc.ts";
 
 const profiles = new URL("../profiles", import.meta.url).pathname;
 
@@ -22,8 +23,11 @@ test("the committed profile files and index are the build of profiles/", async (
   expect(built).toEqual(committed);
 });
 
-test("the official Deye profile loads without a warning", async () => {
+test.each([
+  ["Deye", deye],
+  ["EVCC", evcc],
+])("the official %s profile loads without a warning", async (_, profile) => {
   const wasm = await loadProfileWasm();
 
-  expect(wasm.lint(JSON.stringify(deye))).toEqual([]);
+  expect(wasm.lint(JSON.stringify(profile))).toEqual([]);
 });

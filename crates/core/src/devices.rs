@@ -30,6 +30,7 @@ use crate::settings::{
     self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
 };
 use crate::storage::{self, Database, Declarer, Policy};
+use crate::subscriber::{self, Subscriber};
 use crate::transport::Endpoint;
 
 const INTERNAL: Problem = Problem {
@@ -52,7 +53,8 @@ enum Refusal {
     DeviceConnection,
     /// The device names no known profile.
     Profile,
-    /// The device's connection is a broker, through which no profile reads yet.
+    /// A device behind a broker needs a profile with an `mqtt` binding, and one with an `mqtt`
+    /// binding needs a broker.
     Transport,
     /// A device's profile is fixed: its history is stored in that profile's steps.
     ProfileChange,
@@ -165,7 +167,8 @@ pub struct DeviceDraft {
     pub connection: u32,
     /// The profile's id, such as `deye-sg05lp3`; fixed once the device is added.
     pub profile: String,
-    /// The Modbus unit id: the device address behind the connection.
+    /// The device address behind the connection: a Modbus unit id, or the index a broker's
+    /// profile names, such as an EVCC loadpoint's.
     pub unit: u8,
     /// Whether settings may be written (ADR 7); off when left out.
     #[serde(default)]
@@ -204,11 +207,20 @@ struct Writing<'a> {
     profile: Arc<Profile>,
 }
 
-/// A broker connection's client and the broker it was started for.
-struct Brokered {
+/// A broker connection as its client reads it.
+#[derive(PartialEq, Eq)]
+struct Brokering {
     id: u32,
     broker: mqtt::Broker,
-    client: mqtt::Client,
+    root: String,
+    /// Each device's id, address and profile.
+    devices: Vec<(u32, u8, String)>,
+}
+
+/// A broker connection's client with its devices, and what it was started for.
+struct Brokered {
+    brokering: Brokering,
+    subscriber: Subscriber,
 }
 
 /// An endpoint task and the devices it polls.
@@ -276,8 +288,8 @@ impl Devices {
         for connection in &mut connections {
             connection.status = brokers
                 .iter()
-                .find(|b| b.id == connection.id)
-                .map(|b| b.client.status().into());
+                .find(|b| b.brokering.id == connection.id)
+                .map(|b| b.subscriber.status().into());
         }
         drop(brokers);
         Ok(connections)
@@ -416,8 +428,8 @@ impl Devices {
         draft: DeviceDraft,
         changed: SystemTime,
     ) -> Result<Device, Problem> {
-        self.check_profile(&draft)?;
-        self.apply(move |db| store::add_device(db, draft, changed))
+        let topics = self.check_profile(&draft)?;
+        self.apply(move |db| store::add_device(db, draft, topics, changed))
             .await
     }
 
@@ -432,8 +444,8 @@ impl Devices {
         draft: DeviceDraft,
         changed: SystemTime,
     ) -> Result<Device, Problem> {
-        self.check_profile(&draft)?;
-        self.apply(move |db| store::change_device(db, id, draft, changed))
+        let topics = self.check_profile(&draft)?;
+        self.apply(move |db| store::change_device(db, id, draft, topics, changed))
             .await
     }
 
@@ -633,10 +645,11 @@ impl Devices {
         Ok(self.catalogue.get(id).ok_or(settings::Refusal::None)?)
     }
 
-    fn check_profile(&self, draft: &DeviceDraft) -> Result<(), Refusal> {
+    /// Whether the draft's profile reads topics; refused when the profile is unknown.
+    fn check_profile(&self, draft: &DeviceDraft) -> Result<bool, Refusal> {
         self.catalogue
             .get(&draft.profile)
-            .map(|_| ())
+            .map(|p| p.reads_topics())
             .ok_or(Refusal::Profile)
     }
 
@@ -691,40 +704,62 @@ impl Devices {
         Ok(())
     }
 
-    /// Brings the broker clients in line with the broker connections: a changed one is replaced.
+    /// Brings the broker clients in line with the broker connections: one whose connection or
+    /// devices changed is replaced, so it subscribes afresh and receives the retained state.
     async fn restart_brokers(&self) -> Result<(), storage::Error> {
-        let wanted = self.database.run(store::brokers).await?;
-        let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
-        brokers.retain(|b| wanted.iter().any(|(id, w)| *id == b.id && *w == b.broker));
-        for (id, broker) in wanted {
-            if !brokers.iter().any(|b| b.id == id) {
-                brokers.push(Brokered {
-                    id,
-                    client: mqtt::spawn(broker.clone(), Vec::new()),
-                    broker,
-                });
+        let mut wanted = self.database.run(store::brokers).await?;
+        self.keep_brokers(&mut wanted);
+        for brokering in wanted {
+            let devices: Vec<endpoint::Device> = brokering
+                .devices
+                .iter()
+                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
+                .collect();
+            for device in &devices {
+                self.declare(device.id, &device.profile).await?;
             }
+            let subscriber = subscriber::spawn(
+                brokering.broker.clone(),
+                &brokering.root,
+                devices,
+                self.bus.clone(),
+            );
+            let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+            brokers.push(Brokered {
+                brokering,
+                subscriber,
+            });
         }
-        drop(brokers);
         Ok(())
+    }
+
+    /// Stops the clients no longer `wanted`, and leaves in `wanted` those still to start.
+    fn keep_brokers(&self, wanted: &mut Vec<Brokering>) {
+        let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        brokers.retain(|b| wanted.contains(&b.brokering));
+        wanted.retain(|w| !brokers.iter().any(|b| b.brokering == *w));
+        drop(brokers);
     }
 
     /// The devices with their profiles; one whose profile is not known is skipped.
     fn profiles(&self, devices: &[Polled]) -> Vec<endpoint::Device> {
         devices
             .iter()
-            .filter_map(|d| {
-                let profile = self.catalogue.get(&d.profile);
-                if profile.is_none() {
-                    tracing::warn!(device = d.id, profile = d.profile, "unknown profile");
-                }
-                Some(endpoint::Device {
-                    id: DeviceId(d.id),
-                    unit: d.unit,
-                    profile: profile?,
-                })
-            })
+            .filter_map(|d| self.known(d.id, d.unit, &d.profile))
             .collect()
+    }
+
+    /// Device `id` with profile `profile`, unless the profile is not known.
+    fn known(&self, id: u32, unit: u8, profile: &str) -> Option<endpoint::Device> {
+        let Some(profile) = self.catalogue.get(profile) else {
+            tracing::warn!(device = id, profile, "unknown profile");
+            return None;
+        };
+        Some(endpoint::Device {
+            id: DeviceId(id),
+            unit,
+            profile,
+        })
     }
 
     /// Declares every series of `device` in its profile's steps. A series storage refuses, such as

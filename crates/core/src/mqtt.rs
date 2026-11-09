@@ -59,6 +59,12 @@ impl Client {
         self.status.borrow().clone()
     }
 
+    /// The status, as it changes.
+    #[must_use]
+    pub fn watch(&self) -> watch::Receiver<Status> {
+        self.status.clone()
+    }
+
     /// Messages received from now on: subscribe before the runtime next yields to receive the
     /// retained state the broker sends on connect.
     #[must_use]

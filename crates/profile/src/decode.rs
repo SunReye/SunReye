@@ -51,6 +51,14 @@ impl Profile {
             }
         }
     }
+    /// Whether it reads through the `mqtt` binding: a device behind a broker needs one that does.
+    #[must_use]
+    pub fn reads_topics(&self) -> bool {
+        self.quantities()
+            .iter()
+            .any(|q| matches!(q.read, Read::Topic { .. }))
+    }
+
     /// The topic of every quantity read from one, with `address` in place of its address mark,
     /// by position in [`Profile::quantities`].
     #[must_use]

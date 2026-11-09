@@ -849,7 +849,8 @@ export interface components {
             profile: string;
             /**
              * Format: int32
-             * @description The Modbus unit id: the device address behind the connection.
+             * @description The device address behind the connection: a Modbus unit id, or the index a broker's
+             *     profile names, such as an EVCC loadpoint's.
              */
             unit: number;
             /** @description Whether settings may be written (ADR 7); off when left out. */

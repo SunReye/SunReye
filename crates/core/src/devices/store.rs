@@ -5,7 +5,8 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Connection, ConnectionDraft, Device, DeviceDraft, Polled, Reach, Refusal, Transport, entry,
+    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Polled, Reach, Refusal, Transport,
+    entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::mqtt;
@@ -85,25 +86,39 @@ pub fn secret(db: &Db, id: u32, name: &str) -> rusqlite::Result<Option<String>> 
     .optional()
 }
 
-/// Every broker connection with its credentials, by id, for its client alone.
-pub fn brokers(db: &Db) -> rusqlite::Result<Vec<(u32, mqtt::Broker)>> {
-    let rows: Vec<(u32, String, u16)> = db
-        .prepare("SELECT id, host, port FROM connection WHERE transport = 'mqtt' ORDER BY id")?
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+/// Every broker connection with its credentials, topic root and devices, by id, for its client
+/// alone.
+pub fn brokers(db: &Db) -> rusqlite::Result<Vec<Brokering>> {
+    let rows: Vec<(u32, String, u16, Option<String>)> = db
+        .prepare(
+            "SELECT id, host, port, topic_root FROM connection WHERE transport = 'mqtt' ORDER BY id",
+        )?
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
         .collect::<rusqlite::Result<_>>()?;
     rows.into_iter()
-        .map(|(id, host, port)| {
+        .map(|(id, host, port, root)| {
             let username = secret(db, id, "username")?;
             let password = secret(db, id, "password")?;
             let credentials = username.map(|u| (u, password.unwrap_or_default()));
-            Ok((
+            let devices = db
+                .prepare(
+                    "SELECT id, unit, profile FROM device
+                     WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
+                )?
+                .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(Brokering {
                 id,
-                mqtt::Broker {
+                broker: mqtt::Broker {
                     host,
                     port,
                     credentials,
                 },
-            ))
+                root: root.unwrap_or_default(),
+                devices,
+            })
         })
         .collect()
 }
@@ -173,10 +188,11 @@ pub fn change_connection(
     }
     let r = &draft.reach;
     let units = units_of(&tx, id)?;
-    if r.transport == Transport::Mqtt && !units.is_empty() {
+    let was_broker = connection(&tx, id)?.is_some_and(|c| c.reach.transport == Transport::Mqtt);
+    if (r.transport == Transport::Mqtt) != was_broker && !units.is_empty() {
         return Ok(Err(Refusal::Transport));
     }
-    let taken = units_at(&tx, r.transport, &r.host, r.port, |c, _| c != id)?;
+    let taken = units_at(&tx, r, |c, _| c != id)?;
     if units.iter().any(|u| taken.contains(u)) {
         return Ok(Err(Refusal::Address));
     }
@@ -227,22 +243,19 @@ fn units_of(db: &Db, id: u32) -> rusqlite::Result<Vec<u8>> {
         .collect()
 }
 
-/// The unit ids taken at an endpoint by devices for which `counts(connection, device)` holds.
-fn units_at(
-    db: &Db,
-    transport: Transport,
-    host: &str,
-    port: u16,
-    counts: impl Fn(u32, u32) -> bool,
-) -> rusqlite::Result<Vec<u8>> {
+/// The device addresses taken at an endpoint, under a broker's topic root, by devices for which
+/// `counts(connection, device)` holds.
+fn units_at(db: &Db, r: &Reach, counts: impl Fn(u32, u32) -> bool) -> rusqlite::Result<Vec<u8>> {
     let rows: Vec<(u32, u32, u8)> = db
         .prepare(
             "SELECT c.id, d.id, d.unit FROM device d JOIN connection c ON c.id = d.connection
-             WHERE c.transport = ?1 AND c.host = ?2 AND c.port = ?3 AND d.unit IS NOT NULL",
+             WHERE c.transport = ?1 AND c.host = ?2 AND c.port = ?3 AND c.topic_root IS ?4
+             AND d.unit IS NOT NULL",
         )?
-        .query_map(params![transport_name(transport), host, port], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?
+        .query_map(
+            params![transport_name(r.transport), r.host, r.port, r.topic_root],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?
         .collect::<rusqlite::Result<_>>()?;
     Ok(rows
         .into_iter()
@@ -279,16 +292,17 @@ pub fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
     .optional()
 }
 
-/// Refuses an unknown connection, or a unit id another device has at the same endpoint.
-fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft) -> Outcome<()> {
+/// Refuses an unknown connection, a broker for a profile that reads no topics (`topics`) or the
+/// reverse, or a device address another device has at the same endpoint.
+fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft, topics: bool) -> Outcome<()> {
     let Some(connection) = connection(db, draft.connection)? else {
         return Ok(Err(Refusal::DeviceConnection));
     };
     let r = &connection.reach;
-    if r.transport == Transport::Mqtt {
+    if (r.transport == Transport::Mqtt) != topics {
         return Ok(Err(Refusal::Transport));
     }
-    let units = units_at(db, r.transport, &r.host, r.port, |_, d| Some(d) != id)?;
+    let units = units_at(db, r, |_, d| Some(d) != id)?;
     if units.contains(&draft.unit) {
         return Ok(Err(Refusal::Address));
     }
@@ -305,9 +319,14 @@ fn log_device(
     changes::append(db, &entry)
 }
 
-pub fn add_device(db: &Db, draft: DeviceDraft, changed: SystemTime) -> Outcome<Device> {
+pub fn add_device(
+    db: &Db,
+    draft: DeviceDraft,
+    topics: bool,
+    changed: SystemTime,
+) -> Outcome<Device> {
     let tx = db.unchecked_transaction()?;
-    if let Err(refusal) = check_device(&tx, None, &draft)? {
+    if let Err(refusal) = check_device(&tx, None, &draft, topics)? {
         return Ok(Err(refusal));
     }
     tx.execute(
@@ -326,7 +345,13 @@ pub fn add_device(db: &Db, draft: DeviceDraft, changed: SystemTime) -> Outcome<D
     Ok(Ok(device))
 }
 
-pub fn change_device(db: &Db, id: u32, draft: DeviceDraft, changed: SystemTime) -> Outcome<Device> {
+pub fn change_device(
+    db: &Db,
+    id: u32,
+    draft: DeviceDraft,
+    topics: bool,
+    changed: SystemTime,
+) -> Outcome<Device> {
     let tx = db.unchecked_transaction()?;
     let Some(stored) = device(&tx, id)? else {
         return Ok(Err(Refusal::NoDevice));
@@ -334,7 +359,7 @@ pub fn change_device(db: &Db, id: u32, draft: DeviceDraft, changed: SystemTime) 
     if stored.draft.profile != draft.profile {
         return Ok(Err(Refusal::ProfileChange));
     }
-    if let Err(refusal) = check_device(&tx, Some(id), &draft)? {
+    if let Err(refusal) = check_device(&tx, Some(id), &draft, topics)? {
         return Ok(Err(refusal));
     }
     tx.execute(
