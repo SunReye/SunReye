@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "requires": [
     "modbus",
     "u16",
@@ -23,6 +23,7 @@
   ],
   "inverter": {
     "maxInputVoltage": 800,
+    "acRating": 20000,
     "mppt": [
       {
         "maxCurrent": 26,
@@ -231,6 +232,12 @@
       "register": 600,
       "type": "u16",
       "scale": 0.1
+    },
+    {
+      "key": "inverter.output.power",
+      "role": "inverter.power",
+      "register": 636,
+      "type": "i16"
     },
     {
       "key": "ac.l1.ct.internal",

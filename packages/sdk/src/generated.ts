@@ -51,6 +51,10 @@ export type Inverter = {
  */
 maxInputVoltage: number, 
 /**
+ * Watts of AC output at its rating: the forecast caps the inverter there.
+ */
+acRating: number | null, 
+/**
  * The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices.
  */
 mppt: Array<Mppt>, };

@@ -37,6 +37,8 @@ pub struct Profile {
 pub struct Inverter {
     /// Volts.
     pub max_input_voltage: f64,
+    /// Watts of AC output at its rating: the forecast caps the inverter there.
+    pub ac_rating: Option<f64>,
     /// The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices.
     pub mppt: Vec<Mppt>,
 }

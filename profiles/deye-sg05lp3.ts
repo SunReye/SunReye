@@ -11,6 +11,7 @@ export default defineProfile({
   identify: [{ register: 0, values: [0x0500] }],
   inverter: {
     maxInputVoltage: 800,
+    acRating: 20000,
     mppt: [
       {
         maxCurrent: 26,
@@ -219,6 +220,12 @@ export default defineProfile({
       register: 600,
       type: "u16",
       scale: 0.1,
+    },
+    {
+      key: "inverter.output.power",
+      role: "inverter.power",
+      register: 636,
+      type: "i16",
     },
     {
       key: "ac.l1.ct.internal",

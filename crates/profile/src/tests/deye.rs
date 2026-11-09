@@ -6,7 +6,8 @@ use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Source, Step};
 use serde_json::Value;
 
 const PROFILE: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
-/// v4's oracle corpus for this profile; battery flows negated to ADR 4's charging-positive sign.
+/// v4's oracle corpus for this profile; battery flows negated to ADR 4's charging-positive sign, and
+/// register 636, which v4 read but left unmapped, added as the signed inverter output power.
 const V4_CASES: &str = include_str!("deye-sg05lp3-v4-cases.json");
 
 fn answered(case: &Value) -> Registers {
@@ -48,6 +49,7 @@ fn it_declares_two_mppt_inputs_from_the_sm2_datasheet() {
         profile.inverter(),
         Some(&Inverter {
             max_input_voltage: 800.0,
+            ac_rating: Some(20_000.0),
             mppt: vec![input, input],
         })
     );

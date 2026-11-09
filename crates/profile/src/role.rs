@@ -58,7 +58,7 @@ fn unit(role: &str) -> Option<Unit> {
     Some(match role {
         "pv.power" | "pv.mppt.power" | "pv.string.power" | "battery.power" | "grid.power"
         | "grid.phase.power" | "load.power" | "backup.power" | "generator.power"
-        | "ev.charge.power" => Unit::Watt,
+        | "inverter.power" | "ev.charge.power" => Unit::Watt,
         "pv.energy.total"
         | "battery.capacity"
         | "battery.energy.charged.total"
