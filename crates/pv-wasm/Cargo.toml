@@ -9,6 +9,7 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+serde.workspace = true
 serde_json.workspace = true
 sunreye-pv.workspace = true
 

@@ -20,6 +20,7 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         north: 0.0,
         blocks,
         obstacles,
+        grids: vec![],
     }
 }
 

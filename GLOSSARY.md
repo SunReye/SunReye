@@ -172,6 +172,14 @@ _Avoid_: Panel model
 The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
 _Avoid_: Model, 3D view
 
+**Module grid**:
+The cells on one roof face, each a module type's size plus a gap, inside the face's setback. A module sits in one cell.
+_Avoid_: Array, panel layout
+
+**Setback**:
+The margin along every edge of a roof face that no module may cross.
+_Avoid_: Border, margin
+
 **Block**:
 A rectangular building footprint with one roof.
 _Avoid_: Building, house

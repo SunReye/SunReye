@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { loadPv, type Scene } from "./pv.ts";
+import { loadPv, type Cell, type Scene } from "./pv.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -24,6 +24,7 @@ const house: Scene = {
     },
   ],
   obstacles: [{ kind: "tree", x: -4, z: 0, radius: 2, height: 10 }],
+  grids: [],
 };
 
 test("the pv crate draws a gable house's ridge 4 m above its eave, east and north up", () => {
@@ -47,4 +48,33 @@ test("a scene the crate cannot read throws", () => {
   const broken = { ...house, north: Number.NaN };
 
   expect(() => pv.geometry(broken)).toThrow();
+});
+
+const sizes = { 7: { width: 1.134, height: 1.722 } };
+
+function gridded(modules: readonly Cell[]): Scene {
+  const block = house.blocks[0];
+
+  return {
+    ...house,
+    blocks: block === undefined ? [] : [{ ...block, roof: { kind: "gable", pitch: 35 } }],
+    grids: [{ block: 0, face: 1, moduleType: 7, landscape: false, setback: 0.3, modules }],
+  };
+}
+
+test("the crate lays out a south face's cells: 8 columns and 2 rows of portrait modules", () => {
+  const { roofs, grids, misplaced } = pv.modules(gridded([]), sizes);
+
+  expect(roofs.map(({ tilt, azimuth }) => [Math.round(tilt), Math.round(azimuth)])).toEqual([
+    [35, 180],
+    [35, 0],
+  ]);
+  expect(grids[0]?.length).toBe(16);
+  expect(misplaced).toBeNull();
+});
+
+test("a module beyond the setback comes back misplaced", () => {
+  const { misplaced } = pv.modules(gridded([{ row: 2, column: 0, optimized: false }]), sizes);
+
+  expect(misplaced).toEqual({ kind: "setback", grid: 0, row: 2, column: 0 });
 });

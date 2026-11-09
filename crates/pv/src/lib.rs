@@ -4,6 +4,7 @@
 
 mod diode;
 mod estimate;
+mod grid;
 mod mppt;
 mod perez;
 mod scene;
@@ -13,11 +14,21 @@ mod sun;
 mod temperature;
 
 pub use estimate::estimate;
+pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
 pub use mppt::{input_output, module_counts_differ};
 pub use perez::plane_irradiance;
 pub use scene::{Block, Face, Obstacle, Roof, Scene, Surface};
 pub use sun::sun_position;
 pub use temperature::cell_temperature;
+
+/// A string's open-circuit voltage at a cell temperature in °C, by the datasheet's voltage
+/// coefficient: what sizing checks against an inverter's maximum DC input voltage (ADR 20).
+#[must_use]
+pub fn open_circuit_voltage(module: &ModuleType, modules: u16, temperature: f64) -> f64 {
+    let per_module =
+        module.voc * (module.voltage_coefficient / 100.0).mul_add(temperature - 25.0, 1.0);
+    per_module * f64::from(modules)
+}
 
 /// The orientation of a module's surface.
 #[derive(Debug, Clone, Copy, PartialEq)]

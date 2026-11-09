@@ -70,21 +70,21 @@ fn direction(sun: Sun) -> Point {
     ]
 }
 
-const fn offset(p: Point, along: Point, by: f64) -> Point {
+pub const fn offset(p: Point, along: Point, by: f64) -> Point {
     let [x, y, z] = p;
     let [dx, dy, dz] = along;
     [by.mul_add(dx, x), by.mul_add(dy, y), by.mul_add(dz, z)]
 }
 
-fn sub(a: Point, b: Point) -> Point {
+pub fn sub(a: Point, b: Point) -> Point {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-fn dot(a: Point, b: Point) -> f64 {
+pub fn dot(a: Point, b: Point) -> f64 {
     a[0].mul_add(b[0], a[1].mul_add(b[1], a[2] * b[2]))
 }
 
-fn cross(a: Point, b: Point) -> Point {
+pub fn cross(a: Point, b: Point) -> Point {
     [
         a[1].mul_add(b[2], -a[2] * b[1]),
         a[2].mul_add(b[0], -a[0] * b[2]),
