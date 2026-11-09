@@ -10,6 +10,10 @@ const usage = `usage: sunreye-profile <command>
   decode <profile> <dump> each quantity's value from a register dump, [{ "start", "words" }]
   build <dir>             renders each profile module in <dir> to <id>.json and index.json,
                           bumping a profile's patch version when its content changed
+  capture <endpoint> <unit> <profile>
+                          a read-only capture of a device for sim, from the core's
+                          \`sunreye capture\`: <endpoint> is modbus-tcp://host:port or
+                          solarman-v5://host:port, <profile> a bundled profile's id
 `;
 
 async function lint(path: string): Promise<string> {
@@ -38,15 +42,47 @@ async function build(dir: string): Promise<string> {
     .join("");
 }
 
-/** Each command and the arguments it takes. */
-const commands = new Map<string, (args: readonly string[]) => Promise<string> | undefined>([
-  ["lint", ([path]) => (path === undefined ? undefined : lint(path))],
-  [
-    "decode",
-    ([path, dump]) => (path === undefined || dump === undefined ? undefined : decode(path, dump)),
-  ],
-  ["build", ([dir]) => (dir === undefined ? undefined : build(dir))],
-]);
+/** Runs `core capture` (ADR 6): no transport is written in TypeScript. */
+async function capture(
+  core: string,
+  endpoint: string,
+  unit: string,
+  profile: string,
+): Promise<string> {
+  const args = ["capture", "--endpoint", endpoint, "--unit", unit, "--profile", profile];
+  const child = Bun.spawn([core, ...args], { stdout: "pipe", stderr: "pipe" });
+
+  const [out, err, code] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+
+  if (code !== 0) throw new Error(`sunreye capture exited ${code}: ${err.trim()}`);
+
+  return out;
+}
+
+/** Each command and the arguments it takes; `core` is the core binary. */
+function commands(
+  core: string,
+): ReadonlyMap<string, (args: readonly string[]) => Promise<string> | undefined> {
+  return new Map<string, (args: readonly string[]) => Promise<string> | undefined>([
+    ["lint", ([path]) => (path === undefined ? undefined : lint(path))],
+    [
+      "decode",
+      ([path, dump]) => (path === undefined || dump === undefined ? undefined : decode(path, dump)),
+    ],
+    ["build", ([dir]) => (dir === undefined ? undefined : build(dir))],
+    [
+      "capture",
+      ([endpoint, unit, profile]) =>
+        endpoint === undefined || unit === undefined || profile === undefined
+          ? undefined
+          : capture(core, endpoint, unit, profile),
+    ],
+  ]);
+}
 
 /** What a run of the CLI wrote, and its exit code. */
 export interface Ran {
@@ -65,9 +101,15 @@ async function report(output: Readonly<Promise<string>>): Promise<Ran> {
   }
 }
 
-/** Runs one command: 0 on success, 1 with the reason it failed, 2 with the usage. */
-export function run([command = "", ...args]: readonly string[]): Promise<Ran> {
-  const output = commands.get(command)?.(args);
+/**
+ * Runs one command: 0 on success, 1 with the reason it failed, 2 with the usage. `core` is the
+ * core binary `capture` runs.
+ */
+export function run(
+  [command = "", ...args]: readonly string[],
+  core = process.env["SUNREYE_CORE"] ?? "sunreye",
+): Promise<Ran> {
+  const output = commands(core).get(command)?.(args);
 
   return output === undefined ? Promise.resolve({ code: 2, out: "", err: usage }) : report(output);
 }
