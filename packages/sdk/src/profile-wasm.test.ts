@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import cases from "../../../crates/profile/src/tests/plan-cases.json" with { type: "json" };
-import v4Cases from "../../../crates/profile/src/tests/deye-sg05lp3-v4-cases.json" with { type: "json" };
 import { loadProfileWasm } from "./index.ts";
 
 const profile = await loadProfileWasm();
@@ -82,10 +81,33 @@ test("the profile WASM's warnings are the loader's text", () => {
   expect(profile.lint(doc)).toEqual(["`requires` lacks `u32`, which the profile uses"]);
 });
 
+/** A profile's line of v4's oracle corpus. */
+interface Entry {
+  readonly cases: readonly {
+    readonly name: string;
+    readonly runs: unknown;
+    readonly readings: Readonly<Record<string, number | null>>;
+  }[];
+}
+
+function isEntry(value: unknown): value is Entry {
+  return value instanceof Object && "cases" in value && Array.isArray(value.cases);
+}
+
 test("a dump of v4's recorded Deye cases decodes to v4's readings", async () => {
   const deye = await Bun.file(
     new URL("../../../profiles/deye-sg05lp3.json", import.meta.url),
   ).text();
+
+  const corpus = await Bun.file(
+    new URL("../../../crates/profile/src/tests/deye-v4-cases.ndjson", import.meta.url),
+  ).text();
+
+  const entry: unknown = JSON.parse(
+    corpus.split("\n").find((l) => l.includes('"profile":"deye-sg05lp3"')) ?? "{}",
+  );
+
+  const v4Cases = isEntry(entry) ? entry.cases : [];
 
   expect(v4Cases).toHaveLength(6);
 

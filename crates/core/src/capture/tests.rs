@@ -346,3 +346,33 @@ async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
     .collect();
     assert_eq!(got, expected);
 }
+
+/// The SG05LP3 models of 14 to 20 kW read the family's register map: the owner's capture, of the
+/// family profile's read plan, replays with each. The 5 to 12 kW models read two PV inputs fewer,
+/// so it cannot replay with them.
+#[tokio::test(start_paused = true)]
+async fn the_owners_capture_replays_with_each_four_input_sg05lp3_model() {
+    let catalogue = crate::profiles::Catalogue::bundled().unwrap();
+    for kw in [14, 15, 16, 18, 20] {
+        let profile = catalogue.get(&format!("deye-sun{kw}k-sg05lp3")).unwrap();
+        let recording = Recording::parse(PLANT).unwrap();
+        let bus = Bus::default();
+        let mut readings = bus.subscribe();
+        let device = Device {
+            id: DeviceId(1),
+            unit: recording.unit,
+            profile,
+        };
+        let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+        tokio::time::timeout(CADENCE * 2, readings.recv())
+            .await
+            .unwrap_or_else(|_| panic!("{kw} kW reads another plan"))
+            .unwrap();
+        let soc = task
+            .latest()
+            .iter()
+            .find(|(r, _)| bus.series(r.series).unwrap().role == "battery.soc")
+            .map(|(r, _)| r.value);
+        assert_eq!(soc, Some(32.0), "{kw} kW");
+    }
+}

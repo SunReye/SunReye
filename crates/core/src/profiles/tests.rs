@@ -404,3 +404,19 @@ async fn a_community_profile_never_replaces_an_official_one() {
     );
     assert!(serves_bundled(&profiles));
 }
+
+/// The binary embeds every official profile the build renders (ADR 8).
+#[test]
+fn the_bundled_snapshot_holds_every_profile_of_the_official_index() {
+    let index: Value =
+        serde_json::from_str(include_str!("../../../../profiles/index.json")).unwrap();
+    let catalogue = super::Catalogue::bundled().unwrap();
+    for entry in index["profiles"].as_array().unwrap() {
+        let id = entry["id"].as_str().unwrap();
+        assert_eq!(
+            catalogue.get(id).map(|p| p.version.clone()),
+            entry["version"].as_str().map(str::to_owned),
+            "{id}"
+        );
+    }
+}
