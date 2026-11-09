@@ -366,6 +366,8 @@ pub enum Code {
     DeviceNone,
     #[serde(rename = "device.connection")]
     DeviceConnection,
+    #[serde(rename = "device.transport")]
+    DeviceTransport,
     #[serde(rename = "device.profile")]
     DeviceProfile,
     #[serde(rename = "device.profile-change")]

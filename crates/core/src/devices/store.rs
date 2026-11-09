@@ -8,6 +8,7 @@ use super::{
     Connection, ConnectionDraft, Device, DeviceDraft, Polled, Reach, Refusal, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
+use crate::mqtt;
 use crate::transport::Endpoint;
 
 type Outcome<T> = rusqlite::Result<Result<T, Refusal>>;
@@ -16,6 +17,7 @@ fn transport(name: &str) -> rusqlite::Result<Transport> {
     match name {
         "modbus-tcp" => Ok(Transport::ModbusTcp),
         "solarman-v5" => Ok(Transport::SolarmanV5),
+        "mqtt" => Ok(Transport::Mqtt),
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -24,6 +26,7 @@ const fn transport_name(transport: Transport) -> &'static str {
     match transport {
         Transport::ModbusTcp => "modbus-tcp",
         Transport::SolarmanV5 => "solarman-v5",
+        Transport::Mqtt => "mqtt",
     }
 }
 
@@ -63,7 +66,12 @@ fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
         .prepare("SELECT name FROM secret WHERE connection = ?1 ORDER BY name")?
         .query_map([id], |row| row.get(0))?
         .collect::<rusqlite::Result<_>>()?;
-    Ok(Some(Connection { id, reach, secrets }))
+    Ok(Some(Connection {
+        id,
+        reach,
+        secrets,
+        status: None,
+    }))
 }
 
 /// The value of connection `id`'s secret `name`, for the funnel alone: never returned by the API.
@@ -74,6 +82,29 @@ pub fn secret(db: &Db, id: u32, name: &str) -> rusqlite::Result<Option<String>> 
         |row| row.get(0),
     )
     .optional()
+}
+
+/// Every broker connection with its credentials, by id, for its client alone.
+pub fn brokers(db: &Db) -> rusqlite::Result<Vec<(u32, mqtt::Broker)>> {
+    let rows: Vec<(u32, String, u16)> = db
+        .prepare("SELECT id, host, port FROM connection WHERE transport = 'mqtt' ORDER BY id")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    rows.into_iter()
+        .map(|(id, host, port)| {
+            let username = secret(db, id, "username")?;
+            let password = secret(db, id, "password")?;
+            let credentials = username.map(|u| (u, password.unwrap_or_default()));
+            Ok((
+                id,
+                mqtt::Broker {
+                    host,
+                    port,
+                    credentials,
+                },
+            ))
+        })
+        .collect()
 }
 
 /// Applies a draft's secret changes to connection `id`.
@@ -133,8 +164,12 @@ pub fn change_connection(
         return Ok(Err(Refusal::NoConnection));
     }
     let r = &draft.reach;
+    let units = units_of(&tx, id)?;
+    if r.transport == Transport::Mqtt && !units.is_empty() {
+        return Ok(Err(Refusal::Transport));
+    }
     let taken = units_at(&tx, r.transport, &r.host, r.port, |c, _| c != id)?;
-    if units_of(&tx, id)?.iter().any(|u| taken.contains(u)) {
+    if units.iter().any(|u| taken.contains(u)) {
         return Ok(Err(Refusal::Address));
     }
     tx.execute(
@@ -234,6 +269,9 @@ fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft) -> Outcome<()> {
         return Ok(Err(Refusal::DeviceConnection));
     };
     let r = &connection.reach;
+    if r.transport == Transport::Mqtt {
+        return Ok(Err(Refusal::Transport));
+    }
     let units = units_at(db, r.transport, &r.host, r.port, |_, d| Some(d) != id)?;
     if units.contains(&draft.unit) {
         return Ok(Err(Refusal::Address));
@@ -309,7 +347,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     db.prepare(
         "SELECT d.id, d.unit, d.profile, c.transport, c.host, c.port
          FROM device d JOIN connection c ON c.id = d.connection
-         WHERE d.unit IS NOT NULL ORDER BY d.id",
+         WHERE d.unit IS NOT NULL AND c.transport != 'mqtt' ORDER BY d.id",
     )?
     .query_map([], |row| {
         let (host, port) = (row.get(4)?, row.get(5)?);
@@ -320,6 +358,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
             endpoint: match transport(&row.get::<_, String>(3)?)? {
                 Transport::ModbusTcp => Endpoint::ModbusTcp { host, port },
                 Transport::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
+                Transport::Mqtt => return Err(rusqlite::Error::InvalidQuery),
             },
         })
     })?

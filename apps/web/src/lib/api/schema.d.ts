@@ -600,6 +600,14 @@ export interface components {
             /** Format: double */
             min: number;
         };
+        /** @description A broker connection's client as observed. */
+        BrokerStatus: {
+            connected: boolean;
+            /** @description RFC 3339, UTC. */
+            lastConnectedAt?: string | null;
+            /** @description Why the last attempt or session failed; kept after a reconnect. */
+            lastError?: string | null;
+        };
         /** @description A topology change: every point, applying from an instant on. */
         Change: {
             /** @description RFC 3339. */
@@ -621,7 +629,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -634,6 +642,7 @@ export interface components {
             id: number;
             /** @description The names of the secrets set; their values are never read back. */
             secrets: string[];
+            status?: components["schemas"]["BrokerStatus"] | null;
         };
         /** @description A connection as the admin enters it. */
         ConnectionDraft: components["schemas"]["Reach"] & {
@@ -1098,7 +1107,7 @@ export interface components {
          * @description The wire framing on a connection's endpoint.
          * @enum {string}
          */
-        Transport: "modbus-tcp" | "solarman-v5";
+        Transport: "modbus-tcp" | "solarman-v5" | "mqtt";
         /** @description A served profile and the update waiting for it, as the admin reviews it. */
         Update: {
             /** @description The version served. */

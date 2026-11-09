@@ -51,6 +51,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "connection.in-use": m.problem_connection_in_use,
   "device.none": m.problem_device_none,
   "device.connection": m.problem_device_connection,
+  "device.transport": m.problem_device_transport,
   "device.profile": m.problem_device_profile,
   "device.profile-change": m.problem_device_profile_change,
   "device.address": m.problem_device_address,

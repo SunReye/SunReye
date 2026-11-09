@@ -37,6 +37,7 @@ mod ingress;
 mod layout;
 mod live;
 mod location;
+mod mqtt;
 mod profiles;
 mod roles;
 mod screen;

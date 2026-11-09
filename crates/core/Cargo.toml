@@ -35,6 +35,9 @@ jiff = { version = "0.2.41", default-features = false, features = [
 # SHA-256 of bearer tokens; SHA-256 and Ed25519 verification of fetched profiles (ADR 8).
 # rustls already depends on it.
 ring = "0.17.14"
+# The MQTT client (ADR 10), without TLS: a home broker listens on the LAN. Its async event loop runs
+# on the one Tokio thread; hand-written framing would duplicate its session and keep-alive logic.
+rumqttc = { version = "0.25.1", default-features = false }
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde.workspace = true
 serde_json.workspace = true

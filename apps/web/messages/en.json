@@ -43,6 +43,7 @@
   "problem_connection_in_use": "A device still uses this connection.",
   "problem_device_none": "This device does not exist.",
   "problem_device_connection": "The device names an unknown connection.",
+  "problem_device_transport": "The device cannot be read through this connection.",
   "problem_device_profile": "The device names an unknown profile.",
   "problem_device_profile_change": "A device's profile cannot be changed; its history is stored in that profile.",
   "problem_device_address": "Another device already uses this unit id on the same endpoint.",
