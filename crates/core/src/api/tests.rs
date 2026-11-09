@@ -10,13 +10,14 @@ use axum::extract::{ConnectInfo, MatchedPath, Request as Incoming};
 use axum::http::{Method, Request, Response, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::routing::get as route_get;
+use tokio::sync::watch;
 use tower::ServiceExt;
 
-use super::router;
+use super::{Api, router};
 use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::live::Live;
-use crate::storage::Storage;
+use crate::storage::{Problem, Storage};
 
 mod live;
 
@@ -25,6 +26,7 @@ const HOME: &str = "192.0.2.1:50000";
 struct Core {
     _storage: Storage,
     bus: Bus,
+    problems: watch::Sender<Vec<Problem>>,
     router: Router,
 }
 
@@ -33,10 +35,16 @@ impl Core {
         let bus = Bus::default();
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database()).await.unwrap();
-        let live = Live::spawn(&bus);
+        let (problems, watched) = watch::channel(Vec::new());
+        let api = Api {
+            auth,
+            live: Live::spawn(&bus),
+            problems: watched,
+        };
         Self {
-            router: contract(router(&auth, &live)).await,
+            router: contract(router(api)).await,
             bus,
+            problems,
             _storage: storage,
         }
     }
@@ -92,8 +100,12 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
     )
     .unwrap();
     let auth = Auth::open(storage.database()).await.unwrap();
-    let live = Live::spawn(&Bus::default());
-    let undocumented = router(&auth, &live).route("/api/v1/undocumented", route_get(|| async {}));
+    let api = Api {
+        auth,
+        live: Live::spawn(&Bus::default()),
+        problems: watch::channel(Vec::new()).1,
+    };
+    let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
 
     contract(undocumented)
         .await
@@ -414,5 +426,23 @@ async fn capabilities_need_a_session() {
     assert_eq!(
         problem(response).await,
         (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+    );
+}
+
+#[tokio::test]
+async fn problems_report_an_unsynced_clock() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let problems = || with_cookie(&set_cookie, get("/api/v1/problems"));
+    assert_eq!(
+        json(core.send(problems()).await).await,
+        serde_json::json!({ "problems": [] })
+    );
+
+    core.problems.send_replace(vec![Problem::ClockUnsynced]);
+
+    assert_eq!(
+        json(core.send(problems()).await).await,
+        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }] })
     );
 }

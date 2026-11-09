@@ -11,12 +11,14 @@ use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{Stream, StreamExt, stream};
 use serde::Serialize;
+use tokio::sync::watch;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
 use crate::live::{Frame, Live};
+use crate::storage;
 use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
@@ -32,15 +34,28 @@ const METHOD: Problem = Problem {
 #[openapi(info(title = "SunReye", version = "1"))]
 struct Document;
 
-pub fn router(auth: &Auth, live: &Live) -> Router {
+/// What the API serves from.
+pub struct Api {
+    pub auth: Auth,
+    pub live: Live,
+    /// Storage's problems, as of its last tick.
+    pub problems: watch::Receiver<Vec<storage::Problem>>,
+}
+
+pub fn router(api: Api) -> Router {
     let protected = OpenApiRouter::with_openapi(Document::openapi())
         .routes(routes!(capabilities))
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(live_values))
-                .with_state(live.clone()),
+                .with_state(api.live),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(problems))
+                .with_state(api.problems),
         );
-    let (router, document) = auth.routes(protected).split_for_parts();
+    let (router, document) = api.auth.routes(protected).split_for_parts();
     // Serialised once: the document changes only with the build.
     let document = document.to_json().unwrap_or_default();
     router
@@ -87,6 +102,33 @@ async fn capabilities() -> Json<Support> {
         capabilities: support.capabilities,
         transports: Endpoint::TRANSPORTS,
     })
+}
+
+/// Conditions that degrade the core.
+#[derive(Serialize, ToSchema)]
+struct Problems {
+    problems: Vec<Condition>,
+}
+
+#[derive(Serialize, ToSchema)]
+struct Condition {
+    /// A stable machine code, such as `clock.unsynced`.
+    code: &'static str,
+}
+
+#[utoipa::path(get, path = "/api/v1/problems", responses(
+    (status = 200, body = Problems),
+    (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn problems(
+    State(problems): State<watch::Receiver<Vec<storage::Problem>>>,
+) -> Json<Problems> {
+    let problems = problems
+        .borrow()
+        .iter()
+        .map(|p| Condition { code: p.code() })
+        .collect();
+    Json(Problems { problems })
 }
 
 /// Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in
