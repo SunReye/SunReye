@@ -199,3 +199,29 @@ async fn strings_wire_to_a_known_inverters_mppt_inputs_and_known_ids() {
         unprocessable("layout.module-type")
     );
 }
+
+#[tokio::test]
+async fn capabilities_mark_parallel_strings_estimated() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module_type = core.module_type(&set_cookie).await;
+    let layout = core
+        .put_layout(
+            &set_cookie,
+            "2026-01-01T00:00:00Z",
+            &[
+                string(None, "south", &module_type, 1, 0.0),
+                string(None, "north", &module_type, 1, 180.0),
+                string(None, "second", &module_type, 2, 0.0),
+            ],
+        )
+        .await;
+    let ids = ids(&layout);
+
+    let (status, body) = core.call(&set_cookie, get("/api/v1/capabilities")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    // The second string is alone on input 2: measured, not estimated.
+    let estimated = [&ids[0].1, &ids[1].1].map(|id| format!("pv.string.power[{id}]"));
+    assert_eq!(body["devices"], json!({ "1": { "estimated": estimated } }));
+}

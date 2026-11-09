@@ -3,7 +3,7 @@
 //! The layout module owns the `module_type`, `pv_string`, `layout` and `layout_string` tables.
 //! Ids are never reused; a change is a new version applying from its instant.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -171,6 +171,25 @@ pub struct StringDraft {
 pub struct Version {
     pub applies_from: SystemTime,
     pub strings: Vec<PvString>,
+}
+
+impl Version {
+    /// The ids of the strings that share their MPPT input, by inverter device: their
+    /// `pv.string.power` is estimated, not measured (ADR 17).
+    #[must_use]
+    pub fn estimated(&self) -> BTreeMap<u32, Vec<u32>> {
+        let mut estimated: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        for string in &self.strings {
+            let w = &string.wiring;
+            let shared = self.strings.iter().any(|s| {
+                s.id != string.id && s.wiring.device == w.device && s.wiring.input == w.input
+            });
+            if shared {
+                estimated.entry(w.device).or_default().push(string.id);
+            }
+        }
+        estimated
+    }
 }
 
 /// The version in force at `at`; `versions` in the order [`Layouts::versions`] returns.

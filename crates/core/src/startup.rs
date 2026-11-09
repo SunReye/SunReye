@@ -14,6 +14,7 @@ use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::changes::Changes;
 use crate::devices::Devices;
+use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::profiles::Catalogue;
@@ -176,12 +177,15 @@ pub async fn serve(
         inverters.clone(),
     )
     .await?;
+    let layouts = Layouts::new(storage.database(), inverters);
+    let _estimates =
+        StringEstimates::spawn(layouts.clone(), storage.reader(), storage.declarer(), &bus);
     let api = Api {
         auth: Auth::open(storage.database(), ingress).await?,
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
-        layouts: Layouts::new(storage.database(), inverters),
+        layouts,
         devices,
         changes: Changes::new(storage.database()),
         clock: std::sync::Arc::new(SystemTime::now),

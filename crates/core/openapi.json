@@ -319,6 +319,21 @@
         ],
         "type": "object"
       },
+      "DeviceSupport": {
+        "properties": {
+          "estimated": {
+            "description": "Series computed from others, not measured, such as `pv.string.power[3]` of a string\nin parallel (ADR 17).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "estimated"
+        ],
+        "type": "object"
+      },
       "Entry": {
         "description": "One attempt.",
         "properties": {
@@ -724,6 +739,16 @@
             },
             "type": "array"
           },
+          "devices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DeviceSupport"
+            },
+            "description": "By device id, what the layout in force says of its series.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "schema": {
             "$ref": "#/components/schemas/Schemas",
             "description": "The profile schemas this core loads."
@@ -743,7 +768,8 @@
           "version",
           "schema",
           "capabilities",
-          "transports"
+          "transports",
+          "devices"
         ],
         "type": "object"
       },
