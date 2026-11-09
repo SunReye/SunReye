@@ -5,7 +5,9 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
+use crate::identify::{self, Field as IdentifyField};
 use crate::plan::{self, Block};
 use crate::setting::{self, Setting};
 use crate::sunspec::Chain;
@@ -20,6 +22,7 @@ pub struct Profile {
     pub version: String,
     quantities: Vec<Quantity>,
     plan: Vec<Block>,
+    identify: Vec<IdentifyField>,
     inverter: Option<Inverter>,
     settings: Vec<Setting>,
     warnings: Vec<String>,
@@ -233,6 +236,11 @@ pub enum LoadError {
         key: String,
         problem: &'static str,
     },
+    /// An identify field, by its register.
+    Identify {
+        register: u16,
+        problem: &'static str,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -249,6 +257,9 @@ impl fmt::Display for LoadError {
             Self::Quantity { key, problem } => write!(f, "quantity `{key}`: {problem}"),
             Self::Mppt { input, problem } => write!(f, "MPPT input {input}: {problem}"),
             Self::Setting { key, problem } => write!(f, "setting `{key}`: {problem}"),
+            Self::Identify { register, problem } => {
+                write!(f, "identify register {register}: {problem}")
+            }
         }
     }
 }
@@ -278,6 +289,7 @@ impl Profile {
         let warnings = unrequired(&doc)
             .map(|name| format!("`requires` lacks `{name}`, which the profile uses"))
             .collect();
+        let identify = identify::compile(doc.identify)?;
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
         let settings = setting::compile(doc.settings, &quantities)
@@ -289,6 +301,7 @@ impl Profile {
             version: doc.version,
             quantities,
             plan,
+            identify,
             inverter: doc.inverter,
             settings,
             warnings,
@@ -330,6 +343,19 @@ impl Profile {
     #[must_use]
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// The reads of its identify probe; empty when it declares none.
+    #[must_use]
+    pub fn identify_plan(&self) -> Vec<Block> {
+        identify::plan(&self.identify)
+    }
+
+    /// Whether `registers`, read by [`Profile::identify_plan`], identify its device: each field
+    /// holds one of its values. A profile without a probe identifies nothing.
+    #[must_use]
+    pub fn identifies(&self, registers: &Registers) -> bool {
+        identify::matches(&self.identify, registers)
     }
 
     /// The inverter's DC side, when the profile declares one.

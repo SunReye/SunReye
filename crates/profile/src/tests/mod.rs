@@ -2,6 +2,7 @@
 
 mod decode;
 mod deye;
+mod identify;
 mod lint;
 mod load;
 mod plan;

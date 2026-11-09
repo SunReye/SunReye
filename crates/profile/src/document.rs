@@ -27,9 +27,28 @@ pub struct ProfileDoc {
     pub requires: Vec<String>,
     pub quantities: Vec<QuantityDoc>,
     pub inverter: Option<crate::Inverter>,
+    /// Fields that tell the device from any other on the bus; the setup scan proposes the profile
+    /// only when each holds one of its values.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<IdentifyDoc>>"))]
+    pub identify: Vec<IdentifyDoc>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<Vec<SettingDoc>>"))]
     pub settings: Vec<SettingDoc>,
+}
+
+/// A register the identify probe reads, at scale 1, and the values that identify the device, such
+/// as Deye's device type.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Identify", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct IdentifyDoc {
+    pub register: u16,
+    /// `u16` when left out.
+    #[serde(rename = "type")]
+    pub kind: Option<Kind>,
+    pub values: Vec<f64>,
 }
 
 #[derive(Deserialize)]
