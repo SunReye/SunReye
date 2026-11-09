@@ -271,14 +271,14 @@ fn pdu(buffer: &[u8], rtu: Range<usize>, unit: u8) -> Result<Range<usize>, Error
 }
 
 /// The low byte of the sum of every byte after the start byte.
-fn checksum(body: &[u8]) -> u8 {
+pub(super) fn checksum(body: &[u8]) -> u8 {
     body.iter()
         .skip(1)
         .fold(0, |sum, byte| sum.wrapping_add(*byte))
 }
 
 /// Modbus RTU CRC16: reflected, polynomial 0xA001, seed 0xFFFF.
-fn crc16(bytes: &[u8]) -> u16 {
+pub(super) fn crc16(bytes: &[u8]) -> u16 {
     bytes.iter().fold(0xffff, |crc, byte| {
         (0..8).fold(crc ^ u16::from(*byte), |crc, _| {
             if crc & 1 == 1 {

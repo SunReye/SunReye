@@ -1,16 +1,22 @@
-//! A Modbus TCP device on a local port, for tests: a holding register reads as its address until a
-//! write stores another value.
+//! A Modbus TCP device, or one behind a Solarman stick, on a local port, for tests: a holding
+//! register reads as its address until a write stores another value.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use sunreye_profile::Framing;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-/// A request the device answered: the connection it came on, counted from 0, its unit id and its
-/// function code.
+use super::{Endpoint, solarman};
+
+/// The fake stick's logger serial.
+const STICK: u32 = 0x1234_5678;
+
+/// A request other than a write: the connection it came on, counted from 0, its unit id and its
+/// function code. A Solarman stick's refusals count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Read {
     pub connection: usize,
@@ -40,6 +46,7 @@ pub enum Writes {
 #[derive(Debug)]
 pub struct Fake {
     pub address: SocketAddr,
+    framing: Framing,
     pub reads: mpsc::UnboundedReceiver<Read>,
     pub writes: mpsc::UnboundedReceiver<Write>,
 }
@@ -59,6 +66,31 @@ pub async fn serve() -> Fake {
 /// # Panics
 /// No local port is free.
 pub async fn serve_with(writes: Writes) -> Fake {
+    start(Framing::Tcp, writes).await
+}
+
+/// Serves behind a Solarman stick on a free local port until the runtime stops, storing writes.
+///
+/// # Panics
+/// No local port is free.
+pub async fn serve_solarman() -> Fake {
+    start(Framing::SolarmanV5, Writes::Store).await
+}
+
+impl Fake {
+    /// The endpoint that reaches this device.
+    #[must_use]
+    pub fn endpoint(&self) -> Endpoint {
+        let host = self.address.ip().to_string();
+        let port = self.address.port();
+        match self.framing {
+            Framing::Tcp | Framing::RtuOverTcp => Endpoint::ModbusTcp { host, port },
+            Framing::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
+        }
+    }
+}
+
+async fn start(framing: Framing, writes: Writes) -> Fake {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (read_tx, reads) = mpsc::unbounded_channel();
@@ -69,6 +101,7 @@ pub async fn serve_with(writes: Writes) -> Fake {
         while let Ok((stream, _)) = listener.accept().await {
             let device = Device {
                 connection,
+                framing,
                 writes,
                 registers: Arc::clone(&registers),
                 reads: read_tx.clone(),
@@ -80,6 +113,7 @@ pub async fn serve_with(writes: Writes) -> Fake {
     });
     Fake {
         address,
+        framing,
         reads,
         writes: written,
     }
@@ -87,46 +121,129 @@ pub async fn serve_with(writes: Writes) -> Fake {
 
 struct Device {
     connection: usize,
+    framing: Framing,
     writes: Writes,
     registers: Registers,
     reads: mpsc::UnboundedSender<Read>,
     written: mpsc::UnboundedSender<Write>,
 }
 
+/// One request off the wire: its unit id and PDU, and how to frame the answer.
+struct Request {
+    unit: u8,
+    pdu: Vec<u8>,
+    frame: Frame,
+}
+
+enum Frame {
+    /// The MBAP header's transaction and protocol.
+    Mbap([u8; 4]),
+    /// The V5 sequence, and whether the request named the stick's serial.
+    Solarman { seq: u8, addressed: bool },
+}
+
+async fn receive_mbap(stream: &mut TcpStream) -> Option<Request> {
+    let mut header = [0; 7];
+    stream.read_exact(&mut header).await.ok()?;
+    let len = usize::from(u16::from_be_bytes([header[4], header[5]])) - 1;
+    let mut pdu = vec![0; len];
+    stream.read_exact(&mut pdu).await.ok()?;
+    Some(Request {
+        unit: header[6],
+        pdu,
+        frame: Frame::Mbap([header[0], header[1], header[2], header[3]]),
+    })
+}
+
+async fn receive_solarman(stream: &mut TcpStream) -> Option<Request> {
+    let mut head = [0; 3];
+    stream.read_exact(&mut head).await.ok()?;
+    let mut frame = head.to_vec();
+    frame.resize(
+        11 + usize::from(u16::from_le_bytes([head[1], head[2]])) + 2,
+        0,
+    );
+    stream.read_exact(&mut frame[3..]).await.ok()?;
+    let serial = u32::from_le_bytes(frame[7..11].try_into().unwrap());
+    let adu = &frame[26..frame.len() - 4];
+    Some(Request {
+        unit: adu[0],
+        pdu: adu[1..].to_vec(),
+        frame: Frame::Solarman {
+            seq: frame[5],
+            addressed: serial == STICK,
+        },
+    })
+}
+
+impl Request {
+    /// The reply to send for `body`, the reply's PDU; `None` stays silent.
+    fn reply(&self, body: Option<Vec<u8>>) -> Option<Vec<u8>> {
+        let mut reply = Vec::new();
+        match self.frame {
+            Frame::Mbap(head) => {
+                let body = body?;
+                reply.extend_from_slice(&head);
+                reply.extend_from_slice(&u16::try_from(body.len() + 1).unwrap().to_be_bytes());
+                reply.push(self.unit);
+                reply.extend_from_slice(&body);
+            }
+            Frame::Solarman { seq, addressed } => {
+                let payload = if addressed {
+                    let mut rtu = vec![self.unit];
+                    rtu.extend_from_slice(&body?);
+                    rtu.extend_from_slice(&solarman::crc16(&rtu).to_le_bytes());
+                    rtu
+                } else {
+                    vec![6, 0]
+                };
+                reply.push(0xa5);
+                reply.extend_from_slice(&u16::try_from(14 + payload.len()).unwrap().to_le_bytes());
+                reply.extend_from_slice(&[0x10, 0x15, seq, 0]);
+                reply.extend_from_slice(&STICK.to_le_bytes());
+                reply.push(1);
+                reply.extend_from_slice(&[0; 13]);
+                reply.extend_from_slice(&payload);
+                reply.extend_from_slice(&[solarman::checksum(&reply), 0x15]);
+            }
+        }
+        Some(reply)
+    }
+}
+
 impl Device {
     async fn answer(self, mut stream: TcpStream) {
-        let mut header = [0; 7];
-        while stream.read_exact(&mut header).await.is_ok() {
-            let len = usize::from(u16::from_be_bytes([header[4], header[5]])) - 1;
-            let mut pdu = vec![0; len];
-            if stream.read_exact(&mut pdu).await.is_err() {
-                return;
-            }
-            let unit = header[6];
-            let start = u16::from_be_bytes([pdu[1], pdu[2]]);
-            let count = u16::from_be_bytes([pdu[3], pdu[4]]);
-            let body = if pdu[0] == 0x10 {
-                self.write(unit, start, &pdu[6..])
-            } else {
-                self.reads
-                    .send(Read {
-                        connection: self.connection,
-                        unit,
-                        function: pdu[0],
-                    })
-                    .ok();
-                Some(self.read(start, count))
+        loop {
+            let request = match self.framing {
+                Framing::Tcp | Framing::RtuOverTcp => receive_mbap(&mut stream).await,
+                Framing::SolarmanV5 => receive_solarman(&mut stream).await,
             };
-            let Some(body) = body else { continue };
-            let mut reply = Vec::new();
-            reply.extend_from_slice(&header[..4]);
-            reply.extend_from_slice(&u16::try_from(body.len() + 1).unwrap().to_be_bytes());
-            reply.push(unit);
-            reply.extend_from_slice(&body);
+            let Some(request) = request else { return };
+            let Some(reply) = request.reply(self.handle(&request)) else {
+                continue;
+            };
             if stream.write_all(&reply).await.is_err() {
                 return;
             }
         }
+    }
+
+    /// The reply's PDU; `None` when the device stays silent.
+    fn handle(&self, request: &Request) -> Option<Vec<u8>> {
+        let pdu = &request.pdu;
+        let start = u16::from_be_bytes([pdu[1], pdu[2]]);
+        let count = u16::from_be_bytes([pdu[3], pdu[4]]);
+        if pdu[0] == 0x10 {
+            return self.write(request.unit, start, &pdu[6..]);
+        }
+        self.reads
+            .send(Read {
+                connection: self.connection,
+                unit: request.unit,
+                function: pdu[0],
+            })
+            .ok();
+        Some(self.read(start, count))
     }
 
     fn read(&self, start: u16, count: u16) -> Vec<u8> {

@@ -256,35 +256,32 @@ fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
     assert_eq!(waits, [5, 10, 20, 40, 60, 60, 60]);
 }
 
-/// The owner's plant (#623) is polled read-only: a cycle of the bundled Deye profile sends only
-/// function 3.
+/// The owner's plant (#623, #624) is polled read-only: a cycle of the bundled Deye profile sends
+/// only function 3, through the gateway and through the Solarman stick, whose probe is a read too.
 #[tokio::test]
 async fn polling_the_bundled_deye_profile_sends_only_reads() {
+    use crate::transport::fake;
     let profile = crate::profiles::Catalogue::bundled()
         .unwrap()
         .get("deye-sg05lp3")
         .unwrap();
-    let blocks = profile
-        .read_plan(sunreye_profile::Framing::Tcp.gap_tolerance())
-        .len();
-    let mut fake = crate::transport::fake::serve().await;
-    let endpoint = Endpoint::ModbusTcp {
-        host: fake.address.ip().to_string(),
-        port: fake.address.port(),
-    };
-    let device = Device {
-        id: DeviceId(1),
-        unit: 0,
-        profile,
-    };
-    let _task = spawn(endpoint, vec![device], Bus::default());
-    let mut functions = Vec::new();
-    for _ in 0..blocks {
-        functions.push(fake.reads.recv().await.unwrap().function);
+    for (mut fake, probes) in [(fake::serve().await, 0), (fake::serve_solarman().await, 1)] {
+        let endpoint = fake.endpoint();
+        let requests = profile.read_plan(endpoint.framing().gap_tolerance()).len() + probes;
+        let device = Device {
+            id: DeviceId(1),
+            unit: 0,
+            profile: Arc::clone(&profile),
+        };
+        let _task = spawn(endpoint, vec![device], Bus::default());
+        let mut functions = Vec::new();
+        for _ in 0..requests {
+            functions.push(fake.reads.recv().await.unwrap().function);
+        }
+        assert_eq!(functions, vec![3; requests]);
+        assert!(
+            fake.writes.try_recv().is_err(),
+            "a poll wrote to the device"
+        );
     }
-    assert_eq!(functions, vec![3; blocks]);
-    assert!(
-        fake.writes.try_recv().is_err(),
-        "a poll wrote to the device"
-    );
 }
