@@ -304,7 +304,7 @@ impl Layouts {
         Ok(())
     }
 
-    /// The module type and layout routes, behind the admin's session.
+    /// The module type and layout routes; viewers read them (ADR 20).
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(list_module_types, add_module_type))

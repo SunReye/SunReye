@@ -25,6 +25,7 @@ use crate::location::PlantLocation;
 use crate::profiles::Catalogue;
 use crate::storage::{Problem, Storage};
 
+mod access;
 mod devices;
 mod forecasts;
 mod history;

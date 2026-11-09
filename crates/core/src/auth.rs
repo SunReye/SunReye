@@ -1,14 +1,17 @@
 //! Admin sign-in (ADR 9). Auth owns the `admin` table.
 
+mod access;
 mod backoff;
 mod sessions;
+
+pub use access::{Access, access};
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{ConnectInfo, Request, State};
+use axum::extract::{ConnectInfo, MatchedPath, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -115,16 +118,15 @@ impl Auth {
         })))
     }
 
-    /// The sign-in routes, and `protected` behind a session.
-    pub fn routes(&self, protected: OpenApiRouter) -> OpenApiRouter {
-        let protected = protected
-            .routes(routes!(session))
-            .layer(middleware::from_fn_with_state(self.clone(), require));
+    /// The sign-in routes beside `api`, each guarded as the access table classifies it.
+    pub fn routes(&self, api: OpenApiRouter) -> OpenApiRouter {
         OpenApiRouter::new()
+            .routes(routes!(session))
             .routes(routes!(setup))
             .routes(routes!(login))
             .with_state(self.clone())
-            .merge(protected)
+            .merge(api)
+            .layer(middleware::from_fn_with_state(self.clone(), guard))
     }
 
     /// Whether the Supervisor proxied `request` through ingress, which names its prefix in
@@ -264,9 +266,23 @@ async fn login(
     ))
 }
 
+/// Lets a request through as the access table classifies its route; an unclassified one needs
+/// admin.
+async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+    let access = request
+        .extensions()
+        .get::<MatchedPath>()
+        .and_then(|path| access(request.method(), path.as_str()))
+        .unwrap_or(Access::Admin);
+    if access == Access::Public {
+        return next.run(request).await;
+    }
+    require(&auth, request, next).await
+}
+
 /// Refuses a request without a live session, and renews the cookie of one with it. An ingress
 /// request from the Supervisor needs neither: Home Assistant signed its user in.
-async fn require(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+async fn require(auth: &Auth, request: Request, next: Next) -> Response {
     if auth.via_ingress(&request) {
         return next.run(request).await;
     }
