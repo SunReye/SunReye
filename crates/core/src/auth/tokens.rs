@@ -98,7 +98,7 @@ type TokensState = State<(Auth, Clock)>;
     (status = 200, body = Tokens),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn list(State((auth, _)): TokensState) -> Result<Json<Tokens>, Problem> {
+pub async fn list_tokens(State((auth, _)): TokensState) -> Result<Json<Tokens>, Problem> {
     let tokens = auth
         .0
         .database
@@ -123,7 +123,7 @@ pub async fn list(State((auth, _)): TokensState) -> Result<Json<Tokens>, Problem
     (status = 201, body = Created),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn add(
+pub async fn add_token(
     State((auth, clock)): TokensState,
     body: Result<Json<TokenDraft>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Created>), Problem> {
@@ -198,7 +198,7 @@ impl Scope {
     (status = 204),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn remove(
+pub async fn remove_token(
     State((auth, clock)): TokensState,
     id: Result<Path<u32>, PathRejection>,
 ) -> Result<StatusCode, Problem> {

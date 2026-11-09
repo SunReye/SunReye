@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Core, Device } from "../api/core.ts";
+  import LocaleSwitch from "../LocaleSwitch.svelte";
   import { m } from "../paraglide/messages.js";
+  import { getLocale } from "../paraglide/runtime.js";
   import DevicesStep from "./DevicesStep.svelte";
   import LayoutStep from "./LayoutStep.svelte";
   import PasswordStep from "./PasswordStep.svelte";
@@ -26,6 +28,8 @@
 
   let devices = $state.raw<readonly Device[]>([]);
 
+  let locale = $state(getLocale());
+
   const titles: Readonly<Record<Step, () => string>> = {
     password: m.password_set,
     plant: m.plant_title,
@@ -35,40 +39,44 @@
   };
 </script>
 
-<main>
-  <h1>{m.setup_title()}</h1>
-  <h2>{titles[step]()}</h2>
-  {#if step === "password"}
-    <PasswordStep
-      {core}
-      ondone={() => {
-        step = "plant";
-      }}
-    />
-  {:else if step === "plant"}
-    <PlantStep
-      {core}
-      ondone={() => {
-        step = "devices";
-      }}
-    />
-  {:else if step === "devices"}
-    <DevicesStep
-      {core}
-      ondone={(added) => {
-        devices = added;
-        step = "topology";
-      }}
-    />
-  {:else if step === "topology"}
-    <TopologyStep
-      {core}
-      {devices}
-      ondone={() => {
-        step = "layout";
-      }}
-    />
-  {:else}
-    <LayoutStep {core} {devices} ondone={onfinish} />
-  {/if}
-</main>
+<!-- Messages are no state: a new locale renders the step anew; the step itself is kept. -->
+{#key locale}
+  <main>
+    <LocaleSwitch bind:locale />
+    <h1>{m.setup_title()}</h1>
+    <h2>{titles[step]()}</h2>
+    {#if step === "password"}
+      <PasswordStep
+        {core}
+        ondone={() => {
+          step = "plant";
+        }}
+      />
+    {:else if step === "plant"}
+      <PlantStep
+        {core}
+        ondone={() => {
+          step = "devices";
+        }}
+      />
+    {:else if step === "devices"}
+      <DevicesStep
+        {core}
+        ondone={(added) => {
+          devices = added;
+          step = "topology";
+        }}
+      />
+    {:else if step === "topology"}
+      <TopologyStep
+        {core}
+        {devices}
+        ondone={() => {
+          step = "layout";
+        }}
+      />
+    {:else}
+      <LayoutStep {core} {devices} ondone={onfinish} />
+    {/if}
+  </main>
+{/key}

@@ -42,4 +42,4 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 ## Consequences
 
-The OpenAPI document is a contract tested in the gate: every API test request checks that the route it reached is in the served document, so a route absent from it fails. The served document is committed at `crates/core/openapi.json` and the SPA's types are generated from that file; the gate fails when either is stale, and `bun run --cwd apps/web api` regenerates both.
+The OpenAPI document is a contract tested in the gate: every API test request checks that the route it reached is in the served document, so a route absent from it fails. Each operation id and each schema name is unique: a test fails on a repeated operation id, and the core refuses to build a document where two types share a schema name, which would type one route with the other's schema. The served document is committed at `crates/core/openapi.json` and the SPA's types are generated from that file; the gate fails when either is stale, and `bun run --cwd apps/web api` regenerates both.

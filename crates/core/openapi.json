@@ -1686,13 +1686,55 @@
         "properties": {
           "changes": {
             "items": {
-              "$ref": "#/components/schemas/Change"
+              "$ref": "#/components/schemas/LoggedChange"
             },
             "type": "array"
           }
         },
         "required": [
           "changes"
+        ],
+        "type": "object"
+      },
+      "LoggedChange": {
+        "description": "One entry of the change log.",
+        "properties": {
+          "action": {
+            "description": "`add`, `change`, `remove` or `reprice`.",
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "appliesFrom": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "changed": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The subject's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "description": "The subject after the change, as its own route reads it; `null` once removed."
+          },
+          "subject": {
+            "description": "`connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changed",
+          "appliesFrom",
+          "actor",
+          "subject",
+          "id",
+          "action"
         ],
         "type": "object"
       },
@@ -5399,7 +5441,7 @@
     },
     "/api/v1/tokens": {
       "get": {
-        "operationId": "list",
+        "operationId": "list_tokens",
         "responses": {
           "200": {
             "content": {
@@ -5422,7 +5464,7 @@
         }
       },
       "post": {
-        "operationId": "add",
+        "operationId": "add_token",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5458,7 +5500,7 @@
     },
     "/api/v1/tokens/{id}": {
       "delete": {
-        "operationId": "remove",
+        "operationId": "remove_token",
         "parameters": [
           {
             "in": "path",
@@ -5559,7 +5601,7 @@
     },
     "/api/v1/viewers": {
       "get": {
-        "operationId": "list",
+        "operationId": "list_viewers",
         "responses": {
           "200": {
             "content": {
@@ -5582,7 +5624,7 @@
         }
       },
       "post": {
-        "operationId": "add",
+        "operationId": "add_viewer",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5618,7 +5660,7 @@
     },
     "/api/v1/viewers/{id}": {
       "delete": {
-        "operationId": "remove",
+        "operationId": "remove_viewer",
         "parameters": [
           {
             "in": "path",

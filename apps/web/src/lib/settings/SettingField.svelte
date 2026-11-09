@@ -2,6 +2,7 @@
   import type { Attempt, Core, Problem, Setting } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
+  import { valueText } from "./bounds";
   import { OUTCOMES } from "./outcomes";
 
   let {
@@ -46,7 +47,7 @@
   {#if setting.values}
     <select {id} bind:value>
       {#each setting.values as option (option)}
-        <option value={option}>{option}</option>
+        <option value={option}>{valueText(option, setting.labels)}</option>
       {/each}
     </select>
   {:else}

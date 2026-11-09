@@ -90,37 +90,32 @@ pub struct Api {
 pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
 pub fn router(api: Api) -> Router {
-    let api_routes = OpenApiRouter::new()
-        .merge(capability_routes(&api))
-        .merge(stored_routes(&api))
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(live_values))
-                .routes(routes!(roles::role))
-                .with_state(api.live),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(problems))
-                .with_state(api.problems),
-        )
-        .merge(api.topologies.clone().residual_routes(api.history))
-        .merge(
-            api.topologies
-                .routes(api.devices.clone(), Clock::clone(&api.clock)),
-        )
-        .merge(api.devices.routes(Clock::clone(&api.clock)))
-        .merge(api.tariffs.routes(Clock::clone(&api.clock)))
-        .merge(api.changes.routes())
-        .merge(api.cars.routes())
-        .merge(api.location.routes(Clock::clone(&api.clock)))
-        .merge(api.spot.routes(Clock::clone(&api.clock)))
-        .merge(storage_routes(api.storage, &api.clock))
-        .merge(api.profiles.routes(Clock::clone(&api.clock)))
-        .merge(api.imports.routes())
-        .merge(api.backups.routes())
-        .merge(api.logs.routes())
-        .merge(api.layouts.routes(Clock::clone(&api.clock)));
+    let api_routes = merged(vec![
+        capability_routes(&api),
+        stored_routes(&api),
+        OpenApiRouter::new()
+            .routes(routes!(live_values))
+            .routes(routes!(roles::role))
+            .with_state(api.live),
+        OpenApiRouter::new()
+            .routes(routes!(problems))
+            .with_state(api.problems),
+        api.topologies.clone().residual_routes(api.history),
+        api.topologies
+            .routes(api.devices.clone(), Clock::clone(&api.clock)),
+        api.devices.routes(Clock::clone(&api.clock)),
+        api.tariffs.routes(Clock::clone(&api.clock)),
+        api.changes.routes(),
+        api.cars.routes(),
+        api.location.routes(Clock::clone(&api.clock)),
+        api.spot.routes(Clock::clone(&api.clock)),
+        storage_routes(api.storage, &api.clock),
+        api.profiles.routes(Clock::clone(&api.clock)),
+        api.imports.routes(),
+        api.backups.routes(),
+        api.logs.routes(),
+        api.layouts.routes(Clock::clone(&api.clock)),
+    ]);
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(api_routes, api.clock))
         .split_for_parts();
@@ -137,39 +132,63 @@ pub fn router(api: Api) -> Router {
         .method_not_allowed_fallback(|| async { METHOD })
 }
 
+/// Merges feature routers into one.
+///
+/// # Panics
+///
+/// On a schema name two of them define differently: utoipa keeps the first, which would type the
+/// other's route wrong (ADR 9). Every core start builds the router, so a test catches it.
+pub(crate) fn merged<S>(routers: impl IntoIterator<Item = OpenApiRouter<S>>) -> OpenApiRouter<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    routers
+        .into_iter()
+        .fold(OpenApiRouter::new(), |all, router| {
+            let schemas = |r: &OpenApiRouter<S>| {
+                r.get_openapi()
+                    .components
+                    .as_ref()
+                    .map(|c| c.schemas.clone())
+                    .unwrap_or_default()
+            };
+            let (had, adds) = (schemas(&all), schemas(&router));
+            for (name, schema) in &adds {
+                assert!(
+                    had.get(name).is_none_or(|first| first == schema),
+                    "schema `{name}` is defined twice, differently"
+                );
+            }
+            all.merge(router)
+        })
+}
+
 /// The plant's storage settings: its timezone and change-point retention.
 fn storage_routes(storage: storage::Settings, clock: &Clock) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .merge(crate::zone::routes(storage.zones, Clock::clone(clock)))
-        .merge(crate::retention::routes(
-            storage.retention,
-            Clock::clone(clock),
-        ))
+    merged([
+        crate::zone::routes(storage.zones, Clock::clone(clock)),
+        crate::retention::routes(storage.retention, Clock::clone(clock)),
+    ])
 }
 
 /// History, forecasts and the learned corrections: what storage holds, read like history.
 fn stored_routes(api: &Api) -> OpenApiRouter {
-    OpenApiRouter::new()
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(history::history))
-                .with_state((api.history.clone(), Clock::clone(&api.clock))),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(statistics::statistics))
-                .with_state((api.history.clone(), api.storage.zones.watch())),
-        )
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(forecasts::forecasts))
-                .with_state(api.history.clone()),
-        )
-        .merge(api.corrections.clone().routes(
+    merged([
+        OpenApiRouter::new()
+            .routes(routes!(history::history))
+            .with_state((api.history.clone(), Clock::clone(&api.clock))),
+        OpenApiRouter::new()
+            .routes(routes!(statistics::statistics))
+            .with_state((api.history.clone(), api.storage.zones.watch())),
+        OpenApiRouter::new()
+            .routes(routes!(forecasts::forecasts))
+            .with_state(api.history.clone()),
+        api.corrections.clone().routes(
             api.location.watch(),
             api.storage.zones.watch(),
             Clock::clone(&api.clock),
-        ))
+        ),
+    ])
 }
 
 fn capability_routes(api: &Api) -> OpenApiRouter {

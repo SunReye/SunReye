@@ -19,6 +19,18 @@ const CAPABILITIES = {
       settings: [
         { key: CHARGE, range: { min: 0, max: 350 }, step: 1, enable: "on" },
         { key: "work_mode", values: [0, 1, 2], step: 1, enable: "on" },
+        {
+          key: "ev.mode",
+          values: [0, 1, 2, 3],
+          labels: [
+            { value: 0, text: "off" },
+            { value: 1, text: "now" },
+            { value: 2, text: "minpv" },
+            { value: 3, text: "pv" },
+          ],
+          step: 1,
+          enable: "community",
+        },
       ],
     },
   },
@@ -96,6 +108,20 @@ test("each setting renders from the device's capabilities", async () => {
   await expect.element(mode).toHaveValue("0");
   expect(mode.getByRole("option").elements()).toHaveLength(3);
   await expect.element(mode.getByRole("option", { name: "2" })).toBeInTheDocument();
+});
+
+test("an enumerated setting shows each value by its label", async () => {
+  const screen = await render(SettingsScreen, {
+    core: connect(testCore(() => Response.json({ writes: [] }))),
+  });
+
+  const mode = screen.getByRole("combobox", { name: "ev.mode" });
+
+  await expect.element(mode.getByRole("option", { name: "minpv" })).toHaveValue("2");
+  expect(mode.getByRole("option", { name: "2" }).elements()).toHaveLength(0);
+  await expect
+    .element(screen.getByText("Erlaubt: Werte off, now, minpv, pv", { exact: false }))
+    .toBeVisible();
 });
 
 test("a write shows its outcome and the step that failed", async () => {

@@ -33,7 +33,11 @@
 {#if setting.enable === "off" || setting.enable === "community"}
   <div>
     <p>{NOTES[setting.enable]()}</p>
-    <p>{m.settings_allowed({ bounds: boundsText(setting.range, setting.values, setting.step) })}</p>
+    <p>
+      {m.settings_allowed({
+        bounds: boundsText(setting.range, setting.values, setting.step, setting.labels),
+      })}
+    </p>
     <button disabled={pending} onclick={() => change(true)}>
       {m.settings_enable({ key: setting.key })}
     </button>
