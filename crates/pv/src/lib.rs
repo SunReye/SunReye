@@ -6,12 +6,14 @@ mod inverter;
 mod mppt;
 mod perez;
 mod string;
+mod sun;
 mod temperature;
 
 pub use inverter::inverter_power;
 pub use mppt::{module_counts_differ, mppt_output};
 pub use perez::plane_irradiance;
 pub use string::string_output;
+pub use sun::sun_position;
 pub use temperature::cell_temperature;
 
 /// The orientation of a module's surface.
@@ -27,6 +29,13 @@ pub struct Plane {
 pub struct Sun {
     pub zenith: f64,
     pub azimuth: f64,
+}
+
+/// A place on earth in degrees, north and east positive.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Location {
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 /// The weather at one instant, irradiance in W/m².

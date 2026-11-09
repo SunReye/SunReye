@@ -9,7 +9,8 @@ import csv
 import math
 from pathlib import Path
 
-from pvlib import iam, irradiance, pvsystem, temperature
+import pandas as pd
+from pvlib import iam, irradiance, pvsystem, solarposition, temperature
 
 HERE = Path(__file__).parent
 PLANES = [(0, 0), (30, 0), (35, -90), (45, 90), (30, 180), (90, 0), (90, -90), (20, 45)]
@@ -33,6 +34,26 @@ def cases():
         yield tilt, plane_az, zenith, sun_az, doy, ghi, dni, dhi, temp_air, wind
     # Twilight: diffuse light with the sun below the horizon.
     yield 30, 0, 92, -110, 80, 5.0, 0.0, 5.0, 3.0, 2.0
+
+
+# Places (latitude, longitude) and UTC instants: the owner's latitude, the tropics, the far
+# south and a date line neighbour, across seasons and times of day.
+PLACES = [(52.52, 13.38), (48.14, 11.58), (-33.87, 151.21), (1.29, 103.85), (64.15, -21.94),
+          (37.77, -122.42)]
+INSTANTS = ["2026-03-20T06:00:00Z", "2026-06-21T11:30:00Z", "2026-11-09T09:15:00Z",
+            "2026-12-21T14:45:00Z", "2030-08-01T03:00:00Z", "2024-02-29T20:00:00Z"]
+
+
+def sun():
+    rows = [["unix", "latitude", "longitude", "zenith", "azimuth"]]
+    for latitude, longitude in PLACES:
+        times = pd.DatetimeIndex(INSTANTS)
+        # Geometric (unrefracted) topocentric position; delta T as NREL SPA's default.
+        position = solarposition.spa_python(times, latitude, longitude, delta_t=67.0)
+        for time, (_, row) in zip(times, position.iterrows()):
+            rows.append([int(time.timestamp()), latitude, longitude, row["zenith"],
+                         row["azimuth"] - 180])
+    return rows
 
 
 def main():
@@ -59,7 +80,7 @@ def main():
         power = dc * (1 - LOSS_PCT / 100)
         string.append([*inputs, temp_air, "" if wind is None else wind, power])
 
-    for name, rows in (("perez.csv", perez), ("string.csv", string)):
+    for name, rows in (("perez.csv", perez), ("string.csv", string), ("sun.csv", sun())):
         with open(HERE / name, "w", newline="") as f:
             csv.writer(f, lineterminator="\n").writerows(
                 [[v if isinstance(v, (str, int)) else repr(float(v)) for v in row] for row in rows]

@@ -22,6 +22,7 @@ Status: accepted (2026-11-08), amended (2026-11-09)
 
 **PV model.** The `pv` crate, whose `estimate(layout, weather)` returns series per string, MPPT input and inverter. It is pure: no I/O, no async runtime, no provider knowledge. The gate builds it for `wasm32-unknown-unknown`, so the 3D house builder (ADR 1) can run the same model in the browser; its browser glue arrives with the builder.
 
+- Sun position from the plant's location and the time: Meeus's low-precision solar coordinates, geometric and unrefracted, within 0.02° of NREL SPA (pvlib's golden values). SPA's tables of periodic terms buy nothing a PV estimate can see.
 - Per module: Perez transposition onto its plane; beam shading per bypass-diode substring from the scene (ADR 20), diffuse unshaded; the Martin–Ruiz incidence-angle loss on the beam and a constant factor on diffuse; cell temperature by Faiman with wind, by the NOCT rise without.
 - Per string: the current-voltage curve summed over its substrings, with bypass diodes, and its maximum power point; then the string's loss. A module with an optimizer delivers its own maximum power, less 1 %, whatever the string current.
 - Per MPPT input: parallel currents add and are capped at the maximum input current. Below the voltage window or the start voltage it yields nothing; above the window it is clipped.
