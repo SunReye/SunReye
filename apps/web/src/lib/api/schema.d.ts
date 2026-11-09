@@ -165,6 +165,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the plant paid, earned and saved per plant-local day, from the daily rollups of the
+         *     `cost.*` rates; the current day covers its closed hours.
+         */
+        get: operations["costs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices": {
         parameters: {
             query?: never;
@@ -1078,6 +1098,18 @@ export interface components {
         CorrectionList: {
             inputs: components["schemas"]["InputCorrection"][];
         };
+        /** @description One plant-local day's costs. */
+        CostDay: components["schemas"]["Money"] & {
+            /** @description RFC 3339, UTC. */
+            end: string;
+            /** @description RFC 3339, UTC. */
+            start: string;
+        };
+        /** @description The days with rolled-up costs, in order, and their total. */
+        CostDays: {
+            days: components["schemas"]["CostDay"][];
+            total: components["schemas"]["Money"];
+        };
         /** @description A token just created: the only time the token is shown. */
         Created: {
             /** Format: int32 */
@@ -1474,6 +1506,24 @@ export interface components {
         };
         ModuleTypes: {
             moduleTypes: components["schemas"]["ModuleType"][];
+        };
+        /** @description EUR to the cent. */
+        Money: {
+            /**
+             * Format: double
+             * @description Earned for what was fed in.
+             */
+            earned: number;
+            /**
+             * Format: double
+             * @description Paid for what was bought.
+             */
+            paid: number;
+            /**
+             * Format: double
+             * @description The bill without the plant less the bill with it.
+             */
+            saved: number;
         };
         NewIndex: {
             /** @description The `index.json` URL. */
@@ -2328,6 +2378,38 @@ export interface operations {
                 };
             };
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    costs: {
+        parameters: {
+            query: {
+                /** @description The first instant, RFC 3339: a day starting from it on is read. */
+                from: string;
+                /** @description The instant after the last, RFC 3339. */
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostDays"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -581,6 +581,50 @@
         ],
         "type": "object"
       },
+      "CostDay": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Money"
+          },
+          {
+            "properties": {
+              "end": {
+                "description": "RFC 3339, UTC.",
+                "type": "string"
+              },
+              "start": {
+                "description": "RFC 3339, UTC.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "One plant-local day's costs."
+      },
+      "CostDays": {
+        "description": "The days with rolled-up costs, in order, and their total.",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/CostDay"
+            },
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "days",
+          "total"
+        ],
+        "type": "object"
+      },
       "Created": {
         "allOf": [
           {
@@ -1644,6 +1688,32 @@
         },
         "required": [
           "moduleTypes"
+        ],
+        "type": "object"
+      },
+      "Money": {
+        "description": "EUR to the cent.",
+        "properties": {
+          "earned": {
+            "description": "Earned for what was fed in.",
+            "format": "double",
+            "type": "number"
+          },
+          "paid": {
+            "description": "Paid for what was bought.",
+            "format": "double",
+            "type": "number"
+          },
+          "saved": {
+            "description": "The bill without the plant less the bill with it.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "paid",
+          "earned",
+          "saved"
         ],
         "type": "object"
       },
@@ -3422,6 +3492,52 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/costs": {
+      "get": {
+        "operationId": "costs",
+        "parameters": [
+          {
+            "description": "The first instant, RFC 3339: a day starting from it on is read.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The instant after the last, RFC 3339.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostDays"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day covers its closed hours."
       }
     },
     "/api/v1/devices": {
