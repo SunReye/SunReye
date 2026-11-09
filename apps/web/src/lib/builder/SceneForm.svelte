@@ -2,6 +2,7 @@
   import { m } from "../paraglide/messages.js";
   import BlockFieldset from "./BlockFieldset.svelte";
   import { nextBlock, obstacle } from "./draft.ts";
+  import { withoutBlock } from "./modules.ts";
   import ObstacleFieldset from "./ObstacleFieldset.svelte";
   import type { Obstacle, Scene } from "./pv.ts";
 
@@ -46,7 +47,7 @@
       }}
       onremove={scene.blocks.length > 1
         ? () => {
-            scene = { ...scene, blocks: scene.blocks.toSpliced(index, 1) };
+            scene = withoutBlock(scene, index);
           }
         : undefined}
     />
