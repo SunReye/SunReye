@@ -37,11 +37,15 @@ async fn one_cycle(endpoint: Endpoint) -> Vec<(String, Option<u32>, f64)> {
         .collect()
 }
 
-/// The owner's plant (#623, #624) is captured read-only: through the gateway and the Solarman
-/// stick, a capture sends only function 3, and replays in `sim` as the device itself polls.
+/// The owner's plant (#623, #624) is captured read-only: through the gateway, an RTU gateway and
+/// the Solarman stick, a capture sends only function 3, and replays in `sim` as the device itself polls.
 #[tokio::test]
 async fn a_capture_sends_only_reads_and_replays_as_the_device_polls() {
-    for mut fake in [fake::serve().await, fake::serve_solarman().await] {
+    for mut fake in [
+        fake::serve().await,
+        fake::serve_rtu().await,
+        fake::serve_solarman().await,
+    ] {
         let recording = record(&fake.endpoint(), 0, deye(), 1).await.unwrap();
 
         let framing = fake.endpoint().framing();
@@ -66,7 +70,11 @@ async fn a_capture_sends_only_reads_and_replays_as_the_device_polls() {
 /// The guard sits on the wire, not in the caller: a write through a recording client never leaves.
 #[tokio::test]
 async fn a_recording_client_refuses_a_write_before_it_reaches_the_device() {
-    for mut fake in [fake::serve().await, fake::serve_solarman().await] {
+    for mut fake in [
+        fake::serve().await,
+        fake::serve_rtu().await,
+        fake::serve_solarman().await,
+    ] {
         let (mut client, tape) = Client::recording(&fake.endpoint(), TIMEOUT).await.unwrap();
 
         let refused = client.write_registers(0, 500, &[1]).await;
@@ -121,6 +129,15 @@ fn a_capture_file_reads_back_as_its_recording() {
 }
 
 #[test]
+fn an_rtu_over_tcp_capture_reads_back_with_its_framing() {
+    let mut rtu = recording();
+    rtu.capture.framing = Framing::RtuOverTcp;
+    let file = FILE.replacen("solarman-v5", "rtu-over-tcp", 1);
+    assert_eq!(rtu.to_ndjson(), file);
+    assert_eq!(Recording::parse(&file), Ok(rtu));
+}
+
+#[test]
 fn a_capture_file_of_a_later_format_is_refused() {
     let later = FILE.replacen(r#""capture":1"#, r#""capture":2"#, 1);
     assert_eq!(
@@ -166,6 +183,18 @@ fn capture_takes_an_endpoint_url_a_unit_id_and_a_bundled_profile() {
             port: 8899
         })
     );
+    assert_eq!(
+        parse(&[
+            "--endpoint=rtu-over-tcp://10.20.0.70:4196",
+            "--unit=1",
+            "--profile=x"
+        ])
+        .map(|o| o.endpoint),
+        Ok(Endpoint::RtuOverTcp {
+            host: "10.20.0.70".into(),
+            port: 4196
+        })
+    );
 }
 
 #[test]
@@ -173,7 +202,8 @@ fn capture_refuses_sim_and_names_what_is_missing() {
     assert_eq!(
         parse(&["--endpoint", "sim://x:1", "--unit", "0", "--profile", "x"]),
         Err(
-            "--endpoint: `sim://x:1` is not modbus-tcp://host:port or solarman-v5://host:port"
+            "--endpoint: `sim://x:1` is not modbus-tcp://, rtu-over-tcp:// or \
+             solarman-v5://host:port"
                 .into()
         )
     );
