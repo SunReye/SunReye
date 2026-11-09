@@ -9,7 +9,7 @@ mod string;
 mod temperature;
 
 pub use inverter::inverter_power;
-pub use mppt::mppt_output;
+pub use mppt::{module_counts_differ, mppt_output};
 pub use perez::plane_irradiance;
 pub use string::string_output;
 pub use temperature::cell_temperature;

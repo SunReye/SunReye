@@ -1,6 +1,6 @@
 //! Strings in parallel on one MPPT input, within the input's limits.
 
-use crate::{MpptLimits, StringOutput};
+use crate::{MpptLimits, PvString, StringOutput};
 
 const NOTHING: StringOutput = StringOutput {
     current: 0.0,
@@ -36,4 +36,14 @@ pub fn mppt_output(strings: &[StringOutput], limits: Option<&MpptLimits>) -> Str
         voltage,
         power: voltage * current,
     }
+}
+
+/// The lint for one input's strings: parallel strings of different lengths
+/// force each other off their maximum power point.
+#[must_use]
+pub fn module_counts_differ(strings: &[PvString]) -> bool {
+    strings.windows(2).any(|pair| match pair {
+        [a, b] => a.modules != b.modules,
+        _ => false,
+    })
 }
