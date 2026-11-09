@@ -82,6 +82,8 @@ pub enum Read {
         topic: String,
         scale: f64,
         offset: f64,
+        /// Text payloads and the values they read as.
+        texts: Vec<(String, f64)>,
     },
     Compute(Expr),
 }
@@ -377,6 +379,9 @@ fn step(read: &Read, earlier: &[Quantity]) -> f64 {
 fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &'static str> {
     let scale = doc.scale.unwrap_or(1.0);
     let offset = doc.offset.unwrap_or(0.0);
+    if doc.texts.is_some() && doc.topic.is_none() {
+        return Err("only a topic maps texts");
+    }
     match (doc.register, &doc.topic, &doc.compute) {
         (Some(address), None, None) => {
             let kind = doc.kind.ok_or("a register needs a type")?;
@@ -401,6 +406,7 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
                 topic: topic.clone(),
                 scale,
                 offset,
+                texts: doc.texts.clone().unwrap_or_default().into_iter().collect(),
             })
         }
         (None, None, Some(expr)) if doc.kind.is_none() => {

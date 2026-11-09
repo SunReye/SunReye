@@ -8,7 +8,11 @@ export type Quantity = { key: string, role: string, index?: number, register?: n
 /**
  * An `mqtt` topic under the connection's root; `{address}` stands for the device address.
  */
-topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, };
+topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, 
+/**
+ * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+ */
+enum?: Record<string, number>, };
 
 export type Kind = "u16" | "i16" | "u32";
 

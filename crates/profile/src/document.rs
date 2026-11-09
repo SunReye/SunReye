@@ -1,6 +1,8 @@
 //! The profile file as written. Unknown fields are refused: a field this build does not know may
 //! change what a register means.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 /// Read first, so a profile of another schema is refused by its number, not by its fields.
@@ -221,6 +223,10 @@ pub struct QuantityDoc {
     pub offset: Option<f64>,
     pub compute: Option<ExprDoc>,
     pub range: Option<Range>,
+    /// A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+    #[serde(rename = "enum")]
+    #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
+    pub texts: Option<BTreeMap<String, f64>>,
 }
 
 /// A register's type. Double words are low word first.

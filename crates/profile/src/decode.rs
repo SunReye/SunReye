@@ -76,15 +76,22 @@ impl Profile {
 
     /// Takes `payload`, a message on the topic of quantity `position`, into `values`, and
     /// recomputes every computed quantity. A number is scaled, `true` and `false` read as 1 and 0,
-    /// and anything else, such as `null` or an empty payload, is no value.
+    /// a text its enum maps reads as its value, and anything else, such as `null` or an empty
+    /// payload, is no value. A topic that maps texts reads nothing else.
     pub fn receive(&self, position: usize, payload: &[u8], values: &mut [Option<f64>]) {
         let Some(quantity) = self.quantities().get(position) else {
             return;
         };
-        let Read::Topic { scale, offset, .. } = quantity.read else {
+        let Read::Topic {
+            scale,
+            offset,
+            ref texts,
+            ..
+        } = quantity.read
+        else {
             return;
         };
-        let value = parse(payload)
+        let value = parse(payload, texts)
             .map(|raw| scaled(raw, scale, offset))
             .filter(|value| value.is_finite())
             .map(|value| clamped(quantity.range, value));
@@ -106,7 +113,13 @@ impl Profile {
 /// Where a topic names the device address.
 const ADDRESS: &str = "{address}";
 
-fn parse(payload: &[u8]) -> Option<f64> {
+fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
+    if !texts.is_empty() {
+        return texts
+            .iter()
+            .find(|(text, _)| text.as_bytes() == payload)
+            .map(|(_, value)| *value);
+    }
     match serde_json::from_slice(payload).ok()? {
         Value::Number(n) => n.as_f64(),
         Value::Bool(on) => Some(f64::from(u8::from(on))),
