@@ -217,7 +217,8 @@ impl Frame {
     fn place(&self, [across, up, deep]: Local) -> Point {
         let (x, z) = turn(across, deep, self.rotation);
         let (east, south) = turn(x + self.x, z + self.z, self.north);
-        [east, -south, up]
+        // Never −0, which JSON keeps.
+        [east, 0.0 - south, up]
     }
 }
 

@@ -819,6 +819,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunreye-pv-wasm"
+version = "5.0.0"
+dependencies = [
+ "serde_json",
+ "sunreye-pv",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
