@@ -183,5 +183,12 @@
   "log_after": "Zurückgelesen",
   "log_outcome": "Ergebnis",
   "log_step": "Fehlgeschlagener Schritt",
-  "log_actor": "Auslöser"
+  "log_actor": "Auslöser",
+  "evcc_title": "Ladepunkt",
+  "evcc_charging": "Lädt",
+  "evcc_connected": "Angesteckt",
+  "evcc_empty": "Kein Fahrzeug",
+  "evcc_power": "Ladeleistung",
+  "evcc_soc": "Fahrzeug-SOC",
+  "evcc_session": "Diese Ladung"
 }

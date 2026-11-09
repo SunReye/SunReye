@@ -53,6 +53,23 @@ test("the screen shows each live power in the locale's format and charts its day
     ]);
 });
 
+test("an EVCC loadpoint shows on its own card, not as a charted power", async () => {
+  const loadpoint = '{"devices":{"2":{"ev.charge.power":7360,"ev.connected":1,"ev.charging":1}}}';
+
+  const transport = testCore(
+    new Response(`event: snapshot\ndata: ${loadpoint}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const screen = await render(LiveScreen, { core: connect(transport) });
+
+  await expect.element(screen.getByRole("heading", { name: "Ladepunkt" })).toBeVisible();
+  await expect.element(screen.getByText("7.360 W")).toBeVisible();
+  await expect.element(screen.getByText("ev.charge.power")).not.toBeInTheDocument();
+  expect(transport.asked.filter((path) => path.includes("/history"))).toEqual([]);
+});
+
 test("a refused stream shows its problem in German", async () => {
   const transport = testCore(
     Response.json({ status: 401, code: "auth.required" }, { status: 401 }),

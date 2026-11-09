@@ -21,8 +21,12 @@ A request/response network address with its transport (Modbus TCP, RTU over TCP,
 _Avoid_: Port, link
 
 **Device address**:
-Where a device sits behind its connection: a Modbus unit id, an EVCC loadpoint index or a topic root. It belongs to the device.
+Where a device sits behind its connection: a Modbus unit id or an EVCC loadpoint index. It belongs to the device.
 _Avoid_: Slave id
+
+**Topic root**:
+The topic prefix of a broker connection, such as `evcc`, under which its profiles' topics sit. It belongs to the connection.
+_Avoid_: Prefix, base topic
 
 **Integration**:
 An outbound adapter for a neighbour: the role endpoint, the MQTT publisher with Home Assistant discovery, the cloud relay.
