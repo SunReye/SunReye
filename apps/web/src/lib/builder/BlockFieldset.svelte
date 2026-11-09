@@ -18,7 +18,7 @@
     onremove: (() => void) | undefined;
   } = $props();
 
-  type Numeric = { [K in keyof Block]: Block[K] extends number ? K : never }[keyof Block];
+  type Numeric = { [K in keyof Block]-?: Block[K] extends number ? K : never }[keyof Block];
 
   const fields: readonly (readonly [Numeric, () => string])[] = [
     ["x", m.field_x],
@@ -79,6 +79,16 @@
       }}
     />
   {/if}
+  <label>
+    <input
+      type="checkbox"
+      checked={block.open === true}
+      onchange={(event) => {
+        onchange({ ...block, open: event.currentTarget.checked });
+      }}
+    />
+    {m.block_carport()}
+  </label>
   {#if onremove !== undefined}
     <button type="button" onclick={onremove}>{m.builder_remove()}</button>
   {/if}

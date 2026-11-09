@@ -34,6 +34,7 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `ev.connected`, `ev.charging` | | status | |
 | `ev.limit.soc` | % | measurement; the vehicle charge limit a loadpoint charges to (ADR 10) | |
 | `ev.mode`, `ev.battery.boost` | | status; a loadpoint's charge mode and whether it may drain the house battery (ADR 10) | |
+| `ev.vehicle.model` | | status; the car catalogue entry the connected vehicle's title names (ADR 20) | |
 | `weather.ghi`, `weather.dni`, `weather.dhi` | W/m² | measurement; global, direct normal and diffuse irradiance (ADR 17) | |
 | `weather.temperature`, `weather.wind` | °C, m/s | measurement | |
 | `price.import`, `price.export` | EUR/kWh | measurement; what a kWh bought costs and a kWh fed in earns (ADR 12) | yes |

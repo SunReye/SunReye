@@ -36,6 +36,13 @@ function testCore(): Transport & { readonly puts: unknown[] } {
     base: "http://core.test/",
     puts,
     fetch: async (request) => {
+      // The live stream stays open and silent.
+      if (request.method === "GET") return Promise.withResolvers<Response>().promise;
+
+      if (request.url.endsWith("/api/v1/car-bodies")) {
+        return Response.json({ id: "ab".repeat(32) }, { status: 201 });
+      }
+
       const change: unknown = await request.json();
 
       puts.push(change);
@@ -69,6 +76,7 @@ beforeEach(async () => {
 const DEVICES = [
   { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 },
   { id: 2, name: "Speicher", profile: "pylontech", connection: 1, unit: 2 },
+  { id: 3, name: "Wallbox", profile: "evcc", connection: 2, unit: 1 },
 ];
 
 async function gridOnTheSouthFace(transport: Transport) {
@@ -181,4 +189,97 @@ test("the admin hangs a battery marker inside the right wall and saves it with t
       equipment: [{ device: 2, kind: "battery", block: 0, wall: "right", along: 3, inside: true }],
     },
   });
+});
+
+test("the admin adds a car place under a carport, picks its body, uploads a GLB and saves", async () => {
+  const transport = testCore();
+  const screen = await gridOnTheSouthFace(transport);
+
+  await screen.getByRole("button", { name: "Baukörper hinzufügen" }).click();
+  await screen
+    .getByRole("group", { name: "Baukörper 2" })
+    .getByRole("checkbox", { name: "Carport" })
+    .click();
+  await screen.getByRole("button", { name: "Stellplatz hinzufügen" }).click();
+
+  const place = screen.getByRole("group", { name: "Stellplatz 1" });
+
+  await userEvent.selectOptions(
+    place.getByRole("combobox", { name: "Ladepunkt" }).element(),
+    "Wallbox",
+  );
+  await userEvent.selectOptions(
+    place.getByRole("combobox", { name: "Fahrzeugklasse" }).element(),
+    "SUV",
+  );
+  await userEvent.upload(
+    place.getByLabelText("Eigenes Modell (GLB, höchstens 20 MB)").element(),
+    new File([new Uint8Array([0x67, 0x6c, 0x54, 0x46])], "car.glb"),
+  );
+  await expect
+    .element(place.getByRole("button", { name: "Eigenes Modell entfernen" }))
+    .toBeVisible();
+
+  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
+  await screen.getByRole("button", { name: "Speichern" }).click();
+
+  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
+  expect(transport.puts[0]).toMatchObject({
+    scene: {
+      blocks: [{ x: 0 }, { open: true }],
+      carPlaces: [{ device: 3, body: { class: "suv", colour: "#8a8f98" }, model: "ab".repeat(32) }],
+    },
+  });
+});
+
+// One snapshot, then the stream stays open: an ended one would reconnect at once.
+function live(connected: number): Response {
+  const snapshot = JSON.stringify({
+    devices: {
+      "3": { "ev.connected": connected, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
+    },
+  });
+
+  return new Response(
+    new ReadableStream({
+      start: (controller) => {
+        controller.enqueue(new TextEncoder().encode(`event: snapshot\ndata: ${snapshot}\n\n`));
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+test("a connected car shows its charge power and SOC in the builder; none while unplugged", async () => {
+  const parked = {
+    ...emptyDraft(),
+    scene: {
+      ...emptyDraft().scene,
+      carPlaces: [{ device: 3, x: 12, z: 0, width: 2.5, length: 5, rotation: 0 }],
+    },
+  };
+
+  const show = (connected: number) =>
+    render(Builder, {
+      pv,
+      core: connect({
+        base: "http://core.test/",
+        fetch: () => Promise.resolve(live(connected)),
+      }),
+      start: parked,
+      moduleTypes: [MODULE],
+      devices: DEVICES,
+    });
+
+  const plugged = await show(1);
+
+  await expect
+    .element(plugged.getByText("Wallbox: Auto lädt 7.360 W · Ladestand 63 %"))
+    .toBeVisible();
+  await plugged.unmount();
+
+  const unplugged = await show(0);
+
+  await expect.element(unplugged.getByRole("group", { name: "Stellplatz 1" })).toBeVisible();
+  expect(unplugged.getByText(/Auto lädt/u).elements()).toHaveLength(0);
 });

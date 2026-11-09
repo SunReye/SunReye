@@ -13,7 +13,13 @@ export default defineConfig({
     }),
   ],
   // Pre-bundled up front: discovering them mid-run reloads the browser and fails the files in flight.
-  optimizeDeps: { include: ["three", "three/addons/controls/OrbitControls.js"] },
+  optimizeDeps: {
+    include: [
+      "three",
+      "three/addons/controls/OrbitControls.js",
+      "three/addons/loaders/GLTFLoader.js",
+    ],
+  },
   test: {
     include: ["src/**/*.svelte.test.ts"],
     browser: {

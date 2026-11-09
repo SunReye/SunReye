@@ -33,6 +33,9 @@ const ROUTES: &[(Method, &str, Access)] = &[
     // The scene viewers see read-only (ADR 20).
     (Method::GET, "/api/v1/layout", Read),
     (Method::GET, "/api/v1/module-types", Read),
+    // Uploaded car bodies the scene names.
+    (Method::GET, "/api/v1/car-bodies/{id}", Read),
+    (Method::POST, "/api/v1/car-bodies", Admin),
     (Method::PUT, "/api/v1/layout", Admin),
     (Method::POST, "/api/v1/module-types", Admin),
     (Method::GET, "/api/v1/connections", Admin),

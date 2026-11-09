@@ -287,6 +287,7 @@ fn walled_house(module_type: u32) -> Scene {
             eave: 3.0,
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
+            open: false,
         }],
         obstacles: vec![Obstacle::Box {
             x: -3.0,
@@ -305,6 +306,7 @@ fn walled_house(module_type: u32) -> Scene {
             modules: cells.collect(),
         }],
         equipment: vec![],
+        car_places: vec![],
     }
 }
 

@@ -3,7 +3,7 @@
   "id": "evcc",
   "name": "Loadpoint",
   "manufacturer": "EVCC",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "requires": [
     "mqtt",
     "u16",
@@ -26,6 +26,18 @@
       "role": "ev.session.energy",
       "topic": "loadpoints/{address}/sessionEnergy",
       "scale": 0.001
+    },
+    {
+      "key": "vehicleTitle",
+      "role": "ev.vehicle.model",
+      "topic": "loadpoints/{address}/vehicleTitle",
+      "enum": {
+        "Tesla Model 3 Highland": 1,
+        "Tesla Model Y": 2,
+        "Volkswagen ID.3": 3,
+        "Volkswagen ID. Buzz": 4,
+        "Ford F-150 Lightning": 5
+      }
     },
     {
       "key": "connected",

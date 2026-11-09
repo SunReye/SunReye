@@ -7,6 +7,7 @@ mod tokens;
 mod viewers;
 
 pub use access::{Access, access};
+pub(crate) use sessions::hex;
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};

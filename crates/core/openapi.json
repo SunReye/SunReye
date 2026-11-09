@@ -63,6 +63,10 @@
             "format": "double",
             "type": "number"
           },
+          "open": {
+            "description": "A carport: a post at each corner instead of walls.",
+            "type": "boolean"
+          },
           "roof": {
             "$ref": "#/components/schemas/Roof"
           },
@@ -94,6 +98,34 @@
           "roof"
         ],
         "type": "object"
+      },
+      "Body": {
+        "additionalProperties": false,
+        "description": "A stylised body the browser draws.",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/BodyClass"
+          },
+          "colour": {
+            "description": "`#rrggbb`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "class",
+          "colour"
+        ],
+        "type": "object"
+      },
+      "BodyClass": {
+        "enum": [
+          "sedan",
+          "hatchback",
+          "suv",
+          "van",
+          "pickup"
+        ],
+        "type": "string"
       },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
@@ -136,6 +168,67 @@
         },
         "required": [
           "connected"
+        ],
+        "type": "object"
+      },
+      "CarPlace": {
+        "additionalProperties": false,
+        "description": "A parking footprint: its width runs along x and its length along z from its corner, before\nit turns.",
+        "properties": {
+          "body": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Body",
+                "description": "The admin's pick, when no catalogue entry matches the vehicle."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device": {
+            "description": "The EVCC loadpoint device's id (ADR 10).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "description": "An uploaded body is scaled to it.",
+            "format": "double",
+            "type": "number"
+          },
+          "model": {
+            "description": "The uploaded GLB's id, its SHA-256 in hex.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rotation": {
+            "description": "Degrees clockwise about the corner, seen from above.",
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "device",
+          "x",
+          "z",
+          "width",
+          "length",
+          "rotation"
         ],
         "type": "object"
       },
@@ -246,6 +339,10 @@
           "layout.scene",
           "layout.setback",
           "layout.overlap",
+          "car.size",
+          "car.file",
+          "car.uri",
+          "car.none",
           "topology.none",
           "topology.tree",
           "topology.point",
@@ -1813,6 +1910,12 @@
             },
             "type": "array"
           },
+          "carPlaces": {
+            "items": {
+              "$ref": "#/components/schemas/CarPlace"
+            },
+            "type": "array"
+          },
           "equipment": {
             "description": "Markers for inverters and batteries.",
             "items": {
@@ -2217,6 +2320,19 @@
         ],
         "type": "object"
       },
+      "Uploaded": {
+        "description": "A stored body's id.",
+        "properties": {
+          "id": {
+            "description": "Its SHA-256 in hex.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Viewer": {
         "description": "A viewer as the API reads it: never its password.",
         "properties": {
@@ -2475,6 +2591,89 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/car-bodies": {
+      "post": {
+        "operationId": "upload",
+        "requestBody": {
+          "content": {
+            "model/gltf-binary": {
+              "schema": {
+                "items": {
+                  "format": "int32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Uploaded"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Stores a GLB of at most 20 MB with every buffer and image embedded; the same file twice is\none body."
+      }
+    },
+    "/api/v1/car-bodies/{id}": {
+      "get": {
+        "operationId": "body",
+        "parameters": [
+          {
+            "description": "The body's SHA-256 in hex",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "model/gltf-binary": {
+                "schema": {
+                  "items": {
+                    "format": "int32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "An uploaded body."
       }
     },
     "/api/v1/changes": {

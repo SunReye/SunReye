@@ -17,6 +17,7 @@ use tower::ServiceExt;
 use super::{Api, router};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
@@ -31,6 +32,7 @@ use crate::topology::Topologies;
 
 mod access;
 mod balance;
+mod cars;
 mod devices;
 mod evcc;
 mod forecasts;
@@ -129,6 +131,7 @@ impl Core {
             profiles,
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
+            cars: CarBodies::new(path.with_file_name("cars")),
             zones: storage.zones(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
@@ -220,6 +223,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         profiles,
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
+        cars: CarBodies::new(dir.path().join("cars")),
         zones: storage.zones(),
         clock: Arc::new(SystemTime::now),
     };

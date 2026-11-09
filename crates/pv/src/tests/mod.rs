@@ -5,6 +5,7 @@ mod fixtures;
 mod grid;
 mod input;
 mod lint;
+mod parking;
 mod perez;
 mod scene;
 mod shade;

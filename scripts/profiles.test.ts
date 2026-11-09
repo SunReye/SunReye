@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { copyFile, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { catalogue } from "../apps/web/src/lib/cars/catalogue.ts";
 import { buildProfiles } from "../packages/sdk/src/build.ts";
 import { loadProfileWasm } from "../packages/sdk/src/index.ts";
 import deye from "../profiles/deye-sg05lp3.ts";
@@ -32,4 +33,12 @@ test.each([
   const wasm = await loadProfileWasm();
 
   expect(wasm.lint(JSON.stringify(profile))).toEqual([]);
+});
+
+test("EVCC reads each vehicle title in the SPA's car catalogue as its entry's id", () => {
+  const title = evcc.quantities.find(({ key }) => key === "vehicleTitle");
+
+  expect(title !== undefined && "enum" in title ? title.enum : undefined).toEqual(
+    Object.fromEntries(catalogue.map(({ model, id }) => [model, id])),
+  );
 });

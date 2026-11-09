@@ -35,6 +35,7 @@ export function body({
         }),
       ),
       equipment: [...(scene.equipment ?? [])],
+      carPlaces: [...(scene.carPlaces ?? [])],
     },
   };
 }

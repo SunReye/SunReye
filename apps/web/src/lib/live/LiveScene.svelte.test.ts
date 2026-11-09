@@ -207,3 +207,33 @@ test("the scene draws once per live tick and per camera move, and never on its o
 
   expect(draws.mock.calls.length).toBeGreaterThan(settled + 1);
 });
+
+test("a car appears at its place while connected, with its charge power and SOC", async () => {
+  const { core, tick } = ticking();
+
+  const parked = {
+    ...scene,
+    carPlaces: [{ device: 2, x: 12, z: 0, width: 2.5, length: 5, rotation: 0 }],
+  } satisfies Scene;
+
+  const screen = await render(LiveScene, {
+    core,
+    pv,
+    layout: { ...layout, scene: parked },
+    scene: parked,
+    moduleTypes: [MODULE],
+    capabilities: undefined,
+  });
+
+  await tick({ devices: { ...frame(600, 0).devices, "2": { "ev.connected": 0 } } });
+
+  await expect.element(screen.getByText("Süd: 600 W")).toBeVisible();
+  expect(screen.getByText(/^Auto/u).elements()).toHaveLength(0);
+
+  await tick({
+    devices: { "2": { "ev.connected": 1, "ev.charge.power": 7360, "ev.vehicle.soc": 63 } },
+  });
+
+  await expect.element(screen.getByText("Auto lädt 7.360 W")).toBeVisible();
+  await expect.element(screen.getByText("Ladestand 63 %")).toBeVisible();
+});

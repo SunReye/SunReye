@@ -27,10 +27,12 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
             eave: 3.0,
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
+            open: false,
         }],
         obstacles: vec![],
         grids,
         equipment: vec![],
+        car_places: vec![],
     }
 }
 

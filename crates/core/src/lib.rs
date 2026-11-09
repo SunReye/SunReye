@@ -4,6 +4,7 @@ pub mod api;
 pub mod auth;
 pub mod bus;
 pub mod capture;
+pub mod cars;
 pub mod changes;
 pub mod devices;
 pub mod endpoint;

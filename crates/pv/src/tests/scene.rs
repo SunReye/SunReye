@@ -12,6 +12,7 @@ fn block(roof: Roof) -> Block {
         eave: 3.0,
         rotation: 0.0,
         roof,
+        open: false,
     }
 }
 
@@ -22,6 +23,7 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         obstacles,
         grids: vec![],
         equipment: vec![],
+        car_places: vec![],
     }
 }
 
@@ -333,4 +335,57 @@ fn the_scene_shades_with_each_face_as_a_fan_of_triangles_and_its_solids() {
             height: 9.0
         })
     );
+}
+
+#[test]
+fn a_carport_stands_on_a_post_at_each_corner_up_to_its_roof_and_has_no_walls() {
+    // A 3 m × 5 m carport rising at 45° from 2.2 m at the front to 7.2 m at the back.
+    let carport = Block {
+        width: 3.0,
+        depth: 5.0,
+        eave: 2.2,
+        open: true,
+        ..block(Roof::MonoPitch { pitch: 45.0 })
+    };
+    let built = scene(vec![carport], vec![]);
+
+    let faces = built.faces();
+    assert!(of(&faces, Surface::Wall).is_empty(), "{faces:?}");
+    assert_eq!(of(&faces, Surface::Roof).len(), 1);
+    let post = |base: Point, height: f64| Occluder::Cylinder {
+        base,
+        radius: 0.06,
+        height,
+    };
+    let solids = built.solids();
+    assert_eq!(solids.len(), 4, "{solids:?}");
+    for expected in [
+        post([0.0, 0.0, 0.0], 7.2),
+        post([3.0, 0.0, 0.0], 7.2),
+        post([3.0, -5.0, 0.0], 2.2),
+        post([0.0, -5.0, 0.0], 2.2),
+    ] {
+        assert!(
+            solids.iter().any(|s| near(s, &expected)),
+            "{expected:?} missing from {solids:?}"
+        );
+    }
+}
+
+fn near(actual: &Occluder, expected: &Occluder) -> bool {
+    match (actual, expected) {
+        (
+            Occluder::Cylinder {
+                base: a,
+                radius: ra,
+                height: ha,
+            },
+            Occluder::Cylinder {
+                base: e,
+                radius: re,
+                height: he,
+            },
+        ) => same(&[*a], &[*e]) && (ra - re).abs() < 1e-9 && (ha - he).abs() < 1e-6,
+        _ => false,
+    }
 }

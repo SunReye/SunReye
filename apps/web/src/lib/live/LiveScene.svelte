@@ -17,6 +17,7 @@
     scene,
     moduleTypes,
     capabilities,
+    model,
   }: {
     core: Core;
     pv: Pv;
@@ -25,6 +26,8 @@
     scene: Scene;
     moduleTypes: readonly ModuleType[];
     capabilities: Capabilities | undefined;
+    /** Reads an uploaded car body. */
+    model?: Parameters<typeof SceneCanvas>[1]["model"];
   } = $props();
 
   /** Where each browser keeps its last view of the dashboard (ADR 20). */
@@ -73,6 +76,8 @@
       mounts: geometry.mounts,
       estimated,
       values,
+      places: scene.carPlaces ?? [],
+      stands: geometry.stands,
     }),
   );
 
@@ -96,6 +101,8 @@
     {geometry}
     panels={drawn}
     shares={live.shares}
+    cars={live.cars}
+    {model}
     view={kept ?? presetView("isometric", geometry)}
     onview={(view) => {
       kept = view;
