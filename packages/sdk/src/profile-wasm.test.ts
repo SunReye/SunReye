@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import cases from "../../../crates/profile/src/tests/plan-cases.json" with { type: "json" };
+import v4Cases from "../../../crates/profile/src/tests/deye-sg05lp3-v4-cases.json" with { type: "json" };
 import { loadProfileWasm } from "./index.ts";
 
 const profile = await loadProfileWasm();
@@ -72,4 +73,35 @@ test("the profile WASM's warnings are the loader's text", () => {
   const doc = document([{ key: "a", role: "extra.a", register: 1, type: "u32" }]);
 
   expect(profile.lint(doc)).toEqual(["`requires` lacks `u32`, which the profile uses"]);
+});
+
+test("a dump of v4's recorded Deye cases decodes to v4's readings", async () => {
+  const deye = await Bun.file(
+    new URL("../../../profiles/deye-sg05lp3.json", import.meta.url),
+  ).text();
+
+  expect(v4Cases).toHaveLength(6);
+
+  for (const c of v4Cases) {
+    expect(profile.decode(deye, c.runs), c.name).toEqual(c.readings);
+  }
+});
+
+test("a dump that lacks one register of a planned block decodes nothing from that block", () => {
+  const doc = document([
+    { key: "a", role: "extra.a", register: 1, type: "u16" },
+    { key: "b", role: "extra.b", register: 2, type: "u16" },
+    { key: "c", role: "extra.c", register: 9, type: "u16" },
+  ]);
+
+  expect(
+    profile.decode(doc, [
+      { start: 1, words: [7] },
+      { start: 9, words: [3] },
+    ]),
+  ).toEqual({
+    a: null,
+    b: null,
+    c: 3,
+  });
 });
