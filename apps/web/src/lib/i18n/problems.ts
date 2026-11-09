@@ -36,6 +36,11 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "device.profile": m.problem_device_profile,
   "device.profile-change": m.problem_device_profile_change,
   "device.address": m.problem_device_address,
+  "setting.none": m.problem_setting_none,
+  "setting.read-only": m.problem_setting_read_only,
+  "setting.value": m.problem_setting_value,
+  "setting.writes-off": m.problem_setting_writes_off,
+  "setting.interval": m.problem_setting_interval,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

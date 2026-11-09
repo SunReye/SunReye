@@ -16,7 +16,7 @@ fn id(value: &Value) -> u32 {
     u32::try_from(value.as_u64().unwrap()).unwrap()
 }
 
-fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
+pub(super) fn send(method: &str, uri: &str, body: &Value) -> Request<Body> {
     let request = Request::builder()
         .method(method)
         .uri(uri)
@@ -36,7 +36,11 @@ fn gateway() -> Value {
 }
 
 impl Core {
-    async fn ask(&self, set_cookie: &str, request: Request<Body>) -> (StatusCode, Value) {
+    pub(super) async fn ask(
+        &self,
+        set_cookie: &str,
+        request: Request<Body>,
+    ) -> (StatusCode, Value) {
         let response = self.send(with_cookie(set_cookie, request)).await;
         let status = response.status();
         if status == StatusCode::NO_CONTENT {
@@ -46,7 +50,7 @@ impl Core {
     }
 
     /// Adds `connection`; returns its id.
-    async fn connection(&self, set_cookie: &str, connection: &Value) -> Value {
+    pub(super) async fn connection(&self, set_cookie: &str, connection: &Value) -> Value {
         let (status, body) = self
             .ask(set_cookie, send("POST", "/api/v1/connections", connection))
             .await;

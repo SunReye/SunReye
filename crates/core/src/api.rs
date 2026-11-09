@@ -249,6 +249,16 @@ pub enum Code {
     DeviceProfileChange,
     #[serde(rename = "device.address")]
     DeviceAddress,
+    #[serde(rename = "setting.none")]
+    SettingNone,
+    #[serde(rename = "setting.read-only")]
+    SettingReadOnly,
+    #[serde(rename = "setting.value")]
+    SettingValue,
+    #[serde(rename = "setting.writes-off")]
+    SettingWritesOff,
+    #[serde(rename = "setting.interval")]
+    SettingInterval,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
     #[serde(rename = "internal")]

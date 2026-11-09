@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::document::{Kind, Range, SettingDoc, StepDoc};
 
 /// One writable device parameter.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Setting {
     pub key: String,
     kind: Kind,

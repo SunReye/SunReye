@@ -74,6 +74,11 @@
           "device.profile",
           "device.profile-change",
           "device.address",
+          "setting.none",
+          "setting.read-only",
+          "setting.value",
+          "setting.writes-off",
+          "setting.interval",
           "clock.unsynced",
           "internal"
         ],
@@ -314,6 +319,68 @@
         ],
         "type": "object"
       },
+      "Entry": {
+        "description": "One attempt.",
+        "properties": {
+          "actor": {
+            "description": "`admin`, or a named controller.",
+            "type": "string"
+          },
+          "after": {
+            "description": "The value read back; `null` when nothing was written or it could not be read.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "before": {
+            "description": "The value read before writing; `null` when it could not be read or the setting is\nwrite-only.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "device": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failedStep": {
+            "description": "The recipe step that failed, counted from 1.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "requested": {
+            "format": "double",
+            "type": "number"
+          },
+          "setting": {
+            "type": "string"
+          },
+          "time": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time",
+          "device",
+          "setting",
+          "requested",
+          "outcome",
+          "actor"
+        ],
+        "type": "object"
+      },
       "ForecastPoint": {
         "properties": {
           "issued": {
@@ -475,6 +542,17 @@
         ],
         "type": "object"
       },
+      "Outcome": {
+        "description": "How a write ended.",
+        "enum": [
+          "verified",
+          "mismatch",
+          "unknown",
+          "partial",
+          "unchanged"
+        ],
+        "type": "string"
+      },
       "Point": {
         "properties": {
           "end": {
@@ -598,6 +676,20 @@
         "required": [
           "min",
           "max"
+        ],
+        "type": "object"
+      },
+      "SettingValue": {
+        "description": "A setting's new value.",
+        "properties": {
+          "value": {
+            "description": "In the setting's unit, a whole number of its steps.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -733,6 +825,20 @@
           "tilt",
           "azimuth",
           "loss"
+        ],
+        "type": "object"
+      },
+      "WriteLog": {
+        "properties": {
+          "writes": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "writes"
         ],
         "type": "object"
       }
@@ -1245,6 +1351,62 @@
         }
       }
     },
+    "/api/v1/devices/{id}/settings/{key}": {
+      "put": {
+        "operationId": "write_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entry"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps\nit. A refusal never reaches the device."
+      }
+    },
     "/api/v1/layout": {
       "get": {
         "operationId": "layout",
@@ -1504,6 +1666,32 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/writes": {
+      "get": {
+        "operationId": "writes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteLog"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every write attempt, oldest first."
       }
     }
   }

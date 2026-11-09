@@ -9,6 +9,7 @@ pub mod endpoint;
 pub mod layout;
 pub mod live;
 pub mod profiles;
+pub mod settings;
 pub mod solar;
 mod spa;
 pub mod startup;

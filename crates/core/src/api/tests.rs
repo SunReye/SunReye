@@ -31,6 +31,7 @@ mod ingress;
 mod layout;
 mod live;
 mod screen;
+mod settings;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {

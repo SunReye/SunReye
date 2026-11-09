@@ -207,7 +207,7 @@ fn device_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Device> {
     })
 }
 
-fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
+pub fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
     db.query_row(
         "SELECT id, name, connection, profile, unit, writes FROM device WHERE id = ?1",
         [id],

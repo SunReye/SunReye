@@ -25,6 +25,7 @@ use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::profiles::Catalogue;
+use crate::settings::{self, Job, Request, log};
 use crate::storage::{self, Database, Declarer, Policy};
 use crate::transport::Endpoint;
 
@@ -143,7 +144,7 @@ struct Polled {
 struct Running {
     endpoint: Endpoint,
     devices: Vec<Polled>,
-    _task: Task,
+    task: Task,
 }
 
 /// The devices feature module.
@@ -285,6 +286,77 @@ impl Devices {
             .await
     }
 
+    /// The one funnel (ADR 7): writes `request` to device `id` through its endpoint task, and
+    /// appends the attempt to the write log.
+    ///
+    /// Changes to devices wait for it, so its task cannot restart mid-write.
+    ///
+    /// # Errors
+    /// The device or setting is unknown or read-only, the value does not fit, the device's writes
+    /// are off, the setting's minimum interval has not passed, or the file cannot be written.
+    pub async fn write_setting(
+        &self,
+        id: u32,
+        request: Request,
+        now: SystemTime,
+    ) -> Result<log::Entry, Problem> {
+        let running = self.running.lock().await;
+        let device = self
+            .database
+            .run(move |db| store::device(db, id))
+            .await
+            .map_err(|_| INTERNAL)?
+            .ok_or(Refusal::NoDevice)?;
+        let profile = self
+            .catalogue
+            .get(&device.draft.profile)
+            .ok_or(settings::Refusal::None)?;
+        let setting = request.key.clone();
+        let last = self
+            .database
+            .run(move |db| log::last_write(db, id, &setting))
+            .await
+            .map_err(|_| INTERNAL)?;
+        let (setting, words) = settings::check(&profile, &request, device.draft.writes, last, now)?;
+        let task = running
+            .iter()
+            .find(|r| r.devices.iter().any(|d| d.id == id))
+            .map(|r| &r.task)
+            .ok_or(INTERNAL)?;
+        let job = Job {
+            unit: device.draft.unit,
+            setting,
+            words,
+        };
+        let applied = task.write(job).await.ok_or(INTERNAL)?;
+        // Logged before the lock is released: the next write's interval check reads this entry.
+        let logged = self
+            .database
+            .run(move |db| {
+                let attempt = log::Attempt {
+                    time: now,
+                    device: id,
+                    setting: &request.key,
+                    requested: request.value,
+                    applied,
+                    actor: request.actor,
+                };
+                log::append(db, &attempt)
+            })
+            .await
+            .map_err(|_| INTERNAL);
+        drop(running);
+        logged
+    }
+
+    /// Every write attempt, oldest first.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn writes(&self) -> Result<Vec<log::Entry>, storage::Error> {
+        self.database.run(log::entries).await
+    }
+
     fn check_profile(&self, draft: &DeviceDraft) -> Result<(), Refusal> {
         self.catalogue
             .get(&draft.profile)
@@ -333,7 +405,7 @@ impl Devices {
                 self.declare(device.id, &device.profile).await?;
             }
             running.push(Running {
-                _task: endpoint::spawn(endpoint.clone(), polled, self.bus.clone()),
+                task: endpoint::spawn(endpoint.clone(), polled, self.bus.clone()),
                 endpoint,
                 devices,
             });
