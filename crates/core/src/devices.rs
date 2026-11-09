@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use sunreye_profile::{Profile, Setting, Toggle};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, watch};
 use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
@@ -26,6 +26,7 @@ use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::mqtt;
 use crate::profiles::Catalogue;
+use crate::publisher::{self, Publisher, Publishing};
 use crate::scan::{self, Scanner};
 use crate::settings::{
     self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, publish,
@@ -103,6 +104,18 @@ pub struct Reach {
     /// broker and refused for any other transport.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topic_root: Option<String>,
+    /// What a broker publishes under its topic root (ADR 10); none when left out, and refused for
+    /// any other transport.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish: Option<Publish>,
+}
+
+/// The publisher of a broker connection: the `plant` device's role values and each device's
+/// availability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct Publish {
+    /// Whether Home Assistant discovery is sent.
+    pub discovery: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -217,12 +230,14 @@ struct Brokering {
     root: String,
     /// Each device's id, address and profile.
     devices: Vec<(u32, u8, String)>,
+    publish: Option<Publish>,
 }
 
-/// A broker connection's client with its devices, and what it was started for.
+/// A broker connection's client with its devices and its publisher, and what it was started for.
 struct Brokered {
     brokering: Brokering,
     subscriber: Subscriber,
+    _publisher: Option<Publisher>,
 }
 
 /// An endpoint task and the devices it polls.
@@ -244,6 +259,8 @@ pub struct Devices {
     running: Arc<Mutex<Vec<Running>>>,
     /// Changed only under `running`'s lock.
     brokers: Arc<std::sync::Mutex<Vec<Brokered>>>,
+    /// Every device's id and name, as the publishers report their availability.
+    named: Arc<watch::Sender<Vec<(DeviceId, String)>>>,
     scanner: Scanner,
 }
 
@@ -274,6 +291,7 @@ impl Devices {
             inverters,
             running: Arc::default(),
             brokers: Arc::default(),
+            named: Arc::new(watch::channel(Vec::new()).0),
             scanner: Scanner::lan(),
         };
         let mut running = devices.running.lock().await;
@@ -703,6 +721,13 @@ impl Devices {
     /// Brings the endpoint tasks in line with the configured devices: a task whose devices
     /// changed stops before its replacement connects, as a single-slot endpoint needs.
     async fn restart(&self, running: &mut Vec<Running>) -> Result<(), storage::Error> {
+        let named = self.devices().await?.into_iter();
+        let named: Vec<_> = named.map(|d| (DeviceId(d.id), d.draft.name)).collect();
+        self.named.send_if_modified(|was| {
+            let changed = *was != named;
+            *was = named;
+            changed
+        });
         self.restart_brokers().await?;
         let wanted = by_endpoint(self.database.run(store::polled).await?);
         running.retain(|r| {
@@ -752,16 +777,34 @@ impl Devices {
             for device in &devices {
                 self.declare(device.id, &device.profile).await?;
             }
+            let also = match brokering.publish {
+                Some(Publish { discovery: true }) => vec![publisher::BIRTH.to_owned()],
+                _ => Vec::new(),
+            };
             let subscriber = subscriber::spawn(
                 brokering.broker.clone(),
                 &brokering.root,
                 devices,
+                also,
                 self.bus.clone(),
             );
+            let publisher = brokering.publish.map(|Publish { discovery }| {
+                let publishing = Publishing {
+                    root: brokering.root.clone(),
+                    discovery,
+                };
+                publisher::spawn(
+                    subscriber.client(),
+                    publishing,
+                    self.named.subscribe(),
+                    &self.bus,
+                )
+            });
             let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
             brokers.push(Brokered {
                 brokering,
                 subscriber,
+                _publisher: publisher,
             });
         }
         Ok(())
@@ -837,7 +880,9 @@ fn check_reach(reach: &Reach) -> Result<(), Refusal> {
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,
-        (Transport::ModbusTcp | Transport::SolarmanV5, root) => root.is_none(),
+        (Transport::ModbusTcp | Transport::SolarmanV5, root) => {
+            root.is_none() && reach.publish.is_none()
+        }
     };
     if !root || reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
         return Err(Refusal::ConnectionValue);

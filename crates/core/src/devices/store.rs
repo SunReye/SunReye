@@ -5,8 +5,8 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Polled, Reach, Refusal, Transport,
-    entry,
+    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Polled, Publish, Reach, Refusal,
+    Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::mqtt;
@@ -35,6 +35,11 @@ fn id(db: &Db) -> u32 {
     u32::try_from(db.last_insert_rowid()).unwrap_or(u32::MAX)
 }
 
+/// A stored `publish`: NULL for none, else whether discovery is sent.
+const fn publish(discovery: bool) -> Publish {
+    Publish { discovery }
+}
+
 pub fn connections(db: &Db) -> rusqlite::Result<Vec<Connection>> {
     let ids: Vec<u32> = db
         .prepare("SELECT id FROM connection ORDER BY id")?
@@ -48,7 +53,7 @@ pub fn connections(db: &Db) -> rusqlite::Result<Vec<Connection>> {
 fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
     let Some(reach) = db
         .query_row(
-            "SELECT name, transport, host, port, topic_root FROM connection WHERE id = ?1",
+            "SELECT name, transport, host, port, topic_root, publish FROM connection WHERE id = ?1",
             [id],
             |row| {
                 Ok(Reach {
@@ -57,6 +62,7 @@ fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
                     host: row.get(2)?,
                     port: row.get(3)?,
                     topic_root: row.get(4)?,
+                    publish: row.get::<_, Option<bool>>(5)?.map(publish),
                 })
             },
         )
@@ -89,16 +95,24 @@ pub fn secret(db: &Db, id: u32, name: &str) -> rusqlite::Result<Option<String>> 
 /// Every broker connection with its credentials, topic root and devices, by id, for its client
 /// alone.
 pub fn brokers(db: &Db) -> rusqlite::Result<Vec<Brokering>> {
-    let rows: Vec<(u32, String, u16, Option<String>)> = db
+    type Row = (u32, String, u16, Option<String>, Option<bool>);
+    let rows: Vec<Row> = db
         .prepare(
-            "SELECT id, host, port, topic_root FROM connection WHERE transport = 'mqtt' ORDER BY id",
+            "SELECT id, host, port, topic_root, publish FROM connection
+             WHERE transport = 'mqtt' ORDER BY id",
         )?
         .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
         })?
         .collect::<rusqlite::Result<_>>()?;
     rows.into_iter()
-        .map(|(id, host, port, root)| {
+        .map(|(id, host, port, root, discovery)| {
             let username = secret(db, id, "username")?;
             let password = secret(db, id, "password")?;
             let credentials = username.map(|u| (u, password.unwrap_or_default()));
@@ -118,6 +132,7 @@ pub fn brokers(db: &Db) -> rusqlite::Result<Vec<Brokering>> {
                 },
                 root: root.unwrap_or_default(),
                 devices,
+                publish: discovery.map(publish),
             })
         })
         .collect()
@@ -159,14 +174,15 @@ pub fn add_connection(
     let tx = db.unchecked_transaction()?;
     let r = &draft.reach;
     tx.execute(
-        "INSERT INTO connection (name, transport, host, port, topic_root)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO connection (name, transport, host, port, topic_root, publish)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             r.name,
             transport_name(r.transport),
             r.host,
             r.port,
-            r.topic_root
+            r.topic_root,
+            r.publish.map(|p| p.discovery)
         ],
     )?;
     let id = id(&tx);
@@ -197,15 +213,16 @@ pub fn change_connection(
         return Ok(Err(Refusal::Address));
     }
     tx.execute(
-        "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5, topic_root = ?6
-         WHERE id = ?1",
+        "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5, topic_root = ?6,
+         publish = ?7 WHERE id = ?1",
         params![
             id,
             r.name,
             transport_name(r.transport),
             r.host,
             r.port,
-            r.topic_root
+            r.topic_root,
+            r.publish.map(|p| p.discovery)
         ],
     )?;
     write_secrets(&tx, id, draft)?;

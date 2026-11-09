@@ -1234,6 +1234,14 @@ export interface components {
              */
             variant?: number | null;
         };
+        /**
+         * @description The publisher of a broker connection: the `plant` device's role values and each device's
+         *     availability.
+         */
+        Publish: {
+            /** @description Whether Home Assistant discovery is sent. */
+            discovery: boolean;
+        };
         /** @description Modules in series on one plane; strings on one MPPT input are in parallel. */
         PvString: components["schemas"]["Wiring"] & {
             /**
@@ -1252,6 +1260,7 @@ export interface components {
             name: string;
             /** Format: int32 */
             port: number;
+            publish?: components["schemas"]["Publish"] | null;
             /**
              * @description A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a
              *     broker and refused for any other transport.

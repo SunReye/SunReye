@@ -1535,6 +1535,19 @@
         ],
         "type": "object"
       },
+      "Publish": {
+        "description": "The publisher of a broker connection: the `plant` device's role values and each device's\navailability.",
+        "properties": {
+          "discovery": {
+            "description": "Whether Home Assistant discovery is sent.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "discovery"
+        ],
+        "type": "object"
+      },
       "PvString": {
         "allOf": [
           {
@@ -1585,6 +1598,17 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "publish": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Publish",
+                "description": "What a broker publishes under its topic root (ADR 10); none when left out, and refused for\nany other transport."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "topicRoot": {
             "description": "A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a\nbroker and refused for any other transport.",
