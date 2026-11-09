@@ -1,13 +1,17 @@
 //! The tariff (ADR 12): set by the admin, applying from a date, editing only the future, every
 //! change logged (ADR 19).
 
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::http::StatusCode;
 use serde_json::{Value, json};
+use sunreye_profile::{RoleKind, Unit};
 
 use super::devices::send;
 use super::{Core, get};
+use crate::endpoint::CADENCE;
+use crate::plant;
+use crate::storage::{ChangePoint, Policy};
 
 impl Core {
     async fn put_tariff(&self, set_cookie: &str, tariff: &Value) -> (StatusCode, Value) {
@@ -18,6 +22,34 @@ impl Core {
     async fn tariff_at(&self, set_cookie: &str, at: &str) -> (StatusCode, Value) {
         self.ask(set_cookie, get(&format!("/api/v1/tariff?at={at}")))
             .await
+    }
+
+    /// The plant's grid power and house load in W from `start`, each from its second to the
+    /// next; `None` is a gap. Storage is then rolled up to the API's clock.
+    async fn flows(&self, start: &str, flows: &[(u64, Option<(f64, f64)>)]) {
+        let start: SystemTime = start.parse::<jiff::Timestamp>().unwrap().into();
+        let policy = Policy::new(RoleKind::Measurement, Some(Unit::Watt), 1.0, CADENCE);
+        for (role, pick) in [("grid.power", 0), ("load.power", 1)] {
+            let series = self.bus.intern(role, None);
+            self.storage
+                .declare(plant::DEVICE, series, policy)
+                .await
+                .unwrap();
+            let points: Vec<ChangePoint> = flows
+                .iter()
+                .map(|&(second, watts)| ChangePoint {
+                    time: start + Duration::from_secs(second),
+                    value: watts.map(|(grid, load)| if pick == 0 { grid } else { load }),
+                })
+                .collect();
+            let end = points.last().unwrap().time + CADENCE;
+            self.storage
+                .replace(plant::DEVICE, series, start..end, points)
+                .await
+                .unwrap();
+        }
+        let now = self.clock.lock().unwrap().unwrap();
+        self.storage.tick(now).await.unwrap();
     }
 
     /// Signed in, the clock at 2026-11-09 00:00 UTC.
@@ -192,4 +224,78 @@ async fn repricing_corrects_the_past_within_retention_and_is_logged() {
             "state": repriced,
         }] })
     );
+}
+
+#[tokio::test]
+async fn payback_sums_the_savings_against_the_investment_the_admin_enters() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    let (status, payback) = core.ask(&set_cookie, get("/api/v1/payback")).await;
+    assert_eq!(
+        (status, payback),
+        (
+            StatusCode::OK,
+            json!({ "investment": null, "savings": 0.0, "remaining": null })
+        )
+    );
+
+    // 2 kW fed in for two hours while the house uses 500 W.
+    core.flows(
+        "2026-11-01T00:00:00Z",
+        &[(0, Some((-2000.0, 500.0))), (7200, None)],
+    )
+    .await;
+    let fixed = json!({
+        "appliesFrom": "2026-11-01T00:00:00Z",
+        "import": { "price": 0.30, "bands": [] },
+        "export": { "price": 0.08, "bands": [] },
+    });
+    let (status, _) = core
+        .ask(&set_cookie, send("POST", "/api/v1/tariff/reprice", &fixed))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let investment = json!({ "amount": 10000.0 });
+    let (status, set) = core
+        .ask(&set_cookie, send("PUT", "/api/v1/investment", &investment))
+        .await;
+    assert_eq!((status, &set), (StatusCode::OK, &investment));
+
+    // Saved: 2 h × (0.5 kW × 0.30 + 2 kW × 0.08) = 0.62.
+    let (_, payback) = core.ask(&set_cookie, get("/api/v1/payback")).await;
+    assert_eq!(
+        payback,
+        json!({ "investment": 10000.0, "savings": 0.62, "remaining": 9999.38 })
+    );
+    let (_, log) = core.ask(&set_cookie, get("/api/v1/changes")).await;
+    assert_eq!(
+        log["changes"][1],
+        json!({
+            "changed": "2026-11-09T00:00:00Z", "appliesFrom": "2026-11-09T00:00:00Z",
+            "actor": "admin", "subject": "investment", "id": 0, "action": "change",
+            "state": investment,
+        })
+    );
+}
+
+#[tokio::test]
+async fn an_investment_that_is_not_a_positive_amount_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+
+    for amount in [json!(0.0), json!(-1.0), json!("10000")] {
+        let (status, body) = core
+            .ask(
+                &set_cookie,
+                send("PUT", "/api/v1/investment", &json!({ "amount": amount })),
+            )
+            .await;
+        assert!(
+            [
+                (StatusCode::UNPROCESSABLE_ENTITY, json!("investment.value")),
+                (StatusCode::BAD_REQUEST, json!("request.body")),
+            ]
+            .contains(&(status, body["code"].clone())),
+            "{amount}"
+        );
+    }
 }

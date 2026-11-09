@@ -45,6 +45,8 @@ pub enum Subject {
     Profile,
     /// A tariff version (ADR 12).
     Tariff,
+    /// The investment payback is measured against (ADR 12), id 0.
+    Investment,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -141,7 +143,7 @@ struct Change {
     /// RFC 3339, UTC.
     applies_from: String,
     actor: String,
-    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile` or `tariff`.
+    /// `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`.
     subject: String,
     /// The subject's id.
     id: u32,

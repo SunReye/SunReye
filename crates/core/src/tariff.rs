@@ -7,6 +7,7 @@
 
 mod cost;
 mod device;
+mod payback;
 mod reprice;
 mod routes;
 mod store;

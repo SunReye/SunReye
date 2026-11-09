@@ -37,6 +37,7 @@
   "problem_tariff_band": "Ein Zeitfenster braucht Wochentage von 1 bis 7 und eine Spanne eines Tages von HH:MM bis zu einem späteren HH:MM, ohne ein anderes Zeitfenster derselben Richtung zu überschneiden.",
   "problem_tariff_past": "Eine Tarifänderung gilt ab jetzt oder später; bereits geltende Preise bleiben unverändert.",
   "problem_tariff_retention": "Eine Neuberechnung reicht nur so weit zurück, wie der Verlauf gespeichert ist.",
+  "problem_investment_value": "Eine Investition ist ein Betrag in EUR über null.",
   "problem_location_none": "Der Standort der Anlage ist noch nicht gesetzt.",
   "problem_location_value": "Der Breitengrad muss zwischen -90 und 90 liegen, der Längengrad zwischen -180 und 180.",
   "problem_connection_none": "Diese Verbindung gibt es nicht.",

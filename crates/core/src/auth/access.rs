@@ -63,6 +63,9 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/tariff", Admin),
     (Method::PUT, "/api/v1/tariff", Admin),
     (Method::POST, "/api/v1/tariff/reprice", Admin),
+    (Method::PUT, "/api/v1/investment", Admin),
+    // Payback names the investment, which is configuration.
+    (Method::GET, "/api/v1/payback", Admin),
     // Profile distribution is configuration (ADR 8, ADR 9).
     (Method::GET, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes", Admin),

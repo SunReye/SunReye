@@ -149,6 +149,7 @@
           "tariff.band",
           "tariff.past",
           "tariff.retention",
+          "investment.value",
           "location.none",
           "location.value",
           "connection.none",
@@ -749,6 +750,20 @@
         ],
         "type": "object"
       },
+      "Investment": {
+        "description": "The investment payback is measured against.",
+        "properties": {
+          "amount": {
+            "description": "EUR, more than zero.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "type": "object"
+      },
       "Layout": {
         "description": "One layout version.",
         "properties": {
@@ -888,6 +903,36 @@
         },
         "required": [
           "password"
+        ],
+        "type": "object"
+      },
+      "Payback": {
+        "description": "The savings so far against the investment, in EUR to the cent.",
+        "properties": {
+          "investment": {
+            "description": "What the admin entered; `null` until then.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "remaining": {
+            "description": "What the savings have yet to pay back, none once they have; `null` without an investment.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "savings": {
+            "description": "`cost.savings.rate` summed over every rolled-up hour.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "savings"
         ],
         "type": "object"
       },
@@ -2352,6 +2397,42 @@
         "summary": "Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's\nsetting, or an official one not verified on hardware, writes only while enabled; a changed\ndeclaration is off again until re-enabled."
       }
     },
+    "/api/v1/investment": {
+      "put": {
+        "operationId": "invest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Investment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Investment"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sets the investment payback is measured against."
+      }
+    },
     "/api/v1/layout": {
       "get": {
         "operationId": "layout",
@@ -2596,6 +2677,32 @@
           }
         },
         "summary": "Adds a module type; the admin enters its datasheet, there is no catalogue."
+      }
+    },
+    "/api/v1/payback": {
+      "get": {
+        "operationId": "payback",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payback"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The savings so far against the investment."
       }
     },
     "/api/v1/problems": {
