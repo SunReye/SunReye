@@ -1,0 +1,210 @@
+[
+  {
+    "name": "a u32 contributes both of its words",
+    "quantities": [{ "key": "wide", "role": "extra.wide", "register": 500, "type": "u32" }],
+    "gap": 0,
+    "plan": [{ "start": 500, "count": 2 }]
+  },
+  {
+    "name": "a computed quantity owns no register",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "derived", "role": "extra.derived", "compute": { "sum": ["a"] } }
+    ],
+    "gap": 0,
+    "plan": [{ "start": 100, "count": 1 }]
+  },
+  {
+    "name": "split re-plans a span from the quantities it covers",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 590, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 592, "type": "u16" }
+    ],
+    "split": { "start": 590, "count": 11, "grouped": true },
+    "plan": [
+      { "start": 590, "count": 1 },
+      { "start": 592, "count": 1 }
+    ]
+  },
+  {
+    "name": "tolerance 0 splits on every gap",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 10, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 11, "type": "u16" },
+      { "key": "c", "role": "extra.c", "register": 13, "type": "u16" },
+      { "key": "d", "role": "extra.d", "register": 200, "type": "u16" }
+    ],
+    "gap": 0,
+    "plan": [
+      { "start": 10, "count": 2 },
+      { "start": 13, "count": 1 },
+      { "start": 200, "count": 1 }
+    ]
+  },
+  {
+    "name": "merges a gap smaller than the tolerance",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 104, "type": "u16" }
+    ],
+    "gap": 4,
+    "plan": [{ "start": 100, "count": 5, "merged": true }]
+  },
+  {
+    "name": "merges a gap exactly at the tolerance",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 106, "type": "u16" }
+    ],
+    "gap": 5,
+    "plan": [{ "start": 100, "count": 7, "merged": true }]
+  },
+  {
+    "name": "does not merge a gap one register past the tolerance",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 106, "type": "u16" }
+    ],
+    "gap": 4,
+    "plan": [
+      { "start": 100, "count": 1 },
+      { "start": 106, "count": 1 }
+    ]
+  },
+  {
+    "name": "does not merge past the 120-register cap, and the refusal stays local to the pair",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "lo", "role": "extra.lo", "register": 230, "type": "u16" },
+      { "key": "hi", "role": "extra.hi", "register": 260, "type": "u16" }
+    ],
+    "gap": 129,
+    "plan": [
+      { "start": 100, "count": 1 },
+      { "start": 230, "count": 31, "merged": true }
+    ]
+  },
+  {
+    "name": "keeps an atomic group in one transaction when a neighbour merges into it",
+    "quantities": [
+      { "key": "edge", "role": "extra.edge", "register": 586, "type": "u16" },
+      { "key": "a", "role": "extra.a", "register": 590, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 600, "type": "u16" },
+      { "key": "x", "role": "extra.x", "compute": { "sum": ["a", "b"] } }
+    ],
+    "gap": 32,
+    "plan": [{ "start": 586, "count": 15, "grouped": true, "merged": true }]
+  },
+  {
+    "name": "a profile with a single quantity plans one block, tolerance or not",
+    "quantities": [{ "key": "only", "role": "extra.only", "register": 42, "type": "u16" }],
+    "gap": 32,
+    "plan": [{ "start": 42, "count": 1 }]
+  },
+  {
+    "name": "a profile with no register plans nothing",
+    "quantities": [],
+    "gap": 32,
+    "plan": []
+  },
+  {
+    "name": "split un-merges at tolerance 0, so the fallback never re-merges",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 100, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 104, "type": "u16" }
+    ],
+    "split": { "start": 100, "count": 5, "merged": true },
+    "plan": [
+      { "start": 100, "count": 1 },
+      { "start": 104, "count": 1 }
+    ]
+  },
+  {
+    "name": "a block never exceeds the per-request cap",
+    "spans": [[0, 130]],
+    "gap": 0,
+    "plan": [
+      { "start": 0, "count": 120 },
+      { "start": 120, "count": 10 }
+    ]
+  },
+  {
+    "name": "the inputs of a computed quantity, through other computed ones, are read in one grouped block",
+    "quantities": [
+      { "key": "a", "role": "extra.a", "register": 500, "type": "u16" },
+      { "key": "b", "role": "extra.b", "register": 520, "type": "u16" },
+      { "key": "c", "role": "extra.c", "register": 900, "type": "u16" },
+      { "key": "sum", "role": "extra.sum", "compute": { "sum": ["a", "b"] } },
+      { "key": "via", "role": "extra.via", "compute": { "clamp": { "key": "sum", "min": 0 } } }
+    ],
+    "gap": 0,
+    "plan": [
+      { "start": 500, "count": 21, "grouped": true },
+      { "start": 900, "count": 1 }
+    ]
+  },
+  {
+    "name": "the measured deye-sg05lp3 plan is 15 blocks split on every gap",
+    "spans": [
+      [98, 1],
+      [108, 2],
+      [128, 1],
+      [130, 1],
+      [142, 2],
+      [145, 2],
+      [148, 30],
+      [500, 1],
+      [514, 16],
+      [534, 3],
+      [540, 2],
+      [552, 1],
+      [586, 3],
+      [590, 84],
+      [676, 4]
+    ],
+    "gap": 0,
+    "plan": [
+      { "start": 98, "count": 1 },
+      { "start": 108, "count": 2 },
+      { "start": 128, "count": 1 },
+      { "start": 130, "count": 1 },
+      { "start": 142, "count": 2 },
+      { "start": 145, "count": 2 },
+      { "start": 148, "count": 30 },
+      { "start": 500, "count": 1 },
+      { "start": 514, "count": 16 },
+      { "start": 534, "count": 3 },
+      { "start": 540, "count": 2 },
+      { "start": 552, "count": 1 },
+      { "start": 586, "count": 3 },
+      { "start": 590, "count": 84 },
+      { "start": 676, "count": 4 }
+    ]
+  },
+  {
+    "name": "the measured deye-sg05lp3 plan collapses to 3 blocks over a Solarman stick",
+    "spans": [
+      [98, 1],
+      [108, 2],
+      [128, 1],
+      [130, 1],
+      [142, 2],
+      [145, 2],
+      [148, 30],
+      [500, 1],
+      [514, 16],
+      [534, 3],
+      [540, 2],
+      [552, 1],
+      [586, 3],
+      [590, 84],
+      [676, 4]
+    ],
+    "gap": 32,
+    "plan": [
+      { "start": 98, "count": 80, "merged": true },
+      { "start": 500, "count": 53, "merged": true },
+      { "start": 586, "count": 94, "merged": true }
+    ]
+  }
+]
