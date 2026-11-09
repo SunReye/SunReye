@@ -23,6 +23,11 @@ pub enum Endpoint {
     Sim(Capture),
 }
 
+impl Endpoint {
+    /// The transport of each variant, by name.
+    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "sim"];
+}
+
 /// A recorded wire exchange with one device endpoint, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capture {

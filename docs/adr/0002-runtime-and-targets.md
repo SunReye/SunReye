@@ -15,7 +15,7 @@ The tool is small, runs for years on low-power hardware, and must stay fast for 
 - `tokio` on a single thread for all I/O. One dedicated thread owns the SQLite connection and is fed by a channel, so a slow write never stalls polling.
 - Release build: `opt-level = "s"`, fat LTO, one codegen unit, `panic = "abort"`, stripped, statically linked against musl. The workload waits on devices, so size beats peak speed.
 - Design rules instead of budgets: no allocation per poll, live values served from memory, every queue and buffer bounded (one bucket per device), history responses bounded (ADR 9), SPA routes code-split (ADR 11).
-- Startup takes only `--data-dir` and `--listen` (default port 8099, as the current add-on), each with an environment variable. Every other setting lives in SQLite and changes through the API.
+- Startup takes only `--data-dir` and `--listen` (default `0.0.0.0:8099`, as the current add-on), falling back to `SUNREYE_DATA_DIR` and `SUNREYE_LISTEN`. The data directory has no default: each image sets its own. Every other setting lives in SQLite and changes through the API.
 - Logs go through `tracing` to stderr, where journald or Docker keep them. A bounded in-memory buffer of the last 2,000 lines feeds the SPA's log screen. The core writes no log files, sparing the flash.
 - The gate is local: one serial command, identical before and after merge. Hosted CI returns when the project is stable.
 

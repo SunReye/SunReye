@@ -32,6 +32,13 @@ test("the profile WASM reports the current schema", () => {
   expect(profile.schema()).toBe(1);
 });
 
+test("the profile WASM reports the schemas and capabilities it loads", () => {
+  expect(profile.capabilities()).toEqual({
+    schema: { min: 1, max: 1 },
+    capabilities: ["modbus", "u16", "i16", "u32", "compute"],
+  });
+});
+
 test("v4's planner cases plan the recorded blocks in the WASM build", () => {
   expect(cases).toHaveLength(16);
 

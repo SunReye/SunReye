@@ -6,6 +6,8 @@ mod plan;
 mod profile;
 mod role;
 
+use serde::Serialize;
+
 pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{LoadError, Profile, Quantity};
@@ -16,6 +18,29 @@ pub const SCHEMA: u32 = 1;
 
 /// What this build can load: bindings, decoders and computed quantities.
 pub const CAPABILITIES: &[&str] = &["modbus", "u16", "i16", "u32", "compute"];
+
+/// The schemas and capabilities this build loads: the one table the WASM and the core's API both
+/// report (ADR 5, 9).
+pub const SUPPORT: Support = Support {
+    schema: Schemas {
+        min: SCHEMA,
+        max: SCHEMA,
+    },
+    capabilities: CAPABILITIES,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Support {
+    pub schema: Schemas,
+    pub capabilities: &'static [&'static str],
+}
+
+/// An inclusive range of schemas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Schemas {
+    pub min: u32,
+    pub max: u32,
+}
 
 /// The wire framing on a Modbus endpoint, as far as read planning cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

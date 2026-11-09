@@ -6,28 +6,45 @@ use std::time::UNIX_EPOCH;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::ConnectInfo;
-use axum::http::{Request, Response, StatusCode, header};
+use axum::extract::{ConnectInfo, MatchedPath, Request as Incoming};
+use axum::http::{Method, Request, Response, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::routing::get as route_get;
+use tokio::sync::watch;
 use tower::ServiceExt;
 
-use super::router;
+use super::{Api, router};
 use crate::auth::Auth;
 use crate::bus::Bus;
-use crate::storage::Storage;
+use crate::live::Live;
+use crate::storage::{Problem, Storage};
+
+mod live;
 
 const HOME: &str = "192.0.2.1:50000";
 
 struct Core {
     _storage: Storage,
+    bus: Bus,
+    problems: watch::Sender<Vec<Problem>>,
     router: Router,
 }
 
 impl Core {
     async fn open(path: &Path) -> Self {
-        let storage = Storage::open(path, UNIX_EPOCH, "UTC", &Bus::default()).unwrap();
+        let bus = Bus::default();
+        let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database()).await.unwrap();
+        let (problems, watched) = watch::channel(Vec::new());
+        let api = Api {
+            auth,
+            live: Live::spawn(&bus),
+            problems: watched,
+        };
         Self {
-            router: router(&auth),
+            router: contract(router(api)).await,
+            bus,
+            problems,
             _storage: storage,
         }
     }
@@ -35,6 +52,100 @@ impl Core {
     async fn send(&self, request: Request<Body>) -> Response<Body> {
         self.router.clone().oneshot(request).await.unwrap()
     }
+}
+
+/// The contract test (ADR 9): every route a test's request reaches must be described, with its
+/// method, by the served OpenAPI document.
+async fn contract(router: Router) -> Router {
+    let response = router.clone().oneshot(get("/openapi.json")).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let document = json(response).await;
+    router.layer(middleware::from_fn(move |request: Incoming, next: Next| {
+        let document = document.clone();
+        async move {
+            let path = request.extensions().get::<MatchedPath>().cloned();
+            let method = request.method().as_str().to_ascii_lowercase();
+            let response = next.run(request).await;
+            // A method the route lacks reached no route.
+            if let Some(path) = path
+                && response.status() != StatusCode::METHOD_NOT_ALLOWED
+            {
+                let path = path.as_str();
+                assert!(
+                    path == "/openapi.json" || !document["paths"][path][&method].is_null(),
+                    "{method} {path} is missing from the OpenAPI document"
+                );
+            }
+            response
+        }
+    }))
+}
+
+async fn json(response: Response<Body>) -> serde_json::Value {
+    let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+#[should_panic(expected = "get /api/v1/undocumented is missing from the OpenAPI document")]
+async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = Storage::open(
+        &dir.path().join("core.sqlite"),
+        UNIX_EPOCH,
+        "UTC",
+        &Bus::default(),
+    )
+    .unwrap();
+    let auth = Auth::open(storage.database()).await.unwrap();
+    let api = Api {
+        auth,
+        live: Live::spawn(&Bus::default()),
+        problems: watch::channel(Vec::new()).1,
+    };
+    let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));
+
+    contract(undocumented)
+        .await
+        .oneshot(get("/api/v1/undocumented"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn an_unknown_route_is_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+
+    let response = core.send(get("/api/v1/nowhere")).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::NOT_FOUND, "request.route".to_owned())
+    );
+}
+
+#[tokio::test]
+async fn a_method_a_route_lacks_is_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+    let request = from(
+        HOME,
+        Request::builder()
+            .method(Method::DELETE)
+            .uri("/api/v1/login")
+            .body(Body::empty())
+            .unwrap(),
+    );
+
+    let response = core.send(request).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::METHOD_NOT_ALLOWED, "request.method".to_owned())
+    );
 }
 
 fn get(uri: &str) -> Request<Body> {
@@ -54,10 +165,7 @@ async fn problem(response: Response<Body>) -> (StatusCode, String) {
         response.headers()[header::CONTENT_TYPE],
         "application/problem+json"
     );
-    let body = axum::body::to_bytes(response.into_body(), 1 << 16)
-        .await
-        .unwrap();
-    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = json(response).await;
     assert_eq!(body["status"], status.as_u16());
     (status, body["code"].as_str().unwrap().to_owned())
 }
@@ -275,5 +383,79 @@ async fn the_admin_password_survives_a_restart_and_is_set_only_once() {
     assert_eq!(
         problem(core.send(post("/api/v1/setup", "other")).await).await,
         (StatusCode::CONFLICT, "auth.configured".to_owned())
+    );
+}
+
+impl Core {
+    /// A core with the admin signed in; returns it and the session's `Set-Cookie`.
+    async fn signed_in(path: &Path) -> (Self, String) {
+        let core = Self::set_up(path).await;
+        let set_cookie = core.sign_in(post("/api/v1/login", "correct horse")).await;
+        (core, set_cookie)
+    }
+}
+
+#[tokio::test]
+async fn capabilities_report_the_profile_table_the_wasm_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let response = core
+        .send(with_cookie(&set_cookie, get("/api/v1/capabilities")))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json(response).await,
+        serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "schema": { "min": 1, "max": 1 },
+            "capabilities": ["modbus", "u16", "i16", "u32", "compute"],
+            "transports": ["modbus-tcp", "sim"],
+        })
+    );
+}
+
+#[tokio::test]
+async fn capabilities_need_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::set_up(&dir.path().join("core.sqlite")).await;
+
+    let response = core.send(get("/api/v1/capabilities")).await;
+
+    assert_eq!(
+        problem(response).await,
+        (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+    );
+}
+
+#[tokio::test]
+async fn problems_report_an_unsynced_clock() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let problems = || with_cookie(&set_cookie, get("/api/v1/problems"));
+    assert_eq!(
+        json(core.send(problems()).await).await,
+        serde_json::json!({ "problems": [] })
+    );
+
+    core.problems.send_replace(vec![Problem::ClockUnsynced]);
+
+    assert_eq!(
+        json(core.send(problems()).await).await,
+        serde_json::json!({ "problems": [{ "code": "clock.unsynced" }] })
+    );
+}
+
+#[tokio::test]
+async fn the_openapi_document_describes_api_version_1() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+
+    let document = json(core.send(get("/openapi.json")).await).await;
+
+    assert_eq!(
+        (&document["info"]["title"], &document["info"]["version"]),
+        (&serde_json::json!("SunReye"), &serde_json::json!("1"))
     );
 }
