@@ -132,3 +132,23 @@ async fn a_client_subscribes_again_after_a_lost_session() {
     let again = messages.recv().await.unwrap();
     assert_eq!(again, message("evcc/loadpoints/1/charging", "true"));
 }
+
+#[tokio::test]
+async fn a_client_publishes_unretained_and_refuses_while_disconnected() {
+    let mut fake = fake::serve(0).await;
+    let client = spawn(broker(&fake, None), Vec::new());
+    assert!(client.publish("evcc/loadpoints/1/mode/set", "pv").is_err());
+    until(&client, |s| s.connected).await;
+
+    client.publish("evcc/loadpoints/1/mode/set", "pv").unwrap();
+
+    let published = fake.published.recv().await.unwrap();
+    assert_eq!(
+        published,
+        fake::Published {
+            topic: "evcc/loadpoints/1/mode/set".to_owned(),
+            payload: "pv".to_owned(),
+            retain: false,
+        }
+    );
+}
