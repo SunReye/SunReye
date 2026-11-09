@@ -49,7 +49,7 @@ async function stream(
       const frame = parseFrame(json);
 
       if (frame !== undefined && (name === "snapshot" || values !== undefined)) {
-        values = name === "snapshot" ? frame : merge(values, frame);
+        values = merge(name === "snapshot" ? undefined : values, frame, Date.now());
         listener(values);
       }
     },

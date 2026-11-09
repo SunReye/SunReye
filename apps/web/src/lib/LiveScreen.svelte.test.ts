@@ -53,6 +53,25 @@ test("the screen shows each live power in the locale's format and charts its day
     ]);
 });
 
+test("a stale power shows its last value as stale, with when it was last read", async () => {
+  const stale =
+    '{"devices":{"1":{"pv.power":1950,"grid.power":-120}},"stale":{"1":{"grid.power":40}}}';
+
+  const transport = testCore(
+    new Response(`event: snapshot\ndata: ${stale}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const screen = await render(LiveScreen, { core: connect(transport) });
+
+  await expect.element(screen.getByText("-120 W")).toBeVisible();
+  await expect
+    .element(screen.getByText(/^veraltet, zuletzt gelesen \d{2}:\d{2}:\d{2}$/u))
+    .toBeVisible();
+  expect(screen.getByText(/veraltet/u).elements()).toHaveLength(1);
+});
+
 test("an EVCC loadpoint shows on its own card, not as a charted power", async () => {
   const loadpoint = '{"devices":{"2":{"ev.charge.power":7360,"ev.connected":1,"ev.charging":1}}}';
 

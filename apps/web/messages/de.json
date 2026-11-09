@@ -243,6 +243,8 @@
   "live_string": "{name}: {power}",
   "live_string_estimated": "{name}: ≈ {power}",
   "live_string_none": "{name}: –",
+  "live_stale": "veraltet, zuletzt gelesen {time}",
+  "live_stale_short": "veraltet",
   "live_loading": "Die 3D-Ansicht wird geladen …",
   "live_show_2d": "2D-Ansicht",
   "live_show_3d": "3D-Ansicht",

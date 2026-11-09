@@ -243,6 +243,8 @@
   "live_string": "{name}: {power}",
   "live_string_estimated": "{name}: ≈ {power}",
   "live_string_none": "{name}: –",
+  "live_stale": "stale, last read {time}",
+  "live_stale_short": "stale",
   "live_loading": "Loading the 3D view …",
   "live_show_2d": "2D view",
   "live_show_3d": "3D view",

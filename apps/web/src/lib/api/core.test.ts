@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import {
   connect,
   http,
@@ -75,6 +75,41 @@ test("live values are the snapshot with each delta folded in", async () => {
     { devices: { "1": { "pv.power": 1200, "grid.power": -250 }, "2": { "load.power": 80 } } },
   ]);
   expect(transport.urls).toEqual([`${BASE}api/v1/live`]);
+});
+
+test("a stale value keeps its value and when it was last read until read again", async () => {
+  const now = Date.parse("2026-11-09T12:00:00Z");
+  setSystemTime(now);
+
+  const transport = scripted(
+    sse(
+      event(
+        "snapshot",
+        '{"devices":{"1":{"grid.power":300,"pv.power":5}},"stale":{"1":{"grid.power":40}}}',
+      ),
+      event("delta", '{"devices":{},"stale":{"1":{"pv.power":15}}}'),
+      event("delta", '{"devices":{"1":{"grid.power":300}}}'),
+    ),
+  );
+
+  try {
+    expect(await updates(transport, 3)).toEqual([
+      {
+        devices: { "1": { "grid.power": 300, "pv.power": 5 } },
+        stale: { "1": { "grid.power": now - 40_000 } },
+      },
+      {
+        devices: { "1": { "grid.power": 300, "pv.power": 5 } },
+        stale: { "1": { "grid.power": now - 40_000, "pv.power": now - 15_000 } },
+      },
+      {
+        devices: { "1": { "grid.power": 300, "pv.power": 5 } },
+        stale: { "1": { "pv.power": now - 15_000 } },
+      },
+    ]);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("an event split across chunks still parses", async () => {

@@ -35,13 +35,18 @@
 
   let values = $state.raw<Values["devices"]>({});
 
+  let stale = $state.raw<Values["stale"]>();
+
   let project = $state.raw<Projector>();
 
   let kept = $state.raw<View | undefined>(parseView(localStorage.getItem(KEPT)));
 
   $effect(() =>
     core.live((live) => {
-      if ("devices" in live) values = live.devices;
+      if ("devices" in live) {
+        values = live.devices;
+        stale = live.stale;
+      }
     }),
   );
 
@@ -76,6 +81,7 @@
       mounts: geometry.mounts,
       estimated,
       values,
+      stale,
       places: scene.carPlaces ?? [],
       stands: geometry.stands,
     }),

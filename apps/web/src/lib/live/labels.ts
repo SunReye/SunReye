@@ -25,6 +25,8 @@ export interface Live3d {
   /** By device id, its estimated series (ADR 17). */
   readonly estimated: Readonly<Record<string, readonly string[] | undefined>>;
   readonly values: Values["devices"];
+  /** When each stale value was last read; none while none is. */
+  readonly stale?: Values["stale"];
   readonly places?: readonly CarPlace[];
   /** By `places`; none while one is refused. */
   readonly stands?: Geometry["stands"];
@@ -41,11 +43,24 @@ export interface StringLabel {
   readonly centre: Point | null;
 }
 
-/** One line of a label. Signs follow ADR 4: grid positive importing, battery charging. */
+/**
+ * One line of a label. Signs follow ADR 4: grid positive importing, battery charging. A stale
+ * power is past its gap threshold (ADR 3), shown at its last value.
+ */
 export type Quantity =
-  | { readonly kind: "grid" | "house"; readonly watts: number }
-  | { readonly kind: "battery"; readonly watts: number; readonly soc: number | null }
-  | { readonly kind: "inverter"; readonly device: number; readonly watts: number }
+  | { readonly kind: "grid" | "house"; readonly watts: number; readonly stale: boolean }
+  | {
+      readonly kind: "battery";
+      readonly watts: number;
+      readonly soc: number | null;
+      readonly stale: boolean;
+    }
+  | {
+      readonly kind: "inverter";
+      readonly device: number;
+      readonly watts: number;
+      readonly stale: boolean;
+    }
   | {
       readonly kind: "car";
       readonly device: number;
@@ -106,6 +121,9 @@ function labels(input: Live3d): Label[] {
 
   const plant = input.values[PLANT] ?? {};
 
+  const isStale = (device: string, series: string): boolean =>
+    input.stale?.[device]?.[series] !== undefined;
+
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))
     .flatMap((device) => inverter(input, device));
@@ -116,9 +134,9 @@ function labels(input: Live3d): Label[] {
     anchor: besideHouse(input.faces),
     leader: null,
     quantities: [
-      ...flow("grid", plant["grid.power"]),
-      ...flow("house", plant["load.power"]),
-      ...(batteryMarked ? [] : battery(plant)),
+      ...flow("grid", plant["grid.power"], isStale(PLANT, "grid.power")),
+      ...flow("house", plant["load.power"], isStale(PLANT, "load.power")),
+      ...(batteryMarked ? [] : battery(plant, isStale(PLANT, "battery.power"))),
       ...inverters,
     ],
   };
@@ -134,7 +152,9 @@ function labels(input: Live3d): Label[] {
             anchor: mount.above,
             leader: mount.at,
             quantities:
-              marker.kind === "inverter" ? inverter(input, marker.device) : battery(values),
+              marker.kind === "inverter"
+                ? inverter(input, marker.device)
+                : battery(values, isStale(String(marker.device), "battery.power")),
           },
         ];
   });
@@ -147,22 +167,23 @@ function carLabel({ device, at, above, watts, soc }: Parked): Label {
   return { anchor: above, leader: at, quantities: [{ kind: "car", device, watts, soc }] };
 }
 
-function flow(kind: "grid" | "house", watts: number | undefined): Quantity[] {
-  return watts === undefined ? [] : [{ kind, watts }];
+function flow(kind: "grid" | "house", watts: number | undefined, stale: boolean): Quantity[] {
+  return watts === undefined ? [] : [{ kind, watts, stale }];
 }
 
-function battery(values: Readonly<Record<string, number>>): Quantity[] {
+function battery(values: Readonly<Record<string, number>>, stale: boolean): Quantity[] {
   const watts = values["battery.power"];
 
   return watts === undefined
     ? []
-    : [{ kind: "battery", watts, soc: values["battery.soc"] ?? null }];
+    : [{ kind: "battery", watts, soc: values["battery.soc"] ?? null, stale }];
 }
 
 function inverter(input: Live3d, device: number): Quantity[] {
   const watts = input.values[String(device)]?.["pv.power"];
+  const stale = input.stale?.[String(device)]?.["pv.power"] !== undefined;
 
-  return watts === undefined ? [] : [{ kind: "inverter", device, watts }];
+  return watts === undefined ? [] : [{ kind: "inverter", device, watts, stale }];
 }
 
 function mean(points: readonly Point[]): Point {

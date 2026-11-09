@@ -167,6 +167,17 @@ test("each string, the inverter, the grid and the house are labelled from the li
   await expect.element(screen.getByText("Hausverbrauch 450 W")).toBeVisible();
 });
 
+test("a stale flow is labelled stale", async () => {
+  const { core, tick } = ticking();
+  const screen = await show(core);
+
+  await tick({ ...frame(600, -1200), stale: { [PLANT]: { "grid.power": 40 } } });
+
+  await expect.element(screen.getByText("Einspeisung 1.200 W")).toBeVisible();
+  await expect.element(screen.getByText("veraltet", { exact: true })).toBeVisible();
+  expect(screen.getByText("veraltet", { exact: true }).elements()).toHaveLength(1);
+});
+
 test("an estimated string carries ≈", async () => {
   const { core, tick } = ticking();
   const screen = await show(core, ["pv.string.power[11]"]);
