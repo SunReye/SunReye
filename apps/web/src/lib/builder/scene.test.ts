@@ -112,3 +112,11 @@ test("each placed module is drawn in its string's colour, unassigned ones in gre
   ).toBe(stringColour(null));
   expect(stringColour(null)).not.toBe(stringColour(0));
 });
+
+test("each equipment marker is drawn where the crate hung it", () => {
+  const marked: Geometry = { ...house, mounts: [{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }] };
+
+  const [marker] = buildScene(marked).getObjectsByProperty("name", "equipment");
+
+  expect(marker?.position.toArray()).toEqual([2, 1.5, 8.1]);
+});

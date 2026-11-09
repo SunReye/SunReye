@@ -183,5 +183,19 @@
   "log_after": "Read back",
   "log_outcome": "Outcome",
   "log_step": "Failed step",
-  "log_actor": "Actor"
+  "log_actor": "Actor",
+  "builder_equipment": "Equipment",
+  "builder_place_inverter": "Place an inverter",
+  "builder_place_battery": "Place a battery",
+  "equipment_inverter": "Inverter",
+  "equipment_battery": "Battery",
+  "equipment_device": "Device",
+  "equipment_block": "Block",
+  "equipment_wall": "Wall",
+  "wall_front": "Front",
+  "wall_right": "Right",
+  "wall_back": "Back",
+  "wall_left": "Left",
+  "equipment_along": "Distance from the left end (m)",
+  "equipment_inside": "Inside"
 }

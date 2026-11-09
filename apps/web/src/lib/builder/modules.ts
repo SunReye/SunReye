@@ -1,7 +1,7 @@
 // Module placement on the roof faces' grids and string painting (ADR 20). Pure: each edit
 // returns a new scene; the pv crate decides what fits.
 import type { StringDraft } from "../api/core.ts";
-import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
+import type { Cell, CellPlace, Equipment, ModuleGrid, Scene } from "./pv.ts";
 import { nextBlock } from "./draft.ts";
 import type { Panel } from "./scene.ts";
 
@@ -101,12 +101,20 @@ function assigned({ row, column, optimized }: Cell, tool: Tool): Cell {
     : { row, column, string, optimized: kept };
 }
 
-/** The scene without block `index`: its grids go, later blocks' grids follow it down. */
+/** The scene without block `index`: its grids and equipment go, later blocks' follow it down. */
 export function withoutBlock(scene: Scene, index: number): Scene {
-  return withGrids({ ...scene, blocks: scene.blocks.toSpliced(index, 1) }, (grids) =>
-    grids
-      .filter((grid) => grid.block !== index)
-      .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
+  const equipment = scene.equipment
+    ?.filter((marker) => marker.block !== index)
+    .map((marker) => (marker.block > index ? onBlock(marker, marker.block - 1) : marker));
+
+  const blocks = scene.blocks.toSpliced(index, 1);
+
+  return withGrids(
+    equipment === undefined ? { ...scene, blocks } : { ...scene, blocks, equipment },
+    (grids) =>
+      grids
+        .filter((grid) => grid.block !== index)
+        .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
   );
 }
 
@@ -145,6 +153,10 @@ export function painted(scene: Scene, index: number): Painted {
     modules: cells.length,
     optimized: cells.filter((cell) => cell.optimized === true).length,
   };
+}
+
+function onBlock(marker: Equipment, block: number): Equipment {
+  return { ...marker, block };
 }
 
 function changed(grid: ModuleGrid, fields: Partial<ModuleGrid>): ModuleGrid {

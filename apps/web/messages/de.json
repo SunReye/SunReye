@@ -183,5 +183,19 @@
   "log_after": "Zurückgelesen",
   "log_outcome": "Ergebnis",
   "log_step": "Fehlgeschlagener Schritt",
-  "log_actor": "Auslöser"
+  "log_actor": "Auslöser",
+  "builder_equipment": "Geräte",
+  "builder_place_inverter": "Wechselrichter platzieren",
+  "builder_place_battery": "Batterie platzieren",
+  "equipment_inverter": "Wechselrichter",
+  "equipment_battery": "Batterie",
+  "equipment_device": "Gerät",
+  "equipment_block": "Baukörper",
+  "equipment_wall": "Wand",
+  "wall_front": "Vorne",
+  "wall_right": "Rechts",
+  "wall_back": "Hinten",
+  "wall_left": "Links",
+  "equipment_along": "Abstand vom linken Ende (m)",
+  "equipment_inside": "Innen"
 }

@@ -1,12 +1,28 @@
 <script lang="ts">
+  import type { Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import BlockFieldset from "./BlockFieldset.svelte";
   import { nextBlock, obstacle } from "./draft.ts";
   import { withoutBlock } from "./modules.ts";
+  import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import ObstacleFieldset from "./ObstacleFieldset.svelte";
-  import type { Obstacle, Scene } from "./pv.ts";
+  import type { Equipment, Obstacle, Scene } from "./pv.ts";
 
-  let { scene = $bindable() }: { scene: Scene } = $props();
+  let {
+    scene = $bindable(),
+    devices,
+  }: {
+    scene: Scene;
+    /** What a marker may name; none, and no marker is placed. */
+    devices: readonly Device[];
+  } = $props();
+
+  const placements: readonly (readonly [Equipment["kind"], () => string])[] = [
+    ["inverter", m.builder_place_inverter],
+    ["battery", m.builder_place_battery],
+  ];
+
+  const equipment = $derived(scene.equipment ?? []);
 
   const additions: readonly (readonly [Obstacle["kind"], () => string])[] = [
     ["box", m.builder_add_box],
@@ -79,6 +95,41 @@
       }}>{label()}</button
     >
   {/each}
+
+  <h2>{m.builder_equipment()}</h2>
+  {#each equipment as marker, index}
+    <EquipmentFieldset
+      {marker}
+      {devices}
+      blocks={scene.blocks.length}
+      onchange={(next) => {
+        scene = { ...scene, equipment: equipment.with(index, next) };
+      }}
+      onremove={() => {
+        scene = { ...scene, equipment: equipment.toSpliced(index, 1) };
+      }}
+    />
+  {/each}
+  {#if devices[0] !== undefined}
+    {@const device = devices[0].id}
+    {#each placements as [kind, label] (kind)}
+      <button
+        type="button"
+        onclick={() => {
+          const marker = {
+            device,
+            kind,
+            block: 0,
+            wall: "front",
+            along: 1,
+            inside: false,
+          } as const;
+
+          scene = { ...scene, equipment: [...equipment, marker] };
+        }}>{label()}</button
+      >
+    {/each}
+  {/if}
 </form>
 
 <style>

@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch";
 import { events, type Message } from "./events";
+import { merge, parseFrame, type Values } from "./frames";
 import { body, type LayoutChange } from "./layout-change";
 import type { components, paths } from "./schema";
 
@@ -19,6 +20,8 @@ export type ModuleType = components["schemas"]["ModuleType"];
 
 export type Capabilities = components["schemas"]["Support"];
 
+export type Device = components["schemas"]["Device"];
+
 export type Setting = components["schemas"]["SettingSupport"];
 
 /** A setting's declared values: a range or its values, and a step. */
@@ -37,10 +40,7 @@ export interface Problem {
   readonly problem: string;
 }
 
-/** Live values by device id, then by series name, such as `pv.mppt.power[2]`. */
-export interface Values {
-  readonly devices: Readonly<Record<string, Readonly<Record<string, number>>>>;
-}
+export type { Values } from "./frames";
 
 /** Every live value, or why the core refused the stream. */
 export type Live = Values | Problem;
@@ -74,6 +74,8 @@ export interface Core {
   moduleTypes(): Promise<readonly ModuleType[] | Problem>;
   /** Changes the PV layout from an instant on; admin only. */
   changeLayout(change: LayoutChange): Promise<Layout | Problem>;
+  /** Every registered device; admin only. */
+  devices(): Promise<readonly Device[] | Problem>;
   /** What the core supports, and each device's settings. */
   capabilities(): Promise<Capabilities | Problem>;
   /** Writes `value` to a device's setting through the core's one funnel; admin only. */
@@ -178,9 +180,14 @@ function trust(client: Client): Pick<Core, "enable" | "updates" | "apply"> {
   };
 }
 
-/** Capabilities, setting writes and the write log. */
-function settings(client: Client): Pick<Core, "capabilities" | "write" | "writes"> {
+/** Devices, capabilities, setting writes and the write log. */
+function settings(client: Client): Pick<Core, "devices" | "capabilities" | "write" | "writes"> {
   return {
+    devices: async () => {
+      const { data, error, response } = await client.GET("/api/v1/devices");
+
+      return data ? data.devices : refusal(error, response.status);
+    },
     capabilities: async () => {
       const { data, error, response } = await client.GET("/api/v1/capabilities");
 
@@ -254,33 +261,6 @@ async function stream(
 /** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
 function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
   return { problem: error instanceof Object ? error.code : `http.${status}` };
-}
-
-function parseFrame(json: string): Values | undefined {
-  const value: unknown = JSON.parse(json);
-
-  return isFrame(value) ? value : undefined;
-}
-
-function isFrame(value: unknown): value is Values {
-  return (
-    value instanceof Object &&
-    "devices" in value &&
-    value.devices instanceof Object &&
-    Object.values(value.devices).every((series) => isSeries(series))
-  );
-}
-
-function isSeries(value: unknown): value is Readonly<Record<string, number>> {
-  return value instanceof Object && Object.values(value).every((v) => Number.isFinite(v));
-}
-
-function merge(values: Values | undefined, delta: Values): Values {
-  const changed = Object.keys(delta.devices).map(
-    (device) => [device, { ...values?.devices[device], ...delta.devices[device] }] as const,
-  );
-
-  return { devices: { ...values?.devices, ...Object.fromEntries(changed) } };
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
