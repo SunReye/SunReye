@@ -29,6 +29,7 @@ pub const CAPABILITIES: &[&str] = &[
     "u16",
     "i16",
     "u32",
+    "scale-factor",
     "compute",
     "write",
     "write-block",

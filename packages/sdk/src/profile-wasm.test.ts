@@ -42,6 +42,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "u16",
       "i16",
       "u32",
+      "scale-factor",
       "compute",
       "write",
       "write-block",

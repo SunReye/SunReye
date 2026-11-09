@@ -166,3 +166,32 @@ fn registers_reused_after_clear_hold_only_the_new_poll() {
         [("a".into(), Some(9.0)), ("b".into(), None)]
     );
 }
+
+/// SunSpec's `sunssf`: a signed power of ten in a register of its own, read with the value.
+#[test]
+fn a_scale_factor_is_a_power_of_ten_read_from_its_own_register() {
+    let p = profile(&json!([{
+        "key": "hz", "role": "grid.frequency", "register": 1, "type": "u16",
+        "scaleFactor": 2, "resolution": 0.001,
+    }]));
+
+    assert_eq!(
+        value(&p, "hz", &registers(&[(1, 5999), (2, 0xfffe)])),
+        Some(59.99)
+    );
+    assert_eq!(
+        value(&p, "hz", &registers(&[(1, 5999), (2, 1)])),
+        Some(59990.0)
+    );
+    assert_eq!(value(&p, "hz", &registers(&[(1, 5999)])), None);
+    assert_eq!(p.quantities()[0].step(), 0.001);
+    assert_eq!(
+        p.read_plan(0),
+        [crate::Block {
+            start: 1,
+            count: 2,
+            grouped: false,
+            merged: false
+        }]
+    );
+}

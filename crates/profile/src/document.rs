@@ -238,6 +238,12 @@ pub struct QuantityDoc {
     #[serde(rename = "type")]
     pub kind: Option<Kind>,
     pub scale: Option<f64>,
+    /// The register holding the power of ten the value is scaled by, read with it (SunSpec's
+    /// `sunssf`).
+    #[serde(rename = "scaleFactor")]
+    pub scale_factor: Option<u16>,
+    /// The step a value scaled by a register is stored in, as no scale fixes it (ADR 3).
+    pub resolution: Option<f64>,
     pub offset: Option<f64>,
     pub compute: Option<ExprDoc>,
     pub range: Option<Range>,
@@ -245,6 +251,21 @@ pub struct QuantityDoc {
     #[serde(rename = "enum")]
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub texts: Option<BTreeMap<String, f64>>,
+}
+
+impl QuantityDoc {
+    /// The capabilities reading it uses.
+    pub fn capabilities(&self) -> impl Iterator<Item = &'static str> {
+        [
+            self.kind.map(Kind::capability),
+            self.register.map(|_| "modbus"),
+            self.topic.as_ref().map(|_| "mqtt"),
+            self.scale_factor.map(|_| "scale-factor"),
+            self.compute.as_ref().map(|_| "compute"),
+        ]
+        .into_iter()
+        .flatten()
+    }
 }
 
 /// A register's type. Double words are low word first.
@@ -255,6 +276,16 @@ pub enum Kind {
     U16,
     I16,
     U32,
+}
+
+impl Kind {
+    pub const fn capability(self) -> &'static str {
+        match self {
+            Self::U16 => "u16",
+            Self::I16 => "i16",
+            Self::U32 => "u32",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

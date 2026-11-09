@@ -93,14 +93,16 @@ fn addresses(quantity: &Quantity) -> Vec<u16> {
     match quantity.read {
         Read::Register {
             address,
-            kind: Kind::U32,
+            kind,
+            scale_factor,
             ..
-        } => vec![address, address + 1],
-        Read::Register {
-            address,
-            kind: Kind::U16 | Kind::I16,
-            ..
-        } => vec![address],
+        } => {
+            let words = match kind {
+                Kind::U32 => [Some(address), address.checked_add(1)],
+                Kind::U16 | Kind::I16 => [Some(address), None],
+            };
+            words.into_iter().flatten().chain(scale_factor).collect()
+        }
         Read::Compute(_) | Read::Topic { .. } => Vec::new(),
     }
 }

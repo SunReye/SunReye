@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
+export type Capability = "modbus" | "mqtt" | "u16" | "i16" | "u32" | "scale-factor" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
@@ -8,7 +8,16 @@ export type Quantity = { key: string, role: string, index?: number, register?: n
 /**
  * An `mqtt` topic under the connection's root; `{address}` stands for the device address.
  */
-topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, 
+topic?: string, type?: Kind, scale?: number, 
+/**
+ * The register holding the power of ten the value is scaled by, read with it (SunSpec's
+ * `sunssf`).
+ */
+scaleFactor?: number, 
+/**
+ * The step a value scaled by a register is stored in, as no scale fixes it (ADR 3).
+ */
+resolution?: number, offset?: number, compute?: Expr, range?: Range, 
 /**
  * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
  */

@@ -76,6 +76,8 @@ pub enum Read {
         kind: Kind,
         scale: f64,
         offset: f64,
+        /// The register of its power-of-ten scale factor.
+        scale_factor: Option<u16>,
     },
     /// A topic under the connection's root, with `{address}` unsubstituted.
     Topic {
@@ -276,46 +278,28 @@ fn check(inverter: &Inverter) -> Result<(), LoadError> {
 /// Capabilities the profile uses but does not require, in table order: an older core lacking one
 /// would refuse the profile without naming the capability.
 fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
-    let quantities = doc.quantities.iter();
-    let kinds = quantities
-        .clone()
-        .filter_map(|q| q.kind)
-        .chain(doc.settings.iter().map(|s| s.kind))
-        .chain(doc.settings.iter().flat_map(|s| {
-            s.recipe.iter().filter_map(|step| {
-                if let StepDoc::Unlock(u) = step {
-                    Some(u.kind)
-                } else {
-                    None
-                }
-            })
-        }));
-    let used: Vec<&str> = kinds
-        .map(|kind| match kind {
-            Kind::U16 => "u16",
-            Kind::I16 => "i16",
-            Kind::U32 => "u32",
+    let settings = doc.settings.iter();
+    let unlocks = settings.clone().flat_map(|s| {
+        s.recipe.iter().filter_map(|step| {
+            if let StepDoc::Unlock(u) = step {
+                Some(u.kind.capability())
+            } else {
+                None
+            }
         })
+    });
+    let used: Vec<&str> = doc
+        .quantities
+        .iter()
+        .flat_map(QuantityDoc::capabilities)
+        .chain(settings.clone().map(|s| s.kind.capability()))
+        .chain(unlocks)
         .chain(
-            (quantities.clone().any(|q| q.register.is_some())
-                || doc.settings.iter().any(|s| !publishes(s)))
-            .then_some("modbus"),
-        )
-        .chain(
-            (quantities.clone().any(|q| q.topic.is_some()) || doc.settings.iter().any(publishes))
-                .then_some("mqtt"),
-        )
-        .chain(
-            quantities
+            settings
                 .clone()
-                .any(|q| q.compute.is_some())
-                .then_some("compute"),
+                .map(|s| if publishes(s) { "mqtt" } else { "modbus" }),
         )
-        .chain(
-            doc.settings
-                .iter()
-                .flat_map(|s| s.recipe.iter().map(StepDoc::capability)),
-        )
+        .chain(settings.flat_map(|s| s.recipe.iter().map(StepDoc::capability)))
         .collect();
     CAPABILITIES
         .iter()
@@ -355,7 +339,7 @@ fn compile(docs: Vec<QuantityDoc>) -> Result<Vec<Quantity>, LoadError> {
         {
             return Err(refuse("a profile reads through one binding"));
         }
-        let step = step(&read, &quantities);
+        let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
         positions.insert(doc.key.clone(), quantities.len());
         quantities.push(Quantity {
             key: doc.key,
@@ -389,6 +373,12 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
     if doc.texts.is_some() && doc.topic.is_none() {
         return Err("only a topic maps texts");
     }
+    if doc.scale_factor.is_some() != doc.resolution.is_some() {
+        return Err("a scale factor and a resolution come together");
+    }
+    if doc.scale_factor.is_some() && doc.register.is_none() {
+        return Err("only a register takes a scale factor");
+    }
     match (doc.register, &doc.topic, &doc.compute) {
         (Some(address), None, None) => {
             let kind = doc.kind.ok_or("a register needs a type")?;
@@ -400,6 +390,7 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
                 kind,
                 scale,
                 offset,
+                scale_factor: doc.scale_factor,
             })
         }
         (None, Some(topic), None) => {

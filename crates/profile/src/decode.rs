@@ -40,8 +40,10 @@ impl Profile {
                     kind,
                     scale,
                     offset,
+                    scale_factor,
                 } => raw(*kind, *address, registers)
-                    .map(|raw| scaled(raw, *scale, *offset))
+                    .zip(power(*scale_factor, registers))
+                    .map(|(raw, power)| scaled(power(raw), *scale, *offset))
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
@@ -135,6 +137,23 @@ fn raw(kind: Kind, address: u16, registers: &Registers) -> Option<f64> {
             Some(f64::from(u32::from(high) << 16 | u32::from(low)))
         }
     }
+}
+
+/// Applies the power of ten in the register `scale_factor`; `None` while that is unanswered.
+fn power(scale_factor: Option<u16>, registers: &Registers) -> Option<impl Fn(f64) -> f64> {
+    let exponent = match scale_factor {
+        Some(address) => i32::from(i16::from_ne_bytes(registers.word(address)?.to_ne_bytes())),
+        None => 0,
+    };
+    // Dividing by 10^n keeps 5999 at -2 exactly 59.99, which multiplying by 0.01 does not.
+    let factor = 10_f64.powi(exponent.abs());
+    Some(move |raw: f64| {
+        if exponent < 0 {
+            raw / factor
+        } else {
+            raw * factor
+        }
+    })
 }
 
 #[expect(
