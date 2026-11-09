@@ -2,19 +2,18 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod diode;
 mod estimate;
-mod inverter;
 mod mppt;
 mod perez;
+mod shade;
 mod string;
 mod sun;
 mod temperature;
 
 pub use estimate::estimate;
-pub use inverter::inverter_power;
-pub use mppt::{module_counts_differ, mppt_output};
+pub use mppt::{input_output, module_counts_differ};
 pub use perez::plane_irradiance;
-pub use string::string_output;
 pub use sun::sun_position;
 pub use temperature::cell_temperature;
 
@@ -66,32 +65,91 @@ pub struct PlaneIrradiance {
 /// The datasheet values the model uses.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ModuleType {
-    /// Watts at standard test conditions.
-    pub pmax: f64,
-    /// Volts at the maximum power point.
+    /// Volts and amperes at the maximum power point.
     pub vmp: f64,
-    /// Of Pmax, in %/K.
-    pub power_coefficient: f64,
-    /// Of Voc, in %/K; applied to Vmp.
+    pub imp: f64,
+    /// Open-circuit volts and short-circuit amperes.
+    pub voc: f64,
+    pub isc: f64,
+    /// Of Voc and Isc, in %/K.
     pub voltage_coefficient: f64,
+    pub current_coefficient: f64,
+    /// Metres.
+    pub width: f64,
+    pub height: f64,
+    /// Each splits the module into one more substring along its long side.
+    pub bypass_diodes: u8,
 }
 
-/// Modules of one type in series on one plane.
+/// A point in metres: east, north and up from the scene's origin.
+pub type Point = [f64; 3];
+
+/// Where a module sits in the scene (ADR 20).
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Place {
+    pub centre: Point,
+    /// Long side across the slope; otherwise it runs up the slope.
+    pub landscape: bool,
+}
+
+/// One module of a string.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Module {
+    pub plane: Plane,
+    pub optimized: bool,
+    /// Without a place nothing shades it.
+    pub place: Option<Place>,
+}
+
+/// What casts beam shade: blocks, roofs and carports as triangles, tree crowns as spheres,
+/// chimneys, poles and trunks as upright cylinders.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Occluder {
+    Triangle([Point; 3]),
+    Sphere {
+        centre: Point,
+        radius: f64,
+    },
+    Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+}
+
+/// Modules of one type in series.
+#[derive(Debug, Clone, PartialEq)]
 pub struct PvString {
     pub module: ModuleType,
-    pub modules: u16,
-    pub plane: Plane,
+    pub modules: Vec<Module>,
     /// Wiring, soiling and mismatch, in %.
     pub loss: f64,
 }
 
-/// A string's maximum power point: amperes, volts and watts.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct StringOutput {
-    pub current: f64,
-    pub voltage: f64,
-    pub power: f64,
+impl PvString {
+    /// A string entered by form: every module on one plane, unplaced, the first `optimized`
+    /// with an optimizer.
+    #[must_use]
+    pub fn on_one_plane(
+        module: ModuleType,
+        plane: Plane,
+        modules: u16,
+        optimized: u16,
+        loss: f64,
+    ) -> Self {
+        let modules = (0..modules)
+            .map(|i| Module {
+                plane,
+                optimized: i < optimized,
+                place: None,
+            })
+            .collect();
+        Self {
+            module,
+            modules,
+            loss,
+        }
+    }
 }
 
 /// One MPPT input's limits, from the inverter profile (ADR 5).
@@ -111,6 +169,8 @@ pub struct MpptLimits {
 pub struct Layout {
     pub location: Location,
     pub inverters: Vec<Inverter>,
+    /// The scene's shade casters, in the frame of the modules' places.
+    pub occluders: Vec<Occluder>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

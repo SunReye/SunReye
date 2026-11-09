@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sunreye_pv as pv;
 
 use crate::bus::{Bus, DeviceId};
-use crate::layout::{Inverters, Layouts, PvString, Version, in_force};
+use crate::layout::{Datasheet, Inverters, Layouts, PvString, Version, in_force};
 use crate::storage::{self, Issue, Location, Storage};
 
 const HOUR: Duration = Duration::from_hours(1);
@@ -69,16 +69,7 @@ impl SolarForecast {
             .module_types()
             .await?
             .into_iter()
-            .map(|m| {
-                let d = m.datasheet;
-                let model = pv::ModuleType {
-                    pmax: d.pmax,
-                    vmp: d.vmp,
-                    power_coefficient: d.power_coefficient,
-                    voltage_coefficient: d.voltage_coefficient,
-                };
-                (m.id, model)
-            })
+            .map(|m| (m.id, module_type(&m.datasheet)))
             .collect();
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
@@ -226,6 +217,7 @@ impl Model {
             layout: pv::Layout {
                 location,
                 inverters,
+                occluders: Vec::new(),
             },
             places,
         }
@@ -281,17 +273,28 @@ fn input(
     (input, place)
 }
 
-const fn string(string: &PvString, module: pv::ModuleType) -> pv::PvString {
-    let w = &string.wiring;
-    pv::PvString {
-        module,
-        modules: w.modules,
-        plane: pv::Plane {
-            tilt: w.tilt,
-            azimuth: w.azimuth,
-        },
-        loss: w.loss,
+const fn module_type(d: &Datasheet) -> pv::ModuleType {
+    pv::ModuleType {
+        vmp: d.vmp,
+        imp: d.imp,
+        voc: d.voc,
+        isc: d.isc,
+        voltage_coefficient: d.voltage_coefficient,
+        current_coefficient: d.current_coefficient,
+        width: d.width,
+        height: d.height,
+        bypass_diodes: d.bypass_diodes,
     }
+}
+
+/// A form-entered string: one plane, a count of optimized modules (ADR 17).
+fn string(string: &PvString, module: pv::ModuleType) -> pv::PvString {
+    let w = &string.wiring;
+    let plane = pv::Plane {
+        tilt: w.tilt,
+        azimuth: w.azimuth,
+    };
+    pv::PvString::on_one_plane(module, plane, w.modules, w.optimized, w.loss)
 }
 
 #[cfg(test)]
