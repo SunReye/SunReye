@@ -1,6 +1,7 @@
 //! The solar forecast from stored weather and the layout, against pvlib 0.16.1's run of the
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -11,6 +12,7 @@ use tokio::sync::watch;
 
 use super::SolarForecast;
 use crate::bus::{Bus, DeviceId};
+use crate::correction::{Cell as Learned, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::storage::{Issue, Storage};
@@ -63,7 +65,13 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
 async fn plant(targets: &[u64]) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
-    let storage = Storage::open(&dir.path().join("core.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
+    let storage = Storage::open(
+        &dir.path().join("core.sqlite"),
+        UNIX_EPOCH,
+        "Europe/Berlin",
+        &bus,
+    )
+    .unwrap();
     store_weather(&storage, &bus, targets).await;
     let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
     let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
@@ -166,7 +174,7 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -184,6 +192,66 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     assert_near(input(2).await, 5005.27, "input 2");
     let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
     assert_near(inverter, 13_444.54, "inverter");
+}
+
+#[tokio::test]
+async fn each_inputs_learned_factor_scales_it_and_its_strings_at_the_plant_local_hour() {
+    let plant = plant(&[NOON]).await;
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 0.0, 16),
+                plant.string(None, 1, 180.0, 16),
+                plant.string(None, 2, 0.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    // Noon UTC is 13:00 in Berlin's summer. Ratio 1.5 over 5 hours shrinks to
+    // 1 + 0.5 × 5 / (5 + 5) = 1.25; the UTC hour's 0.5 would give 0.75.
+    let mut grid = Grid::default();
+    grid.set(
+        6,
+        13,
+        Learned {
+            ratio: 1.5,
+            weight: 5.0,
+        },
+    );
+    grid.set(
+        6,
+        11,
+        Learned {
+            ratio: 0.5,
+            weight: 5.0,
+        },
+    );
+    let learned = HashMap::from([((INVERTER, 1), grid)]);
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &learned, BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let string = async |i: usize| {
+        let id = layout.strings[i].id;
+        plant.forecast("pv.string.power", Some(id), &[NOON]).await[0]
+    };
+    let input = async |n| plant.forecast("pv.mppt.power", Some(n), &[NOON]).await[0];
+    // pvlib's 5713.54 W, 2725.72 W and 8439.27 W × 1.25; input 2 learned nothing.
+    assert_near(string(0).await, 7141.93, "south");
+    assert_near(string(1).await, 3407.15, "north");
+    assert_near(input(1).await, 10_549.09, "input 1");
+    assert_near(string(2).await, 5005.27, "second south");
+    assert_near(input(2).await, 5005.27, "input 2");
+    // 10549.09 + 5005.27.
+    let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
+    assert_near(inverter, 15_554.36, "inverter");
 }
 
 #[tokio::test]
@@ -208,7 +276,7 @@ async fn a_layout_change_applies_from_its_date() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -253,7 +321,7 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -330,7 +398,7 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -387,6 +455,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
     let (_location, berlin) = watch::channel(Some(BERLIN));
     let (weather, issues) = watch::channel(None);
+    let learned = HashMap::new();
 
     let check = async {
         assert_eq!(plant.issues(1).await, [at(NOON - HOUR)]);
@@ -401,7 +470,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
         assert_eq!(plant.issues(3).await.len(), 3);
     };
     tokio::select! {
-        () = forecast.run(&plant.storage, berlin, issues, ticking()) => panic!("it stopped"),
+        () = forecast.run((&plant.storage, &learned), berlin, issues, ticking()) => panic!("it stopped"),
         () = check => {}
     }
 }

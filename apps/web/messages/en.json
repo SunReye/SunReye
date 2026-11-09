@@ -307,5 +307,12 @@
   "import_running": "{done} of {total} series imported.",
   "import_done": "Imported: {series} series, {points} change points, {hours} hours, {days} days.",
   "import_unread": "No v5 quantity reads these; not imported:",
-  "import_unmapped": "Mapped to no device; not imported:"
+  "import_unmapped": "Mapped to no device; not imported:",
+  "nav_forecast": "Forecast",
+  "forecast_title": "Solar forecast",
+  "forecast_inverter": "Inverter {device}",
+  "forecast_total": "Total",
+  "forecast_input": "MPPT {input}",
+  "forecast_string_estimated": "{name} (estimated)",
+  "forecast_none": "No strings yet."
 }

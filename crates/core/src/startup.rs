@@ -345,7 +345,12 @@ async fn forecast(
     let spot = SpotPrices::new(spot, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
-        solar.run(storage, location.clone(), weather.issues(), SystemTime::now),
+        solar.run(
+            (storage, &learner),
+            location.clone(),
+            weather.issues(),
+            SystemTime::now
+        ),
         // Boxed: its learn run alone would make the core's future large.
         Box::pin(learner.run(storage, location, storage.zones().watch(), SystemTime::now)),
         spot.run(storage, zone, SystemTime::now),

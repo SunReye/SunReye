@@ -307,5 +307,12 @@
   "import_running": "{done} von {total} Reihen importiert.",
   "import_done": "Importiert: {series} Reihen, {points} Änderungspunkte, {hours} Stunden, {days} Tage.",
   "import_unread": "Keine v5-Größe liest diese; nicht importiert:",
-  "import_unmapped": "Keinem Gerät zugeordnet; nicht importiert:"
+  "import_unmapped": "Keinem Gerät zugeordnet; nicht importiert:",
+  "nav_forecast": "Prognose",
+  "forecast_title": "Solarprognose",
+  "forecast_inverter": "Wechselrichter {device}",
+  "forecast_total": "Gesamt",
+  "forecast_input": "MPPT {input}",
+  "forecast_string_estimated": "{name} (geschätzt)",
+  "forecast_none": "Noch keine Strings angelegt."
 }

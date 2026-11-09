@@ -2,7 +2,7 @@
 //! 2026-06-20 and 21 (`fixtures/open-meteo-archive.json`). The modelled hours come from the solar
 //! forecast run on the same weather, so measured and modelled agree to its 1 W step.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -138,7 +138,7 @@ impl Plant {
         let wind = self.bus.intern("weather.wind", None);
         self.storage.forecast(WEATHER, wind, issue).await.unwrap();
         SolarForecast::new(self.layouts.clone(), WEATHER, &self.bus)
-            .refresh(&self.storage, BERLIN, at(FIRST))
+            .refresh(&self.storage, &HashMap::new(), BERLIN, at(FIRST))
             .await
             .unwrap();
         let series = self.bus.intern(role, index);

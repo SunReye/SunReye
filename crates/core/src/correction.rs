@@ -49,6 +49,38 @@ const AT_LIMIT: f64 = 0.98;
 /// An inverter's MPPT input: its device and `pv.mppt.*` index.
 type Input = (DeviceId, u32);
 
+/// Each MPPT input's learned grid, as the solar forecast applies it.
+pub trait Corrections: Sync {
+    /// The grid learned for an inverter's MPPT input; all 1 when none is.
+    fn grid(
+        &self,
+        device: DeviceId,
+        input: u32,
+    ) -> impl Future<Output = Result<Grid, storage::Error>> + Send;
+}
+
+impl<A: Archive> Corrections for Learner<A> {
+    fn grid(
+        &self,
+        device: DeviceId,
+        input: u32,
+    ) -> impl Future<Output = Result<Grid, storage::Error>> + Send {
+        Self::grid(self, device, input)
+    }
+}
+
+/// Grids set by hand.
+#[cfg(test)]
+impl<S: std::hash::BuildHasher + Sync> Corrections for HashMap<Input, Grid, S> {
+    fn grid(
+        &self,
+        device: DeviceId,
+        input: u32,
+    ) -> impl Future<Output = Result<Grid, storage::Error>> + Send {
+        std::future::ready(Ok(self.get(&(device, input)).cloned().unwrap_or_default()))
+    }
+}
+
 /// The correction learner, the one writer of the learned grids.
 pub struct Learner<A> {
     past: Past<A>,
@@ -389,7 +421,7 @@ fn midnight(day: Date) -> SystemTime {
 }
 
 /// The plant-local month and hour an hour starts in.
-fn plant_hour(start: SystemTime, zone: &TimeZone) -> (u8, u8) {
+pub(crate) fn plant_hour(start: SystemTime, zone: &TimeZone) -> (u8, u8) {
     let local = jiff::Timestamp::try_from(start)
         .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
         .to_zoned(zone.clone());
