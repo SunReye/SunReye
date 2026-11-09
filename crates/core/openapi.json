@@ -1361,6 +1361,23 @@
         ],
         "type": "object"
       },
+      "Label": {
+        "description": "The text a setting's value is shown as.",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "text"
+        ],
+        "type": "object"
+      },
       "Layout": {
         "description": "One layout version.",
         "properties": {
@@ -2391,6 +2408,27 @@
               },
               "key": {
                 "type": "string"
+              },
+              "labels": {
+                "description": "The text for each value the profile labels.",
+                "items": {
+                  "$ref": "#/components/schemas/Label"
+                },
+                "type": "array"
+              },
+              "name": {
+                "description": "What the settings screen calls it; the key when absent.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "unit": {
+                "description": "The unit of its value, such as `A`.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [

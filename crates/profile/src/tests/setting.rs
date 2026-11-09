@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{Field, LoadError, Profile, Relock, Source, Step};
+use crate::{Field, LoadError, Profile, Relock, Source, Step, Unit};
 use serde_json::{Value, json};
 
 fn doc(settings: &Value) -> Value {
@@ -560,4 +560,60 @@ fn a_setting_is_unverified_unless_it_was_checked_on_hardware() {
 
     assert!(!profile.setting("current").unwrap().verified());
     assert!(profile.setting("checked").unwrap().verified());
+}
+
+/// What the settings screen shows of a setting: its name, its unit and a text per value (ADR 5).
+#[test]
+fn a_setting_names_itself_its_unit_and_its_values() {
+    let mut mode = current();
+    mode["key"] = json!("work_mode");
+    mode.as_object_mut().unwrap().remove("range");
+    mode["values"] = json!([0, 1, 2]);
+    mode["name"] = json!("Work mode");
+    mode["labels"] =
+        json!({ "0": "Selling first", "1": "Zero export to load", "2": "Zero export to CT" });
+    let mut amps = current();
+    amps["name"] = json!("Maximum charge current");
+    amps["unit"] = json!("A");
+    let profile = load(&json!([mode, amps])).unwrap();
+
+    let mode = profile.setting("work_mode").unwrap();
+    let amps = profile.setting("current").unwrap();
+
+    assert_eq!((mode.name(), mode.unit()), (Some("Work mode"), None));
+    assert_eq!(
+        mode.labels(),
+        [
+            (0.0, "Selling first".to_owned()),
+            (1.0, "Zero export to load".to_owned()),
+            (2.0, "Zero export to CT".to_owned()),
+        ]
+    );
+    assert_eq!(
+        (amps.name(), amps.unit()),
+        (Some("Maximum charge current"), Some(Unit::Ampere))
+    );
+    assert_eq!(amps.labels(), []);
+}
+
+#[test]
+fn a_label_for_a_value_the_setting_does_not_take_is_refused() {
+    let mut mode = current();
+    mode.as_object_mut().unwrap().remove("range");
+    mode["values"] = json!([0, 1]);
+    mode["labels"] = json!({ "0": "Off", "2": "On" });
+    assert_eq!(
+        refusal(&json!([mode])),
+        (
+            "current".to_owned(),
+            "a label names a value the setting does not take"
+        )
+    );
+}
+
+#[test]
+fn a_unit_outside_the_role_units_is_refused() {
+    let mut amps = current();
+    amps["unit"] = json!("amps");
+    assert!(matches!(load(&json!([amps])), Err(LoadError::Malformed(_))));
 }

@@ -2,6 +2,7 @@
 
 mod decode;
 mod document;
+mod identify;
 mod plan;
 mod profile;
 mod role;

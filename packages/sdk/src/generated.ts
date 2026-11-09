@@ -2,7 +2,12 @@
 
 export type Capability = "modbus" | "mqtt" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
 
-export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
+export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
+/**
+ * Fields that tell the device from any other on the bus; the setup scan proposes the profile
+ * only when each holds one of its values.
+ */
+identify?: Array<Identify>, settings?: Array<Setting>, };
 
 export type Quantity = { key: string, role: string, index?: number, 
 /**
@@ -34,11 +39,21 @@ export type Range = { min: number, max: number, };
 
 export type Expr = { "sum": Array<string> } | { "diff": [string, string] } | { "combine": { add: Array<string>, sub?: Array<string>, } } | { "ratio": { num: Array<string>, den: Array<string>, scale?: number, } } | { "clamp": { key: string, min?: number, max?: number, } };
 
+export type Identify = { register: number, 
+/**
+ * `u16` when left out.
+ */
+type?: Kind, values: Array<number>, };
+
 export type Inverter = { 
 /**
  * Volts.
  */
 maxInputVoltage: number, 
+/**
+ * Watts of AC output at its rating: the forecast caps the inverter there.
+ */
+acRating: number | null, 
 /**
  * The MPPT inputs, numbered from 1 in order, as `pv.mppt.*` indices.
  */
@@ -58,7 +73,19 @@ minVoltage: number, maxVoltage: number,
  */
 startVoltage: number, };
 
-export type Setting = { key: string, type: Kind, scale?: number, range?: Range, values?: Array<number>, 
+export type Setting = { key: string, 
+/**
+ * What the settings screen calls it; the key when left out.
+ */
+name?: string, type: Kind, 
+/**
+ * The unit of its value after scaling.
+ */
+unit?: Unit, scale?: number, range?: Range, values?: Array<number>, 
+/**
+ * The text the settings screen shows for each of `values`, keyed by the value.
+ */
+labels?: Record<string, string>, 
 /**
  * Seconds.
  */
@@ -68,6 +95,8 @@ minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boole
  * enable (ADR 8).
  */
 verified?: boolean, };
+
+export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C";
 
 export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle } | { "publish": Publish };
 

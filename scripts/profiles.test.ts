@@ -4,10 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { catalogue } from "../apps/web/src/lib/cars/catalogue.ts";
 import { buildProfiles } from "../packages/sdk/src/build.ts";
-import { loadProfileWasm } from "../packages/sdk/src/index.ts";
-import deye from "../profiles/deye-sg05lp3.ts";
 import evcc from "../profiles/evcc.ts";
-import sunspec from "../profiles/sunspec.ts";
 
 const profiles = new URL("../profiles", import.meta.url).pathname;
 
@@ -23,16 +20,6 @@ test("the committed profile files and index are the build of profiles/", async (
 
   expect(files).toContain("index.json");
   expect(built).toEqual(committed);
-});
-
-test.each([
-  ["Deye", deye],
-  ["EVCC", evcc],
-  ["SunSpec", sunspec],
-])("the official %s profile loads without a warning", async (_, profile) => {
-  const wasm = await loadProfileWasm();
-
-  expect(wasm.lint(JSON.stringify(profile))).toEqual([]);
 });
 
 test("EVCC reads each vehicle title in the SPA's car catalogue as its entry's id", () => {

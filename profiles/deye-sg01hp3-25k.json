@@ -1,0 +1,682 @@
+{
+  "schema": 1,
+  "id": "deye-sg01hp3-25k",
+  "name": "SUN-25K-SG01HP3",
+  "manufacturer": "Deye",
+  "version": "1.0.0",
+  "requires": [
+    "modbus",
+    "u16",
+    "i16",
+    "u32",
+    "compute",
+    "write",
+    "snapshot-toggle"
+  ],
+  "identify": [
+    {
+      "register": 0,
+      "values": [
+        1536,
+        1537
+      ]
+    },
+    {
+      "register": 20,
+      "type": "u32",
+      "values": [
+        250000
+      ]
+    }
+  ],
+  "inverter": {
+    "maxInputVoltage": 1000,
+    "acRating": 25000,
+    "mppt": [
+      {
+        "maxCurrent": 26,
+        "minVoltage": 150,
+        "maxVoltage": 850,
+        "startVoltage": 180
+      },
+      {
+        "maxCurrent": 26,
+        "minVoltage": 150,
+        "maxVoltage": 850,
+        "startVoltage": 180
+      }
+    ]
+  },
+  "quantities": [
+    {
+      "key": "dc.pv1.power",
+      "role": "pv.mppt.power",
+      "register": 672,
+      "scale": 10,
+      "index": 1,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv1.voltage",
+      "role": "pv.mppt.voltage",
+      "register": 676,
+      "scale": 0.1,
+      "index": 1,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv1.current",
+      "role": "pv.mppt.current",
+      "register": 677,
+      "scale": 0.1,
+      "index": 1,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv2.power",
+      "role": "pv.mppt.power",
+      "register": 673,
+      "scale": 10,
+      "index": 2,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv2.voltage",
+      "role": "pv.mppt.voltage",
+      "register": 678,
+      "scale": 0.1,
+      "index": 2,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv2.current",
+      "role": "pv.mppt.current",
+      "register": 679,
+      "scale": 0.1,
+      "index": 2,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv3.power",
+      "role": "pv.mppt.power",
+      "register": 674,
+      "scale": 10,
+      "index": 3,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv3.voltage",
+      "role": "pv.mppt.voltage",
+      "register": 680,
+      "scale": 0.1,
+      "index": 3,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv3.current",
+      "role": "pv.mppt.current",
+      "register": 681,
+      "scale": 0.1,
+      "index": 3,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv4.power",
+      "role": "pv.mppt.power",
+      "register": 675,
+      "scale": 10,
+      "index": 4,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv4.voltage",
+      "role": "pv.mppt.voltage",
+      "register": 682,
+      "scale": 0.1,
+      "index": 4,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv4.current",
+      "role": "pv.mppt.current",
+      "register": 683,
+      "scale": 0.1,
+      "index": 4,
+      "type": "u16"
+    },
+    {
+      "key": "total_energy",
+      "role": "pv.energy.total",
+      "register": 534,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "battery.soc",
+      "role": "battery.soc",
+      "register": 588,
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      }
+    },
+    {
+      "key": "battery.power",
+      "role": "battery.power",
+      "register": 590,
+      "type": "i16",
+      "scale": -10
+    },
+    {
+      "key": "battery.voltage",
+      "role": "battery.voltage",
+      "register": 587,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "battery.current",
+      "role": "battery.current",
+      "register": 591,
+      "type": "i16",
+      "scale": -0.01
+    },
+    {
+      "key": "battery.temperature",
+      "role": "battery.temperature",
+      "register": 586,
+      "type": "u16",
+      "scale": 0.1,
+      "offset": -100
+    },
+    {
+      "key": "battery.total_charge",
+      "role": "battery.energy.charged.total",
+      "register": 516,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "battery.total_discharge",
+      "role": "battery.energy.discharged.total",
+      "register": 518,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.total_power",
+      "role": "grid.power",
+      "register": 625,
+      "type": "i16"
+    },
+    {
+      "key": "ac.l1.voltage",
+      "role": "grid.phase.voltage",
+      "index": 1,
+      "register": 598,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.l2.voltage",
+      "role": "grid.phase.voltage",
+      "index": 2,
+      "register": 599,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.l3.voltage",
+      "role": "grid.phase.voltage",
+      "index": 3,
+      "register": 600,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.l1.current",
+      "role": "extra.ac_l1_current",
+      "register": 630,
+      "type": "i16",
+      "scale": 0.01
+    },
+    {
+      "key": "ac.l2.current",
+      "role": "extra.ac_l2_current",
+      "register": 631,
+      "type": "i16",
+      "scale": 0.01
+    },
+    {
+      "key": "ac.l3.current",
+      "role": "extra.ac_l3_current",
+      "register": 632,
+      "type": "i16",
+      "scale": 0.01
+    },
+    {
+      "key": "ac.l1.power",
+      "role": "extra.ac_l1_power",
+      "register": 633,
+      "type": "i16"
+    },
+    {
+      "key": "ac.l2.power",
+      "role": "extra.ac_l2_power",
+      "register": 634,
+      "type": "i16"
+    },
+    {
+      "key": "ac.l3.power",
+      "role": "extra.ac_l3_power",
+      "register": 635,
+      "type": "i16"
+    },
+    {
+      "key": "ac.total_energy_bought",
+      "role": "grid.energy.imported.total",
+      "register": 522,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.total_energy_sold",
+      "role": "grid.energy.exported.total",
+      "register": 524,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.ups.total_power",
+      "role": "load.power",
+      "register": 653,
+      "type": "i16"
+    },
+    {
+      "key": "ac.ups.l1.power",
+      "role": "extra.ac_ups_l1_power",
+      "register": 650,
+      "type": "i16"
+    },
+    {
+      "key": "ac.ups.l2.power",
+      "role": "extra.ac_ups_l2_power",
+      "register": 651,
+      "type": "i16"
+    },
+    {
+      "key": "ac.ups.l3.power",
+      "role": "extra.ac_ups_l3_power",
+      "register": 652,
+      "type": "i16"
+    },
+    {
+      "key": "ac.ups.l1.voltage",
+      "role": "extra.ac_ups_l1_voltage",
+      "register": 644,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.ups.l2.voltage",
+      "role": "extra.ac_ups_l2_voltage",
+      "register": 645,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.ups.l3.voltage",
+      "role": "extra.ac_ups_l3_voltage",
+      "register": 646,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.ups.total_energy",
+      "role": "load.energy.total",
+      "register": 527,
+      "type": "u32",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.generator.total_power",
+      "role": "generator.power",
+      "register": 667,
+      "type": "i16"
+    },
+    {
+      "key": "ac.generator.l1.power",
+      "role": "extra.ac_generator_l1_power",
+      "register": 664,
+      "type": "i16"
+    },
+    {
+      "key": "ac.generator.l2.power",
+      "role": "extra.ac_generator_l2_power",
+      "register": 665,
+      "type": "i16"
+    },
+    {
+      "key": "ac.generator.l3.power",
+      "role": "extra.ac_generator_l3_power",
+      "register": 666,
+      "type": "i16"
+    },
+    {
+      "key": "ac.generator.l1.voltage",
+      "role": "extra.ac_generator_l1_voltage",
+      "register": 661,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.generator.l2.voltage",
+      "role": "extra.ac_generator_l2_voltage",
+      "register": 662,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "ac.generator.l3.voltage",
+      "role": "extra.ac_generator_l3_voltage",
+      "register": 663,
+      "type": "u16",
+      "scale": 0.1
+    },
+    {
+      "key": "inverter.status",
+      "role": "extra.inverter_status",
+      "register": 500,
+      "type": "u16"
+    },
+    {
+      "key": "radiator_temp",
+      "role": "extra.radiator_temp",
+      "register": 540,
+      "type": "i16",
+      "scale": 0.1,
+      "offset": -100
+    },
+    {
+      "key": "ac.temperature",
+      "role": "extra.ac_temperature",
+      "register": 541,
+      "type": "i16",
+      "scale": 0.1,
+      "offset": -100
+    },
+    {
+      "key": "battery.mode",
+      "role": "battery.mode",
+      "register": 98,
+      "type": "u16"
+    },
+    {
+      "key": "settings.battery.maximum_charge_current",
+      "role": "extra.settings_battery_maximum_charge_current",
+      "register": 108,
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 50
+      }
+    },
+    {
+      "key": "settings.battery.maximum_discharge_current",
+      "role": "extra.settings_battery_maximum_discharge_current",
+      "register": 109,
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 50
+      }
+    },
+    {
+      "key": "settings.battery.maximum_grid_charge_current",
+      "role": "extra.settings_battery_maximum_grid_charge_current",
+      "register": 128,
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 50
+      }
+    },
+    {
+      "key": "settings.battery.grid_charge",
+      "role": "extra.settings_battery_grid_charge",
+      "register": 130,
+      "type": "u16"
+    },
+    {
+      "key": "settings.workmode",
+      "role": "extra.settings_workmode",
+      "register": 142,
+      "type": "u16"
+    },
+    {
+      "key": "settings.solar_sell_max_power",
+      "role": "extra.settings_solar_sell_max_power",
+      "register": 143,
+      "type": "u16",
+      "scale": 10,
+      "range": {
+        "min": 0,
+        "max": 25000
+      }
+    },
+    {
+      "key": "settings.solar_sell",
+      "role": "extra.settings_solar_sell",
+      "register": 145,
+      "type": "u16"
+    },
+    {
+      "key": "dc.total_power",
+      "role": "pv.power",
+      "compute": {
+        "sum": [
+          "dc.pv1.power",
+          "dc.pv2.power",
+          "dc.pv3.power",
+          "dc.pv4.power"
+        ]
+      }
+    },
+    {
+      "key": "grid.import_power",
+      "role": "extra.grid_import_power",
+      "compute": {
+        "clamp": {
+          "key": "ac.total_power",
+          "min": 0
+        }
+      }
+    },
+    {
+      "key": "grid.export_power",
+      "role": "extra.grid_export_power",
+      "compute": {
+        "diff": [
+          "grid.import_power",
+          "ac.total_power"
+        ]
+      }
+    },
+    {
+      "key": "battery.charge_power",
+      "role": "extra.battery_charge_power",
+      "compute": {
+        "clamp": {
+          "key": "battery.power",
+          "min": 0
+        }
+      }
+    },
+    {
+      "key": "battery.discharge_power",
+      "role": "extra.battery_discharge_power",
+      "compute": {
+        "diff": [
+          "battery.charge_power",
+          "battery.power"
+        ]
+      }
+    },
+    {
+      "key": "inverter.power",
+      "role": "extra.inverter_power",
+      "compute": {
+        "combine": {
+          "add": [
+            "dc.total_power",
+            "ac.total_power"
+          ],
+          "sub": [
+            "battery.power",
+            "ac.ups.total_power"
+          ]
+        }
+      }
+    },
+    {
+      "key": "inverter.efficiency",
+      "role": "extra.inverter_efficiency",
+      "compute": {
+        "ratio": {
+          "num": [
+            "ac.ups.total_power",
+            "battery.charge_power",
+            "grid.export_power"
+          ],
+          "den": [
+            "dc.total_power",
+            "battery.discharge_power",
+            "grid.import_power"
+          ],
+          "scale": 100
+        }
+      },
+      "range": {
+        "min": 0,
+        "max": 100
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "battery.max_charge_current",
+      "name": "Max battery charge current",
+      "unit": "A",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 50
+      },
+      "minInterval": 60,
+      "recipe": [
+        {
+          "write": {
+            "register": 108
+          }
+        }
+      ],
+      "readBack": {
+        "register": 108
+      }
+    },
+    {
+      "key": "battery.max_discharge_current",
+      "name": "Max battery discharge current",
+      "unit": "A",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 50
+      },
+      "minInterval": 60,
+      "recipe": [
+        {
+          "write": {
+            "register": 109
+          }
+        }
+      ],
+      "readBack": {
+        "register": 109
+      }
+    },
+    {
+      "key": "battery.grid_charge",
+      "name": "Grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "recipe": [
+        {
+          "write": {
+            "register": 130
+          }
+        }
+      ],
+      "readBack": {
+        "register": 130
+      }
+    },
+    {
+      "key": "work_mode",
+      "name": "Work mode",
+      "labels": {
+        "0": "Selling first",
+        "1": "Zero export to load",
+        "2": "Zero export to CT"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1,
+        2
+      ],
+      "minInterval": 60,
+      "recipe": [
+        {
+          "write": {
+            "register": 142
+          }
+        }
+      ],
+      "readBack": {
+        "register": 142
+      }
+    },
+    {
+      "key": "battery.discharge_lock",
+      "name": "Battery discharge lock",
+      "labels": {
+        "0": "Unlocked",
+        "1": "Locked"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "recipe": [
+        {
+          "snapshotToggle": {
+            "target": "battery.max_discharge_current",
+            "locked": 0
+          }
+        }
+      ]
+    }
+  ]
+}

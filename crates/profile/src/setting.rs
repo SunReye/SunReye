@@ -1,7 +1,9 @@
 //! Settings (ADR 5, 7): what the core may write, the steps that write it and where it reads back.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
+use crate::Unit;
 use crate::document::{
     BlockDoc, BlockWord, Kind, PreconditionDoc, Range, ReadBackDoc, SettingDoc, StepDoc, ToggleDoc,
     UnlockDoc,
@@ -12,6 +14,10 @@ use crate::profile::{Quantity, Read};
 #[derive(Debug, Clone)]
 pub struct Setting {
     pub key: String,
+    name: Option<String>,
+    unit: Option<Unit>,
+    /// The text for each value, in the order of `values`.
+    labels: Vec<(f64, String)>,
     kind: Kind,
     scale: f64,
     range: Option<Range>,
@@ -217,6 +223,24 @@ impl Setting {
             .iter()
             .find(|(_, v)| v.to_bits() == value.to_bits())
             .map(|(text, _)| text.clone())
+    }
+
+    /// What the settings screen calls it, when the profile names it.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// The unit of its value, when it has one.
+    #[must_use]
+    pub const fn unit(&self) -> Option<Unit> {
+        self.unit
+    }
+
+    /// The text for each value the profile labels, in the order of its values.
+    #[must_use]
+    pub fn labels(&self) -> &[(f64, String)] {
+        &self.labels
     }
 
     /// Whether its write was checked on real hardware (ADR 5).
@@ -445,8 +469,13 @@ fn setting(
         doc.values.as_deref(),
     )
     .map_err(|problem| (key.clone(), problem))?;
+    let labels =
+        labels(doc.labels, doc.values.as_deref()).map_err(|problem| (key.clone(), problem))?;
     Ok(Setting {
         key,
+        name: doc.name,
+        unit: doc.unit,
+        labels,
         kind: doc.kind,
         scale,
         range: doc.range,
@@ -457,6 +486,25 @@ fn setting(
         texts,
         verified: doc.verified,
     })
+}
+
+/// Each label's value, in the order of `values`; refused when a label names a value not among
+/// them.
+fn labels(
+    labels: Option<BTreeMap<String, String>>,
+    values: Option<&[f64]>,
+) -> Result<Vec<(f64, String)>, &'static str> {
+    let mut labels = labels.unwrap_or_default();
+    let values = values.unwrap_or_default();
+    let found = values
+        .iter()
+        .filter_map(|v| labels.remove(&v.to_string()).map(|text| (*v, text)))
+        .collect();
+    if labels.is_empty() {
+        Ok(found)
+    } else {
+        Err("a label names a value the setting does not take")
+    }
 }
 
 /// Whether every step and the read-back use the profile's binding: topics when it reads any,

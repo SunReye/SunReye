@@ -1,16 +1,26 @@
 //! Role units, from ADR 4's table.
 
+use serde::{Deserialize, Serialize};
+
 use crate::Quantity;
 
-/// The unit of a role's values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The unit of a role's values, or of a setting's, written as its symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub enum Unit {
+    #[serde(rename = "W")]
     Watt,
+    #[serde(rename = "kWh")]
     KilowattHour,
+    #[serde(rename = "V")]
     Volt,
+    #[serde(rename = "A")]
     Ampere,
+    #[serde(rename = "Hz")]
     Hertz,
+    #[serde(rename = "%")]
     Percent,
+    #[serde(rename = "°C")]
     Celsius,
 }
 
@@ -48,7 +58,7 @@ fn unit(role: &str) -> Option<Unit> {
     Some(match role {
         "pv.power" | "pv.mppt.power" | "pv.string.power" | "battery.power" | "grid.power"
         | "grid.phase.power" | "load.power" | "backup.power" | "generator.power"
-        | "ev.charge.power" => Unit::Watt,
+        | "inverter.power" | "ev.charge.power" => Unit::Watt,
         "pv.energy.total"
         | "battery.capacity"
         | "battery.energy.charged.total"

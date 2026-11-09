@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.1",
+  "version": "2.2.5",
   "requires": [
     "modbus",
     "u16",
@@ -13,18 +13,27 @@
     "write",
     "snapshot-toggle"
   ],
+  "identify": [
+    {
+      "register": 0,
+      "values": [
+        1280
+      ]
+    }
+  ],
   "inverter": {
     "maxInputVoltage": 800,
+    "acRating": 20000,
     "mppt": [
       {
-        "maxCurrent": 26,
-        "minVoltage": 200,
+        "maxCurrent": 36,
+        "minVoltage": 160,
         "maxVoltage": 650,
         "startVoltage": 160
       },
       {
-        "maxCurrent": 26,
-        "minVoltage": 200,
+        "maxCurrent": 36,
+        "minVoltage": 160,
         "maxVoltage": 650,
         "startVoltage": 160
       }
@@ -98,94 +107,94 @@
     {
       "key": "dc.pv1.power",
       "role": "pv.mppt.power",
-      "index": 1,
       "register": 672,
-      "type": "u16"
-    },
-    {
-      "key": "dc.pv2.power",
-      "role": "pv.mppt.power",
-      "index": 2,
-      "register": 673,
+      "index": 1,
       "type": "u16"
     },
     {
       "key": "dc.pv1.voltage",
       "role": "pv.mppt.voltage",
-      "index": 1,
       "register": 676,
-      "type": "u16",
-      "scale": 0.1
-    },
-    {
-      "key": "dc.pv2.voltage",
-      "role": "pv.mppt.voltage",
-      "index": 2,
-      "register": 678,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 1,
+      "type": "u16"
     },
     {
       "key": "dc.pv1.current",
       "role": "pv.mppt.current",
-      "index": 1,
       "register": 677,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 1,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv2.power",
+      "role": "pv.mppt.power",
+      "register": 673,
+      "index": 2,
+      "type": "u16"
+    },
+    {
+      "key": "dc.pv2.voltage",
+      "role": "pv.mppt.voltage",
+      "register": 678,
+      "scale": 0.1,
+      "index": 2,
+      "type": "u16"
     },
     {
       "key": "dc.pv2.current",
       "role": "pv.mppt.current",
-      "index": 2,
       "register": 679,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 2,
+      "type": "u16"
     },
     {
       "key": "dc.pv3.power",
       "role": "pv.mppt.power",
-      "index": 3,
       "register": 674,
+      "index": 3,
       "type": "u16"
     },
     {
       "key": "dc.pv3.voltage",
       "role": "pv.mppt.voltage",
-      "index": 3,
       "register": 680,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 3,
+      "type": "u16"
     },
     {
       "key": "dc.pv3.current",
       "role": "pv.mppt.current",
-      "index": 3,
       "register": 681,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 3,
+      "type": "u16"
     },
     {
       "key": "dc.pv4.power",
       "role": "pv.mppt.power",
-      "index": 4,
       "register": 675,
+      "index": 4,
       "type": "u16"
     },
     {
       "key": "dc.pv4.voltage",
       "role": "pv.mppt.voltage",
-      "index": 4,
       "register": 682,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 4,
+      "type": "u16"
     },
     {
       "key": "dc.pv4.current",
       "role": "pv.mppt.current",
-      "index": 4,
       "register": 683,
-      "type": "u16",
-      "scale": 0.1
+      "scale": 0.1,
+      "index": 4,
+      "type": "u16"
     },
     {
       "key": "total_energy",
@@ -223,6 +232,12 @@
       "register": 600,
       "type": "u16",
       "scale": 0.1
+    },
+    {
+      "key": "inverter.output.power",
+      "role": "inverter.power",
+      "register": 636,
+      "type": "i16"
     },
     {
       "key": "ac.l1.ct.internal",
@@ -1042,6 +1057,8 @@
   "settings": [
     {
       "key": "battery.max_charge_current",
+      "name": "Max battery charge current",
+      "unit": "A",
       "type": "u16",
       "range": {
         "min": 0,
@@ -1061,6 +1078,8 @@
     },
     {
       "key": "battery.max_discharge_current",
+      "name": "Max battery discharge current",
+      "unit": "A",
       "type": "u16",
       "range": {
         "min": 0,
@@ -1080,6 +1099,11 @@
     },
     {
       "key": "battery.grid_charge",
+      "name": "Grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
       "type": "u16",
       "values": [
         0,
@@ -1099,6 +1123,12 @@
     },
     {
       "key": "work_mode",
+      "name": "Work mode",
+      "labels": {
+        "0": "Selling first",
+        "1": "Zero export to load",
+        "2": "Zero export to CT"
+      },
       "type": "u16",
       "values": [
         0,
@@ -1119,6 +1149,11 @@
     },
     {
       "key": "battery.discharge_lock",
+      "name": "Battery discharge lock",
+      "labels": {
+        "0": "Unlocked",
+        "1": "Locked"
+      },
       "type": "u16",
       "values": [
         0,

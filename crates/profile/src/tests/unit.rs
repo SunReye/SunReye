@@ -38,6 +38,7 @@ fn each_role_carries_its_unit_from_adr_4() {
             ("battery.soc", None),
             ("battery.temperature", None),
             ("grid.frequency", None),
+            ("inverter.power", None),
         ]),
         [
             Some(Unit::Watt),
@@ -47,6 +48,7 @@ fn each_role_carries_its_unit_from_adr_4() {
             Some(Unit::Percent),
             Some(Unit::Celsius),
             Some(Unit::Hertz),
+            Some(Unit::Watt),
         ]
     );
 }

@@ -120,7 +120,7 @@ fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {
 }
 
 /// `None` while a word is unanswered, or for a SunSpec sentinel.
-fn read(register: &Register, registers: &Registers) -> Option<f64> {
+pub fn read(register: &Register, registers: &Registers) -> Option<f64> {
     let Register {
         address,
         kind,

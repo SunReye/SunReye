@@ -83,9 +83,10 @@
   },
   "overrides": [
     {
-      "files": ["profiles/*.ts"],
+      "files": ["profiles/**/*.ts"],
       "rules": {
-        "max-lines": "off"
+        "max-lines": "off",
+        "import/max-dependencies": "off"
       }
     }
   ]

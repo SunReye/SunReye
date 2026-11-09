@@ -5,11 +5,11 @@ use std::path::Path;
 use ts_rs::{Config, TS};
 
 use crate::document::{
-    ActivateDoc, BlockDoc, DelayDoc, ExprDoc, Kind, MaskedDoc, PreconditionDoc, ProfileDoc,
-    PublishDoc, QuantityDoc, Range, ReadBackDoc, RegisterDoc, RelockDoc, SettingDoc, StepDoc,
-    ToggleDoc, UnlockDoc,
+    ActivateDoc, BlockDoc, DelayDoc, ExprDoc, IdentifyDoc, Kind, MaskedDoc, PreconditionDoc,
+    ProfileDoc, PublishDoc, QuantityDoc, Range, ReadBackDoc, RegisterDoc, RelockDoc, SettingDoc,
+    StepDoc, ToggleDoc, UnlockDoc,
 };
-use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support};
+use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support, Unit};
 
 fn declarations() -> String {
     let cfg = Config::new().with_large_int("number");
@@ -25,9 +25,11 @@ fn declarations() -> String {
         Kind::decl(&cfg),
         Range::decl(&cfg),
         ExprDoc::decl(&cfg),
+        IdentifyDoc::decl(&cfg),
         Inverter::decl(&cfg),
         Mppt::decl(&cfg),
         SettingDoc::decl(&cfg),
+        Unit::decl(&cfg),
         StepDoc::decl(&cfg),
         RegisterDoc::decl(&cfg),
         BlockDoc::decl(&cfg),

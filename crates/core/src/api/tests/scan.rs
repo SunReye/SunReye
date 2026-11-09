@@ -29,11 +29,19 @@ fn deye(unit: u8) -> Value {
     json!([{ "profile": "deye-sg05lp3", "unit": unit }])
 }
 
+/// Register 0 of a Deye three-phase hybrid: its device type, `0x0500` for a low-voltage battery,
+/// from Deye's three-phase protocol V105.
+const LOW_VOLTAGE_HYBRID: [u16; 1] = [0x0500];
+
+async fn deye_at(host: &str, framing: Framing, unit: u8) -> fake::Fake {
+    fake::serve_map(host, framing, unit, 0, &LOW_VOLTAGE_HYBRID).await
+}
+
 /// The owner's plant: the gateway answers unit 0, the Solarman stick unit 1, the same inverter.
 #[tokio::test]
 async fn a_scan_proposes_the_deye_at_the_unit_each_endpoint_answers() {
-    let gateway = fake::serve_unit("127.0.0.2", Framing::Tcp, 0).await;
-    let stick = fake::serve_unit("127.0.0.3", Framing::SolarmanV5, 1).await;
+    let gateway = deye_at("127.0.0.2", Framing::Tcp, 0).await;
+    let stick = deye_at("127.0.0.3", Framing::SolarmanV5, 1).await;
     let (gateway_port, stick_port) = (gateway.address.port(), stick.address.port());
     let ports = vec![
         (gateway_port, Framing::Tcp),
@@ -94,8 +102,8 @@ async fn an_endpoint_that_answers_no_probe_is_listed_without_devices_and_only_re
         assert_eq!(read.function, 3);
         probed.push(read.unit);
     }
-    // The Deye profile's probe at each unit, then SunSpec's.
-    assert_eq!(probed, [1, 0, 2, 3, 4, 5, 1, 0, 2, 3, 4, 5]);
+    // Each unit goes unanswered once: the Deye probes and SunSpec's share the reads.
+    assert_eq!(probed, [1, 0, 2, 3, 4, 5]);
     assert!(silent.writes.try_recv().is_err(), "the scan wrote");
 }
 
@@ -121,7 +129,7 @@ async fn a_subnet_wider_than_a_24_public_or_malformed_is_refused() {
 
 #[tokio::test]
 async fn a_scan_without_a_subnet_covers_the_24_of_the_cores_address() {
-    let gateway = fake::serve_unit("127.0.0.5", Framing::Tcp, 1).await;
+    let gateway = deye_at("127.0.0.5", Framing::Tcp, 1).await;
     let port = gateway.address.port();
     let (core, set_cookie, _dir) =
         scanning(vec![(port, Framing::Tcp)], || Some([127, 0, 0, 9].into())).await;
@@ -199,9 +207,20 @@ async fn a_sunspec_device_is_proposed_with_its_variant() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
         body["endpoints"][0]["devices"],
-        json!([
-            { "profile": "deye-sg05lp3", "unit": 1 },
-            { "profile": "sunspec", "unit": 1, "variant": 103 },
-        ])
+        json!([{ "profile": "sunspec", "unit": 1, "variant": 103 }])
     );
+}
+
+/// A Modbus device whose type register holds no Deye device type is not proposed Deye, however
+/// many registers it answers.
+#[tokio::test]
+async fn a_device_that_is_not_a_deye_is_not_proposed_deye() {
+    let other = fake::serve_map("127.0.0.9", Framing::Tcp, 1, 0, &[0x0200]).await;
+    let port = other.address.port();
+    let (core, set_cookie, _dir) = scanning(vec![(port, Framing::Tcp)], || None).await;
+
+    let (status, body) = scan(&core, &set_cookie, &json!({ "subnet": "127.0.0.9/32" })).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["endpoints"][0]["devices"], json!([]));
 }

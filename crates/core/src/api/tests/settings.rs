@@ -299,14 +299,24 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
     assert_eq!(
         device["settings"],
         json!([
-            { "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0,
-                "enable": "on" },
-            { "key": "battery.max_discharge_current", "range": { "min": 0.0, "max": 350.0 },
+            { "key": CHARGE, "name": "Max battery charge current", "unit": "A",
+                "range": { "min": 0.0, "max": 350.0 }, "step": 1.0, "enable": "on" },
+            { "key": "battery.max_discharge_current", "name": "Max battery discharge current",
+                "unit": "A", "range": { "min": 0.0, "max": 350.0 }, "step": 1.0, "enable": "on" },
+            { "key": "battery.grid_charge", "name": "Grid charge", "values": [0.0, 1.0],
+                "labels": [{ "value": 0.0, "text": "Off" }, { "value": 1.0, "text": "On" }],
                 "step": 1.0, "enable": "on" },
-            { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0, "enable": "on" },
-            { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0, "enable": "on" },
-            { "key": "battery.discharge_lock", "values": [0.0, 1.0], "step": 1.0,
-                "enable": "on" },
+            { "key": "work_mode", "name": "Work mode", "values": [0.0, 1.0, 2.0],
+                "labels": [
+                    { "value": 0.0, "text": "Selling first" },
+                    { "value": 1.0, "text": "Zero export to load" },
+                    { "value": 2.0, "text": "Zero export to CT" },
+                ],
+                "step": 1.0, "enable": "on" },
+            { "key": "battery.discharge_lock", "name": "Battery discharge lock",
+                "values": [0.0, 1.0],
+                "labels": [{ "value": 0.0, "text": "Unlocked" }, { "value": 1.0, "text": "Locked" }],
+                "step": 1.0, "enable": "on" },
         ])
     );
 }
@@ -316,8 +326,8 @@ async fn an_unverified_setting_writes_only_while_the_admin_has_it_enabled() {
     let mut plant = Plant::bare(Writes::Store, true).await;
     assert_eq!(
         plant.capability(CHARGE).await,
-        json!({ "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0,
-            "enable": "off" })
+        json!({ "key": CHARGE, "name": "Max battery charge current", "unit": "A",
+            "range": { "min": 0.0, "max": 350.0 }, "step": 1.0, "enable": "off" })
     );
     assert_eq!(
         plant.write(CHARGE, json!(50)).await,

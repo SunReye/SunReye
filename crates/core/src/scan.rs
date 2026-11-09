@@ -1,7 +1,7 @@
 //! The setup scan (ADR 6): finds devices on the local network and proposes a profile and unit id.
 //!
-//! It connects to Modbus TCP and Solarman ports on a private subnet, then runs every served
-//! profile's identify probe against each endpoint that answered. Manual entry stays the fallback:
+//! It connects to Modbus TCP and Solarman ports on a private subnet, then runs the identify probe of
+//! every served profile that declares one against each endpoint that answered. Manual entry stays the fallback:
 //! an endpoint whose device answers no probe is still listed.
 //!
 //! Every probe goes through [`Client::read_only`], whose wire refuses anything but function 3. The
@@ -9,6 +9,7 @@
 //! number and time, one scan at a time, and no endpoint already configured is touched, as its own
 //! task owns it.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
@@ -18,7 +19,7 @@ use std::time::Duration;
 use axum::http::StatusCode;
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use sunreye_profile::{Framing, Profile};
+use sunreye_profile::{Block, Framing, Profile, Registers};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
@@ -283,27 +284,74 @@ async fn sweep(targets: Vec<Endpoint>, profiles: &[Arc<Profile>], limits: Limits
 
 /// One identify probe.
 enum Probe<'a> {
-    /// One word of a profile's first planned register.
-    Register(&'a Profile, u16),
+    /// A profile's declared fields (ADR 5).
+    Fields(&'a Profile),
     /// The built-in SunSpec binding's: the `SunS` marker, then the model chain.
     SunSpec,
 }
 
+/// What one endpoint answered so far, so probes that read the same registers send one request.
+#[derive(Default)]
+struct Answers {
+    /// By unit and block; `None` when the device refused the read.
+    reads: HashMap<(u8, Block), Option<Vec<u16>>>,
+    /// Units that answered nothing: no later probe tries them.
+    silent: HashSet<u8>,
+}
+
+impl Answers {
+    /// The words `unit` holds in `block`, read once; `None` when it refused the read.
+    async fn read(
+        &mut self,
+        client: &mut Client,
+        unit: u8,
+        block: Block,
+    ) -> Result<Option<Vec<u16>>, Error> {
+        if let Some(words) = self.reads.get(&(unit, block)) {
+            return Ok(words.clone());
+        }
+        let mut words = vec![0; usize::from(block.count)];
+        let words = match client.read_holding(unit, block.start, &mut words).await {
+            Ok(()) => Some(words),
+            Err(Error::Exception(_)) => None,
+            Err(e) => return Err(e),
+        };
+        self.reads.insert((unit, block), words.clone());
+        Ok(words)
+    }
+}
+
+/// Proposes `profile` when `unit` holds one of the values of each of its identify fields.
+async fn fields(
+    profile: &Profile,
+    client: &mut Client,
+    unit: u8,
+    answers: &mut Answers,
+) -> Result<Option<Proposal>, Error> {
+    let mut registers = Registers::default();
+    for block in profile.identify_plan() {
+        let Some(words) = answers.read(client, unit, block).await? else {
+            return Ok(None);
+        };
+        registers.answer(block.start, &words);
+    }
+    Ok(profile.identifies(&registers).then(|| Proposal {
+        profile: profile.id.clone(),
+        unit,
+        variant: None,
+    }))
+}
+
 impl Probe<'_> {
     /// What `unit` answered; `None` when it answered but not as this probe looks for.
-    async fn run(&self, client: &mut Client, unit: u8) -> Result<Option<Proposal>, Error> {
+    async fn run(
+        &self,
+        client: &mut Client,
+        unit: u8,
+        answers: &mut Answers,
+    ) -> Result<Option<Proposal>, Error> {
         match self {
-            Self::Register(profile, start) => {
-                match client.read_holding(unit, *start, &mut [0]).await {
-                    Ok(()) => Ok(Some(Proposal {
-                        profile: profile.id.clone(),
-                        unit,
-                        variant: None,
-                    })),
-                    Err(Error::Exception(_)) => Ok(None),
-                    Err(e) => Err(e),
-                }
-            }
+            Self::Fields(profile) => fields(profile, client, unit, answers).await,
             Self::SunSpec => Ok(sunspec::discover(client, unit)
                 .await?
                 .map(|chain| Proposal {
@@ -315,20 +363,22 @@ impl Probe<'_> {
     }
 }
 
-/// Runs each profile's probe, then SunSpec's, at each of [`UNITS`], one request at a time.
+/// Runs the identify probe of each profile that declares one, then SunSpec's, at each of
+/// [`UNITS`], one request at a time. A unit that answers nothing is not tried again.
 async fn identify(endpoint: Endpoint, profiles: &[Arc<Profile>], limits: Limits) -> Found {
-    let framing = endpoint.framing();
     let probes = profiles
         .iter()
-        .filter_map(|profile| {
-            let first = profile.read_plan(framing.gap_tolerance()).first()?.start;
-            Some(Probe::Register(profile, first))
-        })
+        .filter(|profile| !profile.identify_plan().is_empty())
+        .map(|profile| Probe::Fields(profile))
         .chain([Probe::SunSpec]);
     let mut devices = Vec::new();
+    let mut answers = Answers::default();
     let mut client = None;
     'probes: for probe in probes {
         for unit in UNITS {
+            if answers.silent.contains(&unit) {
+                continue;
+            }
             let mut connected = match client.take() {
                 Some(connected) => connected,
                 None => match Client::read_only(&endpoint, limits.probe).await {
@@ -337,9 +387,14 @@ async fn identify(endpoint: Endpoint, profiles: &[Arc<Profile>], limits: Limits)
                 },
             };
             // After an error the wire may hold half a reply: reconnect.
-            if let Ok(found) = probe.run(&mut connected, unit).await {
-                devices.extend(found);
-                client = Some(connected);
+            match probe.run(&mut connected, unit, &mut answers).await {
+                Ok(found) => {
+                    devices.extend(found);
+                    client = Some(connected);
+                }
+                Err(_) => {
+                    answers.silent.insert(unit);
+                }
             }
         }
     }
