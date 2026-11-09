@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Core, Device, Found, Problem } from "../api/core.ts";
+  import type { Connection, Core, Device, Found, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal from "./Refusal.svelte";
 
@@ -34,7 +34,7 @@
   let refused = $state.raw<Problem>();
 
   // What an earlier, partly refused add created, so adding again does not create it twice.
-  const connections = new Map<string, number>();
+  const connections = new Map<string, Connection>();
   const added = new Map<string, Device>();
 
   async function scan(): Promise<void> {
@@ -72,15 +72,14 @@
     chosen: readonly Choice[],
   ): Promise<readonly (Device | Problem)[]> {
     const { host, port, transport } = endpoint;
+    const at = `${host}:${port}`;
+
     const connection =
-      connections.get(`${host}:${port}`) ??
-      (await core.addConnection({ name: host, host, port, transport }));
+      connections.get(at) ?? (await core.addConnection({ name: host, host, port, transport }));
 
-    if (typeof connection !== "number" && "problem" in connection) return [connection];
+    if ("problem" in connection) return [connection];
 
-    const id = typeof connection === "number" ? connection : connection.id;
-
-    connections.set(`${host}:${port}`, id);
+    connections.set(at, connection);
 
     return Promise.all(
       chosen
@@ -92,7 +91,7 @@
           if (before !== undefined) return before;
 
           const { profile, unit, name } = choice;
-          const device = await core.addDevice({ connection: id, name, profile, unit });
+          const device = await core.addDevice({ connection: connection.id, name, profile, unit });
 
           if (!("problem" in device)) added.set(choice.key, device);
 
@@ -106,12 +105,12 @@
   async function add(): Promise<void> {
     const chosen = choices.filter((choice) => choice.chosen);
     const endpoints = [...new Set(chosen.map((choice) => choice.found))];
-    const added = (await Promise.all(endpoints.map((e) => addEndpoint(e, chosen)))).flat();
+    const outcomes = (await Promise.all(endpoints.map((e) => addEndpoint(e, chosen)))).flat();
 
-    refused = added.find((outcome) => "problem" in outcome);
+    refused = outcomes.find((outcome) => "problem" in outcome);
 
     if (refused === undefined)
-      ondone(added.flatMap((outcome) => ("problem" in outcome ? [] : [outcome])));
+      ondone(outcomes.flatMap((outcome) => ("problem" in outcome ? [] : [outcome])));
   }
 </script>
 

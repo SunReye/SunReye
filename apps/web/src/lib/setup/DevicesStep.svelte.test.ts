@@ -33,20 +33,23 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
   const calls: string[] = [];
   let refuse = refusals;
 
-  const answers: Readonly<Record<string, () => Response>> = {
-    "/api/v1/scan": () => Response.json(REPORT),
-    "/api/v1/connections": () => Response.json({ id: 5, secrets: [] }, { status: 201 }),
-    "/api/v1/devices": () => {
-      if (refuse === 0) return Response.json(ADDED, { status: 201 });
+  const answers = new Map<string, () => Response>([
+    ["/api/v1/scan", () => Response.json(REPORT)],
+    ["/api/v1/connections", () => Response.json({ id: 5, secrets: [] }, { status: 201 })],
+    [
+      "/api/v1/devices",
+      () => {
+        if (refuse === 0) return Response.json(ADDED, { status: 201 });
 
-      refuse -= 1;
+        refuse -= 1;
 
-      return Response.json(
-        { status: 422, code: "device.unreachable" },
-        { status: 422, headers: { "content-type": "application/problem+json" } },
-      );
-    },
-  };
+        return Response.json(
+          { status: 422, code: "device.unreachable" },
+          { status: 422, headers: { "content-type": "application/problem+json" } },
+        );
+      },
+    ],
+  ]);
 
   return {
     base: "http://core.test/",
@@ -56,7 +59,7 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
 
       calls.push(`${path} ${await request.text()}`);
 
-      return answers[path]?.() ?? Response.error();
+      return answers.get(path)?.() ?? Response.error();
     },
   };
 }

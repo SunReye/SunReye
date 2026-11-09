@@ -14,6 +14,7 @@ test("the first run offers the language switch", async () => {
     base: "http://core.test/",
     fetch: () => Promise.resolve(new Response(null, { status: 204 })),
   });
+
   const screen = await render(Setup, { core, signedIn: false, onfinish: () => {} });
 
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Sprache" }), "en");
