@@ -247,6 +247,15 @@ impl Storage {
         })
     }
 
+    /// Handles to the plant timezone and change-point retention, for the API.
+    #[must_use]
+    pub fn settings(&self) -> Settings {
+        Settings {
+            zones: self.zones(),
+            retention: self.retention(),
+        }
+    }
+
     /// A handle that reads and sets change-point retention (ADR 3).
     #[must_use]
     pub fn retention(&self) -> Retention {
@@ -543,6 +552,13 @@ impl Zones {
         self.current.send_replace(tz);
         Ok(())
     }
+}
+
+/// Storage's own settings, which the admin sets (ADR 3).
+#[derive(Debug, Clone)]
+pub struct Settings {
+    pub zones: Zones,
+    pub retention: Retention,
 }
 
 /// How long change points are kept (ADR 3); rollups are kept forever.

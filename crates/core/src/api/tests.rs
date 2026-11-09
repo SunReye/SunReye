@@ -51,6 +51,7 @@ mod live;
 mod location;
 mod mqtt;
 mod profiles;
+mod retention;
 mod roles;
 mod scan;
 mod screen;
@@ -157,7 +158,7 @@ impl Core {
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
             cars: CarBodies::new(path.with_file_name("cars")),
-            zones: storage.zones(),
+            storage: storage.settings(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -257,7 +258,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
         cars: CarBodies::new(dir.path().join("cars")),
-        zones: storage.zones(),
+        storage: storage.settings(),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

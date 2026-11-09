@@ -53,7 +53,7 @@ impl Core {
     }
 
     /// Signed in, the clock at 2026-11-09 00:00 UTC.
-    async fn on_2026_11_09(path: &std::path::Path) -> (Self, String) {
+    pub(super) async fn on_2026_11_09(path: &std::path::Path) -> (Self, String) {
         let (core, set_cookie) = Self::signed_in(path).await;
         core.set_clock(UNIX_EPOCH + Duration::from_hours(498_384));
         (core, set_cookie)
@@ -61,7 +61,7 @@ impl Core {
 }
 
 /// 0.30 EUR/kWh, 0.20 on weeknights from 22:00, 0.08 paid for feed-in.
-fn weeknights(applies_from: &str) -> Value {
+pub(super) fn weeknights(applies_from: &str) -> Value {
     json!({
         "appliesFrom": applies_from,
         "import": {

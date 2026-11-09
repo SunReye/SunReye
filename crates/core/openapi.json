@@ -431,6 +431,7 @@
           "investment.value",
           "location.none",
           "location.value",
+          "retention.value",
           "zone.value",
           "connection.none",
           "connection.value",
@@ -1359,6 +1360,21 @@
         },
         "required": [
           "amount"
+        ],
+        "type": "object"
+      },
+      "Kept": {
+        "description": "How long change points are kept; hourly and daily rollups are kept forever.",
+        "properties": {
+          "days": {
+            "description": "Whole days, at least one.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days"
         ],
         "type": "object"
       },
@@ -4374,6 +4390,66 @@
           }
         },
         "summary": "Applies the update waiting for a profile. Each setting it adds or changes is off until the\nadmin enables it again (ADR 8)."
+      }
+    },
+    "/api/v1/retention": {
+      "get": {
+        "operationId": "retention",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kept"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "How many days change points are kept."
+      },
+      "put": {
+        "operationId": "set_retention",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Kept"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kept"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sets how many days change points are kept; older ones expire within minutes."
       }
     },
     "/api/v1/roles/{role}": {

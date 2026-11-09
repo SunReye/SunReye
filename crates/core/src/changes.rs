@@ -49,6 +49,8 @@ pub enum Subject {
     Investment,
     /// The plant timezone (ADR 3), id 0.
     Zone,
+    /// Change-point retention (ADR 3), id 0.
+    Retention,
     /// The bidding zone the spot prices are fetched for (ADR 12), id 0.
     Spot,
 }

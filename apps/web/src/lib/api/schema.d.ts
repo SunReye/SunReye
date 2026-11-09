@@ -545,6 +545,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How many days change points are kept. */
+        get: operations["retention"];
+        /** Sets how many days change points are kept; older ones expire within minutes. */
+        put: operations["set_retention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles/{role}": {
         parameters: {
             query?: never;
@@ -972,7 +990,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1300,6 +1318,14 @@ export interface components {
              * @description EUR, more than zero.
              */
             amount: number;
+        };
+        /** @description How long change points are kept; hourly and daily rollups are kept forever. */
+        Kept: {
+            /**
+             * Format: int32
+             * @description Whole days, at least one.
+             */
+            days: number;
         };
         /** @description The text a setting's value is shown as. */
         Label: {
@@ -3104,6 +3130,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Update"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    retention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kept"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    set_retention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Kept"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Kept"];
                 };
             };
             "4XX": {

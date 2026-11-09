@@ -19,6 +19,7 @@ pub mod mqtt;
 pub mod plant;
 pub mod profiles;
 pub mod publisher;
+pub mod retention;
 pub mod scan;
 pub mod settings;
 pub mod solar;
