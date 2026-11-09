@@ -61,23 +61,46 @@ fn measurement(points: &[Point], start: Tick, end: Tick) -> Option<Sums> {
 }
 
 /// Energy is the sum of rises between consecutive values: a drop is a reset, and nothing is
-/// gained across a gap.
+/// gained across a gap. A counter that climbs back to its value before a drop had a low reading,
+/// not a reset: what it gained on the way back is taken back, and only the rise past that value
+/// counts. Points before the window only set the value in force and any drop before it.
 fn counter(points: &[Point], start: Tick, end: Tick) -> Option<Sums> {
     let (mut first, mut last, mut delta, mut previous) = (None, None, 0, None::<i64>);
+    // After a drop: the value before it, and what the window counted since.
+    let mut low: Option<(i64, i64)> = None;
     for point in points.iter().take_while(|p| p.time < end) {
-        if point.time < start {
-            // Only the value in force at the start counts; a gap there leaves no first value.
-            first = point.value;
-        } else {
-            if let (Some(before), Some(value)) = (previous, point.value) {
-                delta += (value - before).max(0);
-            }
+        let inside = point.time >= start;
+        if inside {
             if let Some(value) = point.value {
                 first.get_or_insert(value);
             }
+        } else {
+            // Only the value in force at the start counts; a gap there leaves no first value.
+            first = point.value;
         }
-        last = point.value.or(last);
-        previous = point.value;
+        let Some((before, value)) = previous.zip(point.value) else {
+            low = None;
+            last = point.value.or(last);
+            previous = point.value;
+            continue;
+        };
+        let counted = |rise: i64| if inside { rise } else { 0 };
+        match &mut low {
+            _ if value < before => {
+                low.get_or_insert((before, 0));
+            }
+            Some((peak, gained)) if value >= *peak => {
+                delta += counted(value - *peak) - *gained;
+                low = None;
+            }
+            Some((_, gained)) => {
+                *gained += counted(value - before);
+                delta += counted(value - before);
+            }
+            None => delta += counted(value - before),
+        }
+        last = Some(value);
+        previous = Some(value);
     }
     Some(Sums::Counter {
         first: first?,

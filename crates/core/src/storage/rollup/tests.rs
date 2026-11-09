@@ -144,3 +144,37 @@ fn points_long_before_the_window_only_set_the_value_in_force() {
         })
     );
 }
+
+#[test]
+fn a_counter_that_climbs_back_after_a_low_reading_gains_only_past_its_value_before() {
+    // 1000 → 1004 is 4; the low 0 is a misread, and 1004 → 1010 after it is 6.
+    let points = [
+        at(-10, 1000),
+        at(20, 1004),
+        at(30, 0),
+        at(50, 1004),
+        at(70, 1010),
+    ];
+    assert_eq!(
+        roll(RoleKind::Counter, &points, 0, 100),
+        Some(Sums::Counter {
+            first: 1000,
+            last: 1010,
+            delta: 4 + 6,
+        })
+    );
+}
+
+#[test]
+fn a_low_reading_before_the_window_is_known_from_the_points_before_it() {
+    // The low 0 is in force at the start; climbing back to 1000 gains nothing, then 3.
+    let points = [at(-20, 1000), at(-10, 0), at(20, 1000), at(40, 1003)];
+    assert_eq!(
+        roll(RoleKind::Counter, &points, 0, 100),
+        Some(Sums::Counter {
+            first: 0,
+            last: 1003,
+            delta: 3,
+        })
+    );
+}
