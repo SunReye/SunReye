@@ -114,6 +114,7 @@ fn boot(
 ) -> Boot<Fake, FakeArchive, spot::fake::Fake> {
     Boot {
         data_dir: data_dir.to_owned(),
+        share: data_dir.join("share"),
         ingress,
         build,
         weather: Fake::new(Vec::new(), &[]).0,

@@ -1,6 +1,37 @@
 {
   "components": {
     "schemas": {
+      "ArchiveDevice": {
+        "description": "A v3 device an archive holds.",
+        "properties": {
+          "profile": {
+            "description": "Its v3 profile's id.",
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "ArchiveFiles": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/SharedArchive"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
       "Balance": {
         "description": "The days with rolled-up history, in order.",
         "properties": {
@@ -388,6 +419,12 @@
           "secret.value",
           "index.value",
           "update.none",
+          "import.busy",
+          "import.path",
+          "import.size",
+          "import.file",
+          "import.device",
+          "import.profile",
           "clock.unsynced",
           "internal"
         ],
@@ -1030,6 +1067,167 @@
         "required": [
           "tier",
           "points"
+        ],
+        "type": "object"
+      },
+      "ImportArchive": {
+        "description": "The v3 devices an archive holds.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveDevice"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "ImportMapping": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "description": "The v5 device's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slug": {
+            "description": "The v3 device's slug.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "device"
+        ],
+        "type": "object"
+      },
+      "ImportPhase": {
+        "enum": [
+          "idle",
+          "running",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "ImportReport": {
+        "description": "What an import wrote and left out.",
+        "properties": {
+          "days": {
+            "description": "Daily rollups written.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hours": {
+            "description": "Hourly rollups written.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "points": {
+            "description": "Change points written.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "series": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unmapped": {
+            "description": "v3 devices with readings and no v5 device: not imported.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "unread": {
+            "description": "v3 metrics no v5 quantity reads, as `slug/key`: not imported.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "series",
+          "points",
+          "hours",
+          "days",
+          "unread",
+          "unmapped"
+        ],
+        "type": "object"
+      },
+      "ImportStart": {
+        "additionalProperties": false,
+        "description": "An import to start.",
+        "properties": {
+          "devices": {
+            "description": "Each v3 device and the v5 device its history goes to.",
+            "items": {
+              "$ref": "#/components/schemas/ImportMapping"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "The archive's path under `/share`; without it, the uploaded archive.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
+      },
+      "ImportStatus": {
+        "description": "Where an import stands.",
+        "properties": {
+          "done": {
+            "description": "Series written so far.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "problem": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Code",
+                "description": "Once failed, why."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ImportReport",
+                "description": "Once done, what was written and left out."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ImportPhase"
+          },
+          "total": {
+            "description": "Series the archive feeds; 0 until it is read.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "done",
+          "total"
         ],
         "type": "object"
       },
@@ -2076,6 +2274,26 @@
         },
         "required": [
           "value"
+        ],
+        "type": "object"
+      },
+      "SharedArchive": {
+        "description": "An archive under `/share`.",
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveDevice"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "Its path under `/share`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "devices"
         ],
         "type": "object"
       },
@@ -3299,6 +3517,133 @@
           }
         },
         "summary": "Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's\nsetting, or an official one not verified on hardware, writes only while enabled; a changed\ndeclaration is off again until re-enabled."
+      }
+    },
+    "/api/v1/import": {
+      "get": {
+        "operationId": "import_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Where the import stands: idle, running with its progress, or its result."
+      },
+      "post": {
+        "operationId": "start_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Starts importing an archive; one import runs at a time, while the core keeps polling."
+      }
+    },
+    "/api/v1/import/files": {
+      "get": {
+        "operationId": "import_files",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveFiles"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The v3 archives under `/share`, by path. Symlinks are not followed."
+      }
+    },
+    "/api/v1/import/upload": {
+      "post": {
+        "operationId": "upload_import",
+        "requestBody": {
+          "content": {
+            "application/gzip": {
+              "schema": {
+                "items": {
+                  "format": "int32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportArchive"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Stores an uploaded v3 archive for the next import, replacing the last; answers its devices."
       }
     },
     "/api/v1/investment": {

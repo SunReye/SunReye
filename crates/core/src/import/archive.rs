@@ -61,13 +61,13 @@ pub struct Line {
 
 /// Reads the archive at `path`: the manifest is checked first, `config` reads the configuration,
 /// then `reading` each reading with what `config` made of it. A member out of that order is
-/// refused.
+/// refused. Reading stops after the configuration when `config` makes nothing of it.
 ///
 /// # Errors
 /// The file is not a v1 archive, a member is cut short or does not read, or a callback failed.
 pub fn read<C>(
     path: &Path,
-    config: impl FnOnce(Config) -> Result<C, Error>,
+    config: impl FnOnce(Config) -> Result<Option<C>, Error>,
     mut reading: impl FnMut(&C, Line) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let file = File::open(path).map_err(|e| broken("archive", e))?;
@@ -85,7 +85,10 @@ pub fn read<C>(
             _ if !manifest => return Err(broken(&name, "comes before the manifest")),
             CONFIG => {
                 let parse = config.take().ok_or_else(|| broken(&name, "repeated"))?;
-                read = Some(parse(configuration(&text(&name, &mut body)?)?)?);
+                read = parse(configuration(&text(&name, &mut body)?)?)?;
+                if read.is_none() {
+                    return Ok(());
+                }
             }
             READINGS => {
                 let read = read
@@ -107,6 +110,23 @@ pub fn read<C>(
     } else {
         Err(broken(MANIFEST, "missing"))
     }
+}
+
+/// The devices the archive at `path` holds; only its manifest and configuration are read.
+///
+/// # Errors
+/// The file is not a v1 archive, or its configuration does not read.
+pub fn devices(path: &Path) -> Result<Vec<Device>, Error> {
+    let mut devices = None;
+    read(
+        path,
+        |config| {
+            devices = Some(config.devices);
+            Ok(None::<()>)
+        },
+        |(), _| Ok(()),
+    )?;
+    devices.ok_or_else(|| broken(CONFIG, "missing"))
 }
 
 fn broken(member: &str, reason: impl std::fmt::Display) -> Error {

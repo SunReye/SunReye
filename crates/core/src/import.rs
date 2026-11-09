@@ -2,6 +2,7 @@
 
 mod archive;
 mod convert;
+mod routes;
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -17,9 +18,12 @@ use self::convert::Linear;
 use crate::bus::{Bus, DeviceId};
 use crate::devices;
 use crate::endpoint::CADENCE;
+use crate::profiles::Catalogue;
 use crate::profiles::{Https, KEYS, Profiles};
 use crate::startup;
-use crate::storage::{self, Backfill, Backfilled, Held, Policy, Storage};
+use crate::storage::{self, Backfill, Backfilled, Database, Held, Importer, Policy, Storage};
+
+pub use self::routes::{Imports, MAX};
 
 /// A v3 device, by its slug, and the v5 device its history goes to.
 #[derive(Debug, Clone)]
@@ -234,10 +238,23 @@ pub async fn command(options: Options, build: SystemTime) -> Result<Report, Erro
     let profiles = Profiles::open(storage.database(), Arc::new(Https), KEYS)
         .await
         .map_err(|e| Error::Profiles(e.to_string()))?;
-    let catalogue = profiles.catalogue();
-    let registered = devices::registered(&storage.database()).await?;
-    let targets = options
-        .devices
+    let targets = targets(&storage.database(), &profiles.catalogue(), options.devices).await?;
+    let report = run(options.file, &storage.importer(), &bus, targets, |_, _| {}).await?;
+    storage.shutdown().await?;
+    Ok(report)
+}
+
+/// Each v3 slug mapped to the registered v5 device of id `id`, with its profile.
+///
+/// # Errors
+/// A mapping names a device that is not registered or whose profile is not known.
+pub async fn targets(
+    database: &Database,
+    catalogue: &Catalogue,
+    mappings: Vec<(String, u32)>,
+) -> Result<Vec<Target>, Error> {
+    let registered = devices::registered(database).await?;
+    mappings
         .into_iter()
         .map(|(slug, id)| {
             let profile = registered
@@ -251,24 +268,26 @@ pub async fn command(options: Options, build: SystemTime) -> Result<Report, Erro
                 profile,
             })
         })
-        .collect::<Result<_, Error>>()?;
-    let report = run(options.file, &storage, &bus, targets).await?;
-    storage.shutdown().await?;
-    Ok(report)
+        .collect()
 }
 
-/// Imports the archive at `file` into `storage`, each target's v3 device into its v5 device.
-/// Series are written one at a time, so the core keeps running.
+/// Imports the archive at `file` through `importer`, each target's v3 device into its v5 device.
+///
+/// `progress` is called with the series written and the series planned. Series are written one
+/// at a time, so the core keeps running.
 ///
 /// # Errors
 /// The archive does not read, a target is unknown to it, or storage refuses a series.
 pub async fn run(
     file: PathBuf,
-    storage: &Storage,
+    importer: &Importer,
     bus: &Bus,
     targets: Vec<Target>,
+    mut progress: impl FnMut(usize, usize) + Send,
 ) -> Result<Report, Error> {
     let Staged { mut db, plan } = blocking(move || stage(&file, &targets)).await?;
+    let total = plan.series.len();
+    progress(0, total);
     let mut report = Report {
         unread: plan.unread,
         unmapped: plan.unmapped,
@@ -286,15 +305,34 @@ pub async fn run(
         };
         let series = bus.intern(&q.role, q.index);
         let policy = Policy::new(q.kind(), q.unit(), q.step(), CADENCE);
-        let written = storage
+        let written = importer
             .import(planned.device, series, policy, backfill?)
             .await?;
         report.series += 1;
         report.written.points += written.points;
         report.written.hours += written.hours;
         report.written.days += written.days;
+        progress(ordinal + 1, total);
     }
     Ok(report)
+}
+
+/// Logs what an import wrote and what it left out.
+pub fn log(report: &Report) {
+    let written = report.written;
+    tracing::info!(
+        series = report.series,
+        points = written.points,
+        hours = written.hours,
+        days = written.days,
+        "imported"
+    );
+    for metric in &report.unread {
+        tracing::warn!(metric, "no v5 quantity reads it: not imported");
+    }
+    for device in &report.unmapped {
+        tracing::warn!(device, "not mapped: not imported");
+    }
 }
 
 async fn blocking<T: Send + 'static>(
@@ -324,7 +362,7 @@ fn stage(file: &Path, targets: &[Target]) -> Result<Staged, Error> {
     )?;
     archive::read(
         file,
-        |config| targets_in(&config, targets),
+        |config| targets_in(&config, targets).map(Some),
         |targeted, line| {
             plan.ordinal(targeted, &line)
                 .map_or(Ok(()), |ordinal| stage_line(&mut insert, ordinal, &line))

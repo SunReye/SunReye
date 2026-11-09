@@ -2,6 +2,7 @@
   import type { Core } from "../api/core";
   import { problemText } from "../i18n/problems";
   import DeviceSettings from "./DeviceSettings.svelte";
+  import ImportPanel from "./ImportPanel.svelte";
   import ProfileUpdates from "./ProfileUpdates.svelte";
   import WriteLog from "./WriteLog.svelte";
 
@@ -37,4 +38,5 @@
   {#await log then answer}
     <WriteLog log={answer} />
   {/await}
+  <ImportPanel {core} />
 </main>
