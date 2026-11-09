@@ -232,6 +232,10 @@ _Avoid_: Virtual device, coded device
 A value issued at one time about a later target time.
 _Avoid_: Prediction, projection
 
+**Correction**:
+A multiplier the plant learns per MPPT input, plant-local month and hour: measured over modelled PV power on past weather.
+_Avoid_: Calibration, bias factor
+
 **Tariff**:
 The prices the plant pays for a kWh bought and earns for a kWh fed in, each a base price with optional bands, applying from a date.
 _Avoid_: Rate plan, contract

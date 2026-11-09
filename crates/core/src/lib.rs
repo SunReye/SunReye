@@ -6,6 +6,7 @@ pub mod bus;
 pub mod capture;
 pub mod cars;
 pub mod changes;
+pub mod correction;
 pub mod devices;
 pub mod endpoint;
 pub mod estimates;

@@ -14,6 +14,7 @@ use crate::auth::Auth;
 use crate::bus::Bus;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
+use crate::correction::Learner;
 use crate::devices::Devices;
 use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
@@ -25,7 +26,7 @@ use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
-use crate::weather::{self, Provider, Weather};
+use crate::weather::{self, Archive, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
     SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 8099);
@@ -162,7 +163,7 @@ impl From<storage::Error> for Error {
 
 /// What the core starts from, besides its listener.
 #[derive(Debug)]
-pub struct Boot<P> {
+pub struct Boot<P, A> {
     pub data_dir: PathBuf,
     /// The Supervisor's address, if trusted.
     pub ingress: Option<IpAddr>,
@@ -170,6 +171,8 @@ pub struct Boot<P> {
     pub build: SystemTime,
     /// The weather device's provider.
     pub weather: P,
+    /// Where past weather is fetched from for learning.
+    pub archive: A,
     /// Where profile indexes are fetched from.
     pub fetch: std::sync::Arc<dyn profiles::Fetch>,
     /// The compiled-in profile keys.
@@ -191,7 +194,7 @@ fn private(dir: &std::path::Path) -> std::io::Result<()> {
 /// The store cannot be opened or written, or serving fails.
 pub async fn serve(
     listener: TcpListener,
-    boot: Boot<impl Provider + Send>,
+    boot: Boot<impl Provider + Send, impl Archive + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
     private(&boot.data_dir)?;
@@ -210,7 +213,7 @@ pub async fn serve(
     let location = PlantLocation::open(storage.database()).await?;
     let forecasting = forecast(
         &storage,
-        boot.weather,
+        (boot.weather, boot.archive),
         layouts.clone(),
         location.watch(),
         &bus,
@@ -314,19 +317,22 @@ impl Computed {
     }
 }
 
-/// Runs the weather device and the solar forecast until storage stops.
+/// Runs the weather device, the solar forecast and the correction learner until storage stops.
 async fn forecast(
     storage: &Storage,
-    provider: impl Provider,
+    (provider, archive): (impl Provider, impl Archive),
     layouts: Layouts,
     location: watch::Receiver<Option<Location>>,
     bus: &Bus,
 ) {
     let weather = Weather::new(provider, weather::DEVICE, bus);
-    let solar = SolarForecast::new(layouts, weather::DEVICE, bus);
+    let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
+    let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
-        solar.run(storage, location, weather.issues(), SystemTime::now),
+        solar.run(storage, location.clone(), weather.issues(), SystemTime::now),
+        // Boxed: its learn run alone would make the core's future large.
+        Box::pin(learner.run(storage, location, storage.zones().watch(), SystemTime::now)),
     );
 }
 

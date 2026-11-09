@@ -29,7 +29,7 @@ const WEATHER: [&str; 5] = [
 ];
 
 /// A stored series: the inverter, the role and its index.
-type Key = (DeviceId, &'static str, Option<u32>);
+pub(crate) type Key = (DeviceId, &'static str, Option<u32>);
 
 /// The solar forecast. It reads the weather device's forecasts, never a provider.
 pub struct SolarForecast {
@@ -98,24 +98,13 @@ impl SolarForecast {
         let since = issued.duration_since(UNIX_EPOCH).unwrap_or_default();
         let from = issued - Duration::from_secs(since.as_secs() % HOUR.as_secs());
         let weather = self.weather(storage, from, from + HORIZON).await?;
-        let module_types: HashMap<u32, pv::ModuleType> = self
-            .layouts
-            .module_types()
-            .await?
-            .into_iter()
-            .map(|m| (m.id, m.datasheet.model()))
-            .collect();
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
             .iter()
             .flat_map(|v| &v.strings)
             .flat_map(|s| keys(s).map(|key| (key, Vec::new())))
             .collect();
-        for (target, sky) in weather {
-            let values = in_force(&versions, target).map_or_else(HashMap::new, |version| {
-                let model = Model::new(version, &module_types, self.layouts.inverters(), location);
-                model.values(&pv::estimate(&model.layout, &sky))
-            });
+        for (target, values) in estimates(&self.layouts, &versions, location, weather).await? {
             for (key, points) in &mut series {
                 points.push((target, values.get(key).copied().unwrap_or(0.0)));
             }
@@ -167,6 +156,35 @@ impl SolarForecast {
             })
             .collect())
     }
+}
+
+/// The model's value of each series at each weather target, under the layout of `versions` in
+/// force there; none for a target without one.
+///
+/// # Errors
+/// Storage failed.
+pub(crate) async fn estimates(
+    layouts: &Layouts,
+    versions: &[Version],
+    location: Location,
+    weather: Vec<(SystemTime, pv::Weather)>,
+) -> Result<Vec<(SystemTime, HashMap<Key, f64>)>, storage::Error> {
+    let module_types: HashMap<u32, pv::ModuleType> = layouts
+        .module_types()
+        .await?
+        .into_iter()
+        .map(|m| (m.id, m.datasheet.model()))
+        .collect();
+    Ok(weather
+        .into_iter()
+        .map(|(target, sky)| {
+            let values = in_force(versions, target).map_or_else(HashMap::new, |version| {
+                let model = Model::new(version, &module_types, layouts.inverters(), location);
+                model.values(&pv::estimate(&model.layout, &sky))
+            });
+            (target, values)
+        })
+        .collect())
 }
 
 /// The series a string contributes to.
