@@ -6,6 +6,8 @@ export type Command = readonly string[];
 const web = ["bun", "run", "--cwd", "apps/web"];
 
 const steps: readonly Command[] = [
+  // Generates apps/web/.svelte-kit, which oxlint's type-aware mode reads.
+  [...web, "sync"],
   // Formatting
   ["cargo", "fmt", "--all", "--check"],
   ["oxfmt", "--check"],

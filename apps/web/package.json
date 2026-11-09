@@ -5,6 +5,7 @@
   "scripts": {
     "build": "vite build",
     "format:check": "prettier --check \"src/**/*.svelte\"",
+    "sync": "svelte-kit sync",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test:components": "vitest run"
   },
