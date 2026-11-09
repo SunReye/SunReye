@@ -87,6 +87,8 @@ impl From<Refusal> for Problem {
 #[serde(rename_all = "kebab-case")]
 pub enum Transport {
     ModbusTcp,
+    /// Modbus RTU frames through a transparent serial gateway.
+    RtuOverTcp,
     SolarmanV5,
     /// An MQTT broker (ADR 10); its credentials are the secrets `username` and `password`.
     Mqtt,
@@ -888,7 +890,7 @@ fn check_reach(reach: &Reach) -> Result<(), Refusal> {
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,
-        (Transport::ModbusTcp | Transport::SolarmanV5, root) => {
+        (Transport::ModbusTcp | Transport::RtuOverTcp | Transport::SolarmanV5, root) => {
             root.is_none() && reach.publish.is_none()
         }
     };

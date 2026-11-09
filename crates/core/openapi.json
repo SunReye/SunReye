@@ -2605,6 +2605,7 @@
         "description": "The wire framing on a connection's endpoint.",
         "enum": [
           "modbus-tcp",
+          "rtu-over-tcp",
           "solarman-v5",
           "mqtt"
         ],

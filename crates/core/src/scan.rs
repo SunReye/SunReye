@@ -347,7 +347,8 @@ async fn identify(endpoint: Endpoint, profiles: &[Arc<Profile>], limits: Limits)
     Found {
         transport: match endpoint.framing() {
             Framing::SolarmanV5 => Transport::SolarmanV5,
-            Framing::Tcp | Framing::RtuOverTcp => Transport::ModbusTcp,
+            Framing::Tcp => Transport::ModbusTcp,
+            Framing::RtuOverTcp => Transport::RtuOverTcp,
         },
         host: host.to_owned(),
         port,

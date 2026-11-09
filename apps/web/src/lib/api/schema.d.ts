@@ -1725,7 +1725,7 @@ export interface components {
          * @description The wire framing on a connection's endpoint.
          * @enum {string}
          */
-        Transport: "modbus-tcp" | "solarman-v5" | "mqtt";
+        Transport: "modbus-tcp" | "rtu-over-tcp" | "solarman-v5" | "mqtt";
         /** @description A served profile and the update waiting for it, as the admin reviews it. */
         Update: {
             /** @description The version served. */
