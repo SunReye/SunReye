@@ -13,7 +13,7 @@ use serde::Serialize;
 
 pub use decode::Registers;
 pub use plan::Block;
-pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
+pub use profile::{DeadbandRefusal, Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
 pub use setting::{Field, Relock, Setting, Source, Step, Toggle, Unlock};
 
@@ -34,6 +34,7 @@ pub const CAPABILITIES: &[&str] = &[
     "acc32",
     "scale-factor",
     "compute",
+    "deadband",
     "write",
     "write-block",
     "rmw",

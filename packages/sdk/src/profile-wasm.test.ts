@@ -45,6 +45,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "acc32",
       "scale-factor",
       "compute",
+      "deadband",
       "write",
       "write-block",
       "rmw",

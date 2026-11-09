@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
+export type Capability = "modbus" | "mqtt" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -31,7 +31,12 @@ resolution?: number, offset?: number, compute?: Expr, range?: Range,
 /**
  * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
  */
-enum?: Record<string, number>, };
+enum?: Record<string, number>, 
+/**
+ * The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
+ * the quantisation step, and none for a counter or enum.
+ */
+deadband?: number, };
 
 export type Kind = "u16" | "i16" | "u32" | "acc32";
 

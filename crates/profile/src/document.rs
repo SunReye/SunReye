@@ -280,6 +280,9 @@ pub struct QuantityDoc {
     #[serde(rename = "enum")]
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub texts: Option<BTreeMap<String, f64>>,
+    /// The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
+    /// the quantisation step, and none for a counter or enum.
+    pub deadband: Option<f64>,
 }
 
 impl QuantityDoc {
@@ -295,6 +298,7 @@ impl QuantityDoc {
             self.topic.as_ref().map(|_| "mqtt"),
             self.scale_factor.map(|_| "scale-factor"),
             self.compute.as_ref().map(|_| "compute"),
+            self.deadband.map(|_| "deadband"),
         ]
         .into_iter()
         .flatten()
