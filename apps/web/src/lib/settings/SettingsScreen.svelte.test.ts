@@ -69,6 +69,11 @@ function testCore(
 
       if (path === "/api/v1/profile-updates") return Response.json({ updates: [] });
 
+      // No import has run, and none is offered.
+      if (path === "/api/v1/import") return Response.json({ state: "idle", done: 0, total: 0 });
+
+      if (path === "/api/v1/import/files") return Response.json({ files: [] });
+
       writes.push(`${request.method} ${path} ${await request.text()}`);
 
       return write();

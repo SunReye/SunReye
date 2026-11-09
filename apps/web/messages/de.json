@@ -292,5 +292,20 @@
   "field_length": "Länge (m)",
   "block_carport": "Carport",
   "builder_cars": "Angeschlossene Fahrzeuge",
-  "builder_car": "{name}: {state}"
+  "builder_car": "{name}: {state}",
+  "import_title": "Import aus SunReye 3",
+  "import_note": "Exportiere mit `sunreye export` aus SunReye 3 und lege die Datei in /share ab oder lade sie hoch. Die Aufzeichnung läuft während des Imports weiter.",
+  "import_archive": "Archiv",
+  "import_none_shared": "Unter /share liegt kein Archiv.",
+  "import_upload": "Archiv hochladen (höchstens 1 GiB)",
+  "import_uploaded": "Hochgeladenes Archiv",
+  "import_devices": "Geräte aus SunReye 3",
+  "import_skip": "Nicht importieren",
+  "import_device": "{name} ({id})",
+  "import_start": "Importieren",
+  "import_progress": "Importfortschritt",
+  "import_running": "{done} von {total} Reihen importiert.",
+  "import_done": "Importiert: {series} Reihen, {points} Änderungspunkte, {hours} Stunden, {days} Tage.",
+  "import_unread": "Keine v5-Größe liest diese; nicht importiert:",
+  "import_unmapped": "Keinem Gerät zugeordnet; nicht importiert:"
 }

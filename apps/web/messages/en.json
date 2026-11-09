@@ -292,5 +292,20 @@
   "field_length": "Length (m)",
   "block_carport": "Carport",
   "builder_cars": "Connected cars",
-  "builder_car": "{name}: {state}"
+  "builder_car": "{name}: {state}",
+  "import_title": "Import from SunReye 3",
+  "import_note": "Export with SunReye 3's `sunreye export`, then put the file in /share or upload it. Recording carries on while it imports.",
+  "import_archive": "Archive",
+  "import_none_shared": "No archive in /share.",
+  "import_upload": "Upload an archive (at most 1 GiB)",
+  "import_uploaded": "Uploaded archive",
+  "import_devices": "SunReye 3 devices",
+  "import_skip": "Do not import",
+  "import_device": "{name} ({id})",
+  "import_start": "Import",
+  "import_progress": "Import progress",
+  "import_running": "{done} of {total} series imported.",
+  "import_done": "Imported: {series} series, {points} change points, {hours} hours, {days} days.",
+  "import_unread": "No v5 quantity reads these; not imported:",
+  "import_unmapped": "Mapped to no device; not imported:"
 }
