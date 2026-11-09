@@ -23,6 +23,7 @@ use crate::location::{Location, PlantLocation};
 use crate::plant::Plant;
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
+use crate::spot::{self, SpotPrices, SpotZone};
 use crate::storage::{self, Storage};
 use crate::tariff::{TariffDevice, Tariffs};
 use crate::topology::Topologies;
@@ -165,7 +166,7 @@ impl From<storage::Error> for Error {
 
 /// What the core starts from, besides its listener.
 #[derive(Debug)]
-pub struct Boot<P, A> {
+pub struct Boot<P, A, S> {
     pub data_dir: PathBuf,
     /// The Supervisor's address, if trusted.
     pub ingress: Option<IpAddr>,
@@ -175,6 +176,8 @@ pub struct Boot<P, A> {
     pub weather: P,
     /// Where past weather is fetched from for learning.
     pub archive: A,
+    /// The spot-price device's provider.
+    pub spot: S,
     /// Where profile indexes are fetched from.
     pub fetch: std::sync::Arc<dyn profiles::Fetch>,
     /// The compiled-in profile keys.
@@ -196,7 +199,7 @@ fn private(dir: &std::path::Path) -> std::io::Result<()> {
 /// The store cannot be opened or written, or serving fails.
 pub async fn serve(
     listener: TcpListener,
-    boot: Boot<impl Provider + Send, impl Archive + Send>,
+    boot: Boot<impl Provider + Send, impl Archive + Send, impl spot::Provider + Send>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
     private(&boot.data_dir)?;
@@ -213,13 +216,14 @@ pub async fn serve(
     );
     let _computed = Computed::spawn(&storage, (&layouts, &topologies, &tariffs), &bus);
     let location = PlantLocation::open(storage.database()).await?;
-    let forecasting = forecast(
+    let spot = SpotZone::open(storage.database()).await?;
+    // Boxed: four device tasks would make `serve`'s own future too large to move.
+    let forecasting = Box::pin(forecast(
         &storage,
-        (boot.weather, boot.archive),
-        layouts.clone(),
-        location.watch(),
+        (boot.weather, boot.archive, boot.spot),
+        (layouts.clone(), location.watch(), spot.watch()),
         &bus,
-    );
+    ));
     let api = Api {
         auth: Auth::open(storage.database(), boot.ingress).await?,
         live: Live::spawn(&bus),
@@ -229,6 +233,7 @@ pub async fn serve(
         devices,
         changes: Changes::new(storage.database()),
         location,
+        spot,
         profiles,
         topologies,
         tariffs,
@@ -319,22 +324,28 @@ impl Computed {
     }
 }
 
-/// Runs the weather device, the solar forecast and the correction learner until storage stops.
+/// Runs the weather device, the solar forecast, the correction learner and the spot-price device
+/// until storage stops.
 async fn forecast(
     storage: &Storage,
-    (provider, archive): (impl Provider, impl Archive),
-    layouts: Layouts,
-    location: watch::Receiver<Option<Location>>,
+    (provider, archive, spot): (impl Provider, impl Archive, impl spot::Provider),
+    (layouts, location, zone): (
+        Layouts,
+        watch::Receiver<Option<Location>>,
+        watch::Receiver<Option<spot::BiddingZone>>,
+    ),
     bus: &Bus,
 ) {
     let weather = Weather::new(provider, weather::DEVICE, bus);
     let solar = SolarForecast::new(layouts.clone(), weather::DEVICE, bus);
     let learner = Learner::new(archive, weather::DEVICE, layouts, storage, bus);
+    let spot = SpotPrices::new(spot, bus);
     tokio::join!(
         weather.run(storage, location.clone(), SystemTime::now),
         solar.run(storage, location.clone(), weather.issues(), SystemTime::now),
         // Boxed: its learn run alone would make the core's future large.
         Box::pin(learner.run(storage, location, storage.zones().watch(), SystemTime::now)),
+        spot.run(storage, zone, SystemTime::now),
     );
 }
 

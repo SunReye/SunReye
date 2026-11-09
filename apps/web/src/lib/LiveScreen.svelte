@@ -3,6 +3,7 @@
   import DayChart from "./DayChart.svelte";
   import EvccCard from "./EvccCard.svelte";
   import { problemText } from "./i18n/problems";
+  import SpotPriceCard from "./SpotPriceCard.svelte";
   import { getLocale } from "./paraglide/runtime.js";
 
   let { core }: { core: Core } = $props();
@@ -17,13 +18,17 @@
 
   const watts = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
 
-  /** Each device's values; an EVCC loadpoint is told by its `ev.charge.power`. */
+  /**
+   * Each device's values; an EVCC loadpoint is told by its `ev.charge.power`, the spot-price device
+   * by its `price.spot`.
+   */
   const devices = $derived(
     live !== undefined && "devices" in live
       ? Object.entries(live.devices).map(([id, values]) => ({
           id: Number(id),
           values,
           loadpoint: "ev.charge.power" in values,
+          spot: "price.spot" in values,
           power: Object.entries(values)
             .filter(([series]) => series.endsWith(".power"))
             .toSorted(([a], [b]) => a.localeCompare(b)),
@@ -39,6 +44,8 @@
   {#each devices as device (device.id)}
     {#if device.loadpoint}
       <EvccCard values={device.values} />
+    {:else if device.spot}
+      <SpotPriceCard values={device.values} />
     {:else}
       <section>
         <dl>

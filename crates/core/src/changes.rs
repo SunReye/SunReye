@@ -49,6 +49,8 @@ pub enum Subject {
     Investment,
     /// The plant timezone (ADR 3), id 0.
     Zone,
+    /// The bidding zone the spot prices are fetched for (ADR 12), id 0.
+    Spot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

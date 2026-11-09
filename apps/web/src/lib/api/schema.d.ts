@@ -532,6 +532,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/spot-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The bidding zone spot prices are fetched for. */
+        get: operations["spot_prices"];
+        /** Chooses the bidding zone spot prices are fetched for, or none; the device follows at once. */
+        put: operations["set_spot_prices"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tariff": {
         parameters: {
             query?: never;
@@ -722,6 +740,11 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        /**
+         * @description A day-ahead market area.
+         * @enum {string}
+         */
+        BiddingZone: "DE-LU";
         /**
          * @description A rectangular footprint with one roof. Its width runs along x and its depth along z from its
          *     corner, before it turns.
@@ -1453,6 +1476,10 @@ export interface components {
              * @description In the setting's unit, a whole number of its steps.
              */
             value: number;
+        };
+        /** @description Whether spot prices are fetched, and for which bidding zone. */
+        SpotPriceZone: {
+            zone?: components["schemas"]["BiddingZone"] | null;
         };
         /**
          * @description What became of one entry of an index.
@@ -2811,6 +2838,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    spot_prices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceZone"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    set_spot_prices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpotPriceZone"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotPriceZone"];
+                };
             };
             "4XX": {
                 headers: {

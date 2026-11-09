@@ -50,6 +50,13 @@
         ],
         "type": "object"
       },
+      "BiddingZone": {
+        "description": "A day-ahead market area.",
+        "enum": [
+          "DE-LU"
+        ],
+        "type": "string"
+      },
       "Block": {
         "additionalProperties": false,
         "description": "A rectangular footprint with one roof. Its width runs along x and its depth along z from its\ncorner, before it turns.",
@@ -2072,6 +2079,23 @@
         ],
         "type": "object"
       },
+      "SpotPriceZone": {
+        "description": "Whether spot prices are fetched, and for which bidding zone.",
+        "properties": {
+          "zone": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BiddingZone",
+                "description": "`null` fetches none."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "Status": {
         "description": "What became of one entry of an index.",
         "enum": [
@@ -3909,6 +3933,66 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/spot-prices": {
+      "get": {
+        "operationId": "spot_prices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpotPriceZone"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The bidding zone spot prices are fetched for."
+      },
+      "put": {
+        "operationId": "set_spot_prices",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpotPriceZone"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpotPriceZone"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Chooses the bidding zone spot prices are fetched for, or none; the device follows at once."
       }
     },
     "/api/v1/tariff": {

@@ -26,6 +26,7 @@ use crate::location::PlantLocation;
 use crate::profiles::fake::Host;
 use crate::profiles::{Keys, Profiles};
 use crate::scan::Scanner;
+use crate::spot::SpotZone;
 use crate::storage::{Problem, Storage};
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
@@ -48,6 +49,7 @@ mod scan;
 mod screen;
 mod secrets;
 mod settings;
+mod spot;
 mod tariff;
 mod tokens;
 mod topology;
@@ -128,6 +130,7 @@ impl Core {
             .scanning(scanner),
             changes: Changes::new(storage.database()),
             location: PlantLocation::open(storage.database()).await.unwrap(),
+            spot: SpotZone::open(storage.database()).await.unwrap(),
             profiles,
             topologies: Topologies::new(storage.database()),
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
@@ -220,6 +223,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         .unwrap(),
         changes: Changes::new(storage.database()),
         location: PlantLocation::open(storage.database()).await.unwrap(),
+        spot: SpotZone::open(storage.database()).await.unwrap(),
         profiles,
         topologies: Topologies::new(storage.database()),
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),

@@ -244,6 +244,10 @@ _Avoid_: Rate plan, contract
 A tariff price that holds on given weekdays for a span of the plant-local wall-clock day.
 _Avoid_: Time slot, period, window
 
+**Spot price**:
+A bidding zone's day-ahead wholesale price for one slot, before grid fees, levies and taxes.
+_Avoid_: Dynamic tariff, market price
+
 **Savings**:
 The bill without the plant, the whole house load bought at the import price, less the bill with it.
 _Avoid_: Profit, yield
