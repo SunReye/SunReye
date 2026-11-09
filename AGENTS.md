@@ -14,7 +14,12 @@ This code talks to grid-tied hardware. A red suite never leaves the machine.
 
 ## YAGNI
 
-Build what the current task needs. No speculative options, extension points or flags. No abstraction until the second real use. Delete unused code.
+YAGNI governs features, not seams (ADR 1).
+
+- **Seams** an ADR names are built now, with one adapter and a test through the interface.
+- **A missing seam** is one whose late arrival would migrate stored data, break a published contract (API, profile schema, file format) or touch every adapter. Build it now, and record it in the ADR it belongs to in the same change.
+- **Features** serve the current task. Options, flags and abstractions wait for their second real use.
+- Delete unused code.
 
 ## Prose
 
