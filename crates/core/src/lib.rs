@@ -16,5 +16,6 @@ pub mod solar;
 mod spa;
 pub mod startup;
 pub mod storage;
+pub mod topology;
 pub mod transport;
 pub mod weather;
