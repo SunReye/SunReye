@@ -47,7 +47,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection`, `device` or `location`.",
+            "description": "`connection`, `device`, `location`, `viewer` or `token`.",
             "type": "string"
           }
         },
@@ -75,6 +75,12 @@
           "auth.backoff",
           "auth.configured",
           "auth.password",
+          "auth.forbidden",
+          "viewer.none",
+          "viewer.name",
+          "viewer.value",
+          "token.none",
+          "token.value",
           "history.range",
           "history.counter",
           "forecast.range",
@@ -186,8 +192,55 @@
         ],
         "type": "object"
       },
+      "Created": {
+        "allOf": [
+          {
+            "description": "A token as the API reads it: never the token.",
+            "properties": {
+              "id": {
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/Scope"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "scope"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "token": {
+                "description": "Sent as `Authorization: Bearer <token>`.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "token"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A token just created: the only time the token is shown."
+      },
       "Credentials": {
+        "description": "A sign-in: the admin's password alone, or a viewer's name and password.",
         "properties": {
+          "name": {
+            "description": "A viewer's name; absent for the admin.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "password": {
             "type": "string"
           }
@@ -620,6 +673,18 @@
         ],
         "type": "string"
       },
+      "Password": {
+        "description": "The admin's password, set on the first run.",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
       "Point": {
         "properties": {
           "end": {
@@ -745,6 +810,14 @@
           "max"
         ],
         "type": "object"
+      },
+      "Scope": {
+        "description": "What a token may do.",
+        "enum": [
+          "read",
+          "admin"
+        ],
+        "type": "string"
       },
       "SettingSupport": {
         "description": "A setting a device's profile declares (ADR 5, 7).",
@@ -875,6 +948,59 @@
         ],
         "type": "string"
       },
+      "Token": {
+        "description": "A token as the API reads it: never the token.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "TokenDraft": {
+        "description": "A token as the admin creates it.",
+        "properties": {
+          "name": {
+            "description": "What it is for, such as `evcc`.",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "required": [
+          "name",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "Tokens": {
+        "properties": {
+          "tokens": {
+            "items": {
+              "$ref": "#/components/schemas/Token"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "type": "object"
+      },
       "Transport": {
         "description": "The wire framing on a connection's endpoint.",
         "enum": [
@@ -882,6 +1008,55 @@
           "solarman-v5"
         ],
         "type": "string"
+      },
+      "Viewer": {
+        "description": "A viewer as the API reads it: never its password.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ViewerDraft": {
+        "description": "A viewer as the admin adds it.",
+        "properties": {
+          "name": {
+            "description": "What the viewer signs in with; unique.",
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "password"
+        ],
+        "type": "object"
+      },
+      "Viewers": {
+        "properties": {
+          "viewers": {
+            "items": {
+              "$ref": "#/components/schemas/Viewer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "viewers"
+        ],
+        "type": "object"
       },
       "Wiring": {
         "description": "Where a string sits and what it is made of.",
@@ -1710,7 +1885,7 @@
             }
           }
         },
-        "summary": "Signs the admin in to a session cookie."
+        "summary": "Signs the admin, or a viewer by name, in to a session cookie."
       }
     },
     "/api/v1/module-types": {
@@ -1824,7 +1999,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Credentials"
+                "$ref": "#/components/schemas/Password"
               }
             }
           },
@@ -1845,6 +2020,184 @@
           }
         },
         "summary": "The first run sets the admin password; there is no registration."
+      }
+    },
+    "/api/v1/tokens": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tokens"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Creates a token and shows it, once."
+      }
+    },
+    "/api/v1/tokens/{id}": {
+      "delete": {
+        "operationId": "remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a token; a request carrying it is refused from now on."
+      }
+    },
+    "/api/v1/viewers": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewers"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewerDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewer"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a viewer, who reads live values and history."
+      }
+    },
+    "/api/v1/viewers/{id}": {
+      "delete": {
+        "operationId": "remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a viewer and ends its sessions."
       }
     },
     "/api/v1/writes": {

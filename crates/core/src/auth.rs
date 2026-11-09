@@ -1,14 +1,19 @@
 //! Admin sign-in (ADR 9). Auth owns the `admin` table.
 
+mod access;
 mod backoff;
 mod sessions;
+mod tokens;
+mod viewers;
+
+pub use access::{Access, access};
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{ConnectInfo, Request, State};
+use axum::extract::{ConnectInfo, MatchedPath, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -19,10 +24,11 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
-use sessions::{IDLE, Sessions};
+use sessions::{Grant, IDLE, Sessions};
+use tokens::{Known, Scope};
 
 /// bcrypt's work factor, as v4 used.
 const COST: u32 = 12;
@@ -57,6 +63,14 @@ const PASSWORD: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::AuthPassword,
 };
+const FORBIDDEN: Problem = Problem {
+    status: StatusCode::FORBIDDEN,
+    code: Code::AuthForbidden,
+};
+const PATH: Problem = Problem {
+    status: StatusCode::BAD_REQUEST,
+    code: Code::RequestPath,
+};
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
@@ -66,14 +80,22 @@ const INTERNAL: Problem = Problem {
     code: Code::Internal,
 };
 
+/// The admin's password, set on the first run.
 #[derive(Deserialize, ToSchema)]
-pub struct Credentials {
+pub struct Password {
     password: String,
 }
 
-/// The password of a request body.
-fn password(body: Result<Json<Credentials>, JsonRejection>) -> Result<String, Problem> {
-    let Json(Credentials { password }) = body.map_err(|_| BODY)?;
+/// A sign-in: the admin's password alone, or a viewer's name and password.
+#[derive(Deserialize, ToSchema)]
+pub struct Credentials {
+    /// A viewer's name; absent for the admin.
+    #[serde(default)]
+    name: Option<String>,
+    password: String,
+}
+
+fn checked(password: String) -> Result<String, Problem> {
     if password.len() > LONGEST {
         return Err(PASSWORD);
     }
@@ -91,6 +113,7 @@ struct Inner {
     /// The admin's bcrypt hash; `None` until the first run sets it.
     admin: Mutex<Option<String>>,
     sessions: Mutex<Sessions>,
+    tokens: Mutex<Known>,
     backoff: Mutex<Backoff>,
 }
 
@@ -98,12 +121,14 @@ impl Auth {
     /// `ingress` is the Home Assistant Supervisor's address, set only in the add-on image.
     ///
     /// # Errors
-    /// The stored admin cannot be read.
+    /// The stored admin or tokens cannot be read.
     pub async fn open(database: Database, ingress: Option<IpAddr>) -> Result<Self, Error> {
-        let admin = database
+        let (admin, tokens) = database
             .run(|db| {
-                db.query_row("SELECT hash FROM admin", [], |row| row.get(0))
-                    .optional()
+                let admin = db
+                    .query_row("SELECT hash FROM admin", [], |row| row.get(0))
+                    .optional()?;
+                Ok((admin, tokens::load(db)?))
             })
             .await?;
         Ok(Self(Arc::new(Inner {
@@ -111,20 +136,29 @@ impl Auth {
             ingress,
             admin: Mutex::new(admin),
             sessions: Mutex::default(),
+            tokens: Mutex::new(tokens),
             backoff: Mutex::default(),
         })))
     }
 
-    /// The sign-in routes, and `protected` behind a session.
-    pub fn routes(&self, protected: OpenApiRouter) -> OpenApiRouter {
-        let protected = protected
-            .routes(routes!(session))
-            .layer(middleware::from_fn_with_state(self.clone(), require));
+    /// The sign-in and viewer routes beside `api`, each guarded as the access table classifies
+    /// it.
+    pub fn routes(&self, api: OpenApiRouter, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
+            .routes(routes!(session))
             .routes(routes!(setup))
             .routes(routes!(login))
             .with_state(self.clone())
-            .merge(protected)
+            .merge(
+                OpenApiRouter::new()
+                    .routes(routes!(viewers::list, viewers::add))
+                    .routes(routes!(viewers::remove))
+                    .routes(routes!(tokens::list, tokens::add))
+                    .routes(routes!(tokens::remove))
+                    .with_state((self.clone(), clock)),
+            )
+            .merge(api)
+            .layer(middleware::from_fn_with_state(self.clone(), guard))
     }
 
     /// Whether the Supervisor proxied `request` through ingress, which names its prefix in
@@ -155,6 +189,25 @@ impl Auth {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
+    fn tokens(&self) -> std::sync::MutexGuard<'_, Known> {
+        self.0.tokens.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Who signed `headers`: a bearer token, else a live session, whose use renews it.
+    fn identify(&self, headers: &HeaderMap) -> Result<Caller, Problem> {
+        if let Some(token) = bearer(headers) {
+            let scope = self.tokens().get(&tokens::digest(token)).map(|&(_, s)| s);
+            return scope.map(Caller::Token).ok_or(REQUIRED);
+        }
+        let session = session_token(headers)
+            .and_then(|token| Some((self.sessions().touch(&token, Instant::now())?, token)));
+        match session {
+            Some((grant, token)) => Ok(Caller::Session(grant, token)),
+            None if self.admin().is_none() => Err(SETUP),
+            None => Err(REQUIRED),
+        }
+    }
+
     fn sessions(&self) -> std::sync::MutexGuard<'_, Sessions> {
         self.0
             .sessions
@@ -173,15 +226,16 @@ async fn session() -> StatusCode {
 }
 
 /// The first run sets the admin password; there is no registration.
-#[utoipa::path(post, path = "/api/v1/setup", request_body = Credentials, responses(
+#[utoipa::path(post, path = "/api/v1/setup", request_body = Password, responses(
     (status = 204, description = "The admin password is set"),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn setup(
     State(auth): State<Auth>,
-    body: Result<Json<Credentials>, JsonRejection>,
+    body: Result<Json<Password>, JsonRejection>,
 ) -> Result<StatusCode, Problem> {
-    let password = password(body)?;
+    let Json(Password { password }) = body.map_err(|_| BODY)?;
+    let password = checked(password)?;
     if auth.admin().is_some() {
         return Err(CONFIGURED);
     }
@@ -227,7 +281,7 @@ impl IntoResponse for Refused {
     }
 }
 
-/// Signs the admin in to a session cookie.
+/// Signs the admin, or a viewer by name, in to a session cookie.
 #[utoipa::path(post, path = "/api/v1/login", request_body = Credentials, responses(
     (status = 204, description = "Signed in; the cookie is set"),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
@@ -238,8 +292,11 @@ async fn login(
     headers: HeaderMap,
     body: Result<Json<Credentials>, JsonRejection>,
 ) -> Result<Response, Refused> {
-    let password = password(body)?;
-    let admin = auth.admin().ok_or(SETUP)?;
+    let Json(Credentials { name, password }) = body.map_err(|_| BODY)?;
+    let password = checked(password)?;
+    if name.is_none() && auth.admin().is_none() {
+        return Err(SETUP.into());
+    }
     let address = client.ip();
     let wait = auth.backoff().wait(address, Instant::now());
     if let Some(wait) = wait {
@@ -250,12 +307,26 @@ async fn login(
     }
     // Counted as failed until it succeeds, so concurrent guesses wait too.
     auth.backoff().fail(address, Instant::now());
-    let matches = blocking(move || bcrypt::verify(password, &admin)).await?;
+    let (grant, hash) = match name {
+        None => (Grant::Admin, auth.admin().ok_or(SETUP)?),
+        Some(name) => auth
+            .0
+            .database
+            .run(move |db| viewers::find(db, &name))
+            .await
+            .map_err(|_| INTERNAL)?
+            .map(|(id, hash)| (Grant::Viewer(id), hash))
+            .ok_or(CREDENTIALS)?,
+    };
+    let matches = blocking(move || bcrypt::verify(password, &hash)).await?;
     if !matches {
         return Err(CREDENTIALS.into());
     }
     auth.backoff().succeed(address);
-    let token = auth.sessions().start(Instant::now()).ok_or(INTERNAL)?;
+    let token = auth
+        .sessions()
+        .start(grant, Instant::now())
+        .ok_or(INTERNAL)?;
     let tls = over_tls(&headers);
     Ok(with_cookie(
         &token,
@@ -264,23 +335,58 @@ async fn login(
     ))
 }
 
-/// Refuses a request without a live session, and renews the cookie of one with it. An ingress
-/// request from the Supervisor needs neither: Home Assistant signed its user in.
-async fn require(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+/// Lets a request through as the access table classifies its route; an unclassified one needs
+/// admin.
+async fn guard(State(auth): State<Auth>, request: Request, next: Next) -> Response {
+    let access = request
+        .extensions()
+        .get::<MatchedPath>()
+        .and_then(|path| access(request.method(), path.as_str()))
+        .unwrap_or(Access::Admin);
+    if access == Access::Public {
+        return next.run(request).await;
+    }
+    // Home Assistant signed the user of an ingress request in.
     if auth.via_ingress(&request) {
         return next.run(request).await;
     }
-    if auth.admin().is_none() {
-        return SETUP.into_response();
-    }
-    let Some(token) = session_token(request.headers()) else {
-        return REQUIRED.into_response();
+    let caller = match auth.identify(request.headers()) {
+        Ok(caller) => caller,
+        Err(problem) => return problem.into_response(),
     };
-    if !auth.sessions().touch(&token, Instant::now()) {
-        return REQUIRED.into_response();
+    if access == Access::Admin && !caller.admin() {
+        return FORBIDDEN.into_response();
     }
     let tls = over_tls(request.headers());
-    with_cookie(&token, tls, next.run(request).await)
+    let response = next.run(request).await;
+    match caller {
+        // Using a session renews its cookie.
+        Caller::Session(_, token) => with_cookie(&token, tls, response),
+        Caller::Token(_) => response,
+    }
+}
+
+/// Who a request comes from.
+enum Caller {
+    /// A browser session, with its token.
+    Session(Grant, String),
+    Token(Scope),
+}
+
+impl Caller {
+    const fn admin(&self) -> bool {
+        matches!(
+            self,
+            Self::Session(Grant::Admin, _) | Self::Token(Scope::Admin)
+        )
+    }
+}
+
+/// The token of an `Authorization: Bearer` header.
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
+    scheme.eq_ignore_ascii_case("bearer").then(|| token.trim())
 }
 
 fn session_token(headers: &HeaderMap) -> Option<String> {

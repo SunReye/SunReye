@@ -25,6 +25,7 @@ use crate::location::PlantLocation;
 use crate::profiles::Catalogue;
 use crate::storage::{Problem, Storage};
 
+mod access;
 mod devices;
 mod forecasts;
 mod history;
@@ -34,6 +35,8 @@ mod live;
 mod location;
 mod screen;
 mod settings;
+mod tokens;
+mod viewers;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {

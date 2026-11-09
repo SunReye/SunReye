@@ -225,7 +225,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Signs the admin in to a session cookie. */
+        /** Signs the admin, or a viewer by name, in to a session cookie. */
         post: operations["login"];
         delete?: never;
         options?: never;
@@ -300,6 +300,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        /** Creates a token and shows it, once. */
+        post: operations["add"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes a token; a request carrying it is refused from now on. */
+        delete: operations["remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        /** Adds a viewer, who reads live values and history. */
+        post: operations["add"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/viewers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes a viewer and ends its sessions. */
+        delete: operations["remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/writes": {
         parameters: {
             query?: never;
@@ -344,14 +412,14 @@ export interface components {
             id: number;
             /** @description The subject after the change, as its own route reads it; `null` once removed. */
             state?: unknown;
-            /** @description `connection`, `device` or `location`. */
+            /** @description `connection`, `device`, `location`, `viewer` or `token`. */
             subject: string;
         };
         /**
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "clock.unsynced" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "location.none" | "location.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -375,7 +443,20 @@ export interface components {
         Connections: {
             connections: components["schemas"]["Connection"][];
         };
+        /** @description A token just created: the only time the token is shown. */
+        Created: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            scope: components["schemas"]["Scope"];
+        } & {
+            /** @description Sent as `Authorization: Bearer <token>`. */
+            token: string;
+        };
+        /** @description A sign-in: the admin's password alone, or a viewer's name and password. */
         Credentials: {
+            /** @description A viewer's name; absent for the admin. */
+            name?: string | null;
             password: string;
         };
         /** @description A PV module model's datasheet values. */
@@ -550,6 +631,10 @@ export interface components {
          * @enum {string}
          */
         Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged";
+        /** @description The admin's password, set on the first run. */
+        Password: {
+            password: string;
+        };
         Point: {
             /** @description RFC 3339, UTC. */
             end: string;
@@ -598,6 +683,11 @@ export interface components {
             /** Format: int32 */
             min: number;
         };
+        /**
+         * @description What a token may do.
+         * @enum {string}
+         */
+        Scope: "read" | "admin";
         /** @description A setting a device's profile declares (ADR 5, 7). */
         SettingSupport: {
             key: string;
@@ -648,11 +738,42 @@ export interface components {
          * @enum {string}
          */
         Tier: "raw" | "bucket" | "hour" | "day";
+        /** @description A token as the API reads it: never the token. */
+        Token: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+            scope: components["schemas"]["Scope"];
+        };
+        /** @description A token as the admin creates it. */
+        TokenDraft: {
+            /** @description What it is for, such as `evcc`. */
+            name: string;
+            scope: components["schemas"]["Scope"];
+        };
+        Tokens: {
+            tokens: components["schemas"]["Token"][];
+        };
         /**
          * @description The wire framing on a connection's endpoint.
          * @enum {string}
          */
         Transport: "modbus-tcp" | "solarman-v5";
+        /** @description A viewer as the API reads it: never its password. */
+        Viewer: {
+            /** Format: int32 */
+            id: number;
+            name: string;
+        };
+        /** @description A viewer as the admin adds it. */
+        ViewerDraft: {
+            /** @description What the viewer signs in with; unique. */
+            name: string;
+            password: string;
+        };
+        Viewers: {
+            viewers: components["schemas"]["Viewer"][];
+        };
         /** @description Where a string sits and what it is made of. */
         Wiring: {
             /**
@@ -1434,11 +1555,181 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Credentials"];
+                "application/json": components["schemas"]["Password"];
             };
         };
         responses: {
             /** @description The admin password is set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tokens"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenDraft"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Viewers"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    add: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ViewerDraft"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Viewer"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
             204: {
                 headers: {
                     [name: string]: unknown;

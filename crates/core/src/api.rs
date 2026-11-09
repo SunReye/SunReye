@@ -65,7 +65,7 @@ pub struct Api {
 pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
 pub fn router(api: Api) -> Router {
-    let protected = OpenApiRouter::new()
+    let api_routes = OpenApiRouter::new()
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(capabilities))
@@ -98,9 +98,9 @@ pub fn router(api: Api) -> Router {
         .merge(api.devices.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
-        .merge(api.layouts.routes(api.clock));
+        .merge(api.layouts.routes(Clock::clone(&api.clock)));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
-        .merge(api.auth.routes(protected))
+        .merge(api.auth.routes(api_routes, api.clock))
         .split_for_parts();
     // Serialised once: the document changes only with the build.
     let document = document.to_json().unwrap_or_default();
@@ -292,6 +292,18 @@ pub enum Code {
     AuthConfigured,
     #[serde(rename = "auth.password")]
     AuthPassword,
+    #[serde(rename = "auth.forbidden")]
+    AuthForbidden,
+    #[serde(rename = "viewer.none")]
+    ViewerNone,
+    #[serde(rename = "viewer.name")]
+    ViewerName,
+    #[serde(rename = "viewer.value")]
+    ViewerValue,
+    #[serde(rename = "token.none")]
+    TokenNone,
+    #[serde(rename = "token.value")]
+    TokenValue,
     #[serde(rename = "history.range")]
     HistoryRange,
     #[serde(rename = "history.counter")]
