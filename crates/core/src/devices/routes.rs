@@ -9,6 +9,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use super::deadband::RoleDeadband;
 use super::{ACTOR, Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::scan::{ScanReport, ScanRequest};
@@ -34,6 +35,8 @@ impl Devices {
             .routes(routes!(change_device, remove_device))
             .routes(routes!(write_setting))
             .routes(routes!(enable_setting, disable_setting))
+            .routes(routes!(deadbands))
+            .routes(routes!(set_deadband, remove_deadband))
             .routes(routes!(writes))
             .routes(routes!(scan))
             .with_state((self, clock))
@@ -215,6 +218,71 @@ async fn disable_setting(
 ) -> Result<StatusCode, Problem> {
     let Path((id, key)) = path.map_err(|_| PATH)?;
     devices.enable_setting(id, key, false, clock()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize, ToSchema)]
+struct Deadbands {
+    deadbands: Vec<RoleDeadband>,
+}
+
+/// Each role of a device with the deadband it is stored with (ADR 4): the admin's override, else
+/// the profile's, else the role's default, else none.
+#[utoipa::path(get, path = "/api/v1/devices/{id}/deadbands", params(("id" = u32, Path)),
+    responses(
+    (status = 200, body = Deadbands),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn deadbands(
+    State((devices, _)): DevicesState,
+    id: Result<Path<u32>, PathRejection>,
+) -> Result<Json<Deadbands>, Problem> {
+    let Path(id) = id.map_err(|_| PATH)?;
+    let deadbands = devices.deadbands(id).await?;
+    Ok(Json(Deadbands { deadbands }))
+}
+
+/// A deadband override, in the role's unit.
+#[derive(Deserialize, ToSchema)]
+struct Override {
+    deadband: f64,
+}
+
+/// Overrides a role's deadband for this device. Its series are stored with it at once, after
+/// their pending change points are written. Refused below the role's quantisation step and on a
+/// counter or enum.
+#[utoipa::path(put, path = "/api/v1/devices/{id}/deadbands/{role}", request_body = Override,
+    params(("id" = u32, Path), ("role" = String, Path)), responses(
+    (status = 200, body = RoleDeadband),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn set_deadband(
+    State((devices, clock)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+    body: Result<Json<Override>, JsonRejection>,
+) -> Result<Json<RoleDeadband>, Problem> {
+    let Path((id, role)) = path.map_err(|_| PATH)?;
+    let Json(Override { deadband }) = body.map_err(|_| BODY)?;
+    devices
+        .set_deadband(id, role.clone(), Some(deadband), clock())
+        .await?;
+    let deadbands = devices.deadbands(id).await?;
+    let set = deadbands.into_iter().find(|d| d.role == role);
+    Ok(Json(set.ok_or(INTERNAL)?))
+}
+
+/// Removes a role's deadband override; the profile's or the role's default applies at once.
+#[utoipa::path(delete, path = "/api/v1/devices/{id}/deadbands/{role}",
+    params(("id" = u32, Path), ("role" = String, Path)), responses(
+    (status = 204),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn remove_deadband(
+    State((devices, clock)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+) -> Result<StatusCode, Problem> {
+    let Path((id, role)) = path.map_err(|_| PATH)?;
+    devices.set_deadband(id, role, None, clock()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

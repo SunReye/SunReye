@@ -441,6 +441,9 @@
           "device.profile",
           "device.profile-change",
           "device.address",
+          "deadband.role",
+          "deadband.kind",
+          "deadband.step",
           "scan.subnet",
           "scan.busy",
           "setting.none",
@@ -736,6 +739,30 @@
           "end",
           "residual",
           "points"
+        ],
+        "type": "object"
+      },
+      "DeadbandSource": {
+        "description": "Where a role's deadband comes from.",
+        "enum": [
+          "override",
+          "profile",
+          "default",
+          "none"
+        ],
+        "type": "string"
+      },
+      "Deadbands": {
+        "properties": {
+          "deadbands": {
+            "items": {
+              "$ref": "#/components/schemas/RoleDeadband"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deadbands"
         ],
         "type": "object"
       },
@@ -1750,6 +1777,19 @@
         ],
         "type": "string"
       },
+      "Override": {
+        "description": "A deadband override, in the role's unit.",
+        "properties": {
+          "deadband": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "deadband"
+        ],
+        "type": "object"
+      },
       "Password": {
         "description": "The admin's password, set on the first run.",
         "properties": {
@@ -2144,6 +2184,30 @@
           "appliesFrom",
           "import",
           "export"
+        ],
+        "type": "object"
+      },
+      "RoleDeadband": {
+        "description": "The deadband a role of a device is stored with.",
+        "properties": {
+          "deadband": {
+            "description": "In the role's unit; `null` stores every change.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/DeadbandSource"
+          }
+        },
+        "required": [
+          "role",
+          "source"
         ],
         "type": "object"
       },
@@ -3460,6 +3524,136 @@
           }
         },
         "summary": "Changes a device's name, connection or unit id; its profile is fixed."
+      }
+    },
+    "/api/v1/devices/{id}/deadbands": {
+      "get": {
+        "operationId": "deadbands",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deadbands"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Each role of a device with the deadband it is stored with (ADR 4): the admin's override, else\nthe profile's, else the role's default, else none."
+      }
+    },
+    "/api/v1/devices/{id}/deadbands/{role}": {
+      "delete": {
+        "operationId": "remove_deadband",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Removes a role's deadband override; the profile's or the role's default applies at once."
+      },
+      "put": {
+        "operationId": "set_deadband",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Override"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDeadband"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Overrides a role's deadband for this device. Its series are stored with it at once, after\ntheir pending change points are written. Refused below the role's quantisation step and on a\ncounter or enum."
       }
     },
     "/api/v1/devices/{id}/forecasts": {

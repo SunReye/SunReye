@@ -396,6 +396,7 @@ pub fn remove_device(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
     if tx.execute("DELETE FROM device WHERE id = ?1", [id])? == 0 {
         return Ok(Err(Refusal::NoDevice));
     }
+    tx.execute("DELETE FROM deadband_override WHERE device = ?1", [id])?;
     let entry = entry(Subject::Device, id, Action::Remove, None::<&()>, changed);
     changes::append(&tx, &entry)?;
     tx.commit()?;

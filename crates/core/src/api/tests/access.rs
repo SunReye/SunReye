@@ -66,7 +66,10 @@ fn live_values_and_history_are_read_and_configuration_is_admin() {
 
 /// A request to `path` with each parameter filled in.
 fn request(method: &Method, path: &str) -> axum::http::Request<axum::body::Body> {
-    let uri = path.replace("{id}", "1").replace("{key}", "x");
+    let uri = path
+        .replace("{id}", "1")
+        .replace("{key}", "x")
+        .replace("{role}", "x");
     let request = axum::http::Request::builder()
         .method(method)
         .uri(uri)

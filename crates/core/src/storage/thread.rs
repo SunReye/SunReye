@@ -48,6 +48,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0020.sql"),
     include_str!("migrations/0021.sql"),
     include_str!("migrations/0022.sql"),
+    include_str!("migrations/0023.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.

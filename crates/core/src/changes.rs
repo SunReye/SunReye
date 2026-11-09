@@ -51,6 +51,8 @@ pub enum Subject {
     Zone,
     /// The bidding zone the spot prices are fetched for (ADR 12), id 0.
     Spot,
+    /// A deadband override (ADR 4); the id is the device's, the state names the role.
+    Deadband,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
