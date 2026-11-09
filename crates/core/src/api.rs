@@ -67,7 +67,11 @@ pub fn router(api: Api) -> Router {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(capabilities))
-                .with_state((api.layouts.clone(), Clock::clone(&api.clock))),
+                .with_state((
+                    api.layouts.clone(),
+                    api.devices.clone(),
+                    Clock::clone(&api.clock),
+                )),
         )
         .merge(
             OpenApiRouter::new()
@@ -123,11 +127,29 @@ struct Support {
     devices: BTreeMap<String, DeviceSupport>,
 }
 
-#[derive(Serialize, ToSchema)]
+#[derive(Default, Serialize, ToSchema)]
 struct DeviceSupport {
     /// Series computed from others, not measured, such as `pv.string.power[3]` of a string
     /// in parallel (ADR 17).
     estimated: Vec<String>,
+    /// Whether the admin switched its writes on (ADR 7).
+    writes: bool,
+    /// What its profile lets the core write, in the profile's order.
+    settings: Vec<SettingSupport>,
+}
+
+/// A setting a device's profile declares (ADR 5, 7).
+#[derive(Serialize, ToSchema)]
+struct SettingSupport {
+    key: String,
+    /// The bounds of a value; absent when `values` lists them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<Bounds>,
+    /// The only values it takes, when the profile enumerates them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    values: Option<Vec<f64>>,
+    /// A value is a whole number of steps.
+    step: f64,
 }
 
 /// An inclusive range of profile schemas.
@@ -137,26 +159,35 @@ struct Schemas {
     max: u32,
 }
 
+/// The inclusive bounds of a setting's value.
+#[derive(Serialize, ToSchema)]
+struct Bounds {
+    min: f64,
+    max: f64,
+}
+
 #[utoipa::path(get, path = "/api/v1/capabilities", responses(
     (status = 200, body = Support),
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn capabilities(
-    State((layouts, clock)): State<(Layouts, Clock)>,
+    State((layouts, devices, clock)): State<(Layouts, Devices, Clock)>,
 ) -> Result<Json<Support>, Problem> {
     let versions = layouts.versions().await.map_err(|_| INTERNAL)?;
     let estimated = in_force(&versions, clock()).map(Version::estimated);
-    let devices = estimated
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(device, ids)| {
-            let estimated = ids
-                .into_iter()
-                .map(|id| format!("pv.string.power[{id}]"))
-                .collect();
-            (device.to_string(), DeviceSupport { estimated })
-        })
-        .collect();
+    let mut support: BTreeMap<String, DeviceSupport> = BTreeMap::new();
+    for (device, ids) in estimated.unwrap_or_default() {
+        support.entry(device.to_string()).or_default().estimated = ids
+            .into_iter()
+            .map(|id| format!("pv.string.power[{id}]"))
+            .collect();
+    }
+    for (device, writes, profile) in devices.writable().await.map_err(|_| INTERNAL)? {
+        let entry = support.entry(device.to_string()).or_default();
+        entry.writes = writes;
+        entry.settings = profile.settings().iter().map(setting_support).collect();
+    }
+    let devices = support;
     let support = sunreye_profile::SUPPORT;
     Ok(Json(Support {
         version: env!("CARGO_PKG_VERSION"),
@@ -168,6 +199,15 @@ async fn capabilities(
         transports: Endpoint::TRANSPORTS,
         devices,
     }))
+}
+
+fn setting_support(setting: &sunreye_profile::Setting) -> SettingSupport {
+    SettingSupport {
+        key: setting.key.clone(),
+        range: setting.range().map(|(min, max)| Bounds { min, max }),
+        values: setting.values().map(<[f64]>::to_vec),
+        step: setting.step(),
+    }
 }
 
 /// Conditions that degrade the core.

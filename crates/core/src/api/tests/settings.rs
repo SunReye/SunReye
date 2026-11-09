@@ -239,3 +239,27 @@ async fn the_write_log_and_every_write_need_the_admins_session() {
     assert_eq!(plant.received(), []);
     assert_eq!(plant.log().await, json!([]));
 }
+
+#[tokio::test]
+async fn capabilities_list_each_devices_settings_from_its_profile() {
+    let plant = Plant::new(Writes::Store, true).await;
+
+    let (status, body) = plant
+        .core
+        .ask(&plant.set_cookie, get("/api/v1/capabilities"))
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let device = &body["devices"][plant.id.to_string()];
+    assert_eq!(device["writes"], true);
+    assert_eq!(
+        device["settings"],
+        json!([
+            { "key": CHARGE, "range": { "min": 0.0, "max": 350.0 }, "step": 1.0 },
+            { "key": "battery.max_discharge_current", "range": { "min": 0.0, "max": 350.0 },
+                "step": 1.0 },
+            { "key": "battery.grid_charge", "values": [0.0, 1.0], "step": 1.0 },
+            { "key": "work_mode", "values": [0.0, 1.0, 2.0], "step": 1.0 },
+        ])
+    );
+}

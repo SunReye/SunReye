@@ -26,6 +26,24 @@ pub enum Step {
 }
 
 impl Setting {
+    /// The bounds a value must lie within; `None` when the setting declares its values instead.
+    #[must_use]
+    pub fn range(&self) -> Option<(f64, f64)> {
+        self.range.map(|r| (r.min, r.max))
+    }
+
+    /// The only values it takes, when the profile enumerates them.
+    #[must_use]
+    pub fn values(&self) -> Option<&[f64]> {
+        self.values.as_deref()
+    }
+
+    /// The step a value is a whole number of: the register's scale.
+    #[must_use]
+    pub const fn step(&self) -> f64 {
+        self.scale
+    }
+
     /// The steps that apply it, in order.
     #[must_use]
     pub fn recipe(&self) -> &[Step] {

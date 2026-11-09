@@ -209,6 +209,21 @@ impl Devices {
         self.database.run(store::devices).await
     }
 
+    /// Every device with its writes switch and its profile, by id.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn writable(&self) -> Result<Vec<(u32, bool, Arc<Profile>)>, storage::Error> {
+        let devices = self.devices().await?;
+        Ok(devices
+            .into_iter()
+            .filter_map(|d| {
+                let profile = self.catalogue.get(&d.draft.profile)?;
+                Some((d.id, d.draft.writes, profile))
+            })
+            .collect())
+    }
+
     /// Adds a connection with a fresh id.
     ///
     /// # Errors
