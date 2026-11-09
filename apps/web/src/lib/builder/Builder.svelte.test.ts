@@ -66,12 +66,18 @@ beforeEach(async () => {
   await page.viewport(1280, 900);
 });
 
+const DEVICES = [
+  { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 },
+  { id: 2, name: "Speicher", profile: "pylontech", connection: 1, unit: 2 },
+];
+
 async function gridOnTheSouthFace(transport: Transport) {
   const screen = await render(Builder, {
     pv,
     core: connect(transport),
     start: emptyDraft(),
     moduleTypes: [MODULE],
+    devices: DEVICES,
   });
 
   await userEvent.selectOptions(
@@ -147,4 +153,32 @@ test("a module the setback no longer holds is flagged before saving", async () =
   await expect
     .element(screen.getByRole("alert"))
     .toHaveTextContent("Raster 1: Das Modul in Reihe 2, Spalte 1 ragt über den Randabstand.");
+});
+
+test("the admin hangs a battery marker inside the right wall and saves it with the scene", async () => {
+  const transport = testCore();
+  const screen = await gridOnTheSouthFace(transport);
+
+  await screen.getByRole("button", { name: "Batterie platzieren" }).click();
+  const marker = screen.getByRole("group", { name: "Batterie" });
+  await userEvent.selectOptions(
+    marker.getByRole("combobox", { name: "Gerät" }).element(),
+    "Speicher",
+  );
+  await userEvent.selectOptions(marker.getByRole("combobox", { name: "Wand" }).element(), "Rechts");
+  await userEvent.fill(
+    marker.getByRole("spinbutton", { name: "Abstand vom linken Ende (m)" }),
+    "3",
+  );
+  await marker.getByRole("checkbox", { name: "Innen" }).click();
+
+  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
+  await screen.getByRole("button", { name: "Speichern" }).click();
+
+  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
+  expect(transport.puts[0]).toMatchObject({
+    scene: {
+      equipment: [{ device: 2, kind: "battery", block: 0, wall: "right", along: 3, inside: true }],
+    },
+  });
 });

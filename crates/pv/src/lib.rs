@@ -3,6 +3,7 @@
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
 mod diode;
+mod equipment;
 mod estimate;
 mod grid;
 mod mppt;
@@ -13,6 +14,7 @@ mod string;
 mod sun;
 mod temperature;
 
+pub use equipment::{Equipment, EquipmentKind, Mount, Wall};
 pub use estimate::estimate;
 pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
 pub use mppt::{input_output, module_counts_differ};

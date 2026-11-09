@@ -59,6 +59,21 @@ export interface ModuleGrid {
   readonly modules: readonly Cell[];
 }
 
+/** A side of a block's footprint: the front along +z, the right along +x. */
+export type Wall = "front" | "right" | "back" | "left";
+
+/** A marker for an inverter or a battery, on a block's wall. */
+export interface Equipment {
+  readonly device: number;
+  readonly kind: "inverter" | "battery";
+  readonly block: number;
+  readonly wall: Wall;
+  /** Metres from the wall's left end, seen from outside. */
+  readonly along: number;
+  /** Behind the wall, in the building. */
+  readonly inside: boolean;
+}
+
 /** The scene's frame: metres, y up, origin at the first block's corner (ADR 20). */
 export interface Scene {
   /** The compass bearing of the scene's −z axis, in degrees. */
@@ -67,6 +82,7 @@ export interface Scene {
   readonly obstacles: readonly Obstacle[];
   /** At most one per roof face. */
   readonly grids?: readonly ModuleGrid[];
+  readonly equipment?: readonly Equipment[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -126,10 +142,18 @@ export type Solid =
       readonly height: number;
     };
 
+/** Where a marker is drawn, and its label's anchor straight above it, clear of its block. */
+export interface Mount {
+  readonly at: Point;
+  readonly above: Point;
+}
+
 /** What the crate draws and shades. */
 export interface Geometry {
   readonly faces: readonly Face[];
   readonly solids: readonly Solid[];
+  /** By the scene's equipment; null while a marker lies off its wall. */
+  readonly mounts?: readonly Mount[] | null;
 }
 
 export interface Pv {

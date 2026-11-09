@@ -757,6 +757,55 @@
         ],
         "type": "object"
       },
+      "Equipment": {
+        "additionalProperties": false,
+        "description": "A marker linked to its device, placed on a block's wall.",
+        "properties": {
+          "along": {
+            "description": "Metres from the wall's left end, seen from outside.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "device": {
+            "description": "The device's id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inside": {
+            "description": "Behind the wall, in the building.",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EquipmentKind"
+          },
+          "wall": {
+            "$ref": "#/components/schemas/Wall"
+          }
+        },
+        "required": [
+          "device",
+          "kind",
+          "block",
+          "wall",
+          "along",
+          "inside"
+        ],
+        "type": "object"
+      },
+      "EquipmentKind": {
+        "description": "What a marker stands for; a hybrid inverter may carry one of each.",
+        "enum": [
+          "inverter",
+          "battery"
+        ],
+        "type": "string"
+      },
       "ForecastPoint": {
         "properties": {
           "issued": {
@@ -1730,6 +1779,13 @@
             },
             "type": "array"
           },
+          "equipment": {
+            "description": "Markers for inverters and batteries.",
+            "items": {
+              "$ref": "#/components/schemas/Equipment"
+            },
+            "type": "array"
+          },
           "grids": {
             "description": "At most one per roof face.",
             "items": {
@@ -2175,6 +2231,16 @@
           "viewers"
         ],
         "type": "object"
+      },
+      "Wall": {
+        "description": "A side of a block's footprint: the front along +z, the right along +x.",
+        "enum": [
+          "front",
+          "right",
+          "back",
+          "left"
+        ],
+        "type": "string"
       },
       "Warning": {
         "description": "A string whose open-circuit voltage in the cold exceeds its inverter's maximum DC input\nvoltage: saved all the same, since the plant may already exist (ADR 20).",

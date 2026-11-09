@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
-  import type { Core, Layout, ModuleType, Problem } from "../api/core.ts";
+  import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
   import { begin, record, redo, undo, type Edits } from "./history.ts";
@@ -26,12 +26,15 @@
     core,
     start,
     moduleTypes,
+    devices,
   }: {
     pv: Pv;
     core: Core;
     /** The layout in force, or an empty one: nothing to undo before it. */
     start: Draft;
     moduleTypes: readonly ModuleType[];
+    /** What equipment markers may name. */
+    devices: readonly Device[];
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -140,7 +143,7 @@
       <button type="button" disabled={appliesFrom === ""} onclick={save}>{m.builder_save()}</button>
     </div>
     <Outcome misplaced={laid.misplaced} {saved} />
-    <Editor {draft} {laid} {moduleTypes} onchange={change} />
+    <Editor {draft} {laid} {moduleTypes} {devices} onchange={change} />
   </div>
 {/if}
 

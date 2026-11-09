@@ -924,6 +924,30 @@ export interface components {
             /** @description RFC 3339, UTC. */
             time: string;
         };
+        /** @description A marker linked to its device, placed on a block's wall. */
+        Equipment: {
+            /**
+             * Format: double
+             * @description Metres from the wall's left end, seen from outside.
+             */
+            along: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /**
+             * Format: int32
+             * @description The device's id.
+             */
+            device: number;
+            /** @description Behind the wall, in the building. */
+            inside: boolean;
+            kind: components["schemas"]["EquipmentKind"];
+            wall: components["schemas"]["Wall"];
+        };
+        /**
+         * @description What a marker stands for; a hybrid inverter may carry one of each.
+         * @enum {string}
+         */
+        EquipmentKind: "inverter" | "battery";
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */
             issued: string;
@@ -1266,6 +1290,8 @@ export interface components {
         /** @description The geometry of a plant and where its modules sit. */
         Scene: {
             blocks: components["schemas"]["Block"][];
+            /** @description Markers for inverters and batteries. */
+            equipment?: components["schemas"]["Equipment"][];
             /** @description At most one per roof face. */
             grids?: components["schemas"]["ModuleGrid"][];
             /**
@@ -1419,6 +1445,11 @@ export interface components {
         Viewers: {
             viewers: components["schemas"]["Viewer"][];
         };
+        /**
+         * @description A side of a block's footprint: the front along +z, the right along +x.
+         * @enum {string}
+         */
+        Wall: "front" | "right" | "back" | "left";
         /**
          * @description A string whose open-circuit voltage in the cold exceeds its inverter's maximum DC input
          *     voltage: saved all the same, since the plant may already exist (ADR 20).

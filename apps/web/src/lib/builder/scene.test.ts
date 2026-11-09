@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Object3D } from "three";
 import type { Geometry } from "./pv.ts";
-import { buildScene, stringColour } from "./scene.ts";
+import { buildScene, shareColour, stringColour, tint } from "./scene.ts";
 
 const house: Geometry = {
   faces: [
@@ -111,4 +111,39 @@ test("each placed module is drawn in its string's colour, unassigned ones in gre
       : null,
   ).toBe(stringColour(null));
   expect(stringColour(null)).not.toBe(stringColour(0));
+});
+
+test("each equipment marker is drawn where the crate hung it", () => {
+  const marked: Geometry = { ...house, mounts: [{ at: [2, -8.1, 1.5], above: [2, -8.1, 8] }] };
+
+  const [marker] = buildScene(marked).getObjectsByProperty("name", "equipment");
+
+  expect(marker?.position.toArray()).toEqual([2, 1.5, 8.1]);
+});
+
+test("live, each module is tinted by its string's share of peak, from dim to full sun", () => {
+  const corners = [
+    [0, -1, 3],
+    [1, -1, 3],
+    [1, -2, 3],
+    [0, -2, 3],
+  ] as const;
+
+  const group = buildScene(house, [{ corners, string: 0 }, { corners, string: 1 }, { corners }]);
+
+  tint(group, [1, 0, null]);
+
+  const colours: (number | null)[] = [];
+
+  for (const mesh of group.getObjectsByProperty("name", "module")) {
+    colours.push(
+      mesh instanceof Mesh && mesh.material instanceof MeshStandardMaterial
+        ? mesh.material.color.getHex()
+        : null,
+    );
+  }
+
+  expect(colours).toEqual([shareColour(1), shareColour(0), stringColour(null)]);
+  expect(shareColour(1)).not.toBe(shareColour(0));
+  expect(shareColour(0.5)).not.toBe(shareColour(0));
 });

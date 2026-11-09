@@ -1,5 +1,6 @@
 /// <reference types="bun" />
-// three.js loads only on the builder route (ADR 11, 20), read from the SPA build's chunk graph.
+// three.js loads up front only on the builder route (ADR 11, 20); the dashboard loads it lazily,
+// once a scene exists and WebGL2 is there. Read from the SPA build's chunk graph.
 // The gate builds the SPA before `bun test`; run `bun run --cwd apps/web build` first by hand.
 import { expect, test } from "bun:test";
 
@@ -9,6 +10,7 @@ const client = `${web}.svelte-kit/output/client/`;
 interface Chunk {
   readonly file: string;
   readonly imports?: readonly string[];
+  readonly dynamicImports?: readonly string[];
   readonly isEntry?: boolean;
 }
 
@@ -61,7 +63,7 @@ async function route(key: string): Promise<string> {
   return /src\/routes\/(.*)\+page\.svelte/u.exec(source)?.[1] ?? key;
 }
 
-test("only the builder route's chunks carry three.js", async () => {
+test("only the builder route's chunks carry three.js up front", async () => {
   const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
 
   const carriers = await Promise.all(
@@ -69,4 +71,15 @@ test("only the builder route's chunks carry three.js", async () => {
   );
 
   expect(carriers.filter((carrier) => carrier !== undefined)).toEqual(["builder/"]);
+});
+
+test("the dashboard reaches three.js only through the live scene, imported lazily", async () => {
+  const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
+  const routes = await Promise.all(entries.map(async (key) => [key, await route(key)] as const));
+  const dashboard = routes.find(([, path]) => path === "")?.[0];
+
+  const lazy = manifest[dashboard ?? ""]?.dynamicImports ?? [];
+  const carriers = await Promise.all(lazy.map(async (key) => ((await loadsThree(key)) ? key : "")));
+
+  expect(carriers.filter((key) => key !== "")).toEqual(["src/lib/live/LiveScene.svelte"]);
 });

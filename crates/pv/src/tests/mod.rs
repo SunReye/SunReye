@@ -1,4 +1,5 @@
 mod diode;
+mod equipment;
 mod estimate;
 mod fixtures;
 mod grid;

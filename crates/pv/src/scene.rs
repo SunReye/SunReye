@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ModuleGrid, Occluder, Point};
+use crate::{Equipment, ModuleGrid, Occluder, Point};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
@@ -25,6 +25,9 @@ pub struct Scene {
     /// At most one per roof face.
     #[serde(default)]
     pub grids: Vec<ModuleGrid>,
+    /// Markers for inverters and batteries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub equipment: Vec<Equipment>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
@@ -107,6 +110,17 @@ pub enum Surface {
 pub struct Face {
     pub surface: Surface,
     pub corners: Vec<Point>,
+}
+
+impl Block {
+    /// The height of its roof's highest point.
+    pub(crate) fn top(&self) -> f64 {
+        roof(self)
+            .iter()
+            .flatten()
+            .map(|[_, up, _]| *up)
+            .fold(self.eave, f64::max)
+    }
 }
 
 /// Along the width, up, along the depth: a block's own frame.
@@ -208,7 +222,7 @@ impl Scene {
         })
     }
 
-    const fn prism(&self, x: f64, z: f64, rotation: f64) -> Frame {
+    pub(crate) const fn prism(&self, x: f64, z: f64, rotation: f64) -> Frame {
         Frame {
             x,
             z,
@@ -232,7 +246,7 @@ fn fan(corners: &[Point]) -> Vec<Occluder> {
 }
 
 /// Where a footprint stands: its corner, its turn and the compass.
-struct Frame {
+pub struct Frame {
     x: f64,
     z: f64,
     rotation: f64,
@@ -260,7 +274,7 @@ impl Frame {
             .collect()
     }
 
-    fn place(&self, [across, up, deep]: Local) -> Point {
+    pub(crate) fn place(&self, [across, up, deep]: Local) -> Point {
         let (x, z) = turn(across, deep, self.rotation);
         let (east, south) = turn(x + self.x, z + self.z, self.north);
         // Never −0, which JSON keeps.

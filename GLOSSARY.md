@@ -192,6 +192,10 @@ _Avoid_: Building, house
 An opaque box, cylinder or tree in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
+**Equipment marker**:
+A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
+_Avoid_: Pin, icon
+
 **Car place**:
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
 _Avoid_: Garage, charger

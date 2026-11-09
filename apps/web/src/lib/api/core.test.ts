@@ -233,3 +233,11 @@ test("capabilities and the write log are read from the core", async () => {
     `GET ${BASE}api/v1/writes`,
   ]);
 });
+
+test("the devices are listed from the core", async () => {
+  const device = { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 };
+  const listed = recording(Response.json({ devices: [device] }));
+
+  expect(await connect(listed).devices()).toEqual([device]);
+  expect(listed.asked).toEqual([`GET ${BASE}api/v1/devices`]);
+});

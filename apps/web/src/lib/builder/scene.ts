@@ -1,7 +1,9 @@
 // The scene as three.js objects, built from the pv crate's geometry (ADR 20). Pure: the drawing
 // component only adds the group to its renderer.
 import {
+  BoxGeometry,
   BufferGeometry,
+  Color,
   CylinderGeometry,
   DoubleSide,
   Float32BufferAttribute,
@@ -10,7 +12,7 @@ import {
   MeshStandardMaterial,
   SphereGeometry,
 } from "three";
-import type { Face, Geometry, Point, Solid } from "./pv.ts";
+import type { Face, Geometry, Mount, Point, Solid } from "./pv.ts";
 
 const colours: Readonly<Record<Face["surface"], number>> = {
   wall: 0xe7e2d8,
@@ -20,6 +22,9 @@ const colours: Readonly<Record<Face["surface"], number>> = {
 
 const SOLID = 0x5d7a4a;
 
+/** An equipment marker: a dark box the size of a wall-hung inverter. */
+const EQUIPMENT = 0x2b2f36;
+
 /** Strings by position, then again; distinct from roofs and the sky. */
 const STRINGS = [0x1f5fbf, 0xe08a00, 0x2a9d5c, 0xb8336a, 0x6a4fb5, 0x0f8b8d] as const;
 const UNASSIGNED = 0x6b6f76;
@@ -28,6 +33,25 @@ const UNASSIGNED = 0x6b6f76;
 export interface Panel {
   readonly corners: readonly Point[];
   readonly string?: number | null;
+}
+
+/** A string's tint in no sun and in full sun: its share of peak blends one into the other. */
+const DIM = new Color(0x39424e);
+const SUN = new Color(0xffb000);
+
+/** The tint of a string at `share` of its peak; unassigned, or without a value, grey. */
+export function shareColour(share: number | null): number {
+  return share === null ? UNASSIGNED : DIM.clone().lerp(SUN, share).getHex();
+}
+
+/** Recolours the group's modules by their strings' shares of peak, in `buildScene`'s order. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
+export function tint(group: Group, shares: readonly (number | null)[]): void {
+  for (const [i, mesh] of group.getObjectsByProperty("name", "module").entries()) {
+    if (mesh instanceof Mesh && mesh.material instanceof MeshStandardMaterial) {
+      mesh.material.color.setHex(shareColour(shares[i] ?? null));
+    }
+  }
 }
 
 /** `stringColour` as CSS. */
@@ -133,7 +157,19 @@ function panel({ corners, string }: Panel): Mesh {
   return mesh;
 }
 
-/** The scene's meshes: one per surface kind, one per solid, one per placed module. */
+function marker({ at }: Mount): Mesh {
+  const box = new Mesh(
+    new BoxGeometry(0.5, 0.6, 0.5),
+    new MeshStandardMaterial({ color: EQUIPMENT, flatShading: true }),
+  );
+
+  box.position.set(...toThree(at));
+  box.name = "equipment";
+
+  return box;
+}
+
+/** The scene's meshes: one per surface kind, solid, placed module and equipment marker. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
 
@@ -143,6 +179,7 @@ export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): G
     surface("obstacle", geometry.faces),
     ...geometry.solids.map((obstacle) => solid(obstacle)),
     ...panels.map((item) => panel(item)),
+    ...(geometry.mounts ?? []).map((mount) => marker(mount)),
   );
 
   return group;

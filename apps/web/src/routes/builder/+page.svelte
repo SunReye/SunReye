@@ -14,10 +14,11 @@
 
   /** The crate, the layout in force and the module types; without a layout, an empty one. */
   async function load() {
-    const [pv, layout, moduleTypes] = await Promise.all([
+    const [pv, layout, moduleTypes, devices] = await Promise.all([
       fetch(wasm).then(async (response) => loadPv(new Uint8Array(await response.arrayBuffer()))),
       core.layout(),
       core.moduleTypes(),
+      core.devices(),
     ]);
 
     const empty = emptyDraft();
@@ -29,6 +30,8 @@
           ? empty
           : { scene: layout.scene ?? empty.scene, strings: layout.strings },
       moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
+      // A viewer lists no devices; they view and place nothing.
+      devices: "problem" in devices ? [] : devices,
     };
   }
 </script>
@@ -41,8 +44,8 @@
   {#if webgl2}
     {#await load()}
       <p>{m.builder_loading()}</p>
-    {:then { pv, start, moduleTypes }}
-      <Builder {pv} {core} {start} {moduleTypes} />
+    {:then { pv, start, moduleTypes, devices }}
+      <Builder {pv} {core} {start} {moduleTypes} {devices} />
     {/await}
   {:else}
     <p>{m.builder_no_webgl()}</p>

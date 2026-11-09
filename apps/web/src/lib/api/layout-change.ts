@@ -34,6 +34,7 @@ export function body({
           modules: [...modules],
         }),
       ),
+      equipment: [...(scene.equipment ?? [])],
     },
   };
 }

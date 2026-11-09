@@ -30,6 +30,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
         }],
         obstacles: vec![],
         grids,
+        equipment: vec![],
     }
 }
 

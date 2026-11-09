@@ -67,6 +67,20 @@ test("removing a block drops its grids and renumbers those of later blocks", () 
   expect(withoutBlock(two, 0).grids?.map((grid) => [grid.block, grid.face])).toEqual([[0, 1]]);
 });
 
+test("removing a block drops the equipment on its walls and renumbers that of later blocks", () => {
+  const marker = { device: 1, kind: "inverter", wall: "front", along: 1, inside: false } as const;
+
+  const marked: Scene = {
+    ...empty,
+    equipment: [
+      { ...marker, block: 0 },
+      { ...marker, block: 1, kind: "battery" },
+    ],
+  };
+
+  expect(withoutBlock(marked, 0).equipment).toEqual([{ ...marker, block: 0, kind: "battery" }]);
+});
+
 test("removing a string unassigns its modules and renumbers later strings", () => {
   let scene = apply(gridded, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
 
