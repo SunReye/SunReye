@@ -37,6 +37,7 @@ mod layout;
 mod live;
 mod location;
 mod profiles;
+mod roles;
 mod screen;
 mod secrets;
 mod settings;

@@ -44,6 +44,7 @@ const METHOD: Problem = Problem {
 
 mod forecasts;
 mod history;
+mod roles;
 
 #[derive(OpenApi)]
 #[openapi(info(title = "SunReye", version = "1"))]
@@ -74,6 +75,7 @@ pub fn router(api: Api) -> Router {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(live_values))
+                .routes(routes!(roles::role))
                 .with_state(api.live),
         )
         .merge(
@@ -322,6 +324,8 @@ pub enum Code {
     HistoryCounter,
     #[serde(rename = "forecast.range")]
     ForecastRange,
+    #[serde(rename = "role.none")]
+    RoleNone,
     #[serde(rename = "layout.none")]
     LayoutNone,
     #[serde(rename = "layout.device")]

@@ -20,6 +20,7 @@
   "problem_history_range": "This range is empty or too long.",
   "problem_history_counter": "A counter has no means over this range.",
   "problem_forecast_range": "This forecast range is empty or too long.",
+  "problem_role_none": "This device reports no live value for this role.",
   "problem_layout_none": "No PV layout has been set up yet.",
   "problem_layout_device": "A string is wired to an unknown device.",
   "problem_layout_input": "A string names an MPPT input the device does not have.",

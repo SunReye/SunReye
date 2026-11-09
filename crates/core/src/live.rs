@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use utoipa::ToSchema;
 
-use crate::bus::{Bus, DeviceId, Reading, SeriesId};
+use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
 
 const TICK: Duration = Duration::from_secs(1);
 /// Deltas a client may fall behind by before its stream ends; it reconnects to a snapshot.
@@ -73,6 +73,17 @@ impl Live {
         let deltas = shared.deltas.subscribe();
         drop(shared);
         (snapshot, deltas)
+    }
+
+    /// The latest value of `series` from `device`, as of the last tick.
+    #[must_use]
+    pub fn value(&self, device: DeviceId, series: &Series) -> Option<f64> {
+        let shared = self.0.shared.lock().unwrap_or_else(PoisonError::into_inner);
+        shared
+            .values
+            .iter()
+            .find(|&(&(d, id), _)| d == device.0 && self.0.bus.series(id).as_ref() == Some(series))
+            .map(|(_, &value)| value)
     }
 }
 
