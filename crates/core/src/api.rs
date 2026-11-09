@@ -334,6 +334,14 @@ pub enum Code {
     LayoutModuleType,
     #[serde(rename = "layout.value")]
     LayoutValue,
+    /// A scene's grid names no roof face, or a module no string of the layout or one of
+    /// another module type.
+    #[serde(rename = "layout.scene")]
+    LayoutScene,
+    #[serde(rename = "layout.setback")]
+    LayoutSetback,
+    #[serde(rename = "layout.overlap")]
+    LayoutOverlap,
     #[serde(rename = "topology.none")]
     TopologyNone,
     #[serde(rename = "topology.tree")]

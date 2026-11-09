@@ -1,7 +1,8 @@
 //! The PV layout (ADR 17): module types and strings wired to inverters' MPPT inputs.
 //!
-//! The layout module owns the `module_type`, `pv_string`, `layout` and `layout_string` tables.
-//! Ids are never reused; a change is a new version applying from its instant.
+//! The layout module owns the `module_type`, `pv_string`, `layout`, `layout_string` and
+//! `layout_scene` tables. Ids are never reused; a change is a new version applying from its
+//! instant. A version with a scene (ADR 20) derives its strings' planes and module counts from it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, PoisonError, RwLock};
@@ -14,6 +15,7 @@ use axum::http::StatusCode;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sunreye_profile::Profile;
+use sunreye_pv::{self as pv, Scene};
 use tokio::sync::watch;
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
@@ -22,6 +24,8 @@ use utoipa_axum::routes;
 use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
+
+mod scene;
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -39,6 +43,8 @@ const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
     code: Code::Internal,
 };
+/// °C: the cell temperature strings are sized for (ADR 20).
+const COLD: f64 = -10.0;
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
@@ -54,6 +60,12 @@ enum Refusal {
     ModuleType,
     /// A value out of its physical range.
     Value,
+    /// A scene's grid names no roof face, or a module no string or one of another module type.
+    Scene,
+    /// A module crosses its face's setback.
+    Setback,
+    /// Two modules share a cell.
+    Overlap,
 }
 
 impl From<Refusal> for Problem {
@@ -64,6 +76,9 @@ impl From<Refusal> for Problem {
             Refusal::String => Code::LayoutString,
             Refusal::ModuleType => Code::LayoutModuleType,
             Refusal::Value => Code::LayoutValue,
+            Refusal::Scene => Code::LayoutScene,
+            Refusal::Setback => Code::LayoutSetback,
+            Refusal::Overlap => Code::LayoutOverlap,
         };
         Self {
             status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -120,6 +135,24 @@ pub struct Datasheet {
     pub bypass_diodes: u8,
 }
 
+impl Datasheet {
+    /// The values the `pv` model uses.
+    #[must_use]
+    pub const fn model(&self) -> pv::ModuleType {
+        pv::ModuleType {
+            vmp: self.vmp,
+            imp: self.imp,
+            voc: self.voc,
+            isc: self.isc,
+            voltage_coefficient: self.voltage_coefficient,
+            current_coefficient: self.current_coefficient,
+            width: self.width,
+            height: self.height,
+            bypass_diodes: self.bypass_diodes,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct ModuleType {
     /// Stable; never reused.
@@ -128,7 +161,8 @@ pub struct ModuleType {
     pub datasheet: Datasheet,
 }
 
-/// Where a string sits and what it is made of.
+/// Where a string sits and what it is made of. With a scene, its module counts and plane are
+/// derived: the plane is that of its first module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Wiring {
@@ -172,6 +206,8 @@ pub struct StringDraft {
 pub struct Version {
     pub applies_from: SystemTime,
     pub strings: Vec<PvString>,
+    /// Its modules name their string by id.
+    pub scene: Option<Scene>,
 }
 
 impl Version {
@@ -191,6 +227,18 @@ impl Version {
         }
         estimated
     }
+}
+
+/// A string whose open-circuit voltage in the cold exceeds its inverter's maximum DC input
+/// voltage: saved all the same, since the plant may already exist (ADR 20).
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Warning {
+    pub string: u32,
+    /// Volts at −10 °C.
+    pub open_circuit_voltage: f64,
+    /// Volts, from the inverter's profile.
+    pub max_input_voltage: f64,
 }
 
 /// The version in force at `at`; `versions` in the order [`Layouts::versions`] returns.
@@ -269,19 +317,49 @@ impl Layouts {
     pub async fn change(
         &self,
         applies_from: SystemTime,
-        strings: Vec<StringDraft>,
+        mut strings: Vec<StringDraft>,
+        scene: Option<Scene>,
         changed: SystemTime,
     ) -> Result<Version, Problem> {
+        if let Some(scene) = &scene {
+            let module_types = self.module_types().await.map_err(|_| INTERNAL)?;
+            scene::derive(scene, &mut strings, &module_types)?;
+        }
         for draft in &strings {
             self.check(&draft.wiring)?;
         }
         let stored = self
             .database
-            .run(move |db| insert_version(db, applies_from, strings, changed))
+            .run(move |db| insert_version(db, applies_from, strings, scene, changed))
             .await
             .map_err(|_| INTERNAL)??;
         self.changed.send_replace(());
         Ok(stored)
+    }
+
+    /// Each string of `version` whose open-circuit voltage at −10 °C exceeds its inverter's
+    /// maximum DC input voltage (ADR 20).
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn warnings(&self, version: &Version) -> Result<Vec<Warning>, Error> {
+        let module_types = self.module_types().await?;
+        Ok(version
+            .strings
+            .iter()
+            .filter_map(|string| {
+                let w = &string.wiring;
+                let module = module_types.iter().find(|m| m.id == w.module_type)?;
+                let profile = self.inverters.profile(DeviceId(w.device))?;
+                let limit = profile.inverter()?.max_input_voltage;
+                let voltage = pv::open_circuit_voltage(&module.datasheet.model(), w.modules, COLD);
+                (voltage > limit).then_some(Warning {
+                    string: string.id,
+                    open_circuit_voltage: voltage,
+                    max_input_voltage: limit,
+                })
+            })
+            .collect())
     }
 
     fn check(&self, wiring: &Wiring) -> Result<(), Refusal> {
@@ -388,6 +466,7 @@ fn insert_version(
     db: &Connection,
     applies_from: SystemTime,
     drafts: Vec<StringDraft>,
+    scene: Option<Scene>,
     changed: SystemTime,
 ) -> rusqlite::Result<Result<Version, Refusal>> {
     let tx = db.unchecked_transaction()?;
@@ -420,10 +499,26 @@ fn insert_version(
     for s in &strings {
         insert_string(&tx, layout, s)?;
     }
+    // The drafts' positions become the strings' ids.
+    let scene = scene.map(|scene| {
+        scene::renumber(&scene, |at| {
+            let at = usize::try_from(at).ok()?;
+            strings.get(at).map(|s| s.id)
+        })
+    });
+    if let Some(scene) = &scene {
+        let json = serde_json::to_string(scene)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        tx.execute(
+            "INSERT INTO layout_scene (layout, scene) VALUES (?1, ?2)",
+            params![layout, json],
+        )?;
+    }
     tx.commit()?;
     Ok(Ok(Version {
         applies_from: time(seconds(applies_from)),
         strings,
+        scene,
     }))
 }
 
@@ -474,13 +569,26 @@ fn read_versions(db: &Connection) -> rusqlite::Result<Vec<Version>> {
         "SELECT string, name, module_type, device, input, modules, optimized, tilt, azimuth, loss
          FROM layout_string WHERE layout = ?1 ORDER BY string",
     )?;
-    let layouts: Vec<(i64, i64)> = db
-        .prepare("SELECT id, applies_from FROM layout ORDER BY applies_from, id")?
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+    let layouts: Vec<(i64, i64, Option<String>)> = db
+        .prepare(
+            "SELECT id, applies_from, scene FROM layout LEFT JOIN layout_scene ON layout = id
+             ORDER BY applies_from, id",
+        )?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<rusqlite::Result<_>>()?;
     layouts
         .into_iter()
-        .map(|(id, applies_from)| {
+        .map(|(id, applies_from, scene)| {
+            let scene = scene
+                .map(|json| serde_json::from_str(&json))
+                .transpose()
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        2,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                })?;
             let strings = strings
                 .query_map([id], |row| {
                     Ok(PvString {
@@ -502,6 +610,7 @@ fn read_versions(db: &Connection) -> rusqlite::Result<Vec<Version>> {
             Ok(Version {
                 applies_from: time(applies_from),
                 strings,
+                scene,
             })
         })
         .collect()
@@ -545,15 +654,28 @@ struct Layout {
     /// RFC 3339, UTC.
     applies_from: String,
     strings: Vec<PvString>,
+    /// Its modules name their string by position in `strings`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scene: Option<Scene>,
+    warnings: Vec<Warning>,
 }
 
-impl From<&Version> for Layout {
-    fn from(version: &Version) -> Self {
+impl Layout {
+    fn new(version: &Version, warnings: Vec<Warning>) -> Self {
+        let position = |id| {
+            let at = version.strings.iter().position(|s: &PvString| s.id == id)?;
+            u32::try_from(at).ok()
+        };
         Self {
             applies_from: jiff::Timestamp::try_from(version.applies_from)
                 .map(|t| t.to_string())
                 .unwrap_or_default(),
             strings: version.strings.clone(),
+            scene: version
+                .scene
+                .as_ref()
+                .map(|scene| scene::renumber(scene, position)),
+            warnings,
         }
     }
 }
@@ -577,33 +699,39 @@ async fn layout(
     let Query(At { at }) = at.map_err(|_| QUERY)?;
     let at = at.as_deref().map_or_else(|| Ok(clock()), instant)?;
     let versions = layouts.versions().await.map_err(|_| INTERNAL)?;
-    in_force(&versions, at).map(|v| Json(v.into())).ok_or(NONE)
+    let version = in_force(&versions, at).ok_or(NONE)?;
+    let warnings = layouts.warnings(version).await.map_err(|_| INTERNAL)?;
+    Ok(Json(Layout::new(version, warnings)))
 }
 
 /// A layout change: every string, applying from an instant on.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct Change {
+struct LayoutChange {
     /// RFC 3339.
     applies_from: String,
     strings: Vec<StringDraft>,
+    /// Its modules name their string by position in `strings`; it decides their module counts
+    /// and planes.
+    scene: Option<Scene>,
 }
 
 /// Changes the layout from an instant on; new strings get fresh ids.
-#[utoipa::path(put, path = "/api/v1/layout", request_body = Change, responses(
+#[utoipa::path(put, path = "/api/v1/layout", request_body = LayoutChange, responses(
     (status = 200, body = Layout),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn change_layout(
     State((layouts, clock)): LayoutState,
-    body: Result<Json<Change>, JsonRejection>,
+    body: Result<Json<LayoutChange>, JsonRejection>,
 ) -> Result<Json<Layout>, Problem> {
     let Json(change) = body.map_err(|_| BODY)?;
     let applies_from = instant(&change.applies_from).map_err(|_| BODY)?;
     let version = layouts
-        .change(applies_from, change.strings, clock())
+        .change(applies_from, change.strings, change.scene, clock())
         .await?;
-    Ok(Json((&version).into()))
+    let warnings = layouts.warnings(&version).await.map_err(|_| INTERNAL)?;
+    Ok(Json(Layout::new(&version, warnings)))
 }
 
 fn instant(text: &str) -> Result<SystemTime, Problem> {

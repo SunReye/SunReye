@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::Profile;
+use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Roof, Scene};
 use tokio::sync::watch;
 
 use super::SolarForecast;
@@ -157,6 +158,7 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
                 plant.string(None, 1, 180.0, 16),
                 plant.string(None, 2, 0.0, 14),
             ],
+            None,
             at(0),
         )
         .await
@@ -190,12 +192,17 @@ async fn a_layout_change_applies_from_its_date() {
     let plant = plant(&targets).await;
     let before = plant
         .layouts
-        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], at(0))
+        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
         .await
         .unwrap();
     let after = plant
         .layouts
-        .change(at(NOON + HOUR), vec![plant.string(None, 2, 0.0, 14)], at(0))
+        .change(
+            at(NOON + HOUR),
+            vec![plant.string(None, 2, 0.0, 14)],
+            None,
+            at(0),
+        )
         .await
         .unwrap();
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
@@ -238,6 +245,7 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
         .change(
             at(0),
             vec![plant.string(None, 1, 0.0, 16), optimized],
+            None,
             at(0),
         )
         .await
@@ -256,6 +264,81 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
     let (plain, optimized) = (power(0).await, power(1).await);
     // Equal modules in one sun: each optimizer delivers its module's own peak less 1 %.
     assert_near(optimized, 0.99 * plain, "optimized");
+}
+
+/// A 10 m × 8 m gable house at 35°: on its south face, string 0 fills the left four columns
+/// and string 1 the right four, behind a 15 m wall 1 m in front of the left half.
+fn walled_house(module_type: u32) -> Scene {
+    let cells = (0..2).flat_map(|row| {
+        (0..8).map(move |column| Cell {
+            row,
+            column,
+            string: Some(column / 4),
+            optimized: false,
+        })
+    });
+    Scene {
+        north: 0.0,
+        blocks: vec![Block {
+            x: 0.0,
+            z: 0.0,
+            width: 10.0,
+            depth: 8.0,
+            eave: 3.0,
+            rotation: 0.0,
+            roof: Roof::Gable { pitch: 35.0 },
+        }],
+        obstacles: vec![Obstacle::Box {
+            x: -3.0,
+            z: 9.0,
+            width: 7.9,
+            depth: 0.3,
+            height: 15.0,
+            rotation: 0.0,
+        }],
+        grids: vec![ModuleGrid {
+            block: 0,
+            face: 1,
+            module_type,
+            landscape: false,
+            setback: 0.3,
+            modules: cells.collect(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast() {
+    let plant = plant(&[NOON]).await;
+    // The scene decides the module counts and planes, whatever the drafts say.
+    let layout = plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 90.0, 1),
+                plant.string(None, 2, 90.0, 1),
+            ],
+            Some(walled_house(plant.module_type)),
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let power = async |i: usize| {
+        let id = layout.strings[i].id;
+        plant.forecast("pv.string.power", Some(id), &[NOON]).await[0]
+    };
+    let (walled, open) = (power(0).await, power(1).await);
+    assert!(open > 2000.0, "eight modules in the noon sun: {open} W");
+    // Behind the wall only diffuse light is left.
+    assert!(walled < 0.4 * open, "walled {walled} W, open {open} W");
 }
 
 impl Plant {
@@ -293,7 +376,11 @@ fn ticking() -> impl Fn() -> SystemTime + Sync {
 async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change() {
     let plant = plant(&[NOON]).await;
     let drafts = vec![plant.string(None, 1, 0.0, 16)];
-    let layout = plant.layouts.change(at(0), drafts, at(0)).await.unwrap();
+    let layout = plant
+        .layouts
+        .change(at(0), drafts, None, at(0))
+        .await
+        .unwrap();
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
     let (_location, berlin) = watch::channel(Some(BERLIN));
     let (weather, issues) = watch::channel(None);
@@ -305,7 +392,7 @@ async fn it_issues_on_start_after_each_weather_issue_and_after_a_layout_change()
         let kept = plant.string(Some(layout.strings[0].id), 2, 0.0, 16);
         plant
             .layouts
-            .change(at(0), vec![kept], at(0))
+            .change(at(0), vec![kept], None, at(0))
             .await
             .unwrap();
         assert_eq!(plant.issues(3).await.len(), 3);

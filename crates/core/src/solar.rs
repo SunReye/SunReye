@@ -11,7 +11,7 @@ use sunreye_pv as pv;
 use tokio::sync::watch;
 
 use crate::bus::{Bus, DeviceId};
-use crate::layout::{Datasheet, Inverters, Layouts, PvString, Version, in_force};
+use crate::layout::{Inverters, Layouts, PvString, Version, in_force};
 use crate::location::Location;
 use crate::storage::{self, Issue, Storage};
 
@@ -103,7 +103,7 @@ impl SolarForecast {
             .module_types()
             .await?
             .into_iter()
-            .map(|m| (m.id, module_type(&m.datasheet)))
+            .map(|m| (m.id, m.datasheet.model()))
             .collect();
         let versions = self.layouts.versions().await?;
         let mut series: BTreeMap<Key, Vec<(SystemTime, f64)>> = versions
@@ -200,6 +200,9 @@ struct InputPlace {
     strings: Vec<u32>,
 }
 
+/// The scene's modules by string id.
+type Placed = HashMap<u32, Vec<pv::Module>>;
+
 /// A version's strings by inverter device, then MPPT input.
 type Wired<'a> = BTreeMap<u32, BTreeMap<u32, Vec<&'a PvString>>>;
 
@@ -210,6 +213,7 @@ impl Model {
         inverters: &Inverters,
         location: Location,
     ) -> Self {
+        let (by_string, occluders) = scene(version, module_types);
         let mut wired: Wired<'_> = BTreeMap::new();
         for string in &version.strings {
             let w = &string.wiring;
@@ -231,7 +235,9 @@ impl Model {
                     .unwrap_or_default();
                 let (inputs, places) = inputs
                     .into_iter()
-                    .map(|(index, strings)| input(index, &strings, declared, module_types))
+                    .map(|(index, strings)| {
+                        input(index, &strings, declared, module_types, &by_string)
+                    })
                     .unzip();
                 let inverter = pv::Inverter {
                     ac_rating: None,
@@ -252,7 +258,7 @@ impl Model {
             layout: pv::Layout {
                 location,
                 inverters,
-                occluders: Vec::new(),
+                occluders,
             },
             places,
         }
@@ -277,12 +283,38 @@ impl Model {
     }
 }
 
+/// The modules the version's scene places, by string id, and what shades them.
+fn scene(
+    version: &Version,
+    module_types: &HashMap<u32, pv::ModuleType>,
+) -> (Placed, Vec<pv::Occluder>) {
+    let Some(scene) = &version.scene else {
+        return (HashMap::new(), Vec::new());
+    };
+    let size = |id| {
+        let m: &pv::ModuleType = module_types.get(&id)?;
+        Some(pv::Size {
+            width: m.width,
+            height: m.height,
+        })
+    };
+    let mut by_string: Placed = HashMap::new();
+    // Saving checked the scene, so it places every module.
+    for placed in scene.modules(size).unwrap_or_default() {
+        if let Some(id) = placed.string {
+            by_string.entry(id).or_default().push(placed.module);
+        }
+    }
+    (by_string, scene.occluders())
+}
+
 /// One MPPT input of the model, with its limits from the profile (ADR 5), and its place.
 fn input(
     index: u32,
     strings: &[&PvString],
     declared: &[sunreye_profile::Mppt],
     module_types: &HashMap<u32, pv::ModuleType>,
+    placed: &Placed,
 ) -> (pv::Input, InputPlace) {
     let limits = usize::try_from(index)
         .ok()
@@ -295,7 +327,12 @@ fn input(
         });
     let modelled: Vec<(u32, pv::PvString)> = strings
         .iter()
-        .filter_map(|s| Some((s.id, string(s, *module_types.get(&s.wiring.module_type)?))))
+        .filter_map(|s| {
+            Some((
+                s.id,
+                string(s, *module_types.get(&s.wiring.module_type)?, placed),
+            ))
+        })
         .collect();
     let place = InputPlace {
         index,
@@ -308,23 +345,17 @@ fn input(
     (input, place)
 }
 
-const fn module_type(d: &Datasheet) -> pv::ModuleType {
-    pv::ModuleType {
-        vmp: d.vmp,
-        imp: d.imp,
-        voc: d.voc,
-        isc: d.isc,
-        voltage_coefficient: d.voltage_coefficient,
-        current_coefficient: d.current_coefficient,
-        width: d.width,
-        height: d.height,
-        bypass_diodes: d.bypass_diodes,
-    }
-}
-
-/// A form-entered string: one plane, a count of optimized modules (ADR 17).
-fn string(string: &PvString, module: pv::ModuleType) -> pv::PvString {
+/// A string with its modules where the scene places them (ADR 20); entered by form, on one
+/// plane with a count of optimized modules (ADR 17).
+fn string(string: &PvString, module: pv::ModuleType, placed: &Placed) -> pv::PvString {
     let w = &string.wiring;
+    if let Some(modules) = placed.get(&string.id) {
+        return pv::PvString {
+            module,
+            modules: modules.clone(),
+            loss: w.loss,
+        };
+    }
     let plane = pv::Plane {
         tilt: w.tilt,
         azimuth: w.azimuth,

@@ -50,6 +50,51 @@
         ],
         "type": "object"
       },
+      "Block": {
+        "additionalProperties": false,
+        "description": "A rectangular footprint with one roof. Its width runs along x and its depth along z from its\ncorner, before it turns.",
+        "properties": {
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "eave": {
+            "description": "The walls' height under the roof.",
+            "format": "double",
+            "type": "number"
+          },
+          "roof": {
+            "$ref": "#/components/schemas/Roof"
+          },
+          "rotation": {
+            "description": "Degrees clockwise about the corner, seen from above.",
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z",
+          "width",
+          "depth",
+          "eave",
+          "rotation",
+          "roof"
+        ],
+        "type": "object"
+      },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
         "properties": {
@@ -65,6 +110,39 @@
         "required": [
           "min",
           "max"
+        ],
+        "type": "object"
+      },
+      "Cell": {
+        "additionalProperties": false,
+        "description": "A module in one cell: rows count up the slope, columns across it, both from 0.",
+        "properties": {
+          "column": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "optimized": {
+            "type": "boolean"
+          },
+          "row": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "string": {
+            "description": "The string it is painted into; unassigned, it produces nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "row",
+          "column"
         ],
         "type": "object"
       },
@@ -139,6 +217,9 @@
           "layout.string",
           "layout.module-type",
           "layout.value",
+          "layout.scene",
+          "layout.setback",
+          "layout.overlap",
           "topology.none",
           "topology.tree",
           "topology.point",
@@ -755,9 +836,58 @@
             "description": "RFC 3339, UTC.",
             "type": "string"
           },
+          "scene": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Scene",
+                "description": "Its modules name their string by position in `strings`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "strings": {
             "items": {
               "$ref": "#/components/schemas/PvString"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "strings",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "LayoutChange": {
+        "description": "A layout change: every string, applying from an instant on.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339.",
+            "type": "string"
+          },
+          "scene": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Scene",
+                "description": "Its modules name their string by position in `strings`; it decides their module counts\nand planes."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strings": {
+            "items": {
+              "$ref": "#/components/schemas/StringDraft"
             },
             "type": "array"
           }
@@ -797,6 +927,52 @@
         },
         "required": [
           "changes"
+        ],
+        "type": "object"
+      },
+      "ModuleGrid": {
+        "additionalProperties": false,
+        "description": "The modules on one roof face.",
+        "properties": {
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "face": {
+            "description": "The roof face's index in its block, in the order the `pv` crate lists a block's roof faces.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "landscape": {
+            "description": "Long side across the slope.",
+            "type": "boolean"
+          },
+          "moduleType": {
+            "description": "The id of the module type, which sizes the cells.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/Cell"
+            },
+            "type": "array"
+          },
+          "setback": {
+            "description": "Metres kept free along every edge of the face.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "moduleType",
+          "landscape",
+          "setback",
+          "modules"
         ],
         "type": "object"
       },
@@ -846,6 +1022,126 @@
           "url"
         ],
         "type": "object"
+      },
+      "Obstacle": {
+        "description": "Opaque things that cast shade. Positions are a box's corner, else the foot's centre.",
+        "oneOf": [
+          {
+            "description": "A neighbour or a wall.",
+            "properties": {
+              "depth": {
+                "format": "double",
+                "type": "number"
+              },
+              "height": {
+                "format": "double",
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "box"
+                ],
+                "type": "string"
+              },
+              "rotation": {
+                "format": "double",
+                "type": "number"
+              },
+              "width": {
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "z": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "z",
+              "width",
+              "depth",
+              "height",
+              "rotation",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A chimney or a pole.",
+            "properties": {
+              "height": {
+                "format": "double",
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "cylinder"
+                ],
+                "type": "string"
+              },
+              "radius": {
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "z": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "z",
+              "radius",
+              "height",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A trunk under a sphere crown of `radius` whose top is at `height`.",
+            "properties": {
+              "height": {
+                "format": "double",
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "tree"
+                ],
+                "type": "string"
+              },
+              "radius": {
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "z": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "z",
+              "radius",
+              "height",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "Offer": {
         "description": "One entry of an index and what became of it.",
@@ -1145,6 +1441,121 @@
           "official",
           "checked",
           "profiles"
+        ],
+        "type": "object"
+      },
+      "Roof": {
+        "description": "Pitches in degrees from horizontal.",
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "flat"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Rises from the front eave (+z) to the back.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "monoPitch"
+                ],
+                "type": "string"
+              },
+              "pitch": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pitch",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Its ridge runs along the width.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "gable"
+                ],
+                "type": "string"
+              },
+              "pitch": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pitch",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Its ridge runs along the longer side.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "hip"
+                ],
+                "type": "string"
+              },
+              "pitch": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "pitch",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Scene": {
+        "additionalProperties": false,
+        "description": "The geometry of a plant and where its modules sit.",
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/Block"
+            },
+            "type": "array"
+          },
+          "grids": {
+            "description": "At most one per roof face.",
+            "items": {
+              "$ref": "#/components/schemas/ModuleGrid"
+            },
+            "type": "array"
+          },
+          "north": {
+            "description": "The compass bearing, in degrees clockwise from true north, of the scene's forward axis, −z.",
+            "format": "double",
+            "type": "number"
+          },
+          "obstacles": {
+            "items": {
+              "$ref": "#/components/schemas/Obstacle"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "north",
+          "blocks",
+          "obstacles"
         ],
         "type": "object"
       },
@@ -1567,8 +1978,34 @@
         ],
         "type": "object"
       },
+      "Warning": {
+        "description": "A string whose open-circuit voltage in the cold exceeds its inverter's maximum DC input\nvoltage: saved all the same, since the plant may already exist (ADR 20).",
+        "properties": {
+          "maxInputVoltage": {
+            "description": "Volts, from the inverter's profile.",
+            "format": "double",
+            "type": "number"
+          },
+          "openCircuitVoltage": {
+            "description": "Volts at −10 °C.",
+            "format": "double",
+            "type": "number"
+          },
+          "string": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "string",
+          "openCircuitVoltage",
+          "maxInputVoltage"
+        ],
+        "type": "object"
+      },
       "Wiring": {
-        "description": "Where a string sits and what it is made of.",
+        "description": "Where a string sits and what it is made of. With a scene, its module counts and plane are\nderived: the plane is that of its first module.",
         "properties": {
           "azimuth": {
             "description": "Degrees: 0 south, −90 east, 90 west.",
@@ -2372,7 +2809,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Change"
+                "$ref": "#/components/schemas/LayoutChange"
               }
             }
           },
