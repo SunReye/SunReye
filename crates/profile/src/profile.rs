@@ -21,6 +21,7 @@ pub struct Profile {
     plan: Vec<Block>,
     inverter: Option<Inverter>,
     settings: Vec<Setting>,
+    warnings: Vec<String>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -172,6 +173,9 @@ impl Profile {
             return Err(LoadError::MissingCapability(missing.clone()));
         }
         doc.inverter.as_ref().map_or(Ok(()), check)?;
+        let warnings = unrequired(&doc)
+            .map(|name| format!("`requires` lacks `{name}`, which the profile uses"))
+            .collect();
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
         let settings = setting::compile(doc.settings)
@@ -185,7 +189,15 @@ impl Profile {
             plan,
             inverter: doc.inverter,
             settings,
+            warnings,
         })
+    }
+
+    /// What the profile should not say but may: the text the CLI, the core log and the SPA all
+    /// show (ADR 5).
+    #[must_use]
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// The inverter's DC side, when the profile declares one.
@@ -232,6 +244,38 @@ fn check(inverter: &Inverter) -> Result<(), LoadError> {
                 problem: "the voltage window is inverted",
             })
         })
+}
+
+/// Capabilities the profile uses but does not require, in table order: an older core lacking one
+/// would refuse the profile without naming the capability.
+fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
+    let quantities = doc.quantities.iter();
+    let kinds = quantities
+        .clone()
+        .filter_map(|q| q.kind)
+        .chain(doc.settings.iter().map(|s| s.kind));
+    let used: Vec<&str> = kinds
+        .map(|kind| match kind {
+            Kind::U16 => "u16",
+            Kind::I16 => "i16",
+            Kind::U32 => "u32",
+        })
+        .chain(
+            (quantities.clone().any(|q| q.register.is_some()) || !doc.settings.is_empty())
+                .then_some("modbus"),
+        )
+        .chain(
+            quantities
+                .clone()
+                .any(|q| q.compute.is_some())
+                .then_some("compute"),
+        )
+        .chain((!doc.settings.is_empty()).then_some("write"))
+        .collect();
+    CAPABILITIES
+        .iter()
+        .copied()
+        .filter(move |name| used.contains(name) && !doc.requires.iter().any(|r| r == name))
 }
 
 fn malformed(error: &serde_json::Error) -> LoadError {

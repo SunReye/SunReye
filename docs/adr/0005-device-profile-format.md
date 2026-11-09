@@ -14,6 +14,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 - A new binding, decoder or step kind is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
 - A core that lacks a required capability refuses the profile with an error naming it.
+- A profile that uses a capability without listing it in `requires` loads with a warning: an older core lacking it would refuse the profile without naming it.
 - The current and previous schema load. The previous one yields deprecation warnings that name the replacement and the removal version.
 - A removed schema is refused with an error naming the migration. Removal happens only in a major release. `migrate` rewrites an old profile.
 - Warnings are data from the WASM, so the CLI, the core log and the SPA show identical text.
