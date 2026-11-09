@@ -51,6 +51,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "unlock",
       "delay",
       "snapshot-toggle",
+      "publish",
     ],
   });
 });

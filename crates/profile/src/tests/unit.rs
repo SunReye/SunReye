@@ -82,3 +82,25 @@ fn each_role_carries_its_kind_from_adr_4() {
         ]
     );
 }
+
+#[test]
+fn a_loadpoints_settings_read_as_ev_roles() {
+    let profile = load(&[
+        ("ev.mode", None),
+        ("ev.battery.boost", None),
+        ("ev.limit.soc", None),
+    ]);
+    let read: Vec<(RoleKind, Option<Unit>)> = profile
+        .quantities()
+        .iter()
+        .map(|q| (q.kind(), q.unit()))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (RoleKind::Status, None),
+            (RoleKind::Status, None),
+            (RoleKind::Measurement, Some(Unit::Percent)),
+        ]
+    );
+}

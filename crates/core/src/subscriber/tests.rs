@@ -2,7 +2,7 @@
 //!
 //! The topics and units are EVCC's MQTT API, <https://docs.evcc.io/en/integrations/mqtt-api>:
 //! loadpoint ids begin at 1, session energy is in Wh. The payloads were recorded in v4 from a
-//! live EVCC 0.301 with one loadpoint; an unset value is an empty payload.
+//! live EVCC 0.301 with one loadpoint; an unset value is an empty payload, and the mode is text.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -94,7 +94,7 @@ async fn each_loadpoint_reads_its_own_topics_as_ev_roles() {
         bus.clone(),
     );
 
-    let seen = latest(&bus, &mut readings, 9).await;
+    let seen = latest(&bus, &mut readings, 10).await;
 
     assert_eq!(
         seen,
@@ -102,6 +102,7 @@ async fn each_loadpoint_reads_its_own_topics_as_ev_roles() {
             ev(7, "ev.charge.power", 11040.5, Some(Unit::Watt)),
             ev(7, "ev.charging", 1.0, None),
             ev(7, "ev.connected", 1.0, None),
+            ev(7, "ev.mode", 3.0, None),
             ev(7, "ev.session.energy", 4.5, Some(Unit::KilowattHour)),
             ev(7, "ev.vehicle.soc", 63.0, Some(Unit::Percent)),
             ev(8, "ev.charge.power", 0.0, Some(Unit::Watt)),
@@ -156,6 +157,7 @@ async fn the_held_values_are_published_every_cadence_and_an_empty_payload_clears
             ev(7, "ev.charge.power", 7360.0, Some(Unit::Watt)),
             ev(7, "ev.charging", 1.0, None),
             ev(7, "ev.connected", 1.0, None),
+            ev(7, "ev.mode", 3.0, None),
             ev(7, "ev.session.energy", 4.5, Some(Unit::KilowattHour)),
         ]
     );

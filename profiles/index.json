@@ -18,12 +18,15 @@
     },
     {
       "id": "evcc",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "schema": 1,
       "requires": [
-        "mqtt"
+        "mqtt",
+        "u16",
+        "publish",
+        "precondition"
       ],
-      "sha256": "530f14266d27ca9c9fd80f6e71199ed2798e342c2a713512b908e0eb6fa0df8d",
+      "sha256": "0ced6cf0e3f91eecc756590c78f24d61627297ad425b1c976d200409b5bf101d",
       "url": "evcc.json"
     }
   ]

@@ -3,9 +3,12 @@
   "id": "evcc",
   "name": "Loadpoint",
   "manufacturer": "EVCC",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "requires": [
-    "mqtt"
+    "mqtt",
+    "u16",
+    "publish",
+    "precondition"
   ],
   "quantities": [
     {
@@ -33,6 +36,101 @@
       "key": "charging",
       "role": "ev.charging",
       "topic": "loadpoints/{address}/charging"
+    },
+    {
+      "key": "mode",
+      "role": "ev.mode",
+      "topic": "loadpoints/{address}/mode",
+      "enum": {
+        "off": 0,
+        "now": 1,
+        "minpv": 2,
+        "pv": 3
+      }
+    },
+    {
+      "key": "limitSoc",
+      "role": "ev.limit.soc",
+      "topic": "loadpoints/{address}/limitSoc"
+    },
+    {
+      "key": "batteryBoost",
+      "role": "ev.battery.boost",
+      "topic": "loadpoints/{address}/batteryBoost",
+      "enum": {
+        "false": 0,
+        "true": 1
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "mode",
+      "type": "u16",
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "minInterval": 0,
+      "recipe": [
+        {
+          "publish": {
+            "topic": "loadpoints/{address}/mode/set"
+          }
+        }
+      ],
+      "readBack": {
+        "quantity": "mode"
+      }
+    },
+    {
+      "key": "limitSoc",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 0,
+      "recipe": [
+        {
+          "publish": {
+            "topic": "loadpoints/{address}/limitSoc/set"
+          }
+        }
+      ],
+      "readBack": {
+        "quantity": "limitSoc"
+      }
+    },
+    {
+      "key": "batteryBoost",
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 0,
+      "recipe": [
+        {
+          "precondition": {
+            "quantity": "mode",
+            "values": [
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "publish": {
+            "topic": "loadpoints/{address}/batteryBoost/set"
+          }
+        }
+      ],
+      "readBack": {
+        "quantity": "batteryBoost"
+      }
     }
   ]
 }

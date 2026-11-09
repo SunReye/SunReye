@@ -26,10 +26,20 @@ pub struct Fake {
     pub connects: mpsc::UnboundedReceiver<Connect>,
     /// One message per accepted session the client closed.
     pub hung_up: mpsc::UnboundedReceiver<()>,
+    /// Every message a client published, in order.
+    pub published: mpsc::UnboundedReceiver<Published>,
     close: broadcast::Sender<()>,
     retained: Retained,
-    published: broadcast::Sender<(String, String)>,
+    sent: broadcast::Sender<(String, String)>,
     listener: JoinHandle<()>,
+}
+
+/// A message a client published.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Published {
+    pub topic: String,
+    pub payload: String,
+    pub retain: bool,
 }
 
 /// The retained message of each topic, as (topic, payload).
@@ -59,7 +69,7 @@ impl Fake {
 
     /// Sends `payload` on `topic` to the sessions subscribed now.
     pub fn publish(&self, topic: &str, payload: &str) {
-        let _sent = self.published.send((topic.to_owned(), payload.to_owned()));
+        let _sent = self.sent.send((topic.to_owned(), payload.to_owned()));
     }
 }
 
@@ -73,11 +83,12 @@ pub async fn serve(code: u8) -> Fake {
     let address = listener.local_addr().unwrap();
     let (sent, connects) = mpsc::unbounded_channel();
     let (hangs_up, hung_up) = mpsc::unbounded_channel();
+    let (relay, published) = mpsc::unbounded_channel();
     let (close, _) = broadcast::channel(1);
-    let (published, _) = broadcast::channel(64);
+    let (outgoing, _) = broadcast::channel(64);
     let retained = Retained::default();
     let session_close = close.clone();
-    let session_published = published.clone();
+    let session_sent = outgoing.clone();
     let session_retained = Arc::clone(&retained);
     let listener = tokio::spawn(async move {
         loop {
@@ -85,8 +96,9 @@ pub async fn serve(code: u8) -> Fake {
             let channels = Channels {
                 connects: sent.clone(),
                 hangs_up: hangs_up.clone(),
+                publishes: relay.clone(),
                 close: session_close.subscribe(),
-                published: session_published.subscribe(),
+                sent: session_sent.subscribe(),
                 retained: Arc::clone(&session_retained),
             };
             tokio::spawn(session(socket, code, channels));
@@ -96,9 +108,10 @@ pub async fn serve(code: u8) -> Fake {
         address,
         connects,
         hung_up,
+        published,
         close,
         retained,
-        published,
+        sent: outgoing,
         listener,
     }
 }
@@ -106,8 +119,9 @@ pub async fn serve(code: u8) -> Fake {
 struct Channels {
     connects: mpsc::UnboundedSender<Connect>,
     hangs_up: mpsc::UnboundedSender<()>,
+    publishes: mpsc::UnboundedSender<Published>,
     close: broadcast::Receiver<()>,
-    published: broadcast::Receiver<(String, String)>,
+    sent: broadcast::Receiver<(String, String)>,
     retained: Retained,
 }
 
@@ -143,19 +157,33 @@ async fn session(mut socket: TcpStream, code: u8, mut channels: Channels) {
                     }
                     filters.extend(new);
                 }
+                Some((kind, body)) if kind & 0xF0 == 0x30 => {
+                    let _sent = channels.publishes.send(published(kind, &body));
+                }
                 Some(_) => {}
                 None => {
                     let _sent = channels.hangs_up.send(());
                     return;
                 }
             },
-            Ok((topic, payload)) = channels.published.recv() => {
+            Ok((topic, payload)) = channels.sent.recv() => {
                 if filters.iter().any(|f| matches(f, &topic)) {
                     socket.write_all(&publish(&topic, &payload, false)).await.unwrap();
                 }
             }
             _ = channels.close.recv() => return,
         }
+    }
+}
+
+/// A client's PUBLISH: its retain flag, then its topic, a packet id above `QoS` 0 and its payload.
+fn published(kind: u8, body: &[u8]) -> Published {
+    let length = usize::from(u16::from_be_bytes([body[0], body[1]]));
+    let id = if kind & 0x06 == 0 { 0 } else { 2 };
+    Published {
+        topic: String::from_utf8(body[2..2 + length].to_vec()).unwrap(),
+        payload: String::from_utf8(body[2 + length + id..].to_vec()).unwrap(),
+        retain: kind & 0x01 != 0,
     }
 }
 

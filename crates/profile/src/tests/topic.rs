@@ -131,3 +131,31 @@ fn a_topic_without_mqtt_in_requires_is_a_warning() {
 fn a_topic_profile_has_no_read_plan() {
     assert_eq!(profile(&json!([power()])).read_plan(0), []);
 }
+
+/// EVCC's loadpoint mode is a text payload, <https://docs.evcc.io/en/integrations/mqtt-api>.
+#[test]
+fn a_text_payload_reads_as_the_value_its_enum_maps_it_to() {
+    let p = profile(&json!([{ "key": "mode", "role": "ev.mode", "topic": "m",
+        "enum": { "off": 0, "pv": 1, "minpv": 2, "now": 3 } }]));
+    assert_eq!(received(&p, 0, "minpv"), Some(2.0));
+    assert_eq!(received(&p, 0, "\"now\""), None);
+    assert_eq!(received(&p, 0, "fast"), None);
+    assert_eq!(received(&p, 0, "1"), None);
+}
+
+#[test]
+fn only_a_topic_maps_texts() {
+    let registered = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16",
+        "enum": { "on": 1 } }]);
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u16"], "quantities": registered,
+    });
+    assert!(matches!(
+        Profile::load(&doc.to_string()),
+        Err(LoadError::Quantity {
+            problem: "only a topic maps texts",
+            ..
+        })
+    ));
+}

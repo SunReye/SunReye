@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::{Field, LoadError, Profile, Relock, Step};
+use crate::{Field, LoadError, Profile, Relock, Source, Step};
 use serde_json::{Value, json};
 
 fn doc(settings: &Value) -> Value {
@@ -40,10 +40,10 @@ fn a_setting_declares_its_recipe_read_back_and_minimum_interval() {
     assert_eq!(setting.recipe(), [Step::Write { register: 108 }]);
     assert_eq!(
         setting.read_back(),
-        Some(Field {
+        Some(Source::Register(Field {
             register: 109,
             mask: 0xFFFF
-        })
+        }))
     );
     assert_eq!(setting.min_interval(), Duration::from_mins(1));
     assert!(profile.setting("voltage").is_none());
@@ -249,12 +249,15 @@ fn a_masked_write_takes_only_values_its_field_holds_and_reads_back_through_its_m
     );
     assert_eq!(
         mode.read_back(),
-        Some(Field {
+        Some(Source::Register(Field {
             register: 141,
             mask: 0x30
-        })
+        }))
     );
-    assert_eq!(mode.read_back().unwrap().extract(0x1223), 2);
+    let Some(Source::Register(field)) = mode.read_back() else {
+        panic!("a register read-back")
+    };
+    assert_eq!(field.extract(0x1223), 2);
     assert_eq!(mode.encode(3.0), Some(vec![3]));
     assert_eq!(wide.setting("current").unwrap().encode(4.0), None);
     assert_eq!(
@@ -346,17 +349,17 @@ fn preconditions_come_before_every_other_step() {
         profile.setting("current").unwrap().recipe()[..2],
         [
             Step::Precondition {
-                field: Field {
+                source: Source::Register(Field {
                     register: 40,
                     mask: 0xFFFF
-                },
+                }),
                 values: vec![1, 2],
             },
             Step::Precondition {
-                field: Field {
+                source: Source::Register(Field {
                     register: 41,
                     mask: 0x0C
-                },
+                }),
                 values: vec![3],
             },
         ]

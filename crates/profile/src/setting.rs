@@ -3,8 +3,10 @@
 use std::time::Duration;
 
 use crate::document::{
-    BlockDoc, BlockWord, Kind, Range, ReadBackDoc, SettingDoc, StepDoc, ToggleDoc, UnlockDoc,
+    BlockDoc, BlockWord, Kind, PreconditionDoc, Range, ReadBackDoc, SettingDoc, StepDoc, ToggleDoc,
+    UnlockDoc,
 };
+use crate::profile::{Quantity, Read};
 
 /// One writable device parameter.
 #[derive(Debug, Clone)]
@@ -16,8 +18,18 @@ pub struct Setting {
     values: Option<Vec<f64>>,
     min_interval: Duration,
     recipe: Vec<Step>,
-    read_back: Option<Field>,
+    read_back: Option<Source>,
+    /// The text each value publishes as, from its read-back quantity; empty to publish numbers.
+    texts: Vec<(String, f64)>,
     verified: bool,
+}
+
+/// Where a value is read: a device's register, or a quantity read from a topic, by its position in
+/// [`crate::Profile::quantities`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Register(Field),
+    Quantity(usize),
 }
 
 /// The bits `mask` selects of `register`: where a write is read back, or what a precondition
@@ -51,8 +63,11 @@ pub enum Step {
     },
     /// Reads `register` and writes it back with the value's word in the bits `mask` selects.
     Rmw { register: u16, mask: u16 },
-    /// Refuses the write before anything is written unless `field` holds one of `values`.
-    Precondition { field: Field, values: Vec<u16> },
+    /// Refuses the write before anything is written unless `source` holds one of `values`.
+    Precondition { source: Source, values: Vec<u16> },
+    /// Publishes the value, unretained, to `topic` under the connection's root, with `{address}`
+    /// unsubstituted.
+    Publish { topic: String },
     /// Writes `value` to the enable field `register`, last, once the value is in place.
     Activate { register: u16, value: u16 },
     /// Writes a secret of the device's connection, by name; its relock runs even after a failure.
@@ -115,7 +130,10 @@ impl Step {
     /// Whether it writes the setting's value, as opposed to a fixed word or nothing.
     const fn writes_value(&self) -> bool {
         match self {
-            Self::Write { .. } | Self::WriteBlock { .. } | Self::Rmw { .. } => true,
+            Self::Write { .. }
+            | Self::WriteBlock { .. }
+            | Self::Rmw { .. }
+            | Self::Publish { .. } => true,
             Self::Activate { .. }
             | Self::Delay(_)
             | Self::Precondition { .. }
@@ -185,8 +203,20 @@ impl Setting {
 
     /// Where a write is read back; `None` for a write-only setting.
     #[must_use]
-    pub const fn read_back(&self) -> Option<Field> {
+    pub const fn read_back(&self) -> Option<Source> {
         self.read_back
+    }
+
+    /// What publishing `value` sends: the text its read-back maps it to, or else the number.
+    #[must_use]
+    pub fn payload(&self, value: f64) -> Option<String> {
+        if self.texts.is_empty() {
+            return Some(value.to_string());
+        }
+        self.texts
+            .iter()
+            .find(|(_, v)| v.to_bits() == value.to_bits())
+            .map(|(text, _)| text.clone())
     }
 
     /// Whether its write was checked on real hardware (ADR 5).
@@ -272,13 +302,16 @@ const fn width(kind: Kind) -> u16 {
     }
 }
 
-pub fn compile(docs: Vec<SettingDoc>) -> Result<Vec<Setting>, (String, &'static str)> {
+pub fn compile(
+    docs: Vec<SettingDoc>,
+    quantities: &[Quantity],
+) -> Result<Vec<Setting>, (String, &'static str)> {
     let mut settings: Vec<Setting> = Vec::with_capacity(docs.len());
     for doc in docs {
         if settings.iter().any(|s| s.key == doc.key) {
             return Err((doc.key, "the key is declared twice"));
         }
-        settings.push(setting(doc.key.clone(), doc)?);
+        settings.push(setting(doc.key.clone(), doc, quantities)?);
     }
     for setting in &settings {
         let Some(toggle) = setting.toggle() else {
@@ -362,35 +395,56 @@ fn block(doc: &BlockDoc, kind: Kind) -> Result<Step, &'static str> {
     })
 }
 
-fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static str)> {
-    let refuse = |problem| Err((key.clone(), problem));
+/// The scale, once the scale, the bounds and the recipe are each declared.
+fn bounds(doc: &SettingDoc) -> Result<f64, &'static str> {
     let scale = doc.scale.unwrap_or(1.0);
     if !scale.is_finite() || scale == 0.0 {
-        return refuse("the scale must be a non-zero number");
+        return Err("the scale must be a non-zero number");
     }
     if doc.range.is_none() && doc.values.is_none() {
-        return refuse("declare its `range` or its `values`");
+        return Err("declare its `range` or its `values`");
     }
     if doc.range.is_some_and(|r| r.min > r.max) {
-        return refuse("the range is inverted");
+        return Err("the range is inverted");
     }
     if doc.recipe.is_empty() {
-        return refuse("the recipe has no step");
+        return Err("the recipe has no step");
     }
-    if let Err(problem) = toggle(&doc) {
-        return refuse(problem);
-    }
+    Ok(scale)
+}
+
+fn setting(
+    key: String,
+    doc: SettingDoc,
+    quantities: &[Quantity],
+) -> Result<Setting, (String, &'static str)> {
+    let refuse = |problem| Err((key.clone(), problem));
+    let scale = match bounds(&doc).and_then(|scale| toggle(&doc).map(|()| scale)) {
+        Ok(scale) => scale,
+        Err(problem) => return refuse(problem),
+    };
     let toggles = matches!(doc.recipe.as_slice(), [StepDoc::SnapshotToggle(_)]);
     if !toggles && doc.read_back.is_some() == doc.write_only {
         return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
     }
     let kind = doc.kind;
-    let recipe = recipe(doc.recipe, kind).map_err(|problem| (key.clone(), problem))?;
+    let recipe = recipe(doc.recipe, kind, quantities).map_err(|problem| (key.clone(), problem))?;
     let read_back = doc
         .read_back
-        .map(|r| read_back(&r, kind))
+        .as_ref()
+        .map(|r| read_back(r, kind, quantities))
         .transpose()
         .map_err(|problem| (key.clone(), problem))?;
+    if !binding(&recipe, read_back, quantities) {
+        return refuse("a setting writes through its profile's binding");
+    }
+    let texts = texts(
+        read_back,
+        quantities,
+        doc.range.is_some(),
+        doc.values.as_deref(),
+    )
+    .map_err(|problem| (key.clone(), problem))?;
     Ok(Setting {
         key,
         kind: doc.kind,
@@ -400,11 +454,80 @@ fn setting(key: String, doc: SettingDoc) -> Result<Setting, (String, &'static st
         min_interval: Duration::from_secs(doc.min_interval),
         recipe,
         read_back,
+        texts,
         verified: doc.verified,
     })
 }
 
-fn step(doc: StepDoc, kind: Kind) -> Result<Step, &'static str> {
+/// Whether every step and the read-back use the profile's binding: topics when it reads any,
+/// registers otherwise.
+fn binding(recipe: &[Step], read_back: Option<Source>, quantities: &[Quantity]) -> bool {
+    let topics = quantities
+        .iter()
+        .any(|q| matches!(q.read, Read::Topic { .. }));
+    let source = |s: &Source| matches!(s, Source::Quantity(_)) == topics;
+    let steps = recipe.iter().all(|step| match step {
+        Step::Publish { .. } => topics,
+        Step::Precondition { source: s, .. } => source(s),
+        Step::Delay(_) | Step::SnapshotToggle(_) => true,
+        Step::Write { .. }
+        | Step::WriteBlock { .. }
+        | Step::Rmw { .. }
+        | Step::Activate { .. }
+        | Step::Unlock(_) => !topics,
+    });
+    steps && read_back.as_ref().is_none_or(source)
+}
+
+/// The texts of the quantity `read_back` names; empty when it maps none. A setting reading back
+/// through texts takes only the values they map.
+fn texts(
+    read_back: Option<Source>,
+    quantities: &[Quantity],
+    ranged: bool,
+    values: Option<&[f64]>,
+) -> Result<Vec<(String, f64)>, &'static str> {
+    let Some(Source::Quantity(at)) = read_back else {
+        return Ok(Vec::new());
+    };
+    let Some(Read::Topic { texts, .. }) = quantities.get(at).map(|q| &q.read) else {
+        return Ok(Vec::new());
+    };
+    let mapped = |v: &f64| texts.iter().any(|(_, t)| t.to_bits() == v.to_bits());
+    if !texts.is_empty() && (ranged || !values.unwrap_or_default().iter().all(mapped)) {
+        return Err("each value is a text its read-back maps");
+    }
+    Ok(texts.clone())
+}
+
+/// A register, or else the position of a quantity read from a topic.
+fn source(
+    register: Option<u16>,
+    quantity: Option<&str>,
+    quantities: &[Quantity],
+) -> Result<Result<u16, usize>, &'static str> {
+    const NAMES: &str =
+        "a read-back or precondition names a register or a quantity read from a topic";
+    match (register, quantity) {
+        (Some(register), None) => Ok(Ok(register)),
+        (None, Some(key)) => quantities
+            .iter()
+            .position(|q| q.key == key && matches!(q.read, Read::Topic { .. }))
+            .map(Err)
+            .ok_or(NAMES),
+        _ => Err(NAMES),
+    }
+}
+
+/// A topic under the connection's root, as a quantity's.
+fn topic(topic: String) -> Result<Step, &'static str> {
+    if topic.is_empty() || topic.starts_with('/') || topic.contains(['+', '#']) {
+        return Err("a topic is a path under the root, without wildcards");
+    }
+    Ok(Step::Publish { topic })
+}
+
+fn step(doc: StepDoc, kind: Kind, quantities: &[Quantity]) -> Result<Step, &'static str> {
     match doc {
         StepDoc::Write(r) => Ok(Step::Write {
             register: r.register,
@@ -421,13 +544,8 @@ fn step(doc: StepDoc, kind: Kind) -> Result<Step, &'static str> {
         StepDoc::Precondition(p) if p.values.is_empty() => {
             Err("a precondition lists the values it allows")
         }
-        StepDoc::Precondition(p) => Ok(Step::Precondition {
-            field: Field {
-                register: p.register,
-                mask: p.mask.map_or(Ok(0xFFFF), nonzero)?,
-            },
-            values: p.values,
-        }),
+        StepDoc::Precondition(p) => precondition(p, quantities),
+        StepDoc::Publish(p) => topic(p.topic),
         StepDoc::Activate(a) => Ok(Step::Activate {
             register: a.register,
             value: a.value,
@@ -439,10 +557,29 @@ fn step(doc: StepDoc, kind: Kind) -> Result<Step, &'static str> {
     }
 }
 
-fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
+fn precondition(doc: PreconditionDoc, quantities: &[Quantity]) -> Result<Step, &'static str> {
+    let source = match source(doc.register, doc.quantity.as_deref(), quantities)? {
+        Ok(register) => Source::Register(Field {
+            register,
+            mask: doc.mask.map_or(Ok(0xFFFF), nonzero)?,
+        }),
+        Err(_) if doc.mask.is_some() => return Err("a mask selects bits of a register"),
+        Err(at) => Source::Quantity(at),
+    };
+    Ok(Step::Precondition {
+        source,
+        values: doc.values,
+    })
+}
+
+fn recipe(
+    docs: Vec<StepDoc>,
+    kind: Kind,
+    quantities: &[Quantity],
+) -> Result<Vec<Step>, &'static str> {
     let steps: Vec<Step> = docs
         .into_iter()
-        .map(|doc| step(doc, kind))
+        .map(|doc| step(doc, kind, quantities))
         .collect::<Result<_, _>>()?;
     let checks = steps
         .iter()
@@ -468,11 +605,19 @@ fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
     Ok(steps)
 }
 
-fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<Field, &'static str> {
-    Ok(Field {
-        register: doc.register,
-        mask: doc.mask.map_or(Ok(0xFFFF), |m| mask(m, kind))?,
-    })
+fn read_back(
+    doc: &ReadBackDoc,
+    kind: Kind,
+    quantities: &[Quantity],
+) -> Result<Source, &'static str> {
+    match source(doc.register, doc.quantity.as_deref(), quantities)? {
+        Ok(register) => Ok(Source::Register(Field {
+            register,
+            mask: doc.mask.map_or(Ok(0xFFFF), |m| mask(m, kind))?,
+        })),
+        Err(_) if doc.mask.is_some() => Err("a mask selects bits of a register"),
+        Err(at) => Ok(Source::Quantity(at)),
+    }
 }
 
 /// Whether the one unlock, if any, is the first step after the preconditions.

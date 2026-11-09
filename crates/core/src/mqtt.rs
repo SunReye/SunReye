@@ -8,7 +8,7 @@ mod tests;
 
 use std::time::{Duration, SystemTime};
 
-use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, SubscribeFilter};
+use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, SubscribeFilter};
 use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
@@ -51,7 +51,19 @@ pub struct Client {
     handle: JoinHandle<()>,
     status: watch::Receiver<Status>,
     messages: broadcast::Sender<Message>,
+    publisher: Publisher,
 }
+
+/// Publishes through a client while it runs.
+#[derive(Debug, Clone)]
+pub struct Publisher {
+    requests: AsyncClient,
+    status: watch::Receiver<Status>,
+}
+
+/// Why a message was not sent: the client is not connected, or its queue is full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unsent;
 
 impl Client {
     #[must_use]
@@ -70,6 +82,27 @@ impl Client {
     #[must_use]
     pub fn messages(&self) -> broadcast::Receiver<Message> {
         self.messages.subscribe()
+    }
+
+    #[must_use]
+    pub fn publisher(&self) -> Publisher {
+        self.publisher.clone()
+    }
+}
+
+impl Publisher {
+    /// Publishes `payload` to `topic`, unretained and at most once (`QoS` 0): a message queued
+    /// across a reconnect is never sent twice.
+    ///
+    /// # Errors
+    /// The client is not connected, or its queue is full; nothing was sent.
+    pub fn publish(&self, topic: &str, payload: &str) -> Result<(), Unsent> {
+        if !self.status.borrow().connected {
+            return Err(Unsent);
+        }
+        self.requests
+            .try_publish(topic, QoS::AtMostOnce, false, payload.as_bytes().to_vec())
+            .map_err(|_| Unsent)
     }
 }
 
@@ -92,8 +125,18 @@ pub fn spawn(broker: Broker, filters: Vec<String>) -> Client {
         report,
         messages: messages.clone(),
     };
+    let mut options = MqttOptions::new(client_id(), broker.host, broker.port);
+    if let Some((username, password)) = broker.credentials {
+        options.set_credentials(username, password);
+    }
+    // The handle keeps the request queue open: the event loop ends once every handle is dropped.
+    let (requests, events) = AsyncClient::new(options, QUEUE);
     Client {
-        handle: tokio::spawn(run(broker, filters, out)),
+        handle: tokio::spawn(run(requests.clone(), events, filters, out)),
+        publisher: Publisher {
+            requests,
+            status: status.clone(),
+        },
         status,
         messages,
     }
@@ -105,14 +148,8 @@ struct Out {
     messages: broadcast::Sender<Message>,
 }
 
-async fn run(broker: Broker, filters: Vec<String>, out: Out) {
+async fn run(requests: AsyncClient, mut events: EventLoop, filters: Vec<String>, out: Out) {
     let Out { report, messages } = out;
-    let mut options = MqttOptions::new(client_id(), broker.host, broker.port);
-    if let Some((username, password)) = broker.credentials {
-        options.set_credentials(username, password);
-    }
-    // The handle keeps the request queue open: the event loop ends once every handle is dropped.
-    let (requests, mut events) = AsyncClient::new(options, QUEUE);
     let mut failures = 0;
     loop {
         match events.poll().await {

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Step};
+use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Source, Step};
 use serde_json::Value;
 
 const PROFILE: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
@@ -131,7 +131,7 @@ fn its_settings_write_with_function_16_and_read_back_their_own_register() {
             register,
             mask: 0xFFFF,
         };
-        assert_eq!(setting.read_back(), Some(whole), "{key}");
+        assert_eq!(setting.read_back(), Some(Source::Register(whole)), "{key}");
         assert!(
             setting.encode(max).is_some() && setting.encode(max + 1.0).is_none(),
             "{key}"

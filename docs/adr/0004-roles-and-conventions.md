@@ -32,6 +32,8 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `point.power` | W | measurement, indexed by measurement point id; a point's own consumption, published only by the `plant` device (ADR 14) | yes |
 | `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | |
 | `ev.connected`, `ev.charging` | | status | |
+| `ev.limit.soc` | % | measurement; the vehicle charge limit a loadpoint charges to (ADR 10) | |
+| `ev.mode`, `ev.battery.boost` | | status; a loadpoint's charge mode and whether it may drain the house battery (ADR 10) | |
 | `weather.ghi`, `weather.dni`, `weather.dhi` | W/m² | measurement; global, direct normal and diffuse irradiance (ADR 17) | |
 | `weather.temperature`, `weather.wind` | °C, m/s | measurement | |
 | `price.import`, `price.export` | EUR/kWh | measurement; what a kWh bought costs and a kWh fed in earns (ADR 12) | yes |

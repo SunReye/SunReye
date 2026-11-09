@@ -29,7 +29,9 @@ impl Quantity {
     #[must_use]
     pub fn kind(&self) -> RoleKind {
         match self.role.as_str() {
-            "battery.mode" | "ev.connected" | "ev.charging" => RoleKind::Status,
+            "battery.mode" | "ev.connected" | "ev.charging" | "ev.mode" | "ev.battery.boost" => {
+                RoleKind::Status
+            }
             "ev.session.energy" => RoleKind::Counter,
             role if role.rsplit('.').next() == Some("total") => RoleKind::Counter,
             _ => RoleKind::Measurement,
@@ -61,7 +63,7 @@ fn unit(role: &str) -> Option<Unit> {
         "pv.mppt.voltage" | "battery.voltage" | "grid.phase.voltage" => Unit::Volt,
         "pv.mppt.current" | "battery.current" | "grid.phase.current" => Unit::Ampere,
         "grid.frequency" => Unit::Hertz,
-        "battery.soc" | "ev.vehicle.soc" => Unit::Percent,
+        "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" => Unit::Percent,
         "battery.temperature" => Unit::Celsius,
         _ => return None,
     })

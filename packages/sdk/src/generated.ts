@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle";
+export type Capability = "modbus" | "mqtt" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
@@ -8,7 +8,11 @@ export type Quantity = { key: string, role: string, index?: number, register?: n
 /**
  * An `mqtt` topic under the connection's root; `{address}` stands for the device address.
  */
-topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, };
+topic?: string, type?: Kind, scale?: number, offset?: number, compute?: Expr, range?: Range, 
+/**
+ * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+ */
+enum?: Record<string, number>, };
 
 export type Kind = "u16" | "i16" | "u32";
 
@@ -51,7 +55,7 @@ minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boole
  */
 verified?: boolean, };
 
-export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle };
+export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle } | { "publish": Publish };
 
 export type Register = { register: number, };
 
@@ -61,7 +65,13 @@ export type Delay = { ms: number, };
 
 export type Activate = { register: number, value: number, };
 
-export type Precondition = { register: number, mask?: number, values: Array<number>, };
+export type Precondition = { register?: number, mask?: number, 
+/**
+ * The key of a quantity read from a topic, in place of a register.
+ */
+quantity?: string, values: Array<number>, };
+
+export type Publish = { topic: string, };
 
 export type Unlock = { register: number, type: Kind, 
 /**
@@ -83,7 +93,11 @@ target: string, locked: number, };
 
 export type Masked = { register: number, mask: number, };
 
-export type ReadBack = { register: number, mask?: number, };
+export type ReadBack = { register?: number, mask?: number, 
+/**
+ * The key of a quantity read from a topic, in place of a register.
+ */
+quantity?: string, };
 
 export type Block = { start: number, count: number, 
 /**
