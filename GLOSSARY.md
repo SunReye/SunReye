@@ -132,6 +132,18 @@ _Avoid_: Lock, ownership
 A place in the plant where a device measures a flow, with a parent point. The root is the grid connection.
 _Avoid_: Node, meter position
 
+**Claim**:
+A device measuring a measurement point. Two claims on one point are flagged, never summed.
+_Avoid_: Assignment, binding
+
+**Own consumption**:
+A measurement point's power minus that of its measured children: the unmeasured remainder no child explains.
+_Avoid_: Residual (the daily energy balance check), rest
+
+**House load**:
+All consumption in the plant except the battery's charging.
+_Avoid_: Consumption (alone), home power
+
 **MPPT input**:
 One maximum-power-point tracker input of an inverter: the finest level at which PV is measured.
 _Avoid_: PV1 (a vendor label), string

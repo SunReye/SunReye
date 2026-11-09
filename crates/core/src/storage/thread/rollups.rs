@@ -233,9 +233,10 @@ fn earliest(db: &Connection) -> Result<Option<Tick>, Error> {
     Ok(earliest.map(floor))
 }
 
-/// The points that matter to `[start, end)`: the one in force at `start`, then those inside.
+/// The points that matter to `[start, end)`: the one in force at `start` and the one before it,
+/// which shows a counter's drop into the window, then those inside.
 fn window(points: &[Point], start: Tick, end: Tick) -> &[Point] {
-    let first = points.partition_point(|p| p.time < start).saturating_sub(1);
+    let first = points.partition_point(|p| p.time < start).saturating_sub(2);
     let last = points.partition_point(|p| p.time < end);
     points.get(first..last).unwrap_or_default()
 }

@@ -31,7 +31,7 @@ pub(super) fn delete(uri: &str) -> Request<Body> {
 }
 
 /// The owner's gateway, at an address nothing listens on.
-fn gateway() -> Value {
+pub(super) fn gateway() -> Value {
     json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1", "port": 9 })
 }
 
@@ -59,7 +59,7 @@ impl Core {
     }
 
     /// Adds the owner's Deye at `unit` behind `connection`; returns its id.
-    async fn deye(&self, set_cookie: &str, connection: &Value, unit: u8) -> Value {
+    pub(super) async fn deye(&self, set_cookie: &str, connection: &Value, unit: u8) -> Value {
         let device = json!({
             "name": "Deye", "connection": connection, "profile": "deye-sg05lp3", "unit": unit,
         });

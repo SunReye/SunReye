@@ -44,6 +44,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/location", Admin),
     (Method::PUT, "/api/v1/location", Admin),
     (Method::GET, "/api/v1/changes", Admin),
+    (Method::GET, "/api/v1/topology", Admin),
+    (Method::PUT, "/api/v1/topology", Admin),
     // Profile distribution is configuration (ADR 8, ADR 9).
     (Method::GET, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes", Admin),

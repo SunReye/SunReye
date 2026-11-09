@@ -241,6 +241,39 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
 }
 
 #[tokio::test]
+async fn a_low_reading_at_the_end_of_an_hour_is_not_a_reset_in_the_next() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = Storage::open(&dir.path().join("c.sqlite"), epoch(), "UTC", &plant.bus).unwrap();
+    let total = plant.bus.intern("pv.energy.total", None);
+    let counter = Policy {
+        kind: RoleKind::Counter,
+        step: 0.1,
+        deadband: 0.0,
+        cadence: Duration::from_secs(60),
+    };
+    storage.declare(DEVICE, total, counter).await.unwrap();
+    // 1000 kWh, misread as 0 for the last minute of the first hour, then 1000.3 kWh.
+    let mut readings = steady(0.0, 59, 60.0, |_| 1000.0);
+    readings.extend([(3540.0, 0.0), (3600.0, 1000.0), (3660.0, 1000.3)]);
+    readings.extend(steady(3720.0, 60, 60.0, |_| 1000.3));
+    for (seconds, value) in readings {
+        storage
+            .record(Reading {
+                series: total,
+                ..plant.reading(seconds, value)
+            })
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(
+        counted(&rollups(&storage, total, Tier::Hour, 0.0, 7200.0).await),
+        [(0.0, 1000.0, 0.0, 0.0), (1.0, 0.0, 1000.3, 0.3)]
+    );
+}
+
+#[tokio::test]
 async fn a_dropped_rollup_rebuilds_to_the_same_values() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("b.sqlite");

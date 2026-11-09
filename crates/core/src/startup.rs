@@ -18,9 +18,11 @@ use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::{Location, PlantLocation};
+use crate::plant::Plant;
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
 use crate::storage::{self, Storage};
+use crate::topology::Topologies;
 use crate::weather::{self, Provider, Weather};
 
 const DEFAULT_LISTEN: SocketAddr =
@@ -194,9 +196,7 @@ pub async fn serve(
     let bus = Bus::default();
     let file = boot.data_dir.join("core.sqlite");
     let storage = Storage::open(&file, boot.build, &plant_zone(), &bus)?;
-    // Problems are known before the first request.
-    let (problems, watched) = watch::channel(Vec::new());
-    tick(&storage, &problems).await?;
+    let (problems, watched) = problems(&storage).await?;
     let inverters = Inverters::default();
     let profiles = Profiles::open(storage.database(), boot.fetch, boot.keys).await?;
     let devices = Devices::start(
@@ -208,8 +208,8 @@ pub async fn serve(
     )
     .await?;
     let layouts = Layouts::new(storage.database(), inverters);
-    let _estimates =
-        StringEstimates::spawn(layouts.clone(), storage.reader(), storage.declarer(), &bus);
+    let topologies = Topologies::new(storage.database());
+    let _computed = Computed::spawn(&storage, &layouts, &topologies, &bus);
     let location = PlantLocation::open(storage.database()).await?;
     let forecasting = forecast(
         &storage,
@@ -228,6 +228,7 @@ pub async fn serve(
         changes: Changes::new(storage.database()),
         location,
         profiles,
+        topologies,
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let background = async {
@@ -269,6 +270,26 @@ async fn until(
     Ok(())
 }
 
+/// The computed devices driven by the bus (ADR 15); dropping it stops them.
+struct Computed {
+    _estimates: StringEstimates,
+    _plant: Plant,
+}
+
+impl Computed {
+    fn spawn(storage: &Storage, layouts: &Layouts, topologies: &Topologies, bus: &Bus) -> Self {
+        Self {
+            _estimates: StringEstimates::spawn(
+                layouts.clone(),
+                storage.reader(),
+                storage.declarer(),
+                bus,
+            ),
+            _plant: Plant::spawn(topologies.clone(), storage.declarer(), bus),
+        }
+    }
+}
+
 /// Runs the weather device and the solar forecast until storage stops.
 async fn forecast(
     storage: &Storage,
@@ -291,6 +312,17 @@ fn plant_zone() -> String {
         .iana_name()
         .unwrap_or("UTC")
         .to_owned()
+}
+
+type Problems = watch::Sender<Vec<storage::Problem>>;
+
+/// Storage's problems, known before the first request.
+async fn problems(
+    storage: &Storage,
+) -> Result<(Problems, watch::Receiver<Vec<storage::Problem>>), storage::Error> {
+    let (problems, watched) = watch::channel(Vec::new());
+    tick(storage, &problems).await?;
+    Ok((problems, watched))
 }
 
 /// Ticks storage once a minute, from a minute after the first tick.

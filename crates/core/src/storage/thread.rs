@@ -33,6 +33,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0009.sql"),
     include_str!("migrations/0010.sql"),
     include_str!("migrations/0011.sql"),
+    include_str!("migrations/0012.sql"),
 ];
 
 /// SQL a feature module runs on its own tables.

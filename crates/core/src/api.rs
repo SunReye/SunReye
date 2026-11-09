@@ -26,6 +26,7 @@ use crate::location::PlantLocation;
 use crate::profiles::Profiles;
 use crate::spa;
 use crate::storage;
+use crate::topology::Topologies;
 use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
@@ -60,6 +61,7 @@ pub struct Api {
     pub changes: Changes,
     pub location: PlantLocation,
     pub profiles: Profiles,
+    pub topologies: Topologies,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -68,15 +70,7 @@ pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>
 
 pub fn router(api: Api) -> Router {
     let api_routes = OpenApiRouter::new()
-        .merge(
-            OpenApiRouter::new()
-                .routes(routes!(capabilities))
-                .with_state((
-                    api.layouts.clone(),
-                    api.devices.clone(),
-                    Clock::clone(&api.clock),
-                )),
-        )
+        .merge(capability_routes(&api))
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(live_values))
@@ -97,6 +91,10 @@ pub fn router(api: Api) -> Router {
                 .routes(routes!(forecasts::forecasts))
                 .with_state(api.history),
         )
+        .merge(
+            api.topologies
+                .routes(api.devices.clone(), Clock::clone(&api.clock)),
+        )
         .merge(api.devices.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
         .merge(api.location.routes(Clock::clone(&api.clock)))
@@ -116,6 +114,16 @@ pub fn router(api: Api) -> Router {
             spa::serve(&method, &uri, &headers).unwrap_or_else(|| ROUTE.into_response())
         })
         .method_not_allowed_fallback(|| async { METHOD })
+}
+
+fn capability_routes(api: &Api) -> OpenApiRouter {
+    OpenApiRouter::new()
+        .routes(routes!(capabilities))
+        .with_state((
+            api.layouts.clone(),
+            api.devices.clone(),
+            Clock::clone(&api.clock),
+        ))
 }
 
 /// What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,
@@ -325,6 +333,18 @@ pub enum Code {
     LayoutModuleType,
     #[serde(rename = "layout.value")]
     LayoutValue,
+    #[serde(rename = "topology.none")]
+    TopologyNone,
+    #[serde(rename = "topology.tree")]
+    TopologyTree,
+    #[serde(rename = "topology.point")]
+    TopologyPoint,
+    #[serde(rename = "topology.claim")]
+    TopologyClaim,
+    #[serde(rename = "topology.role")]
+    TopologyRole,
+    #[serde(rename = "topology.device")]
+    TopologyDevice,
     #[serde(rename = "location.none")]
     LocationNone,
     #[serde(rename = "location.value")]
