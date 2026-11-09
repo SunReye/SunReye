@@ -15,21 +15,28 @@ use tower::ServiceExt;
 use super::router;
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::live::Live;
 use crate::storage::Storage;
+
+mod live;
 
 const HOME: &str = "192.0.2.1:50000";
 
 struct Core {
     _storage: Storage,
+    bus: Bus,
     router: Router,
 }
 
 impl Core {
     async fn open(path: &Path) -> Self {
-        let storage = Storage::open(path, UNIX_EPOCH, "UTC", &Bus::default()).unwrap();
+        let bus = Bus::default();
+        let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database()).await.unwrap();
+        let live = Live::spawn(&bus);
         Self {
-            router: contract(router(&auth)).await,
+            router: contract(router(&auth, &live)).await,
+            bus,
             _storage: storage,
         }
     }
@@ -85,7 +92,8 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
     )
     .unwrap();
     let auth = Auth::open(storage.database()).await.unwrap();
-    let undocumented = router(&auth).route("/api/v1/undocumented", route_get(|| async {}));
+    let live = Live::spawn(&Bus::default());
+    let undocumented = router(&auth, &live).route("/api/v1/undocumented", route_get(|| async {}));
 
     contract(undocumented)
         .await

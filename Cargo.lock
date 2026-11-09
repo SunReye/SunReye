@@ -711,6 +711,7 @@ version = "5.0.0"
 dependencies = [
  "axum",
  "bcrypt",
+ "futures-util",
  "getrandom 0.4.3",
  "jiff",
  "rusqlite",

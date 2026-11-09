@@ -1,6 +1,7 @@
 //! The bus of typed readings (ADR 6). Endpoint tasks publish; storage, the live API, integrations
 //! and write read-back subscribe. No consumer decodes registers.
 
+use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
@@ -14,7 +15,7 @@ const CAPACITY: usize = 1024;
 pub struct DeviceId(pub u32);
 
 /// An interned series; [`Bus::series`] names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SeriesId(usize);
 
 /// One role at one index.
@@ -22,6 +23,16 @@ pub struct SeriesId(usize);
 pub struct Series {
     pub role: String,
     pub index: Option<u32>,
+}
+
+/// Named like `pv.mppt.power[2]`; an unindexed role is its own name.
+impl fmt::Display for Series {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.index {
+            Some(index) => write!(f, "{}[{index}]", self.role),
+            None => f.write_str(&self.role),
+        }
+    }
 }
 
 /// One decoded value of a series from a device at an instant.

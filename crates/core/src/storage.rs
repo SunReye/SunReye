@@ -405,10 +405,7 @@ impl Storage {
 
     fn name(&self, series: SeriesId) -> Result<String, Error> {
         let series = self.bus.series(series).ok_or(Error::UnknownSeries)?;
-        Ok(series.index.map_or_else(
-            || series.role.clone(),
-            |index| format!("{}[{index}]", series.role),
-        ))
+        Ok(series.to_string())
     }
 
     async fn send(&self, command: Command) -> Result<(), Error> {

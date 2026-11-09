@@ -1,17 +1,22 @@
 //! The HTTP API (ADR 9). Every route is registered with its OpenAPI description, so the document
 //! served at `/openapi.json` cannot miss one.
 
-use axum::Json;
-use axum::Router;
+use std::convert::Infallible;
+
+use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use axum::{Json, Router};
+use futures_util::{Stream, StreamExt, stream};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
+use crate::live::{Frame, Live};
 use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
@@ -27,8 +32,14 @@ const METHOD: Problem = Problem {
 #[openapi(info(title = "SunReye", version = "1"))]
 struct Document;
 
-pub fn router(auth: &Auth) -> Router {
-    let protected = OpenApiRouter::with_openapi(Document::openapi()).routes(routes!(capabilities));
+pub fn router(auth: &Auth, live: &Live) -> Router {
+    let protected = OpenApiRouter::with_openapi(Document::openapi())
+        .routes(routes!(capabilities))
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(live_values))
+                .with_state(live.clone()),
+        );
     let (router, document) = auth.routes(protected).split_for_parts();
     // Serialised once: the document changes only with the build.
     let document = document.to_json().unwrap_or_default();
@@ -76,6 +87,26 @@ async fn capabilities() -> Json<Support> {
         capabilities: support.capabilities,
         transports: Endpoint::TRANSPORTS,
     })
+}
+
+/// Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in
+/// which a value changed. There is no replay: a client that falls behind is disconnected and
+/// reconnects to a fresh snapshot.
+#[utoipa::path(get, path = "/api/v1/live", responses(
+    (status = 200, body = Frame, content_type = "text/event-stream"),
+    (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn live_values(
+    State(live): State<Live>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let (snapshot, deltas) = live.subscribe();
+    let snapshot = Event::default().event("snapshot").data(snapshot);
+    let deltas = stream::unfold(deltas, |mut deltas| async move {
+        let delta = deltas.recv().await.ok()?;
+        Some((Event::default().event("delta").data(&*delta), deltas))
+    });
+    let events = stream::once(async { snapshot }).chain(deltas).map(Ok);
+    Sse::new(events).keep_alive(KeepAlive::default())
 }
 
 /// A refusal as `application/problem+json` (RFC 9457): a stable code and no localised text.

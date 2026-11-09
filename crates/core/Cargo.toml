@@ -14,6 +14,8 @@ path = "src/main.rs"
 axum = { version = "0.8.9", default-features = false, features = ["json", "tokio"] }
 # Admin password hashes (ADR 9).
 bcrypt = "0.19.3"
+# Builds the SSE stream; axum already depends on it.
+futures-util = { version = "0.3.34", default-features = false }
 # Session tokens; bcrypt already depends on it.
 getrandom = "0.4.3"
 # Plant-local days across DST; the bundled database serves hosts without one.
@@ -29,6 +31,7 @@ serde_json.workspace = true
 sunreye-profile.workspace = true
 tokio = { version = "1.54.1", default-features = false, features = [
   "io-util",
+  "macros",
   "net",
   "rt",
   "sync",
