@@ -1,3 +1,4 @@
+mod estimate;
 mod fixtures;
 mod lint;
 mod mppt;
