@@ -446,3 +446,16 @@ async fn problems_report_an_unsynced_clock() {
         serde_json::json!({ "problems": [{ "code": "clock.unsynced" }] })
     );
 }
+
+#[tokio::test]
+async fn the_openapi_document_describes_api_version_1() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+
+    let document = json(core.send(get("/openapi.json")).await).await;
+
+    assert_eq!(
+        (&document["info"]["title"], &document["info"]["version"]),
+        (&serde_json::json!("SunReye"), &serde_json::json!("1"))
+    );
+}

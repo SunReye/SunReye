@@ -43,7 +43,7 @@ pub struct Api {
 }
 
 pub fn router(api: Api) -> Router {
-    let protected = OpenApiRouter::with_openapi(Document::openapi())
+    let protected = OpenApiRouter::new()
         .routes(routes!(capabilities))
         .merge(
             OpenApiRouter::new()
@@ -55,7 +55,9 @@ pub fn router(api: Api) -> Router {
                 .routes(routes!(problems))
                 .with_state(api.problems),
         );
-    let (router, document) = api.auth.routes(protected).split_for_parts();
+    let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
+        .merge(api.auth.routes(protected))
+        .split_for_parts();
     // Serialised once: the document changes only with the build.
     let document = document.to_json().unwrap_or_default();
     router
