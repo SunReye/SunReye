@@ -101,6 +101,16 @@ impl Track {
         }
     }
 
+    /// The value last read was held until `until`, as an imported row records (ADR 18): no
+    /// silence before it.
+    pub const fn held(&mut self, until: Tick) {
+        if let Some(seen) = self.seen
+            && until > seen
+        {
+            self.seen = Some(until);
+        }
+    }
+
     /// Whether a reading at `time` may be stored, after the gap a silence or a clock step needs.
     fn admit(&mut self, time: Tick, out: &mut Vec<Point>) -> bool {
         let Some(seen) = self.seen else {

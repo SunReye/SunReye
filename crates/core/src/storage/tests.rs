@@ -8,6 +8,7 @@ use sunreye_profile::RoleKind;
 use super::{ChangePoint, Issue, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
+mod import;
 mod rollups;
 
 /// 2026-08-26 12:00 UTC, on an hour.
