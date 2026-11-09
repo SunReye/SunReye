@@ -63,6 +63,7 @@ pub enum StepDoc {
     Precondition(PreconditionDoc),
     Unlock(UnlockDoc),
     Delay(DelayDoc),
+    SnapshotToggle(ToggleDoc),
 }
 
 impl StepDoc {
@@ -76,6 +77,7 @@ impl StepDoc {
             Self::Precondition(_) => "precondition",
             Self::Unlock(_) => "unlock",
             Self::Delay(_) => "delay",
+            Self::SnapshotToggle(_) => "snapshot-toggle",
         }
     }
 }
@@ -104,6 +106,17 @@ pub struct UnlockDoc {
     pub secret: String,
     /// Fixed writes that relock, run even after a failure.
     pub finally: Vec<RelockDoc>,
+}
+
+/// A switch over `target`: 1 stores its value and writes `locked`, 0 writes the stored value back.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "SnapshotToggle"))]
+#[serde(deny_unknown_fields)]
+pub struct ToggleDoc {
+    /// The key of the setting it locks.
+    pub target: String,
+    pub locked: f64,
 }
 
 /// Fixed words written from `register` in one request.

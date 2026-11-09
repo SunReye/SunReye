@@ -315,8 +315,9 @@ async fn recipe(
                 // Not a write of the setting: its value is unchanged.
                 link.write(unlock.register, code).await.map(|_| false)
             }
-            // Read before the recipe began.
-            Step::Precondition { .. } => Ok(false),
+            // A precondition was read before the recipe began; a toggle's target is written
+            // through the funnel instead.
+            Step::Precondition { .. } | Step::SnapshotToggle(_) => Ok(false),
             Step::Delay(pause) => {
                 tokio::time::sleep(*pause).await;
                 Ok(false)

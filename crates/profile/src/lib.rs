@@ -13,7 +13,7 @@ pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
-pub use setting::{Field, Relock, Setting, Step, Unlock};
+pub use setting::{Field, Relock, Setting, Step, Toggle, Unlock};
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
@@ -32,6 +32,7 @@ pub const CAPABILITIES: &[&str] = &[
     "precondition",
     "unlock",
     "delay",
+    "snapshot-toggle",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both
