@@ -14,8 +14,9 @@ use tokio::task::JoinHandle;
 
 const FIRST_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_mins(1);
-/// Requests queued for the broker before a sender waits (ADR 2: every queue bounded).
-const QUEUE: usize = 16;
+/// Requests queued for the broker before a sender waits (ADR 2: every queue bounded); above the
+/// publisher's messages in one second.
+const QUEUE: usize = 64;
 /// Messages a reader may fall behind by before it loses the oldest; above EVCC's retained state
 /// of about 190 topics for one loadpoint.
 const MESSAGES: usize = 1024;

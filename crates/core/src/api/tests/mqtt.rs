@@ -302,3 +302,57 @@ async fn a_loadpoint_index_is_taken_once_per_topic_root_on_a_broker() {
         ]
     );
 }
+
+/// A broker connection that publishes under `sunreye`, with Home Assistant discovery.
+fn publishing(fake: &Fake) -> Value {
+    let mut draft = broker(fake);
+    draft["topicRoot"] = json!("sunreye");
+    draft["publish"] = json!({ "discovery": true });
+    draft
+}
+
+#[tokio::test]
+async fn a_publishing_broker_sends_the_plants_values_each_devices_availability_and_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let mut fake = fake::serve(0).await;
+    let id = core.connection(&set_cookie, &publishing(&fake)).await;
+    let gateway = core.connection(&set_cookie, &gateway()).await;
+    let device = core.deye(&set_cookie, &gateway, 1).await;
+
+    let mut topics = vec![
+        "sunreye/plant/grid.power".to_owned(),
+        format!("sunreye/devices/{device}/availability"),
+        "homeassistant/device/sunreye_sunreye/config".to_owned(),
+    ];
+    while !topics.is_empty() {
+        // The plant sends its values every cadence; once is enough here, after the connect.
+        core.publish(crate::plant::DEVICE.0, "grid.power", None, 300.0);
+        let published = fake.published.recv().await.unwrap();
+        topics.retain(|t| *t != published.topic);
+    }
+
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/connections")).await;
+    assert_eq!(listed["connections"][0]["id"], id);
+    assert_eq!(
+        listed["connections"][0]["publish"],
+        json!({ "discovery": true })
+    );
+}
+
+#[tokio::test]
+async fn only_a_broker_publishes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let mut modbus = gateway();
+    modbus["publish"] = json!({ "discovery": false });
+
+    let (status, body) = core
+        .ask(&set_cookie, send("POST", "/api/v1/connections", &modbus))
+        .await;
+
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("connection.value"))
+    );
+}

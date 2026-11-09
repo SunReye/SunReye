@@ -91,6 +91,7 @@ async fn each_loadpoint_reads_its_own_topics_as_ev_roles() {
         broker(&fake),
         "evcc",
         vec![loadpoint(7, 1), loadpoint(8, 2)],
+        Vec::new(),
         bus.clone(),
     );
 
@@ -141,7 +142,13 @@ async fn the_held_values_are_published_every_cadence_and_an_empty_payload_clears
     let fake = served().await;
     let bus = Bus::default();
     let mut readings = bus.subscribe();
-    let _subscriber = spawn(broker(&fake), "evcc", vec![loadpoint(7, 1)], bus.clone());
+    let _subscriber = spawn(
+        broker(&fake),
+        "evcc",
+        vec![loadpoint(7, 1)],
+        Vec::new(),
+        bus.clone(),
+    );
     until_read(&bus, &mut readings, "ev.charging", 1.0).await;
 
     fake.publish("evcc/loadpoints/1/vehicleSoc", "");
@@ -168,7 +175,13 @@ async fn nothing_is_published_while_the_broker_is_gone() {
     let fake = served().await;
     let bus = Bus::default();
     let mut readings = bus.subscribe();
-    let subscriber = spawn(broker(&fake), "evcc", vec![loadpoint(7, 1)], bus.clone());
+    let subscriber = spawn(
+        broker(&fake),
+        "evcc",
+        vec![loadpoint(7, 1)],
+        Vec::new(),
+        bus.clone(),
+    );
     until_read(&bus, &mut readings, "ev.charging", 1.0).await;
 
     fake.shut();

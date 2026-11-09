@@ -11,8 +11,12 @@ export type ScanReport = components["schemas"]["ScanReport"];
 
 export type Found = components["schemas"]["Found"];
 
-/** A connection without credentials, as the scan finds one. */
-export type Reach = Readonly<components["schemas"]["Reach"]>;
+/** A connection without credentials, as the scan finds one; readonly to its publisher. */
+export type Reach = Readonly<
+  Omit<components["schemas"]["Reach"], "publish"> & {
+    publish?: Readonly<components["schemas"]["Publish"]> | null;
+  }
+>;
 
 export type Connection = components["schemas"]["Connection"];
 

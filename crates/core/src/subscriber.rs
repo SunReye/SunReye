@@ -37,6 +37,12 @@ impl Subscriber {
         self.client.status()
     }
 
+    /// The broker client, which the publisher shares.
+    #[must_use]
+    pub const fn client(&self) -> &mqtt::Client {
+        &self.client
+    }
+
     /// What writes device `id`'s settings; `None` when it is not read here.
     #[must_use]
     pub fn writer(&self, id: DeviceId) -> Option<Writer> {
@@ -100,12 +106,20 @@ impl Drop for Subscriber {
 }
 
 /// Starts reading `devices` through `broker`, each at its unit as the device address, under topic
-/// `root`. Must be called inside a Tokio runtime.
+/// `root`; the client also subscribes to `also`, such as the publisher's. Must be called inside a
+/// Tokio runtime.
 #[must_use]
-pub fn spawn(broker: Broker, root: &str, devices: Vec<Device>, bus: Bus) -> Subscriber {
+pub fn spawn(
+    broker: Broker,
+    root: &str,
+    devices: Vec<Device>,
+    also: Vec<String>,
+    bus: Bus,
+) -> Subscriber {
     let read: Vec<Read> = devices.into_iter().map(|d| Read::new(d, &bus)).collect();
     let topics = topics(&read, root);
-    let filters = topics.iter().map(|(topic, ..)| topic.clone()).collect();
+    let mut filters: Vec<String> = topics.iter().map(|(topic, ..)| topic.clone()).collect();
+    filters.extend(also);
     let held = read
         .iter()
         .map(|r| (r.device.id, r.device.unit, r.values.subscribe()))
