@@ -78,10 +78,11 @@ impl Drop for Task {
 #[must_use]
 pub fn spawn(endpoint: Endpoint, devices: Vec<Device>, bus: Bus) -> Task {
     let mut slots = 0;
+    let framing = endpoint.framing();
     let devices: Vec<Polled> = devices
         .into_iter()
         .map(|d| {
-            let polled = Polled::new(d, &bus, slots);
+            let polled = Polled::new(d, framing, &bus, slots);
             slots += polled.values.len();
             polled
         })
@@ -116,6 +117,7 @@ fn backoff(failures: u32) -> Duration {
 /// A device and its buffers, reused every cycle so a poll allocates nothing.
 struct Polled {
     device: Device,
+    /// A merged block the device refused stays split for the life of the task.
     plan: Vec<Block>,
     series: Vec<(SeriesId, Option<Unit>)>,
     /// Its first slot in [`Latest`].
@@ -125,10 +127,9 @@ struct Polled {
 }
 
 impl Polled {
-    fn new(device: Device, bus: &Bus, slot: usize) -> Self {
+    fn new(device: Device, framing: Framing, bus: &Bus, slot: usize) -> Self {
         let quantities = device.profile.quantities();
-        // Both transports so far frame as Modbus TCP.
-        let plan = device.profile.read_plan(Framing::Tcp.gap_tolerance());
+        let plan = device.profile.read_plan(framing.gap_tolerance());
         let series = quantities
             .iter()
             .map(|q| (bus.intern(&q.role, q.index), q.unit()))
@@ -146,14 +147,32 @@ impl Polled {
 
     async fn read(&mut self, client: &mut Client, words: &mut [u16]) -> Result<(), Error> {
         self.registers.clear();
-        for block in &self.plan {
+        let mut next = 0;
+        while let Some(&block) = self.plan.get(next) {
             let words = words
                 .get_mut(..usize::from(block.count))
                 .ok_or(Error::Protocol("count out of range"))?;
-            client
+            match client
                 .read_holding(self.device.unit, block.start, words)
-                .await?;
-            self.registers.answer(block.start, words);
+                .await
+            {
+                Ok(()) => {
+                    self.registers.answer(block.start, words);
+                    next += 1;
+                }
+                // A merge read unmapped registers the device may not serve.
+                Err(Error::Exception(2)) if block.merged => {
+                    tracing::warn!(
+                        device = self.device.id.0,
+                        start = block.start,
+                        count = block.count,
+                        "refused with exception 2; split"
+                    );
+                    self.plan
+                        .splice(next..=next, self.device.profile.split(block));
+                }
+                Err(e) => return Err(e),
+            }
         }
         self.device
             .profile
