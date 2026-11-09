@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { LineChart, Points, Spline } from "layerchart/canvas";
   import type { Core } from "./api/core";
   import { m } from "./paraglide/messages.js";
+  import PowerLines from "./PowerLines.svelte";
   import { getLocale } from "./paraglide/runtime.js";
 
   let { core, device, series }: { core: Core; device: number; series: readonly string[] } =
@@ -18,34 +18,8 @@
 
   let rows = $state.raw<readonly Row[]>([]);
 
-  /** Tableau 10: a legend names a series only once it has a colour. */
-  const COLOURS = [
-    "#4e79a7",
-    "#f28e2b",
-    "#e15759",
-    "#76b7b2",
-    "#59a14f",
-    "#edc948",
-    "#b07aa1",
-    "#ff9da7",
-    "#9c755f",
-    "#bab0ac",
-  ];
-
-  /** One line per series, so the legend names each. */
-  const lines = $derived(
-    [...new Set(rows.map((r) => r.series))].map((key, i) => ({
-      key,
-      color: COLOURS[i % COLOURS.length] ?? "currentColor",
-      data: rows.filter((r) => r.series === key),
-    })),
-  );
-
   /** The SPA's locale, not the browser's; a new locale renders the screen anew. */
   const clock = new Intl.DateTimeFormat(getLocale(), { hour: "2-digit", minute: "2-digit" });
-
-  /** Series of one point, which a line cannot draw. */
-  const dots = $derived(new Set(lines.filter((l) => l.data.length === 1).map((l) => l.key)));
 
   /** Today so far of each named series. */
   async function measured(from: Core, id: number, wanted: string, start: Date): Promise<Row[]> {
@@ -116,28 +90,6 @@
   });
 </script>
 
-<!--
-  The canvas build ships no `.lc-path` stylesheet, so an unset line fill resolves to black.
-  layerchart's default 20 px left and 4 px right padding clip "10.000" and an end-of-axis time.
--->
 <figure>
-  <LineChart
-    data={rows}
-    x="time"
-    y="power"
-    series={lines}
-    height={240}
-    legend
-    padding={{ top: 4, left: 40, bottom: 52, right: 16 }}
-    props={{ xAxis: { format: (time: Date) => clock.format(time) } }}
-  >
-    {#snippet marks({ context })}
-      {#each context.series.visibleSeries as s (s.key)}
-        <Spline seriesKey={s.key} fill="none" />
-        {#if dots.has(s.key)}
-          <Points seriesKey={s.key} r={3} />
-        {/if}
-      {/each}
-    {/snippet}
-  </LineChart>
+  <PowerLines {rows} height={240} time={clock} />
 </figure>

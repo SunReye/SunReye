@@ -286,5 +286,12 @@
   "field_length": "Länge (m)",
   "block_carport": "Carport",
   "builder_cars": "Angeschlossene Fahrzeuge",
-  "builder_car": "{name}: {state}"
+  "builder_car": "{name}: {state}",
+  "nav_forecast": "Prognose",
+  "forecast_title": "Solarprognose",
+  "forecast_inverter": "Wechselrichter {device}",
+  "forecast_total": "Gesamt",
+  "forecast_input": "MPPT {input}",
+  "forecast_string_estimated": "{name} (geschätzt)",
+  "forecast_none": "Noch keine Strings angelegt."
 }
