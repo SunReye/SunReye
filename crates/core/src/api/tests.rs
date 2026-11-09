@@ -646,6 +646,60 @@ async fn the_committed_openapi_document_is_the_one_served() {
     );
 }
 
+/// A generated client names each call by its operation id (ADR 9).
+#[tokio::test]
+async fn every_operation_id_is_unique() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+    let document = json(core.send(get("/openapi.json")).await).await;
+
+    let operations = document["paths"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .flat_map(|(path, item)| {
+            item.as_object()
+                .unwrap()
+                .iter()
+                .filter_map(move |(method, operation)| {
+                    Some((
+                        operation["operationId"].as_str()?,
+                        format!("{method} {path}"),
+                    ))
+                })
+        });
+
+    let mut seen = std::collections::BTreeMap::<&str, String>::new();
+    for (id, at) in operations {
+        if let Some(first) = seen.insert(id, at.clone()) {
+            panic!("operation id `{id}` names both {first} and {at}");
+        }
+    }
+}
+
+/// utoipa keeps one schema per name, so a second type of the same name would type its route
+/// with the first's schema.
+#[test]
+#[should_panic(expected = "schema `Change` is defined twice")]
+fn a_schema_name_two_features_define_differently_fails() {
+    use utoipa::openapi::{ComponentsBuilder, ObjectBuilder, OpenApiBuilder, Type};
+    use utoipa_axum::router::OpenApiRouter;
+
+    let feature = |property: &str| {
+        let schema =
+            ObjectBuilder::new().property(property, ObjectBuilder::new().schema_type(Type::String));
+        OpenApiRouter::<()>::with_openapi(
+            OpenApiBuilder::new()
+                .components(Some(
+                    ComponentsBuilder::new().schema("Change", schema).build(),
+                ))
+                .build(),
+        )
+    };
+
+    super::merged([feature("points"), feature("subject")]);
+}
+
 /// The SPA maps each code to text (ADR 11), so the document lists them all.
 #[tokio::test]
 async fn the_openapi_document_lists_every_problem_code() {

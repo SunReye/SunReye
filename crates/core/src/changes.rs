@@ -145,7 +145,7 @@ pub(crate) fn rfc3339(seconds: i64) -> String {
 /// One entry of the change log.
 #[derive(Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct Change {
+struct LoggedChange {
     /// RFC 3339, UTC.
     changed: String,
     /// RFC 3339, UTC.
@@ -163,17 +163,17 @@ struct Change {
 
 #[derive(Serialize, ToSchema)]
 struct Log {
-    changes: Vec<Change>,
+    changes: Vec<LoggedChange>,
 }
 
-fn read(db: &Connection) -> rusqlite::Result<Vec<Change>> {
+fn read(db: &Connection) -> rusqlite::Result<Vec<LoggedChange>> {
     db.prepare(
         "SELECT changed, applies_from, actor, subject, subject_id, action, state
          FROM change ORDER BY id",
     )?
     .query_map([], |row| {
         let state: Option<String> = row.get(6)?;
-        Ok(Change {
+        Ok(LoggedChange {
             changed: rfc3339(row.get(0)?),
             applies_from: rfc3339(row.get(1)?),
             actor: row.get(2)?,

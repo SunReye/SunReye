@@ -66,7 +66,7 @@ pub fn find(db: &Connection, name: &str) -> rusqlite::Result<Option<(u32, String
     (status = 200, body = Viewers),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn list(State((auth, _)): ViewersState) -> Result<Json<Viewers>, Problem> {
+pub async fn list_viewers(State((auth, _)): ViewersState) -> Result<Json<Viewers>, Problem> {
     let viewers = auth
         .0
         .database
@@ -90,7 +90,7 @@ pub async fn list(State((auth, _)): ViewersState) -> Result<Json<Viewers>, Probl
     (status = 201, body = Viewer),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn add(
+pub async fn add_viewer(
     State((auth, clock)): ViewersState,
     body: Result<Json<ViewerDraft>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Viewer>), Problem> {
@@ -149,7 +149,7 @@ fn insert(
     (status = 204),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-pub async fn remove(
+pub async fn remove_viewer(
     State((auth, clock)): ViewersState,
     id: Result<Path<u32>, PathRejection>,
 ) -> Result<StatusCode, Problem> {

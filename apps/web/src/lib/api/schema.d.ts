@@ -821,10 +821,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_tokens"];
         put?: never;
         /** Creates a token and shows it, once. */
-        post: operations["add"];
+        post: operations["add_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -842,7 +842,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Removes a token; a request carrying it is refused from now on. */
-        delete: operations["remove"];
+        delete: operations["remove_token"];
         options?: never;
         head?: never;
         patch?: never;
@@ -876,10 +876,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list"];
+        get: operations["list_viewers"];
         put?: never;
         /** Adds a viewer, who reads live values and history. */
-        post: operations["add"];
+        post: operations["add_viewer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -897,7 +897,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Removes a viewer and ends its sessions. */
-        delete: operations["remove"];
+        delete: operations["remove_viewer"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1528,7 +1528,26 @@ export interface components {
             longitude: number;
         };
         Log: {
-            changes: components["schemas"]["Change"][];
+            changes: components["schemas"]["LoggedChange"][];
+        };
+        /** @description One entry of the change log. */
+        LoggedChange: {
+            /** @description `add`, `change`, `remove` or `reprice`. */
+            action: string;
+            actor: string;
+            /** @description RFC 3339, UTC. */
+            appliesFrom: string;
+            /** @description RFC 3339, UTC. */
+            changed: string;
+            /**
+             * Format: int32
+             * @description The subject's id.
+             */
+            id: number;
+            /** @description The subject after the change, as its own route reads it; `null` once removed. */
+            state?: unknown;
+            /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`. */
+            subject: string;
         };
         /** @description The modules on one roof face. */
         ModuleGrid: {
@@ -3940,7 +3959,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_tokens: {
         parameters: {
             query?: never;
             header?: never;
@@ -3967,7 +3986,7 @@ export interface operations {
             };
         };
     };
-    add: {
+    add_token: {
         parameters: {
             query?: never;
             header?: never;
@@ -3998,7 +4017,7 @@ export interface operations {
             };
         };
     };
-    remove: {
+    remove_token: {
         parameters: {
             query?: never;
             header?: never;
@@ -4086,7 +4105,7 @@ export interface operations {
             };
         };
     };
-    list: {
+    list_viewers: {
         parameters: {
             query?: never;
             header?: never;
@@ -4113,7 +4132,7 @@ export interface operations {
             };
         };
     };
-    add: {
+    add_viewer: {
         parameters: {
             query?: never;
             header?: never;
@@ -4144,7 +4163,7 @@ export interface operations {
             };
         };
     };
-    remove: {
+    remove_viewer: {
         parameters: {
             query?: never;
             header?: never;

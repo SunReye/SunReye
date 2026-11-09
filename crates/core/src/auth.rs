@@ -145,21 +145,21 @@ impl Auth {
     /// The sign-in and viewer routes beside `api`, each guarded as the access table classifies
     /// it.
     pub fn routes(&self, api: OpenApiRouter, clock: Clock) -> OpenApiRouter {
-        OpenApiRouter::new()
-            .routes(routes!(session))
-            .routes(routes!(setup))
-            .routes(routes!(login))
-            .with_state(self.clone())
-            .merge(
-                OpenApiRouter::new()
-                    .routes(routes!(viewers::list, viewers::add))
-                    .routes(routes!(viewers::remove))
-                    .routes(routes!(tokens::list, tokens::add))
-                    .routes(routes!(tokens::remove))
-                    .with_state((self.clone(), clock)),
-            )
-            .merge(api)
-            .layer(middleware::from_fn_with_state(self.clone(), guard))
+        crate::api::merged([
+            OpenApiRouter::new()
+                .routes(routes!(session))
+                .routes(routes!(setup))
+                .routes(routes!(login))
+                .with_state(self.clone()),
+            OpenApiRouter::new()
+                .routes(routes!(viewers::list_viewers, viewers::add_viewer))
+                .routes(routes!(viewers::remove_viewer))
+                .routes(routes!(tokens::list_tokens, tokens::add_token))
+                .routes(routes!(tokens::remove_token))
+                .with_state((self.clone(), clock)),
+            api,
+        ])
+        .layer(middleware::from_fn_with_state(self.clone(), guard))
     }
 
     /// Whether the Supervisor proxied `request` through ingress, which names its prefix in
