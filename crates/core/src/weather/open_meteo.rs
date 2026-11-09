@@ -1,13 +1,16 @@
-//! The Open-Meteo forecast adapter: keyless, 15-minute series for any location.
+//! The Open-Meteo adapters: keyless. The forecast at 15-minute resolution; the archive, past
+//! weather for learning (ADR 17), hourly.
 
 use std::time::{Duration, UNIX_EPOCH};
 
+use jiff::civil::Date;
 use serde::Deserialize;
 
-use super::{Error, Provider, Slot};
+use super::{Archive, Error, Provider, Slot};
 use crate::location::Location;
 
 const BASE: &str = "https://api.open-meteo.com/v1/forecast";
+const ARCHIVE: &str = "https://archive-api.open-meteo.com/v1/archive";
 /// Instantaneous irradiance, as the PV model transposes instants, not interval means.
 const VARIABLES: &str = "shortwave_radiation_instant,direct_normal_irradiance_instant,\
                          diffuse_radiation_instant,temperature_2m,wind_speed_10m";
@@ -24,6 +27,20 @@ impl Provider for OpenMeteo {
             .await
             .map_err(|e| Error::Fetch(e.to_string()))??;
         parse(&body)
+    }
+}
+
+/// Fetches from `archive-api.open-meteo.com`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenMeteoArchive;
+
+impl Archive for OpenMeteoArchive {
+    async fn fetch(&self, location: Location, from: Date, to: Date) -> Result<Vec<Slot>, Error> {
+        let url = archive_url(location, from, to);
+        let body = tokio::task::spawn_blocking(move || get(&url))
+            .await
+            .map_err(|e| Error::Fetch(e.to_string()))??;
+        parse_archive(&body)
     }
 }
 
@@ -48,9 +65,23 @@ pub fn url(location: Location) -> String {
     )
 }
 
+/// The request for the UTC days `from` to `to`, at 0.01°.
+pub fn archive_url(location: Location, from: Date, to: Date) -> String {
+    format!(
+        "{ARCHIVE}?latitude={:.2}&longitude={:.2}&start_date={from}&end_date={to}\
+         &hourly={VARIABLES}&wind_speed_unit=ms&timezone=GMT&timeformat=unixtime",
+        location.latitude, location.longitude
+    )
+}
+
 #[derive(Deserialize)]
 struct Body {
     minutely_15: Series,
+}
+
+#[derive(Deserialize)]
+struct ArchiveBody {
+    hourly: Series,
 }
 
 #[derive(Deserialize)]
@@ -71,8 +102,22 @@ struct Series {
 /// The slots of an answer; a slot missing anything but wind is dropped.
 pub fn parse(body: &str) -> Result<Vec<Slot>, Error> {
     let Body { minutely_15: s } = serde_json::from_str(body).map_err(|_| Error::Format)?;
+    Ok(slots(&s))
+}
+
+/// The slots of an archive answer; a slot missing anything but wind is dropped, as the archive
+/// leaves its latest days empty until they settle.
+///
+/// # Errors
+/// The body is not an archive answer.
+pub fn parse_archive(body: &str) -> Result<Vec<Slot>, Error> {
+    let ArchiveBody { hourly: s } = serde_json::from_str(body).map_err(|_| Error::Format)?;
+    Ok(slots(&s))
+}
+
+fn slots(s: &Series) -> Vec<Slot> {
     let value = |series: &[Option<f64>], i: usize| series.get(i).copied().flatten();
-    Ok(s.time
+    s.time
         .iter()
         .enumerate()
         .filter_map(|(i, &seconds)| {
@@ -85,5 +130,5 @@ pub fn parse(body: &str) -> Result<Vec<Slot>, Error> {
                 wind: value(&s.wind, i),
             })
         })
-        .collect())
+        .collect()
 }
