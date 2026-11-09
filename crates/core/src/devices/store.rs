@@ -66,6 +66,16 @@ fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
     Ok(Some(Connection { id, reach, secrets }))
 }
 
+/// The value of connection `id`'s secret `name`, for the funnel alone: never returned by the API.
+pub fn secret(db: &Db, id: u32, name: &str) -> rusqlite::Result<Option<String>> {
+    db.query_row(
+        "SELECT value FROM secret WHERE connection = ?1 AND name = ?2",
+        params![id, name],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
 /// Applies a draft's secret changes to connection `id`.
 fn write_secrets(db: &Db, id: u32, draft: &ConnectionDraft) -> rusqlite::Result<()> {
     for (name, value) in &draft.secrets {

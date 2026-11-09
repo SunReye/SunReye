@@ -15,7 +15,7 @@ use std::time::SystemTime;
 
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
-use sunreye_profile::Profile;
+use sunreye_profile::{Profile, Setting};
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
@@ -25,7 +25,7 @@ use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::profiles::Catalogue;
-use crate::settings::{self, Job, Request, log};
+use crate::settings::{self, Job, Request, Secret, log};
 use crate::storage::{self, Database, Declarer, Policy};
 use crate::transport::Endpoint;
 
@@ -313,8 +313,9 @@ impl Devices {
     ///
     /// # Errors
     /// The device or setting is unknown or read-only, its profile is a community one, the value
-    /// does not fit, the device's writes are off, the setting's minimum interval has not passed, a
-    /// precondition does not hold, or the file cannot be written.
+    /// does not fit, the device's writes are off, the setting's minimum interval has not passed, its
+    /// unlock's secret is not set or not a code, a precondition does not hold, or the file cannot
+    /// be written.
     pub async fn write_setting(
         &self,
         id: u32,
@@ -336,6 +337,7 @@ impl Devices {
             .await
             .map_err(|_| INTERNAL)?;
         let (setting, words) = settings::check(&profile, &request, device.draft.writes, last, now)?;
+        let unlock = self.unlock(device.draft.connection, &setting).await?;
         let task = running
             .iter()
             .find(|r| r.devices.iter().any(|d| d.id == id))
@@ -345,7 +347,7 @@ impl Devices {
             unit: device.draft.unit,
             setting,
             words,
-            unlock: None,
+            unlock,
         };
         // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
         let applied = task.write(job).await.ok_or(INTERNAL)??;
@@ -367,6 +369,19 @@ impl Devices {
             .map_err(|_| INTERNAL);
         drop(running);
         logged
+    }
+
+    /// The words of the secret `setting`'s unlock names, from `connection`.
+    async fn unlock(&self, connection: u32, setting: &Setting) -> Result<Option<Secret>, Problem> {
+        let Some(name) = setting.unlock().map(|unlock| unlock.secret.clone()) else {
+            return Ok(None);
+        };
+        let secret = self
+            .database
+            .run(move |db| store::secret(db, connection, &name))
+            .await
+            .map_err(|_| INTERNAL)?;
+        Ok(settings::unlock(setting, secret.as_deref())?)
     }
 
     /// Every write attempt, oldest first.

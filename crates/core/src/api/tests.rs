@@ -22,8 +22,8 @@ use crate::devices::Devices;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::PlantLocation;
-use crate::profiles::Profiles;
 use crate::profiles::fake::Host;
+use crate::profiles::{Keys, Profiles};
 use crate::storage::{Problem, Storage};
 
 mod access;
@@ -36,6 +36,7 @@ mod live;
 mod location;
 mod profiles;
 mod screen;
+mod secrets;
 mod settings;
 mod tokens;
 mod viewers;
@@ -62,11 +63,11 @@ struct Core {
 
 impl Core {
     async fn open(path: &Path) -> Self {
-        Self::trusting(path, None).await
+        Self::trusting(path, None, None).await
     }
 
-    /// A core that trusts Home Assistant ingress from `ingress`.
-    async fn trusting(path: &Path, ingress: Option<IpAddr>) -> Self {
+    /// A core that trusts Home Assistant ingress from `ingress`, and profiles signed by `keys`.
+    async fn trusting(path: &Path, ingress: Option<IpAddr>, keys: Option<Keys>) -> Self {
         let bus = Bus::default();
         let storage = Storage::open(path, UNIX_EPOCH, "UTC", &bus).unwrap();
         let auth = Auth::open(storage.database(), ingress).await.unwrap();
@@ -74,7 +75,7 @@ impl Core {
         let clock = Arc::new(Mutex::new(None));
         let set = Arc::clone(&clock);
         let host = Host::new();
-        let profiles = Profiles::open(storage.database(), Arc::<Host>::clone(&host), None)
+        let profiles = Profiles::open(storage.database(), Arc::<Host>::clone(&host), keys)
             .await
             .unwrap();
         let api = Api {

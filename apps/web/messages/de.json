@@ -43,6 +43,8 @@
   "problem_setting_interval": "Diese Einstellung wurde eben erst geschrieben; warte ihren Mindestabstand ab.",
   "problem_setting_precondition": "Das Gerät ist nicht in einem Zustand, in dem diese Einstellung geschrieben werden kann.",
   "problem_setting_community": "Ein Community-Profil wird nur lesend geladen: seine Einstellungen werden nicht geschrieben.",
+  "problem_secret_missing": "Die Verbindung hat kein Geheimnis mit dem Namen, den die Entsperrung dieser Einstellung braucht.",
+  "problem_secret_value": "Das Geheimnis der Verbindung ist kein Code, den die Entsperrung dieser Einstellung schreiben kann.",
   "problem_index_value": "Ein Profilindex braucht eine http- oder https-URL.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",

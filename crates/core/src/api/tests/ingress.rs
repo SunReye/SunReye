@@ -26,7 +26,7 @@ fn ingress(address: &str, mut request: Request<Body>) -> Request<Body> {
 
 async fn behind_ingress() -> (TempDir, Core) {
     let dir = tempfile::tempdir().unwrap();
-    let core = Core::trusting(&dir.path().join("core.sqlite"), Some(supervisor())).await;
+    let core = Core::trusting(&dir.path().join("core.sqlite"), Some(supervisor()), None).await;
     (dir, core)
 }
 

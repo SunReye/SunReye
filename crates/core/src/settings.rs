@@ -48,6 +48,10 @@ pub enum Refusal {
     Interval,
     /// A precondition read from the device does not hold.
     Precondition,
+    /// The device's connection holds no secret of the name its unlock step names.
+    SecretMissing,
+    /// The secret is not a whole number of the unlock step's type.
+    SecretValue,
 }
 
 impl From<Refusal> for Problem {
@@ -59,6 +63,8 @@ impl From<Refusal> for Problem {
             Refusal::WritesOff => (StatusCode::CONFLICT, Code::SettingWritesOff),
             Refusal::Interval => (StatusCode::TOO_MANY_REQUESTS, Code::SettingInterval),
             Refusal::Precondition => (StatusCode::CONFLICT, Code::SettingPrecondition),
+            Refusal::SecretMissing => (StatusCode::CONFLICT, Code::SecretMissing),
+            Refusal::SecretValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::SecretValue),
         };
         Self { status, code }
     }
@@ -141,6 +147,20 @@ pub fn check(
         return Err(Refusal::Interval);
     }
     Ok((setting.clone(), words))
+}
+
+/// The words `setting`'s unlock step writes, from `secret`, the value its connection holds under
+/// the step's name; `None` without an unlock step.
+///
+/// # Errors
+/// The secret is not set, or is not a code of the step's type.
+pub fn unlock(setting: &Setting, secret: Option<&str>) -> Result<Option<Secret>, Refusal> {
+    let Some(unlock) = setting.unlock() else {
+        return Ok(None);
+    };
+    let secret = secret.ok_or(Refusal::SecretMissing)?;
+    let words = unlock.encode(secret).ok_or(Refusal::SecretValue)?;
+    Ok(Some(Secret(words)))
 }
 
 /// Runs `job` on `client`, connecting to `endpoint` when it has none.

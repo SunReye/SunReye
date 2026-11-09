@@ -359,6 +359,10 @@ pub enum Code {
     SettingPrecondition,
     #[serde(rename = "setting.community")]
     SettingCommunity,
+    #[serde(rename = "secret.missing")]
+    SecretMissing,
+    #[serde(rename = "secret.value")]
+    SecretValue,
     #[serde(rename = "index.value")]
     IndexValue,
     #[serde(rename = "clock.unsynced")]

@@ -107,6 +107,8 @@
           "setting.interval",
           "setting.precondition",
           "setting.community",
+          "secret.missing",
+          "secret.value",
           "index.value",
           "clock.unsynced",
           "internal"
