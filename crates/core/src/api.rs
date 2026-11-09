@@ -1,6 +1,7 @@
 //! The HTTP API (ADR 9). Every route is registered with its OpenAPI description, so the document
 //! served at `/openapi.json` cannot miss one.
 
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 
 use axum::extract::State;
@@ -19,7 +20,7 @@ use utoipa_axum::routes;
 use crate::auth::Auth;
 use crate::changes::Changes;
 use crate::devices::Devices;
-use crate::layout::Layouts;
+use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
 use crate::spa;
 use crate::storage;
@@ -28,6 +29,10 @@ use crate::transport::Endpoint;
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
     code: Code::RequestRoute,
+};
+const INTERNAL: Problem = Problem {
+    status: StatusCode::INTERNAL_SERVER_ERROR,
+    code: Code::Internal,
 };
 const METHOD: Problem = Problem {
     status: StatusCode::METHOD_NOT_ALLOWED,
@@ -59,7 +64,11 @@ pub type Clock = std::sync::Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>
 
 pub fn router(api: Api) -> Router {
     let protected = OpenApiRouter::new()
-        .routes(routes!(capabilities))
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(capabilities))
+                .with_state((api.layouts.clone(), Clock::clone(&api.clock))),
+        )
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(live_values))
@@ -110,6 +119,15 @@ struct Support {
     /// The bindings, decoders and computed quantities a profile may require.
     capabilities: &'static [&'static str],
     transports: &'static [&'static str],
+    /// By device id, what the layout in force says of its series.
+    devices: BTreeMap<String, DeviceSupport>,
+}
+
+#[derive(Serialize, ToSchema)]
+struct DeviceSupport {
+    /// Series computed from others, not measured, such as `pv.string.power[3]` of a string
+    /// in parallel (ADR 17).
+    estimated: Vec<String>,
 }
 
 /// An inclusive range of profile schemas.
@@ -123,9 +141,24 @@ struct Schemas {
     (status = 200, body = Support),
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-async fn capabilities() -> Json<Support> {
+async fn capabilities(
+    State((layouts, clock)): State<(Layouts, Clock)>,
+) -> Result<Json<Support>, Problem> {
+    let versions = layouts.versions().await.map_err(|_| INTERNAL)?;
+    let estimated = in_force(&versions, clock()).map(Version::estimated);
+    let devices = estimated
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(device, ids)| {
+            let estimated = ids
+                .into_iter()
+                .map(|id| format!("pv.string.power[{id}]"))
+                .collect();
+            (device.to_string(), DeviceSupport { estimated })
+        })
+        .collect();
     let support = sunreye_profile::SUPPORT;
-    Json(Support {
+    Ok(Json(Support {
         version: env!("CARGO_PKG_VERSION"),
         schema: Schemas {
             min: support.schema.min,
@@ -133,7 +166,8 @@ async fn capabilities() -> Json<Support> {
         },
         capabilities: support.capabilities,
         transports: Endpoint::TRANSPORTS,
-    })
+        devices,
+    }))
 }
 
 /// Conditions that degrade the core.

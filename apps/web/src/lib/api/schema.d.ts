@@ -422,6 +422,13 @@ export interface components {
         DeviceList: {
             devices: components["schemas"]["Device"][];
         };
+        DeviceSupport: {
+            /**
+             * @description Series computed from others, not measured, such as `pv.string.power[3]` of a string
+             *     in parallel (ADR 17).
+             */
+            estimated: string[];
+        };
         /** @description One attempt. */
         Entry: {
             /** @description `admin`, or a named controller. */
@@ -577,6 +584,10 @@ export interface components {
         Support: {
             /** @description The bindings, decoders and computed quantities a profile may require. */
             capabilities: string[];
+            /** @description By device id, what the layout in force says of its series. */
+            devices: {
+                [key: string]: components["schemas"]["DeviceSupport"];
+            };
             /** @description The profile schemas this core loads. */
             schema: components["schemas"]["Schemas"];
             transports: string[];
