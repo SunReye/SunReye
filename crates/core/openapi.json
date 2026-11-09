@@ -1477,6 +1477,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "topicRoot": {
+            "description": "A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a\nbroker and refused for any other transport.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "transport": {
             "$ref": "#/components/schemas/Transport"
           }

@@ -47,7 +47,7 @@ pub fn connections(db: &Db) -> rusqlite::Result<Vec<Connection>> {
 fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
     let Some(reach) = db
         .query_row(
-            "SELECT name, transport, host, port FROM connection WHERE id = ?1",
+            "SELECT name, transport, host, port, topic_root FROM connection WHERE id = ?1",
             [id],
             |row| {
                 Ok(Reach {
@@ -55,6 +55,7 @@ fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
                     transport: transport(&row.get::<_, String>(1)?)?,
                     host: row.get(2)?,
                     port: row.get(3)?,
+                    topic_root: row.get(4)?,
                 })
             },
         )
@@ -143,8 +144,15 @@ pub fn add_connection(
     let tx = db.unchecked_transaction()?;
     let r = &draft.reach;
     tx.execute(
-        "INSERT INTO connection (name, transport, host, port) VALUES (?1, ?2, ?3, ?4)",
-        params![r.name, transport_name(r.transport), r.host, r.port],
+        "INSERT INTO connection (name, transport, host, port, topic_root)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            r.name,
+            transport_name(r.transport),
+            r.host,
+            r.port,
+            r.topic_root
+        ],
     )?;
     let id = id(&tx);
     write_secrets(&tx, id, draft)?;
@@ -173,8 +181,16 @@ pub fn change_connection(
         return Ok(Err(Refusal::Address));
     }
     tx.execute(
-        "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5 WHERE id = ?1",
-        params![id, r.name, transport_name(r.transport), r.host, r.port],
+        "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5, topic_root = ?6
+         WHERE id = ?1",
+        params![
+            id,
+            r.name,
+            transport_name(r.transport),
+            r.host,
+            r.port,
+            r.topic_root
+        ],
     )?;
     write_secrets(&tx, id, draft)?;
     let changed = log_connection(&tx, id, Action::Change, changed)?;

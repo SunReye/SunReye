@@ -17,7 +17,7 @@ const PASSWORD: &str = "Tr0ub4dor&3";
 
 fn broker(fake: &Fake) -> Value {
     json!({ "name": "broker", "transport": "mqtt", "host": "127.0.0.1",
-        "port": fake.address.port(),
+        "port": fake.address.port(), "topicRoot": "evcc",
         "secrets": { "username": "sunreye", "password": PASSWORD } })
 }
 
@@ -49,6 +49,7 @@ async fn a_broker_connection_connects_with_its_credentials_and_reports_its_statu
     let connection = &listed["connections"][0];
     assert_eq!(connection["id"], id);
     assert_eq!(connection["transport"], "mqtt");
+    assert_eq!(connection["topicRoot"], "evcc");
     assert_eq!(connection["secrets"], json!(["password", "username"]));
     assert_eq!(connection["status"]["lastError"], Value::Null);
     let at: jiff::Timestamp = connection["status"]["lastConnectedAt"]
@@ -157,4 +158,38 @@ async fn a_connection_with_devices_does_not_become_a_broker() {
         (status, &body["code"]),
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("device.transport"))
     );
+}
+
+#[tokio::test]
+async fn a_broker_needs_a_topic_root_without_wildcards_and_a_modbus_connection_takes_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let fake = fake::serve(0).await;
+    let mut drafts = Vec::new();
+    for root in [
+        Value::Null,
+        json!(""),
+        json!("evcc/#"),
+        json!("a/+/b"),
+        json!("/evcc"),
+        json!("evcc/"),
+    ] {
+        let mut draft = broker(&fake);
+        draft["topicRoot"] = root;
+        drafts.push(draft);
+    }
+    let mut modbus = gateway();
+    modbus["topicRoot"] = json!("evcc");
+    drafts.push(modbus);
+
+    for draft in drafts {
+        let (status, body) = core
+            .ask(&set_cookie, send("POST", "/api/v1/connections", &draft))
+            .await;
+        assert_eq!(
+            (status, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("connection.value")),
+            "{draft}"
+        );
+    }
 }

@@ -1168,6 +1168,11 @@ export interface components {
             name: string;
             /** Format: int32 */
             port: number;
+            /**
+             * @description A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a
+             *     broker and refused for any other transport.
+             */
+            topicRoot?: string | null;
             transport: components["schemas"]["Transport"];
         };
         /** @description An index and the outcome of its last check. */

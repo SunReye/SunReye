@@ -95,6 +95,10 @@ pub struct Reach {
     pub transport: Transport,
     pub host: String,
     pub port: u16,
+    /// A broker's topic root, such as `evcc`, under which its profiles' topics sit; required for a
+    /// broker and refused for any other transport.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic_root: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -761,10 +765,20 @@ fn is_inverter(profile: &Profile) -> bool {
 }
 
 fn check_reach(reach: &Reach) -> Result<(), Refusal> {
-    if reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
+    let root = match (reach.transport, reach.topic_root.as_deref()) {
+        (Transport::Mqtt, Some(root)) => is_topic_root(root),
+        (Transport::Mqtt, None) => false,
+        (Transport::ModbusTcp | Transport::SolarmanV5, root) => root.is_none(),
+    };
+    if !root || reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
         return Err(Refusal::ConnectionValue);
     }
     Ok(())
+}
+
+/// A path without wildcards and without a leading or trailing `/`.
+fn is_topic_root(root: &str) -> bool {
+    !root.is_empty() && !root.starts_with('/') && !root.ends_with('/') && !root.contains(['+', '#'])
 }
 
 /// The change log entry of a change to `subject` `id`, applying at once.
