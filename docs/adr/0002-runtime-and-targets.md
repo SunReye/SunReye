@@ -16,7 +16,7 @@ The tool is small, runs for years on low-power hardware, and must stay fast for 
 - Release build: `opt-level = "s"`, fat LTO, one codegen unit, `panic = "abort"`, stripped, statically linked against musl. The workload waits on devices, so size beats peak speed.
 - Design rules instead of budgets: no allocation per poll, live values served from memory, every queue and buffer bounded (one bucket per device), history responses bounded (ADR 9), SPA routes code-split (ADR 11).
 - Startup takes only `--data-dir`, `--listen` (default `0.0.0.0:8099`, as the current add-on) and `--ingress`, falling back to `SUNREYE_DATA_DIR`, `SUNREYE_LISTEN` and `SUNREYE_INGRESS`. The data directory has no default: each image sets its own. `--ingress` names the Home Assistant Supervisor's address (ADR 9); only the add-on image sets it, so no API call can switch the trust on. Every other setting lives in SQLite and changes through the API.
-- Logs go through `tracing` to stderr, where journald or Docker keep them. A bounded in-memory buffer of the last 2,000 lines feeds the SPA's log screen. The core writes no log files, sparing the flash.
+- Logs go through `tracing` to stderr, where journald or Docker keep them. A bounded in-memory buffer of the last 2,000 lines, each cut at 1 KiB, feeds the SPA's log screen; an event of several lines takes one place per line. The core writes no log files, sparing the flash.
 - The gate is local: one serial command, identical before and after merge. Hosted CI returns when the project is stable.
 
 ## Considered options
