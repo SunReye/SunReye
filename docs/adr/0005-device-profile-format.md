@@ -21,7 +21,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Admission rule.** A format feature is admitted only when at least two vendors need it or the owner's own device does. The evidence table below is the record; a feature that fails waits.
 
-**Bindings.** `modbus` (TCP, RTU over TCP, Solarman V5, with SunSpec built in), `http` (JSON paths, with auth kinds admitted per vendor) and `mqtt`. UDP, WebSocket and SML have one verified vendor each and wait.
+**Bindings.** `modbus` (TCP, RTU over TCP, Solarman V5, with SunSpec built in), `http` (JSON paths, with auth kinds admitted per vendor) and `mqtt`. UDP, WebSocket and SML have one verified vendor each and wait. Admitted auth kinds: HTTP Digest with SHA-256 and `qop=auth` (RFC 7616), as Shelly's Gen2 devices ask it (https://shelly-api-docs.shelly.cloud/gen2/General/Authentication). The core answers a host's challenge with its connection's `username` and `password` secrets (ADR 10), so a profile names no auth kind; one the core cannot answer, such as MD5, fails the read. Fronius's Solar API needs none. Enphase's bearer token and sonnen's `Auth-Token` header wait for their vendor's profile.
 
 **Read side.**
 
@@ -73,6 +73,7 @@ Each step kind is its own capability (`write-block` for `writeBlock`).
 | Atomic block write, ordered sequence | SolaX, Sungrow, GoodWe |
 | Minimum request interval | Sungrow, SolaX |
 | HTTP with auth | Fronius, Enphase, Shelly, sonnen |
+| HTTP Digest with SHA-256 | Shelly Gen2 and later (Pro 3EM) |
 
 ## Considered options
 
