@@ -24,5 +24,6 @@
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",
   "problem_unknown": "Unbekannter Fehler: {code}",
-  "chart_forecast": "{name} (Prognose)"
+  "chart_forecast": "{name} (Prognose)",
+  "locale_label": "Sprache"
 }
