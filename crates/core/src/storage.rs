@@ -3,9 +3,11 @@
 
 mod block;
 mod encode;
+mod rollup;
 mod thread;
 
 use std::fmt;
+use std::ops::Range;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -22,6 +24,8 @@ const QUEUE: usize = 1024;
 /// How one series of one device is stored.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Policy {
+    /// What its values are: decides the rollup.
+    pub kind: RoleKind,
     /// The quantisation step, in the role's unit: stored values are integer multiples of it.
     pub step: f64,
     /// The smallest stored change, in the role's unit; zero stores every change.
@@ -42,6 +46,7 @@ impl Policy {
             _ => 0.0,
         };
         Self {
+            kind,
             step,
             deadband,
             cadence,
@@ -54,6 +59,41 @@ impl Policy {
 pub struct ChangePoint {
     pub time: SystemTime,
     pub value: Option<f64>,
+}
+
+/// A rollup tier: UTC hours, or plant-local days.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Hour,
+    Day,
+}
+
+/// One hour or day of one series, over the history rolled up so far.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rollup {
+    pub start: SystemTime,
+    pub end: SystemTime,
+    pub aggregate: Aggregate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Aggregate {
+    Measurement {
+        /// Time with a value; gaps are excluded.
+        duration: Duration,
+        /// Time-weighted over `duration`.
+        mean: f64,
+        min: f64,
+        max: f64,
+        /// `Σ value·duration` in the unit times hours: Wh for power, EUR for a `cost.*` rate.
+        integral: f64,
+    },
+    Counter {
+        first: f64,
+        last: f64,
+        /// The rises from value to value: a drop is a reset and adds nothing, as does a gap.
+        delta: f64,
+    },
 }
 
 /// A condition the API reports.
@@ -81,8 +121,10 @@ pub enum Error {
     Step,
     /// A stored block this build cannot read.
     Corrupt,
-    /// A series the bus never interned.
+    /// A series the bus never interned, or not declared where it must be.
     UnknownSeries,
+    /// A plant timezone that is not an IANA name the core knows.
+    Zone,
     /// The storage thread has stopped.
     Stopped,
 }
@@ -95,6 +137,7 @@ impl fmt::Display for Error {
             Self::Step => f.write_str("the step must be positive and finite"),
             Self::Corrupt => f.write_str("a stored block cannot be read"),
             Self::UnknownSeries => f.write_str("unknown series"),
+            Self::Zone => f.write_str("unknown timezone"),
             Self::Stopped => f.write_str("storage has stopped"),
         }
     }
@@ -125,12 +168,13 @@ impl Drop for Storage {
 
 impl Storage {
     /// Opens or creates the file at `path` and starts storing the bus's readings of declared
-    /// series. Must be called inside a Tokio runtime.
+    /// series, with days cut in the plant timezone `zone`. Must be called inside a Tokio runtime.
     ///
     /// # Errors
-    /// The file cannot be opened or migrated.
-    pub fn open(path: &Path, build: SystemTime, bus: &Bus) -> Result<Self, Error> {
-        let commands = thread::spawn(path, build, QUEUE)?;
+    /// The zone is unknown, or the file cannot be opened or migrated.
+    pub fn open(path: &Path, build: SystemTime, zone: &str, bus: &Bus) -> Result<Self, Error> {
+        let tz = jiff::tz::TimeZone::get(zone).map_err(|_| Error::Zone)?;
+        let commands = thread::spawn(path, build, (zone.to_owned(), tz), QUEUE)?;
         let feed = tokio::spawn(feed(bus.subscribe(), commands.clone()));
         Ok(Self {
             commands,
@@ -197,6 +241,49 @@ impl Storage {
             name,
             from,
             to,
+            reply,
+        })
+        .await?
+    }
+
+    /// The rollups of `series` in `tier` that start within `range`. Hours are rolled up once
+    /// closed; the current day covers its closed hours.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub async fn rollups(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        tier: Tier,
+        range: Range<SystemTime>,
+    ) -> Result<Vec<Rollup>, Error> {
+        let name = self.name(series)?;
+        self.request(|reply| Request::Rollups {
+            device,
+            name,
+            tier,
+            range,
+            reply,
+        })
+        .await?
+    }
+
+    /// Rebuilds from its change points every rollup of a declared `series` that overlaps
+    /// `range`.
+    ///
+    /// # Errors
+    /// The series is not declared, or the file cannot be written.
+    pub async fn rebuild(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        range: Range<SystemTime>,
+    ) -> Result<(), Error> {
+        self.request(|reply| Request::Rebuild {
+            device,
+            series,
+            range,
             reply,
         })
         .await?
