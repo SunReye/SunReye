@@ -66,4 +66,4 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 ## Consequences
 
-The WASM glue crate is the one `unsafe` exception (ADR 2). MPPT limits are optional; without them the forecast applies no MPPT caps. A schema bump forces a core update, bounded by the previous-schema rule. Vendors this ADR could not verify (Growatt, Varta, Senec, sonnen's local API, FOX ESS, Anker, Marstek, Fenecon) are not supported until a primary document or a capture exists.
+Its WASM glue crate is an `unsafe` exception (ADR 2). MPPT limits are optional; without them the forecast applies no MPPT caps. A schema bump forces a core update, bounded by the previous-schema rule. Vendors this ADR could not verify (Growatt, Varta, Senec, sonnen's local API, FOX ESS, Anker, Marstek, Fenecon) are not supported until a primary document or a capture exists.
