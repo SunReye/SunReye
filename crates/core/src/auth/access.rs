@@ -62,6 +62,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes/check", Admin),
+    (Method::GET, "/api/v1/profile-updates", Admin),
+    (Method::POST, "/api/v1/profile-updates/{id}", Admin),
     (Method::GET, "/api/v1/viewers", Admin),
     (Method::POST, "/api/v1/viewers", Admin),
     (Method::DELETE, "/api/v1/viewers/{id}", Admin),

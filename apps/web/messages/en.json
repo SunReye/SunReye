@@ -54,6 +54,7 @@
   "problem_secret_missing": "The connection holds no secret of the name this setting's unlock needs.",
   "problem_secret_value": "The connection's secret is not a code this setting's unlock can write.",
   "problem_index_value": "A profile index needs an http or https URL.",
+  "problem_update_none": "No update waits for this profile.",
   "problem_clock_unsynced": "The clock is not synchronised; history is held.",
   "problem_internal": "Internal error in the SunReye core.",
   "problem_http": "The server answered with HTTP {status}.",

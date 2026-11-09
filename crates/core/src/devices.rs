@@ -26,7 +26,7 @@ use crate::endpoint::{self, CADENCE, Task};
 use crate::layout::Inverters;
 use crate::profiles::Catalogue;
 use crate::settings::{
-    self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, enable, log, snapshot,
+    self, Enable, Job, Outcome, Permit, Request, Secret, Snapshot, Standing, enable, log, snapshot,
 };
 use crate::storage::{self, Database, Declarer, Policy};
 use crate::transport::Endpoint;
@@ -295,8 +295,13 @@ impl Devices {
             .database
             .run(move |db| enable::stored(db, id, &key))
             .await?;
-        let official = self.catalogue.official(&device.draft.profile);
-        Ok(Enable::of(setting, official, enabled.as_deref()))
+        let profile = &device.draft.profile;
+        let standing = Standing {
+            official: self.catalogue.official(profile),
+            changed: self.catalogue.changed(profile, &setting.key),
+            enabled: enabled.as_deref(),
+        };
+        Ok(Enable::of(setting, standing))
     }
 
     async fn device(&self, id: u32) -> Result<Device, Problem> {

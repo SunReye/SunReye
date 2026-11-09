@@ -62,6 +62,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "secret.missing": m.problem_secret_missing,
   "secret.value": m.problem_secret_value,
   "index.value": m.problem_index_value,
+  "update.none": m.problem_update_none,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

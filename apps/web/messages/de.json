@@ -54,6 +54,7 @@
   "problem_secret_missing": "Die Verbindung hat kein Geheimnis mit dem Namen, den die Entsperrung dieser Einstellung braucht.",
   "problem_secret_value": "Das Geheimnis der Verbindung ist kein Code, den die Entsperrung dieser Einstellung schreiben kann.",
   "problem_index_value": "Ein Profilindex braucht eine http- oder https-URL.",
+  "problem_update_none": "Für dieses Profil liegt kein Update vor.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",

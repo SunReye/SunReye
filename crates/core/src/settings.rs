@@ -96,12 +96,26 @@ pub enum Enable {
     Community,
 }
 
+/// Where `setting` stands, as far as trust goes (ADR 8).
+#[derive(Debug, Clone, Copy)]
+pub struct Standing<'a> {
+    /// Its profile is official.
+    pub official: bool,
+    /// An applied update added or changed it.
+    pub changed: bool,
+    /// The fingerprint the admin enabled it with, if at all.
+    pub enabled: Option<&'a str>,
+}
+
 impl Enable {
-    /// `setting` of a profile, `official` or not, that the admin enabled with fingerprint
-    /// `enabled`, if at all.
     #[must_use]
-    pub fn of(setting: &Setting, official: bool, enabled: Option<&str>) -> Self {
-        if official && setting.verified() {
+    pub fn of(setting: &Setting, standing: Standing<'_>) -> Self {
+        let Standing {
+            official,
+            changed,
+            enabled,
+        } = standing;
+        if official && setting.verified() && !changed {
             Self::Verified
         } else if enabled == Some(enable::fingerprint(setting).as_str()) {
             Self::On
@@ -109,6 +123,36 @@ impl Enable {
             Self::Off
         } else {
             Self::Community
+        }
+    }
+}
+
+/// A setting's declared values: what a write may carry.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+pub struct Declared {
+    /// The bounds of a value; absent when `values` lists them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<Bounds>,
+    /// The only values it takes, when the profile enumerates them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<f64>>,
+    /// A value is a whole number of steps.
+    pub step: f64,
+}
+
+/// The inclusive bounds of a setting's value.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ToSchema)]
+pub struct Bounds {
+    pub min: f64,
+    pub max: f64,
+}
+
+impl From<&Setting> for Declared {
+    fn from(setting: &Setting) -> Self {
+        Self {
+            range: setting.range().map(|(min, max)| Bounds { min, max }),
+            values: setting.values().map(<[f64]>::to_vec),
+            step: setting.step(),
         }
     }
 }

@@ -1,20 +1,24 @@
 //! The index routes, behind the admin's session.
 
 use axum::Json;
-use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use super::{Profiles, Report};
+use super::{Profiles, Report, Update};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
+};
+const PATH: Problem = Problem {
+    status: StatusCode::BAD_REQUEST,
+    code: Code::RequestPath,
 };
 
 impl Profiles {
@@ -22,6 +26,8 @@ impl Profiles {
         OpenApiRouter::new()
             .routes(routes!(indexes, add_index))
             .routes(routes!(check))
+            .routes(routes!(updates))
+            .routes(routes!(apply))
             .with_state((self, clock))
     }
 }
@@ -73,4 +79,36 @@ async fn check(State((profiles, _)): ProfilesState) -> Result<Json<Indexes>, Pro
     Ok(Json(Indexes {
         indexes: profiles.check().await?,
     }))
+}
+
+#[derive(Serialize, ToSchema)]
+struct Updates {
+    updates: Vec<Update>,
+}
+
+/// The updates a check found for profiles served, each with what it changes; none is served
+/// until the admin applies it.
+#[utoipa::path(get, path = "/api/v1/profile-updates", responses(
+    (status = 200, body = Updates),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn updates(State((profiles, _)): ProfilesState) -> Result<Json<Updates>, Problem> {
+    Ok(Json(Updates {
+        updates: profiles.updates().await?,
+    }))
+}
+
+/// Applies the update waiting for a profile. Each setting it adds or changes is off until the
+/// admin enables it again (ADR 8).
+#[utoipa::path(post, path = "/api/v1/profile-updates/{id}", params(("id" = String, Path)),
+    responses(
+    (status = 200, body = Update),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn apply(
+    State((profiles, clock)): ProfilesState,
+    id: Result<Path<String>, PathRejection>,
+) -> Result<Json<Update>, Problem> {
+    let Path(id) = id.map_err(|_| PATH)?;
+    Ok(Json(profiles.apply(&id, clock()).await?))
 }
