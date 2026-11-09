@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use sunreye_profile::{Framing, Profile};
 
-use super::{Options, Recording, record, run};
+use super::{CYCLES, Options, Recording, record, run};
 use crate::bus::{Bus, DeviceId};
-use crate::endpoint::{Device, TIMEOUT, spawn};
+use crate::endpoint::{CADENCE, Device, TIMEOUT, spawn};
 use crate::transport::{Capture, Client, Endpoint, Error, Exchange, fake};
 
 fn deye() -> Arc<Profile> {
@@ -207,4 +207,49 @@ async fn capture_refuses_a_profile_that_is_not_bundled_before_it_connects() {
         Err("no bundled profile `nope`".into())
     );
     assert!(fake.reads.try_recv().is_err());
+}
+
+/// The owner's plant through its gateway at unit 0 (#641): twelve cycles, recorded read-only.
+const PLANT: &str = include_str!("../../fixtures/capture/deye-sg05lp3.ndjson");
+
+/// Expected values decoded by hand from the first cycle's replies: register 588 is `0x0020`, 590
+/// is `0x0147` at scale -1, 587 is `0x148c` at scale 0.01.
+#[tokio::test(start_paused = true)]
+async fn the_owners_plant_replays_in_sim_cycle_after_cycle() {
+    let recording = Recording::parse(PLANT).unwrap();
+    assert_eq!(
+        (recording.profile.as_str(), recording.unit),
+        ("deye-sg05lp3", 0)
+    );
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let device = Device {
+        id: DeviceId(1),
+        unit: recording.unit,
+        profile: deye(),
+    };
+    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    readings.recv().await.unwrap();
+    let first = task.latest();
+    let value = |role: &str| {
+        first
+            .iter()
+            .find(|(r, _)| bus.series(r.series).unwrap().role == role)
+            .map(|(r, _)| r.value)
+    };
+    assert_eq!(value("battery.soc"), Some(32.0));
+    assert_eq!(value("battery.power"), Some(-327.0));
+    assert!((value("battery.voltage").unwrap() - 52.6).abs() < 1e-9);
+
+    let per_cycle = first.len();
+    let mut seen = 1;
+    let twelve = async {
+        while seen < per_cycle * CYCLES {
+            readings.recv().await.unwrap();
+            seen += 1;
+        }
+    };
+    tokio::time::timeout(CADENCE * 13, twelve)
+        .await
+        .expect("twelve cycles at the cadence");
 }
