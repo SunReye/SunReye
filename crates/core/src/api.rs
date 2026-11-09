@@ -54,6 +54,7 @@ const METHOD: Problem = Problem {
 mod forecasts;
 mod history;
 mod roles;
+mod statistics;
 
 #[derive(OpenApi)]
 #[openapi(info(title = "SunReye", version = "1"))]
@@ -153,6 +154,11 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
             OpenApiRouter::new()
                 .routes(routes!(history::history))
                 .with_state((api.history.clone(), Clock::clone(&api.clock))),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(statistics::statistics))
+                .with_state((api.history.clone(), api.storage.zones.watch())),
         )
         .merge(
             OpenApiRouter::new()

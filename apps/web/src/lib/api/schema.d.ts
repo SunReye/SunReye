@@ -316,6 +316,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One series' figures for each plant-local period starting in the range, folded from its
+         *     daily rollups.
+         */
+        get: operations["statistics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/import": {
         parameters: {
             query?: never;
@@ -1268,6 +1288,34 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /** @description One period's figures: a measurement's, or a counter's delta. */
+        Figures: {
+            /** @description The plant-local date the period begins on, `YYYY-MM-DD`. */
+            date: string;
+            /**
+             * Format: double
+             * @description A counter's rises, resets excluded.
+             */
+            delta?: number | null;
+            /** @description RFC 3339, UTC. */
+            end: string;
+            /**
+             * Format: double
+             * @description `Σ value·duration` in the unit times hours: Wh for power.
+             */
+            integral?: number | null;
+            /** Format: double */
+            max?: number | null;
+            /**
+             * Format: double
+             * @description Time-weighted over the time with a value.
+             */
+            mean?: number | null;
+            /** Format: double */
+            min?: number | null;
+            /** @description RFC 3339, UTC. */
+            start: string;
+        };
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */
             issued: string;
@@ -1556,6 +1604,11 @@ export interface components {
              */
             savings: number;
         };
+        /**
+         * @description A plant-local calendar period.
+         * @enum {string}
+         */
+        Period: "day" | "week" | "month";
         Point: {
             /** @description RFC 3339, UTC. */
             end: string;
@@ -1814,6 +1867,12 @@ export interface components {
         /** @description Whether spot prices are fetched, and for which bidding zone. */
         SpotPriceZone: {
             zone?: components["schemas"]["BiddingZone"] | null;
+        };
+        /** @description One series' figures per period. */
+        Statistics: {
+            period: components["schemas"]["Period"];
+            /** @description In time order; a period without rolled-up history has none. */
+            points: components["schemas"]["Figures"][];
         };
         /**
          * @description What became of one entry of an index.
@@ -2733,6 +2792,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    statistics: {
+        parameters: {
+            query: {
+                /** @description A series such as `pv.mppt.power[2]`. */
+                series: string;
+                period: components["schemas"]["Period"];
+                /** @description The first instant, RFC 3339: each period starting from it on is read. */
+                from: string;
+                /** @description The instant after the last, RFC 3339. */
+                to: string;
+            };
+            header?: never;
+            path: {
+                /** @description The device id. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Statistics"];
+                };
             };
             "4XX": {
                 headers: {

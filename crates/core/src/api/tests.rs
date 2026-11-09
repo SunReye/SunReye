@@ -61,6 +61,7 @@ mod screen;
 mod secrets;
 mod settings;
 mod spot;
+mod statistics;
 mod tariff;
 mod tokens;
 mod topology;
