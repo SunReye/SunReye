@@ -265,5 +265,22 @@
   "role_backup": "Notstrom",
   "role_ev": "Ladepunkt",
   "layout_title": "PV-Anlage",
-  "setup_finish": "Fertig, zur Übersicht"
+  "setup_finish": "Fertig, zur Übersicht",
+  "builder_car_places": "Stellplätze",
+  "builder_add_car_place": "Stellplatz hinzufügen",
+  "car_place": "Stellplatz {number}",
+  "car_loadpoint": "Ladepunkt",
+  "car_class": "Fahrzeugklasse",
+  "car_class_sedan": "Limousine",
+  "car_class_hatchback": "Kompaktwagen",
+  "car_class_suv": "SUV",
+  "car_class_van": "Van",
+  "car_class_pickup": "Pick-up",
+  "car_colour": "Farbe",
+  "car_upload": "Eigenes Modell (GLB, höchstens 20 MB)",
+  "car_model_remove": "Eigenes Modell entfernen",
+  "field_length": "Länge (m)",
+  "block_carport": "Carport",
+  "builder_cars": "Angeschlossene Fahrzeuge",
+  "builder_car": "{name}: {state}"
 }

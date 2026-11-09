@@ -13,13 +13,13 @@
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
   import { begin, record, redo, undo, type Edits } from "./history.ts";
   import { painted, panels, type Draft } from "./modules.ts";
   import Editor from "./Editor.svelte";
   import Outcome from "./Outcome.svelte";
   import type { Pv } from "./pv.ts";
-  import SceneCanvas from "./SceneCanvas.svelte";
+  import Stage from "./Stage.svelte";
+  import { provideUploader } from "./upload.ts";
 
   let {
     pv,
@@ -37,18 +37,6 @@
     devices: readonly Device[];
   } = $props();
 
-  /** Where each browser keeps its last view (ADR 20). */
-  const KEPT = "sunreye.builder.view";
-
-  const labels: Readonly<Record<Preset, () => string>> = {
-    north: m.view_north,
-    east: m.view_east,
-    south: m.view_south,
-    west: m.view_west,
-    top: m.view_top,
-    isometric: m.view_isometric,
-  };
-
   // Desktop and tablet edit; a phone views (ADR 20).
   const phone = new MediaQuery("max-width: 40rem");
 
@@ -57,11 +45,11 @@
 
   let history = $state.raw(opening());
 
-  let kept = $state.raw<View | undefined>(parseView(localStorage.getItem(KEPT)));
-
   let appliesFrom = $state(today());
 
   let saved = $state.raw<Layout | Problem>();
+
+  provideUploader((glb) => core.uploadCarBody(glb));
 
   const draft = $derived(history.present);
 
@@ -76,11 +64,6 @@
   function change(next: Draft): void {
     history = record(history, next);
     saved = undefined;
-  }
-
-  function keep(view: View): void {
-    kept = view;
-    localStorage.setItem(KEPT, JSON.stringify(view));
   }
 
   /** One configuration change from the chosen day on (ADR 20); nothing left to undo after. */
@@ -99,24 +82,7 @@
   }
 </script>
 
-<section class="stage">
-  <SceneCanvas
-    {geometry}
-    panels={drawn}
-    view={kept ?? presetView("isometric", geometry)}
-    onview={keep}
-  />
-  <nav aria-label={m.builder_views()}>
-    {#each presets as preset (preset)}
-      <button
-        type="button"
-        onclick={() => {
-          keep(presetView(preset, geometry));
-        }}>{labels[preset]()}</button
-      >
-    {/each}
-  </nav>
-</section>
+<Stage {core} {geometry} panels={drawn} places={draft.scene.carPlaces ?? []} {devices} />
 {#if phone.current}
   <p>{m.builder_view_only()}</p>
 {:else}
@@ -148,13 +114,6 @@
 {/if}
 
 <style>
-  .stage {
-    display: grid;
-    grid-template-rows: minmax(20rem, 70vh) auto;
-    gap: 0.5rem;
-  }
-
-  nav,
   .actions {
     display: flex;
     flex-wrap: wrap;

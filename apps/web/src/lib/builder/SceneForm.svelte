@@ -2,6 +2,7 @@
   import type { Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import BlockFieldset from "./BlockFieldset.svelte";
+  import CarPlaces from "./CarPlaces.svelte";
   import { nextBlock, obstacle } from "./draft.ts";
   import { withoutBlock } from "./modules.ts";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
@@ -130,6 +131,14 @@
       >
     {/each}
   {/if}
+
+  <CarPlaces
+    places={scene.carPlaces ?? []}
+    {devices}
+    onchange={(carPlaces) => {
+      scene = { ...scene, carPlaces };
+    }}
+  />
 </form>
 
 <style>

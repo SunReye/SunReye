@@ -79,6 +79,16 @@
       }}
     />
   {/if}
+  <label>
+    <input
+      type="checkbox"
+      checked={block.open === true}
+      onchange={(event) => {
+        onchange({ ...block, open: event.currentTarget.checked });
+      }}
+    />
+    {m.block_carport()}
+  </label>
   {#if onremove !== undefined}
     <button type="button" onclick={onremove}>{m.builder_remove()}</button>
   {/if}

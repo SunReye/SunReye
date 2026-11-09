@@ -265,5 +265,22 @@
   "role_backup": "Backup",
   "role_ev": "EV charger",
   "layout_title": "PV layout",
-  "setup_finish": "Done, to the overview"
+  "setup_finish": "Done, to the overview",
+  "builder_car_places": "Car places",
+  "builder_add_car_place": "Add a car place",
+  "car_place": "Car place {number}",
+  "car_loadpoint": "Loadpoint",
+  "car_class": "Vehicle class",
+  "car_class_sedan": "Sedan",
+  "car_class_hatchback": "Hatchback",
+  "car_class_suv": "SUV",
+  "car_class_van": "Van",
+  "car_class_pickup": "Pickup",
+  "car_colour": "Colour",
+  "car_upload": "Own model (GLB, at most 20 MB)",
+  "car_model_remove": "Remove own model",
+  "field_length": "Length (m)",
+  "block_carport": "Carport",
+  "builder_cars": "Connected cars",
+  "builder_car": "{name}: {state}"
 }
