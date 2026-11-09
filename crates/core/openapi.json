@@ -98,6 +98,7 @@
           "history.range",
           "history.counter",
           "forecast.range",
+          "role.none",
           "layout.none",
           "layout.device",
           "layout.input",
@@ -2385,6 +2386,73 @@
           }
         },
         "summary": "Checks every index for updates: the only fetch besides adding an index, never on a timer."
+      }
+    },
+    "/api/v1/roles/{role}": {
+      "get": {
+        "operationId": "role",
+        "parameters": [
+          {
+            "description": "A series such as `grid.power`.",
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "One device's id; the `plant` device when absent.",
+            "in": "query",
+            "name": "device",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "format": "double",
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The live value of a series such as `grid.power` or `grid.phase.current[2]`, from the `plant`\ndevice or one device, in EVCC's sign convention: a battery is positive when discharging. A\nseries without a live value, such as one the device does not report, is `role.none`."
       }
     },
     "/api/v1/session": {

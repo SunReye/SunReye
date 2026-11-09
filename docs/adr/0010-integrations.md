@@ -1,6 +1,6 @@
 # 10. Integrations
 
-Status: accepted (2026-11-08), amended (2026-11-08)
+Status: accepted (2026-11-08), amended (2026-11-09)
 
 ## Context
 
@@ -10,7 +10,7 @@ EVCC, MQTT devices and Home Assistant are neighbours, not special cases. The EVC
 
 - **EVCC is an official profile** with an `mqtt` binding. Its topics map to `ev` roles; a loadpoint is a device whose device address is its loadpoint index. Mode, limit SOC and battery boost are recipes with `mqtt` publish steps: mode first, boost last, a `precondition` on mode. Read-back is the retained state EVCC republishes within about 2 s. These writes run through the funnel of ADR 7 as admin actions, with the same audit and outcomes.
 - **One MQTT client per broker connection,** owned by a task, with reconnect backoff from 1 s up to 60 s and an observed status (`connected`, `lastError`, `lastConnectedAt`). EVCC, custom MQTT profiles and the publisher share it.
-- **Outbound is read-only.** `GET /api/v1/roles/{role}` gives a scalar or indexed value for EVCC's HTTP custom meter, from the `plant` device (ADR 14) or from one device with `?device=`. An MQTT publisher puts the `plant` device's role values and each device's availability under a topic root, with optional Home Assistant discovery. Both use a scoped `read` token. Battery dispatch from EVCC is not offered (ADR 1, 7).
+- **Outbound is read-only.** `GET /api/v1/roles/{role}` gives a scalar or indexed value for EVCC's HTTP custom meter, from the `plant` device (ADR 14) or from one device with `?device=`. Its body is the bare JSON number, in EVCC's sign convention: a battery is positive when discharging. A series with no live value is `role.none`. An MQTT publisher puts the `plant` device's role values and each device's availability under a topic root, with optional Home Assistant discovery. Both use a scoped `read` token. Battery dispatch from EVCC is not offered (ADR 1, 7).
 - **Conventions at the edge.** Roles carry one sign convention (ADR 4). Each adapter converts at its own edge and has a golden test against the consumer's documented convention.
 - **Custom profiles** are community profiles with `mqtt` or `http` bindings, built with the CLI and distributed through a custom index (ADR 8). No scripting.
 - **Settings.** A connection holds host, port, topic root and credentials; each loadpoint device holds its index. Both are entered in the SPA. Credentials are secrets (ADR 7). A connection is enabled by a flag; there is no separate integrations page and no mapping UI.

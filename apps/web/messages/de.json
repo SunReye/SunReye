@@ -20,6 +20,7 @@
   "problem_history_range": "Dieser Zeitraum ist leer oder zu lang.",
   "problem_history_counter": "Für einen Zähler gibt es über diesen Zeitraum keine Mittelwerte.",
   "problem_forecast_range": "Dieser Prognosezeitraum ist leer oder zu lang.",
+  "problem_role_none": "Dieses Gerät meldet für diese Rolle keinen aktuellen Wert.",
   "problem_layout_none": "Es ist noch kein PV-Layout angelegt.",
   "problem_layout_device": "Ein String ist an ein unbekanntes Gerät angeschlossen.",
   "problem_layout_input": "Ein String nennt einen MPPT-Eingang, den das Gerät nicht hat.",

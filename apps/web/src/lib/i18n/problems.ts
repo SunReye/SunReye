@@ -28,6 +28,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "history.range": m.problem_history_range,
   "history.counter": m.problem_history_counter,
   "forecast.range": m.problem_forecast_range,
+  "role.none": m.problem_role_none,
   "layout.none": m.problem_layout_none,
   "layout.device": m.problem_layout_device,
   "layout.input": m.problem_layout_input,

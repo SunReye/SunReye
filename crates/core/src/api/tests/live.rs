@@ -22,7 +22,7 @@ async fn core() -> (TempDir, Core, String) {
 }
 
 impl Core {
-    fn publish(&self, device: u32, role: &str, index: Option<u32>, value: f64) {
+    pub(super) fn publish(&self, device: u32, role: &str, index: Option<u32>, value: f64) {
         self.bus.publish(Reading {
             device: DeviceId(device),
             series: self.bus.intern(role, index),

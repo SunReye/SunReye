@@ -23,6 +23,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/session", Read),
     (Method::GET, "/api/v1/live", Read),
     (Method::GET, "/api/v1/problems", Read),
+    // EVCC's HTTP custom meter, with a `read` token (ADR 10).
+    (Method::GET, "/api/v1/roles/{role}", Read),
     (Method::GET, "/api/v1/capabilities", Read),
     (Method::GET, "/api/v1/devices/{id}/history", Read),
     (Method::GET, "/api/v1/devices/{id}/forecasts", Read),
