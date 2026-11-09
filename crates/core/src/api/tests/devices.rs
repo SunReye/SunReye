@@ -323,6 +323,29 @@ async fn devices_behind_one_endpoint_share_one_task_and_their_readings_are_store
 }
 
 #[tokio::test]
+async fn a_device_behind_a_solarman_stick_is_polled_at_its_unit_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let mut stick = fake::serve_solarman().await;
+    let mut readings = core.bus.subscribe();
+    let connection = json!({ "name": "stick", "transport": "solarman-v5", "host": "127.0.0.1",
+        "port": stick.address.port() });
+    let connection = core.connection(&set_cookie, &connection).await;
+    let device = core.deye(&set_cookie, &connection, 1).await;
+
+    let (_probe, read) = tokio::time::timeout(Duration::from_secs(20), async {
+        (
+            stick.reads.recv().await.unwrap(),
+            stick.reads.recv().await.unwrap(),
+        )
+    })
+    .await
+    .unwrap();
+    assert_eq!(read.unit, 1);
+    assert_eq!(readings.recv().await.unwrap().device.0, id(&device));
+}
+
+#[tokio::test]
 async fn a_devices_writes_are_off_until_the_admin_turns_them_on() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

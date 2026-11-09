@@ -593,7 +593,7 @@ export interface components {
          * @description The wire framing on a connection's endpoint.
          * @enum {string}
          */
-        Transport: "modbus-tcp";
+        Transport: "modbus-tcp" | "solarman-v5";
         /** @description Where a string sits and what it is made of. */
         Wiring: {
             /**
