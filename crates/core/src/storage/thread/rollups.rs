@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Transaction, params};
 use sunreye_profile::RoleKind;
 
-use super::{HOUR, Store, lookup, points, tick, time};
+use super::{HOUR, Store, blocks, lookup, points, tick, time, write_block};
 use crate::bus::{DeviceId, SeriesId};
-use crate::storage::encode::{Point, Tick};
+use crate::storage::encode::{Point, Tick, quantise};
 use crate::storage::rollup::{self, Day, Sums};
-use crate::storage::{Aggregate, Error, Rollup, Tier};
+use crate::storage::{Aggregate, ChangePoint, Error, Rollup, Tier};
 
 /// Stored columns: duration, sum, min, max, first, last, delta.
 type Columns = [Option<i64>; 7];
@@ -114,6 +114,47 @@ impl Store {
         Ok(())
     }
 
+    /// Replaces the change points of a declared series within `range`, then rebuilds its rollups
+    /// from the first replaced hour.
+    pub(super) fn replace(
+        &mut self,
+        device: DeviceId,
+        series: SeriesId,
+        Range {
+            start: from,
+            end: to,
+        }: Range<SystemTime>,
+        replacement: &[ChangePoint],
+    ) -> Result<(), Error> {
+        let stored = self
+            .tracks
+            .get(&(device, series))
+            .ok_or(Error::UnknownSeries)?;
+        let (id, kind) = (stored.id, stored.kind);
+        let (from, to) = (tick(from).unwrap_or(0), tick(to).unwrap_or(0));
+        let step: f64 = self.db.query_row(
+            "SELECT step FROM step WHERE device = ?1 AND series = ?2",
+            params![device.0, id],
+            |row| row.get(0),
+        )?;
+        let points = quantised(replacement, step, from..to);
+        let inside = |time: Tick| (from..to).contains(&time);
+        self.pending
+            .retain(|&(d, s, p)| !(d == device.0 && s == id && inside(p.time)));
+        let tx = self.db.unchecked_transaction()?;
+        rewrite(&tx, (device.0, id), from..to, &points)?;
+        if let Some(limit) = self.rolled {
+            self.recompute(&tx, (device.0, id, kind), floor(from)..to.min(limit), limit)?;
+        }
+        tx.commit()?;
+        // The deadband compares against the value now last stored.
+        let last = self.last(device.0, id)?;
+        if let Some(stored) = self.tracks.get_mut(&(device, series)) {
+            stored.track.rebase(last.and_then(|p| p.value));
+        }
+        Ok(())
+    }
+
     pub(super) fn rollups(
         &self,
         device: DeviceId,
@@ -166,6 +207,52 @@ impl Store {
         }
         Ok(rollups)
     }
+}
+
+/// `points` within `range` in whole steps, in time order, a repeated value dropped.
+fn quantised(points: &[ChangePoint], step: f64, range: Range<Tick>) -> Vec<Point> {
+    let mut quantised: Vec<Point> = points
+        .iter()
+        .filter_map(|p| {
+            let time = tick(p.time).filter(|t| range.contains(t))?;
+            let value = match p.value {
+                Some(value) => Some(quantise(value, step)?),
+                None => None,
+            };
+            Some(Point { time, value })
+        })
+        .collect();
+    quantised.sort_by_key(|p| p.time);
+    quantised.dedup_by(|b, a| a.value == b.value);
+    quantised
+}
+
+/// Replaces the stored points of a series within `range` with `points`.
+fn rewrite(
+    tx: &Transaction<'_>,
+    (device, series): (u32, i64),
+    range: Range<Tick>,
+    points: &[Point],
+) -> Result<(), Error> {
+    tx.execute(
+        "DELETE FROM hot WHERE device = ?1 AND series = ?2 AND time >= ?3 AND time < ?4",
+        params![device, series, range.start, range.end],
+    )?;
+    for hour in range.start.div_euclid(HOUR)..ceil(range.end) {
+        let kept = blocks(tx, device, series, hour, hour)?
+            .into_iter()
+            .filter(|p| !range.contains(&p.time));
+        let new = points.iter().filter(|p| p.time.div_euclid(HOUR) == hour);
+        let merged: Vec<Point> = kept.chain(new.copied()).collect();
+        tx.execute(
+            "DELETE FROM block WHERE device = ?1 AND series = ?2 AND hour = ?3",
+            params![device, series, hour],
+        )?;
+        if !merged.is_empty() {
+            write_block(tx, i64::from(device), series, hour, merged.into_iter())?;
+        }
+    }
+    Ok(())
 }
 
 /// Replaces the rollups of `hours` with `hourly`.

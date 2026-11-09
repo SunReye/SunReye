@@ -17,7 +17,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
-use thread::{Command, Forecasting, Request};
+use thread::{Command, Forecasting, Request, Rewriting};
 
 /// Commands the storage thread may fall behind by before senders wait.
 const QUEUE: usize = 1024;
@@ -290,11 +290,37 @@ impl Storage {
         series: SeriesId,
         range: Range<SystemTime>,
     ) -> Result<(), Error> {
-        self.request(|reply| Request::Rebuild {
-            device,
-            series,
-            range,
-            reply,
+        self.request(|reply| {
+            Request::Rewriting(Rewriting::Rebuild {
+                device,
+                series,
+                range,
+                reply,
+            })
+        })
+        .await?
+    }
+
+    /// Replaces the change points of a declared `series` within `range` with `points`, and
+    /// rebuilds the rollups they touch. The last of `points` holds until the next stored point.
+    ///
+    /// # Errors
+    /// The series is not declared, or the file cannot be written.
+    pub async fn replace(
+        &self,
+        device: DeviceId,
+        series: SeriesId,
+        range: Range<SystemTime>,
+        points: Vec<ChangePoint>,
+    ) -> Result<(), Error> {
+        self.request(|reply| {
+            Request::Rewriting(Rewriting::Replace {
+                device,
+                series,
+                range,
+                points,
+                reply,
+            })
         })
         .await?
     }
