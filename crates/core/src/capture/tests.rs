@@ -253,3 +253,96 @@ async fn the_owners_plant_replays_in_sim_cycle_after_cycle() {
         .await
         .expect("twelve cycles at the cadence");
 }
+
+fn sunspec() -> Arc<Profile> {
+    crate::profiles::Catalogue::bundled()
+        .unwrap()
+        .get("sunspec")
+        .unwrap()
+}
+
+/// pysunspec's test inverter (`sunspec/core/test/devices/mbmap_test_inverter_2.xml` at 119b176):
+/// a common model, a three-phase inverter (103) and an MPPT extension (160) of three modules.
+const CONFORMING: &str = include_str!("../../../profile/src/tests/sunspec-pysunspec-inverter.json");
+
+/// One cycle of the bundled generic SunSpec profile, recorded from a fake device holding the
+/// pysunspec map at unit 1: the chain walk, then the model blocks.
+const CONFORMING_CAPTURE: &str = include_str!("../../fixtures/capture/sunspec.ndjson");
+
+/// The committed capture is a recording of the pysunspec map; `SUNREYE_UPDATE_CAPTURE=1` rewrites
+/// it after a change to the profile or its plan.
+#[tokio::test]
+async fn the_conforming_capture_is_a_recording_of_the_pysunspec_map() {
+    let dump: serde_json::Value = serde_json::from_str(CONFORMING).unwrap();
+    let words: Vec<u16> = serde_json::from_value(dump["words"].clone()).unwrap();
+    let start = u16::try_from(dump["start"].as_u64().unwrap()).unwrap();
+    let fake = fake::serve_map("127.0.0.1", Framing::Tcp, 1, start, &words).await;
+
+    let recorded = record(&fake.endpoint(), 1, sunspec(), 1)
+        .await
+        .unwrap()
+        .to_ndjson();
+
+    if std::env::var_os("SUNREYE_UPDATE_CAPTURE").is_some() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/capture/sunspec.ndjson"
+        );
+        std::fs::write(path, &recorded).unwrap();
+    } else {
+        assert_eq!(
+            recorded, CONFORMING_CAPTURE,
+            "run with SUNREYE_UPDATE_CAPTURE=1"
+        );
+    }
+}
+
+/// Expected values from the comments of `mbmap_test_inverter_2.xml`, each a register and its
+/// scale factor: `W` 2970 at 0, `Hz` 5999 at -2, `PhVphA` 2401 at -1, `WH` 1234567 Wh at 0; per
+/// module `DCA` 11 to 13 at -1, `DCV` 30011 to 30013 at -2, `DCW` 331 to 333 at 0.
+#[tokio::test(start_paused = true)]
+async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
+    let recording = Recording::parse(CONFORMING_CAPTURE).unwrap();
+    assert_eq!(recording.profile, "sunspec");
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let device = Device {
+        id: DeviceId(1),
+        unit: recording.unit,
+        profile: sunspec(),
+    };
+    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    readings.recv().await.unwrap();
+
+    let mut got: Vec<(String, Option<u32>, f64)> = task
+        .latest()
+        .into_iter()
+        .map(|(reading, _)| {
+            let series = bus.series(reading.series).unwrap();
+            (series.role, series.index, reading.value)
+        })
+        .collect();
+    got.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
+
+    let expected: Vec<(String, Option<u32>, f64)> = [
+        ("grid.frequency", None, 59.99),
+        ("grid.phase.voltage", Some(1), 240.1),
+        ("grid.phase.voltage", Some(2), 240.2),
+        ("grid.phase.voltage", Some(3), 240.3),
+        ("pv.energy.total", None, 1234.567),
+        ("pv.mppt.current", Some(1), 1.1),
+        ("pv.mppt.current", Some(2), 1.2),
+        ("pv.mppt.current", Some(3), 1.3),
+        ("pv.mppt.power", Some(1), 331.0),
+        ("pv.mppt.power", Some(2), 332.0),
+        ("pv.mppt.power", Some(3), 333.0),
+        ("pv.mppt.voltage", Some(1), 300.11),
+        ("pv.mppt.voltage", Some(2), 300.12),
+        ("pv.mppt.voltage", Some(3), 300.13),
+        ("pv.power", None, 2970.0),
+    ]
+    .into_iter()
+    .map(|(role, index, value)| (role.to_owned(), index, value))
+    .collect();
+    assert_eq!(got, expected);
+}

@@ -6,6 +6,7 @@ import { buildProfiles } from "../packages/sdk/src/build.ts";
 import { loadProfileWasm } from "../packages/sdk/src/index.ts";
 import deye from "../profiles/deye-sg05lp3.ts";
 import evcc from "../profiles/evcc.ts";
+import sunspec from "../profiles/sunspec.ts";
 
 const profiles = new URL("../profiles", import.meta.url).pathname;
 
@@ -26,6 +27,7 @@ test("the committed profile files and index are the build of profiles/", async (
 test.each([
   ["Deye", deye],
   ["EVCC", evcc],
+  ["SunSpec", sunspec],
 ])("the official %s profile loads without a warning", async (_, profile) => {
   const wasm = await loadProfileWasm();
 

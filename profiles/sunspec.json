@@ -1,0 +1,434 @@
+{
+  "schema": 1,
+  "id": "sunspec",
+  "name": "SunSpec device",
+  "manufacturer": "SunSpec",
+  "version": "1.0.0",
+  "requires": [
+    "sunspec",
+    "u16",
+    "i16",
+    "acc32",
+    "scale-factor"
+  ],
+  "quantities": [
+    {
+      "key": "acPower",
+      "role": "pv.power",
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 14,
+      "type": "i16",
+      "scaleFactor": 15,
+      "resolution": 0.01
+    },
+    {
+      "key": "acEnergy",
+      "role": "pv.energy.total",
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 24,
+      "type": "acc32",
+      "scale": 0.001,
+      "scaleFactor": 26,
+      "resolution": 0.000001
+    },
+    {
+      "key": "frequency",
+      "role": "grid.frequency",
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 16,
+      "type": "u16",
+      "scaleFactor": 17,
+      "resolution": 0.001
+    },
+    {
+      "key": "phase1Voltage",
+      "role": "grid.phase.voltage",
+      "index": 1,
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 10,
+      "type": "u16",
+      "scaleFactor": 13,
+      "resolution": 0.01
+    },
+    {
+      "key": "phase2Voltage",
+      "role": "grid.phase.voltage",
+      "index": 2,
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 11,
+      "type": "u16",
+      "scaleFactor": 13,
+      "resolution": 0.01
+    },
+    {
+      "key": "phase3Voltage",
+      "role": "grid.phase.voltage",
+      "index": 3,
+      "model": [
+        101,
+        102,
+        103
+      ],
+      "register": 12,
+      "type": "u16",
+      "scaleFactor": 13,
+      "resolution": 0.01
+    },
+    {
+      "index": 1,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt1Current",
+      "role": "pv.mppt.current",
+      "register": 19,
+      "scaleFactor": 2,
+      "resolution": 0.001
+    },
+    {
+      "index": 1,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt1Voltage",
+      "role": "pv.mppt.voltage",
+      "register": 20,
+      "scaleFactor": 3,
+      "resolution": 0.01
+    },
+    {
+      "index": 1,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt1Power",
+      "role": "pv.mppt.power",
+      "register": 21,
+      "scaleFactor": 4,
+      "resolution": 0.01
+    },
+    {
+      "index": 2,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt2Current",
+      "role": "pv.mppt.current",
+      "register": 39,
+      "scaleFactor": 2,
+      "resolution": 0.001
+    },
+    {
+      "index": 2,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt2Voltage",
+      "role": "pv.mppt.voltage",
+      "register": 40,
+      "scaleFactor": 3,
+      "resolution": 0.01
+    },
+    {
+      "index": 2,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt2Power",
+      "role": "pv.mppt.power",
+      "register": 41,
+      "scaleFactor": 4,
+      "resolution": 0.01
+    },
+    {
+      "index": 3,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt3Current",
+      "role": "pv.mppt.current",
+      "register": 59,
+      "scaleFactor": 2,
+      "resolution": 0.001
+    },
+    {
+      "index": 3,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt3Voltage",
+      "role": "pv.mppt.voltage",
+      "register": 60,
+      "scaleFactor": 3,
+      "resolution": 0.01
+    },
+    {
+      "index": 3,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt3Power",
+      "role": "pv.mppt.power",
+      "register": 61,
+      "scaleFactor": 4,
+      "resolution": 0.01
+    },
+    {
+      "index": 4,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt4Current",
+      "role": "pv.mppt.current",
+      "register": 79,
+      "scaleFactor": 2,
+      "resolution": 0.001
+    },
+    {
+      "index": 4,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt4Voltage",
+      "role": "pv.mppt.voltage",
+      "register": 80,
+      "scaleFactor": 3,
+      "resolution": 0.01
+    },
+    {
+      "index": 4,
+      "model": [
+        160
+      ],
+      "type": "u16",
+      "key": "mppt4Power",
+      "role": "pv.mppt.power",
+      "register": 81,
+      "scaleFactor": 4,
+      "resolution": 0.01
+    },
+    {
+      "key": "gridPower",
+      "role": "grid.power",
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 18,
+      "type": "i16",
+      "scaleFactor": 22,
+      "resolution": 0.01
+    },
+    {
+      "key": "gridPhase1Power",
+      "role": "grid.phase.power",
+      "index": 1,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 19,
+      "type": "i16",
+      "scaleFactor": 22,
+      "resolution": 0.01
+    },
+    {
+      "key": "gridPhase1Current",
+      "role": "grid.phase.current",
+      "index": 1,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 3,
+      "type": "i16",
+      "scaleFactor": 6,
+      "resolution": 0.001
+    },
+    {
+      "key": "gridPhase2Power",
+      "role": "grid.phase.power",
+      "index": 2,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 20,
+      "type": "i16",
+      "scaleFactor": 22,
+      "resolution": 0.01
+    },
+    {
+      "key": "gridPhase2Current",
+      "role": "grid.phase.current",
+      "index": 2,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 4,
+      "type": "i16",
+      "scaleFactor": 6,
+      "resolution": 0.001
+    },
+    {
+      "key": "gridPhase3Power",
+      "role": "grid.phase.power",
+      "index": 3,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 21,
+      "type": "i16",
+      "scaleFactor": 22,
+      "resolution": 0.01
+    },
+    {
+      "key": "gridPhase3Current",
+      "role": "grid.phase.current",
+      "index": 3,
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 5,
+      "type": "i16",
+      "scaleFactor": 6,
+      "resolution": 0.001
+    },
+    {
+      "key": "gridExported",
+      "role": "grid.energy.exported.total",
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 38,
+      "type": "acc32",
+      "scale": 0.001,
+      "scaleFactor": 54,
+      "resolution": 0.000001
+    },
+    {
+      "key": "gridImported",
+      "role": "grid.energy.imported.total",
+      "model": [
+        201,
+        202,
+        203,
+        204
+      ],
+      "register": 46,
+      "type": "acc32",
+      "scale": 0.001,
+      "scaleFactor": 54,
+      "resolution": 0.000001
+    },
+    {
+      "key": "batterySoc",
+      "role": "battery.soc",
+      "model": [
+        802
+      ],
+      "register": 11,
+      "type": "u16",
+      "scaleFactor": 56,
+      "resolution": 0.01
+    },
+    {
+      "key": "batteryCapacity",
+      "role": "battery.capacity",
+      "model": [
+        802
+      ],
+      "register": 3,
+      "type": "u16",
+      "scale": 0.001,
+      "scaleFactor": 53,
+      "resolution": 0.0001
+    },
+    {
+      "key": "batteryVoltage",
+      "role": "battery.voltage",
+      "model": [
+        802
+      ],
+      "register": 34,
+      "type": "u16",
+      "scaleFactor": 59,
+      "resolution": 0.01
+    },
+    {
+      "key": "batteryCurrent",
+      "role": "battery.current",
+      "model": [
+        802
+      ],
+      "register": 44,
+      "type": "i16",
+      "scale": -1,
+      "scaleFactor": 61,
+      "resolution": 0.001
+    },
+    {
+      "key": "batteryPower",
+      "role": "battery.power",
+      "model": [
+        802
+      ],
+      "register": 47,
+      "type": "i16",
+      "scale": -1,
+      "scaleFactor": 63,
+      "resolution": 0.01
+    }
+  ]
+}
