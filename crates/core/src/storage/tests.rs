@@ -316,3 +316,19 @@ async fn readings_on_the_bus_reach_storage() {
         [(0.0, Some(1.0)), (5.0, Some(2.0))]
     );
 }
+
+#[tokio::test]
+async fn a_feature_module_runs_its_sql_on_the_storage_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = Plant::new()
+        .open(&dir.path().join("history.sqlite"), epoch())
+        .await;
+
+    let journal: String = storage
+        .database()
+        .run(|db| db.query_row("PRAGMA journal_mode", [], |row| row.get(0)))
+        .await
+        .unwrap();
+
+    assert_eq!(journal, "wal");
+}

@@ -24,7 +24,11 @@ const HOUR: Tick = 36_000;
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
     include_str!("migrations/0002.sql"),
+    include_str!("migrations/0003.sql"),
 ];
+
+/// SQL a feature module runs on its own tables.
+pub type Job = Box<dyn FnOnce(&Connection) + Send>;
 
 pub enum Command {
     Reading(Reading),
@@ -61,6 +65,7 @@ pub enum Request {
         reply: oneshot::Sender<Result<(), Error>>,
     },
     Problems(oneshot::Sender<Vec<Problem>>),
+    Run(Job),
     Shutdown(oneshot::Sender<Result<(), Error>>),
 }
 
@@ -227,6 +232,7 @@ impl Store {
                 let unsynced = self.unsynced.then_some(Problem::ClockUnsynced);
                 reply.send(unsynced.into_iter().collect()).ok();
             }
+            Request::Run(job) => job(&self.db),
             // Handled by `run`, which stops.
             Request::Shutdown(_) => {}
         }

@@ -188,6 +188,10 @@ _Avoid_: Invite, referral
 A part of the core that owns its tables and is reached only through its interface: commands, queries and the events it publishes.
 _Avoid_: Service, component
 
+**Session**:
+One browser's sign-in, carried by a cookie and ended by 30 days without use.
+_Avoid_: Login, token
+
 **Capability**:
 A statement of what the core, a profile or a device supports, published in one document.
 _Avoid_: Feature flag

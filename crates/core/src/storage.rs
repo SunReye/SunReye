@@ -297,6 +297,12 @@ impl Storage {
         self.request(Request::Problems).await
     }
 
+    /// A handle through which another feature module runs SQL on its own tables.
+    #[must_use]
+    pub fn database(&self) -> Database {
+        Database(self.commands.clone())
+    }
+
     /// Writes the open bucket and stops the thread.
     ///
     /// # Errors
@@ -327,6 +333,32 @@ impl Storage {
         let (reply, answer) = oneshot::channel();
         self.send(Command::Request(make(reply))).await?;
         answer.await.map_err(|_| Error::Stopped)
+    }
+}
+
+/// The storage thread's connection, lent to the feature module that owns a table (ADR 19). Its
+/// SQL touches only that module's tables, which storage's migrations create.
+#[derive(Debug, Clone)]
+pub struct Database(mpsc::Sender<Command>);
+
+impl Database {
+    /// Runs `job` on the storage thread, between flushes.
+    ///
+    /// # Errors
+    /// The job failed or the storage thread has stopped.
+    pub async fn run<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<T> + Send + 'static,
+    ) -> Result<T, Error> {
+        let (reply, answer) = oneshot::channel();
+        let job: thread::Job = Box::new(move |db| {
+            reply.send(job(db)).ok();
+        });
+        self.0
+            .send(Command::Request(Request::Run(job)))
+            .await
+            .map_err(|_| Error::Stopped)?;
+        Ok(answer.await.map_err(|_| Error::Stopped)??)
     }
 }
 
