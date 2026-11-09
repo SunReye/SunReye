@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::{Clock, Problem, ProblemDetails};
+use super::{Clock, Code, Problem, ProblemDetails};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{self, Aggregate, ChangePoint, Reader, Rollup};
 
@@ -30,23 +30,23 @@ const DAY_SPAN: Duration = HOUR.saturating_mul(23 * (MAX_POINTS as u32 - 2));
 
 const QUERY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.query",
+    code: Code::RequestQuery,
 };
 const PATH: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.path",
+    code: Code::RequestPath,
 };
 const RANGE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
-    code: "history.range",
+    code: Code::HistoryRange,
 };
 const COUNTER: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
-    code: "history.counter",
+    code: Code::HistoryCounter,
 };
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: "internal",
+    code: Code::Internal,
 };
 
 #[derive(Deserialize, IntoParams)]

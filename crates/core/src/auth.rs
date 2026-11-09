@@ -19,7 +19,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Problem, ProblemDetails};
+use crate::api::{Code, Problem, ProblemDetails};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{IDLE, Sessions};
@@ -35,35 +35,35 @@ const INGRESS_PATH: &str = "x-ingress-path";
 
 const SETUP: Problem = Problem {
     status: StatusCode::UNAUTHORIZED,
-    code: "auth.setup",
+    code: Code::AuthSetup,
 };
 const REQUIRED: Problem = Problem {
     status: StatusCode::UNAUTHORIZED,
-    code: "auth.required",
+    code: Code::AuthRequired,
 };
 const CREDENTIALS: Problem = Problem {
     status: StatusCode::UNAUTHORIZED,
-    code: "auth.credentials",
+    code: Code::AuthCredentials,
 };
 const BACKOFF: Problem = Problem {
     status: StatusCode::TOO_MANY_REQUESTS,
-    code: "auth.backoff",
+    code: Code::AuthBackoff,
 };
 const CONFIGURED: Problem = Problem {
     status: StatusCode::CONFLICT,
-    code: "auth.configured",
+    code: Code::AuthConfigured,
 };
 const PASSWORD: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
-    code: "auth.password",
+    code: Code::AuthPassword,
 };
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.body",
+    code: Code::RequestBody,
 };
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: "internal",
+    code: Code::Internal,
 };
 
 #[derive(Deserialize, ToSchema)]

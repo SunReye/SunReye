@@ -26,7 +26,7 @@ The SPA, the CLI and integrations consume one surface. v4 retrofitted capability
 
 **Problems.** `GET /api/v1/problems` lists the conditions degrading the core by stable code, such as `clock.unsynced` (ADR 3).
 
-**Errors.** `application/problem+json` (RFC 9457) with a stable machine `code`, such as `write.range` or `device.unreachable`, and no localised text. A device fault and a caller mistake have different codes and status classes.
+**Errors.** `application/problem+json` (RFC 9457) with a stable machine `code`, such as `write.range` or `device.unreachable`, and no localised text. A device fault and a caller mistake have different codes and status classes. Error and problem codes are one closed set, listed as the `Code` enum of the OpenAPI document, so the SPA's text for each is checked against it (ADR 11).
 
 ## Considered options
 

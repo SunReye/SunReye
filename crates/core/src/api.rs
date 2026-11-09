@@ -25,11 +25,11 @@ use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
-    code: "request.route",
+    code: Code::RequestRoute,
 };
 const METHOD: Problem = Problem {
     status: StatusCode::METHOD_NOT_ALLOWED,
-    code: "request.method",
+    code: Code::RequestMethod,
 };
 
 mod forecasts;
@@ -139,7 +139,7 @@ struct Problems {
 #[derive(Serialize, ToSchema)]
 struct Condition {
     /// A stable machine code, such as `clock.unsynced`.
-    code: &'static str,
+    code: Code,
 }
 
 #[utoipa::path(get, path = "/api/v1/problems", responses(
@@ -152,7 +152,7 @@ async fn problems(
     let problems = problems
         .borrow()
         .iter()
-        .map(|p| Condition { code: p.code() })
+        .map(|&p| Condition { code: p.into() })
         .collect();
     Json(Problems { problems })
 }
@@ -181,7 +181,64 @@ async fn live_values(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Problem {
     pub status: StatusCode,
-    pub code: &'static str,
+    pub code: Code,
+}
+
+/// Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+pub enum Code {
+    #[serde(rename = "request.route")]
+    RequestRoute,
+    #[serde(rename = "request.method")]
+    RequestMethod,
+    #[serde(rename = "request.path")]
+    RequestPath,
+    #[serde(rename = "request.query")]
+    RequestQuery,
+    #[serde(rename = "request.body")]
+    RequestBody,
+    #[serde(rename = "auth.setup")]
+    AuthSetup,
+    #[serde(rename = "auth.required")]
+    AuthRequired,
+    #[serde(rename = "auth.credentials")]
+    AuthCredentials,
+    #[serde(rename = "auth.backoff")]
+    AuthBackoff,
+    #[serde(rename = "auth.configured")]
+    AuthConfigured,
+    #[serde(rename = "auth.password")]
+    AuthPassword,
+    #[serde(rename = "history.range")]
+    HistoryRange,
+    #[serde(rename = "history.counter")]
+    HistoryCounter,
+    #[serde(rename = "forecast.range")]
+    ForecastRange,
+    #[serde(rename = "layout.none")]
+    LayoutNone,
+    #[serde(rename = "layout.device")]
+    LayoutDevice,
+    #[serde(rename = "layout.input")]
+    LayoutInput,
+    #[serde(rename = "layout.string")]
+    LayoutString,
+    #[serde(rename = "layout.module-type")]
+    LayoutModuleType,
+    #[serde(rename = "layout.value")]
+    LayoutValue,
+    #[serde(rename = "clock.unsynced")]
+    ClockUnsynced,
+    #[serde(rename = "internal")]
+    Internal,
+}
+
+impl From<storage::Problem> for Code {
+    fn from(problem: storage::Problem) -> Self {
+        match problem {
+            storage::Problem::ClockUnsynced => Self::ClockUnsynced,
+        }
+    }
 }
 
 /// The body of a refusal.
@@ -190,7 +247,7 @@ pub struct ProblemDetails {
     /// The HTTP status.
     status: u16,
     /// A stable machine code, such as `auth.required`.
-    code: &'static str,
+    code: Code,
 }
 
 impl IntoResponse for Problem {

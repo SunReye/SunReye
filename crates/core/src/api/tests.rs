@@ -515,3 +515,35 @@ async fn the_committed_openapi_document_is_the_one_served() {
         path.display()
     );
 }
+
+/// The SPA maps each code to text (ADR 11), so the document lists them all.
+#[tokio::test]
+async fn the_openapi_document_lists_every_problem_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open(&dir.path().join("core.sqlite")).await;
+
+    let document = json(core.send(get("/openapi.json")).await).await;
+
+    let schemas = &document["components"]["schemas"];
+    let codes = schemas["Code"]["enum"].as_array().unwrap();
+    for code in [
+        "auth.required",
+        "clock.unsynced",
+        "layout.module-type",
+        "request.route",
+    ] {
+        assert!(
+            codes.contains(&serde_json::json!(code)),
+            "{code} is not listed"
+        );
+    }
+    let reference = serde_json::json!("#/components/schemas/Code");
+    assert_eq!(
+        schemas["ProblemDetails"]["properties"]["code"]["$ref"],
+        reference
+    );
+    assert_eq!(
+        schemas["Condition"]["properties"]["code"]["$ref"],
+        reference
+    );
+}
