@@ -7,6 +7,10 @@ Bun is the JavaScript runtime and package manager.
 Specs are ADRs in `docs/adr/`, written by a `grilling` session. Domain terms live in `GLOSSARY.md`.
 No code before the ADR that names it.
 
+## Gate
+
+`bun run gate` is the only check (ADR 13): every format, lint, type, build and test step, serially, stopping at the first failure. The pre-commit hook runs it.
+
 ## TDD
 
 Load the `tdd` skill before any behaviour change. Behaviour ships with the test that proves it, written first: failing test, run it red, smallest code to green.
