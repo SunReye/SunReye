@@ -1,6 +1,8 @@
 //! Endpoint tasks (ADR 6): one task per endpoint serialises every read for every device behind it,
 //! decodes through the device's profile and publishes typed readings on the bus.
 //!
+//! At each connect it discovers the SunSpec chain of every device whose profile reads one (ADR 5).
+//!
 //! A settings write (ADR 7) runs in the same task, between polls.
 
 use std::sync::{Arc, Mutex, PoisonError};
@@ -13,6 +15,7 @@ use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 use crate::settings::{self, Applied, Job, Refusal};
+use crate::sunspec;
 use crate::transport::{Client, Endpoint, Error};
 
 /// Until a profile declares poll groups, every quantity is polled at this cadence.
@@ -117,6 +120,9 @@ fn backoff(failures: u32) -> Duration {
 /// A device and its buffers, reused every cycle so a poll allocates nothing.
 struct Polled {
     device: Device,
+    /// The device's profile, bound to its SunSpec chain once discovered.
+    profile: Arc<Profile>,
+    gap_tolerance: u16,
     /// A merged block the device refused stays split for the life of the task.
     plan: Vec<Block>,
     series: Vec<(SeriesId, Option<Unit>)>,
@@ -129,20 +135,41 @@ struct Polled {
 impl Polled {
     fn new(device: Device, framing: Framing, bus: &Bus, slot: usize) -> Self {
         let quantities = device.profile.quantities();
-        let plan = device.profile.read_plan(framing.gap_tolerance());
+        let gap_tolerance = framing.gap_tolerance();
+        let plan = device.profile.read_plan(gap_tolerance);
         let series = quantities
             .iter()
             .map(|q| (bus.intern(&q.role, q.index), q.unit()))
             .collect();
         let values = vec![None; quantities.len()];
         Self {
+            profile: Arc::clone(&device.profile),
             device,
+            gap_tolerance,
             plan,
             series,
             slot,
             registers: Registers::default(),
             values,
         }
+    }
+
+    /// Binds a SunSpec profile to the chain the device holds now, on every connect: a device
+    /// without one reads nothing until the next.
+    async fn discover(&mut self, client: &mut Client) -> Result<(), Error> {
+        if !self.device.profile.reads_sunspec() {
+            return Ok(());
+        }
+        let chain = sunspec::discover(client, self.device.unit).await?;
+        if chain.is_none() {
+            tracing::warn!(device = self.device.id.0, "no SunSpec map");
+        }
+        self.profile = Arc::new(chain.map_or_else(
+            || (*self.device.profile).clone(),
+            |chain| self.device.profile.bind(&chain),
+        ));
+        self.plan = self.profile.read_plan(self.gap_tolerance);
+        Ok(())
     }
 
     async fn read(&mut self, client: &mut Client, words: &mut [u16]) -> Result<(), Error> {
@@ -168,15 +195,12 @@ impl Polled {
                         count = block.count,
                         "refused with exception 2; split"
                     );
-                    self.plan
-                        .splice(next..=next, self.device.profile.split(block));
+                    self.plan.splice(next..=next, self.profile.split(block));
                 }
                 Err(e) => return Err(e),
             }
         }
-        self.device
-            .profile
-            .decode(&self.registers, &mut self.values);
+        self.profile.decode(&self.registers, &mut self.values);
         Ok(())
     }
 
@@ -215,6 +239,7 @@ pub async fn poll(
     cycles: usize,
 ) -> Result<(), Error> {
     let mut polled = Polled::new(device, framing, &Bus::default(), 0);
+    polled.discover(client).await?;
     let mut words = [0; MAX_READ];
     let mut next = Instant::now();
     for _ in 0..cycles {
@@ -265,9 +290,14 @@ async fn cycle(
     out: &Out,
     words: &mut [u16],
 ) -> Result<(), Error> {
-    let client = match client {
-        Some(client) => client,
-        None => client.insert(Client::connect(endpoint, TIMEOUT).await?),
+    if client.is_none() {
+        let connected = client.insert(Client::connect(endpoint, TIMEOUT).await?);
+        for device in devices.iter_mut() {
+            device.discover(connected).await?;
+        }
+    }
+    let Some(client) = client else {
+        return Err(Error::Protocol("no client"));
     };
     for device in devices {
         device.read(client, words).await?;

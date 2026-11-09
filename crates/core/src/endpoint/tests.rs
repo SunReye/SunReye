@@ -247,6 +247,59 @@ async fn a_merged_block_refused_with_exception_2_is_split_and_stays_split() {
     assert_eq!(second, [1234.0, -1000.0, 8.0]);
 }
 
+/// A SunSpec profile's one quantity: the first register of a vendor model 64000.
+const SUNSPEC: &str = r#"{
+    "schema": 1, "id": "sunspec-case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+    "requires": ["sunspec", "u16"],
+    "quantities": [
+        { "key": "x", "role": "extra.x", "model": [64000], "register": 2, "type": "u16" }
+    ]
+}"#;
+
+/// The chain is discovered at connect: `SunS` at 40001, a common model of 4 registers and model
+/// 64000 of 1, then the end model. At Solarman's tolerance both models fold into one block across
+/// the header between them; the device refuses it with exception 2, and each model is read apart
+/// from then on.
+#[tokio::test(start_paused = true)]
+async fn a_sunspec_chain_is_discovered_at_connect_and_a_refused_merge_split() {
+    let mut exchanges = vec![
+        Exchange::Request(v5(true, 0, &rtu(&[3, 0, 3, 0, 6]))),
+        Exchange::Reply(vec![v5(false, 0, &[6, 0])]),
+    ];
+    exchanges.extend(read(1, 40000, 2, &[3, 4, 0x53, 0x75, 0x6e, 0x53]));
+    exchanges.extend(read(2, 40002, 2, &[3, 4, 0, 1, 0, 4]));
+    exchanges.extend(read(3, 40008, 2, &[3, 4, 0xfa, 0, 0, 1]));
+    exchanges.extend(read(4, 40011, 2, &[3, 4, 0xff, 0xff, 0, 0]));
+    exchanges.extend(read(5, 40004, 7, &[0x83, 2]));
+    exchanges.extend(read(6, 40004, 4, &[3, 8, 0, 0, 0, 0, 0, 0, 0, 0]));
+    exchanges.extend(read(7, 40010, 1, &[3, 2, 0, 42]));
+    exchanges.extend(read(8, 40004, 4, &[3, 8, 0, 0, 0, 0, 0, 0, 0, 0]));
+    exchanges.extend(read(9, 40010, 1, &[3, 2, 0, 43]));
+    let capture = Capture {
+        framing: Framing::SolarmanV5,
+        exchanges,
+    };
+    let device = Device {
+        profile: Arc::new(Profile::load(SUNSPEC).unwrap()),
+        ..device()
+    };
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let _task = spawn(Endpoint::Sim(capture), vec![device], bus.clone());
+
+    let two = async {
+        [
+            readings.recv().await.unwrap(),
+            readings.recv().await.unwrap(),
+        ]
+    };
+    let got = tokio::time::timeout(Duration::from_secs(60), two)
+        .await
+        .expect("two cycles within a minute");
+
+    assert_eq!(got.map(|r| r.value), [42.0, 43.0]);
+}
+
 #[test]
 fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
     let waits: Vec<u64> = [1, 2, 3, 4, 5, 6, 40]
