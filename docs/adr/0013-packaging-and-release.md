@@ -8,10 +8,11 @@ v4 shipped images, an add-on, an appliance and an Android build, each with its o
 
 ## Decision
 
-- **Layout.** `crates/` (Rust: `core`, `profile`, `pv` and one WASM glue crate per artifact), `apps/web` (SPA), `apps/cloud` (relay, TypeScript on Cloudflare, ADR 16, created when its build starts), `packages/` (npm: authoring API, CLI, WASM), `profiles/` (official profiles), `docs/adr/`.
+- **Layout.** `crates/` (Rust: `core`, `profile`, `pv` and one WASM glue crate per artifact), `apps/web` (SPA), `apps/cloud` (relay, TypeScript on Cloudflare, ADR 16, created when its build starts), `packages/` (npm: authoring API, CLI, WASM), `profiles/` (official profiles), `packaging/` (the Dockerfile and the add-on manifest), `docs/adr/`.
 - **First release.** A static Linux binary for amd64 and arm64 with a systemd unit, a multi-arch Docker image, and a Home Assistant add-on that wraps the image. The NixOS appliance and the Android app follow; no release gate depends on them.
 - **Beside v3, not over it.** The core starts at version 5.0.0. The Home Assistant add-on is a new add-on with its own slug in the same add-on repository, installed next to v3's: updating v3's add-on in place would leave a database v5 cannot read and v3 unable to export. The user exports from v3, imports into v5 (ADR 18), compares, then removes v3. v3 gets no further release. The v5 add-on maps `share` read-only for the import.
-- **Home Assistant add-on.** A skeleton test decides ingress: the SPA under a real ingress prefix. Pass: the add-on ships with ingress and a sidebar entry, and trusts HA's login (ADR 9). Fail: it exposes the core's own port with its own login. The core serves plain HTTP; TLS is a reverse-proxy job.
+- **Home Assistant add-on.** A skeleton test decides ingress: the SPA under a real ingress prefix. Pass: the add-on ships with ingress and a sidebar entry, and trusts HA's login (ADR 9). Fail: it exposes the core's own port with its own login. The core serves plain HTTP; TLS is a reverse-proxy job. The add-on's slug is `sunreye_v5`.
+- **Images.** One Dockerfile (`packaging/Dockerfile`) builds the static binary on Alpine and copies it into an empty image: target `core` sets `SUNREYE_DATA_DIR=/data`; target `addon` adds `SUNREYE_INGRESS=172.30.32.2` (ADR 2, 9). `bun run image:smoke` builds both and checks them behind an ingress stand-in.
 - **Core release.** Semver, cut by one local `bun run release` that builds the artifacts and the image, signs them with the release key (ADR 8), tags, and publishes. The changelog comes from conventional commits.
 - **Profiles and npm.** Profiles publish separately (ADR 8). The npm package releases only when the schema, the capability table or a decoder changes.
 - **Gate.** `bun run gate` (`scripts/gate.ts`) runs serially and stops at the first failure, cheapest first, after the SPA build the core embeds (ADR 11): formatting (`cargo fmt --check`, `oxfmt --check`, `prettier --check` on `.svelte`); lints (clippy, oxlint, fallow, `cargo deny`, `cargo shear`); types (`tsc`, `svelte-check`); builds and tests (`cargo test`, `pv` for `wasm32-unknown-unknown`, the WASM build and its tests, `bun test`, the SPA's component tests). The husky pre-commit hook runs all of it, never scoped to staged files or a merge base. Hosted CI returns when the project is stable and runs the same command.
@@ -26,6 +27,21 @@ v4 shipped images, an add-on, an appliance and an Android build, each with its o
 - **Fallow.** Every rule an error. Cyclomatic 10, cognitive 10, CRAP 30 with the `bun test` coverage fed in (not yet possible: Bun writes only text and lcov, fallow 3.41 reads Istanbul or V8, so CRAP uses fallow's estimate from the module graph), duplicates at 40 tokens or 5 lines. Boundaries: `web` imports only its generated API client, `profiles` only the SDK, tooling anything. The whole repo is checked with zero findings and no baseline.
 - **Rust dependencies.** `cargo deny`: advisories, licences compatible with AGPL-3.0, crates.io as the only source, duplicate versions as warnings, and bans that keep async runtime, network and database crates out of `profile` and `pv`. `cargo shear` finds unused dependencies.
 - **Pins.** An exact stable Rust toolchain, Bun through `packageManager`, and exact versions of oxlint, `@oxlint/plugins` (anti-slop needs them equal) and oxfmt.
+
+## Ingress result
+
+Passed locally on 2026-11-09, so the add-on ships with ingress (`packaging/addon/config.yaml`). `bun run image:smoke` ran both images on amd64 behind nginx standing in for Supervisor: it strips `/api/hassio_ingress/<token>`, sets `X-Ingress-Path`, binds its source to a stand-in Supervisor address and does not buffer. Verified there:
+
+- Chromium loads the SPA at the prefix with every asset answered, and its live SSE stream answers 200 through the prefix with no refusal shown.
+- The add-on image acts as admin for the stand-in address with the header, before any setup; the same header from another address gets `401`. The core image trusts no one and its screen asks for setup.
+- The add-on image carries `SUNREYE_INGRESS=172.30.32.2`.
+
+Pending a check by the owner on a real Supervisor, which nothing here can reproduce:
+
+- Supervisor's own proxy (aiohttp) in place of nginx: SSE unbuffered with `ingress_stream: true`, and response compression or headers it adds or drops.
+- Requests really arrive from `172.30.32.2`, and a host port mapped for direct access does not arrive from it.
+- HA's frontend iframe, its `ingress_session` cookie, and the sidebar panel.
+- The `aarch64` image, which was not built.
 
 ## Considered options
 
