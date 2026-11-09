@@ -6,11 +6,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-/// A read the device answered: the connection it came on, counted from 0, and its unit id.
+/// A request the device answered: the connection it came on, counted from 0, its unit id and its
+/// function code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Read {
     pub connection: usize,
     pub unit: u8,
+    pub function: u8,
 }
 
 #[derive(Debug)]
@@ -47,7 +49,13 @@ async fn answer(mut stream: TcpStream, connection: usize, reads: &mpsc::Unbounde
             return;
         }
         let unit = header[6];
-        reads.send(Read { connection, unit }).ok();
+        reads
+            .send(Read {
+                connection,
+                unit,
+                function: pdu[0],
+            })
+            .ok();
         let start = u16::from_be_bytes([pdu[1], pdu[2]]);
         let count = u16::from_be_bytes([pdu[3], pdu[4]]);
         let mut reply = Vec::new();
