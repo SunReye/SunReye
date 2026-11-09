@@ -79,7 +79,9 @@ result-*
 .cache
 tmp
 temp
-core
+# Core dumps, anchored to the root: a bare `core` also ignores `crates/core`.
+/core
+/core.[0-9]*
 
 # Personal notes / drafts
 .notes
