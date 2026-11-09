@@ -36,7 +36,7 @@ impl fmt::Display for OptionsError {
             Self::NoValue(flag) => write!(f, "--{flag} needs a value"),
             Self::Endpoint(value) => write!(
                 f,
-                "--endpoint: `{value}` is not modbus-tcp://host:port or solarman-v5://host:port"
+                "--endpoint: `{value}` is not modbus-tcp://, rtu-over-tcp:// or solarman-v5://host:port"
             ),
             Self::Unit(value) => write!(f, "--unit: `{value}` is not a unit id from 0 to 255"),
             Self::Unknown(arg) => write!(f, "unknown argument `{arg}`"),
@@ -81,7 +81,8 @@ impl Options {
     }
 }
 
-/// `modbus-tcp://host:port` or `solarman-v5://host:port`: the transport's name (ADR 6) as scheme.
+/// `modbus-tcp://`, `rtu-over-tcp://` or `solarman-v5://host:port`: the transport's name (ADR 6) as
+/// scheme.
 fn parse_endpoint(url: &str) -> Option<Endpoint> {
     let (transport, address) = url.split_once("://")?;
     let (host, port) = address.rsplit_once(':')?;
@@ -91,6 +92,7 @@ fn parse_endpoint(url: &str) -> Option<Endpoint> {
     }
     match transport {
         "modbus-tcp" => Some(Endpoint::ModbusTcp { host, port }),
+        "rtu-over-tcp" => Some(Endpoint::RtuOverTcp { host, port }),
         "solarman-v5" => Some(Endpoint::SolarmanV5 { host, port }),
         _ => None,
     }
@@ -173,6 +175,7 @@ impl Recording {
         }
         let framing = match header.framing.as_str() {
             "tcp" => Framing::Tcp,
+            "rtu-over-tcp" => Framing::RtuOverTcp,
             "solarman-v5" => Framing::SolarmanV5,
             other => {
                 return Err(FormatError::Malformed(

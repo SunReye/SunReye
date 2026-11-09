@@ -1,13 +1,14 @@
 //! Transports (ADR 6).
 //!
-//! A client speaks Modbus TCP or Solarman V5 framing to an endpoint, over a TCP socket or over
-//! `sim`, which replays a capture. The framing is the same over both, so a capture checks the bytes a
-//! real device sees.
+//! A client speaks Modbus TCP, RTU over TCP or Solarman V5 framing to an endpoint, over a TCP
+//! socket or over `sim`, which replays a capture. The framing is the same over both, so a capture
+//! checks the bytes a real device sees.
 
 #[cfg(test)]
 pub mod fake;
 mod mbap;
 mod recorder;
+mod rtu;
 mod sim;
 mod solarman;
 
@@ -27,6 +28,11 @@ pub enum Endpoint {
         host: String,
         port: u16,
     },
+    /// A serial gateway that passes Modbus RTU frames through unchanged.
+    RtuOverTcp {
+        host: String,
+        port: u16,
+    },
     /// A Solarman logging stick, which wraps Modbus RTU.
     SolarmanV5 {
         host: String,
@@ -38,13 +44,14 @@ pub enum Endpoint {
 
 impl Endpoint {
     /// The transport of each variant, by name.
-    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "solarman-v5", "sim"];
+    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "rtu-over-tcp", "solarman-v5", "sim"];
 
     /// The wire framing, which sets the read plan's gap tolerance.
     #[must_use]
     pub const fn framing(&self) -> Framing {
         match self {
             Self::ModbusTcp { .. } => Framing::Tcp,
+            Self::RtuOverTcp { .. } => Framing::RtuOverTcp,
             Self::SolarmanV5 { .. } => Framing::SolarmanV5,
             Self::Sim(capture) => capture.framing,
         }
@@ -114,6 +121,7 @@ pub struct Client {
 #[derive(Debug)]
 enum Envelope {
     Mbap,
+    Rtu,
     Solarman(solarman::Logger),
 }
 
@@ -133,9 +141,9 @@ impl Client {
     /// [`Error::Timeout`] or [`Error::Io`] when the endpoint cannot be reached.
     pub async fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<Self, Error> {
         let wire: Box<dyn Wire> = match endpoint {
-            Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port } => {
-                Box::new(tcp(host, *port, timeout).await?)
-            }
+            Endpoint::ModbusTcp { host, port }
+            | Endpoint::RtuOverTcp { host, port }
+            | Endpoint::SolarmanV5 { host, port } => Box::new(tcp(host, *port, timeout).await?),
             Endpoint::Sim(capture) => Box::new(sim::Sim::new(capture.clone())),
         };
         Self::over(wire, endpoint.framing(), timeout).await
@@ -148,7 +156,9 @@ impl Client {
     ///
     /// As [`Client::connect`]; `sim` has nothing to record and is refused.
     pub async fn recording(endpoint: &Endpoint, timeout: Duration) -> Result<(Self, Tape), Error> {
-        let (Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port }) = endpoint
+        let (Endpoint::ModbusTcp { host, port }
+        | Endpoint::RtuOverTcp { host, port }
+        | Endpoint::SolarmanV5 { host, port }) = endpoint
         else {
             return Err(Error::Protocol("sim has no device to capture"));
         };
@@ -164,7 +174,9 @@ impl Client {
     ///
     /// As [`Client::connect`]; `sim` is refused.
     pub async fn read_only(endpoint: &Endpoint, timeout: Duration) -> Result<Self, Error> {
-        let (Endpoint::ModbusTcp { host, port } | Endpoint::SolarmanV5 { host, port }) = endpoint
+        let (Endpoint::ModbusTcp { host, port }
+        | Endpoint::RtuOverTcp { host, port }
+        | Endpoint::SolarmanV5 { host, port }) = endpoint
         else {
             return Err(Error::Protocol("sim has no device to scan"));
         };
@@ -198,7 +210,7 @@ impl Client {
                         .map_err(|_| Error::Timeout)??,
                 )
             }
-            Framing::RtuOverTcp => return Err(Error::Protocol("RTU over TCP is not supported")),
+            Framing::RtuOverTcp => Envelope::Rtu,
         };
         Ok(Self {
             wire,
@@ -246,7 +258,7 @@ impl Client {
     }
 
     /// Sends `request`, a Modbus TCP frame built with the next transaction id, and returns the PDU
-    /// of its reply. Solarman framing rewraps the frame's unit id and PDU.
+    /// of its reply. RTU and Solarman framing rewrap the frame's unit id and PDU.
     async fn exchange(&mut self, request: &[u8], unit: u8) -> Result<&[u8], Error> {
         self.transaction = self.transaction.wrapping_add(1);
         let transaction = self.transaction;
@@ -255,12 +267,8 @@ impl Client {
         let exchange = async {
             match &mut self.envelope {
                 Envelope::Mbap => mbap_exchange(wire, reply, request, transaction, unit).await,
-                Envelope::Solarman(logger) => {
-                    let adu = request
-                        .get(mbap::UNIT_OFFSET..)
-                        .ok_or(Error::Protocol("bad length"))?;
-                    logger.exchange(wire, adu, reply).await
-                }
+                Envelope::Rtu => rtu::exchange(wire, adu(request)?, reply).await,
+                Envelope::Solarman(logger) => logger.exchange(wire, adu(request)?, reply).await,
             }
         };
         let pdu = tokio::time::timeout(self.timeout, exchange)
@@ -268,6 +276,13 @@ impl Client {
             .map_err(|_| Error::Timeout)??;
         self.reply.get(pdu).ok_or(Error::Protocol("bad length"))
     }
+}
+
+/// The unit id and PDU of a Modbus TCP frame: the RTU frame without its CRC.
+fn adu(request: &[u8]) -> Result<&[u8], Error> {
+    request
+        .get(mbap::UNIT_OFFSET..)
+        .ok_or(Error::Protocol("bad length"))
 }
 
 async fn tcp(host: &str, port: u16, timeout: Duration) -> Result<TcpStream, Error> {

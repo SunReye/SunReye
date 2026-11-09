@@ -2,6 +2,7 @@
 //! `fixtures/oracle/transport.ndjson`) replayed through `sim`. Expected words come from each case's
 //! recorded `device` registers, not from the reply bytes.
 
+mod rtu;
 mod solarman;
 
 use std::time::Duration;
@@ -221,7 +222,11 @@ async fn a_count_outside_the_pdu_limit_is_refused_before_anything_is_sent() {
 #[tokio::test]
 async fn a_read_only_client_refuses_a_write_before_it_reaches_the_device() {
     use super::fake;
-    for mut fake in [fake::serve().await, fake::serve_solarman().await] {
+    for mut fake in [
+        fake::serve().await,
+        fake::serve_rtu().await,
+        fake::serve_solarman().await,
+    ] {
         let mut client = Client::read_only(&fake.endpoint(), TIMEOUT).await.unwrap();
 
         let refused = client.write_registers(1, 500, &[1]).await;

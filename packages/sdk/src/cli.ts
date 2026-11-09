@@ -12,8 +12,9 @@ const usage = `usage: sunreye-profile <command>
                           bumping a profile's patch version when its content changed
   capture <endpoint> <unit> <profile>
                           a read-only capture of a device for sim, from the core's
-                          \`sunreye capture\`: <endpoint> is modbus-tcp://host:port or
-                          solarman-v5://host:port, <profile> a bundled profile's id
+                          \`sunreye capture\`: <endpoint> is modbus-tcp://,
+                          rtu-over-tcp:// or solarman-v5://host:port, <profile> a
+                          bundled profile's id
 `;
 
 async function lint(path: string): Promise<string> {

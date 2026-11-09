@@ -346,6 +346,27 @@ async fn a_device_behind_a_solarman_stick_is_polled_at_its_unit_id() {
 }
 
 #[tokio::test]
+async fn a_device_behind_an_rtu_gateway_is_polled_at_its_unit_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let mut gateway = fake::serve_rtu().await;
+    let mut readings = core.bus.subscribe();
+    let connection = json!({ "name": "rs485", "transport": "rtu-over-tcp", "host": "127.0.0.1",
+        "port": gateway.address.port() });
+    let connection = core.connection(&set_cookie, &connection).await;
+    let device = core.deye(&set_cookie, &connection, 1).await;
+
+    let read = tokio::time::timeout(Duration::from_secs(20), gateway.reads.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.unit, 1);
+    assert_eq!(readings.recv().await.unwrap().device.0, id(&device));
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/connections")).await;
+    assert_eq!(listed["connections"][0]["transport"], json!("rtu-over-tcp"));
+}
+
+#[tokio::test]
 async fn a_devices_writes_are_off_until_the_admin_turns_them_on() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

@@ -12,7 +12,7 @@ pub const MAX_PDU: usize = 253;
 pub const MAX_FRAME: usize = HEADER_LEN + MAX_PDU;
 pub const FC_READ_HOLDING: u8 = 3;
 /// Every write is function 16, one word included: some devices refuse function 6.
-const FC_WRITE: u8 = 16;
+pub const FC_WRITE: u8 = 16;
 const EXCEPTION_FLAG: u8 = 0x80;
 /// Most words one read may ask for.
 const MAX_READ: usize = 125;
