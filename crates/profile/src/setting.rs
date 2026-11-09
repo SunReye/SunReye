@@ -14,21 +14,22 @@ pub struct Setting {
     values: Option<Vec<f64>>,
     min_interval: Duration,
     recipe: Vec<Step>,
-    read_back: Option<ReadBack>,
+    read_back: Option<Field>,
 }
 
-/// Where a write is read back: the bits `mask` selects of `register`.
+/// The bits `mask` selects of `register`: where a write is read back, or what a precondition
+/// reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReadBack {
+pub struct Field {
     pub register: u16,
-    /// `0xFFFF` when the whole register is read back.
+    /// `0xFFFF` for the whole register.
     pub mask: u16,
 }
 
-impl ReadBack {
+impl Field {
     /// The bits of `word` the mask selects, shifted down to bit 0.
     #[must_use]
-    pub const fn field(&self, word: u16) -> u16 {
+    pub const fn extract(&self, word: u16) -> u16 {
         (word & self.mask) >> self.mask.trailing_zeros()
     }
 }
@@ -47,6 +48,8 @@ pub enum Step {
     },
     /// Reads `register` and writes it back with the value's word in the bits `mask` selects.
     Rmw { register: u16, mask: u16 },
+    /// Refuses the write before anything is written unless `field` holds one of `values`.
+    Precondition { field: Field, values: Vec<u16> },
     /// Writes `value` to the enable field `register`, last, once the value is in place.
     Activate { register: u16, value: u16 },
     /// Waits before the next step; the endpoint's polls wait with it.
@@ -58,7 +61,7 @@ impl Step {
     const fn writes_value(&self) -> bool {
         match self {
             Self::Write { .. } | Self::WriteBlock { .. } | Self::Rmw { .. } => true,
-            Self::Activate { .. } | Self::Delay(_) => false,
+            Self::Activate { .. } | Self::Delay(_) | Self::Precondition { .. } => false,
         }
     }
 }
@@ -96,7 +99,7 @@ impl Setting {
 
     /// Where a write is read back; `None` for a write-only setting.
     #[must_use]
-    pub const fn read_back(&self) -> Option<ReadBack> {
+    pub const fn read_back(&self) -> Option<Field> {
         self.read_back
     }
 
@@ -192,6 +195,10 @@ fn mask(mask: u16, kind: Kind) -> Result<u16, &'static str> {
     if kind != Kind::U16 {
         return Err("a masked register holds a `u16`");
     }
+    nonzero(mask)
+}
+
+const fn nonzero(mask: u16) -> Result<u16, &'static str> {
     if mask == 0 {
         return Err("a mask selects at least one bit");
     }
@@ -277,12 +284,33 @@ fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
                 Err("a delay is at most 10000 ms: the device's polls wait for it")
             }
             StepDoc::Delay(d) => Ok(Step::Delay(Duration::from_millis(d.ms.into()))),
+            StepDoc::Precondition(p) if p.values.is_empty() => {
+                Err("a precondition lists the values it allows")
+            }
+            StepDoc::Precondition(p) => Ok(Step::Precondition {
+                field: Field {
+                    register: p.register,
+                    mask: p.mask.map_or(Ok(0xFFFF), nonzero)?,
+                },
+                values: p.values,
+            }),
             StepDoc::Activate(a) => Ok(Step::Activate {
                 register: a.register,
                 value: a.value,
             }),
         })
         .collect::<Result<_, _>>()?;
+    let checks = steps
+        .iter()
+        .take_while(|s| matches!(s, Step::Precondition { .. }))
+        .count();
+    if steps
+        .iter()
+        .skip(checks)
+        .any(|s| matches!(s, Step::Precondition { .. }))
+    {
+        return Err("a precondition comes before every other step");
+    }
     let last = steps.len() - 1;
     for (at, step) in steps.iter().enumerate() {
         let valued = steps.iter().take(at).any(Step::writes_value);
@@ -293,8 +321,8 @@ fn recipe(docs: Vec<StepDoc>, kind: Kind) -> Result<Vec<Step>, &'static str> {
     Ok(steps)
 }
 
-fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<ReadBack, &'static str> {
-    Ok(ReadBack {
+fn read_back(doc: &ReadBackDoc, kind: Kind) -> Result<Field, &'static str> {
+    Ok(Field {
         register: doc.register,
         mask: doc.mask.map_or(Ok(0xFFFF), |m| mask(m, kind))?,
     })

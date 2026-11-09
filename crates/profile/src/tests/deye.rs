@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Framing, Inverter, Mppt, Profile, ReadBack, Registers, Step};
+use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Step};
 use serde_json::Value;
 
 const PROFILE: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
@@ -127,7 +127,7 @@ fn its_settings_write_with_function_16_and_read_back_their_own_register() {
     for (key, register, max) in settings {
         let setting = profile.setting(key).unwrap();
         assert_eq!(setting.recipe(), [Step::Write { register }], "{key}");
-        let whole = ReadBack {
+        let whole = Field {
             register,
             mask: 0xFFFF,
         };

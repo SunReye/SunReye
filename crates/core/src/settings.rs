@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
 use serde::Serialize;
-use sunreye_profile::{Profile, ReadBack, Setting, Step};
+use sunreye_profile::{Field, Profile, Setting, Step};
 use utoipa::ToSchema;
 
 use crate::api::{Code, Problem};
@@ -33,7 +33,7 @@ pub enum Outcome {
     Unchanged,
 }
 
-/// Why a write was refused before the device.
+/// Why a write was refused before anything was written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     /// The profile declares no such setting.
@@ -46,6 +46,8 @@ pub enum Refusal {
     WritesOff,
     /// The setting's minimum interval has not passed since its last write.
     Interval,
+    /// A precondition read from the device does not hold.
+    Precondition,
 }
 
 impl From<Refusal> for Problem {
@@ -56,6 +58,7 @@ impl From<Refusal> for Problem {
             Refusal::Value => (StatusCode::UNPROCESSABLE_ENTITY, Code::SettingValue),
             Refusal::WritesOff => (StatusCode::CONFLICT, Code::SettingWritesOff),
             Refusal::Interval => (StatusCode::TOO_MANY_REQUESTS, Code::SettingInterval),
+            Refusal::Precondition => (StatusCode::CONFLICT, Code::SettingPrecondition),
         };
         Self { status, code }
     }
@@ -123,14 +126,17 @@ pub fn check(
 
 /// Runs `job` on `client`, connecting to `endpoint` when it has none.
 ///
-/// A step that fails stops the recipe and is never retried; the value is then read back once
-/// more, on a fresh connection if the wire may hold half a reply.
+/// Preconditions are read first. A step that fails stops the recipe and is never retried; the
+/// value is then read back once more, on a fresh connection if the wire may hold half a reply.
+///
+/// # Errors
+/// [`Refusal::Precondition`] when a precondition does not hold; nothing was written.
 pub async fn run(
     endpoint: &Endpoint,
     client: &mut Option<Client>,
     timeout: Duration,
     job: &Job,
-) -> Applied {
+) -> Result<Applied, Refusal> {
     let mut link = Link {
         endpoint,
         client,
@@ -143,6 +149,11 @@ pub async fn run(
         after: None,
         failed_step: None,
     };
+    if let Some(unread) = preconditions(&mut link, job).await? {
+        // Nothing was written; the device's state is unchanged but unconfirmed.
+        applied.failed_step = Some(unread);
+        return Ok(applied);
+    }
     let width = usize::from(job.setting.width());
     let Some(read_back) = job.setting.read_back() else {
         // Write-only: nothing to compare with, before or after.
@@ -150,15 +161,15 @@ pub async fn run(
             applied.outcome = failure.outcome();
             applied.failed_step = Some(failure.step);
         }
-        return applied;
+        return Ok(applied);
     };
     let Ok(before) = link.read_back(read_back, width).await else {
-        return applied;
+        return Ok(applied);
     };
     applied.before = job.setting.decode(&before);
     if before == job.words {
         applied.outcome = Outcome::Unchanged;
-        return applied;
+        return Ok(applied);
     }
     let result = steps(&mut link, job).await;
     let after = link.read_back(read_back, width).await.ok();
@@ -170,7 +181,24 @@ pub async fn run(
         (Ok(()), None) => Outcome::Unknown,
     };
     applied.failed_step = result.err().map(|failure| failure.step);
-    applied
+    Ok(applied)
+}
+
+/// Reads every precondition; the step, counted from 1, of one that cannot be read.
+async fn preconditions(link: &mut Link<'_>, job: &Job) -> Result<Option<u32>, Refusal> {
+    for (step, number) in job.setting.recipe().iter().zip(1..) {
+        let Step::Precondition { field, values } = step else {
+            continue;
+        };
+        let read = link.read(field.register, 1).await;
+        let Ok([word]) = read.as_deref() else {
+            return Ok(Some(number));
+        };
+        if !values.contains(&field.extract(*word)) {
+            return Err(Refusal::Precondition);
+        }
+    }
+    Ok(None)
 }
 
 /// Where a recipe stopped.
@@ -207,6 +235,8 @@ async fn steps(link: &mut Link<'_>, job: &Job) -> Result<(), Failure> {
             }
             Step::Rmw { register, mask } => link.rmw(*register, *mask, &job.words).await,
             Step::Activate { register, value } => link.write(*register, &[*value]).await,
+            // Read before the recipe began.
+            Step::Precondition { .. } => Ok(false),
             Step::Delay(pause) => {
                 tokio::time::sleep(*pause).await;
                 Ok(false)
@@ -255,9 +285,9 @@ impl Link<'_> {
     }
 
     /// The fields `read_back` selects of `width` registers.
-    async fn read_back(&mut self, read_back: ReadBack, width: usize) -> Result<Vec<u16>, Error> {
+    async fn read_back(&mut self, read_back: Field, width: usize) -> Result<Vec<u16>, Error> {
         let words = self.read(read_back.register, width).await?;
-        Ok(words.into_iter().map(|w| read_back.field(w)).collect())
+        Ok(words.into_iter().map(|w| read_back.extract(w)).collect())
     }
 
     /// `width` holding registers from `start`.

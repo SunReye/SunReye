@@ -60,6 +60,7 @@ pub enum StepDoc {
     WriteBlock(BlockDoc),
     Rmw(MaskedDoc),
     Activate(ActivateDoc),
+    Precondition(PreconditionDoc),
     Delay(DelayDoc),
 }
 
@@ -71,9 +72,21 @@ impl StepDoc {
             Self::WriteBlock(_) => "write-block",
             Self::Rmw(_) => "rmw",
             Self::Activate(_) => "activate",
+            Self::Precondition(_) => "precondition",
             Self::Delay(_) => "delay",
         }
     }
+}
+
+/// A field that must hold one of `values` before anything is written.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Precondition", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct PreconditionDoc {
+    pub register: u16,
+    pub mask: Option<u16>,
+    pub values: Vec<u16>,
 }
 
 /// The enable field written last, once the value is in place.

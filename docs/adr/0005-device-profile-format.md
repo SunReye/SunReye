@@ -40,6 +40,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 Each step kind is its own capability (`write-block` for `writeBlock`).
 
+- `precondition` requires a register, or the bits its `mask` selects, to hold one of its `values`. Preconditions come before every other step.
 - `writeBlock` writes fixed words and the value's words, at the `"value"` mark, in one function code 16 request of at most 123 registers.
 - `rmw` reads its register afresh and writes it back with the value in the bits its `mask` selects. A value that overflows the mask is refused. `readBack` takes a `mask` too, so it compares only the field. A masked register holds a `u16`.
 - `activate` writes a fixed word to an enable field. It is the last step, after one that writes the value.

@@ -35,6 +35,7 @@
   "problem_setting_value": "The value is outside the setting's range or steps.",
   "problem_setting_writes_off": "Writes are switched off for this device.",
   "problem_setting_interval": "This setting was written too recently; wait for its minimum interval.",
+  "problem_setting_precondition": "The device is not in a state that allows this setting to be written.",
   "problem_clock_unsynced": "The clock is not synchronised; history is held.",
   "problem_internal": "Internal error in the SunReye core.",
   "problem_http": "The server answered with HTTP {status}.",

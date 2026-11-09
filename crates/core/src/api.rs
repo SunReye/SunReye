@@ -340,6 +340,8 @@ pub enum Code {
     SettingWritesOff,
     #[serde(rename = "setting.interval")]
     SettingInterval,
+    #[serde(rename = "setting.precondition")]
+    SettingPrecondition,
     #[serde(rename = "clock.unsynced")]
     ClockUnsynced,
     #[serde(rename = "internal")]

@@ -106,6 +106,10 @@ _Avoid_: Control, command, parameter
 The ordered steps that apply one setting.
 _Avoid_: Script, macro
 
+**Precondition**:
+A device state a recipe requires before it writes. One that does not hold refuses the write.
+_Avoid_: Guard, check
+
 **Outcome**:
 The result of a write: `verified`, `mismatch`, `unknown`, `partial`, or `unchanged` when no write was needed.
 _Avoid_: Status, result

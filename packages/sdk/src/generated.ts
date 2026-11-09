@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "delay";
+export type Capability = "modbus" | "u16" | "i16" | "u32" | "compute" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "delay";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, settings?: Array<Setting>, };
 
@@ -42,7 +42,7 @@ export type Setting = { key: string, type: Kind, scale?: number, range?: Range, 
  */
 minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boolean, };
 
-export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "delay": Delay };
+export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "delay": Delay };
 
 export type Register = { register: number, };
 
@@ -51,6 +51,8 @@ export type WriteBlock = { register: number, words: Array<number | "value">, };
 export type Delay = { ms: number, };
 
 export type Activate = { register: number, value: number, };
+
+export type Precondition = { register: number, mask?: number, values: Array<number>, };
 
 export type Masked = { register: number, mask: number, };
 

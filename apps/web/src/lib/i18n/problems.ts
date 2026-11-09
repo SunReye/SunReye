@@ -43,6 +43,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "setting.value": m.problem_setting_value,
   "setting.writes-off": m.problem_setting_writes_off,
   "setting.interval": m.problem_setting_interval,
+  "setting.precondition": m.problem_setting_precondition,
   "clock.unsynced": m.problem_clock_unsynced,
   internal: m.problem_internal,
 };

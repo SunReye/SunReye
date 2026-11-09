@@ -35,6 +35,7 @@
   "problem_setting_value": "Der Wert liegt außerhalb des Bereichs oder der Schritte der Einstellung.",
   "problem_setting_writes_off": "Schreiben ist für dieses Gerät ausgeschaltet.",
   "problem_setting_interval": "Diese Einstellung wurde eben erst geschrieben; warte ihren Mindestabstand ab.",
+  "problem_setting_precondition": "Das Gerät ist nicht in einem Zustand, in dem diese Einstellung geschrieben werden kann.",
   "problem_clock_unsynced": "Die Uhr ist nicht synchronisiert; der Verlauf wird zurückgehalten.",
   "problem_internal": "Interner Fehler im SunReye-Kern.",
   "problem_http": "Der Server antwortete mit HTTP {status}.",

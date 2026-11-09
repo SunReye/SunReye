@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
-use crate::settings::{self, Applied, Job};
+use crate::settings::{self, Applied, Job, Refusal};
 use crate::transport::{Client, Endpoint, Error};
 
 /// Until a profile declares poll groups, every quantity is polled at this cadence.
@@ -45,7 +45,7 @@ pub struct Task {
 }
 
 /// A write waiting for the task, and where its result goes.
-type Write = (Job, oneshot::Sender<Applied>);
+type Write = (Job, oneshot::Sender<Result<Applied, Refusal>>);
 
 impl Task {
     /// The last good value of every quantity read so far, with its age.
@@ -61,7 +61,7 @@ impl Task {
     }
 
     /// Runs `job` after the poll cycle in progress; `None` when the task has stopped.
-    pub async fn write(&self, job: Job) -> Option<Applied> {
+    pub async fn write(&self, job: Job) -> Option<Result<Applied, Refusal>> {
         let (reply, applied) = oneshot::channel();
         self.writes.send((job, reply)).await.ok()?;
         applied.await.ok()

@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use sunreye_profile::{Framing, Profile};
 
-use super::{Applied, Job, Outcome};
+use super::{Applied, Job, Outcome, Refusal};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{self, Device};
 use crate::transport::{Capture, Endpoint, Exchange};
@@ -78,6 +78,10 @@ fn echo(at: u16) -> Vec<u8> {
 }
 
 async fn run(device: Device, job: Job, exchanges: Vec<Exchange>) -> Applied {
+    attempt(device, job, exchanges).await.unwrap()
+}
+
+async fn attempt(device: Device, job: Job, exchanges: Vec<Exchange>) -> Result<Applied, Refusal> {
     let endpoint = Endpoint::Sim(Capture {
         framing: Framing::Tcp,
         exchanges,
@@ -270,4 +274,58 @@ async fn activation_writes_the_enable_field_after_the_value() {
     let applied = run(device, job, exchanges).await;
 
     assert_eq!(applied.outcome, Outcome::Verified);
+}
+
+fn guarded() -> Value {
+    current(&json!([
+        { "precondition": { "register": 40, "mask": 0x0C, "values": [1, 2] } },
+        { "write": { "register": 108 } },
+    ]))
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_holds_lets_the_recipe_run() {
+    let (device, job) = job(&guarded(), 50.0);
+    let exchanges = [
+        read(1, 40, 0xF8),
+        read(2, 108, 108),
+        write(3, 108, 50, &echo(108)),
+        read(4, 108, 50),
+    ]
+    .concat();
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(applied.outcome, Outcome::Verified);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_fails_refuses_the_write_before_anything_is_written() {
+    let (device, job) = job(&guarded(), 50.0);
+
+    // Bits 2 and 3 hold 3; the capture ends there, so any later request fails the replay.
+    let refused = attempt(device, job, read(1, 40, 0x0C).to_vec()).await;
+
+    assert_eq!(refused, Err(Refusal::Precondition));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_precondition_that_cannot_be_read_writes_nothing_and_is_unknown() {
+    let (device, job) = job(&guarded(), 50.0);
+    let exchanges = vec![
+        Exchange::Request(frame(1, &[3, 0, 40, 0, 1])),
+        Exchange::Reply(vec![frame(1, &[0x83, 2])]),
+    ];
+
+    let applied = run(device, job, exchanges).await;
+
+    assert_eq!(
+        applied,
+        Applied {
+            outcome: Outcome::Unknown,
+            before: None,
+            after: None,
+            failed_step: Some(1),
+        }
+    );
 }
