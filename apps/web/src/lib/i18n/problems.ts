@@ -51,6 +51,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "investment.value": m.problem_investment_value,
   "location.none": m.problem_location_none,
   "location.value": m.problem_location_value,
+  "zone.value": m.problem_zone_value,
   "connection.none": m.problem_connection_none,
   "connection.value": m.problem_connection_value,
   "connection.in-use": m.problem_connection_in_use,

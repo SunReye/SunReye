@@ -13,10 +13,11 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use sunreye_profile::{RoleKind, Unit};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::bus::{Bus, DeviceId, Reading, Series, SeriesId};
+pub use thread::Log;
 use thread::{Command, Forecasting, Request, Rewriting};
 
 /// Commands the storage thread may fall behind by before senders wait.
@@ -180,6 +181,7 @@ pub struct Storage {
     commands: mpsc::Sender<Command>,
     bus: Bus,
     feed: JoinHandle<()>,
+    zone: std::sync::Arc<watch::Sender<jiff::tz::TimeZone>>,
 }
 
 impl Drop for Storage {
@@ -190,19 +192,30 @@ impl Drop for Storage {
 
 impl Storage {
     /// Opens or creates the file at `path` and starts storing the bus's readings of declared
-    /// series, with days cut in the plant timezone `zone`. Must be called inside a Tokio runtime.
+    /// series, with days cut in the plant timezone: the one the admin set, else `zone`. Must be
+    /// called inside a Tokio runtime.
     ///
     /// # Errors
     /// The zone is unknown, or the file cannot be opened or migrated.
     pub fn open(path: &Path, build: SystemTime, zone: &str, bus: &Bus) -> Result<Self, Error> {
         let tz = jiff::tz::TimeZone::get(zone).map_err(|_| Error::Zone)?;
-        let commands = thread::spawn(path, build, (zone.to_owned(), tz), QUEUE)?;
+        let (commands, current) = thread::spawn(path, build, (zone.to_owned(), tz), QUEUE)?;
         let feed = tokio::spawn(feed(bus.subscribe(), commands.clone()));
         Ok(Self {
             commands,
             bus: bus.clone(),
             feed,
+            zone: std::sync::Arc::new(watch::channel(current).0),
         })
+    }
+
+    /// A handle that reads and sets the plant timezone (ADR 3).
+    #[must_use]
+    pub fn zones(&self) -> Zones {
+        Zones {
+            commands: self.commands.clone(),
+            current: std::sync::Arc::clone(&self.zone),
+        }
     }
 
     /// Stores `series` of `device` from now on, resuming its history.
@@ -426,6 +439,34 @@ async fn request<T>(
         .await
         .map_err(|_| Error::Stopped)?;
     answer.await.map_err(|_| Error::Stopped)
+}
+
+/// The plant timezone days are cut in (ADR 3).
+#[derive(Debug, Clone)]
+pub struct Zones {
+    commands: mpsc::Sender<Command>,
+    current: std::sync::Arc<watch::Sender<jiff::tz::TimeZone>>,
+}
+
+impl Zones {
+    /// The zone, now and after each change.
+    #[must_use]
+    pub fn watch(&self) -> watch::Receiver<jiff::tz::TimeZone> {
+        self.current.subscribe()
+    }
+
+    /// Cuts days from now on in the IANA zone `name`, kept across restarts; `log` runs in the same
+    /// transaction.
+    ///
+    /// # Errors
+    /// The zone is unknown, or the file cannot be written.
+    pub async fn set(&self, name: &str, log: thread::Log) -> Result<(), Error> {
+        let tz = jiff::tz::TimeZone::get(name).map_err(|_| Error::Zone)?;
+        let zone = (name.to_owned(), tz.clone());
+        request(&self.commands, |reply| Request::Zone { zone, log, reply }).await??;
+        self.current.send_replace(tz);
+        Ok(())
+    }
 }
 
 /// Declares the series storage stores.

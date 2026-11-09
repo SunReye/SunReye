@@ -50,6 +50,7 @@ mod tariff;
 mod tokens;
 mod topology;
 mod viewers;
+mod zone;
 
 /// The owner's Deye as device 1.
 fn deye() -> Inverters {
@@ -127,7 +128,8 @@ impl Core {
             location: PlantLocation::open(storage.database()).await.unwrap(),
             profiles,
             topologies: Topologies::new(storage.database()),
-            tariffs: Tariffs::new(&storage, &bus, jiff::tz::TimeZone::UTC),
+            tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
+            zones: storage.zones(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -217,7 +219,8 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         location: PlantLocation::open(storage.database()).await.unwrap(),
         profiles,
         topologies: Topologies::new(storage.database()),
-        tariffs: Tariffs::new(&storage, &Bus::default(), jiff::tz::TimeZone::UTC),
+        tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
+        zones: storage.zones(),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

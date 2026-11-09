@@ -27,12 +27,65 @@ const pass = globalThis.fetch.bind(globalThis);
 /** The paths the page asked the core for, in order. */
 const paths: string[] = [];
 
-/** What the core serves at its layout: the layout with a scene once a test says so. */
-const served = { scene: false };
+const INVERTER = { id: 1, name: "Wechselrichter", profile: "deye-sg05lp3", connection: 1, unit: 1 };
+
+interface Served {
+  scene: boolean;
+  /** Signed in when undefined, Home Assistant's ingress too. */
+  session: "auth.setup" | "auth.required" | undefined;
+  devices: readonly unknown[];
+  live: Readonly<Record<string, Readonly<Record<string, number>>>>;
+}
+
+/** What the core serves: the layout with a scene once a test says so, the session and devices. */
+const served: Served = { scene: false, session: undefined, devices: [INVERTER], live: {} };
+
+function problem(status: number, code: string): Response {
+  return Response.json(
+    { status, code },
+    { status, headers: { "content-type": "application/problem+json" } },
+  );
+}
+
+const SCAN = {
+  subnet: "192.168.1.0/24",
+  endpoints: [
+    {
+      transport: "modbus-tcp",
+      host: "192.168.1.20",
+      port: 502,
+      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+    },
+  ],
+};
+
+/** What a fresh core answers to the first run's writes, by method and path. */
+function configure(call: string): Response | undefined {
+  if (call === "POST /api/v1/setup") served.session = "auth.required";
+
+  if (call === "POST /api/v1/login") served.session = undefined;
+
+  if (call === "POST /api/v1/devices") served.devices = [INVERTER];
+
+  const answers = new Map([
+    ["POST /api/v1/scan", () => Response.json(SCAN)],
+    ["POST /api/v1/connections", () => Response.json({ id: 1, secrets: [] }, { status: 201 })],
+    ["POST /api/v1/devices", () => Response.json(INVERTER, { status: 201 })],
+  ]);
+
+  // Every other write succeeds; the first run reads no answer back.
+  return call.startsWith("GET ") ? undefined : (answers.get(call)?.() ?? Response.json({}));
+}
 
 /** The core's answer at `pathname`. */
 function answer(pathname: string): Response | undefined {
   switch (pathname) {
+    case "/api/v1/session":
+      return served.session === undefined
+        ? new Response(null, { status: 204 })
+        : problem(401, served.session);
+    case "/api/v1/devices":
+      return Response.json({ devices: served.devices });
     case "/api/v1/layout":
       return served.scene
         ? Response.json(withScene)
@@ -47,7 +100,9 @@ function answer(pathname: string): Response | undefined {
         new ReadableStream({
           start: (controller) => {
             controller.enqueue(
-              new TextEncoder().encode('event: snapshot\ndata: {"devices":{}}\n\n'),
+              new TextEncoder().encode(
+                `event: snapshot\ndata: ${JSON.stringify({ devices: served.live })}\n\n`,
+              ),
             );
           },
         }),
@@ -77,14 +132,20 @@ beforeEach(async () => {
   localStorage.removeItem(LOW_POWER);
   paths.length = 0;
   served.scene = false;
+  served.session = undefined;
+  served.devices = [INVERTER];
+  served.live = {};
   // The core answers the API; everything else, the WASM too, passes through.
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- fetch's own parameters are mutable.
   vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+    const method = input instanceof Request ? input.method : "GET";
 
     paths.push(url.pathname);
 
-    return Promise.resolve(answer(url.pathname) ?? pass(input, init));
+    return Promise.resolve(
+      configure(`${method} ${url.pathname}`) ?? answer(url.pathname) ?? pass(input, init),
+    );
   });
   await page.viewport(1280, 900);
 });
@@ -163,4 +224,61 @@ test("without WebGL2 a scene still leaves the 2D flow", async () => {
   await asked("/api/v1/layout");
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
   expect(screen.getByRole("button", { name: "2D-Ansicht" }).query()).toBeNull();
+});
+
+test("a fresh core walks the owner through setup and ends on the live dashboard", async () => {
+  served.session = "auth.setup";
+  served.devices = [];
+  served.live = { "1": { "grid.power": -300, "pv.power": 900 } };
+
+  const screen = await render(Page);
+
+  await expect.element(screen.getByRole("heading", { name: "Einrichtung" })).toBeVisible();
+  await userEvent.fill(screen.getByLabelText("Passwort", { exact: true }), "solar sun");
+  await userEvent.fill(screen.getByLabelText("Passwort wiederholen"), "solar sun");
+  await screen.getByRole("button", { name: "Passwort festlegen" }).click();
+
+  await expect.element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" })).toBeVisible();
+  await userEvent.selectOptions(
+    screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).element(),
+    "Europe/Berlin",
+  );
+  await userEvent.fill(screen.getByLabelText("Breitengrad"), "52.52");
+  await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
+  await screen.getByRole("button", { name: "Weiter" }).click();
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+  await screen
+    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:502, Adresse 1" })
+    .click();
+  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+
+  await expect.element(screen.getByLabelText("Name von Punkt 2")).toHaveValue("Wechselrichter PV");
+  await screen.getByRole("button", { name: "Messpunkte speichern" }).click();
+
+  await expect.element(screen.getByRole("combobox", { name: "Dachfläche" })).toBeVisible();
+  await screen.getByRole("button", { name: "Fertig, zur Übersicht" }).click();
+
+  await expect.element(screen.getByRole("checkbox", { name: "Stromsparmodus" })).toBeVisible();
+});
+
+test("under Home Assistant's ingress setup sets no password", async () => {
+  // Ingress signs the request in before any password exists (ADR 9).
+  served.devices = [];
+
+  const screen = await render(Page);
+
+  await expect.element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" })).toBeVisible();
+  expect(screen.getByLabelText("Passwort wiederholen").query()).toBeNull();
+});
+
+test("a signed-out owner signs in to the dashboard", async () => {
+  served.session = "auth.required";
+
+  const screen = await render(Page);
+
+  await userEvent.fill(screen.getByLabelText("Passwort"), "solar sun");
+  await screen.getByRole("button", { name: "Anmelden" }).click();
+
+  await expect.element(screen.getByRole("checkbox", { name: "Stromsparmodus" })).toBeVisible();
 });

@@ -259,6 +259,7 @@
           "investment.value",
           "location.none",
           "location.value",
+          "zone.value",
           "connection.none",
           "connection.value",
           "connection.in-use",
@@ -2354,6 +2355,19 @@
           "writes"
         ],
         "type": "object"
+      },
+      "Zone": {
+        "description": "The plant timezone.",
+        "properties": {
+          "name": {
+            "description": "An IANA name, such as `Europe/Berlin`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
       }
     }
   },
@@ -3779,6 +3793,66 @@
           }
         },
         "summary": "Corrects the past: the tariff applies from its date, and the prices and the `cost.*` rates are\nrebuilt from then on from stored history. Refused before change-point retention."
+      }
+    },
+    "/api/v1/timezone": {
+      "get": {
+        "operationId": "timezone",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The plant timezone days are cut in."
+      },
+      "put": {
+        "operationId": "set_timezone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Zone"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sets the plant timezone; days from now on are cut in it."
       }
     },
     "/api/v1/tokens": {

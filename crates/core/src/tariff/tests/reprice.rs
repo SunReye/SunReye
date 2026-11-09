@@ -31,7 +31,7 @@ impl Past {
             &bus,
         )
         .unwrap();
-        let tariffs = Tariffs::new(&storage, &bus, berlin());
+        let tariffs = Tariffs::new(&storage, &bus, tokio::sync::watch::channel(berlin()).1);
         Self {
             _dir: dir,
             bus,

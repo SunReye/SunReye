@@ -344,3 +344,53 @@ async fn replaced_change_points_are_history_and_their_rollups_rebuilt() {
         ]
     );
 }
+
+#[tokio::test]
+async fn a_zone_the_admin_sets_cuts_the_days_after_it_and_outlives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("z.sqlite");
+    let plant = Plant::new();
+    let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+    let zones = storage.zones();
+    let logged = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let log = std::sync::Arc::clone(&logged);
+
+    let unknown = zones.set("Mars/Olympus", Box::new(|_| Ok(()))).await;
+    let set = zones
+        .set(
+            "Europe/Berlin",
+            Box::new(move |_| {
+                log.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+        .await;
+
+    assert!(matches!(unknown, Err(crate::storage::Error::Zone)));
+    assert!(set.is_ok());
+    assert!(logged.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(zones.watch().borrow().iana_name(), Some("Europe/Berlin"));
+    drop(storage);
+
+    let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+    assert_eq!(
+        storage.zones().watch().borrow().iana_name(),
+        Some("Europe/Berlin")
+    );
+    let hourly = Policy {
+        cadence: Duration::from_secs(3600),
+        ..policy()
+    };
+    storage.declare(DEVICE, plant.power, hourly).await.unwrap();
+    let first = BERLIN_OCT_24;
+    plant
+        .record(&storage, &steady(first, 30, 3600.0, |_| 1000.0))
+        .await;
+    let days = measured(&rollups(&storage, plant.power, Tier::Day, first, first + 86_400.0).await);
+
+    // Cut at Berlin's midnight, not UTC's two hours later.
+    assert_eq!(
+        days,
+        [(first / 3600.0, 24.0, 1000.0, 1000.0, 1000.0, 24_000.0)]
+    );
+}
