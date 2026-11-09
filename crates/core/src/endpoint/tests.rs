@@ -1,12 +1,13 @@
 //! An endpoint task over `sim`, observed on the bus.
 
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use sunreye_profile::{Profile, Unit};
 use tokio::sync::broadcast::Receiver;
+use tokio::time::Instant;
 
-use super::{Device, spawn};
+use super::{Device, backoff, spawn};
 use crate::bus::{Bus, DeviceId, Reading};
 use crate::transport::{Capture, Endpoint, Exchange};
 
@@ -90,4 +91,53 @@ async fn one_poll_cycle_publishes_typed_readings() {
     );
     let got: Vec<Seen> = got.into_iter().map(|r| seen(&bus, r)).collect();
     assert_eq!(got, first_cycle());
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_error_backs_off_and_the_last_good_value_reports_its_age() {
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    // The second cycle's request goes unanswered and times out 3 s later, at 8 s.
+    let mut exchanges = one_cycle();
+    exchanges.push(Exchange::Request(unhex("000200000006010301f40003")));
+    let start = Instant::now();
+    let task = spawn(
+        Endpoint::Sim(Capture { exchanges }),
+        vec![device()],
+        bus.clone(),
+    );
+    cycle(&mut readings).await;
+
+    tokio::time::sleep_until(start + Duration::from_secs(12)).await;
+    let latest: Vec<(Seen, Duration)> = task
+        .latest()
+        .into_iter()
+        .map(|(reading, age)| (seen(&bus, reading), age))
+        .collect();
+    let twelve = Duration::from_secs(12);
+    assert_eq!(
+        latest,
+        first_cycle()
+            .into_iter()
+            .map(|s| (s, twelve))
+            .collect::<Vec<_>>()
+    );
+
+    // The backoff runs from the failure at 8 s; a fresh connection replays the capture again.
+    let again = cycle(&mut readings).await;
+    assert_eq!(start.elapsed(), Duration::from_secs(13));
+    assert_eq!(
+        again.into_iter().map(|r| seen(&bus, r)).collect::<Vec<_>>(),
+        first_cycle()
+    );
+    assert!(task.latest().iter().all(|(_, age)| age.is_zero()));
+}
+
+#[test]
+fn backoff_starts_at_the_cadence_and_doubles_to_a_minute() {
+    let waits: Vec<u64> = [1, 2, 3, 4, 5, 6, 40]
+        .into_iter()
+        .map(|failures| backoff(failures).as_secs())
+        .collect();
+    assert_eq!(waits, [5, 10, 20, 40, 60, 60, 60]);
 }
