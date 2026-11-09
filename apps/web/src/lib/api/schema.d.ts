@@ -285,9 +285,14 @@ export interface components {
             /** @description `connection` or `device`. */
             subject: string;
         };
+        /**
+         * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
+         * @enum {string}
+         */
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "history.range" | "history.counter" | "forecast.range" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "connection.none" | "connection.value" | "connection.in-use" | "device.none" | "device.connection" | "device.profile" | "device.profile-change" | "device.address" | "clock.unsynced" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
-            code: string;
+            code: components["schemas"]["Code"];
         };
         Connection: components["schemas"]["Reach"] & {
             /**
@@ -443,7 +448,7 @@ export interface components {
         /** @description The body of a refusal. */
         ProblemDetails: {
             /** @description A stable machine code, such as `auth.required`. */
-            code: string;
+            code: components["schemas"]["Code"];
             /**
              * Format: int32
              * @description The HTTP status.

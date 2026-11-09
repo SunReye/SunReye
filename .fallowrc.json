@@ -7,7 +7,7 @@
     "target/**",
     "**/.svelte-kit/**"
   ],
-  "ignoreDependencies": ["@oxlint/plugins"],
+  "ignoreDependencies": ["@oxlint/plugins", "@inlang/plugin-message-format"],
   "rules": {
     "unused-files": "error",
     "unused-exports": "error",

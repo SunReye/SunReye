@@ -15,12 +15,12 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Problem, ProblemDetails};
+use crate::api::{Code, Problem, ProblemDetails};
 use crate::storage::Database;
 
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: "internal",
+    code: Code::Internal,
 };
 
 /// What a change is about.

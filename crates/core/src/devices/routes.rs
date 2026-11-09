@@ -10,15 +10,15 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
-use crate::api::{Clock, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.body",
+    code: Code::RequestBody,
 };
 const PATH: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.path",
+    code: Code::RequestPath,
 };
 
 type DevicesState = State<(Devices, Clock)>;

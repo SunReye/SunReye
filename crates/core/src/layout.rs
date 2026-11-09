@@ -18,25 +18,25 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.body",
+    code: Code::RequestBody,
 };
 const QUERY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
-    code: "request.query",
+    code: Code::RequestQuery,
 };
 const NONE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
-    code: "layout.none",
+    code: Code::LayoutNone,
 };
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: "internal",
+    code: Code::Internal,
 };
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
@@ -58,11 +58,11 @@ enum Refusal {
 impl From<Refusal> for Problem {
     fn from(refusal: Refusal) -> Self {
         let code = match refusal {
-            Refusal::Device => "layout.device",
-            Refusal::Input => "layout.input",
-            Refusal::String => "layout.string",
-            Refusal::ModuleType => "layout.module-type",
-            Refusal::Value => "layout.value",
+            Refusal::Device => Code::LayoutDevice,
+            Refusal::Input => Code::LayoutInput,
+            Refusal::String => Code::LayoutString,
+            Refusal::ModuleType => Code::LayoutModuleType,
+            Refusal::Value => Code::LayoutValue,
         };
         Self {
             status: StatusCode::UNPROCESSABLE_ENTITY,

@@ -57,6 +57,6 @@ test("the day chart shows each of its inverter's strings' forecast", async () =>
       expect.stringMatching(/^\/api\/v1\/devices\/1\/forecasts\?series=pv\.string\.power%5B4%5D&/u),
       expect.stringMatching(/^\/api\/v1\/devices\/1\/forecasts\?series=pv\.string\.power%5B5%5D&/u),
     ]);
-  await expect.element(chart.getByText("south forecast")).toBeVisible();
-  await expect.element(chart.getByText("north forecast")).toBeVisible();
+  await expect.element(chart.getByText("south (Prognose)")).toBeVisible();
+  await expect.element(chart.getByText("north (Prognose)")).toBeVisible();
 });

@@ -19,7 +19,7 @@ use sunreye_profile::Profile;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
-use crate::api::Problem;
+use crate::api::{Code, Problem};
 use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, CADENCE, Task};
@@ -30,7 +30,7 @@ use crate::transport::Endpoint;
 
 const INTERNAL: Problem = Problem {
     status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: "internal",
+    code: Code::Internal,
 };
 /// Who configures devices: the one admin (ADR 9).
 const ACTOR: &str = "admin";
@@ -57,14 +57,14 @@ enum Refusal {
 impl From<Refusal> for Problem {
     fn from(refusal: Refusal) -> Self {
         let (status, code) = match refusal {
-            Refusal::NoConnection => (StatusCode::NOT_FOUND, "connection.none"),
-            Refusal::NoDevice => (StatusCode::NOT_FOUND, "device.none"),
-            Refusal::ConnectionValue => (StatusCode::UNPROCESSABLE_ENTITY, "connection.value"),
-            Refusal::InUse => (StatusCode::CONFLICT, "connection.in-use"),
-            Refusal::DeviceConnection => (StatusCode::UNPROCESSABLE_ENTITY, "device.connection"),
-            Refusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, "device.profile"),
-            Refusal::ProfileChange => (StatusCode::CONFLICT, "device.profile-change"),
-            Refusal::Address => (StatusCode::CONFLICT, "device.address"),
+            Refusal::NoConnection => (StatusCode::NOT_FOUND, Code::ConnectionNone),
+            Refusal::NoDevice => (StatusCode::NOT_FOUND, Code::DeviceNone),
+            Refusal::ConnectionValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue),
+            Refusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
+            Refusal::DeviceConnection => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection),
+            Refusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
+            Refusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
+            Refusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
         };
         Self { status, code }
     }

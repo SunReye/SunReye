@@ -43,11 +43,47 @@
         ],
         "type": "object"
       },
+      "Code": {
+        "description": "Every stable machine code the core answers with; the SPA maps each to text (ADR 11).",
+        "enum": [
+          "request.route",
+          "request.method",
+          "request.path",
+          "request.query",
+          "request.body",
+          "auth.setup",
+          "auth.required",
+          "auth.credentials",
+          "auth.backoff",
+          "auth.configured",
+          "auth.password",
+          "history.range",
+          "history.counter",
+          "forecast.range",
+          "layout.none",
+          "layout.device",
+          "layout.input",
+          "layout.string",
+          "layout.module-type",
+          "layout.value",
+          "connection.none",
+          "connection.value",
+          "connection.in-use",
+          "device.none",
+          "device.connection",
+          "device.profile",
+          "device.profile-change",
+          "device.address",
+          "clock.unsynced",
+          "internal"
+        ],
+        "type": "string"
+      },
       "Condition": {
         "properties": {
           "code": {
-            "description": "A stable machine code, such as `clock.unsynced`.",
-            "type": "string"
+            "$ref": "#/components/schemas/Code",
+            "description": "A stable machine code, such as `clock.unsynced`."
           }
         },
         "required": [
@@ -462,8 +498,8 @@
         "description": "The body of a refusal.",
         "properties": {
           "code": {
-            "description": "A stable machine code, such as `auth.required`.",
-            "type": "string"
+            "$ref": "#/components/schemas/Code",
+            "description": "A stable machine code, such as `auth.required`."
           },
           "status": {
             "description": "The HTTP status.",

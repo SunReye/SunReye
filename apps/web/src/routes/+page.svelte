@@ -1,9 +1,19 @@
 <script lang="ts">
   import { connect, http } from "../lib/api/core";
   import LiveScreen from "../lib/LiveScreen.svelte";
+  import LocaleSwitch from "../lib/LocaleSwitch.svelte";
+  import { getLocale } from "../lib/paraglide/runtime.js";
 
   // The page's directory is the core's root, under an ingress prefix too (ADR 11).
   const core = connect(http(new URL(".", document.baseURI).href));
+
+  let locale = $state(getLocale());
 </script>
 
-<LiveScreen {core} />
+<!-- Messages are no state: a new locale renders the screen anew. -->
+{#key locale}
+  <header>
+    <LocaleSwitch bind:locale />
+  </header>
+  <LiveScreen {core} />
+{/key}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { LineChart } from "layerchart/canvas";
   import type { Core } from "./api/core";
+  import { m } from "./paraglide/messages.js";
 
   let { core, device, series }: { core: Core; device: number; series: readonly string[] } =
     $props();
@@ -69,7 +70,7 @@
         .filter((s) => s.device === id)
         .map(async (s) => {
           const forecasts = await from.forecasts(id, `pv.string.power[${s.id}]`, start, end);
-          const label = `${s.name} forecast`;
+          const label = m.chart_forecast({ name: s.name });
 
           return "points" in forecasts
             ? forecasts.points.map((p) => ({
