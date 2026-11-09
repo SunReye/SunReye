@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Framing, Inverter, Mppt, Profile, Registers};
+use crate::{Framing, Inverter, Mppt, Profile, Registers, Step};
 use serde_json::Value;
 
 const PROFILE: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
@@ -113,4 +113,24 @@ fn the_inputs_of_inverter_power_share_one_block() {
         (590, 86),
         "battery 590 to the last PV power at 675"
     );
+}
+
+#[test]
+fn its_settings_write_with_function_16_and_read_back_their_own_register() {
+    let profile = Profile::load(PROFILE).unwrap();
+    let settings = [
+        ("battery.max_charge_current", 108, 350.0),
+        ("battery.max_discharge_current", 109, 350.0),
+        ("battery.grid_charge", 130, 1.0),
+        ("work_mode", 142, 2.0),
+    ];
+    for (key, register, max) in settings {
+        let setting = profile.setting(key).unwrap();
+        assert_eq!(setting.recipe(), [Step::Write { register }], "{key}");
+        assert_eq!(setting.read_back(), Some(register), "{key}");
+        assert!(
+            setting.encode(max).is_some() && setting.encode(max + 1.0).is_none(),
+            "{key}"
+        );
+    }
 }

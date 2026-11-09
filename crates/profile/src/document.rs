@@ -21,6 +21,37 @@ pub struct ProfileDoc {
     pub requires: Vec<String>,
     pub quantities: Vec<QuantityDoc>,
     pub inverter: Option<crate::Inverter>,
+    #[serde(default)]
+    pub settings: Vec<SettingDoc>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettingDoc {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: Kind,
+    pub scale: Option<f64>,
+    pub range: Option<Range>,
+    pub values: Option<Vec<f64>>,
+    /// Seconds.
+    pub min_interval: u64,
+    pub recipe: Vec<StepDoc>,
+    pub read_back: Option<RegisterDoc>,
+    #[serde(default)]
+    pub write_only: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum StepDoc {
+    Write(RegisterDoc),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterDoc {
+    pub register: u16,
 }
 
 #[derive(Deserialize)]

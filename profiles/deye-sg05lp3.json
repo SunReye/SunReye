@@ -3,8 +3,8 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.1.0",
-  "requires": ["modbus", "u16", "i16", "u32", "compute"],
+  "version": "2.2.0",
+  "requires": ["modbus", "u16", "i16", "u32", "compute", "write"],
   "inverter": {
     "maxInputVoltage": 800,
     "mppt": [
@@ -775,6 +775,40 @@
         }
       },
       "range": { "min": 0, "max": 100 }
+    }
+  ],
+  "settings": [
+    {
+      "key": "battery.max_charge_current",
+      "type": "u16",
+      "range": { "min": 0, "max": 350 },
+      "minInterval": 60,
+      "recipe": [{ "write": { "register": 108 } }],
+      "readBack": { "register": 108 }
+    },
+    {
+      "key": "battery.max_discharge_current",
+      "type": "u16",
+      "range": { "min": 0, "max": 350 },
+      "minInterval": 60,
+      "recipe": [{ "write": { "register": 109 } }],
+      "readBack": { "register": 109 }
+    },
+    {
+      "key": "battery.grid_charge",
+      "type": "u16",
+      "values": [0, 1],
+      "minInterval": 60,
+      "recipe": [{ "write": { "register": 130 } }],
+      "readBack": { "register": 130 }
+    },
+    {
+      "key": "work_mode",
+      "type": "u16",
+      "values": [0, 1, 2],
+      "minInterval": 60,
+      "recipe": [{ "write": { "register": 142 } }],
+      "readBack": { "register": 142 }
     }
   ]
 }
