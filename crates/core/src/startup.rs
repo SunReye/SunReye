@@ -17,6 +17,7 @@ use crate::devices::Devices;
 use crate::estimates::StringEstimates;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
+use crate::location::PlantLocation;
 use crate::profiles::Catalogue;
 use crate::storage::{self, Storage};
 
@@ -188,6 +189,7 @@ pub async fn serve(
         layouts,
         devices,
         changes: Changes::new(storage.database()),
+        location: PlantLocation::open(storage.database()).await?,
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let app = api::router(api).into_make_service_with_connect_info::<SocketAddr>();

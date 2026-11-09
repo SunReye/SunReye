@@ -29,7 +29,7 @@
             "description": "The subject after the change, as its own route reads it; `null` once removed."
           },
           "subject": {
-            "description": "`connection` or `device`.",
+            "description": "`connection`, `device` or `location`.",
             "type": "string"
           }
         },
@@ -66,6 +66,8 @@
           "layout.string",
           "layout.module-type",
           "layout.value",
+          "location.none",
+          "location.value",
           "connection.none",
           "connection.value",
           "connection.in-use",
@@ -505,6 +507,24 @@
         "required": [
           "appliesFrom",
           "strings"
+        ],
+        "type": "object"
+      },
+      "Location": {
+        "description": "The plant's location in degrees, north and east positive.",
+        "properties": {
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
         ],
         "type": "object"
       },
@@ -1529,6 +1549,66 @@
           }
         },
         "summary": "Server-sent events: a `snapshot` of every value on connect, then a `delta` per second in\nwhich a value changed. There is no replay: a client that falls behind is disconnected and\nreconnects to a fresh snapshot."
+      }
+    },
+    "/api/v1/location": {
+      "get": {
+        "operationId": "location",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The plant's location."
+      },
+      "put": {
+        "operationId": "set_location",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Location"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sets the plant's location, stored to 0.01°; the weather and solar forecasts follow at once."
       }
     },
     "/api/v1/login": {

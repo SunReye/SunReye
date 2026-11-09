@@ -11,9 +11,7 @@ use sunreye_profile::RoleKind;
 use tokio::sync::{mpsc, oneshot};
 
 use super::encode::{Point, Tick, Track, quantise, ticks};
-use super::{
-    ChangePoint, Error, Forecast, Issue, Location, Policy, Problem, Rollup, Tier, block, forecast,
-};
+use super::{ChangePoint, Error, Forecast, Issue, Policy, Problem, Rollup, Tier, block, forecast};
 use crate::bus::{DeviceId, Reading, SeriesId};
 
 mod rollups;
@@ -77,7 +75,7 @@ pub enum Request {
     Shutdown(oneshot::Sender<Result<(), Error>>),
 }
 
-/// Forecasts and the plant location (ADR 15).
+/// Forecasts (ADR 15).
 pub enum Forecasting {
     Forecast {
         device: DeviceId,
@@ -92,8 +90,6 @@ pub enum Forecasting {
         to: SystemTime,
         reply: oneshot::Sender<Result<Vec<Forecast>, Error>>,
     },
-    SetLocation(Location, oneshot::Sender<Result<(), Error>>),
-    Location(oneshot::Sender<Result<Option<Location>, Error>>),
 }
 
 /// Opens the file and starts the thread; the returned sender feeds it.
@@ -450,12 +446,6 @@ impl Store {
             } => {
                 reply.send(self.forecasts(device, &name, from, to)).ok();
             }
-            Forecasting::SetLocation(location, reply) => {
-                reply.send(self.set_location(location)).ok();
-            }
-            Forecasting::Location(reply) => {
-                reply.send(self.location()).ok();
-            }
         }
     }
 
@@ -494,28 +484,6 @@ impl Store {
                 value: value as f64 * step,
             })
             .collect())
-    }
-
-    fn set_location(&self, location: Location) -> Result<(), Error> {
-        self.db.execute(
-            "INSERT INTO location (id, latitude, longitude) VALUES (0, ?1, ?2)
-             ON CONFLICT (id) DO UPDATE SET latitude = excluded.latitude,
-             longitude = excluded.longitude",
-            params![location.latitude, location.longitude],
-        )?;
-        Ok(())
-    }
-
-    fn location(&self) -> Result<Option<Location>, Error> {
-        Ok(self
-            .db
-            .query_row("SELECT latitude, longitude FROM location", [], |row| {
-                Ok(Location {
-                    latitude: row.get(0)?,
-                    longitude: row.get(1)?,
-                })
-            })
-            .optional()?)
     }
 
     /// The id and step of a series stored for `device`.

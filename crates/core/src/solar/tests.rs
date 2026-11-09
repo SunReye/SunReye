@@ -9,13 +9,18 @@ use sunreye_profile::Profile;
 use super::SolarForecast;
 use crate::bus::{Bus, DeviceId};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
-use crate::storage::{Issue, Location, Storage};
+use crate::location::Location;
+use crate::storage::{Issue, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
 const WEATHER: DeviceId = DeviceId(3);
 /// 2026-06-21 11:00 UTC.
 const NOON: u64 = 1_782_039_600;
 const HOUR: u64 = 3600;
+const BERLIN: Location = Location {
+    latitude: 52.52,
+    longitude: 13.38,
+};
 
 fn at(seconds: u64) -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(seconds)
@@ -56,13 +61,6 @@ async fn plant(targets: &[u64]) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage = Storage::open(&dir.path().join("core.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    storage
-        .set_location(Location {
-            latitude: 52.52,
-            longitude: 13.38,
-        })
-        .await
-        .unwrap();
     store_weather(&storage, &bus, targets).await;
     let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
     let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
@@ -164,7 +162,7 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, at(NOON - HOUR))
+        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -201,7 +199,7 @@ async fn a_layout_change_applies_from_its_date() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, at(NOON - HOUR))
+        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 
@@ -245,7 +243,7 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
     let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
 
     forecast
-        .refresh(&plant.storage, at(NOON - HOUR))
+        .refresh(&plant.storage, BERLIN, at(NOON - HOUR))
         .await
         .unwrap();
 

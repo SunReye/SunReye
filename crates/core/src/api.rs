@@ -22,6 +22,7 @@ use crate::changes::Changes;
 use crate::devices::Devices;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
+use crate::location::PlantLocation;
 use crate::spa;
 use crate::storage;
 use crate::transport::Endpoint;
@@ -56,6 +57,7 @@ pub struct Api {
     pub layouts: Layouts,
     pub devices: Devices,
     pub changes: Changes,
+    pub location: PlantLocation,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -91,6 +93,7 @@ pub fn router(api: Api) -> Router {
         )
         .merge(api.devices.routes(Clock::clone(&api.clock)))
         .merge(api.changes.routes())
+        .merge(api.location.routes(Clock::clone(&api.clock)))
         .merge(api.layouts.routes(api.clock));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))
@@ -267,6 +270,10 @@ pub enum Code {
     LayoutModuleType,
     #[serde(rename = "layout.value")]
     LayoutValue,
+    #[serde(rename = "location.none")]
+    LocationNone,
+    #[serde(rename = "location.value")]
+    LocationValue,
     #[serde(rename = "connection.none")]
     ConnectionNone,
     #[serde(rename = "connection.value")]

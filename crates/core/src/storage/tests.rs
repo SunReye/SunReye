@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::RoleKind;
 
-use super::{ChangePoint, Issue, Location, Policy, Problem, Storage};
+use super::{ChangePoint, Issue, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod rollups;
@@ -426,22 +426,4 @@ async fn a_passed_target_hour_keeps_only_its_latest_issue() {
             (7200.0, 7260.0, 4.0),
         ]
     );
-}
-
-#[tokio::test]
-async fn the_plant_location_is_stored() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("history.sqlite");
-    let plant = Plant::new();
-    let storage = plant.open(&path, epoch()).await;
-    assert_eq!(storage.location().await.unwrap(), None);
-    let berlin = Location {
-        latitude: 52.516_3,
-        longitude: 13.377_7,
-    };
-    storage.set_location(berlin).await.unwrap();
-    storage.shutdown().await.unwrap();
-
-    let storage = plant.open(&path, epoch()).await;
-    assert_eq!(storage.location().await.unwrap(), Some(berlin));
 }

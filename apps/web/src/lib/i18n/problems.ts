@@ -28,6 +28,8 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "layout.string": m.problem_layout_string,
   "layout.module-type": m.problem_layout_module_type,
   "layout.value": m.problem_layout_value,
+  "location.none": m.problem_location_none,
+  "location.value": m.problem_location_value,
   "connection.none": m.problem_connection_none,
   "connection.value": m.problem_connection_value,
   "connection.in-use": m.problem_connection_in_use,

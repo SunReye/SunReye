@@ -7,10 +7,12 @@ use std::fmt;
 use std::future::Future;
 use std::time::{Duration, SystemTime};
 
+use tokio::sync::watch;
 use tokio::time::Instant;
 
 use crate::bus::{Bus, DeviceId, SeriesId};
-use crate::storage::{self, Issue, Location, Storage};
+use crate::location::Location;
+use crate::storage::{self, Issue, Storage};
 
 pub use open_meteo::OpenMeteo;
 
@@ -113,12 +115,21 @@ impl<P: Provider> Weather<P> {
         }
     }
 
-    /// Fetches on start and hourly until storage stops. A failed fetch keeps the last good
-    /// forecast.
-    pub async fn run(&self, storage: &Storage, clock: impl Fn() -> SystemTime + Sync) {
+    /// Fetches on start and hourly for the plant's `location`, while set, until storage stops.
+    /// A failed fetch keeps the last good forecast.
+    pub async fn run(
+        &self,
+        storage: &Storage,
+        location: watch::Receiver<Option<Location>>,
+        clock: impl Fn() -> SystemTime + Sync,
+    ) {
         let mut next = Instant::now();
         loop {
-            let refreshed = self.refresh(storage, clock()).await;
+            let current = *location.borrow();
+            let refreshed = match current {
+                Some(at) => self.refresh(storage, at, clock()).await,
+                None => Ok(()),
+            };
             if matches!(refreshed, Err(Error::Storage(storage::Error::Stopped))) {
                 return;
             }
@@ -128,16 +139,17 @@ impl<P: Provider> Weather<P> {
         }
     }
 
-    /// Fetches one forecast for the plant's location, if set, and stores it as issued at
-    /// `issued`.
+    /// Fetches one forecast for the plant at `location` and stores it as issued at `issued`.
     ///
     /// # Errors
     /// The provider or storage failed.
-    pub async fn refresh(&self, storage: &Storage, issued: SystemTime) -> Result<(), Error> {
-        let Some(location) = storage.location().await? else {
-            return Ok(());
-        };
-        let slots = self.provider.fetch(rounded(location)).await?;
+    pub async fn refresh(
+        &self,
+        storage: &Storage,
+        location: Location,
+        issued: SystemTime,
+    ) -> Result<(), Error> {
+        let slots = self.provider.fetch(location.rounded()).await?;
         for (quantity, series) in QUANTITIES.iter().zip(self.series) {
             let values = slots
                 .iter()
@@ -151,15 +163,6 @@ impl<P: Provider> Weather<P> {
             storage.forecast(self.device, series, issue).await?;
         }
         Ok(())
-    }
-}
-
-/// The location to 0.01° (about 1 km), as it may leave the home.
-fn rounded(location: Location) -> Location {
-    let round = |degrees: f64| (degrees * 100.0).round() / 100.0;
-    Location {
-        latitude: round(location.latitude),
-        longitude: round(location.longitude),
     }
 }
 

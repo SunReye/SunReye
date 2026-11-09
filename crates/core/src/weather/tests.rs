@@ -3,12 +3,13 @@
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
 
 use super::{Error, Provider, Slot, Weather, open_meteo};
 use crate::bus::{Bus, DeviceId};
-use crate::storage::{Location, Storage};
+use crate::location::Location;
+use crate::storage::Storage;
 
 const DEVICE: DeviceId = DeviceId(3);
 /// 2026-11-09 11:00 UTC.
@@ -70,11 +71,10 @@ async fn a_refresh_stores_each_quantity_as_a_forecast_from_the_rounded_location(
     let bus = Bus::default();
     let storage =
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    storage.set_location(BERLIN).await.unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8), slot(NOON + 900, 210.0)], &[]);
     let weather = Weather::new(fake, DEVICE, &bus);
 
-    weather.refresh(&storage, at(NOON)).await.unwrap();
+    weather.refresh(&storage, BERLIN, at(NOON)).await.unwrap();
 
     let (_, sent) = calls.recv().await.unwrap();
     assert_eq!(
@@ -119,7 +119,7 @@ async fn a_refresh_stores_each_quantity_as_a_forecast_from_the_rounded_location(
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn without_a_location_nothing_is_fetched() {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
@@ -127,8 +127,12 @@ async fn without_a_location_nothing_is_fetched() {
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8)], &[]);
     let weather = Weather::new(fake, DEVICE, &bus);
+    let (_location, unset) = watch::channel(None);
 
-    weather.refresh(&storage, at(NOON)).await.unwrap();
+    tokio::select! {
+        () = weather.run(&storage, unset, || at(NOON)) => panic!("the device stopped"),
+        () = tokio::time::sleep(Duration::from_hours(3)) => {}
+    }
     drop(weather);
     assert!(calls.recv().await.is_none());
 }
@@ -139,14 +143,14 @@ async fn it_fetches_on_start_and_hourly_and_a_failed_fetch_does_not_stop_it() {
     let bus = Bus::default();
     let storage =
         Storage::open(&dir.path().join("history.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    storage.set_location(BERLIN).await.unwrap();
     let (fake, mut calls) = Fake::new(vec![slot(NOON, 200.8)], &[true]);
     let weather = Weather::new(fake, DEVICE, &bus);
+    let (_location, berlin) = watch::channel(Some(BERLIN));
     let start = Instant::now();
 
     let mut seen = Vec::new();
     tokio::select! {
-        () = weather.run(&storage, || at(NOON)) => panic!("the device stopped"),
+        () = weather.run(&storage, berlin, || at(NOON)) => panic!("the device stopped"),
         () = async {
             while seen.len() < 3 {
                 seen.push(calls.recv().await.unwrap().0 - start);

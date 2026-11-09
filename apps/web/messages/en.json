@@ -20,6 +20,8 @@
   "problem_layout_string": "A string id is unknown or used twice.",
   "problem_layout_module_type": "A string names an unknown module type.",
   "problem_layout_value": "A value is outside its physical range.",
+  "problem_location_none": "The plant's location has not been set yet.",
+  "problem_location_value": "A latitude must lie from -90 to 90 and a longitude from -180 to 180.",
   "problem_connection_none": "This connection does not exist.",
   "problem_connection_value": "A connection needs a name, a host and a port other than 0.",
   "problem_connection_in_use": "A device still uses this connection.",
