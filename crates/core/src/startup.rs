@@ -12,6 +12,7 @@ use tokio::sync::{oneshot, watch};
 use crate::api::{self, Api};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::storage::{self, Storage};
 
@@ -150,6 +151,8 @@ pub async fn serve(
         live: Live::spawn(&bus),
         problems: watched,
         history: storage.reader(),
+        // Devices and their profiles arrive with device configuration (#623).
+        layouts: Layouts::new(storage.database(), Inverters::default()),
         clock: std::sync::Arc::new(SystemTime::now),
     };
     let app = api::router(api).into_make_service_with_connect_info::<SocketAddr>();

@@ -783,6 +783,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sunreye-profile",
+ "sunreye-pv",
  "tempfile",
  "tokio",
  "tower",

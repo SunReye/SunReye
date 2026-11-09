@@ -3,8 +3,15 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "requires": ["modbus", "u16", "i16", "u32", "compute"],
+  "inverter": {
+    "maxInputVoltage": 800,
+    "mppt": [
+      { "maxCurrent": 26, "minVoltage": 200, "maxVoltage": 650, "startVoltage": 160 },
+      { "maxCurrent": 26, "minVoltage": 200, "maxVoltage": 650, "startVoltage": 160 }
+    ]
+  },
   "quantities": [
     { "key": "inverter.status", "role": "extra.inverter_status", "register": 500, "type": "u16" },
     { "key": "ac.relay_status", "role": "extra.ac_relay_status", "register": 552, "type": "u16" },

@@ -10,7 +10,7 @@ use serde::Serialize;
 
 pub use decode::Registers;
 pub use plan::Block;
-pub use profile::{LoadError, Profile, Quantity};
+pub use profile::{Inverter, LoadError, Mppt, Profile, Quantity};
 pub use role::{RoleKind, Unit};
 
 /// The current schema: the integer version of the profile format.

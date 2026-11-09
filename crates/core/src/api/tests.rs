@@ -17,12 +17,22 @@ use tower::ServiceExt;
 use super::{Api, router};
 use crate::auth::Auth;
 use crate::bus::Bus;
+use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::storage::{Problem, Storage};
 
+mod forecasts;
 mod history;
+mod layout;
 mod live;
 mod screen;
+
+/// The owner's Deye as device 1.
+fn deye() -> Inverters {
+    let profile = include_str!("../../../../profiles/deye-sg05lp3.json");
+    let profile = sunreye_profile::Profile::load(profile).unwrap();
+    std::iter::once((crate::bus::DeviceId(1), Arc::new(profile))).collect()
+}
 
 const HOME: &str = "192.0.2.1:50000";
 
@@ -48,6 +58,7 @@ impl Core {
             live: Live::spawn(&bus),
             problems: watched,
             history: storage.reader(),
+            layouts: Layouts::new(storage.database(), deye()),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -119,6 +130,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         live: Live::spawn(&Bus::default()),
         problems: watch::channel(Vec::new()).1,
         history: storage.reader(),
+        layouts: Layouts::new(storage.database(), Inverters::default()),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

@@ -17,6 +17,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::auth::Auth;
+use crate::layout::Layouts;
 use crate::live::{Frame, Live};
 use crate::spa;
 use crate::storage;
@@ -31,6 +32,7 @@ const METHOD: Problem = Problem {
     code: "request.method",
 };
 
+mod forecasts;
 mod history;
 
 #[derive(OpenApi)]
@@ -44,6 +46,7 @@ pub struct Api {
     /// Storage's problems, as of its last tick.
     pub problems: watch::Receiver<Vec<storage::Problem>>,
     pub history: storage::Reader,
+    pub layouts: Layouts,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -66,8 +69,14 @@ pub fn router(api: Api) -> Router {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(history::history))
-                .with_state((api.history, api.clock)),
-        );
+                .with_state((api.history.clone(), Clock::clone(&api.clock))),
+        )
+        .merge(
+            OpenApiRouter::new()
+                .routes(routes!(forecasts::forecasts))
+                .with_state(api.history),
+        )
+        .merge(api.layouts.routes(api.clock));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(protected))
         .split_for_parts();

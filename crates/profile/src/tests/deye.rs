@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Framing, Profile, Registers};
+use crate::{Framing, Inverter, Mppt, Profile, Registers};
 use serde_json::Value;
 
 const PROFILE: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
@@ -32,6 +32,24 @@ fn it_loads() {
     assert_eq!(
         (profile.id.as_str(), profile.manufacturer.as_str()),
         ("deye-sg05lp3", "Deye")
+    );
+}
+
+#[test]
+fn it_declares_two_mppt_inputs_from_the_sm2_datasheet() {
+    let profile = Profile::load(PROFILE).unwrap();
+    let input = Mppt {
+        max_current: 26.0,
+        min_voltage: 200.0,
+        max_voltage: 650.0,
+        start_voltage: 160.0,
+    };
+    assert_eq!(
+        profile.inverter(),
+        Some(&Inverter {
+            max_input_voltage: 800.0,
+            mppt: vec![input, input],
+        })
     );
 }
 

@@ -99,3 +99,21 @@ fn a_u32_cannot_start_at_the_last_register() {
     let edge = json!([{ "key": "a", "role": "extra.a", "register": 65535, "type": "u32" }]);
     assert_eq!(refusal(&edge).1, "a u32 needs two registers");
 }
+
+#[test]
+fn an_inverter_section_is_optional() {
+    assert_eq!(load(&doc(&json!([]))).unwrap().inverter(), None);
+}
+
+#[test]
+fn an_mppt_voltage_window_must_not_be_inverted() {
+    let mut inverted = doc(&json!([]));
+    inverted["inverter"] = json!({
+        "maxInputVoltage": 800,
+        "mppt": [{ "maxCurrent": 20, "minVoltage": 650, "maxVoltage": 200, "startVoltage": 160 }],
+    });
+    assert_eq!(
+        load(&inverted).unwrap_err().to_string(),
+        "MPPT input 1: the voltage window is inverted"
+    );
+}

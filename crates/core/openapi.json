@@ -1,6 +1,26 @@
 {
   "components": {
     "schemas": {
+      "Change": {
+        "description": "A layout change: every string, applying from an instant on.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339.",
+            "type": "string"
+          },
+          "strings": {
+            "items": {
+              "$ref": "#/components/schemas/StringDraft"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "strings"
+        ],
+        "type": "object"
+      },
       "Condition": {
         "properties": {
           "code": {
@@ -21,6 +41,117 @@
         },
         "required": [
           "password"
+        ],
+        "type": "object"
+      },
+      "Datasheet": {
+        "description": "A PV module model's datasheet values.",
+        "properties": {
+          "bypassDiodes": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "currentCoefficient": {
+            "format": "double",
+            "type": "number"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "imp": {
+            "format": "double",
+            "type": "number"
+          },
+          "isc": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pmax": {
+            "description": "Watts at standard test conditions.",
+            "format": "double",
+            "type": "number"
+          },
+          "powerCoefficient": {
+            "description": "Of Pmax, Voc and Isc, in %/K.",
+            "format": "double",
+            "type": "number"
+          },
+          "vmp": {
+            "description": "Volts and amperes at the maximum power point.",
+            "format": "double",
+            "type": "number"
+          },
+          "voc": {
+            "description": "Open-circuit volts and short-circuit amperes.",
+            "format": "double",
+            "type": "number"
+          },
+          "voltageCoefficient": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Metres.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "pmax",
+          "vmp",
+          "imp",
+          "voc",
+          "isc",
+          "powerCoefficient",
+          "voltageCoefficient",
+          "currentCoefficient",
+          "width",
+          "height",
+          "bypassDiodes"
+        ],
+        "type": "object"
+      },
+      "ForecastPoint": {
+        "properties": {
+          "issued": {
+            "description": "When the value was issued, RFC 3339, UTC.",
+            "type": "string"
+          },
+          "target": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target",
+          "issued",
+          "value"
+        ],
+        "type": "object"
+      },
+      "Forecasts": {
+        "description": "One series' forecasts, at most 1,500 points.",
+        "properties": {
+          "points": {
+            "description": "By target.",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
         ],
         "type": "object"
       },
@@ -75,6 +206,61 @@
         "required": [
           "tier",
           "points"
+        ],
+        "type": "object"
+      },
+      "Layout": {
+        "description": "One layout version.",
+        "properties": {
+          "appliesFrom": {
+            "description": "RFC 3339, UTC.",
+            "type": "string"
+          },
+          "strings": {
+            "items": {
+              "$ref": "#/components/schemas/PvString"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "appliesFrom",
+          "strings"
+        ],
+        "type": "object"
+      },
+      "ModuleType": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Datasheet"
+          },
+          {
+            "properties": {
+              "id": {
+                "description": "Stable; never reused.",
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ModuleTypes": {
+        "properties": {
+          "moduleTypes": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleType"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "moduleTypes"
         ],
         "type": "object"
       },
@@ -136,6 +322,28 @@
         ],
         "type": "object"
       },
+      "PvString": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Wiring"
+          },
+          {
+            "properties": {
+              "id": {
+                "description": "Stable; never reused. The `pv.string.power` index.",
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Modules in series on one plane; strings on one MPPT input are in parallel."
+      },
       "Schemas": {
         "description": "An inclusive range of profile schemas.",
         "properties": {
@@ -155,6 +363,27 @@
           "max"
         ],
         "type": "object"
+      },
+      "StringDraft": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Wiring"
+          },
+          {
+            "properties": {
+              "id": {
+                "description": "A string kept from an earlier version; absent for a new string.",
+                "format": "int32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ]
       },
       "Support": {
         "description": "What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,\nthe one its WASM build reports.",
@@ -198,6 +427,70 @@
           "day"
         ],
         "type": "string"
+      },
+      "Wiring": {
+        "description": "Where a string sits and what it is made of.",
+        "properties": {
+          "azimuth": {
+            "description": "Degrees: 0 south, −90 east, 90 west.",
+            "format": "double",
+            "type": "number"
+          },
+          "device": {
+            "description": "The inverter's device id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "input": {
+            "description": "The MPPT input, from 1, as the `pv.mppt.*` index.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loss": {
+            "description": "Wiring, soiling and mismatch, in %.",
+            "format": "double",
+            "type": "number"
+          },
+          "moduleType": {
+            "description": "A module type id.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "modules": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "optimized": {
+            "description": "How many of its modules have an optimizer.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tilt": {
+            "description": "Degrees from horizontal.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "moduleType",
+          "device",
+          "input",
+          "modules",
+          "optimized",
+          "tilt",
+          "azimuth",
+          "loss"
+        ],
+        "type": "object"
       }
     }
   },
@@ -226,6 +519,98 @@
             }
           },
           "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}/forecasts": {
+      "get": {
+        "operationId": "forecasts",
+        "parameters": [
+          {
+            "description": "The device id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "A series such as `pv.string.power[3]`.",
+            "in": "query",
+            "name": "series",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The first target, RFC 3339.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The instant after the last target, RFC 3339.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only issues before this instant, RFC 3339; the latest issue when absent.",
+            "in": "query",
+            "name": "issuedBefore",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forecasts"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -320,6 +705,77 @@
         }
       }
     },
+    "/api/v1/layout": {
+      "get": {
+        "operationId": "layout",
+        "parameters": [
+          {
+            "description": "RFC 3339; now when absent.",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Layout"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The layout in force at an instant."
+      },
+      "put": {
+        "operationId": "change_layout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Change"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Layout"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Changes the layout from an instant on; new strings get fresh ids."
+      }
+    },
     "/api/v1/live": {
       "get": {
         "operationId": "live_values",
@@ -374,6 +830,65 @@
           }
         },
         "summary": "Signs the admin in to a session cookie."
+      }
+    },
+    "/api/v1/module-types": {
+      "get": {
+        "operationId": "list_module_types",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleTypes"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "add_module_type",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Datasheet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleType"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Adds a module type; the admin enters its datasheet, there is no catalogue."
       }
     },
     "/api/v1/problems": {

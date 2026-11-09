@@ -20,6 +20,7 @@ pub struct ProfileDoc {
     pub version: String,
     pub requires: Vec<String>,
     pub quantities: Vec<QuantityDoc>,
+    pub inverter: Option<crate::Inverter>,
 }
 
 #[derive(Deserialize)]

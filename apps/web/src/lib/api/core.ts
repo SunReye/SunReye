@@ -7,6 +7,10 @@ type ProblemDetails = components["schemas"]["ProblemDetails"];
 
 export type History = components["schemas"]["History"];
 
+export type Forecasts = components["schemas"]["Forecasts"];
+
+export type Layout = components["schemas"]["Layout"];
+
 /** A refusal's stable code (ADR 9), such as `auth.required`. */
 export interface Problem {
   readonly problem: string;
@@ -41,6 +45,10 @@ export interface Core {
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
   history(device: number, series: string, from: Date, to: Date): Promise<History | Problem>;
+  /** The latest forecast of each target of one series from `from` to before `to`. */
+  forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
+  /** The PV layout in force now. */
+  layout(): Promise<Layout | Problem>;
 }
 
 /** The wait before reconnecting after a refusal or a failure. */
@@ -65,6 +73,21 @@ export function connect(transport: Transport): Core {
           query: { series, from: from.toISOString(), to: to.toISOString() },
         },
       });
+
+      return data ?? refusal(error, response.status);
+    },
+    forecasts: async (device, series, from, to) => {
+      const { data, error, response } = await client.GET("/api/v1/devices/{id}/forecasts", {
+        params: {
+          path: { id: device },
+          query: { series, from: from.toISOString(), to: to.toISOString() },
+        },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+    layout: async () => {
+      const { data, error, response } = await client.GET("/api/v1/layout");
 
       return data ?? refusal(error, response.status);
     },
