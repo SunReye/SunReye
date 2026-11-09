@@ -127,3 +127,14 @@ test("a directory relative to the working directory builds", async () => {
     { id: "meter", version: "1.0.0", warnings: [] },
   ]);
 });
+
+test("a rebuild in the same process sees an edited source", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "profiles-"));
+
+  await source(dir, meter);
+  await buildProfiles(dir, dir);
+  await source(dir, { ...meter, name: "Meter 2" });
+  await buildProfiles(dir, dir);
+
+  expect(await versionIn(dir)).toBe("1.0.1");
+});

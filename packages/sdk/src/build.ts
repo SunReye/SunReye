@@ -55,7 +55,10 @@ function hasDefault(module: unknown): module is { readonly default: unknown } {
 
 /** The default export of the profile module at `path`. */
 async function profileAt(path: string): Promise<Listable> {
-  const module: unknown = await import(resolve(path));
+  const absolute = resolve(path);
+  // The query keys Bun's module cache by content, so a rebuild in one process sees an edit.
+  const content = new Bun.CryptoHasher("sha256").update(await readFile(absolute)).digest("hex");
+  const module: unknown = await import(`${absolute}?${content}`);
   const profile = hasDefault(module) ? module.default : undefined;
 
   if (!isListable(profile)) throw new TypeError(`${path} exports no profile by default`);
