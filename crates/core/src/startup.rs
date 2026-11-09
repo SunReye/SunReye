@@ -22,6 +22,7 @@ use crate::import::{self, Imports};
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::{Location, PlantLocation};
+use crate::logs::Logs;
 use crate::plant::Plant;
 use crate::profiles::{self, Profiles};
 use crate::solar::SolarForecast;
@@ -189,6 +190,8 @@ pub struct Boot<P, A, S> {
     pub fetch: std::sync::Arc<dyn profiles::Fetch>,
     /// The compiled-in profile keys.
     pub keys: Option<profiles::Keys>,
+    /// Where the core's log lines are kept for the API (ADR 2).
+    pub logs: Logs,
 }
 
 /// Creates `dir` if needed, readable by the core alone (ADR 7): its database holds the connections'
@@ -293,18 +296,26 @@ pub async fn serve(
         tariffs,
         cars,
         zones: storage.zones(),
+        logs: boot.logs,
         clock: std::sync::Arc::new(SystemTime::now),
     };
-    let background = async {
-        tokio::select! {
-            stopped = clock(&storage, &problems) => stopped,
-            // Both stop only once storage has.
-            () = forecasting => Ok(()),
-        }
-    };
+    let background = background(&storage, &problems, forecasting);
     until(listener, api::router(api), background, shutdown).await?;
     storage.shutdown().await?;
     Ok(())
+}
+
+/// Ticks storage and runs `forecasting` until storage stops.
+async fn background(
+    storage: &Storage,
+    problems: &Problems,
+    forecasting: impl Future<Output = ()>,
+) -> Result<(), storage::Error> {
+    tokio::select! {
+        stopped = clock(storage, problems) => stopped,
+        // Both stop only once storage has.
+        () = forecasting => Ok(()),
+    }
 }
 
 /// The registered devices, and the PV layouts over their inverters.

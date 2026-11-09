@@ -122,6 +122,7 @@ fn boot(
         spot: spot::fake::Fake::new(Vec::new(), &[]).0,
         fetch: crate::profiles::fake::Host::new(),
         keys: None,
+        logs: crate::logs::Logs::default(),
     }
 }
 

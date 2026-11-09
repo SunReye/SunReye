@@ -4,7 +4,15 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use axum::Json;
+use axum::extract::State;
+use serde::Serialize;
 use tracing_subscriber::fmt::MakeWriter;
+use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+use crate::api::ProblemDetails;
 
 /// The lines the buffer holds.
 pub const LINES: usize = 2_000;
@@ -24,6 +32,11 @@ impl Logs {
         self.held().iter().cloned().collect()
     }
 
+    /// The log route, behind the admin's session: a line may name a host.
+    pub fn routes(self) -> OpenApiRouter {
+        OpenApiRouter::new().routes(routes!(logs)).with_state(self)
+    }
+
     fn held(&self) -> std::sync::MutexGuard<'_, VecDeque<String>> {
         // A panic mid-push leaves whole lines behind.
         self.lines.lock().unwrap_or_else(PoisonError::into_inner)
@@ -38,6 +51,24 @@ impl Logs {
             held.push_back(cut(line));
         }
     }
+}
+
+/// The core's last log lines.
+#[derive(Serialize, ToSchema)]
+struct Lines {
+    /// Oldest first, as written to stderr.
+    lines: Vec<String>,
+}
+
+/// The core's last 2,000 log lines, each at most 1 KiB (ADR 2).
+#[utoipa::path(get, path = "/api/v1/logs", responses(
+    (status = 200, body = Lines),
+    (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn logs(State(logs): State<Logs>) -> Json<Lines> {
+    Json(Lines {
+        lines: logs.lines(),
+    })
 }
 
 /// `line`, ending in `…` past [`LINE_BYTES`].

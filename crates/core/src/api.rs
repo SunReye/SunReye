@@ -28,6 +28,7 @@ use crate::import::Imports;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
 use crate::location::PlantLocation;
+use crate::logs::Logs;
 use crate::profiles::Profiles;
 use crate::settings::{Declared, Enable};
 use crate::spa;
@@ -78,6 +79,8 @@ pub struct Api {
     pub zones: storage::Zones,
     pub imports: Imports,
     pub backups: Backups,
+    /// The core's last log lines (ADR 2).
+    pub logs: Logs,
     /// The wall clock: history ends at its now.
     pub clock: Clock,
 }
@@ -114,6 +117,7 @@ pub fn router(api: Api) -> Router {
         .merge(api.profiles.routes(Clock::clone(&api.clock)))
         .merge(api.imports.routes())
         .merge(api.backups.routes())
+        .merge(api.logs.routes())
         .merge(api.layouts.routes(Clock::clone(&api.clock)));
     let (router, document) = OpenApiRouter::with_openapi(Document::openapi())
         .merge(api.auth.routes(api_routes, api.clock))
