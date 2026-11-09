@@ -459,6 +459,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The core's last 2,000 log lines, each at most 1 KiB (ADR 2). */
+        get: operations["logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/module-types": {
         parameters: {
             query?: never;
@@ -1412,6 +1429,11 @@ export interface components {
              * @description 1 to 12.
              */
             month: number;
+        };
+        /** @description The core's last log lines. */
+        Lines: {
+            /** @description Oldest first, as written to stderr. */
+            lines: string[];
         };
         /** @description The plant's location in degrees, north and east positive. */
         Location: {
@@ -3036,6 +3058,33 @@ export interface operations {
                 content?: never;
             };
             "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    logs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lines"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

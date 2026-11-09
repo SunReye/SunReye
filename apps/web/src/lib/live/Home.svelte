@@ -18,6 +18,7 @@
       <a href="#/forecast">{m.nav_forecast()}</a>
       <a href="#/builder">{m.nav_builder()}</a>
       <a href="#/settings">{m.nav_settings()}</a>
+      <a href="#/status">{m.nav_status()}</a>
       <LocaleSwitch bind:locale />
     {/snippet}
   </Dashboard>

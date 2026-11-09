@@ -1,12 +1,11 @@
 import createClient from "openapi-fetch";
 import { carBodies, type CarBodies } from "./car-bodies";
 import { refusal, type Client, type Problem } from "./client";
-import { events, type Message } from "./events";
 import { imports, type Imports } from "./imports";
-import { merge, parseFrame, type Values } from "./frames";
+import { follow, type Live } from "./live";
 import { body, type LayoutChange } from "./layout-change";
 import { pvModel, type PvModel } from "./model";
-import { setup, type Setup } from "./setup";
+import { setup, type Connection, type Setup } from "./setup";
 import type { components, paths } from "./schema";
 
 export type History = components["schemas"]["History"];
@@ -42,14 +41,11 @@ export type { Problem } from "./client";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 
-export type { Found, PointDraft } from "./setup";
+export type { Connection, Found, PointDraft } from "./setup";
 
-export type { Values } from "./frames";
+export type { Live, Values } from "./live";
 
 export type { Corrections } from "./model";
-
-/** Every live value, or why the core refused the stream. */
-export type Live = Values | Problem;
 
 /**
  * How the SPA reaches a core (ADR 11): plain HTTP to its own core now, the relay's tunnel later.
@@ -94,10 +90,13 @@ export interface Core extends Setup, CarBodies, Imports, PvModel {
   updates(): Promise<readonly Update[] | Problem>;
   /** Applies the update waiting for profile `id`; admin only. */
   apply(id: string): Promise<Update | Problem>;
+  /** The core's standing problems, such as an unsynced clock. */
+  problems(): Promise<readonly components["schemas"]["Condition"][] | Problem>;
+  /** Every connection, a broker with its observed state; admin only. */
+  connections(): Promise<readonly Connection[] | Problem>;
+  /** The core's last log lines, oldest first; admin only, as a line may name a host (ADR 2). */
+  logs(): Promise<readonly string[] | Problem>;
 }
-
-/** The wait before reconnecting after a refusal or a failure. */
-const RETRY_MS = 1000;
 
 export function connect(transport: Transport): Core {
   const client = createClient<paths>({ baseUrl: transport.base, fetch: transport.fetch });
@@ -132,6 +131,7 @@ export function connect(transport: Transport): Core {
     ...carBodies(client),
     ...imports(client),
     ...pvModel(client),
+    ...status(client),
   };
 }
 
@@ -213,72 +213,28 @@ function settings(client: Client): Pick<Core, "devices" | "capabilities" | "writ
   };
 }
 
-/** Streams until stopped: a clean end reconnects at once to a fresh snapshot (ADR 9). */
-async function follow(
-  client: Client,
-  listener: (live: Live) => void,
-  signal: AbortSignal,
-): Promise<void> {
-  const snapshot = await stream(client, listener, signal).catch(() => false);
+/** The status and logs screen's reads (ADR 11). */
+function status(client: Client): Pick<Core, "problems" | "connections" | "logs"> {
+  return {
+    problems: async () => {
+      const { data, error, response } = await client.GET("/api/v1/problems");
 
-  if (!snapshot) await sleep(RETRY_MS, signal);
-
-  // Not awaited, so a core that runs for months builds no chain of promises.
-  if (!signal.aborted) void follow(client, listener, signal);
-}
-
-/** Follows one stream to its end; resolves whether it delivered a snapshot. */
-async function stream(
-  client: Client,
-  listener: (live: Live) => void,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const { data, error, response } = await client.GET("/api/v1/live", {
-    parseAs: "stream",
-    signal,
-  });
-
-  if (error !== undefined) {
-    listener(refusal(error, response.status));
-
-    return false;
-  }
-
-  let values: Values | undefined;
-
-  const fold = new WritableStream<Message>({
-    write: ({ name, data: json }) => {
-      const frame = parseFrame(json);
-
-      if (frame !== undefined && (name === "snapshot" || values !== undefined)) {
-        values = name === "snapshot" ? frame : merge(values, frame);
-        listener(values);
-      }
+      return data ? data.problems : refusal(error, response.status);
     },
-  });
+    connections: async () => {
+      const { data, error, response } = await client.GET("/api/v1/connections");
 
-  await data?.pipeThrough(events()).pipeTo(fold, { signal });
+      return data ? data.connections : refusal(error, response.status);
+    },
+    logs: async () => {
+      const { data, error, response } = await client.GET("/api/v1/logs");
 
-  return values !== undefined;
+      return data ? data.lines : refusal(error, response.status);
+    },
+  };
 }
 
 /** One series over a span, as the history and forecast routes take it. */
 function span(series: string, from: Readonly<Date>, to: Readonly<Date>) {
   return { series, from: from.toISOString(), to: to.toISOString() };
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  const timer = setTimeout(resolve, ms);
-
-  signal.addEventListener(
-    "abort",
-    () => {
-      clearTimeout(timer);
-      resolve();
-    },
-    { once: true },
-  );
-
-  return promise;
 }

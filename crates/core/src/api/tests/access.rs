@@ -52,6 +52,8 @@ fn live_values_and_history_are_read_and_configuration_is_admin() {
         (Method::GET, "/api/v1/devices", Access::Admin),
         (Method::GET, "/api/v1/connections", Access::Admin),
         (Method::GET, "/api/v1/writes", Access::Admin),
+        // A line may name a host.
+        (Method::GET, "/api/v1/logs", Access::Admin),
         (Method::POST, "/api/v1/profile-indexes", Access::Admin),
         (
             Method::PUT,

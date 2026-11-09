@@ -1518,6 +1518,22 @@
         ],
         "type": "object"
       },
+      "Lines": {
+        "description": "The core's last log lines.",
+        "properties": {
+          "lines": {
+            "description": "Oldest first, as written to stderr.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "type": "object"
+      },
       "Location": {
         "description": "The plant's location in degrees, north and east positive.",
         "properties": {
@@ -4326,6 +4342,32 @@
           }
         },
         "summary": "Signs the admin, or a viewer by name, in to a session cookie."
+      }
+    },
+    "/api/v1/logs": {
+      "get": {
+        "operationId": "logs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lines"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The core's last 2,000 log lines, each at most 1 KiB (ADR 2)."
       }
     },
     "/api/v1/module-types": {

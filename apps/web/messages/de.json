@@ -334,5 +334,14 @@
   "builder_model_check": "Modell gegen Messung",
   "builder_correction": "{name} · MPPT {input}: Korrektur {factor}",
   "builder_recent": "letzte 30 Tage {measured} kWh gemessen, {modelled} kWh berechnet ({deviation})",
-  "builder_no_recent": "noch keine Messung mit Archivwetter"
+  "builder_no_recent": "noch keine Messung mit Archivwetter",
+  "nav_status": "Status",
+  "status_problems": "Probleme",
+  "status_no_problems": "Keine Probleme.",
+  "status_brokers": "MQTT-Broker",
+  "status_connected": "{name}: verbunden",
+  "status_disconnected": "{name}: getrennt",
+  "status_failed": "{name}: getrennt, {error}",
+  "status_logs": "Protokoll",
+  "status_refresh": "Aktualisieren"
 }

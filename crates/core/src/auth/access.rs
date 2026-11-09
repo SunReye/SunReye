@@ -101,6 +101,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/import/upload", Admin),
     // Backups hold the whole store (ADR 3).
     (Method::POST, "/api/v1/backups", Admin),
+    // A line may name a host (ADR 2).
+    (Method::GET, "/api/v1/logs", Admin),
     (Method::GET, "/api/v1/tokens", Admin),
     (Method::POST, "/api/v1/tokens", Admin),
     (Method::DELETE, "/api/v1/tokens/{id}", Admin),

@@ -4,16 +4,20 @@ use std::io::Write as _;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use sunreye_core::logs::Logs;
 use sunreye_core::profiles::{self, Https};
 use sunreye_core::spot::EnergyCharts;
 use sunreye_core::startup::{self, Boot, Options};
 use sunreye_core::weather::{OpenMeteo, OpenMeteoArchive};
 use sunreye_core::{backup, capture, import};
 use tokio::net::TcpListener;
+use tracing_subscriber::fmt::writer::MakeWriterExt as _;
 
 fn main() -> ExitCode {
+    let logs = Logs::default();
+    // To stderr and the buffer the log screen reads; never a file (ADR 2).
     tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+        .with_writer(std::io::stderr.and(logs.clone()))
         .with_ansi(false)
         .init();
     let mut args = std::env::args().skip(1).peekable();
@@ -47,7 +51,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(run(options)) {
+    match runtime.block_on(run(options, logs)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("{e}");
@@ -161,7 +165,7 @@ fn restore(args: impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
-async fn run(options: Options) -> Result<(), startup::Error> {
+async fn run(options: Options, logs: Logs) -> Result<(), startup::Error> {
     let listener = TcpListener::bind(options.listen).await?;
     tracing::info!(address = %options.listen, data = %options.data_dir.display(), "serving");
     if let Some(ingress) = options.ingress {
@@ -177,6 +181,7 @@ async fn run(options: Options) -> Result<(), startup::Error> {
         spot: EnergyCharts,
         fetch: std::sync::Arc::new(Https),
         keys: profiles::KEYS,
+        logs,
     };
     startup::serve(listener, boot, terminated()).await?;
     tracing::info!("stopped");

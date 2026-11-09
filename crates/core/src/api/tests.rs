@@ -26,6 +26,7 @@ use crate::import::Imports;
 use crate::layout::{Inverters, Layouts};
 use crate::live::Live;
 use crate::location::PlantLocation;
+use crate::logs::Logs;
 use crate::profiles::fake::Host;
 use crate::profiles::{Keys, Profiles};
 use crate::scan::Scanner;
@@ -50,6 +51,7 @@ mod ingress;
 mod layout;
 mod live;
 mod location;
+mod logs;
 mod mqtt;
 mod profiles;
 mod retention;
@@ -72,6 +74,19 @@ fn deye() -> Inverters {
     std::iter::once((crate::bus::DeviceId(1), Arc::new(profile))).collect()
 }
 
+/// Devices over their own inverters, none registered.
+async fn devices(storage: &Storage, profiles: &Profiles, bus: &Bus) -> Devices {
+    Devices::start(
+        storage.database(),
+        storage.declarer(),
+        profiles.catalogue(),
+        bus.clone(),
+        Inverters::default(),
+    )
+    .await
+    .unwrap()
+}
+
 /// Imports from `dir/share`, keeping an upload of at most 1 MiB in `dir`.
 fn imports(dir: &Path, storage: &Storage, bus: &Bus, profiles: &Profiles) -> Imports {
     let places = (dir.join("share"), dir.join("import.tar.gz"), 1 << 20);
@@ -91,6 +106,8 @@ struct Core {
     host: Arc<Host>,
     bus: Bus,
     problems: watch::Sender<Vec<Problem>>,
+    /// What the API reads as the core's log.
+    logs: Logs,
     /// The API's clock when set, else the wall clock.
     clock: Arc<Mutex<Option<SystemTime>>>,
     router: Router,
@@ -132,6 +149,7 @@ impl Core {
             .await
             .unwrap();
         let layouts = Layouts::new(storage.database(), deye());
+        let logs = Logs::default();
         let api = Api {
             auth,
             live: Live::spawn(&bus),
@@ -140,16 +158,7 @@ impl Core {
             corrections: Corrections::new(layouts.clone(), weather::DEVICE, &storage),
             layouts,
             // Its own inverters: the layout tests wire to the Deye above as device 1.
-            devices: Devices::start(
-                storage.database(),
-                storage.declarer(),
-                profiles.catalogue(),
-                bus.clone(),
-                Inverters::default(),
-            )
-            .await
-            .unwrap()
-            .scanning(scanner),
+            devices: devices(&storage, &profiles, &bus).await.scanning(scanner),
             changes: Changes::new(storage.database()),
             location: PlantLocation::open(storage.database()).await.unwrap(),
             spot: SpotZone::open(storage.database()).await.unwrap(),
@@ -160,6 +169,7 @@ impl Core {
             tariffs: Tariffs::new(&storage, &bus, storage.zones().watch()),
             cars: CarBodies::new(path.with_file_name("cars")),
             storage: storage.settings(),
+            logs: logs.clone(),
             clock: Arc::new(move || set.lock().unwrap().unwrap_or_else(SystemTime::now)),
         };
         Self {
@@ -167,6 +177,7 @@ impl Core {
             host,
             bus,
             problems,
+            logs,
             clock,
             storage,
         }
@@ -241,15 +252,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
             weather::DEVICE,
             &storage,
         ),
-        devices: Devices::start(
-            storage.database(),
-            storage.declarer(),
-            profiles.catalogue(),
-            Bus::default(),
-            Inverters::default(),
-        )
-        .await
-        .unwrap(),
+        devices: devices(&storage, &profiles, &Bus::default()).await,
         changes: Changes::new(storage.database()),
         location: PlantLocation::open(storage.database()).await.unwrap(),
         spot: SpotZone::open(storage.database()).await.unwrap(),
@@ -260,6 +263,7 @@ async fn a_route_missing_from_the_openapi_document_fails_the_contract_test() {
         tariffs: Tariffs::new(&storage, &Bus::default(), storage.zones().watch()),
         cars: CarBodies::new(dir.path().join("cars")),
         storage: storage.settings(),
+        logs: Logs::default(),
         clock: Arc::new(SystemTime::now),
     };
     let undocumented = router(api).route("/api/v1/undocumented", route_get(|| async {}));

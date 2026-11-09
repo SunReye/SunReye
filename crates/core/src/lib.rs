@@ -15,6 +15,7 @@ pub mod import;
 pub mod layout;
 pub mod live;
 pub mod location;
+pub mod logs;
 pub mod mqtt;
 pub mod plant;
 pub mod profiles;
