@@ -1243,6 +1243,11 @@ export interface components {
             setting: string;
             /** @description RFC 3339, UTC. */
             time: string;
+            /**
+             * @description The trusted device key a remote write came through (ADR 16); `null` for a write made at
+             *     home.
+             */
+            via?: string | null;
         };
         /** @description A marker linked to its device, placed on a block's wall. */
         Equipment: {
