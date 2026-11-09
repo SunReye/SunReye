@@ -14,14 +14,17 @@ const MAX_BLOCK: u16 = 120;
 
 /// One read request: `count` registers from `start`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct Block {
     pub start: u16,
     pub count: u16,
     /// Holds every input of a computed quantity, so they share one device snapshot.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub grouped: bool,
     /// Folded across unmapped registers: the only plain block a device may refuse with exception 2.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub merged: bool,
 }
 

@@ -3,5 +3,8 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "exports": "./src/profile-wasm.ts"
+  "exports": "./src/index.ts",
+  "scripts": {
+    "types": "SUNREYE_UPDATE_TYPES=1 cargo test -q -p sunreye-profile committed_sdk_types"
+  }
 }

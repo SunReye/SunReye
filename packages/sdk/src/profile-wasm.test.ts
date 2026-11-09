@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import cases from "../../../crates/profile/src/tests/plan-cases.json" with { type: "json" };
-import { loadProfileWasm } from "./profile-wasm.ts";
+import { loadProfileWasm } from "./index.ts";
 
 const profile = await loadProfileWasm();
 

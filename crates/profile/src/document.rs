@@ -10,22 +10,29 @@ pub struct Header {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Profile", optional_fields))]
 #[serde(deny_unknown_fields)]
 pub struct ProfileDoc {
     #[expect(dead_code, reason = "checked through Header")]
+    #[cfg_attr(test, ts(type = "1"))]
     pub schema: u32,
     pub id: String,
     pub name: String,
     pub manufacturer: String,
     pub version: String,
+    #[cfg_attr(test, ts(type = "Array<Capability>"))]
     pub requires: Vec<String>,
     pub quantities: Vec<QuantityDoc>,
     pub inverter: Option<crate::Inverter>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<SettingDoc>>"))]
     pub settings: Vec<SettingDoc>,
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Setting", optional_fields))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingDoc {
     pub key: String,
@@ -35,26 +42,34 @@ pub struct SettingDoc {
     pub range: Option<Range>,
     pub values: Option<Vec<f64>>,
     /// Seconds.
+    #[cfg_attr(test, ts(type = "number"))]
     pub min_interval: u64,
     pub recipe: Vec<StepDoc>,
     pub read_back: Option<RegisterDoc>,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub write_only: bool,
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Step"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum StepDoc {
     Write(RegisterDoc),
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Register"))]
 #[serde(deny_unknown_fields)]
 pub struct RegisterDoc {
     pub register: u16,
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Quantity", optional_fields))]
 #[serde(deny_unknown_fields)]
 pub struct QuantityDoc {
     pub key: String,
@@ -71,6 +86,7 @@ pub struct QuantityDoc {
 
 /// A register's type. Double words are low word first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     U16,
@@ -79,6 +95,7 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct Range {
     pub min: f64,
@@ -87,6 +104,8 @@ pub struct Range {
 
 /// A derived value over the keys of quantities declared earlier.
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Expr", optional_fields))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum ExprDoc {
     Sum(Vec<String>),
@@ -94,6 +113,7 @@ pub enum ExprDoc {
     Combine {
         add: Vec<String>,
         #[serde(default)]
+        #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
         sub: Vec<String>,
     },
     Ratio {

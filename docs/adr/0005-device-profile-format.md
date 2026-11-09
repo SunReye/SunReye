@@ -8,7 +8,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 ## Decision
 
-**One owner.** A Rust crate owns the format: loader, decoder, validation, lints, capability table and schema rules. The core and a WASM build compile from that source. The npm package ships the WASM and TypeScript types generated from the Rust types. The authoring API (`define…`) and the CLI serve profile authors; a homeowner never needs them. They are thin TypeScript over it, with autocomplete from the generated types. No second decoder exists.
+**One owner.** A Rust crate owns the format: loader, decoder, validation, lints, capability table and schema rules. The core and a WASM build compile from that source. The npm package ships the WASM and TypeScript types generated from the Rust types. The authoring API (`define…`) and the CLI serve profile authors; a homeowner never needs them. They are thin TypeScript over it, with autocomplete from the generated types. No second decoder exists. A `profile` test renders the types from the Rust types with ts-rs and fails when the committed file differs.
 
 **Schema versions.** A profile declares one integer `schema` and the capabilities it `requires`. The core and the WASM report the supported range and a capability list (bindings, decoders, step kinds).
 

@@ -26,6 +26,7 @@ pub struct Profile {
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Inverter {
     /// Volts.
@@ -36,6 +37,7 @@ pub struct Inverter {
 
 /// One MPPT input's limits.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Mppt {
     /// Amperes.

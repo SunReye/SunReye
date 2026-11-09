@@ -1,21 +1,9 @@
+import type { Block, Support } from "./generated.ts";
+
 const wasmPath = new URL(
   "../../../target/wasm32-unknown-unknown/release/sunreye_profile_wasm.wasm",
   import.meta.url,
 );
-
-/** One read request: `count` registers from `start` (crates/profile `Block`). */
-export interface Block {
-  readonly start: number;
-  readonly count: number;
-  readonly grouped?: boolean;
-  readonly merged?: boolean;
-}
-
-/** The schemas and capabilities a build loads (crates/profile `Support`). */
-export interface Support {
-  readonly schema: { readonly min: number; readonly max: number };
-  readonly capabilities: readonly string[];
-}
 
 export interface ProfileWasm {
   schema(): number;
@@ -24,7 +12,7 @@ export interface ProfileWasm {
   /** The read plan of a profile file at a gap tolerance; throws the loader's reason. */
   readPlan(profile: string, gapTolerance: number): Block[];
   /** A spanning block of a profile file as plain blocks; throws the loader's reason. */
-  split(profile: string, block: Block): Block[];
+  split(profile: string, block: Readonly<Block>): Block[];
 }
 
 /** The ABI of crates/profile-wasm: replies are `ptr << 32 | len` of JSON in linear memory. */
