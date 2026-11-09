@@ -1,0 +1,22 @@
+# Applied to `profile`, `pv` and their WASM glue: they stay pure (ADR 5, 17, 19).
+[bans]
+multiple-versions = "allow"
+deny = [
+  # Async runtimes
+  { name = "tokio" },
+  { name = "async-std" },
+  { name = "smol" },
+  { name = "mio" },
+  # Network
+  { name = "socket2" },
+  { name = "hyper" },
+  { name = "reqwest" },
+  { name = "ureq" },
+  { name = "axum" },
+  { name = "rustls" },
+  { name = "rumqttc" },
+  # Database
+  { name = "rusqlite" },
+  { name = "libsqlite3-sys" },
+  { name = "sqlx" },
+]

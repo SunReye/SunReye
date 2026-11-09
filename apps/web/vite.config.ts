@@ -8,7 +8,7 @@ export default defineConfig({
     sveltekit({
       compilerOptions: { runes: true },
       // Hash router and relative paths: the SPA works at `/` and under any ingress prefix (ADR 11).
-      adapter: adapter({ fallback: "index.html", precompress: true }),
+      adapter: adapter({ precompress: true }),
       router: { type: "hash" },
     }),
   ],
