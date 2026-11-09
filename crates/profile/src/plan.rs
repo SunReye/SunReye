@@ -99,7 +99,9 @@ fn addresses(quantity: &Quantity) -> Vec<u16> {
             .map_while(|word| address.checked_add(word))
             .chain(scale_factor)
             .collect(),
-        Read::Point { .. } | Read::Compute(_) | Read::Topic { .. } => Vec::new(),
+        Read::Point { .. } | Read::Compute(_) | Read::Topic { .. } | Read::Json { .. } => {
+            Vec::new()
+        }
     }
 }
 
@@ -136,7 +138,7 @@ fn atomic_groups(quantities: &[Quantity]) -> Vec<Block> {
                 .flatten()
                 .copied()
                 .collect(),
-            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } => {
+            Read::Register(_) | Read::Point { .. } | Read::Topic { .. } | Read::Json { .. } => {
                 addresses(quantity).into_iter().collect()
             }
         };

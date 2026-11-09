@@ -47,11 +47,11 @@ fn another_schema_is_refused_by_its_number() {
 #[test]
 fn a_missing_capability_is_refused_by_name() {
     let mut needs = doc(&json!([]));
-    needs["requires"] = json!(["modbus", "http"]);
+    needs["requires"] = json!(["modbus", "udp"]);
     let error = load(&needs).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "this build lacks the required capability `http`"
+        "this build lacks the required capability `udp`"
     );
 }
 
@@ -74,7 +74,7 @@ fn a_quantity_reads_a_register_or_computes_never_both() {
     let both = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16", "compute": { "sum": [] } }]);
     assert_eq!(
         refusal(&both).1,
-        "declare one of `register`, `topic` or `compute`"
+        "declare one of `register`, `topic`, `get` or `compute`"
     );
     let untyped = json!([{ "key": "a", "role": "extra.a", "register": 1 }]);
     assert_eq!(refusal(&untyped).1, "a register needs a type");

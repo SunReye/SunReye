@@ -38,6 +38,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
     capabilities: [
       "modbus",
       "mqtt",
+      "http",
       "sunspec",
       "u16",
       "i16",

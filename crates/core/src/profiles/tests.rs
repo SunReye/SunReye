@@ -326,9 +326,9 @@ async fn an_entry_above_the_schema_range_or_needing_a_missing_capability_needs_a
     let url = "https://sunreye.github.io/SunReye/p0.json";
     let mut future = entry(&deye("future", "1.0.0"), url, Some(&plant.signer.active));
     future["schema"] = json!(sunreye_profile::SUPPORT.schema.max + 1);
-    let mut http = entry(&deye("http", "1.0.0"), url, Some(&plant.signer.active));
-    http["requires"] = json!(["http"]);
-    plant.host.serve(OFFICIAL_INDEX, index(&[future, http]));
+    let mut udp = entry(&deye("udp", "1.0.0"), url, Some(&plant.signer.active));
+    udp["requires"] = json!(["udp"]);
+    plant.host.serve(OFFICIAL_INDEX, index(&[future, udp]));
     let profiles = plant.open().await;
 
     let reports = profiles.check().await.unwrap();
@@ -337,7 +337,7 @@ async fn an_entry_above_the_schema_range_or_needing_a_missing_capability_needs_a
         statuses(&reports[0]),
         vec![
             ("future".to_owned(), Status::NewerCore),
-            ("http".to_owned(), Status::NewerCore),
+            ("udp".to_owned(), Status::NewerCore),
         ]
     );
     assert_eq!(plant.host.fetched(), vec![OFFICIAL_INDEX.to_owned()]);

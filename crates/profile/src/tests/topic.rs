@@ -90,7 +90,7 @@ fn a_topic_takes_no_register_type_or_wildcard() {
     let with_register = json!([{ "key": "a", "role": "extra.a", "topic": "a", "register": 1 }]);
     assert_eq!(
         refusal(&with_register).1,
-        "declare one of `register`, `topic` or `compute`"
+        "declare one of `register`, `topic`, `get` or `compute`"
     );
     let typed = json!([{ "key": "a", "role": "extra.a", "topic": "a", "type": "u16" }]);
     assert_eq!(refusal(&typed).1, "a topic takes no type");
