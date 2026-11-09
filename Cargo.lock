@@ -119,6 +119,7 @@ name = "sunreye-core"
 version = "5.0.0"
 dependencies = [
  "serde_json",
+ "sunreye-profile",
  "tokio",
 ]
 

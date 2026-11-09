@@ -10,7 +10,14 @@ name = "sunreye"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.54.1", default-features = false, features = ["io-util", "net", "time"] }
+sunreye-profile.workspace = true
+tokio = { version = "1.54.1", default-features = false, features = [
+  "io-util",
+  "net",
+  "rt",
+  "sync",
+  "time",
+] }
 
 [dev-dependencies]
 serde_json = "1.0.154"
