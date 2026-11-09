@@ -112,6 +112,7 @@
           "setting.interval",
           "setting.precondition",
           "setting.community",
+          "setting.no-snapshot",
           "secret.missing",
           "secret.value",
           "index.value",

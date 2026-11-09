@@ -5,7 +5,9 @@
 //! issues a write.
 
 pub mod log;
+pub mod snapshot;
 
+use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
@@ -52,6 +54,8 @@ pub enum Refusal {
     SecretMissing,
     /// The secret is not a whole number of the unlock step's type.
     SecretValue,
+    /// A snapshot toggle released with no value stored to restore.
+    NoSnapshot,
 }
 
 impl From<Refusal> for Problem {
@@ -65,6 +69,7 @@ impl From<Refusal> for Problem {
             Refusal::Precondition => (StatusCode::CONFLICT, Code::SettingPrecondition),
             Refusal::SecretMissing => (StatusCode::CONFLICT, Code::SecretMissing),
             Refusal::SecretValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::SecretValue),
+            Refusal::NoSnapshot => (StatusCode::CONFLICT, Code::SettingNoSnapshot),
         };
         Self { status, code }
     }
@@ -80,13 +85,37 @@ pub struct Request {
 }
 
 /// A write that passed its checks: the setting and the words of its value.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Job {
     pub unit: u8,
     pub setting: Setting,
     pub words: Vec<u16>,
     /// The words of the secret its unlock step writes; `None` without one.
     pub unlock: Option<Secret>,
+    /// Stores the value read before writing, as a snapshot toggle engages; `None` otherwise.
+    pub snapshot: Option<Snapshot>,
+}
+
+/// Stores the value read before a write, and reports whether it was stored. Nothing is written
+/// unless it was.
+#[expect(clippy::type_complexity, reason = "an async callback, named once")]
+pub struct Snapshot(
+    Box<dyn FnOnce(f64) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
+);
+
+impl Snapshot {
+    pub fn new<F>(store: impl FnOnce(f64) -> F + Send + Sync + 'static) -> Self
+    where
+        F: Future<Output = bool> + Send + 'static,
+    {
+        Self(Box::new(move |value| Box::pin(store(value))))
+    }
+}
+
+impl std::fmt::Debug for Snapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Snapshot(..)")
+    }
 }
 
 /// The words of a connection's secret. Debug output never shows them, so neither does a log.
@@ -174,7 +203,7 @@ pub async fn run(
     endpoint: &Endpoint,
     client: &mut Option<Client>,
     timeout: Duration,
-    job: &Job,
+    mut job: Job,
 ) -> Result<Applied, Refusal> {
     let mut link = Link {
         endpoint,
@@ -188,7 +217,7 @@ pub async fn run(
         after: None,
         failed_step: None,
     };
-    if let Some(unread) = preconditions(&mut link, job).await? {
+    if let Some(unread) = preconditions(&mut link, &job).await? {
         // Nothing was written; the device's state is unchanged but unconfirmed.
         applied.failed_step = Some(unread);
         return Ok(applied);
@@ -196,7 +225,7 @@ pub async fn run(
     let width = usize::from(job.setting.width());
     let Some(read_back) = job.setting.read_back() else {
         // Write-only: nothing to compare with, before or after.
-        if let Err(failure) = steps(&mut link, job).await {
+        if let Err(failure) = steps(&mut link, &job).await {
             applied.outcome = failure.outcome();
             applied.failed_step = Some(failure.step);
         }
@@ -210,7 +239,10 @@ pub async fn run(
         applied.outcome = Outcome::Unchanged;
         return Ok(applied);
     }
-    let result = steps(&mut link, job).await;
+    if !snapshot(job.snapshot.take(), applied.before).await {
+        return Ok(applied);
+    }
+    let result = steps(&mut link, &job).await;
     let after = link.read_back(read_back, width).await.ok();
     applied.after = after.as_deref().and_then(|w| job.setting.decode(w));
     applied.outcome = match (&result, after) {
@@ -221,6 +253,16 @@ pub async fn run(
     };
     applied.failed_step = result.err().map(|failure| failure.step);
     Ok(applied)
+}
+
+/// Stores `before` through `snapshot`, if any: before the write, so a release can restore it
+/// whatever the write's outcome. `false` when it was not stored and nothing may be written.
+async fn snapshot(snapshot: Option<Snapshot>, before: Option<f64>) -> bool {
+    match (snapshot, before) {
+        (None, _) => true,
+        (Some(Snapshot(store)), Some(value)) => store(value).await,
+        (Some(_), None) => false,
+    }
 }
 
 /// Reads every precondition; the step, counted from 1, of one that cannot be read.

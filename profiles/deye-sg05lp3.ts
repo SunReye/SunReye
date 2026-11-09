@@ -6,7 +6,7 @@ export default defineProfile({
   name: "SG05LP3",
   manufacturer: "Deye",
   version: "2.2.0",
-  requires: ["modbus", "u16", "i16", "u32", "compute", "write"],
+  requires: ["modbus", "u16", "i16", "u32", "compute", "write", "snapshot-toggle"],
   inverter: {
     maxInputVoltage: 800,
     mppt: [
@@ -1075,6 +1075,20 @@ export default defineProfile({
       readBack: {
         register: 142,
       },
+    },
+    {
+      key: "battery.discharge_lock",
+      type: "u16",
+      values: [0, 1],
+      minInterval: 60,
+      recipe: [
+        {
+          snapshotToggle: {
+            target: "battery.max_discharge_current",
+            locked: 0,
+          },
+        },
+      ],
     },
   ],
 });

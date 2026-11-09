@@ -57,6 +57,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "setting.interval": m.problem_setting_interval,
   "setting.precondition": m.problem_setting_precondition,
   "setting.community": m.problem_setting_community,
+  "setting.no-snapshot": m.problem_setting_no_snapshot,
   "secret.missing": m.problem_secret_missing,
   "secret.value": m.problem_secret_value,
   "index.value": m.problem_index_value,

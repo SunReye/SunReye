@@ -35,7 +35,11 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 **Composite settings.** Two kinds, each write going through the funnel with its own outcome and no rollback.
 
-- `snapshot-toggle` is kept: all 20 official Deye profiles use it once, as a battery discharge lock that writes `maximum_discharge_current = 0` and restores the previous value on release. Engaging reads the target's current value and stores it in the store, not in a settings blob, before writing. Releasing with no stored value is refused with a stable code. The lock persists on the device and needs no refresher, so it is a setting, not live control.
+- `snapshot-toggle` is kept: all 20 official Deye profiles use it once, as a battery discharge lock that writes `maximum_discharge_current = 0` and restores the previous value on release. Engaging reads the target's current value and stores it in the store, not in a settings blob, before writing. Releasing with no stored value is refused as `setting.no-snapshot`. The lock persists on the device and needs no refresher, so it is a setting, not live control.
+  - Each write is the target's: checked, interval-limited and logged under the target's key.
+  - The value is stored only when a write follows, so it survives a write that times out. A target already at the locked value is `unchanged` and stores nothing.
+  - Engaging an engaged toggle keeps the value stored first: re-reading would store the locked value.
+  - A release clears the stored value only once it is `verified` or `unchanged`; any other outcome keeps it for a retry, since the lock may still hold.
 - `preset` writes a fixed list of values. No official profile uses it yet; it stays out of the schema until one does.
 
 ## Considered options

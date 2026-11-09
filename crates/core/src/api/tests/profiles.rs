@@ -37,7 +37,7 @@ async fn the_admin_adds_an_index_which_is_fetched_listed_and_logged() {
         .await;
 
     let added = json!({ "url": INDEX, "official": false, "checked": true, "problem": null,
-        "profiles": [{ "id": "my-deye", "version": "2.2.0", "status": "loaded" }] });
+        "profiles": [{ "id": "my-deye", "version": "2.2.1", "status": "loaded" }] });
     assert_eq!((status, &report), (StatusCode::OK, &added));
     let (_, listed) = core.ask(&set_cookie, get("/api/v1/profile-indexes")).await;
     assert_eq!(listed["indexes"][1], added);

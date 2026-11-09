@@ -36,6 +36,7 @@ fn job(setting: &Value, value: f64) -> (Device, Job) {
             setting,
             words,
             unlock,
+            snapshot: None,
         },
     )
 }

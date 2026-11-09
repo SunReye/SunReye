@@ -41,6 +41,9 @@ pub enum Writes {
     Ignore,
     /// Never answers.
     Silent,
+    /// Stores the first write and ignores every later one, as a device that took a lock and then
+    /// stopped taking writes.
+    First,
 }
 
 #[derive(Debug)]
@@ -266,10 +269,12 @@ impl Device {
             .map(|w| u16::from_be_bytes(*w))
             .collect();
         let count = u16::try_from(words.len()).unwrap();
-        if self.writes == Writes::Store {
-            let mut registers = self.registers.lock().unwrap();
+        let mut registers = self.registers.lock().unwrap();
+        let first = registers.is_empty();
+        if self.writes == Writes::Store || self.writes == Writes::First && first {
             registers.extend((start..).zip(words.iter().copied()));
         }
+        drop(registers);
         self.written.send(Write { unit, start, words }).ok();
         if self.writes == Writes::Silent {
             return None;

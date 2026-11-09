@@ -216,7 +216,7 @@ async fn run(
         tokio::select! {
             () = tokio::time::sleep_until(next) => {}
             Some((job, reply)) = writes.recv() => {
-                reply.send(settings::run(&endpoint, &mut client, TIMEOUT, &job).await).ok();
+                reply.send(settings::run(&endpoint, &mut client, TIMEOUT, job).await).ok();
                 continue;
             }
         }
