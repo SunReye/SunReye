@@ -299,15 +299,13 @@ async fn login(
         return Err(SETUP.into());
     }
     let address = client.ip();
-    let wait = auth.backoff().wait(address, Instant::now());
+    let wait = auth.backoff().attempt(address, Instant::now());
     if let Some(wait) = wait {
         // Rounding up never invites an early attempt.
         return Err(Refused::Wait(
             wait.as_secs() + u64::from(wait.subsec_nanos() > 0),
         ));
     }
-    // Counted as failed until it succeeds, so concurrent guesses wait too.
-    auth.backoff().fail(address, Instant::now());
     let (grant, hash) = match name {
         None => (Grant::Admin, auth.admin().ok_or(SETUP)?),
         Some(name) => auth
