@@ -306,21 +306,18 @@ async fn login(
             wait.as_secs() + u64::from(wait.subsec_nanos() > 0),
         ));
     }
-    let (grant, hash) = match name {
-        None => (Grant::Admin, auth.admin().ok_or(SETUP)?),
+    let found = match name {
+        None => Some((Grant::Admin, auth.admin().ok_or(SETUP)?)),
         Some(name) => auth
             .0
             .database
             .run(move |db| viewers::find(db, &name))
             .await
             .map_err(|_| INTERNAL)?
-            .map(|(id, hash)| (Grant::Viewer(id), hash))
-            .ok_or(CREDENTIALS)?,
+            .map(|(id, hash)| (Grant::Viewer(id), hash)),
     };
-    let matches = blocking(move || bcrypt::verify(password, &hash)).await?;
-    if !matches {
-        return Err(CREDENTIALS.into());
-    }
+    let verify = |password: String, hash: String| blocking(move || bcrypt::verify(password, &hash));
+    let grant = verified(found, password, verify).await?;
     auth.backoff().succeed(address);
     let token = auth
         .sessions()
@@ -415,6 +412,30 @@ fn with_cookie(token: &str, tls: bool, mut response: Response) -> Response {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
     response
+}
+
+/// A bcrypt hash at [`COST`] of no password anyone knows: an unknown viewer's name is verified
+/// against it, so it takes as long as a wrong password.
+const DUMMY: &str = "$2b$12$/seIJLMGBZCTdIVr.NVTEOv7p49Hj1tf52kUZxQHzSZTN.oRa51gu";
+
+/// The grant `found` signs in with `password`, verified by `verify`; with nothing found it still
+/// verifies, against [`DUMMY`], and is refused.
+async fn verified<F>(
+    found: Option<(Grant, String)>,
+    password: String,
+    verify: impl FnOnce(String, String) -> F,
+) -> Result<Grant, Problem>
+where
+    F: Future<Output = Result<bool, Problem>>,
+{
+    let (grant, hash) = match found {
+        Some((grant, hash)) => (Some(grant), hash),
+        None => (None, DUMMY.to_owned()),
+    };
+    match (verify(password, hash).await?, grant) {
+        (true, Some(grant)) => Ok(grant),
+        _ => Err(CREDENTIALS),
+    }
 }
 
 fn hash(password: &str) -> bcrypt::BcryptResult<String> {
