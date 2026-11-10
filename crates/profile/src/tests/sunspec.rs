@@ -232,7 +232,7 @@ fn pysunspec_inverter() -> Device {
 fn points(quantities: &Value) -> Profile {
     let doc = json!({
         "schema": 1, "id": "sunspec", "name": "SunSpec", "manufacturer": "SunSpec", "version": "1.0.0",
-        "requires": ["sunspec", "u16", "i16", "u32", "acc32", "scale-factor"],
+        "requires": super::all(),
         "quantities": quantities,
     });
     Profile::load(&doc.to_string()).unwrap()

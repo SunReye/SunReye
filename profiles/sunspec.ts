@@ -61,7 +61,7 @@ export default defineProfile({
   name: "SunSpec device",
   manufacturer: "SunSpec",
   version: "1.0.0",
-  requires: ["sunspec", "u16", "i16", "acc32", "scale-factor"],
+  requires: ["sunspec", "u16", "i16", "acc32", "scale-factor", "resolution"],
   quantities: [
     {
       key: "acPower",

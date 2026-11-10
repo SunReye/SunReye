@@ -11,7 +11,7 @@ function document(quantities: readonly object[]): string {
     name: "case",
     manufacturer: "test",
     version: "1.0.0",
-    requires: ["modbus"],
+    requires: profile.capabilities().capabilities,
     quantities,
   });
 }
@@ -56,6 +56,14 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "delay",
       "snapshot-toggle",
       "publish",
+      "identify",
+      "ac-rating",
+      "resolution",
+      "text-enum",
+      "setting-text",
+      "verified",
+      "poll-group",
+      "live-control",
     ],
   });
 });
@@ -77,10 +85,11 @@ test("a refused profile throws the loader's reason", () => {
   );
 });
 
-test("the profile WASM's warnings are the loader's text", () => {
+test("the profile WASM refuses an unrequired capability with the loader's text", () => {
   const doc = document([{ key: "a", role: "extra.a", register: 1, type: "u32" }]);
+  const unrequired = doc.replace(/"requires":\[[^\]]*\]/u, '"requires":["modbus"]');
 
-  expect(profile.lint(doc)).toEqual(["`requires` lacks `u32`, which the profile uses"]);
+  expect(() => profile.lint(unrequired)).toThrow("`requires` lacks `u32`, which the profile uses");
 });
 
 /** A profile's line of v4's oracle corpus. */

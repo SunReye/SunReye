@@ -23,7 +23,7 @@ use crate::backup::Backups;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::correction::Corrections;
-use crate::devices::Devices;
+use crate::devices::{Devices, Transport};
 use crate::import::Imports;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
@@ -36,15 +36,10 @@ use crate::spot::SpotZone;
 use crate::storage;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
-use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
     code: Code::RequestRoute,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 const METHOD: Problem = Problem {
     status: StatusCode::METHOD_NOT_ALLOWED,
@@ -211,7 +206,8 @@ struct Support {
     schema: Schemas,
     /// The bindings, decoders and computed quantities a profile may require.
     capabilities: &'static [&'static str],
-    transports: &'static [&'static str],
+    /// The transports a connection can be configured with.
+    transports: &'static [Transport],
     /// By device id, what the layout in force says of its series.
     devices: BTreeMap<String, DeviceSupport>,
 }
@@ -268,7 +264,7 @@ struct Schemas {
 async fn capabilities(
     State((layouts, devices, clock)): State<(Layouts, Devices, Clock)>,
 ) -> Result<Json<Support>, Problem> {
-    let versions = layouts.versions().await.map_err(|_| INTERNAL)?;
+    let versions = layouts.versions().await.map_err(internal)?;
     let estimated = in_force(&versions, clock()).map(Version::estimated);
     let mut support: BTreeMap<String, DeviceSupport> = BTreeMap::new();
     for (device, ids) in estimated.unwrap_or_default() {
@@ -277,7 +273,7 @@ async fn capabilities(
             .map(|id| format!("pv.string.power[{id}]"))
             .collect();
     }
-    for device in devices.writable().await.map_err(|_| INTERNAL)? {
+    for device in devices.writable().await.map_err(internal)? {
         let entry = support.entry(device.id.to_string()).or_default();
         entry.writes = device.writes;
         entry.settings = device
@@ -295,7 +291,7 @@ async fn capabilities(
             max: support.schema.max,
         },
         capabilities: support.capabilities,
-        transports: Endpoint::TRANSPORTS,
+        transports: &Transport::ALL,
         devices,
     }))
 }
@@ -363,6 +359,18 @@ async fn live_values(
     });
     let events = stream::once(async { snapshot }).chain(deltas).map(Ok);
     Sse::new(events).keep_alive(KeepAlive::default())
+}
+
+/// An internal error: the core failed, not the caller.
+pub const INTERNAL: Problem = Problem {
+    status: StatusCode::INTERNAL_SERVER_ERROR,
+    code: Code::Internal,
+};
+
+/// Logs `cause` once and answers [`INTERNAL`]: the caller sees only the code.
+pub fn internal(cause: impl std::fmt::Display) -> Problem {
+    tracing::error!("internal: {cause}");
+    INTERNAL
 }
 
 /// A refusal as `application/problem+json` (RFC 9457): a stable code and no localised text.

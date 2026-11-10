@@ -35,13 +35,15 @@ pub enum Outcome {
     Partial,
     /// The current value already equals the request; nothing was written.
     Unchanged,
+    /// Refused before the device; nothing was written and the interval does not start.
+    Refused,
 }
 
 /// Why a write was refused before anything was written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     /// The profile declares no such setting.
-    None,
+    Unknown,
     /// The key is a quantity, read and never written.
     ReadOnly,
     /// The value is outside the range, off the step, not among the values, or does not fit.
@@ -67,7 +69,7 @@ pub enum Refusal {
 impl From<Refusal> for Problem {
     fn from(refusal: Refusal) -> Self {
         let (status, code) = match refusal {
-            Refusal::None => (StatusCode::NOT_FOUND, Code::SettingNone),
+            Refusal::Unknown => (StatusCode::NOT_FOUND, Code::SettingNone),
             Refusal::ReadOnly => (StatusCode::CONFLICT, Code::SettingReadOnly),
             Refusal::Value => (StatusCode::UNPROCESSABLE_ENTITY, Code::SettingValue),
             Refusal::WritesOff => (StatusCode::CONFLICT, Code::SettingWritesOff),
@@ -257,7 +259,7 @@ pub fn check(
         return Err(if read {
             Refusal::ReadOnly
         } else {
-            Refusal::None
+            Refusal::Unknown
         });
     };
     let words = setting.encode(request.value).ok_or(Refusal::Value)?;

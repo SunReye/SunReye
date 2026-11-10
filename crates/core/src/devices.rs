@@ -11,7 +11,7 @@ mod routes;
 mod store;
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, PoisonError};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::http::StatusCode;
@@ -20,7 +20,7 @@ use sunreye_profile::{Profile, Setting, Toggle};
 use tokio::sync::{Mutex, watch};
 use utoipa::ToSchema;
 
-use crate::api::{Code, Problem};
+use crate::api::{Code, INTERNAL, Problem, internal};
 use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, Task};
@@ -39,16 +39,12 @@ use crate::subscriber::{self, Subscriber};
 use crate::transport::Endpoint;
 use deadband::RoleDeadband;
 
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 /// Who configures devices: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
 /// Why a configuration change was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Refusal {
+enum ChangeRefusal {
     NoConnection,
     NoDevice,
     /// An empty name or host, or port 0.
@@ -74,21 +70,25 @@ enum Refusal {
     DeadbandStep,
 }
 
-impl From<Refusal> for Problem {
-    fn from(refusal: Refusal) -> Self {
+impl From<ChangeRefusal> for Problem {
+    fn from(refusal: ChangeRefusal) -> Self {
         let (status, code) = match refusal {
-            Refusal::NoConnection => (StatusCode::NOT_FOUND, Code::ConnectionNone),
-            Refusal::NoDevice => (StatusCode::NOT_FOUND, Code::DeviceNone),
-            Refusal::ConnectionValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue),
-            Refusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
-            Refusal::DeviceConnection => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection),
-            Refusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
-            Refusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
-            Refusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
-            Refusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
-            Refusal::DeadbandRole => (StatusCode::NOT_FOUND, Code::DeadbandRole),
-            Refusal::DeadbandKind => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandKind),
-            Refusal::DeadbandStep => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandStep),
+            ChangeRefusal::NoConnection => (StatusCode::NOT_FOUND, Code::ConnectionNone),
+            ChangeRefusal::NoDevice => (StatusCode::NOT_FOUND, Code::DeviceNone),
+            ChangeRefusal::ConnectionValue => {
+                (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue)
+            }
+            ChangeRefusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
+            ChangeRefusal::DeviceConnection => {
+                (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection)
+            }
+            ChangeRefusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
+            ChangeRefusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
+            ChangeRefusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
+            ChangeRefusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
+            ChangeRefusal::DeadbandRole => (StatusCode::NOT_FOUND, Code::DeadbandRole),
+            ChangeRefusal::DeadbandKind => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandKind),
+            ChangeRefusal::DeadbandStep => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandStep),
         };
         Self { status, code }
     }
@@ -109,7 +109,24 @@ pub enum Transport {
 }
 
 impl Transport {
+    /// Every transport a connection can be configured with, as capabilities list them.
+    pub const ALL: [Self; 5] = [
+        Self::ModbusTcp,
+        Self::RtuOverTcp,
+        Self::SolarmanV5,
+        Self::Mqtt,
+        Self::Http,
+    ];
+
     const fn reads(self) -> Reads {
+        // A new variant fails to compile here until `ALL` lists it.
+        const _: () = match Transport::ModbusTcp {
+            Transport::ModbusTcp
+            | Transport::RtuOverTcp
+            | Transport::SolarmanV5
+            | Transport::Mqtt
+            | Transport::Http => (),
+        };
         match self {
             Self::ModbusTcp | Self::RtuOverTcp | Self::SolarmanV5 => Reads::Registers,
             Self::Mqtt => Reads::Topics,
@@ -363,7 +380,7 @@ impl Devices {
 
     /// Runs the setup scan over `subnet`, leaving every configured endpoint to its task.
     async fn scan(&self, subnet: Option<&str>) -> Result<scan::ScanReport, Problem> {
-        let configured = self.connections().await.map_err(|_| INTERNAL)?;
+        let configured = self.connections().await.map_err(internal)?;
         let configured = configured.into_iter().map(|c| (c.reach.host, c.reach.port));
         let profiles = self.catalogue.profiles();
         self.scanner
@@ -377,7 +394,7 @@ impl Devices {
     /// The file cannot be read.
     pub async fn connections(&self) -> Result<Vec<Connection>, storage::Error> {
         let mut connections = self.database.run(store::connections).await?;
-        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        let brokers = crate::lock(&self.brokers);
         for connection in &mut connections {
             connection.status = brokers
                 .iter()
@@ -439,13 +456,13 @@ impl Devices {
             None if profile.quantities().iter().any(|q| q.key == key) => {
                 return Err(settings::Refusal::ReadOnly.into());
             }
-            None => return Err(settings::Refusal::None.into()),
+            None => return Err(settings::Refusal::Unknown.into()),
         };
         let fingerprint = on.then_some(fingerprint);
         self.database
             .run(move |db| enable::set(db, id, &key, fingerprint.as_deref(), changed))
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 
     /// Whether `setting` of `device` may be written, as far as trust goes.
@@ -469,8 +486,8 @@ impl Devices {
             .database
             .run(move |db| store::device(db, id))
             .await
-            .map_err(|_| INTERNAL)?;
-        Ok(device.ok_or(Refusal::NoDevice)?)
+            .map_err(internal)?;
+        Ok(device.ok_or(ChangeRefusal::NoDevice)?)
     }
 
     /// Adds a connection with a fresh id.
@@ -562,7 +579,7 @@ impl Devices {
             .database
             .run(move |db| deadband::overrides(db, id))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(deadband::deadbands(&profile, &overrides))
     }
 
@@ -585,15 +602,15 @@ impl Devices {
         match deadband {
             Some(deadband) => deadband::check(&profile, &role, deadband)?,
             None if profile.quantities().iter().any(|q| q.role == role) => {}
-            None => return Err(Refusal::DeadbandRole.into()),
+            None => return Err(ChangeRefusal::DeadbandRole.into()),
         }
         self.database
             .run(move |db| deadband::set(db, id, &role, deadband, changed))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.declare(DeviceId(id), &profile)
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         drop(running);
         Ok(())
     }
@@ -602,7 +619,8 @@ impl Devices {
     /// appends the attempt to the write log. A snapshot toggle writes its target instead: 1 stores
     /// the target's value and writes the locked one, 0 writes the stored value back.
     ///
-    /// Changes to devices wait for it, so its task cannot restart mid-write.
+    /// Changes to devices wait for it, so its task cannot restart mid-write. It runs detached, so
+    /// a caller that stops waiting cannot cut a write off from its log entry.
     ///
     /// # Errors
     /// The device or setting is unknown or read-only, the value does not fit, the device's writes
@@ -615,11 +633,43 @@ impl Devices {
         request: Request,
         now: SystemTime,
     ) -> Result<log::Entry, Problem> {
+        let devices = self.clone();
+        tokio::spawn(async move { devices.write_detached(id, request, now).await })
+            .await
+            .map_err(internal)?
+    }
+
+    async fn write_detached(
+        &self,
+        id: u32,
+        request: Request,
+        now: SystemTime,
+    ) -> Result<log::Entry, Problem> {
         let running = self.running.lock().await;
         let device = self.device(id).await?;
+        let entry = match self
+            .write_device(&running, device, request.clone(), now)
+            .await
+        {
+            Err(problem) if problem.status.is_client_error() => {
+                Err(self.refused(id, &request, problem, now).await)
+            }
+            entry => entry,
+        };
+        drop(running);
+        entry
+    }
+
+    async fn write_device(
+        &self,
+        running: &[Running],
+        device: Device,
+        request: Request,
+        now: SystemTime,
+    ) -> Result<log::Entry, Problem> {
         let profile = self.profile(&device.draft.profile)?;
         let writing = Writing {
-            running: &running,
+            running,
             device,
             profile,
         };
@@ -628,12 +678,47 @@ impl Devices {
             .setting(&request.key)
             .and_then(Setting::toggle)
             .cloned();
-        let entry = match toggle {
+        match toggle {
             Some(toggle) => self.toggle(&writing, request, toggle, now).await,
             None => self.funnel(&writing, request, None, now).await,
+        }
+    }
+
+    /// Logs `request` to device `id` as refused with `problem`'s code (ADR 7), and answers
+    /// `problem`; a refusal that cannot be logged is an internal error.
+    async fn refused(
+        &self,
+        id: u32,
+        request: &Request,
+        problem: Problem,
+        now: SystemTime,
+    ) -> Problem {
+        let Ok(serde_json::Value::String(code)) = serde_json::to_value(problem.code) else {
+            return INTERNAL;
         };
-        drop(running);
-        entry
+        let request = request.clone();
+        let logged = self
+            .database
+            .run(move |db| {
+                let attempt = log::Attempt {
+                    time: now,
+                    device: id,
+                    setting: &request.key,
+                    requested: request.value,
+                    applied: settings::Applied {
+                        outcome: Outcome::Refused,
+                        before: None,
+                        after: None,
+                        failed_step: None,
+                    },
+                    actor: request.actor,
+                    via: request.via.as_deref(),
+                    refusal: Some(&code),
+                };
+                log::append(db, &attempt)
+            })
+            .await;
+        logged.map_or_else(internal, |_| problem)
     }
 
     /// Engages or releases snapshot toggle `request.key`, through a write of its target.
@@ -654,7 +739,7 @@ impl Devices {
             self.database
                 .run(move |db| snapshot::stored(db, id, &key))
                 .await
-                .map_err(|_| INTERNAL)?
+                .map_err(internal)?
         };
         let target = |value| Request {
             key: toggle.target.clone(),
@@ -676,7 +761,7 @@ impl Devices {
             self.database
                 .run(move |db| snapshot::clear(db, id, &key))
                 .await
-                .map_err(|_| INTERNAL)?;
+                .map_err(internal)?;
         }
         Ok(entry)
     }
@@ -709,7 +794,7 @@ impl Devices {
             .database
             .run(move |db| log::last_write(db, id, &setting))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         let permit = self.permit(writing, &request.key).await?;
         let (setting, words) = settings::check(profile, &request, permit, last, now)?;
         let unlock = self.unlock(device.draft.connection, &setting).await?;
@@ -724,7 +809,7 @@ impl Devices {
             .iter()
             .find(|r| r.devices.iter().any(|d| d.id == id))
             .map(|r| &r.task);
-        // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
+        // A precondition that does not hold is a refusal: nothing was written.
         let applied = if let Some(task) = task {
             task.write(job).await.ok_or(INTERNAL)??
         } else {
@@ -742,16 +827,17 @@ impl Devices {
                     applied,
                     actor: request.actor,
                     via: request.via.as_deref(),
+                    refusal: None,
                 };
                 log::append(db, &attempt)
             })
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 
     /// What writes device `id` behind a broker; `None` when no broker reads it.
     fn writer(&self, id: u32) -> Option<subscriber::Writer> {
-        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        let brokers = crate::lock(&self.brokers);
         brokers
             .iter()
             .find_map(|b| b.subscriber.writer(DeviceId(id)))
@@ -764,7 +850,7 @@ impl Devices {
             Some(setting) => self
                 .enable(&writing.device, setting)
                 .await
-                .map_err(|_| INTERNAL)?,
+                .map_err(internal)?,
             None => Enable::Off,
         };
         Ok(Permit {
@@ -782,7 +868,7 @@ impl Devices {
             .database
             .run(move |db| store::secret(db, connection, &name))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(settings::unlock(setting, secret.as_deref())?)
     }
 
@@ -796,12 +882,15 @@ impl Devices {
 
     /// Profile `id`; a device whose profile is gone has no settings.
     fn profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
-        Ok(self.catalogue.get(id).ok_or(settings::Refusal::None)?)
+        Ok(self.catalogue.get(id).ok_or(settings::Refusal::Unknown)?)
     }
 
     /// The binding the draft's profile reads through; refused when the profile is unknown.
-    fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, Refusal> {
-        let profile = self.catalogue.get(&draft.profile).ok_or(Refusal::Profile)?;
+    fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, ChangeRefusal> {
+        let profile = self
+            .catalogue
+            .get(&draft.profile)
+            .ok_or(ChangeRefusal::Profile)?;
         Ok(if profile.reads_topics() {
             Reads::Topics
         } else if profile.reads_http() {
@@ -814,13 +903,13 @@ impl Devices {
     /// Runs one change on the file, then restarts the endpoints it touched.
     async fn apply<T: Send + 'static>(
         &self,
-        change: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<Result<T, Refusal>>
+        change: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<Result<T, ChangeRefusal>>
         + Send
         + 'static,
     ) -> Result<T, Problem> {
         let mut running = self.running.lock().await;
-        let changed = self.database.run(change).await.map_err(|_| INTERNAL)??;
-        self.restart(&mut running).await.map_err(|_| INTERNAL)?;
+        let changed = self.database.run(change).await.map_err(internal)??;
+        self.restart(&mut running).await.map_err(internal)?;
         Ok(changed)
     }
 
@@ -873,17 +962,9 @@ impl Devices {
     /// Brings the broker clients in line with the broker connections: one whose connection or
     /// devices changed is replaced, so it subscribes afresh and receives the retained state.
     async fn restart_brokers(&self) -> Result<(), storage::Error> {
-        let mut wanted = self.database.run(store::brokers).await?;
-        self.keep_brokers(&mut wanted);
-        for brokering in wanted {
-            let devices: Vec<endpoint::Device> = brokering
-                .devices
-                .iter()
-                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
-                .collect();
-            for device in &devices {
-                self.declare(device.id, &device.profile).await?;
-            }
+        let wanted = self.database.run(store::brokers).await?;
+        for brokering in reconcile(&self.brokers, wanted, |b| &b.brokering) {
+            let devices = self.started(&brokering.devices).await?;
             let also = match brokering.publish {
                 Some(Publish { discovery: true }) => vec![publisher::BIRTH.to_owned()],
                 _ => Vec::new(),
@@ -907,8 +988,7 @@ impl Devices {
                     &self.bus,
                 )
             });
-            let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
-            brokers.push(Brokered {
+            crate::lock(&self.brokers).push(Brokered {
                 brokering,
                 subscriber,
                 _publisher: publisher,
@@ -920,40 +1000,28 @@ impl Devices {
     /// Brings the HTTP host tasks in line with the HTTP connections: one whose connection or
     /// devices changed is replaced.
     async fn restart_hosts(&self) -> Result<(), storage::Error> {
-        let mut wanted = self.database.run(store::hosts).await?;
-        self.keep_hosts(&mut wanted);
-        for hosting in wanted {
-            let devices: Vec<endpoint::Device> = hosting
-                .devices
-                .iter()
-                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
-                .collect();
-            for device in &devices {
-                self.declare(device.id, &device.profile).await?;
-            }
+        let wanted = self.database.run(store::hosts).await?;
+        for hosting in reconcile(&self.hosts, wanted, |(h, _)| h) {
+            let devices = self.started(&hosting.devices).await?;
             let task = http::spawn(hosting.host.clone(), devices, self.bus.clone());
-            self.hosts
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push((hosting, task));
+            crate::lock(&self.hosts).push((hosting, task));
         }
         Ok(())
     }
 
-    /// Stops the host tasks no longer `wanted`, and leaves in `wanted` those still to start.
-    fn keep_hosts(&self, wanted: &mut Vec<Hosting>) {
-        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
-        hosts.retain(|(h, _)| wanted.contains(h));
-        wanted.retain(|w| !hosts.iter().any(|(h, _)| h == w));
-        drop(hosts);
-    }
-
-    /// Stops the clients no longer `wanted`, and leaves in `wanted` those still to start.
-    fn keep_brokers(&self, wanted: &mut Vec<Brokering>) {
-        let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
-        brokers.retain(|b| wanted.contains(&b.brokering));
-        wanted.retain(|w| !brokers.iter().any(|b| b.brokering == *w));
-        drop(brokers);
+    /// The known devices of `devices`, each id, address and profile, declared to storage.
+    async fn started(
+        &self,
+        devices: &[(u32, u8, String)],
+    ) -> Result<Vec<endpoint::Device>, storage::Error> {
+        let devices: Vec<endpoint::Device> = devices
+            .iter()
+            .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
+            .collect();
+        for device in &devices {
+            self.declare(device.id, &device.profile).await?;
+        }
+        Ok(devices)
     }
 
     /// The devices with their profiles; one whose profile is not known is skipped.
@@ -998,6 +1066,20 @@ impl Devices {
     }
 }
 
+/// Stops each of `running` whose configuration, as `of` reads it, is no longer `wanted`, and
+/// answers the configurations still to start.
+fn reconcile<R, W: PartialEq>(
+    running: &std::sync::Mutex<Vec<R>>,
+    mut wanted: Vec<W>,
+    of: impl Fn(&R) -> &W,
+) -> Vec<W> {
+    let mut running = crate::lock(running);
+    running.retain(|r| wanted.contains(of(r)));
+    wanted.retain(|w| !running.iter().any(|r| of(r) == w));
+    drop(running);
+    wanted
+}
+
 /// The devices grouped by endpoint, in order of their first device.
 fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
     let mut grouped: Vec<(Endpoint, Vec<Polled>)> = Vec::new();
@@ -1019,7 +1101,7 @@ fn is_inverter(profile: &Profile) -> bool {
             .any(|q| q.role.starts_with("pv."))
 }
 
-fn check_reach(reach: &Reach) -> Result<(), Refusal> {
+fn check_reach(reach: &Reach) -> Result<(), ChangeRefusal> {
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,
@@ -1029,7 +1111,7 @@ fn check_reach(reach: &Reach) -> Result<(), Refusal> {
         ) => root.is_none() && reach.publish.is_none(),
     };
     if !root || reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
-        return Err(Refusal::ConnectionValue);
+        return Err(ChangeRefusal::ConnectionValue);
     }
     Ok(())
 }

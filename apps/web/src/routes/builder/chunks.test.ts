@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 // three.js loads up front only on the builder route (ADR 11, 20); the dashboard loads it lazily,
-// once a scene exists and WebGL2 is there. Read from the SPA build's chunk graph.
+// once a scene exists and WebGL2 is there. Read from the SPA build's Vite manifest: its chunks and
+// their static and dynamic imports.
 // The gate builds the SPA before `bun test`; run `bun run --cwd apps/web build` first by hand.
 import { expect, test } from "bun:test";
 
@@ -9,6 +10,8 @@ const client = `${web}.svelte-kit/output/client/`;
 
 interface Chunk {
   readonly file: string;
+  /** The module a chunk is named after, such as `three.core` for three.js's. */
+  readonly name?: string;
   readonly imports?: readonly string[];
   readonly dynamicImports?: readonly string[];
   readonly isEntry?: boolean;
@@ -28,32 +31,28 @@ if (!isManifest(parsed)) throw new TypeError("not a Vite manifest");
 
 const manifest = parsed;
 
-/** A string three.js's renderer carries through minification. */
-const THREE = "THREE.WebGLRenderer";
+/** The chunks three.js's modules are bundled into. */
+const three = new Set(
+  Object.keys(manifest).filter((key) => /^three(?:\.|$)/u.test(manifest[key]?.name ?? "")),
+);
 
-/** Every file `key` loads before it runs: itself and its static imports. */
+/** Every chunk `key` loads before it runs: itself and its static imports. */
 function closure(key: string): Set<string> {
-  const files = new Set<string>();
+  const keys = new Set<string>();
   const queue = [key];
 
   for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
-    const chunk = manifest[next];
-
-    if (chunk !== undefined && !files.has(chunk.file)) {
-      files.add(chunk.file);
-      queue.push(...(chunk.imports ?? []));
+    if (!keys.has(next)) {
+      keys.add(next);
+      queue.push(...(manifest[next]?.imports ?? []));
     }
   }
 
-  return files;
+  return keys;
 }
 
-async function loadsThree(key: string): Promise<boolean> {
-  const texts = await Promise.all(
-    [...closure(key)].map((file) => Bun.file(`${client}${file}`).text()),
-  );
-
-  return texts.some((text) => text.includes(THREE));
+function loadsThree(key: string): boolean {
+  return [...closure(key)].some((reached) => three.has(reached));
 }
 
 /** The source route of each node entry, from the node module SvelteKit generated for it. */
@@ -66,20 +65,23 @@ async function route(key: string): Promise<string> {
 test("only the builder route's chunks carry three.js up front", async () => {
   const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
 
+  expect(three.size).toBeGreaterThan(0);
+
   const carriers = await Promise.all(
-    entries.map(async (key) => ((await loadsThree(key)) ? route(key) : undefined)),
+    entries.filter((key) => loadsThree(key)).map((key) => route(key)),
   );
 
-  expect(carriers.filter((carrier) => carrier !== undefined)).toEqual(["builder/"]);
+  expect(carriers).toEqual(["builder/"]);
 });
 
-test("the dashboard reaches three.js only through the live scene, imported lazily", async () => {
+test("the dashboard reaches three.js only through the scene's lazy imports", async () => {
   const entries = Object.keys(manifest).filter((key) => manifest[key]?.isEntry === true);
   const routes = await Promise.all(entries.map(async (key) => [key, await route(key)] as const));
   const dashboard = routes.find(([, path]) => path === "")?.[0];
 
   const lazy = manifest[dashboard ?? ""]?.dynamicImports ?? [];
-  const carriers = await Promise.all(lazy.map(async (key) => ((await loadsThree(key)) ? key : "")));
+  const carriers = lazy.filter((key) => loadsThree(key)).map((key) => manifest[key]?.name);
 
-  expect(carriers.filter((key) => key !== "")).toEqual(["src/lib/live/LiveScene.svelte"]);
+  // Both load together once a scene is shown: the scene and the car models it draws.
+  expect(carriers).toEqual(["LiveScene", "models"]);
 });

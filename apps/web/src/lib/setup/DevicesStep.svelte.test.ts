@@ -133,3 +133,24 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
     '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec-meter","unit":3}',
   ]);
 });
+
+test("the admin enters an RTU gateway the scan does not probe by hand", async () => {
+  const transport = testCore();
+  const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
+
+  await userEvent.fill(screen.getByLabelText("Host"), "192.168.1.40");
+  await userEvent.fill(screen.getByLabelText("Port"), "4196");
+  await userEvent.selectOptions(screen.getByLabelText("Übertragung"), "rtu-over-tcp");
+  await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
+  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.40:4196"), "eastron-sdm630");
+  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.40:4196"), "2");
+  await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
+  await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
+
+  await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(transport.calls).toEqual([
+    '/api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":4196,"transport":"rtu-over-tcp"}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"eastron-sdm630","unit":2}',
+  ]);
+});

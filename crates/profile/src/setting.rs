@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use crate::Unit;
 use crate::document::{
-    BlockDoc, BlockWord, Kind, PreconditionDoc, Range, ReadBackDoc, SettingDoc, StepDoc, ToggleDoc,
-    UnlockDoc,
+    BlockDoc, BlockWord, Kind, LiveControlDoc, PreconditionDoc, Range, ReadBackDoc, SettingDoc,
+    StepDoc, ToggleDoc, UnlockDoc,
 };
 use crate::profile::{Quantity, Read};
 
@@ -28,6 +28,19 @@ pub struct Setting {
     /// The text each value publishes as, from its read-back quantity; empty to publish numbers.
     texts: Vec<(String, f64)>,
     verified: bool,
+    live_control: Option<LiveControl>,
+}
+
+/// What makes a setting a live-control point (ADR 5, 7): declared now, and written only by a
+/// controller under a lease.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiveControl {
+    /// When the device drops the setpoint unless it is refreshed.
+    pub revert: Option<Duration>,
+    /// The register written to keep the setpoint alive, and how often.
+    pub heartbeat: Option<(u16, Duration)>,
+    /// The value the device falls back to.
+    pub fallback: Option<f64>,
 }
 
 /// Where a value is read: a device's register, or a quantity read from a topic, by its position in
@@ -247,6 +260,12 @@ impl Setting {
     #[must_use]
     pub const fn verified(&self) -> bool {
         self.verified
+    }
+
+    /// Its live-control declaration; `None` for an ordinary setting.
+    #[must_use]
+    pub const fn live_control(&self) -> Option<&LiveControl> {
+        self.live_control.as_ref()
     }
 
     /// The shortest time between two writes, to spare the device's memory.
@@ -471,8 +490,8 @@ fn setting(
     .map_err(|problem| (key.clone(), problem))?;
     let labels =
         labels(doc.labels, doc.values.as_deref()).map_err(|problem| (key.clone(), problem))?;
-    Ok(Setting {
-        key,
+    Setting {
+        key: key.clone(),
         name: doc.name,
         unit: doc.unit,
         labels,
@@ -484,8 +503,42 @@ fn setting(
         recipe,
         read_back,
         texts,
-        verified: doc.verified,
-    })
+        verified: doc.verified.unwrap_or(false),
+        live_control: None,
+    }
+    .with_live_control(doc.live_control)
+    .map_err(|problem| (key, problem))
+}
+
+impl Setting {
+    /// The setting as the live-control point `doc` declares it, if any.
+    fn with_live_control(mut self, doc: Option<LiveControlDoc>) -> Result<Self, &'static str> {
+        let Some(doc) = doc else {
+            return Ok(self);
+        };
+        let revert = doc.revert.filter(|s| *s > 0).map(Duration::from_secs);
+        let heartbeat = doc
+            .heartbeat
+            .map(|h| (h.register, Duration::from_secs(h.interval)));
+        if revert.is_none() && heartbeat.is_none() {
+            return Err(
+                "live control needs a revert time or a heartbeat; revert 0 is an ordinary setting",
+            );
+        }
+        if heartbeat.is_some_and(|(_, every)| every.is_zero() || revert.is_some_and(|r| every >= r))
+        {
+            return Err("a heartbeat's interval is above 0 s and below the revert time");
+        }
+        if doc.fallback.is_some_and(|v| self.encode(v).is_none()) {
+            return Err("a fallback is a value the setting takes");
+        }
+        self.live_control = Some(LiveControl {
+            revert,
+            heartbeat,
+            fallback: doc.fallback,
+        });
+        Ok(self)
+    }
 }
 
 /// Each label's value, in the order of `values`; refused when a label names a value not among

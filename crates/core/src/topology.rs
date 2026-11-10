@@ -17,13 +17,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use utoipa::ToSchema;
 
-use crate::api::{Code, Problem};
+use crate::api::{Code, Problem, internal};
 use crate::storage::{Aggregate, Database, Error};
-
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 
 /// Why a topology was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,7 +154,7 @@ impl Topologies {
             .database
             .run(move |db| store::insert(db, applies_from, points, changed))
             .await
-            .map_err(|_| INTERNAL)??;
+            .map_err(internal)??;
         self.changed.send_replace(());
         Ok(stored)
     }

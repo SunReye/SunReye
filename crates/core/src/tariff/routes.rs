@@ -12,8 +12,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::days::Costs;
-use super::{BAND, Band, DAY, Days, INTERNAL, Schedule, Tariffs, Version, in_force};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use super::{BAND, Band, DAY, Days, Schedule, Tariffs, Version, in_force};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -174,7 +174,7 @@ async fn tariff(
         Some(at) => instant(&at).ok_or(QUERY)?,
         None => clock(),
     };
-    let versions = tariffs.versions().await.map_err(|_| INTERNAL)?;
+    let versions = tariffs.versions().await.map_err(internal)?;
     in_force(&versions, at).map(|v| Json(v.into())).ok_or(NONE)
 }
 
@@ -260,7 +260,7 @@ struct Payback {
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn payback(State((tariffs, _)): TariffState) -> Result<Json<Payback>, Problem> {
-    let (investment, savings) = tariffs.payback().await.map_err(|_| INTERNAL)?;
+    let (investment, savings) = tariffs.payback().await.map_err(internal)?;
     let cents = |euros: f64| (euros * 100.0).round() / 100.0;
     Ok(Json(Payback {
         investment,
@@ -359,7 +359,7 @@ async fn costs(
     if span.is_zero() || span > SPAN {
         return Err(RANGE);
     }
-    let days = tariffs.days(range).await.map_err(|_| INTERNAL)?;
+    let days = tariffs.days(range).await.map_err(internal)?;
     let mut total = Costs::default();
     let days = days
         .into_iter()

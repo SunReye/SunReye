@@ -75,6 +75,27 @@ impl From<storage::Error> for Error {
     }
 }
 
+/// What `sunreye backup --help` prints: the flags [`Options::backup`] reads.
+pub const BACKUP_USAGE: &str = "\
+Usage: sunreye backup <file> [--secrets] [--data-dir <dir>]
+
+Backs up the store and car bodies, the core running or not.
+
+Flags:
+  --secrets          include the connections' secrets
+  --data-dir <dir>   the data directory; SUNREYE_DATA_DIR
+";
+
+/// What `sunreye restore --help` prints: the flags [`Options::restore`] reads.
+pub const RESTORE_USAGE: &str = "\
+Usage: sunreye restore <file> [--data-dir <dir>]
+
+Replaces the store and car bodies while the core is stopped.
+
+Flags:
+  --data-dir <dir>   the data directory; SUNREYE_DATA_DIR
+";
+
 /// What `sunreye backup` and `sunreye restore` take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
@@ -220,10 +241,7 @@ pub fn restore(file: &Path, data_dir: &Path) -> Result<(), Error> {
         remove(&suffixed(&store, suffix))?;
     }
     std::fs::rename(&staged, &store)?;
-    match std::fs::remove_dir_all(data_dir.join(CARS)) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
-        _ => {}
-    }
+    remove_dir(&data_dir.join(CARS))?;
     std::fs::rename(&cars, data_dir.join(CARS))?;
     Ok(())
 }
@@ -333,10 +351,7 @@ fn body(name: &str) -> bool {
 /// Unpacks the backup `file`: its store to `store`, its car bodies into `cars`.
 fn unpack(file: &Path, store: &Path, cars: &Path) -> Result<(), Error> {
     remove(store)?;
-    match std::fs::remove_dir_all(cars) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
-        _ => {}
-    }
+    remove_dir(cars)?;
     std::fs::create_dir(cars)?;
     let mut found = false;
     tar::read(io::BufReader::new(File::open(file)?), |name, body| {
@@ -394,6 +409,14 @@ fn private_file(path: &Path) -> io::Result<File> {
 
 fn remove(path: &Path) -> io::Result<()> {
     match std::fs::remove_file(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+/// Removes the directory `path` and all it holds; one already gone is fine.
+fn remove_dir(path: &Path) -> io::Result<()> {
+    match std::fs::remove_dir_all(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         other => other,
     }

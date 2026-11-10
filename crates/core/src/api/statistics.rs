@@ -17,6 +17,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use super::history::DAY_SPAN;
 use super::{Code, Problem, ProblemDetails};
+use crate::api::internal;
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Aggregate, Reader, Rollup, Tier};
 
@@ -31,10 +32,6 @@ const PATH: Problem = Problem {
 const RANGE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::HistoryRange,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 pub type StatisticsState = State<(Reader, watch::Receiver<TimeZone>)>;
@@ -131,7 +128,7 @@ pub async fn statistics(
             first.1.start..last.1.end,
         )
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     let points = periods
         .iter()
         .filter_map(|(date, bounds)| {

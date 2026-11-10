@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
 
 ## Context
 
@@ -8,11 +8,11 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 ## Decision
 
-**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition`, is not logged and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
+**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition` and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
 
 **Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run once the unlock was sent, even after a failure, each once; a failing one is named counting on from the recipe's last step. An acknowledged unlock or relock is not a write of the setting. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live). A device behind a broker has no endpoint task: its recipe publishes through its broker's client, and reads its preconditions, its value before writing and its read-back from the retained state that client's messages left (ADR 10). A publish that cannot be sent, the client being disconnected, is a failing step.
 
-**Outcomes.** `verified`, `mismatch`, `unknown`, `partial`, and `unchanged` when the current value already equals the request and nothing was written.
+**Outcomes.** `verified`, `mismatch`, `unknown`, `partial`, `unchanged` when the current value already equals the request and nothing was written, and `refused` when a check refused it before the device.
 
 - A recipe declares what to read back, which may differ from the register written. Silent ignores make read-back mandatory; a lint rejects a recipe without one unless the setting is declared write-only, which always reports `unknown`.
 - A timeout is `unknown`, followed by a read-back attempt. It is never retried automatically, because a retry can double-apply a relative setting. A mismatch is shown as an error and not retried.
@@ -21,11 +21,11 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
 
-**Audit.** Every attempt that reaches the device is appended to a write log: time, device, setting, value before, value requested, value read back, outcome, failing step (counted from 1), actor, and `via`: the trusted device key a remote write came through (ADR 16). It is kept long and not rolled up.
+**Audit.** Every attempt at a known device is appended to a write log, refusals included: time, device, setting, value before, value requested, value read back, outcome, failing step (counted from 1), actor, and `via`: the trusted device key a remote write came through (ADR 16). A refusal is logged with outcome `refused` and the code it was refused with, before and after empty; it writes nothing and does not start the interval. It is kept long and not rolled up.
 
-**Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped. The interval runs from the setting's last attempt with any outcome but `unchanged`; a clock stepped back still waits.
+**Wear.** A profile declares each register's class (`persistent` or `volatile`) and a minimum interval between writes. A write whose value equals the current one is skipped. The interval runs from the setting's last attempt with any outcome but `unchanged` or `refused`; a clock stepped back still waits.
 
-**Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set. They live in their own table, unencrypted: a key on the same disk would add nothing. The data directory is mode 0700 and the database and its WAL 0600, set again at every start. A backup excludes them unless the admin includes them explicitly; a write whose unlock names a secret its connection does not hold is refused as `secret.missing`, and one whose secret is not a decimal code of the step's type as `secret.value`; neither touches the device or is logged, and a restored connection without its secret reports `secret.missing`.
+**Secrets.** Unlock codes, passwords and tokens belong to a connection. A recipe refers to them by name. They never appear in a profile, a log, the write log or an API response; the API reports only set or not set. They live in their own table, unencrypted: a key on the same disk would add nothing. The data directory is mode 0700 and the database and its WAL 0600, set again at every start. A backup excludes them unless the admin includes them explicitly; a write whose unlock names a secret its connection does not hold is refused as `secret.missing`, and one whose secret is not a decimal code of the step's type as `secret.value`; neither touches the device, both are logged as refusals without the secret, and a restored connection without its secret reports `secret.missing`.
 
 **Switch.** Each device has a `writes enabled` switch, off by default, turned on by an admin per device. A community profile, and an official setting not verified on hardware, also needs each setting enabled (ADR 5, 8).
 
@@ -47,6 +47,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - **Automatic retry on timeout.** Rejected for the double-apply risk.
 - **Rollback.** Rejected: the core cannot know a half-configured device's state.
 - **Writing without read-back.** Rejected: several vendors ignore bad writes without an error.
+- **Logging only attempts that reach the device** (amendment of 2026-11-09). Reverted: a controller hammering a refused setting, or a precondition that keeps failing, is exactly what the audit must show. Refusals carry their code and never start the interval, so logging them costs no write.
 
 ## Consequences
 

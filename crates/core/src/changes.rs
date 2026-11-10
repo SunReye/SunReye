@@ -8,20 +8,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Problem, ProblemDetails, internal};
 use crate::storage::Database;
-
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 
 /// What a change is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -192,6 +186,6 @@ fn read(db: &Connection) -> rusqlite::Result<Vec<LoggedChange>> {
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn changes(State(changes): State<Changes>) -> Result<Json<Log>, Problem> {
-    let changes = changes.database.run(read).await.map_err(|_| INTERNAL)?;
+    let changes = changes.database.run(read).await.map_err(internal)?;
     Ok(Json(Log { changes }))
 }

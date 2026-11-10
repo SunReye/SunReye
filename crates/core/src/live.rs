@@ -2,7 +2,7 @@
 //! per second with a change.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -98,7 +98,7 @@ impl Live {
     /// The snapshot as JSON, and every later delta, each serialised once for all clients.
     #[must_use]
     pub fn subscribe(&self) -> (String, broadcast::Receiver<Arc<str>>) {
-        let shared = self.0.shared.lock().unwrap_or_else(PoisonError::into_inner);
+        let shared = crate::lock(&self.0.shared);
         let snapshot = Changes {
             fresh: shared.values.iter().map(|(&k, v)| (k, v.value)).collect(),
             stale: shared
@@ -117,7 +117,7 @@ impl Live {
     /// The latest value of `series` from `device`, as of the last tick; `None` once stale.
     #[must_use]
     pub fn value(&self, device: DeviceId, series: &Series) -> Option<f64> {
-        let shared = self.0.shared.lock().unwrap_or_else(PoisonError::into_inner);
+        let shared = crate::lock(&self.0.shared);
         shared
             .values
             .iter()
@@ -154,7 +154,7 @@ async fn run(bus: Bus, shared: Arc<Mutex<Shared>>) {
 /// Folds `pending` into the values and sends the series whose value changed or that were read
 /// again after going stale, and the series that went stale.
 fn publish(bus: &Bus, shared: &Mutex<Shared>, pending: &mut BTreeMap<Key, Latest>) {
-    let mut shared = shared.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut shared = crate::lock(shared);
     let mut changes = Changes::default();
     for (key, value) in std::mem::take(pending) {
         let old = shared.values.insert(key, value);

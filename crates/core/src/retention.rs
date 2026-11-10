@@ -13,7 +13,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::Retention;
 
@@ -24,10 +24,6 @@ const BODY: Problem = Problem {
 const VALUE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::RetentionValue,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 const DAY: Duration = Duration::from_hours(24);
 
@@ -88,6 +84,6 @@ async fn set_retention(
             Box::new(move |db| changes::append(db, &entry)),
         )
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     Ok(Json(kept))
 }

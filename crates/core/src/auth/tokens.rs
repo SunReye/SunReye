@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::sessions::{hex, random_token};
-use super::{Auth, BODY, INTERNAL, PATH};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use super::{Auth, BODY, PATH};
+use crate::api::{Clock, Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 
 const ACTOR: &str = "admin";
@@ -114,7 +114,7 @@ pub async fn list_tokens(State((auth, _)): TokensState) -> Result<Json<Tokens>, 
                 .collect()
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     Ok(Json(Tokens { tokens }))
 }
 
@@ -140,7 +140,7 @@ pub async fn add_token(
         .database
         .run(move |db| insert(db, name, scope, &stored, changed))
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     auth.tokens().insert(hash, (described.id, scope));
     Ok((StatusCode::CREATED, Json(Created { described, token })))
 }
@@ -228,7 +228,7 @@ pub async fn remove_token(
             Ok(true)
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     if !removed {
         return Err(NONE);
     }

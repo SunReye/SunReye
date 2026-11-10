@@ -5,10 +5,13 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-/// Read first, so a profile of another schema is refused by its number, not by its fields.
+/// Read first, so a profile of another schema, or one needing a capability this build lacks, is
+/// refused by that, not by a field this build does not know.
 #[derive(Deserialize)]
 pub struct Header {
     pub schema: u32,
+    #[serde(default)]
+    pub requires: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -29,12 +32,15 @@ pub struct ProfileDoc {
     pub inverter: Option<crate::Inverter>,
     /// Fields that tell the device from any other on the bus; the setup scan proposes the profile
     /// only when each holds one of its values.
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<IdentifyDoc>>"))]
-    pub identify: Vec<IdentifyDoc>,
+    #[cfg_attr(test, ts(optional))]
+    pub identify: Option<Vec<IdentifyDoc>>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<Vec<SettingDoc>>"))]
     pub settings: Vec<SettingDoc>,
+    /// Each poll group's cadence in seconds, by name: a whole number of default cycles.
+    #[serde(rename = "pollGroups")]
+    #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
+    pub poll_groups: Option<BTreeMap<String, u64>>,
 }
 
 /// A register the identify probe reads, at scale 1, and the values that identify the device, such
@@ -79,9 +85,56 @@ pub struct SettingDoc {
     pub write_only: bool,
     /// Its write was checked on real hardware (ADR 5); an unverified setting needs the admin's
     /// enable (ADR 8).
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub verified: bool,
+    #[cfg_attr(test, ts(optional))]
+    pub verified: Option<bool>,
+    /// What makes it a live-control point (ADR 5, 7): only a controller under a lease writes it.
+    pub live_control: Option<LiveControlDoc>,
+}
+
+/// An expiring setpoint's revert time, a heartbeat register's interval and the device's fallback
+/// value; times in seconds.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "LiveControl", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct LiveControlDoc {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub revert: Option<u64>,
+    pub heartbeat: Option<HeartbeatDoc>,
+    pub fallback: Option<f64>,
+}
+
+/// A register written every `interval` seconds to keep a setpoint alive.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Heartbeat"))]
+#[serde(deny_unknown_fields)]
+pub struct HeartbeatDoc {
+    pub register: u16,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub interval: u64,
+}
+
+impl SettingDoc {
+    /// The capabilities its optional fields use.
+    pub fn capabilities(&self) -> impl Iterator<Item = &'static str> {
+        let text = self.name.is_some() || self.unit.is_some() || self.labels.is_some();
+        let read_back = self.read_back.as_ref();
+        let quantities = self
+            .recipe
+            .iter()
+            .any(|step| matches!(step, StepDoc::Precondition(p) if p.quantity.is_some()))
+            || read_back.is_some_and(|r| r.quantity.is_some());
+        [
+            text.then_some("setting-text"),
+            self.verified.map(|_| "verified"),
+            self.live_control.as_ref().map(|_| "live-control"),
+            read_back.and_then(|r| r.mask).map(|_| "rmw"),
+            quantities.then_some("publish"),
+        ]
+        .into_iter()
+        .flatten()
+    }
 }
 
 #[derive(Deserialize)]
@@ -288,6 +341,9 @@ pub struct QuantityDoc {
     /// The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
     /// the quantisation step, and none for a counter or enum.
     pub deadband: Option<f64>,
+    /// The poll group it is read in; the default cadence when left out.
+    #[serde(rename = "pollGroup")]
+    pub poll_group: Option<String>,
 }
 
 impl QuantityDoc {
@@ -303,8 +359,11 @@ impl QuantityDoc {
             self.topic.as_ref().map(|_| "mqtt"),
             self.get.as_ref().map(|_| "http"),
             self.scale_factor.map(|_| "scale-factor"),
+            self.resolution.map(|_| "resolution"),
+            self.texts.as_ref().map(|_| "text-enum"),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
+            self.poll_group.as_ref().map(|_| "poll-group"),
         ]
         .into_iter()
         .flatten()

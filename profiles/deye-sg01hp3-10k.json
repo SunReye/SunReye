@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3-10k",
   "name": "SUN-10K-SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "requires": [
     "modbus",
     "u16",
@@ -11,7 +11,10 @@
     "u32",
     "compute",
     "write",
-    "snapshot-toggle"
+    "snapshot-toggle",
+    "identify",
+    "ac-rating",
+    "setting-text"
   ],
   "identify": [
     {

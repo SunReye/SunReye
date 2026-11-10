@@ -103,19 +103,21 @@ test("a profile the core would refuse fails the build with the loader's reason",
   expect(refused).toContain("schema 2 is not supported");
 });
 
-test("the build reports each profile's version and the loader's warnings", async () => {
+test("a profile using a capability it does not require fails the build", async () => {
   const dir = await mkdtemp(join(tmpdir(), "profiles-"));
   const wide = { key: "energy", role: "grid.energy", register: 20, type: "u32" };
 
   await source(dir, { ...meter, quantities: [...meter.quantities, wide] });
 
-  expect(await buildProfiles(dir, dir)).toEqual([
-    {
-      id: "meter",
-      version: "1.0.0",
-      warnings: ["`requires` lacks `u32`, which the profile uses"],
-    },
-  ]);
+  let refused = "";
+
+  try {
+    await buildProfiles(dir, dir);
+  } catch (error) {
+    refused = String(error);
+  }
+
+  expect(refused).toContain("`requires` lacks `u32`, which the profile uses");
 });
 
 test("a directory relative to the working directory builds", async () => {

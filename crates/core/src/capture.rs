@@ -10,6 +10,18 @@ use crate::bus::DeviceId;
 use crate::endpoint::{self, Device, TIMEOUT};
 use crate::transport::{Capture, Client, Endpoint, Error, Exchange};
 
+/// What `sunreye capture --help` prints: the flags [`Options::parse`] reads.
+pub const USAGE: &str = "\
+Usage: sunreye capture --endpoint <transport>://<host>:<port> --unit <id> --profile <id>
+
+Polls one device read-only and prints the capture to stdout.
+
+Flags:
+  --endpoint <url>   modbus-tcp://, rtu-over-tcp:// or solarman-v5://host:port
+  --unit <id>        the unit id, 0 to 255
+  --profile <id>     a bundled profile's id
+";
+
 /// What `sunreye capture` records.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {

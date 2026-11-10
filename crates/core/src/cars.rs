@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::auth::hex;
 
 /// The largest upload, in bytes.
@@ -49,10 +49,6 @@ const NONE: Problem = Problem {
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The car bodies feature module: the directory they are kept in.
@@ -112,8 +108,8 @@ async fn upload(
         std::fs::rename(part, path)
     })
     .await
-    .map_err(|_| INTERNAL)?
-    .map_err(|_| INTERNAL)?;
+    .map_err(internal)?
+    .map_err(internal)?;
     Ok((StatusCode::CREATED, Json(Uploaded { id })))
 }
 

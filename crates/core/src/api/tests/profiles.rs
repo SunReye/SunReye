@@ -175,7 +175,7 @@ fn boxed(version: &str, max: u16) -> Vec<u8> {
     };
     json!({
         "schema": 1, "id": "box", "name": "box", "manufacturer": "test", "version": version,
-        "requires": ["modbus", "u16", "write"], "quantities": [],
+        "requires": sunreye_profile::CAPABILITIES, "quantities": [],
         "settings": [setting("a", max, true), setting("b", 100, true), setting("c", max, false)],
     })
     .to_string()

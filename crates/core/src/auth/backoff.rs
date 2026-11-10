@@ -22,13 +22,19 @@ struct Failures {
 pub struct Backoff(HashMap<IpAddr, Failures>);
 
 impl Backoff {
-    /// The wait left before `address` may try again, if any.
-    pub fn wait(&self, address: IpAddr, now: Instant) -> Option<Duration> {
-        let until = self.0.get(&address)?.until;
-        (until > now).then(|| until - now)
+    /// Hears an attempt from `address` unless it must wait; one heard counts as failed until it
+    /// succeeds, in the same step, so concurrent guesses wait too. Answers the wait left, if any.
+    pub fn attempt(&mut self, address: IpAddr, now: Instant) -> Option<Duration> {
+        if let Some(until) = self.0.get(&address).map(|f| f.until)
+            && until > now
+        {
+            return Some(until - now);
+        }
+        self.fail(address, now);
+        None
     }
 
-    pub fn fail(&mut self, address: IpAddr, now: Instant) {
+    fn fail(&mut self, address: IpAddr, now: Instant) {
         // A failure count outlives its lockout by the longest wait, then is forgotten.
         self.0
             .retain(|_, f| now.saturating_duration_since(f.until) < LONGEST);
@@ -53,3 +59,6 @@ impl Backoff {
         self.0.remove(&address);
     }
 }
+
+#[cfg(test)]
+mod tests;

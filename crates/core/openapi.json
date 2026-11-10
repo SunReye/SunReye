@@ -1004,6 +1004,13 @@
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
           },
+          "refusal": {
+            "description": "The code an attempt was refused with before the device; `null` unless `refused`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "requested": {
             "format": "double",
             "type": "number"
@@ -2004,7 +2011,8 @@
           "mismatch",
           "unknown",
           "partial",
-          "unchanged"
+          "unchanged",
+          "refused"
         ],
         "type": "string"
       },
@@ -2876,8 +2884,9 @@
             "description": "The profile schemas this core loads."
           },
           "transports": {
+            "description": "The transports a connection can be configured with.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Transport"
             },
             "type": "array"
           },

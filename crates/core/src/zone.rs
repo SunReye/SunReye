@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Error, Zones};
 
@@ -21,10 +21,6 @@ const BODY: Problem = Problem {
 const VALUE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::ZoneValue,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The plant timezone.
@@ -85,7 +81,7 @@ async fn set_timezone(
             if matches!(e, Error::Zone) {
                 VALUE
             } else {
-                INTERNAL
+                internal(e)
             }
         })?;
     Ok(Json(zone))

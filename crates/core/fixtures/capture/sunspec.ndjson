@@ -1,4 +1,4 @@
-{"capture":1,"profile":"sunspec","version":"1.0.0","framing":"tcp","unit":1}
+{"capture":1,"profile":"sunspec","version":"1.0.1","framing":"tcp","unit":1}
 {"tx":"00010000000601039c400002"}
 {"rx":["00010000000701","030453756e53"]}
 {"tx":"00020000000601039c420002"}

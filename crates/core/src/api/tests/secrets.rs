@@ -1,7 +1,7 @@
 //! Secrets (ADR 7): a recipe unlocks with a secret its connection names; the value reaches the
 //! device and nothing else: no response, no change log, no write log, no log line.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::http::StatusCode;
@@ -22,7 +22,7 @@ const CODE: &str = "52817";
 fn locked() -> Vec<u8> {
     json!({
         "schema": 1, "id": "locked", "name": "locked", "manufacturer": "test",
-        "version": "1.0.0", "requires": ["modbus", "u16", "write", "unlock"], "quantities": [],
+        "version": "1.0.0", "requires": sunreye_profile::CAPABILITIES, "quantities": [],
         "settings": [{
             "key": "current", "type": "u16", "range": { "min": 0, "max": 350 },
             "minInterval": 60, "readBack": { "register": 108 }, "verified": true,
@@ -131,10 +131,7 @@ pub(super) struct Lines(pub(super) Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for Lines {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .extend_from_slice(buf);
+        crate::lock(&self.0).extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -204,7 +201,7 @@ async fn a_write_whose_secret_is_not_set_is_refused_before_the_device() {
     );
     assert_eq!(plant.received(), []);
     let (_, log) = plant.ask("GET", "/api/v1/writes", &Value::Null).await;
-    assert_eq!(log["writes"], json!([]));
+    assert_eq!(log["writes"][0]["refusal"], "secret.missing");
 }
 
 #[tokio::test]

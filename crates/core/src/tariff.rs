@@ -20,17 +20,13 @@ use axum::http::StatusCode;
 use jiff::tz::TimeZone;
 use tokio::sync::watch;
 
-use crate::api::{Code, Problem};
+use crate::api::{Code, Problem, internal};
 use crate::bus::{Bus, SeriesId};
 use crate::changes;
 use crate::storage::{Database, Declarer, Error, Reader, Retention, Rewriter, Storage};
 
 pub use device::{DEVICE, TariffDevice};
 
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 const PAST: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::TariffPast,
@@ -233,7 +229,7 @@ impl Tariffs {
             .database
             .run(move |db| store::insert(db, version, changed, changes::Action::Change))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.changed.send_replace(());
         Ok(stored)
     }

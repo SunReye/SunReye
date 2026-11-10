@@ -342,3 +342,73 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
         );
     }
 }
+
+/// Register 500 every cycle, register 600 in a poll group every second cycle.
+const GROUPED: &str = r#"{
+    "schema": 1, "id": "grouped", "name": "case", "manufacturer": "test", "version": "1.0.0",
+    "requires": ["modbus", "u16", "poll-group"], "pollGroups": { "slow": 10 },
+    "quantities": [
+        { "key": "fast", "role": "extra.fast", "register": 500, "type": "u16" },
+        { "key": "slow", "role": "extra.slow", "register": 600, "type": "u16", "pollGroup": "slow" }
+    ]
+}"#;
+
+/// Modbus TCP transaction `tx` reading one register at `start`, answered with `value`.
+fn single(tx: u16, start: u16, value: u16) -> [Exchange; 2] {
+    let [t0, t1] = tx.to_be_bytes();
+    let [s0, s1] = start.to_be_bytes();
+    let [v0, v1] = value.to_be_bytes();
+    [
+        Exchange::Request(vec![t0, t1, 0, 0, 0, 6, 1, 3, s0, s1, 0, 1]),
+        Exchange::Reply(vec![vec![t0, t1, 0, 0, 0, 5, 1, 3, 2, v0, v1]]),
+    ]
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_poll_group_is_read_at_its_own_cadence_and_its_readings_say_so() {
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let exchanges = [
+        single(1, 500, 1),
+        single(2, 600, 2),
+        single(3, 500, 3),
+        single(4, 500, 4),
+        single(5, 600, 5),
+    ]
+    .concat();
+    let device = Device {
+        id: DeviceId(7),
+        unit: 1,
+        profile: Arc::new(Profile::load(GROUPED).unwrap()),
+    };
+    let _task = spawn(
+        Endpoint::Sim(Capture {
+            framing: Framing::Tcp,
+            exchanges,
+        }),
+        vec![device],
+        bus.clone(),
+    );
+
+    let mut got = Vec::new();
+    for _ in 0..5 {
+        let reading = readings.recv().await.unwrap();
+        got.push((
+            bus.series(reading.series).unwrap().role,
+            reading.value,
+            reading.cadence.as_secs(),
+        ));
+    }
+
+    let seen = |role: &str, value, cadence| (role.to_owned(), value, cadence);
+    assert_eq!(
+        got,
+        [
+            seen("extra.fast", 1.0, 5),
+            seen("extra.slow", 2.0, 10),
+            seen("extra.fast", 3.0, 5),
+            seen("extra.fast", 4.0, 5),
+            seen("extra.slow", 5.0, 10),
+        ]
+    );
+}

@@ -6,9 +6,9 @@ use axum::http::StatusCode;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 
+use super::Tariffs;
 use super::device::DEVICE;
-use super::{INTERNAL, Tariffs};
-use crate::api::{Code, Problem};
+use crate::api::{Code, Problem, internal};
 use crate::bus::Series;
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Aggregate, Error, Tier};
@@ -59,7 +59,7 @@ impl Tariffs {
         self.database
             .run(move |db| write(db, amount, changed))
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 }
 

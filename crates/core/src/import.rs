@@ -87,6 +87,17 @@ impl From<rusqlite::Error> for Error {
     }
 }
 
+/// What `sunreye import --help` prints: the flags [`Options::parse`] reads.
+pub const USAGE: &str = "\
+Usage: sunreye import <export> --device <v3 slug>=<v5 device id>... [--data-dir <dir>]
+
+Imports a v3 export into the store while the core is stopped.
+
+Flags:
+  --device <slug>=<id>   a v3 device and the v5 device it becomes; repeat for each
+  --data-dir <dir>       the data directory; SUNREYE_DATA_DIR
+";
+
 /// What `sunreye import` imports, and where.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {

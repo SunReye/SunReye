@@ -120,7 +120,7 @@ impl Plant {
         json!({
             "time": "2026-11-09T00:00:00Z", "device": self.id, "setting": CHARGE,
             "before": before, "requested": requested, "after": after, "outcome": outcome,
-            "failedStep": null, "actor": "admin", "via": null,
+            "failedStep": null, "actor": "admin", "via": null, "refusal": null,
         })
     }
 }
@@ -138,7 +138,9 @@ async fn a_write_is_refused_until_the_devices_writes_are_on() {
         refused(StatusCode::CONFLICT, "setting.writes-off")
     );
     assert_eq!(plant.received(), []);
-    assert_eq!(plant.log().await, json!([]));
+    let mut entry = plant.entry(&Value::Null, 50.0, &Value::Null, "refused");
+    entry["refusal"] = json!("setting.writes-off");
+    assert_eq!(plant.log().await, json!([entry]));
 
     let on = json!({ "name": "Deye", "connection": 1, "profile": "deye-sg05lp3", "unit": 1,
         "writes": true });
@@ -186,7 +188,26 @@ async fn a_write_is_refused_before_the_device_unless_it_is_known_writable_and_in
     );
 
     assert_eq!(plant.received(), []);
-    assert_eq!(plant.log().await, json!([]));
+    // Each refusal of a known device is logged; the unknown device and the bad body are not.
+    let log = plant.log().await;
+    let refusals: Vec<_> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["outcome"].as_str(), e["refusal"].as_str()))
+        .collect();
+    let value = (Some("refused"), Some("setting.value"));
+    assert_eq!(
+        refusals,
+        [
+            (Some("refused"), Some("setting.none")),
+            (Some("refused"), Some("setting.read-only")),
+            value,
+            value,
+            value,
+            value,
+        ]
+    );
 }
 
 #[tokio::test]
@@ -233,6 +254,11 @@ async fn a_write_inside_the_minimum_interval_is_refused() {
         plant.write(CHARGE, json!(60)).await,
         refused(StatusCode::TOO_MANY_REQUESTS, "setting.interval")
     );
+    let log = plant.log().await;
+    assert_eq!(
+        (&log[1]["outcome"], &log[1]["refusal"]),
+        (&json!("refused"), &json!("setting.interval"))
+    );
     // Another setting keeps its own interval.
     assert_eq!(plant.write("work_mode", json!(1)).await.0, StatusCode::OK);
 
@@ -266,6 +292,33 @@ async fn a_timeout_is_unknown_and_never_retried() {
     entry["failedStep"] = json!(1);
     assert_eq!(written, entry);
     assert_eq!(plant.received().len(), 1);
+}
+
+#[tokio::test]
+async fn a_write_whose_request_is_dropped_mid_recipe_is_still_logged_and_starts_the_interval() {
+    let mut plant = Plant::new(Writes::Silent, true).await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
+    let request = send("PUT", &uri, &json!({ "value": 50 }));
+
+    // The request is dropped once the write reached the device, mid-recipe.
+    tokio::select! {
+        _ = plant.core.ask(&plant.set_cookie, request) => panic!("answered before the device"),
+        write = plant.device.writes.recv() => assert!(write.is_some()),
+    }
+
+    let mut log = json!([]);
+    for _ in 0..1000 {
+        log = plant.log().await;
+        if log != json!([]) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(log[0]["outcome"], "unknown");
+    assert_eq!(
+        plant.write(CHARGE, json!(60)).await,
+        refused(StatusCode::TOO_MANY_REQUESTS, "setting.interval")
+    );
 }
 
 #[tokio::test]
@@ -442,7 +495,9 @@ async fn releasing_the_lock_with_no_stored_value_is_refused_before_the_device() 
         refused(StatusCode::UNPROCESSABLE_ENTITY, "setting.value")
     );
     assert_eq!(plant.received(), []);
-    assert_eq!(plant.log().await, json!([]));
+    let log = plant.log().await;
+    assert_eq!(log[0]["refusal"], "setting.no-snapshot");
+    assert_eq!(log[1]["refusal"], "setting.value");
 }
 
 #[tokio::test]

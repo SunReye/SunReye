@@ -220,7 +220,11 @@ async fn boost_is_refused_unless_the_mode_is_pv_or_minpv_and_nothing_is_publishe
         (StatusCode::CONFLICT, &json!("setting.precondition"))
     );
     assert_eq!(loadpoint.published(), []);
-    assert_eq!(loadpoint.log().await, json!([]));
+    let log = loadpoint.log().await;
+    assert_eq!(
+        (&log[0]["outcome"], &log[0]["refusal"]),
+        (&json!("refused"), &json!("setting.precondition"))
+    );
 }
 
 #[tokio::test]

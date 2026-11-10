@@ -477,6 +477,23 @@ async fn failed_logins_back_off_exponentially_per_client_address() {
 }
 
 #[tokio::test]
+async fn concurrent_guesses_from_one_address_get_one_hearing() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::set_up(&dir.path().join("core.sqlite")).await;
+
+    let guesses = (0..8).map(|_| core.send(post("/api/v1/login", "wrong")));
+    let mut refusals = Vec::new();
+    for response in futures_util::future::join_all(guesses).await {
+        refusals.push(refusal(response).await.1);
+    }
+
+    refusals.sort();
+    let mut expected = vec!["auth.backoff".to_owned(); 7];
+    expected.push("auth.credentials".to_owned());
+    assert_eq!(refusals, expected);
+}
+
+#[tokio::test]
 async fn a_password_over_72_bytes_is_refused_never_truncated() {
     let dir = tempfile::tempdir().unwrap();
     let core = Core::open(&dir.path().join("core.sqlite")).await;
@@ -573,8 +590,8 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
         serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "schema": { "min": 1, "max": 1 },
-            "capabilities": ["modbus", "mqtt", "http", "sunspec", "u16", "i16", "u32", "acc32", "scale-factor", "compute", "deadband", "write", "write-block", "rmw", "activate", "precondition", "unlock", "delay", "snapshot-toggle", "publish"],
-            "transports": ["modbus-tcp", "rtu-over-tcp", "solarman-v5", "sim"],
+            "capabilities": ["modbus", "mqtt", "http", "sunspec", "u16", "i16", "u32", "acc32", "scale-factor", "compute", "deadband", "write", "write-block", "rmw", "activate", "precondition", "unlock", "delay", "snapshot-toggle", "publish", "identify", "ac-rating", "resolution", "text-enum", "setting-text", "verified", "poll-group", "live-control"],
+            "transports": ["modbus-tcp", "rtu-over-tcp", "solarman-v5", "mqtt", "http"],
             "devices": {},
         })
     );

@@ -16,7 +16,7 @@ use crate::transport::{Capture, Endpoint, Exchange};
 fn job(setting: &Value, value: f64) -> (Device, Job) {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "write"], "quantities": [], "settings": [setting],
+        "requires": sunreye_profile::CAPABILITIES, "quantities": [], "settings": [setting],
     });
     let profile = Arc::new(Profile::load(&doc.to_string()).unwrap());
     let setting = profile.setting("current").unwrap().clone();

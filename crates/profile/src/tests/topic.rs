@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 fn doc(quantities: &Value) -> Value {
     json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["mqtt", "compute"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     })
 }
 
@@ -117,13 +117,14 @@ fn a_profile_reads_through_one_binding() {
 }
 
 #[test]
-fn a_topic_without_mqtt_in_requires_is_a_warning() {
+fn a_topic_without_mqtt_in_requires_is_refused() {
     let mut unrequired = doc(&json!([power()]));
-    unrequired["requires"] = json!([]);
-    let p = Profile::load(&unrequired.to_string()).unwrap();
+    unrequired["requires"] = super::all_but("mqtt");
     assert_eq!(
-        p.warnings(),
-        ["`requires` lacks `mqtt`, which the profile uses"]
+        Profile::load(&unrequired.to_string())
+            .unwrap_err()
+            .to_string(),
+        "`requires` lacks `mqtt`, which the profile uses"
     );
 }
 
@@ -149,7 +150,7 @@ fn only_a_topic_maps_texts() {
         "enum": { "on": 1 } }]);
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u16"], "quantities": registered,
+        "requires": super::all(), "quantities": registered,
     });
     assert!(matches!(
         Profile::load(&doc.to_string()),

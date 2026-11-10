@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{Clock, Code, Problem, ProblemDetails};
+use crate::api::internal;
 use crate::bus::{DeviceId, Series};
 use crate::storage::{self, Aggregate, ChangePoint, Reader, Rollup};
 
@@ -43,10 +44,6 @@ const RANGE: Problem = Problem {
 const COUNTER: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::HistoryCounter,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 #[derive(Deserialize, IntoParams)]
@@ -180,7 +177,7 @@ impl Read {
             .reader
             .rollups(self.device, &self.series, tier, start..range.end)
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         let mut points = rolled(&rollups, range.start)?;
         let tail = floor(range.start, HOUR).max(rollups.last().map_or(UNIX_EPOCH, |r| r.end));
         let end = range.end.min(self.now);
@@ -199,7 +196,7 @@ impl Read {
         self.reader
             .history(self.device, &self.series, range.start, range.end)
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 }
 

@@ -10,7 +10,7 @@ pub use access::{Access, access};
 pub(crate) use sessions::hex;
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{Grant, IDLE, Sessions};
@@ -75,10 +75,6 @@ const PATH: Problem = Problem {
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The admin's password, set on the first run.
@@ -176,22 +172,15 @@ impl Auth {
     }
 
     fn admin(&self) -> Option<String> {
-        self.0
-            .admin
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.0.admin).clone()
     }
 
     fn backoff(&self) -> std::sync::MutexGuard<'_, Backoff> {
-        self.0
-            .backoff
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.backoff)
     }
 
     fn tokens(&self) -> std::sync::MutexGuard<'_, Known> {
-        self.0.tokens.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.tokens)
     }
 
     /// Who signed `headers`: a bearer token, else a live session, whose use renews it.
@@ -210,10 +199,7 @@ impl Auth {
     }
 
     fn sessions(&self) -> std::sync::MutexGuard<'_, Sessions> {
-        self.0
-            .sessions
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.sessions)
     }
 }
 
@@ -252,11 +238,11 @@ async fn setup(
             )
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     if inserted == 0 {
         return Err(CONFIGURED);
     }
-    *auth.0.admin.lock().unwrap_or_else(PoisonError::into_inner) = Some(hash);
+    *crate::lock(&auth.0.admin) = Some(hash);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -299,30 +285,25 @@ async fn login(
         return Err(SETUP.into());
     }
     let address = client.ip();
-    let wait = auth.backoff().wait(address, Instant::now());
+    let wait = auth.backoff().attempt(address, Instant::now());
     if let Some(wait) = wait {
         // Rounding up never invites an early attempt.
         return Err(Refused::Wait(
             wait.as_secs() + u64::from(wait.subsec_nanos() > 0),
         ));
     }
-    // Counted as failed until it succeeds, so concurrent guesses wait too.
-    auth.backoff().fail(address, Instant::now());
-    let (grant, hash) = match name {
-        None => (Grant::Admin, auth.admin().ok_or(SETUP)?),
+    let found = match name {
+        None => Some((Grant::Admin, auth.admin().ok_or(SETUP)?)),
         Some(name) => auth
             .0
             .database
             .run(move |db| viewers::find(db, &name))
             .await
-            .map_err(|_| INTERNAL)?
-            .map(|(id, hash)| (Grant::Viewer(id), hash))
-            .ok_or(CREDENTIALS)?,
+            .map_err(internal)?
+            .map(|(id, hash)| (Grant::Viewer(id), hash)),
     };
-    let matches = blocking(move || bcrypt::verify(password, &hash)).await?;
-    if !matches {
-        return Err(CREDENTIALS.into());
-    }
+    let verify = |password: String, hash: String| blocking(move || bcrypt::verify(password, &hash));
+    let grant = verified(found, password, verify).await?;
     auth.backoff().succeed(address);
     let token = auth
         .sessions()
@@ -419,6 +400,30 @@ fn with_cookie(token: &str, tls: bool, mut response: Response) -> Response {
     response
 }
 
+/// A bcrypt hash at [`COST`] of no password anyone knows: an unknown viewer's name is verified
+/// against it, so it takes as long as a wrong password.
+const DUMMY: &str = "$2b$12$/seIJLMGBZCTdIVr.NVTEOv7p49Hj1tf52kUZxQHzSZTN.oRa51gu";
+
+/// The grant `found` signs in with `password`, verified by `verify`; with nothing found it still
+/// verifies, against [`DUMMY`], and is refused.
+async fn verified<F>(
+    found: Option<(Grant, String)>,
+    password: String,
+    verify: impl FnOnce(String, String) -> F,
+) -> Result<Grant, Problem>
+where
+    F: Future<Output = Result<bool, Problem>>,
+{
+    let (grant, hash) = match found {
+        Some((grant, hash)) => (Some(grant), hash),
+        None => (None, DUMMY.to_owned()),
+    };
+    match (verify(password, hash).await?, grant) {
+        (true, Some(grant)) => Ok(grant),
+        _ => Err(CREDENTIALS),
+    }
+}
+
 fn hash(password: &str) -> bcrypt::BcryptResult<String> {
     bcrypt::hash(password, COST)
 }
@@ -429,8 +434,8 @@ async fn blocking<T: Send + 'static>(
 ) -> Result<T, Problem> {
     tokio::task::spawn_blocking(job)
         .await
-        .map_err(|_| INTERNAL)?
-        .map_err(|_| INTERNAL)
+        .map_err(internal)?
+        .map_err(internal)
 }
 
 #[cfg(test)]

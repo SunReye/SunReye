@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 fn doc(settings: &Value) -> Value {
     json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "write"], "quantities": [], "settings": settings,
+        "requires": super::all(), "quantities": [], "settings": settings,
     })
 }
 
@@ -158,10 +158,15 @@ fn with_recipe(recipe: &Value) -> Value {
     setting
 }
 
-fn warnings(settings: &Value, requires: &Value) -> Vec<String> {
+/// Why the profile is refused with `requires` in place of every capability.
+fn unrequired(settings: &Value, requires: &Value) -> Vec<String> {
     let mut doc = doc(settings);
     doc["requires"] = requires.clone();
-    Profile::load(&doc.to_string()).unwrap().warnings().to_vec()
+    Profile::load(&doc.to_string())
+        .err()
+        .map(|e| e.to_string())
+        .into_iter()
+        .collect()
 }
 
 #[test]
@@ -182,10 +187,7 @@ fn a_delay_waits_between_steps_for_at_most_ten_seconds() {
         "a delay is at most 10000 ms: the device's polls wait for it"
     );
     assert_eq!(
-        warnings(
-            &json!([with_recipe(&recipe)]),
-            &json!(["modbus", "u16", "write"])
-        ),
+        unrequired(&json!([with_recipe(&recipe)]), &super::all_but("delay")),
         ["`requires` lacks `delay`, which the profile uses"]
     );
 }
@@ -218,7 +220,10 @@ fn a_block_write_carries_the_value_once_among_fixed_words() {
         "a block is at most 123 registers"
     );
     assert_eq!(
-        warnings(&json!([with_recipe(&recipe)]), &json!(["modbus", "u16"])),
+        unrequired(
+            &json!([with_recipe(&recipe)]),
+            &super::all_but("write-block")
+        ),
         ["`requires` lacks `write-block`, which the profile uses"]
     );
 }
@@ -261,7 +266,7 @@ fn a_masked_write_takes_only_values_its_field_holds_and_reads_back_through_its_m
     assert_eq!(mode.encode(3.0), Some(vec![3]));
     assert_eq!(wide.setting("current").unwrap().encode(4.0), None);
     assert_eq!(
-        warnings(&json!([self::mode()]), &json!(["modbus", "u16"])),
+        unrequired(&json!([self::mode()]), &super::all_but("rmw")),
         ["`requires` lacks `rmw`, which the profile uses"]
     );
 }
@@ -313,10 +318,7 @@ fn activation_comes_last_after_the_value_is_written() {
         ]
     );
     assert_eq!(
-        warnings(
-            &json!([with_recipe(&recipe)]),
-            &json!(["modbus", "u16", "write"])
-        ),
+        unrequired(&json!([with_recipe(&recipe)]), &super::all_but("activate")),
         ["`requires` lacks `activate`, which the profile uses"]
     );
     let early = json!([
@@ -365,9 +367,9 @@ fn preconditions_come_before_every_other_step() {
         ]
     );
     assert_eq!(
-        warnings(
+        unrequired(
             &json!([with_recipe(&recipe)]),
-            &json!(["modbus", "u16", "write"])
+            &super::all_but("precondition")
         ),
         ["`requires` lacks `precondition`, which the profile uses"]
     );
@@ -425,14 +427,8 @@ fn an_unlock_writes_a_named_secret_and_declares_its_relock() {
         assert_eq!(unlock.encode(code), None, "{code:?}");
     }
     assert_eq!(
-        warnings(
-            &json!([with_recipe(&recipe)]),
-            &json!(["modbus", "u16", "write", "precondition"])
-        ),
-        [
-            "`requires` lacks `u32`, which the profile uses",
-            "`requires` lacks `unlock`, which the profile uses"
-        ]
+        unrequired(&json!([with_recipe(&recipe)]), &super::all_but("unlock")),
+        ["`requires` lacks `unlock`, which the profile uses"]
     );
 }
 
@@ -479,9 +475,9 @@ fn a_snapshot_toggle_locks_another_setting_at_a_value_it_takes() {
     assert_eq!((toggle.target.as_str(), toggle.locked), ("current", 0.0));
     assert!(profile.setting("current").unwrap().toggle().is_none());
     assert_eq!(
-        warnings(
+        unrequired(
             &json!([current(), lock()]),
-            &json!(["modbus", "u16", "write"])
+            &super::all_but("snapshot-toggle")
         ),
         ["`requires` lacks `snapshot-toggle`, which the profile uses"]
     );

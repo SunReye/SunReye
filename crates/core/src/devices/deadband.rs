@@ -9,9 +9,8 @@ use serde::Serialize;
 use sunreye_profile::{DeadbandRefusal, Profile, Quantity};
 use utoipa::ToSchema;
 
-use super::{Refusal, entry};
+use super::{ChangeRefusal, entry};
 use crate::changes::{self, Action, Subject};
-use crate::endpoint::CADENCE;
 use crate::storage::Policy;
 
 /// Overrides of one device, by role.
@@ -42,7 +41,8 @@ pub struct RoleDeadband {
 
 /// How `quantity` is stored, with the deadband `overrides` give its role.
 pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Policy {
-    let mut policy = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), CADENCE);
+    let cadence = quantity.cadence();
+    let mut policy = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), cadence);
     policy.deadband = resolve(quantity, overrides).deadband.unwrap_or(0.0);
     policy
 }
@@ -60,7 +60,13 @@ pub fn deadbands(profile: &Profile, overrides: &Overrides) -> Vec<RoleDeadband> 
 }
 
 fn resolve(quantity: &Quantity, overrides: &Overrides) -> RoleDeadband {
-    let default = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), CADENCE).deadband;
+    let default = Policy::new(
+        quantity.kind(),
+        quantity.unit(),
+        quantity.step(),
+        quantity.cadence(),
+    )
+    .deadband;
     let (deadband, source) = if let Some(&deadband) = overrides.get(&quantity.role) {
         (Some(deadband), DeadbandSource::Override)
     } else if let Some(deadband) = quantity.deadband() {
@@ -78,13 +84,13 @@ fn resolve(quantity: &Quantity, overrides: &Overrides) -> RoleDeadband {
 }
 
 /// Whether `deadband` may override `role` of `profile`: every quantity of the role admits it.
-pub fn check(profile: &Profile, role: &str, deadband: f64) -> Result<(), Refusal> {
+pub fn check(profile: &Profile, role: &str, deadband: f64) -> Result<(), ChangeRefusal> {
     let mut quantities = profile.quantities().iter().filter(|q| q.role == role);
-    let first = quantities.next().ok_or(Refusal::DeadbandRole)?;
+    let first = quantities.next().ok_or(ChangeRefusal::DeadbandRole)?;
     for quantity in std::iter::once(first).chain(quantities) {
         quantity.admits(deadband).map_err(|refusal| match refusal {
-            DeadbandRefusal::Kind => Refusal::DeadbandKind,
-            DeadbandRefusal::Step => Refusal::DeadbandStep,
+            DeadbandRefusal::Kind => ChangeRefusal::DeadbandKind,
+            DeadbandRefusal::Step => ChangeRefusal::DeadbandStep,
         })?;
     }
     Ok(())

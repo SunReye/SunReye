@@ -1,6 +1,6 @@
 # 5. Device profile format
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
 
 ## Context
 
@@ -12,9 +12,10 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Schema versions.** A profile declares one integer `schema` and the capabilities it `requires`. The core and the WASM report the supported range and a capability list (bindings, decoders, step kinds).
 
-- A new binding, decoder or step kind is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
-- A core that lacks a required capability refuses the profile with an error naming it.
-- A profile that uses a capability without listing it in `requires` loads with a warning: an older core lacking it would refuse the profile without naming it.
+- A new binding, decoder, step kind or optional field is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
+- A core that lacks a required capability refuses the profile with an error naming it. It checks `requires` before any other field, so a field it does not know is never reported as malformed when its capability is listed.
+- A profile that uses a capability without listing it in `requires` is refused: an older core lacking it would refuse the profile as malformed, without naming it.
+- Optional fields admitted after the first settings recipe each need a capability: `identify` (`identify`), an inverter's `acRating` (`ac-rating`), a quantity's `resolution` (`resolution`), `enum` (`text-enum`), `topic` (`mqtt`), `get` and `json` (`http`), `model` (`sunspec`), `scaleFactor` (`scale-factor`) and `deadband` (`deadband`), a setting's `name`, `unit` and `labels` (`setting-text`) and `verified` (`verified`), a `readBack` `mask` (`rmw`), a `readBack` or `precondition` `quantity` (`publish`), and `pollGroups` with a quantity's `pollGroup` (`poll-group`, ADR 6).
 - The current and previous schema load. The previous one yields deprecation warnings that name the replacement and the removal version.
 - A removed schema is refused with an error naming the migration. Removal happens only in a major release. `migrate` rewrites an old profile.
 - Warnings are data from the WASM, so the CLI, the core log and the SPA show identical text.
@@ -38,7 +39,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Read plan.** Compiled once at load, or at connect for SunSpec, where it covers every model of the chain but the headers. Contiguous registers coalesce into blocks of at most 120. A framing-specific gap tolerance merges blocks when a round trip costs more than the wasted registers: `tcp` 0, `rtu-over-tcp` 0, `solarman-v5` 32 (measured on one stick in v4: about 199 ms per read busy, 2 ms per register). The inputs of a computed role are read in one transaction for a single device snapshot. A merged block refused with Modbus exception 2 is split, a SunSpec block into its models' registers, and the split remembered. A flat list of decode operations runs per poll with no allocation. The same plan, at the `tcp` tolerance, serves the CLI's "decode this dump": a dump is a list of runs, `{ "start", "words" }`, and a block it does not cover in full decodes as unanswered, as a failed read does.
 
-**Write side.** A setting is a recipe (ADR 7). It declares its type and scale, a `range` or its enumerated `values` (one is required, so no write is unbounded), a minimum interval, and a `readBack` register or quantity, or `writeOnly`. It may carry what the settings screen shows: a `name`, a `unit` of its scaled value (a role unit of ADR 4, written as its symbol, such as `A`), and `labels`, a text for each of its `values` keyed by the value; a label for a value it does not take is refused. They are part of its declaration, so a changed label switches an enabled setting off like any other change (ADR 8). Admitted step kinds: `write` (function code 6 or 16), `write-block`, `rmw` (mask), `unlock` with `finally` steps, `precondition`, `activate` (values, then an enable field last), `delay`, `snapshot-toggle` (the owner's Deye discharge lock) and `mqtt` publish. Live-control points are declared now: expiring setpoints with their revert time, heartbeat registers with their interval, and fallback values (SunSpec 123 and 704, Sungrow 13080, SolarEdge F310, Victron's 60 s rule). Only a controller under a lease may use them (ADR 7); the lint rejects them as admin settings. Not admitted yet: a commit register with status (SolarEdge only), function codes 5 and 23, SML, Speedwire.
+**Write side.** A setting is a recipe (ADR 7). It declares its type and scale, a `range` or its enumerated `values` (one is required, so no write is unbounded), a minimum interval, and a `readBack` register or quantity, or `writeOnly`. It may carry what the settings screen shows: a `name`, a `unit` of its scaled value (a role unit of ADR 4, written as its symbol, such as `A`), and `labels`, a text for each of its `values` keyed by the value; a label for a value it does not take is refused. They are part of its declaration, so a changed label switches an enabled setting off like any other change (ADR 8). Admitted step kinds: `write` (function code 6 or 16), `write-block`, `rmw` (mask), `unlock` with `finally` steps, `precondition`, `activate` (values, then an enable field last), `delay`, `snapshot-toggle` (the owner's Deye discharge lock) and `mqtt` publish. Live-control points are declared now: expiring setpoints with their revert time, heartbeat registers with their interval, and fallback values (SunSpec 123 and 704, Sungrow 13080, SolarEdge F310, Victron's 60 s rule). Only a controller under a lease may use them (ADR 7); the lint rejects them as admin settings. A setting declares one in `liveControl` (capability `live-control`): its `revert` time and its `heartbeat` `register` and `interval`, in seconds, and the `fallback` value the device drops to. It needs a revert time or a heartbeat, since revert 0 is an ordinary setting; a heartbeat's interval is above 0 s and below the revert time, and the fallback is a value the setting takes. Not admitted yet: a commit register with status (SolarEdge only), function codes 5 and 23, SML, Speedwire.
 
 Each step kind is its own capability (`write-block` for `writeBlock`).
 
@@ -80,6 +81,7 @@ Each step kind is its own capability (`write-block` for `writeBlock`).
 - **TypeScript owns the format, Rust loads it (v4).** Rejected: two decoders drift.
 - **A shipped Rust binary as the SDK.** Rejected: autocomplete and editor types come for free from TypeScript, and a WASM module loads in-process.
 - **The core embeds a WASM runtime.** Rejected: the core is native; WASM is only for the CLI.
+- **An unrequired capability as a warning** (until 2026-11-10). Rejected: unknown fields are refused, so an older core met a profile that forgot one as malformed, and the warning let it ship.
 
 ## Consequences
 
