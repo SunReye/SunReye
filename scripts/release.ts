@@ -171,6 +171,9 @@ export function buildx(repo: string, registry: Registry): Builder {
 
   return {
     binaries: (version, dist) => exportBinaries(on, version, dist),
+    smoke: async () => {
+      await run(["bun", "run", "image:smoke"], repo);
+    },
     images: (version, push) => buildImages(on, version, push),
     close: async () => {
       if (created !== undefined) await run(["docker", "buildx", "rm", "--force", name]);

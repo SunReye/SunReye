@@ -58,7 +58,7 @@ interface Fake {
   readonly calls: () => readonly string[];
 }
 
-function fake(build: Omit<Build, "arch"> = {}): Fake {
+function fake(build: Omit<Build, "arch"> = {}, smokeFails = false): Fake {
   const calls: string[] = [];
 
   const record = (call: string): void => {
@@ -87,13 +87,19 @@ function fake(build: Omit<Build, "arch"> = {}): Fake {
     return Promise.resolve(push ? [`registry.invalid/sunreye-v5:${version}@${digest}`] : []);
   };
 
+  const smoke = (): Promise<void> => {
+    record("smoke");
+
+    return smokeFails ? Promise.reject(new Error("image smoke failed")) : Promise.resolve();
+  };
+
   const close = (): Promise<void> => {
     record("close");
 
     return Promise.resolve();
   };
 
-  return { builder: { binaries, images, close }, record, calls: () => calls };
+  return { builder: { binaries, smoke, images, close }, record, calls: () => calls };
 }
 
 interface Key {
@@ -175,7 +181,7 @@ test("without a release key every artifact is built and checked, then nothing is
     addon: addonFile(at, "sunreye_v5/config.yaml"),
   }).toEqual({
     reason: "Error: no release key yet: publishing waits for the key ceremony",
-    calls: ["binaries", "build images", "close"],
+    calls: ["binaries", "smoke", "build images", "close"],
     dist: [
       "CHANGELOG.md",
       "sunreye-5.0.0-linux-amd64",
@@ -201,6 +207,18 @@ test("a binary that is not static is refused before anything is signed", async (
   });
 });
 
+test("a failed image smoke publishes nothing", async () => {
+  const at = await stand();
+  const stub = fake({}, true);
+  const reason = await refusal(releaseOf(at, stub, testKey()));
+
+  expect({ reason, calls: stub.calls(), tags: tags(at.remote) }).toEqual({
+    reason: "Error: image smoke failed",
+    calls: ["binaries", "smoke", "close"],
+    tags: "",
+  });
+});
+
 test("a signing key that is not the release key publishes nothing", async () => {
   const at = await stand();
   const stub = fake();
@@ -208,7 +226,7 @@ test("a signing key that is not the release key publishes nothing", async () => 
 
   expect({ reason: await refusal(run), calls: stub.calls(), tags: tags(at.remote) }).toEqual({
     reason: "Error: the signing key is not the release key",
-    calls: ["binaries", "build images", "close"],
+    calls: ["binaries", "smoke", "build images", "close"],
     tags: "",
   });
 });
@@ -247,6 +265,7 @@ test("a release signs every artifact, tags, publishes, and offers the add-on las
     images: `registry.invalid/sunreye-v5:5.0.0@sha256:${"0".repeat(64)}\n`,
     calls: [
       "binaries",
+      "smoke",
       "build images",
       "push images",
       `publish v5.0.0: ${artifacts.map((name) => join(dist, name)).join(" ")}`,
