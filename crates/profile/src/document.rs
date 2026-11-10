@@ -87,6 +87,32 @@ pub struct SettingDoc {
     /// enable (ADR 8).
     #[cfg_attr(test, ts(optional))]
     pub verified: Option<bool>,
+    /// What makes it a live-control point (ADR 5, 7): only a controller under a lease writes it.
+    pub live_control: Option<LiveControlDoc>,
+}
+
+/// An expiring setpoint's revert time, a heartbeat register's interval and the device's fallback
+/// value; times in seconds.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "LiveControl", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct LiveControlDoc {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub revert: Option<u64>,
+    pub heartbeat: Option<HeartbeatDoc>,
+    pub fallback: Option<f64>,
+}
+
+/// A register written every `interval` seconds to keep a setpoint alive.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Heartbeat"))]
+#[serde(deny_unknown_fields)]
+pub struct HeartbeatDoc {
+    pub register: u16,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub interval: u64,
 }
 
 impl SettingDoc {
@@ -102,6 +128,7 @@ impl SettingDoc {
         [
             text.then_some("setting-text"),
             self.verified.map(|_| "verified"),
+            self.live_control.as_ref().map(|_| "live-control"),
             read_back.and_then(|r| r.mask).map(|_| "rmw"),
             quantities.then_some("publish"),
         ]

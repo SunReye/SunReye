@@ -6,6 +6,7 @@ mod deye;
 mod http;
 mod identify;
 mod lint;
+mod live_control;
 mod load;
 mod plan;
 mod poll_group;

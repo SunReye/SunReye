@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -116,7 +116,15 @@ minInterval: number, recipe: Array<Step>, readBack?: ReadBack, writeOnly?: boole
  * Its write was checked on real hardware (ADR 5); an unverified setting needs the admin's
  * enable (ADR 8).
  */
-verified?: boolean, };
+verified?: boolean, 
+/**
+ * What makes it a live-control point (ADR 5, 7): only a controller under a lease writes it.
+ */
+liveControl?: LiveControl, };
+
+export type LiveControl = { revert: number, heartbeat?: Heartbeat, fallback?: number, };
+
+export type Heartbeat = { register: number, interval: number, };
 
 export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C";
 
