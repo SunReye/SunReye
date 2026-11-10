@@ -5,6 +5,8 @@
 
   let { core, ondone }: { core: Core; ondone: (devices: readonly Device[]) => void } = $props();
 
+  const uid = $props.id();
+
   /**
    * A device the scan proposed, as the admin confirms and names it; or, at an endpoint no profile
    * recognised, one the admin enters by hand.
@@ -23,6 +25,16 @@
   /** Where a manual entry starts: the usual Modbus unit. */
   const UNIT = 1;
 
+  /** The Modbus framings an endpoint entered by hand may speak. */
+  const TRANSPORTS: readonly Found["transport"][] = ["modbus-tcp", "rtu-over-tcp", "solarman-v5"];
+
+  /** An endpoint as the admin enters it by hand. */
+  let entered = $state<{ host: string; port: number; transport: Found["transport"] }>({
+    host: "",
+    port: 502,
+    transport: "modbus-tcp",
+  });
+
   let subnet = $state("");
 
   let scanning = $state(false);
@@ -32,6 +44,9 @@
   let choices = $state<Choice[]>([]);
 
   let refused = $state.raw<Problem>();
+
+  // The keys of the devices the admin entered at an endpoint of their own.
+  const entries = new Set<string>();
 
   // What an earlier, partly refused add created, so adding again does not create it twice.
   const connections = new Map<string, Connection>();
@@ -45,14 +60,10 @@
     refused = "problem" in report ? report : undefined;
     found = "problem" in report ? undefined : report.endpoints;
 
-    choices = (found ?? []).flatMap((endpoint): Choice[] => {
+    const scanned = (found ?? []).flatMap((endpoint): Choice[] => {
       const at = `${endpoint.host}:${endpoint.port}`;
 
-      if (endpoint.devices.length === 0) {
-        const manual = { profile: "", unit: UNIT, name: "" };
-
-        return [{ key: `${at}/manual`, found: endpoint, manual: true, chosen: false, ...manual }];
-      }
+      if (endpoint.devices.length === 0) return [manual(endpoint, false)];
 
       return endpoint.devices.map(({ profile, unit }) => ({
         key: `${at}/${profile}/${unit}`,
@@ -64,6 +75,28 @@
         name: profile,
       }));
     });
+
+    // An endpoint entered by hand stays as entered, with the transport the admin chose.
+    choices = [
+      ...choices.filter((choice) => entries.has(choice.key)),
+      ...scanned.filter((choice) => !entries.has(choice.key)),
+    ];
+  }
+
+  /** A device the admin enters by hand at `endpoint`. */
+  function manual(endpoint: Found, chosen: boolean): Choice {
+    const key = `${endpoint.host}:${endpoint.port}/manual`;
+
+    return { key, found: endpoint, manual: true, chosen, profile: "", unit: UNIT, name: "" };
+  }
+
+  /** Lists the endpoint the admin entered, chosen, for its device to be entered by hand. */
+  function enter(): void {
+    const endpoint: Found = { ...entered, host: entered.host.trim(), devices: [] };
+    const choice = manual(endpoint, true);
+
+    entries.add(choice.key);
+    choices = [...choices.filter((c) => c.key !== choice.key), choice];
   }
 
   /** Adds each chosen endpoint as a connection, then its chosen devices behind it. */
@@ -122,10 +155,30 @@
 {#if scanning}
   <p role="status">{m.devices_scanning()}</p>
 {/if}
-{#if found !== undefined}
-  {#if found.length === 0}
-    <p>{m.devices_none()}</p>
-  {/if}
+<fieldset>
+  <legend>{m.devices_endpoint()}</legend>
+  <label>
+    {m.devices_endpoint_host()}
+    <input required bind:value={entered.host} />
+  </label>
+  <label>
+    {m.devices_endpoint_port()}
+    <input type="number" min="1" max="65535" required bind:value={entered.port} />
+  </label>
+  <label for="{uid}-transport">{m.devices_endpoint_transport()}</label>
+  <select id="{uid}-transport" bind:value={entered.transport}>
+    {#each TRANSPORTS as transport (transport)}
+      <option value={transport}>{transport}</option>
+    {/each}
+  </select>
+  <button type="button" disabled={entered.host.trim() === ""} onclick={enter}>
+    {m.devices_endpoint_add()}
+  </button>
+</fieldset>
+{#if found?.length === 0}
+  <p>{m.devices_none()}</p>
+{/if}
+{#if choices.length > 0}
   <ul>
     {#each choices as choice (choice.key)}
       {@const at = { host: choice.found.host, port: choice.found.port }}
