@@ -1,6 +1,6 @@
 # 6. Transports and polling
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
 
 ## Context
 
@@ -25,6 +25,7 @@ A request handler must never touch a device. Endpoints are fragile: a Solarman s
 - **Concurrent requests per endpoint.** Rejected: interleaving breaks single-slot sticks, and the speed-up is worth nothing next to the 50 to 200 ms a device takes per request.
 - **A task per device.** Rejected: devices behind one gateway share its limits.
 - **A task per connection, unit id on the connection.** Rejected: two connections to one Solarman stick would interleave on its single slot.
+- **Scan probes the first planned register** (the decision until 2026-11-09). Replaced by identify probes: any Modbus device answers its first register, so the scan could tell a unit answers but not which profile fits, and a Deye family shares one map across models whose limits differ. A probe reads registers that name the device type and rating, so the scan proposes a profile, not just a unit. Probing every profile's full read plan was rejected as well: dozens of requests per unit flood a slow stick, and a register that answers proves nothing about what it means.
 
 ## Consequences
 
