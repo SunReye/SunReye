@@ -955,17 +955,9 @@ impl Devices {
     /// Brings the broker clients in line with the broker connections: one whose connection or
     /// devices changed is replaced, so it subscribes afresh and receives the retained state.
     async fn restart_brokers(&self) -> Result<(), storage::Error> {
-        let mut wanted = self.database.run(store::brokers).await?;
-        self.keep_brokers(&mut wanted);
-        for brokering in wanted {
-            let devices: Vec<endpoint::Device> = brokering
-                .devices
-                .iter()
-                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
-                .collect();
-            for device in &devices {
-                self.declare(device.id, &device.profile).await?;
-            }
+        let wanted = self.database.run(store::brokers).await?;
+        for brokering in reconcile(&self.brokers, wanted, |b| &b.brokering) {
+            let devices = self.started(&brokering.devices).await?;
             let also = match brokering.publish {
                 Some(Publish { discovery: true }) => vec![publisher::BIRTH.to_owned()],
                 _ => Vec::new(),
@@ -989,8 +981,7 @@ impl Devices {
                     &self.bus,
                 )
             });
-            let mut brokers = crate::lock(&self.brokers);
-            brokers.push(Brokered {
+            crate::lock(&self.brokers).push(Brokered {
                 brokering,
                 subscriber,
                 _publisher: publisher,
@@ -1002,37 +993,28 @@ impl Devices {
     /// Brings the HTTP host tasks in line with the HTTP connections: one whose connection or
     /// devices changed is replaced.
     async fn restart_hosts(&self) -> Result<(), storage::Error> {
-        let mut wanted = self.database.run(store::hosts).await?;
-        self.keep_hosts(&mut wanted);
-        for hosting in wanted {
-            let devices: Vec<endpoint::Device> = hosting
-                .devices
-                .iter()
-                .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
-                .collect();
-            for device in &devices {
-                self.declare(device.id, &device.profile).await?;
-            }
+        let wanted = self.database.run(store::hosts).await?;
+        for hosting in reconcile(&self.hosts, wanted, |(h, _)| h) {
+            let devices = self.started(&hosting.devices).await?;
             let task = http::spawn(hosting.host.clone(), devices, self.bus.clone());
             crate::lock(&self.hosts).push((hosting, task));
         }
         Ok(())
     }
 
-    /// Stops the host tasks no longer `wanted`, and leaves in `wanted` those still to start.
-    fn keep_hosts(&self, wanted: &mut Vec<Hosting>) {
-        let mut hosts = crate::lock(&self.hosts);
-        hosts.retain(|(h, _)| wanted.contains(h));
-        wanted.retain(|w| !hosts.iter().any(|(h, _)| h == w));
-        drop(hosts);
-    }
-
-    /// Stops the clients no longer `wanted`, and leaves in `wanted` those still to start.
-    fn keep_brokers(&self, wanted: &mut Vec<Brokering>) {
-        let mut brokers = crate::lock(&self.brokers);
-        brokers.retain(|b| wanted.contains(&b.brokering));
-        wanted.retain(|w| !brokers.iter().any(|b| b.brokering == *w));
-        drop(brokers);
+    /// The known devices of `devices`, each id, address and profile, declared to storage.
+    async fn started(
+        &self,
+        devices: &[(u32, u8, String)],
+    ) -> Result<Vec<endpoint::Device>, storage::Error> {
+        let devices: Vec<endpoint::Device> = devices
+            .iter()
+            .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
+            .collect();
+        for device in &devices {
+            self.declare(device.id, &device.profile).await?;
+        }
+        Ok(devices)
     }
 
     /// The devices with their profiles; one whose profile is not known is skipped.
@@ -1075,6 +1057,20 @@ impl Devices {
         }
         Ok(())
     }
+}
+
+/// Stops each of `running` whose configuration, as `of` reads it, is no longer `wanted`, and
+/// answers the configurations still to start.
+fn reconcile<R, W: PartialEq>(
+    running: &std::sync::Mutex<Vec<R>>,
+    mut wanted: Vec<W>,
+    of: impl Fn(&R) -> &W,
+) -> Vec<W> {
+    let mut running = crate::lock(running);
+    running.retain(|r| wanted.contains(of(r)));
+    wanted.retain(|w| !running.iter().any(|r| of(r) == w));
+    drop(running);
+    wanted
 }
 
 /// The devices grouped by endpoint, in order of their first device.
