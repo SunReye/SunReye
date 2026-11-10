@@ -1,6 +1,6 @@
 # 13. Packaging and release
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-10)
 
 ## Context
 
@@ -35,7 +35,8 @@ v4 shipped images, an add-on, an appliance and an Android build, each with its o
 Passed locally on 2026-11-09, so the add-on ships with ingress (`packaging/addon/config.yaml`). `bun run image:smoke` ran both images on amd64 behind nginx standing in for Supervisor: it strips `/api/hassio_ingress/<token>`, sets `X-Ingress-Path`, binds its source to a stand-in Supervisor address and does not buffer. Verified there:
 
 - Chromium loads the SPA at the prefix with every asset answered, and its live SSE stream answers 200 through the prefix with no refusal shown.
-- The add-on image acts as admin for the stand-in address with the header, before any setup; the same header from another address gets `401`. The core image trusts no one and its screen asks for setup.
+- The add-on image acts as admin for the stand-in address with the header, before any setup; the same header from another address gets `401`. The core image trusts no one and its screen asks for the admin password.
+- The SPA opens on first-run setup until the admin has a device (ADR 11), and only the dashboard streams live values, so the smoke adds a device through the prefix first: an endpoint that answers nothing, writes off. A problem the core answers, as `layout.none` before any scene, counts as reaching it through the prefix.
 - The add-on image carries `SUNREYE_INGRESS=172.30.32.2`.
 
 Pending a check by the owner on a real Supervisor, which nothing here can reproduce:
