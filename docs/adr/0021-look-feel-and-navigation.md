@@ -72,7 +72,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - data loads in `load`, so pages never flash a skeleton.
 
 **Motion.**
-- **Source:** kbase's motion vocabulary, from `theme.css`, the motion parts of `app.css`, `animated-number` and `active-indicator`, plus these curves:
+- **Source:** kbase's motion vocabulary, from `theme.css`, the motion parts of `app.css`, `animated-number`, and `active-indicator` (kbase `8e6db9e`), plus these curves:
   - *Movement between two resting places* (drill-in, rail, sheet travel, camera flight, chart range change): `--motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)`, 280–350 ms.
   - *Entrances:* kbase's ease-out, 180–250 ms.
   - *Exits:* ease-in, about 150 ms, shorter than their entrance.
