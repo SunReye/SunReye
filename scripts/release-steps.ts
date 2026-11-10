@@ -1,6 +1,6 @@
-// `bun run release` (ADR 13) step by step: plan, build and check every artifact, refuse without
-// the release key (ADR 8), sign, then publish: images, tag, release, and the add-on last, so
-// Supervisor never offers a version whose image is missing.
+// `bun run release` (ADR 13) step by step: plan, build and check every artifact, smoke the images,
+// refuse without the release key (ADR 8), sign, then publish: images, tag, release, and the add-on
+// last, so Supervisor never offers a version whose image is missing.
 
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -20,6 +20,8 @@ export interface Binary {
 export interface Builder {
   /** Writes `sunreye-<version>-linux-<arch>` into `dist` for each architecture. */
   readonly binaries: (version: string, dist: string) => Promise<readonly Binary[]>;
+  /** Runs the images behind the ingress stand-in (`bun run image:smoke`); throws on a failure. */
+  readonly smoke: () => Promise<void>;
   /** Builds every image; when `push`, pushes them and returns each as `name:tag@digest`. */
   readonly images: (version: string, push: boolean) => Promise<readonly string[]>;
   readonly close: () => Promise<void>;
@@ -145,6 +147,8 @@ async function build(run: Release, plan: Plan): Promise<string[]> {
   const binaries = await builder.binaries(plan.version, dist);
 
   await checkBinaries(binaries);
+  // Nothing else runs the image smoke, so a release is where it cannot rot unnoticed (ADR 13).
+  await builder.smoke();
   await builder.images(plan.version, false);
 
   return ["CHANGELOG.md", ...binaries.map(({ path }) => basename(path)), "sunreye.service"];

@@ -82,14 +82,19 @@ async function direct(path: string): Promise<number> {
 }
 
 interface Screen {
-  /** Requests the page made that failed or were answered 400 or above, live values aside. */
+  /**
+   * Requests the page made that failed or were answered 400 or above, live values aside. A problem
+   * the core answered reached it through the prefix: `layout.none` before any scene (ADR 20).
+   */
   readonly failed: readonly string[];
   /** `null` when the screen never asked for live values. */
   readonly liveStatus: number | null;
   readonly alert: string | null;
+  /** Whether the first-run setup asks for the admin password. */
+  readonly asksPassword: boolean;
 }
 
-/** Opens the SPA under the ingress prefix and waits for its live stream to answer. */
+/** Opens the SPA under the ingress prefix and waits for its live stream to answer, if it asks. */
 async function screen(): Promise<Screen> {
   const browser = await chromium.launch();
 
@@ -99,7 +104,9 @@ async function screen(): Promise<Screen> {
 
     page.on("requestfailed", (request) => failed.push(`${request.url()} failed`));
     page.on("response", (response) => {
-      if (response.status() >= 400 && !response.url().endsWith("/api/v1/live"))
+      const problem = response.headers()["content-type"] === "application/problem+json";
+
+      if (response.status() >= 400 && !problem && !response.url().endsWith("/api/v1/live"))
         failed.push(`${response.url()} ${response.status()}`);
     });
 
@@ -122,10 +129,49 @@ async function screen(): Promise<Screen> {
       () => null,
     );
 
-    return { failed, liveStatus, alert: text };
+    const asksPassword = (await page.locator("input[autocomplete=new-password]").count()) === 2;
+
+    return { failed, liveStatus, alert: text, asksPassword };
   } finally {
     await browser.close();
   }
+}
+
+function isCreated(value: unknown): value is { readonly id: number } {
+  return value instanceof Object && "id" in value && Number.isInteger(value.id);
+}
+
+/** A connection or device as `POST` takes it: flat fields only. */
+type Fields = Readonly<Record<string, string | number>>;
+
+/** POSTs `body` as JSON to the core through the ingress prefix; returns the created id. */
+async function create(path: string, body: Fields): Promise<number | null> {
+  const response = await fetch(`http://${PROXY}${PREFIX}/api/v1/${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status !== 201) return null;
+
+  const created: unknown = await response.json();
+
+  return isCreated(created) ? created.id : null;
+}
+
+/**
+ * The SPA opens on first-run setup until the admin has a device (ADR 11), and only the dashboard
+ * streams live values. Its endpoint (port 9, discard) answers nothing, and writes stay off.
+ */
+async function addDevice(): Promise<boolean> {
+  const endpoint = { name: "smoke", transport: "modbus-tcp", host: "127.0.0.1", port: 9 };
+  const connection = await create("connections", endpoint);
+
+  if (connection === null) return false;
+
+  const device = { name: "smoke", connection, profile: "deye-sg05lp3", unit: 1 };
+
+  return (await create("devices", device)) !== null;
 }
 
 async function addonChecks(): Promise<Check[]> {
@@ -142,6 +188,7 @@ async function addonChecks(): Promise<Check[]> {
 
   try {
     const session = await fetch(`http://${PROXY}${PREFIX}/api/v1/session`);
+    const added = await addDevice();
     const shown = await screen();
 
     for (const failure of shown.failed) process.stderr.write(`${failure}\n`);
@@ -152,6 +199,7 @@ async function addonChecks(): Promise<Check[]> {
         env.includes("SUNREYE_INGRESS=172.30.32.2"),
       ],
       ["an ingress request from the Supervisor acts as admin", session.status === 204],
+      ["the Supervisor adds a device through the prefix", added],
       [
         "the ingress header from another address needs the login",
         (await direct("/api/v1/session")) === 401,
@@ -169,12 +217,13 @@ async function coreChecks(): Promise<Check[]> {
   const id = await startCore("core", []);
 
   try {
+    const session = await fetch(`http://${PROXY}${PREFIX}/api/v1/session`);
     const shown = await screen();
 
     return [
       ["the core image runs the skeleton", (await direct("/openapi.json")) === 200],
-      ["the core image trusts no ingress", shown.liveStatus === 401],
-      ["its screen asks for setup", shown.alert === "auth.setup"],
+      ["the core image trusts no ingress", session.status === 401],
+      ["its screen asks for setup", shown.asksPassword],
     ];
   } finally {
     await run(["docker", "rm", "-f", id]);
