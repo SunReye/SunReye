@@ -21,7 +21,7 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
 
@@ -38,10 +38,6 @@ const QUERY: Problem = Problem {
 const NONE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
     code: Code::LayoutNone,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 /// °C: the cell temperature strings are sized for (ADR 20).
 const COLD: f64 = -10.0;
@@ -306,7 +302,7 @@ impl Layouts {
             .database
             .run(move |db| insert_module_type(db, &stored))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(ModuleType { id, datasheet })
     }
 
@@ -323,7 +319,7 @@ impl Layouts {
         changed: SystemTime,
     ) -> Result<Version, Problem> {
         if let Some(scene) = &scene {
-            let module_types = self.module_types().await.map_err(|_| INTERNAL)?;
+            let module_types = self.module_types().await.map_err(internal)?;
             scene::derive(scene, &mut strings, &module_types)?;
         }
         for draft in &strings {
@@ -333,7 +329,7 @@ impl Layouts {
             .database
             .run(move |db| insert_version(db, applies_from, strings, scene, changed))
             .await
-            .map_err(|_| INTERNAL)??;
+            .map_err(internal)??;
         self.changed.send_replace(());
         Ok(stored)
     }
@@ -630,7 +626,7 @@ struct ModuleTypes {
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn list_module_types(State((layouts, _)): LayoutState) -> Result<Json<ModuleTypes>, Problem> {
-    let module_types = layouts.module_types().await.map_err(|_| INTERNAL)?;
+    let module_types = layouts.module_types().await.map_err(internal)?;
     Ok(Json(ModuleTypes { module_types }))
 }
 
@@ -699,9 +695,9 @@ async fn layout(
 ) -> Result<Json<Layout>, Problem> {
     let Query(At { at }) = at.map_err(|_| QUERY)?;
     let at = at.as_deref().map_or_else(|| Ok(clock()), instant)?;
-    let versions = layouts.versions().await.map_err(|_| INTERNAL)?;
+    let versions = layouts.versions().await.map_err(internal)?;
     let version = in_force(&versions, at).ok_or(NONE)?;
-    let warnings = layouts.warnings(version).await.map_err(|_| INTERNAL)?;
+    let warnings = layouts.warnings(version).await.map_err(internal)?;
     Ok(Json(Layout::new(version, warnings)))
 }
 
@@ -731,7 +727,7 @@ async fn change_layout(
     let version = layouts
         .change(applies_from, change.strings, change.scene, clock())
         .await?;
-    let warnings = layouts.warnings(&version).await.map_err(|_| INTERNAL)?;
+    let warnings = layouts.warnings(&version).await.map_err(internal)?;
     Ok(Json(Layout::new(&version, warnings)))
 }
 

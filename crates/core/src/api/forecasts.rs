@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{Code, Problem, ProblemDetails};
+use crate::api::internal;
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Forecast, Reader};
 
@@ -27,10 +28,6 @@ const PATH: Problem = Problem {
 const RANGE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::ForecastRange,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 #[derive(Deserialize, IntoParams)]
@@ -88,7 +85,7 @@ pub async fn forecasts(
     let stored = reader
         .forecasts(DeviceId(device), &series, from, to)
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     let points = latest(&stored, before);
     if points.len() > MAX_POINTS {
         return Err(RANGE);

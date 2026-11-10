@@ -14,8 +14,8 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use super::{COUNTERS, INTERNAL, Topologies, Version, energy, in_force, residual};
-use crate::api::{Code, Problem, ProblemDetails};
+use super::{COUNTERS, Topologies, Version, energy, in_force, residual};
+use crate::api::{Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::bus::{DeviceId, Series};
 use crate::storage::{Aggregate, Reader, Tier};
 
@@ -92,7 +92,7 @@ async fn balance(
     if span.is_zero() || span > SPAN {
         return Err(RANGE);
     }
-    let versions = topologies.versions().await.map_err(|_| INTERNAL)?;
+    let versions = topologies.versions().await.map_err(internal)?;
     let rollups = Rollups::read(&reader, &versions, range).await?;
     let days = rollups
         .days()
@@ -152,7 +152,7 @@ impl Rollups {
             let days = reader
                 .rollups(DeviceId(key.0), &name, Tier::Day, range.clone())
                 .await
-                .map_err(|_| INTERNAL)?
+                .map_err(internal)?
                 .into_iter()
                 .map(|r| (r.start, (r.end, r.aggregate)))
                 .collect();

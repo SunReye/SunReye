@@ -7,8 +7,8 @@ use axum::http::StatusCode;
 
 use super::cost::replay;
 use super::device::{self, DEVICE};
-use super::{BAND, INTERNAL, Tariffs, Version, in_force, store, wake};
-use crate::api::{Code, Problem};
+use super::{BAND, Tariffs, Version, in_force, store, wake};
+use crate::api::{Code, Problem, internal};
 use crate::bus::Series;
 use crate::changes::Action;
 use crate::plant;
@@ -41,11 +41,11 @@ impl Tariffs {
             .database
             .run(move |db| store::insert(db, version, now, Action::Reprice))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.changed.send_replace(());
         self.rebuild(stored.applies_from, now)
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(stored)
     }
 

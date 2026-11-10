@@ -25,7 +25,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::storage::{Database, Error};
 use backoff::Backoff;
 use sessions::{Grant, IDLE, Sessions};
@@ -75,10 +75,6 @@ const PATH: Problem = Problem {
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The admin's password, set on the first run.
@@ -252,7 +248,7 @@ async fn setup(
             )
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     if inserted == 0 {
         return Err(CONFIGURED);
     }
@@ -313,7 +309,7 @@ async fn login(
             .database
             .run(move |db| viewers::find(db, &name))
             .await
-            .map_err(|_| INTERNAL)?
+            .map_err(internal)?
             .map(|(id, hash)| (Grant::Viewer(id), hash)),
     };
     let verify = |password: String, hash: String| blocking(move || bcrypt::verify(password, &hash));
@@ -448,8 +444,8 @@ async fn blocking<T: Send + 'static>(
 ) -> Result<T, Problem> {
     tokio::task::spawn_blocking(job)
         .await
-        .map_err(|_| INTERNAL)?
-        .map_err(|_| INTERNAL)
+        .map_err(internal)?
+        .map_err(internal)
 }
 
 #[cfg(test)]

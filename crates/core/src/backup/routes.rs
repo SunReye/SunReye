@@ -14,7 +14,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{Error, write};
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Code, Problem, ProblemDetails, internal};
 use crate::storage::Database;
 
 const BODY: Problem = Problem {
@@ -28,10 +28,6 @@ const NAME: Problem = Problem {
 const EXISTS: Problem = Problem {
     status: StatusCode::CONFLICT,
     code: Code::BackupExists,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The backup feature module: the store, the data directory and where backups are written.
@@ -97,7 +93,7 @@ async fn back_up(
         return Err(NAME);
     }
     let inner = &backups.0;
-    std::fs::create_dir_all(&inner.share).map_err(|_| INTERNAL)?;
+    std::fs::create_dir_all(&inner.share).map_err(internal)?;
     let file = inner.share.join(&request.name);
     let written = write(&inner.database, &inner.data_dir, &file, request.secrets).await;
     match written {
@@ -107,10 +103,7 @@ async fn back_up(
             Ok((StatusCode::CREATED, Json(BackupWritten { name, bytes })))
         }
         Err(Error::Exists) => Err(EXISTS),
-        Err(e) => {
-            tracing::error!("backup: {e}");
-            Err(INTERNAL)
-        }
+        Err(e) => Err(internal(format_args!("backup: {e}"))),
     }
 }
 

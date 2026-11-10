@@ -18,17 +18,13 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::BiddingZone;
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Database, Error};
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
     code: Code::RequestBody,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// Whether spot prices are fetched, and for which bidding zone.
@@ -129,7 +125,7 @@ async fn set_spot_prices(
     spot.database
         .run(move |db| write(db, draft, changed))
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     spot.current.send_replace(draft.zone);
     Ok(Json(draft))
 }

@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::sessions::Grant;
-use super::{Auth, BODY, INTERNAL, PASSWORD, PATH, blocking, hash};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use super::{Auth, BODY, PASSWORD, PATH, blocking, hash};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 
 const ACTOR: &str = "admin";
@@ -81,7 +81,7 @@ pub async fn list_viewers(State((auth, _)): ViewersState) -> Result<Json<Viewers
                 .collect()
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     Ok(Json(Viewers { viewers }))
 }
 
@@ -108,7 +108,7 @@ pub async fn add_viewer(
         .database
         .run(move |db| insert(db, name, &hash, changed))
         .await
-        .map_err(|_| INTERNAL)??;
+        .map_err(internal)??;
     Ok((StatusCode::CREATED, Json(added)))
 }
 
@@ -179,7 +179,7 @@ pub async fn remove_viewer(
             Ok(true)
         })
         .await
-        .map_err(|_| INTERNAL)?;
+        .map_err(internal)?;
     if !removed {
         return Err(NONE);
     }

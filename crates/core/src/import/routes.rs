@@ -17,7 +17,7 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{Error, Report, archive, log, run, targets};
-use crate::api::{Code, Problem, ProblemDetails};
+use crate::api::{Code, Problem, ProblemDetails, internal};
 use crate::bus::Bus;
 use crate::profiles::Catalogue;
 use crate::storage::{Database, Importer, Storage};
@@ -41,10 +41,6 @@ const SIZE: Problem = Problem {
 const FILE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::ImportFile,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 
 /// The largest upload, in bytes; a larger export goes through `/share`.
@@ -299,7 +295,7 @@ async fn import_files(State(imports): State<Imports>) -> Result<Json<ArchiveFile
         files.collect()
     })
     .await
-    .map_err(|_| INTERNAL)?;
+    .map_err(internal)?;
     Ok(Json(ArchiveFiles { files }))
 }
 
@@ -343,11 +339,11 @@ async fn upload_import(
             let part = part.clone();
             tokio::task::spawn_blocking(move || {
                 let devices = devices(&part).ok_or(FILE)?;
-                std::fs::rename(&part, &path).map_err(|_| INTERNAL)?;
+                std::fs::rename(&part, &path).map_err(internal)?;
                 Ok(devices)
             })
             .await
-            .map_err(|_| INTERNAL)?
+            .map_err(internal)?
         }
         Err(problem) => Err(problem),
     };
@@ -363,7 +359,7 @@ async fn upload_import(
 /// Streams `request` into `file`, refused once it passes `max` bytes without reading the rest.
 /// Chunks are written as they arrive, so a large upload never sits in memory.
 async fn write(request: Body, file: &Path, max: u64) -> Result<(), Problem> {
-    let mut out = std::fs::File::create(file).map_err(|_| INTERNAL)?;
+    let mut out = std::fs::File::create(file).map_err(internal)?;
     let mut stream = request.into_data_stream();
     let mut size: u64 = 0;
     while let Some(chunk) = stream.next().await {
@@ -372,7 +368,7 @@ async fn write(request: Body, file: &Path, max: u64) -> Result<(), Problem> {
         if size > max {
             return Err(SIZE);
         }
-        out.write_all(&chunk).map_err(|_| INTERNAL)?;
+        out.write_all(&chunk).map_err(internal)?;
     }
     Ok(())
 }

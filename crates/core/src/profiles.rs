@@ -28,7 +28,7 @@ use sunreye_profile::{LoadError, Profile};
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
-use crate::api::{Code, Problem};
+use crate::api::{Code, Problem, internal};
 use crate::storage::{self, Database};
 use index::{Fit, Index, Listed, Version};
 use store::Fetched;
@@ -68,10 +68,6 @@ const BUNDLED: &[&str] = &[
     include_str!("../../../profiles/sunspec.json"),
 ];
 
-const INTERNAL: Problem = Problem {
-    status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 const NO_UPDATE: Problem = Problem {
     status: axum::http::StatusCode::NOT_FOUND,
     code: Code::UpdateNone,
@@ -341,7 +337,7 @@ impl Profiles {
     /// # Errors
     /// The file cannot be read.
     pub async fn indexes(&self) -> Result<Vec<Report>, Problem> {
-        let urls = self.urls().await.map_err(|_| INTERNAL)?;
+        let urls = self.urls().await.map_err(internal)?;
         let state = self.state.lock().await;
         Ok(urls
             .into_iter()
@@ -371,7 +367,7 @@ impl Profiles {
             self.database
                 .run(move |db| store::add_index(db, &stored, changed))
                 .await
-                .map_err(|_| INTERNAL)?;
+                .map_err(internal)?;
         }
         let mut state = self.state.lock().await;
         self.check_index(&mut state, url).await
@@ -382,7 +378,7 @@ impl Profiles {
     /// # Errors
     /// The file cannot be read or written.
     pub async fn check(&self) -> Result<Vec<Report>, Problem> {
-        let urls = self.urls().await.map_err(|_| INTERNAL)?;
+        let urls = self.urls().await.map_err(internal)?;
         let mut state = self.state.lock().await;
         let mut reports = Vec::with_capacity(urls.len());
         for url in urls {
@@ -434,13 +430,10 @@ impl Profiles {
         if state.trust.revoked || !state.trust.revokes(&key, &signature) {
             return Ok(());
         }
-        self.database
-            .run(store::revoke)
-            .await
-            .map_err(|_| INTERNAL)?;
+        self.database.run(store::revoke).await.map_err(internal)?;
         state.trust.revoked = true;
         tracing::warn!("the active profile key is revoked; trusting only its backup");
-        self.reload(state.trust).await.map_err(|_| INTERNAL)
+        self.reload(state.trust).await.map_err(internal)
     }
 
     /// Fetches, verifies and serves one entry when it would replace what is served.
@@ -490,13 +483,13 @@ impl Profiles {
             self.database
                 .run(move |db| store::wait(db, &id, &fetched))
                 .await
-                .map_err(|_| INTERNAL)?;
+                .map_err(internal)?;
             return Ok(Status::Available);
         }
         self.database
             .run(move |db| store::keep(db, &id, &fetched))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.catalogue.insert(held);
         Ok(Status::Loaded)
     }
@@ -508,7 +501,7 @@ impl Profiles {
             .database
             .run(move |db| store::waiting(db, &key))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         let current = self.catalogue.held(id);
         Ok(waiting
             .and_then(|fetched| load(trust, &fetched))
@@ -521,11 +514,7 @@ impl Profiles {
     /// The file cannot be read.
     pub async fn updates(&self) -> Result<Vec<Update>, Problem> {
         let trust = self.state.lock().await.trust;
-        let waiting = self
-            .database
-            .run(store::updates)
-            .await
-            .map_err(|_| INTERNAL)?;
+        let waiting = self.database.run(store::updates).await.map_err(internal)?;
         Ok(waiting
             .iter()
             .filter_map(|(id, fetched)| {
@@ -553,7 +542,7 @@ impl Profiles {
             .database
             .run(move |db| store::waiting(db, &key))
             .await
-            .map_err(|_| INTERNAL)?
+            .map_err(internal)?
             .ok_or(NO_UPDATE)?;
         let applied = changed.clone();
         let version = update.to.clone();
@@ -570,7 +559,7 @@ impl Profiles {
                 store::apply(db, &applied)
             })
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.catalogue.mark(id, changed);
         self.catalogue.insert(held);
         drop(state);

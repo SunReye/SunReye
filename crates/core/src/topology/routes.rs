@@ -11,8 +11,8 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use super::{Claim, INTERNAL, PointDraft, Topologies, Version, in_force};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use super::{Claim, PointDraft, Topologies, Version, in_force};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::devices::Devices;
 
 const BODY: Problem = Problem {
@@ -105,7 +105,7 @@ async fn topology(
         Some(at) => instant(&at).ok_or(QUERY)?,
         None => clock(),
     };
-    let versions = topologies.versions().await.map_err(|_| INTERNAL)?;
+    let versions = topologies.versions().await.map_err(internal)?;
     in_force(&versions, at).map(|v| Json(v.into())).ok_or(NONE)
 }
 
@@ -134,7 +134,7 @@ async fn change_topology(
     let registered: Vec<u32> = devices
         .devices()
         .await
-        .map_err(|_| INTERNAL)?
+        .map_err(internal)?
         .iter()
         .map(|d| d.id)
         .collect();

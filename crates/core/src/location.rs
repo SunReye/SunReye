@@ -18,7 +18,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Database, Error};
 
@@ -33,10 +33,6 @@ const NONE: Problem = Problem {
 const VALUE: Problem = Problem {
     status: StatusCode::UNPROCESSABLE_ENTITY,
     code: Code::LocationValue,
-};
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
 };
 /// Who sets the location: the one admin (ADR 9).
 const ACTOR: &str = "admin";
@@ -100,7 +96,7 @@ impl PlantLocation {
         self.database
             .run(move |db| write(db, location, changed))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.current.send_replace(Some(location));
         Ok(location)
     }

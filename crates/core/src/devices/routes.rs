@@ -10,8 +10,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::deadband::RoleDeadband;
-use super::{ACTOR, Connection, ConnectionDraft, Device, DeviceDraft, Devices, INTERNAL};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use super::{ACTOR, Connection, ConnectionDraft, Device, DeviceDraft, Devices};
+use crate::api::{Clock, Code, INTERNAL, Problem, ProblemDetails, internal};
 use crate::scan::{ScanReport, ScanRequest};
 use crate::settings::{Request, log};
 
@@ -53,7 +53,7 @@ struct Connections {
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn list_connections(State((devices, _)): DevicesState) -> Result<Json<Connections>, Problem> {
-    let connections = devices.connections().await.map_err(|_| INTERNAL)?;
+    let connections = devices.connections().await.map_err(internal)?;
     Ok(Json(Connections { connections }))
 }
 
@@ -111,7 +111,7 @@ struct DeviceList {
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn list_devices(State((devices, _)): DevicesState) -> Result<Json<DeviceList>, Problem> {
-    let devices = devices.devices().await.map_err(|_| INTERNAL)?;
+    let devices = devices.devices().await.map_err(internal)?;
     Ok(Json(DeviceList { devices }))
 }
 
@@ -298,7 +298,7 @@ struct WriteLog {
     (status = 401, body = ProblemDetails, content_type = "application/problem+json"),
 ))]
 async fn writes(State((devices, _)): DevicesState) -> Result<Json<WriteLog>, Problem> {
-    let writes = devices.writes().await.map_err(|_| INTERNAL)?;
+    let writes = devices.writes().await.map_err(internal)?;
     Ok(Json(WriteLog { writes }))
 }
 

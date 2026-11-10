@@ -20,7 +20,7 @@ use sunreye_profile::{Profile, Setting, Toggle};
 use tokio::sync::{Mutex, watch};
 use utoipa::ToSchema;
 
-use crate::api::{Code, Problem};
+use crate::api::{Code, INTERNAL, Problem, internal};
 use crate::bus::{Bus, DeviceId};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, Task};
@@ -39,10 +39,6 @@ use crate::subscriber::{self, Subscriber};
 use crate::transport::Endpoint;
 use deadband::RoleDeadband;
 
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 /// Who configures devices: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
@@ -380,7 +376,7 @@ impl Devices {
 
     /// Runs the setup scan over `subnet`, leaving every configured endpoint to its task.
     async fn scan(&self, subnet: Option<&str>) -> Result<scan::ScanReport, Problem> {
-        let configured = self.connections().await.map_err(|_| INTERNAL)?;
+        let configured = self.connections().await.map_err(internal)?;
         let configured = configured.into_iter().map(|c| (c.reach.host, c.reach.port));
         let profiles = self.catalogue.profiles();
         self.scanner
@@ -462,7 +458,7 @@ impl Devices {
         self.database
             .run(move |db| enable::set(db, id, &key, fingerprint.as_deref(), changed))
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 
     /// Whether `setting` of `device` may be written, as far as trust goes.
@@ -486,7 +482,7 @@ impl Devices {
             .database
             .run(move |db| store::device(db, id))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(device.ok_or(Refusal::NoDevice)?)
     }
 
@@ -579,7 +575,7 @@ impl Devices {
             .database
             .run(move |db| deadband::overrides(db, id))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(deadband::deadbands(&profile, &overrides))
     }
 
@@ -607,10 +603,10 @@ impl Devices {
         self.database
             .run(move |db| deadband::set(db, id, &role, deadband, changed))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         self.declare(DeviceId(id), &profile)
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         drop(running);
         Ok(())
     }
@@ -636,7 +632,7 @@ impl Devices {
         let devices = self.clone();
         tokio::spawn(async move { devices.write_detached(id, request, now).await })
             .await
-            .map_err(|_| INTERNAL)?
+            .map_err(internal)?
     }
 
     async fn write_detached(
@@ -718,7 +714,7 @@ impl Devices {
                 log::append(db, &attempt)
             })
             .await;
-        if logged.is_ok() { problem } else { INTERNAL }
+        logged.map_or_else(internal, |_| problem)
     }
 
     /// Engages or releases snapshot toggle `request.key`, through a write of its target.
@@ -739,7 +735,7 @@ impl Devices {
             self.database
                 .run(move |db| snapshot::stored(db, id, &key))
                 .await
-                .map_err(|_| INTERNAL)?
+                .map_err(internal)?
         };
         let target = |value| Request {
             key: toggle.target.clone(),
@@ -761,7 +757,7 @@ impl Devices {
             self.database
                 .run(move |db| snapshot::clear(db, id, &key))
                 .await
-                .map_err(|_| INTERNAL)?;
+                .map_err(internal)?;
         }
         Ok(entry)
     }
@@ -794,7 +790,7 @@ impl Devices {
             .database
             .run(move |db| log::last_write(db, id, &setting))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         let permit = self.permit(writing, &request.key).await?;
         let (setting, words) = settings::check(profile, &request, permit, last, now)?;
         let unlock = self.unlock(device.draft.connection, &setting).await?;
@@ -832,7 +828,7 @@ impl Devices {
                 log::append(db, &attempt)
             })
             .await
-            .map_err(|_| INTERNAL)
+            .map_err(internal)
     }
 
     /// What writes device `id` behind a broker; `None` when no broker reads it.
@@ -850,7 +846,7 @@ impl Devices {
             Some(setting) => self
                 .enable(&writing.device, setting)
                 .await
-                .map_err(|_| INTERNAL)?,
+                .map_err(internal)?,
             None => Enable::Off,
         };
         Ok(Permit {
@@ -868,7 +864,7 @@ impl Devices {
             .database
             .run(move |db| store::secret(db, connection, &name))
             .await
-            .map_err(|_| INTERNAL)?;
+            .map_err(internal)?;
         Ok(settings::unlock(setting, secret.as_deref())?)
     }
 
@@ -905,8 +901,8 @@ impl Devices {
         + 'static,
     ) -> Result<T, Problem> {
         let mut running = self.running.lock().await;
-        let changed = self.database.run(change).await.map_err(|_| INTERNAL)??;
-        self.restart(&mut running).await.map_err(|_| INTERNAL)?;
+        let changed = self.database.run(change).await.map_err(internal)??;
+        self.restart(&mut running).await.map_err(internal)?;
         Ok(changed)
     }
 

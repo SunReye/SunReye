@@ -5,7 +5,6 @@ use std::time::SystemTime;
 
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
 use jiff::tz::TimeZone;
 use serde::Serialize;
 use tokio::sync::watch;
@@ -14,13 +13,8 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use super::{Corrections, InputReport};
-use crate::api::{Clock, Code, Problem, ProblemDetails};
+use crate::api::{Clock, Problem, ProblemDetails, internal};
 use crate::location::Location;
-
-const INTERNAL: Problem = Problem {
-    status: StatusCode::INTERNAL_SERVER_ERROR,
-    code: Code::Internal,
-};
 
 type Routed = (
     Corrections,
@@ -117,10 +111,7 @@ async fn corrections(
     let reports = corrections
         .report(at, &plant_zone, now)
         .await
-        .map_err(|e| {
-            tracing::warn!("corrections: {e}");
-            INTERNAL
-        })?;
+        .map_err(|e| internal(format_args!("corrections: {e}")))?;
     Ok(Json(CorrectionList {
         inputs: reports.into_iter().map(InputCorrection::from).collect(),
     }))
