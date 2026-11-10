@@ -9,7 +9,7 @@ use serde::Serialize;
 use sunreye_profile::{DeadbandRefusal, Profile, Quantity};
 use utoipa::ToSchema;
 
-use super::{Refusal, entry};
+use super::{ChangeRefusal, entry};
 use crate::changes::{self, Action, Subject};
 use crate::storage::Policy;
 
@@ -84,13 +84,13 @@ fn resolve(quantity: &Quantity, overrides: &Overrides) -> RoleDeadband {
 }
 
 /// Whether `deadband` may override `role` of `profile`: every quantity of the role admits it.
-pub fn check(profile: &Profile, role: &str, deadband: f64) -> Result<(), Refusal> {
+pub fn check(profile: &Profile, role: &str, deadband: f64) -> Result<(), ChangeRefusal> {
     let mut quantities = profile.quantities().iter().filter(|q| q.role == role);
-    let first = quantities.next().ok_or(Refusal::DeadbandRole)?;
+    let first = quantities.next().ok_or(ChangeRefusal::DeadbandRole)?;
     for quantity in std::iter::once(first).chain(quantities) {
         quantity.admits(deadband).map_err(|refusal| match refusal {
-            DeadbandRefusal::Kind => Refusal::DeadbandKind,
-            DeadbandRefusal::Step => Refusal::DeadbandStep,
+            DeadbandRefusal::Kind => ChangeRefusal::DeadbandKind,
+            DeadbandRefusal::Step => ChangeRefusal::DeadbandStep,
         })?;
     }
     Ok(())

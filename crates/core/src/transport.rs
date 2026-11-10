@@ -187,7 +187,7 @@ impl Client {
         timeout: Duration,
         tape: Option<Tape>,
     ) -> Result<Self, Error> {
-        let wire = recorder::Recorder::new(tcp(host, port, timeout).await?, framing, tape);
+        let wire = recorder::ReadOnlyWire::new(tcp(host, port, timeout).await?, framing, tape);
         Self::over(Box::new(wire), framing, timeout).await
     }
 

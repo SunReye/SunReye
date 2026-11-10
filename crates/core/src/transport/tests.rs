@@ -231,7 +231,9 @@ async fn a_read_only_client_refuses_a_write_before_it_reaches_the_device() {
 
         let refused = client.write_registers(1, 500, &[1]).await;
 
-        assert!(matches!(refused, Err(Error::Io(_))), "{refused:?}");
+        // The scan probes through the same wire, so the refusal names no capture.
+        let only = "only a read of holding registers may be sent".to_owned();
+        assert_eq!(refused, Err(Error::Io(only)));
         assert!(
             fake.writes.try_recv().is_err(),
             "the write reached the device"

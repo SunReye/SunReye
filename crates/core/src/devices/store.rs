@@ -5,15 +5,15 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Brokering, Connection, ConnectionDraft, Device, DeviceDraft, Hosting, Polled, Publish, Reach,
-    Reads, Refusal, Transport, entry,
+    Brokering, ChangeRefusal, Connection, ConnectionDraft, Device, DeviceDraft, Hosting, Polled,
+    Publish, Reach, Reads, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::http;
 use crate::mqtt;
 use crate::transport::Endpoint;
 
-type Outcome<T> = rusqlite::Result<Result<T, Refusal>>;
+type Outcome<T> = rusqlite::Result<Result<T, ChangeRefusal>>;
 
 fn transport(name: &str) -> rusqlite::Result<Transport> {
     match name {
@@ -192,7 +192,7 @@ fn write_secrets(db: &Db, id: u32, draft: &ConnectionDraft) -> rusqlite::Result<
 /// Reads back `id` after a change and logs it.
 fn log_connection(db: &Db, id: u32, action: Action, changed: SystemTime) -> Outcome<Connection> {
     let Some(stored) = connection(db, id)? else {
-        return Ok(Err(Refusal::NoConnection));
+        return Ok(Err(ChangeRefusal::NoConnection));
     };
     let entry = entry(Subject::Connection, id, action, Some(&stored), changed);
     changes::append(db, &entry)?;
@@ -233,17 +233,17 @@ pub fn change_connection(
 ) -> Outcome<Connection> {
     let tx = db.unchecked_transaction()?;
     if connection(&tx, id)?.is_none() {
-        return Ok(Err(Refusal::NoConnection));
+        return Ok(Err(ChangeRefusal::NoConnection));
     }
     let r = &draft.reach;
     let units = units_of(&tx, id)?;
     let was = connection(&tx, id)?.map(|c| c.reach.transport.reads());
     if Some(r.transport.reads()) != was && !units.is_empty() {
-        return Ok(Err(Refusal::Transport));
+        return Ok(Err(ChangeRefusal::Transport));
     }
     let taken = units_at(&tx, r, |c, _| c != id)?;
     if units.iter().any(|u| taken.contains(u)) {
-        return Ok(Err(Refusal::Address));
+        return Ok(Err(ChangeRefusal::Address));
     }
     tx.execute(
         "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5, topic_root = ?6,
@@ -267,10 +267,10 @@ pub fn change_connection(
 pub fn remove_connection(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
     let tx = db.unchecked_transaction()?;
     if connection(&tx, id)?.is_none() {
-        return Ok(Err(Refusal::NoConnection));
+        return Ok(Err(ChangeRefusal::NoConnection));
     }
     if !units_of(&tx, id)?.is_empty() {
-        return Ok(Err(Refusal::InUse));
+        return Ok(Err(ChangeRefusal::InUse));
     }
     tx.execute("DELETE FROM secret WHERE connection = ?1", [id])?;
     tx.execute("DELETE FROM connection WHERE id = ?1", [id])?;
@@ -346,15 +346,15 @@ pub fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
 /// `reads` through, or a device address another device has at the same endpoint.
 fn check_device(db: &Db, id: Option<u32>, draft: &DeviceDraft, reads: Reads) -> Outcome<()> {
     let Some(connection) = connection(db, draft.connection)? else {
-        return Ok(Err(Refusal::DeviceConnection));
+        return Ok(Err(ChangeRefusal::DeviceConnection));
     };
     let r = &connection.reach;
     if r.transport.reads() != reads {
-        return Ok(Err(Refusal::Transport));
+        return Ok(Err(ChangeRefusal::Transport));
     }
     let units = units_at(db, r, |_, d| Some(d) != id)?;
     if units.contains(&draft.unit) {
-        return Ok(Err(Refusal::Address));
+        return Ok(Err(ChangeRefusal::Address));
     }
     Ok(Ok(()))
 }
@@ -404,10 +404,10 @@ pub fn change_device(
 ) -> Outcome<Device> {
     let tx = db.unchecked_transaction()?;
     let Some(stored) = device(&tx, id)? else {
-        return Ok(Err(Refusal::NoDevice));
+        return Ok(Err(ChangeRefusal::NoDevice));
     };
     if stored.draft.profile != draft.profile {
-        return Ok(Err(Refusal::ProfileChange));
+        return Ok(Err(ChangeRefusal::ProfileChange));
     }
     if let Err(refusal) = check_device(&tx, Some(id), &draft, reads)? {
         return Ok(Err(refusal));
@@ -425,7 +425,7 @@ pub fn change_device(
 pub fn remove_device(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
     let tx = db.unchecked_transaction()?;
     if tx.execute("DELETE FROM device WHERE id = ?1", [id])? == 0 {
-        return Ok(Err(Refusal::NoDevice));
+        return Ok(Err(ChangeRefusal::NoDevice));
     }
     tx.execute("DELETE FROM deadband_override WHERE device = ?1", [id])?;
     let entry = entry(Subject::Device, id, Action::Remove, None::<&()>, changed);

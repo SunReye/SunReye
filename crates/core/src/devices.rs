@@ -44,7 +44,7 @@ const ACTOR: &str = "admin";
 
 /// Why a configuration change was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Refusal {
+enum ChangeRefusal {
     NoConnection,
     NoDevice,
     /// An empty name or host, or port 0.
@@ -70,21 +70,25 @@ enum Refusal {
     DeadbandStep,
 }
 
-impl From<Refusal> for Problem {
-    fn from(refusal: Refusal) -> Self {
+impl From<ChangeRefusal> for Problem {
+    fn from(refusal: ChangeRefusal) -> Self {
         let (status, code) = match refusal {
-            Refusal::NoConnection => (StatusCode::NOT_FOUND, Code::ConnectionNone),
-            Refusal::NoDevice => (StatusCode::NOT_FOUND, Code::DeviceNone),
-            Refusal::ConnectionValue => (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue),
-            Refusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
-            Refusal::DeviceConnection => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection),
-            Refusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
-            Refusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
-            Refusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
-            Refusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
-            Refusal::DeadbandRole => (StatusCode::NOT_FOUND, Code::DeadbandRole),
-            Refusal::DeadbandKind => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandKind),
-            Refusal::DeadbandStep => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandStep),
+            ChangeRefusal::NoConnection => (StatusCode::NOT_FOUND, Code::ConnectionNone),
+            ChangeRefusal::NoDevice => (StatusCode::NOT_FOUND, Code::DeviceNone),
+            ChangeRefusal::ConnectionValue => {
+                (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue)
+            }
+            ChangeRefusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
+            ChangeRefusal::DeviceConnection => {
+                (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection)
+            }
+            ChangeRefusal::Profile => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceProfile),
+            ChangeRefusal::Transport => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceTransport),
+            ChangeRefusal::ProfileChange => (StatusCode::CONFLICT, Code::DeviceProfileChange),
+            ChangeRefusal::Address => (StatusCode::CONFLICT, Code::DeviceAddress),
+            ChangeRefusal::DeadbandRole => (StatusCode::NOT_FOUND, Code::DeadbandRole),
+            ChangeRefusal::DeadbandKind => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandKind),
+            ChangeRefusal::DeadbandStep => (StatusCode::UNPROCESSABLE_ENTITY, Code::DeadbandStep),
         };
         Self { status, code }
     }
@@ -452,7 +456,7 @@ impl Devices {
             None if profile.quantities().iter().any(|q| q.key == key) => {
                 return Err(settings::Refusal::ReadOnly.into());
             }
-            None => return Err(settings::Refusal::None.into()),
+            None => return Err(settings::Refusal::Unknown.into()),
         };
         let fingerprint = on.then_some(fingerprint);
         self.database
@@ -483,7 +487,7 @@ impl Devices {
             .run(move |db| store::device(db, id))
             .await
             .map_err(internal)?;
-        Ok(device.ok_or(Refusal::NoDevice)?)
+        Ok(device.ok_or(ChangeRefusal::NoDevice)?)
     }
 
     /// Adds a connection with a fresh id.
@@ -598,7 +602,7 @@ impl Devices {
         match deadband {
             Some(deadband) => deadband::check(&profile, &role, deadband)?,
             None if profile.quantities().iter().any(|q| q.role == role) => {}
-            None => return Err(Refusal::DeadbandRole.into()),
+            None => return Err(ChangeRefusal::DeadbandRole.into()),
         }
         self.database
             .run(move |db| deadband::set(db, id, &role, deadband, changed))
@@ -878,12 +882,15 @@ impl Devices {
 
     /// Profile `id`; a device whose profile is gone has no settings.
     fn profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
-        Ok(self.catalogue.get(id).ok_or(settings::Refusal::None)?)
+        Ok(self.catalogue.get(id).ok_or(settings::Refusal::Unknown)?)
     }
 
     /// The binding the draft's profile reads through; refused when the profile is unknown.
-    fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, Refusal> {
-        let profile = self.catalogue.get(&draft.profile).ok_or(Refusal::Profile)?;
+    fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, ChangeRefusal> {
+        let profile = self
+            .catalogue
+            .get(&draft.profile)
+            .ok_or(ChangeRefusal::Profile)?;
         Ok(if profile.reads_topics() {
             Reads::Topics
         } else if profile.reads_http() {
@@ -896,7 +903,7 @@ impl Devices {
     /// Runs one change on the file, then restarts the endpoints it touched.
     async fn apply<T: Send + 'static>(
         &self,
-        change: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<Result<T, Refusal>>
+        change: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<Result<T, ChangeRefusal>>
         + Send
         + 'static,
     ) -> Result<T, Problem> {
@@ -1094,7 +1101,7 @@ fn is_inverter(profile: &Profile) -> bool {
             .any(|q| q.role.starts_with("pv."))
 }
 
-fn check_reach(reach: &Reach) -> Result<(), Refusal> {
+fn check_reach(reach: &Reach) -> Result<(), ChangeRefusal> {
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,
@@ -1104,7 +1111,7 @@ fn check_reach(reach: &Reach) -> Result<(), Refusal> {
         ) => root.is_none() && reach.publish.is_none(),
     };
     if !root || reach.name.trim().is_empty() || reach.host.trim().is_empty() || reach.port == 0 {
-        return Err(Refusal::ConnectionValue);
+        return Err(ChangeRefusal::ConnectionValue);
     }
     Ok(())
 }

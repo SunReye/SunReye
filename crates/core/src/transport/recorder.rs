@@ -24,7 +24,7 @@ impl Tape {
 }
 
 #[derive(Debug)]
-pub struct Recorder<W> {
+pub struct ReadOnlyWire<W> {
     inner: W,
     tape: Option<Tape>,
     request_frame: fn(&[u8]) -> Option<(usize, u8)>,
@@ -32,7 +32,7 @@ pub struct Recorder<W> {
     left: usize,
 }
 
-impl<W> Recorder<W> {
+impl<W> ReadOnlyWire<W> {
     pub fn new(inner: W, framing: Framing, tape: Option<Tape>) -> Self {
         let request_frame = match framing {
             Framing::Tcp => mbap::request_frame,
@@ -48,7 +48,7 @@ impl<W> Recorder<W> {
     }
 }
 
-impl<W: AsyncWrite + Unpin> AsyncWrite for Recorder<W> {
+impl<W: AsyncWrite + Unpin> AsyncWrite for ReadOnlyWire<W> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -64,7 +64,7 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for Recorder<W> {
                 _ => {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::PermissionDenied,
-                        "capture: only a read of holding registers may be sent",
+                        "only a read of holding registers may be sent",
                     )));
                 }
             }
@@ -95,7 +95,7 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for Recorder<W> {
     }
 }
 
-impl<W: AsyncRead + Unpin> AsyncRead for Recorder<W> {
+impl<W: AsyncRead + Unpin> AsyncRead for ReadOnlyWire<W> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
