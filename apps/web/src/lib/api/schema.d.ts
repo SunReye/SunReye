@@ -1984,7 +1984,8 @@ export interface components {
             };
             /** @description The profile schemas this core loads. */
             schema: components["schemas"]["Schemas"];
-            transports: string[];
+            /** @description The transports a connection can be configured with. */
+            transports: components["schemas"]["Transport"][];
             /** @description The core's version. */
             version: string;
         };

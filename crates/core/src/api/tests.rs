@@ -591,7 +591,7 @@ async fn capabilities_report_the_profile_table_the_wasm_reports() {
             "version": env!("CARGO_PKG_VERSION"),
             "schema": { "min": 1, "max": 1 },
             "capabilities": ["modbus", "mqtt", "http", "sunspec", "u16", "i16", "u32", "acc32", "scale-factor", "compute", "deadband", "write", "write-block", "rmw", "activate", "precondition", "unlock", "delay", "snapshot-toggle", "publish"],
-            "transports": ["modbus-tcp", "rtu-over-tcp", "solarman-v5", "sim"],
+            "transports": ["modbus-tcp", "rtu-over-tcp", "solarman-v5", "mqtt", "http"],
             "devices": {},
         })
     );

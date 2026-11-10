@@ -43,9 +43,6 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// The transport of each variant, by name.
-    pub const TRANSPORTS: &[&str] = &["modbus-tcp", "rtu-over-tcp", "solarman-v5", "sim"];
-
     /// The wire framing, which sets the read plan's gap tolerance.
     #[must_use]
     pub const fn framing(&self) -> Framing {

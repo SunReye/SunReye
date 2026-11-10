@@ -2884,8 +2884,9 @@
             "description": "The profile schemas this core loads."
           },
           "transports": {
+            "description": "The transports a connection can be configured with.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Transport"
             },
             "type": "array"
           },

@@ -23,7 +23,7 @@ use crate::backup::Backups;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::correction::Corrections;
-use crate::devices::Devices;
+use crate::devices::{Devices, Transport};
 use crate::import::Imports;
 use crate::layout::{Layouts, Version, in_force};
 use crate::live::{Frame, Live};
@@ -36,7 +36,6 @@ use crate::spot::SpotZone;
 use crate::storage;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
-use crate::transport::Endpoint;
 
 const ROUTE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
@@ -211,7 +210,8 @@ struct Support {
     schema: Schemas,
     /// The bindings, decoders and computed quantities a profile may require.
     capabilities: &'static [&'static str],
-    transports: &'static [&'static str],
+    /// The transports a connection can be configured with.
+    transports: &'static [Transport],
     /// By device id, what the layout in force says of its series.
     devices: BTreeMap<String, DeviceSupport>,
 }
@@ -295,7 +295,7 @@ async fn capabilities(
             max: support.schema.max,
         },
         capabilities: support.capabilities,
-        transports: Endpoint::TRANSPORTS,
+        transports: &Transport::ALL,
         devices,
     }))
 }

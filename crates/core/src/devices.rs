@@ -109,7 +109,24 @@ pub enum Transport {
 }
 
 impl Transport {
+    /// Every transport a connection can be configured with, as capabilities list them.
+    pub const ALL: [Self; 5] = [
+        Self::ModbusTcp,
+        Self::RtuOverTcp,
+        Self::SolarmanV5,
+        Self::Mqtt,
+        Self::Http,
+    ];
+
     const fn reads(self) -> Reads {
+        // A new variant fails to compile here until `ALL` lists it.
+        const _: () = match Transport::ModbusTcp {
+            Transport::ModbusTcp
+            | Transport::RtuOverTcp
+            | Transport::SolarmanV5
+            | Transport::Mqtt
+            | Transport::Http => (),
+        };
         match self {
             Self::ModbusTcp | Self::RtuOverTcp | Self::SolarmanV5 => Reads::Registers,
             Self::Mqtt => Reads::Topics,
