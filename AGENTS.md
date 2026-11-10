@@ -46,3 +46,11 @@ Minimum words. Code comments carry only the why or a constraint. Reports: findin
 ## Commits
 
 Conventional commits, lowercase types: `type(scope): summary`. One logical change per commit.
+
+## Branches
+
+`v5` is the only main line, always green. ADRs change with the code they govern; a new ADR lands on `v5` before its milestone starts.
+
+- **Milestone:** branch `m/<milestone-slug>` from `v5`. It merges into `v5` as one merge commit once its tickets are closed and the `code-review` skill has passed.
+- **Ticket:** branch from the milestone branch, in its own worktree, and merge back into the milestone branch.
+- **Cleanup:** remove a ticket's worktree and branch as soon as it merges, and the milestone branch once it is in `v5`. Run `cargo clean` in any worktree before removing it. `git worktree list` shows only worktrees with work in progress.
