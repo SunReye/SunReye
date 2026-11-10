@@ -602,7 +602,8 @@ impl Devices {
     /// appends the attempt to the write log. A snapshot toggle writes its target instead: 1 stores
     /// the target's value and writes the locked one, 0 writes the stored value back.
     ///
-    /// Changes to devices wait for it, so its task cannot restart mid-write.
+    /// Changes to devices wait for it, so its task cannot restart mid-write. It runs detached, so
+    /// a caller that stops waiting cannot cut a write off from its log entry.
     ///
     /// # Errors
     /// The device or setting is unknown or read-only, the value does not fit, the device's writes
@@ -610,6 +611,18 @@ impl Devices {
     /// unlock's secret is not set or not a code, a precondition does not hold, a toggle is released
     /// with no value stored, or the file cannot be written.
     pub async fn write_setting(
+        &self,
+        id: u32,
+        request: Request,
+        now: SystemTime,
+    ) -> Result<log::Entry, Problem> {
+        let devices = self.clone();
+        tokio::spawn(async move { devices.write_detached(id, request, now).await })
+            .await
+            .map_err(|_| INTERNAL)?
+    }
+
+    async fn write_detached(
         &self,
         id: u32,
         request: Request,

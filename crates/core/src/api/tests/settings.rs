@@ -269,6 +269,33 @@ async fn a_timeout_is_unknown_and_never_retried() {
 }
 
 #[tokio::test]
+async fn a_write_whose_request_is_dropped_mid_recipe_is_still_logged_and_starts_the_interval() {
+    let mut plant = Plant::new(Writes::Silent, true).await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
+    let request = send("PUT", &uri, &json!({ "value": 50 }));
+
+    // The request is dropped once the write reached the device, mid-recipe.
+    tokio::select! {
+        _ = plant.core.ask(&plant.set_cookie, request) => panic!("answered before the device"),
+        write = plant.device.writes.recv() => assert!(write.is_some()),
+    }
+
+    let mut log = json!([]);
+    for _ in 0..1000 {
+        log = plant.log().await;
+        if log != json!([]) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(log[0]["outcome"], "unknown");
+    assert_eq!(
+        plant.write(CHARGE, json!(60)).await,
+        refused(StatusCode::TOO_MANY_REQUESTS, "setting.interval")
+    );
+}
+
+#[tokio::test]
 async fn the_write_log_and_every_write_need_the_admins_session() {
     let mut plant = Plant::new(Writes::Store, true).await;
     let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
