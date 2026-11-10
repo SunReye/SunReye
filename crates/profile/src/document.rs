@@ -5,10 +5,13 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-/// Read first, so a profile of another schema is refused by its number, not by its fields.
+/// Read first, so a profile of another schema, or one needing a capability this build lacks, is
+/// refused by that, not by a field this build does not know.
 #[derive(Deserialize)]
 pub struct Header {
     pub schema: u32,
+    #[serde(default)]
+    pub requires: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -29,9 +32,8 @@ pub struct ProfileDoc {
     pub inverter: Option<crate::Inverter>,
     /// Fields that tell the device from any other on the bus; the setup scan proposes the profile
     /// only when each holds one of its values.
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<IdentifyDoc>>"))]
-    pub identify: Vec<IdentifyDoc>,
+    #[cfg_attr(test, ts(optional))]
+    pub identify: Option<Vec<IdentifyDoc>>,
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<Vec<SettingDoc>>"))]
     pub settings: Vec<SettingDoc>,
@@ -79,9 +81,29 @@ pub struct SettingDoc {
     pub write_only: bool,
     /// Its write was checked on real hardware (ADR 5); an unverified setting needs the admin's
     /// enable (ADR 8).
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub verified: bool,
+    #[cfg_attr(test, ts(optional))]
+    pub verified: Option<bool>,
+}
+
+impl SettingDoc {
+    /// The capabilities its optional fields use.
+    pub fn capabilities(&self) -> impl Iterator<Item = &'static str> {
+        let text = self.name.is_some() || self.unit.is_some() || self.labels.is_some();
+        let read_back = self.read_back.as_ref();
+        let quantities = self
+            .recipe
+            .iter()
+            .any(|step| matches!(step, StepDoc::Precondition(p) if p.quantity.is_some()))
+            || read_back.is_some_and(|r| r.quantity.is_some());
+        [
+            text.then_some("setting-text"),
+            self.verified.map(|_| "verified"),
+            read_back.and_then(|r| r.mask).map(|_| "rmw"),
+            quantities.then_some("publish"),
+        ]
+        .into_iter()
+        .flatten()
+    }
 }
 
 #[derive(Deserialize)]
@@ -303,6 +325,8 @@ impl QuantityDoc {
             self.topic.as_ref().map(|_| "mqtt"),
             self.get.as_ref().map(|_| "http"),
             self.scale_factor.map(|_| "scale-factor"),
+            self.resolution.map(|_| "resolution"),
+            self.texts.as_ref().map(|_| "text-enum"),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
         ]

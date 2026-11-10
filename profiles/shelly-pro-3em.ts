@@ -49,7 +49,7 @@ export default defineProfile({
   name: "Pro 3EM",
   manufacturer: "Shelly",
   version: "1.0.0",
-  requires: ["http"],
+  requires: ["http", "resolution"],
   quantities: [
     { key: "power", role: "grid.power", get: GET, json: "/total_act_power", resolution: 0.1 },
     { key: "frequency", role: "grid.frequency", get: GET, json: "/a_freq", resolution: 0.01 },

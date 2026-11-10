@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 fn doc(settings: &Value) -> Value {
     json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["mqtt", "u16", "publish", "precondition"],
+        "requires": super::all(),
         "quantities": [
             { "key": "power", "role": "ev.charge.power", "topic": "loadpoints/{address}/chargePower" },
             { "key": "mode", "role": "ev.mode", "topic": "loadpoints/{address}/mode",
@@ -122,7 +122,7 @@ fn a_setting_writes_through_its_profiles_binding() {
     );
     let published = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u16", "publish"], "quantities": [],
+        "requires": super::all(), "quantities": [],
         "settings": [{
             "key": "a", "type": "u16", "values": [0], "minInterval": 0, "writeOnly": true,
             "recipe": [{ "publish": { "topic": "a/set" } }],
@@ -151,12 +151,13 @@ fn a_publish_topic_is_a_path_under_the_root_without_wildcards() {
 }
 
 #[test]
-fn a_publish_without_it_in_requires_is_a_warning() {
+fn a_publish_without_it_in_requires_is_refused() {
     let mut unrequired = doc(&json!([mode()]));
-    unrequired["requires"] = json!(["mqtt", "u16"]);
-    let profile = Profile::load(&unrequired.to_string()).unwrap();
+    unrequired["requires"] = super::all_but("publish");
     assert_eq!(
-        profile.warnings(),
-        ["`requires` lacks `publish`, which the profile uses"]
+        Profile::load(&unrequired.to_string())
+            .unwrap_err()
+            .to_string(),
+        "`requires` lacks `publish`, which the profile uses"
     );
 }

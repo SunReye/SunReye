@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "requires": [
     "modbus",
     "u16",
@@ -11,7 +11,10 @@
     "u32",
     "compute",
     "write",
-    "snapshot-toggle"
+    "snapshot-toggle",
+    "identify",
+    "ac-rating",
+    "setting-text"
   ],
   "identify": [
     {

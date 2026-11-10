@@ -3,12 +3,13 @@
   "id": "evcc",
   "name": "Loadpoint",
   "manufacturer": "EVCC",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "requires": [
     "mqtt",
     "u16",
     "publish",
-    "precondition"
+    "precondition",
+    "text-enum"
   ],
   "quantities": [
     {

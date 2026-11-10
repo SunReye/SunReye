@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 fn doc(quantities: &Value) -> Value {
     json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     })
 }
 

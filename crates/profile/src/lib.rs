@@ -45,6 +45,12 @@ pub const CAPABILITIES: &[&str] = &[
     "delay",
     "snapshot-toggle",
     "publish",
+    "identify",
+    "ac-rating",
+    "resolution",
+    "text-enum",
+    "setting-text",
+    "verified",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

@@ -1,6 +1,6 @@
 # 5. Device profile format
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
 
 ## Context
 
@@ -12,9 +12,10 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 
 **Schema versions.** A profile declares one integer `schema` and the capabilities it `requires`. The core and the WASM report the supported range and a capability list (bindings, decoders, step kinds).
 
-- A new binding, decoder or step kind is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
-- A core that lacks a required capability refuses the profile with an error naming it.
-- A profile that uses a capability without listing it in `requires` loads with a warning: an older core lacking it would refuse the profile without naming it.
+- A new binding, decoder, step kind or optional field is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
+- A core that lacks a required capability refuses the profile with an error naming it. It checks `requires` before any other field, so a field it does not know is never reported as malformed when its capability is listed.
+- A profile that uses a capability without listing it in `requires` is refused: an older core lacking it would refuse the profile as malformed, without naming it.
+- Optional fields admitted after the first settings recipe each need a capability: `identify` (`identify`), an inverter's `acRating` (`ac-rating`), a quantity's `resolution` (`resolution`), `enum` (`text-enum`), `topic` (`mqtt`), `get` and `json` (`http`), `model` (`sunspec`), `scaleFactor` (`scale-factor`) and `deadband` (`deadband`), a setting's `name`, `unit` and `labels` (`setting-text`) and `verified` (`verified`), a `readBack` `mask` (`rmw`), and a `readBack` or `precondition` `quantity` (`publish`).
 - The current and previous schema load. The previous one yields deprecation warnings that name the replacement and the removal version.
 - A removed schema is refused with an error naming the migration. Removal happens only in a major release. `migrate` rewrites an old profile.
 - Warnings are data from the WASM, so the CLI, the core log and the SPA show identical text.
@@ -80,6 +81,7 @@ Each step kind is its own capability (`write-block` for `writeBlock`).
 - **TypeScript owns the format, Rust loads it (v4).** Rejected: two decoders drift.
 - **A shipped Rust binary as the SDK.** Rejected: autocomplete and editor types come for free from TypeScript, and a WASM module loads in-process.
 - **The core embeds a WASM runtime.** Rejected: the core is native; WASM is only for the CLI.
+- **An unrequired capability as a warning** (until 2026-11-10). Rejected: unknown fields are refused, so an older core met a profile that forgot one as malformed, and the warning let it ship.
 
 ## Consequences
 

@@ -14,7 +14,7 @@ const GET: &str = "/rpc/EM.GetStatus?id={address}";
 fn doc(quantities: &Value) -> Value {
     json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["http", "compute"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     })
 }
 
@@ -120,20 +120,20 @@ fn a_profile_reads_registers_or_gets_not_both() {
 }
 
 #[test]
-fn a_get_without_http_in_requires_is_a_warning() {
+fn a_get_without_http_in_requires_is_refused() {
     let mut unrequired = doc(&json!([point("power", "grid.power", "/total_act_power")]));
-    unrequired["requires"] = json!([]);
-    let p = Profile::load(&unrequired.to_string()).unwrap();
+    unrequired["requires"] = super::all_but("http");
     assert_eq!(
-        p.warnings(),
-        ["`requires` lacks `http`, which the profile uses"]
+        Profile::load(&unrequired.to_string())
+            .unwrap_err()
+            .to_string(),
+        "`requires` lacks `http`, which the profile uses"
     );
 }
 
 #[test]
 fn an_http_profile_writes_no_setting() {
     let mut writes = doc(&json!([point("power", "grid.power", "/total_act_power")]));
-    writes["requires"] = json!(["http", "u16", "write"]);
     writes["settings"] = json!([{ "key": "limit", "type": "u16", "range": { "min": 0, "max": 10 },
         "minInterval": 0, "recipe": [{ "write": { "register": 1 } }], "writeOnly": true }]);
     match Profile::load(&writes.to_string()) {

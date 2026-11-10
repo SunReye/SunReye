@@ -280,6 +280,9 @@ pub enum LoadError {
     Malformed(String),
     Schema(u32),
     MissingCapability(String),
+    /// A capability the profile uses but does not list in `requires`: an older core lacking it
+    /// would refuse the profile as malformed, without naming it.
+    Unrequired(String),
     Quantity {
         key: String,
         problem: &'static str,
@@ -311,6 +314,9 @@ impl fmt::Display for LoadError {
             Self::MissingCapability(name) => {
                 write!(f, "this build lacks the required capability `{name}`")
             }
+            Self::Unrequired(name) => {
+                write!(f, "`requires` lacks `{name}`, which the profile uses")
+            }
             Self::Quantity { key, problem } => write!(f, "quantity `{key}`: {problem}"),
             Self::Mppt { input, problem } => write!(f, "MPPT input {input}: {problem}"),
             Self::Setting { key, problem } => write!(f, "setting `{key}`: {problem}"),
@@ -334,19 +340,19 @@ impl Profile {
         if header.schema != SCHEMA {
             return Err(LoadError::Schema(header.schema));
         }
-        let doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
-        if let Some(missing) = doc
+        if let Some(missing) = header
             .requires
-            .iter()
+            .into_iter()
             .find(|name| !CAPABILITIES.contains(&name.as_str()))
         {
-            return Err(LoadError::MissingCapability(missing.clone()));
+            return Err(LoadError::MissingCapability(missing));
+        }
+        let doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
+        if let Some(name) = unrequired(&doc).next() {
+            return Err(LoadError::Unrequired(name.to_owned()));
         }
         doc.inverter.as_ref().map_or(Ok(()), check)?;
-        let warnings = unrequired(&doc)
-            .map(|name| format!("`requires` lacks `{name}`, which the profile uses"))
-            .collect();
-        let identify = identify::compile(doc.identify)?;
+        let identify = identify::compile(doc.identify.unwrap_or_default())?;
         let quantities = compile(doc.quantities)?;
         let plan = plan::compile(&quantities);
         let settings = setting::compile(doc.settings, &quantities)
@@ -361,7 +367,7 @@ impl Profile {
             identify,
             inverter: doc.inverter,
             settings,
-            warnings,
+            warnings: Vec::new(),
             chain: None,
         })
     }
@@ -486,10 +492,16 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
             }
         })
     });
+    let identify = doc.identify.iter().flatten();
+    let inverter = doc.inverter.as_ref();
     let used: Vec<&str> = doc
         .quantities
         .iter()
         .flat_map(QuantityDoc::capabilities)
+        .chain(doc.identify.as_ref().map(|_| "identify"))
+        .chain(identify.map(|f| f.kind.map_or("u16", Kind::capability)))
+        .chain(inverter.and_then(|i| i.ac_rating).map(|_| "ac-rating"))
+        .chain(settings.clone().flat_map(SettingDoc::capabilities))
         .chain(settings.clone().map(|s| s.kind.capability()))
         .chain(unlocks)
         .chain(

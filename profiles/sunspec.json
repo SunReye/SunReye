@@ -3,13 +3,14 @@
   "id": "sunspec",
   "name": "SunSpec device",
   "manufacturer": "SunSpec",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "requires": [
     "sunspec",
     "u16",
     "i16",
     "acc32",
-    "scale-factor"
+    "scale-factor",
+    "resolution"
   ],
   "quantities": [
     {

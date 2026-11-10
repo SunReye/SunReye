@@ -22,7 +22,7 @@ const CODE: &str = "52817";
 fn locked() -> Vec<u8> {
     json!({
         "schema": 1, "id": "locked", "name": "locked", "manufacturer": "test",
-        "version": "1.0.0", "requires": ["modbus", "u16", "write", "unlock"], "quantities": [],
+        "version": "1.0.0", "requires": sunreye_profile::CAPABILITIES, "quantities": [],
         "settings": [{
             "key": "current", "type": "u16", "range": { "min": 0, "max": 350 },
             "minInterval": 60, "readBack": { "register": 108 }, "verified": true,

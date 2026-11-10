@@ -10,7 +10,7 @@ const meter = {
   name: "Meter",
   manufacturer: "Test",
   version: "1.0.0",
-  requires: ["modbus", "u16"],
+  requires: ["modbus", "u16", "u32"],
   quantities: [
     { key: "power", role: "grid.power", register: 10, type: "u16" },
     { key: "energy", role: "grid.energy", register: 20, type: "u32" },
@@ -28,13 +28,14 @@ async function directory(files: Readonly<Record<string, string>>): Promise<strin
   return dir;
 }
 
-test("lint prints a profile module's warnings", async () => {
-  const dir = await directory({ "meter.ts": `export default ${JSON.stringify(meter)};` });
+test("lint fails a profile module that uses a capability it does not require", async () => {
+  const unrequired = { ...meter, requires: ["modbus", "u16"] };
+  const dir = await directory({ "meter.ts": `export default ${JSON.stringify(unrequired)};` });
 
   expect(await run(["lint", join(dir, "meter.ts")])).toEqual({
-    code: 0,
-    out: "warning: `requires` lacks `u32`, which the profile uses\n",
-    err: "",
+    code: 1,
+    out: "",
+    err: "error: `requires` lacks `u32`, which the profile uses\n",
   });
 });
 
@@ -64,12 +65,12 @@ test("decode prints each quantity's value from a register dump", async () => {
   });
 });
 
-test("build prints each profile's published version and its warnings", async () => {
+test("build prints each profile's published version", async () => {
   const dir = await directory({ "meter.ts": `export default ${JSON.stringify(meter)};` });
 
   expect(await run(["build", dir])).toEqual({
     code: 0,
-    out: "meter 1.0.0\n  warning: `requires` lacks `u32`, which the profile uses\n",
+    out: "meter 1.0.0\n",
     err: "",
   });
 });

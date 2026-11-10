@@ -3,7 +3,7 @@
   "id": "deye-sun16k-sg05lp3",
   "name": "SUN-16K-SG05LP3-EU-SM2",
   "manufacturer": "Deye",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "requires": [
     "modbus",
     "u16",
@@ -11,7 +11,10 @@
     "u32",
     "compute",
     "write",
-    "snapshot-toggle"
+    "snapshot-toggle",
+    "identify",
+    "ac-rating",
+    "setting-text"
   ],
   "identify": [
     {

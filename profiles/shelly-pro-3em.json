@@ -3,9 +3,10 @@
   "id": "shelly-pro-3em",
   "name": "Pro 3EM",
   "manufacturer": "Shelly",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "requires": [
-    "http"
+    "http",
+    "resolution"
   ],
   "quantities": [
     {

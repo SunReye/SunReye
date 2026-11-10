@@ -23,7 +23,7 @@ fn quantities(case: &Value) -> Value {
 fn profile(quantities: &Value) -> Profile {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     });
     Profile::load(&doc.to_string()).unwrap()
 }

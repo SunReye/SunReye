@@ -484,7 +484,7 @@ fn setting(
         recipe,
         read_back,
         texts,
-        verified: doc.verified,
+        verified: doc.verified.unwrap_or(false),
     })
 }
 

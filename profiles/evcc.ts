@@ -22,7 +22,7 @@ export default defineProfile({
   name: "Loadpoint",
   manufacturer: "EVCC",
   version: "1.0.0",
-  requires: ["mqtt", "u16", "publish", "precondition"],
+  requires: ["mqtt", "u16", "publish", "precondition", "text-enum"],
   quantities: [
     { key: "chargePower", role: "ev.charge.power", topic: "loadpoints/{address}/chargePower" },
     { key: "vehicleSoc", role: "ev.vehicle.soc", topic: "loadpoints/{address}/vehicleSoc" },

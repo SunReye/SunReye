@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 fn profile(identify: &Value) -> Result<Profile, LoadError> {
     let mut doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u16"],
+        "requires": super::all(),
         "quantities": [{ "key": "a", "role": "pv.power", "register": 500, "type": "u16" }],
     });
     if !identify.is_null() {

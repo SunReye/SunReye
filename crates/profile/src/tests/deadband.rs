@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 fn load(quantities: &Value) -> Result<Profile, LoadError> {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "deadband"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     });
     Profile::load(&doc.to_string())
 }
@@ -80,16 +80,14 @@ fn counters_and_enums_refuse_any_deadband() {
 fn a_deadband_needs_its_capability() {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "i16"], "quantities": [
+        "requires": super::all_but("deadband"), "quantities": [
             { "key": "power", "role": "battery.power", "register": 1, "type": "i16",
               "deadband": 20 },
         ],
     });
 
-    let profile = Profile::load(&doc.to_string()).unwrap();
-
     assert_eq!(
-        profile.warnings(),
-        ["`requires` lacks `deadband`, which the profile uses"]
+        Profile::load(&doc.to_string()).unwrap_err().to_string(),
+        "`requires` lacks `deadband`, which the profile uses"
     );
 }

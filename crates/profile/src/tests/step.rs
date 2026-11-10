@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 fn steps(quantities: &Value) -> Vec<(String, f64)> {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "compute"], "quantities": quantities,
+        "requires": super::all(), "quantities": quantities,
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
     profile
