@@ -56,7 +56,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Two levels:**
   - *Overlay glass* (menus, dialogs, sheets) keeps kbase's tokens.
   - *Ambient glass* (rail, bottom bar, dashboard cards, 3D label chips) is lighter, about 72 % opaque in light and 78 % in dark, with the strong blur.
-- **Backdrop:** both sit over kbase's `bg-spotlight`, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. It is recomputed every 15 minutes and never animated; without a location it stays indigo. The grid pattern appears only on the dashboard and sign-in.
+- **Backdrop:** both sit over kbase's `bg-spotlight`, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. It is recomputed every 15 minutes and never animated; without a location it stays indigo. No grid pattern anywhere.
 - **Opaque fallback:** `prefers-reduced-transparency` and the low-power switch turn every glass surface opaque.
 
 **Colour.**
