@@ -1,13 +1,17 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
  * Fields that tell the device from any other on the bus; the setup scan proposes the profile
  * only when each holds one of its values.
  */
-identify?: Array<Identify>, settings?: Array<Setting>, };
+identify?: Array<Identify>, settings?: Array<Setting>, 
+/**
+ * Each poll group's cadence in seconds, by name: a whole number of default cycles.
+ */
+pollGroups?: Record<string, number>, };
 
 export type Quantity = { key: string, role: string, index?: number, 
 /**
@@ -45,7 +49,11 @@ enum?: Record<string, number>,
  * The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
  * the quantisation step, and none for a counter or enum.
  */
-deadband?: number, };
+deadband?: number, 
+/**
+ * The poll group it is read in; the default cadence when left out.
+ */
+pollGroup?: string, };
 
 export type Kind = "u16" | "i16" | "u32" | "acc32";
 

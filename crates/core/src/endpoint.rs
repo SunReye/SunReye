@@ -18,8 +18,8 @@ use crate::settings::{self, Applied, Job, Refusal};
 use crate::sunspec;
 use crate::transport::{Client, Endpoint, Error};
 
-/// Until a profile declares poll groups, every quantity is polled at this cadence.
-pub const CADENCE: Duration = Duration::from_secs(5);
+/// Every quantity outside a poll group is polled at this cadence.
+pub const CADENCE: Duration = sunreye_profile::CADENCE;
 pub const TIMEOUT: Duration = Duration::from_secs(3);
 /// One missed cycle then costs 10 s of silence, under ADR 3's 15 s gap threshold.
 const FIRST_BACKOFF: Duration = CADENCE;
@@ -123,9 +123,13 @@ struct Polled {
     /// The device's profile, bound to its SunSpec chain once discovered.
     profile: Arc<Profile>,
     gap_tolerance: u16,
-    /// A merged block the device refused stays split for the life of the task.
-    plan: Vec<Block>,
-    series: Vec<(SeriesId, Option<Unit>)>,
+    /// Each poll group's plan and the cycles between its polls. A merged block the device refused
+    /// stays split for the life of the task.
+    groups: Vec<(u32, Vec<Block>)>,
+    /// Each quantity's series, unit, and the cycles between its polls.
+    series: Vec<(SeriesId, Option<Unit>, u32)>,
+    /// Cycles polled so far.
+    cycle: u32,
     /// Its first slot in [`Latest`].
     slot: usize,
     registers: Registers,
@@ -136,18 +140,19 @@ impl Polled {
     fn new(device: Device, framing: Framing, bus: &Bus, slot: usize) -> Self {
         let quantities = device.profile.quantities();
         let gap_tolerance = framing.gap_tolerance();
-        let plan = device.profile.read_plan(gap_tolerance);
+        let groups = groups(&device.profile, gap_tolerance);
         let series = quantities
             .iter()
-            .map(|q| (bus.intern(&q.role, q.index), q.unit()))
+            .map(|q| (bus.intern(&q.role, q.index), q.unit(), cycles(q.cadence())))
             .collect();
         let values = vec![None; quantities.len()];
         Self {
             profile: Arc::clone(&device.profile),
             device,
             gap_tolerance,
-            plan,
+            groups,
             series,
+            cycle: 0,
             slot,
             registers: Registers::default(),
             values,
@@ -168,39 +173,27 @@ impl Polled {
             || (*self.device.profile).clone(),
             |chain| self.device.profile.bind(&chain),
         ));
-        self.plan = self.profile.read_plan(self.gap_tolerance);
+        self.groups = groups(&self.profile, self.gap_tolerance);
         Ok(())
     }
 
+    /// Reads the poll groups due this cycle; a quantity of a group not due has no value.
     async fn read(&mut self, client: &mut Client, words: &mut [u16]) -> Result<(), Error> {
         self.registers.clear();
-        let mut next = 0;
-        while let Some(&block) = self.plan.get(next) {
-            let words = words
-                .get_mut(..usize::from(block.count))
-                .ok_or(Error::Protocol("count out of range"))?;
-            match client
-                .read_holding(self.device.unit, block.start, words)
-                .await
-            {
-                Ok(()) => {
-                    self.registers.answer(block.start, words);
-                    next += 1;
-                }
-                // A merge read unmapped registers the device may not serve.
-                Err(Error::Exception(2)) if block.merged => {
-                    tracing::warn!(
-                        device = self.device.id.0,
-                        start = block.start,
-                        count = block.count,
-                        "refused with exception 2; split"
-                    );
-                    self.plan.splice(next..=next, self.profile.split(block));
-                }
-                Err(e) => return Err(e),
+        let cycle = self.cycle;
+        for (every, plan) in &mut self.groups {
+            if cycle.is_multiple_of(*every) {
+                let device = (&self.device, &*self.profile);
+                read_plan(client, device, plan, &mut self.registers, words).await?;
             }
         }
         self.profile.decode(&self.registers, &mut self.values);
+        for (value, (_, _, every)) in self.values.iter_mut().zip(&self.series) {
+            if !cycle.is_multiple_of(*every) {
+                *value = None;
+            }
+        }
+        self.cycle = cycle.wrapping_add(1);
         Ok(())
     }
 
@@ -209,7 +202,9 @@ impl Polled {
         let read = Instant::now();
         let mut latest = out.latest.lock().unwrap_or_else(PoisonError::into_inner);
         let slots = latest.iter_mut().skip(self.slot);
-        for ((value, (series, unit)), slot) in self.values.iter().zip(&self.series).zip(slots) {
+        for ((value, (series, unit, every)), slot) in
+            self.values.iter().zip(&self.series).zip(slots)
+        {
             if let Some(value) = *value {
                 let reading = Reading {
                     device: self.device.id,
@@ -217,7 +212,7 @@ impl Polled {
                     value,
                     unit: *unit,
                     time,
-                    cadence: CADENCE,
+                    cadence: CADENCE * *every,
                 };
                 *slot = Some((reading, read));
                 out.bus.publish(reading);
@@ -225,6 +220,56 @@ impl Polled {
         }
         drop(latest);
     }
+}
+
+/// Each poll group of `profile` with the cycles between its polls, fastest first.
+fn groups(profile: &Profile, gap_tolerance: u16) -> Vec<(u32, Vec<Block>)> {
+    let groups = profile.poll_groups(gap_tolerance).into_iter();
+    groups
+        .map(|(cadence, plan)| (cycles(cadence), plan))
+        .collect()
+}
+
+/// The default cycles in `cadence`, a whole number of them (ADR 6).
+fn cycles(cadence: Duration) -> u32 {
+    u32::try_from(cadence.as_secs() / CADENCE.as_secs())
+        .unwrap_or(u32::MAX)
+        .max(1)
+}
+
+/// Reads `plan` of a device and its profile into `registers`; a merged block the device refuses
+/// with exception 2 is split in `plan`.
+async fn read_plan(
+    client: &mut Client,
+    (device, profile): (&Device, &Profile),
+    plan: &mut Vec<Block>,
+    registers: &mut Registers,
+    words: &mut [u16],
+) -> Result<(), Error> {
+    let mut next = 0;
+    while let Some(&block) = plan.get(next) {
+        let words = words
+            .get_mut(..usize::from(block.count))
+            .ok_or(Error::Protocol("count out of range"))?;
+        match client.read_holding(device.unit, block.start, words).await {
+            Ok(()) => {
+                registers.answer(block.start, words);
+                next += 1;
+            }
+            // A merge read unmapped registers the device may not serve.
+            Err(Error::Exception(2)) if block.merged => {
+                tracing::warn!(
+                    device = device.id.0,
+                    start = block.start,
+                    count = block.count,
+                    "refused with exception 2; split"
+                );
+                plan.splice(next..=next, profile.split(block));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Reads `device` through `client` as its task would, `cycles` times a cadence apart, and publishes

@@ -8,6 +8,7 @@ mod identify;
 mod lint;
 mod load;
 mod plan;
+mod poll_group;
 mod publish;
 mod setting;
 mod step;

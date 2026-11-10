@@ -62,6 +62,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "text-enum",
       "setting-text",
       "verified",
+      "poll-group",
     ],
   });
 });

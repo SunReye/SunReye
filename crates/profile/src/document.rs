@@ -37,6 +37,10 @@ pub struct ProfileDoc {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<Vec<SettingDoc>>"))]
     pub settings: Vec<SettingDoc>,
+    /// Each poll group's cadence in seconds, by name: a whole number of default cycles.
+    #[serde(rename = "pollGroups")]
+    #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
+    pub poll_groups: Option<BTreeMap<String, u64>>,
 }
 
 /// A register the identify probe reads, at scale 1, and the values that identify the device, such
@@ -310,6 +314,9 @@ pub struct QuantityDoc {
     /// The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
     /// the quantisation step, and none for a counter or enum.
     pub deadband: Option<f64>,
+    /// The poll group it is read in; the default cadence when left out.
+    #[serde(rename = "pollGroup")]
+    pub poll_group: Option<String>,
 }
 
 impl QuantityDoc {
@@ -329,6 +336,7 @@ impl QuantityDoc {
             self.texts.as_ref().map(|_| "text-enum"),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
+            self.poll_group.as_ref().map(|_| "poll-group"),
         ]
         .into_iter()
         .flatten()

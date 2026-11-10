@@ -46,3 +46,20 @@ fn an_override_wins_then_the_profile_then_the_role_default_else_none() {
         ]
     );
 }
+
+#[test]
+fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u16", "poll-group"], "pollGroups": { "slow": 60 },
+        "quantities": [
+            { "key": "temp", "role": "extra.temp", "register": 1, "type": "u16",
+              "pollGroup": "slow" },
+        ],
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+
+    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new());
+
+    assert_eq!(policy.cadence, std::time::Duration::from_mins(1));
+}

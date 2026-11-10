@@ -46,10 +46,15 @@ impl Block {
     }
 }
 
-/// The gap-free plan: grouped blocks, then every other register in contiguous blocks.
-pub fn compile(quantities: &[Quantity]) -> Vec<Block> {
-    let groups = atomic_groups(quantities);
-    let rest = readable(quantities)
+/// The gap-free plan of the quantities `keep` selects: grouped blocks, then every other register
+/// in contiguous blocks.
+pub fn compile(quantities: &[Quantity], keep: impl Fn(&Quantity) -> bool + Copy) -> Vec<Block> {
+    let groups = atomic_groups(quantities, keep);
+    let rest = quantities
+        .iter()
+        .filter(|q| keep(q))
+        .flat_map(addresses)
+        .collect::<BTreeSet<u16>>()
         .into_iter()
         .filter(|a| !groups.iter().any(|g| g.covers(*a)));
     let mut plan: Vec<Block> = groups.iter().copied().chain(contiguous(rest)).collect();
@@ -125,7 +130,7 @@ pub fn contiguous(sorted: impl IntoIterator<Item = u16>) -> Vec<Block> {
 
 /// One grouped block per cluster of computed quantities with overlapping register spans. A cluster
 /// wider than one request is left to the plain blocks and its inputs are read apart.
-fn atomic_groups(quantities: &[Quantity]) -> Vec<Block> {
+fn atomic_groups(quantities: &[Quantity], keep: impl Fn(&Quantity) -> bool) -> Vec<Block> {
     // Inputs are always declared earlier, so one pass resolves every computed quantity.
     let mut registers: Vec<BTreeSet<u16>> = Vec::with_capacity(quantities.len());
     let mut spans: Vec<(u16, u16)> = Vec::new();
@@ -146,7 +151,7 @@ fn atomic_groups(quantities: &[Quantity]) -> Vec<Block> {
             &quantity.read,
             found.first(),
             found.last(),
-            found.len() >= 2,
+            found.len() >= 2 && keep(quantity),
         ) {
             spans.push((*min, *max));
         }

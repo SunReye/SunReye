@@ -9,6 +9,8 @@ mod role;
 mod setting;
 pub mod sunspec;
 
+use std::time::Duration;
+
 use serde::Serialize;
 
 pub use decode::Registers;
@@ -19,6 +21,9 @@ pub use setting::{Field, Relock, Setting, Source, Step, Toggle, Unlock};
 
 /// Where a topic names the device address.
 pub const ADDRESS: &str = "{address}";
+
+/// The default poll cadence; a poll group's is a whole number of these (ADR 6).
+pub const CADENCE: Duration = Duration::from_secs(5);
 
 /// The current schema: the integer version of the profile format.
 pub const SCHEMA: u32 = 1;
@@ -51,6 +56,7 @@ pub const CAPABILITIES: &[&str] = &[
     "text-enum",
     "setting-text",
     "verified",
+    "poll-group",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both
