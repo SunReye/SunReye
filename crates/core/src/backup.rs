@@ -241,10 +241,7 @@ pub fn restore(file: &Path, data_dir: &Path) -> Result<(), Error> {
         remove(&suffixed(&store, suffix))?;
     }
     std::fs::rename(&staged, &store)?;
-    match std::fs::remove_dir_all(data_dir.join(CARS)) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
-        _ => {}
-    }
+    remove_dir(&data_dir.join(CARS))?;
     std::fs::rename(&cars, data_dir.join(CARS))?;
     Ok(())
 }
@@ -354,10 +351,7 @@ fn body(name: &str) -> bool {
 /// Unpacks the backup `file`: its store to `store`, its car bodies into `cars`.
 fn unpack(file: &Path, store: &Path, cars: &Path) -> Result<(), Error> {
     remove(store)?;
-    match std::fs::remove_dir_all(cars) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
-        _ => {}
-    }
+    remove_dir(cars)?;
     std::fs::create_dir(cars)?;
     let mut found = false;
     tar::read(io::BufReader::new(File::open(file)?), |name, body| {
@@ -415,6 +409,14 @@ fn private_file(path: &Path) -> io::Result<File> {
 
 fn remove(path: &Path) -> io::Result<()> {
     match std::fs::remove_file(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+/// Removes the directory `path` and all it holds; one already gone is fine.
+fn remove_dir(path: &Path) -> io::Result<()> {
+    match std::fs::remove_dir_all(path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         other => other,
     }
