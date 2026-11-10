@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09)
+Status: accepted (2026-11-09), amended (2026-11-10)
 
 ## Context
 
@@ -28,6 +28,24 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 **Time slider.** A date and time slider moves the sun and the shadows. Per-string production comes from measured values or estimates for past dates, the forecast for today and the next two days, and a clear-sky run of the `pv` crate in the browser for any other date. Once readings exist, each MPPT input's learned correction and its residual over the last 30 days are shown, so a misplaced face or a missing obstacle shows where it is drawn. Nothing changes the scene automatically.
 
 **Live dashboard.** When a scene exists, the dashboard opens on it, updated by live ticks (ADR 9): each string's power, tinted by its share of its own peak and labelled at its centre (estimates carry "≈"); each inverter's AC power; the battery's power, direction and SOC; the car's charging power and the vehicle's SOC when EVCC reports them; grid import or export and house consumption from the `plant` device. Equipment labels float above their markers on leader lines, readable through walls; without markers they sit beside the house. The 2D power flow serves when there is no scene, no WebGL2 or the low-power switch is on, and a toggle switches between them per browser.
+
+**Look.** A matte architectural clay model that matches the SPA (ADR 21):
+- **Materials:** soft white walls, a graphite or terracotta roof, and dark glass modules with a faint sheen. No texture files.
+- **Ground:** a round plate that fades into the page background.
+- **Light:** a hemisphere light plus the sun at its real position for the plant and time, casting soft shadows. The builder's time slider moves it, and nights use night lighting.
+- **Strings:** tinted on the solar amber ramp.
+- **Theme:** background, fog and light follow light or dark mode.
+- **Rendering quality:** antialiasing is on, and the wall moiré is fixed.
+
+**Motion.** There is still no continuous loop. Short ease-in-out tweens run, then rendering stops:
+- the camera flies to a preset in about 600 ms;
+- tints and labels ease to each tick's values in about 400 ms.
+
+Energy flow shows as tint and label arrows.
+
+**Labels.** Labels are ambient-glass chips with an icon, an animated value and a flow-colour dot. They push each other apart so they never overlap, and stay inside the canvas. Tapping a chip opens that equipment's detail sheet.
+
+**Builder layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Obstacles, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up.
 
 ## Considered options
 
