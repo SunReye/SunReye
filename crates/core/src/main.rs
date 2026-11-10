@@ -13,6 +13,14 @@ use sunreye_core::{backup, capture, import};
 use tokio::net::TcpListener;
 use tracing_subscriber::fmt::writer::MakeWriterExt as _;
 
+/// Each subcommand and its usage; the bare `sunreye` serves.
+const COMMANDS: [(&str, &str); 4] = [
+    ("capture", capture::USAGE),
+    ("import", import::USAGE),
+    ("backup", backup::BACKUP_USAGE),
+    ("restore", backup::RESTORE_USAGE),
+];
+
 fn main() -> ExitCode {
     let logs = Logs::default();
     // To stderr and the buffer the log screen reads; never a file (ADR 2).
@@ -21,17 +29,25 @@ fn main() -> ExitCode {
         .with_ansi(false)
         .init();
     let mut args = std::env::args().skip(1).peekable();
-    if args.next_if(|arg| arg == "capture").is_some() {
-        return capture(args);
+    let command = args.next_if(|arg| COMMANDS.iter().any(|(name, _)| arg == name));
+    let args: Vec<String> = args.collect();
+    if args.iter().any(|arg| arg == "--help") {
+        let usage = COMMANDS
+            .iter()
+            .find(|(name, _)| command.as_deref() == Some(*name))
+            .map_or(startup::USAGE, |(_, usage)| usage);
+        return match std::io::stdout().write_all(usage.as_bytes()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
     }
-    if args.next_if(|arg| arg == "import").is_some() {
-        return import(args);
-    }
-    if args.next_if(|arg| arg == "backup").is_some() {
-        return backup(args);
-    }
-    if args.next_if(|arg| arg == "restore").is_some() {
-        return restore(args);
+    let args = args.into_iter();
+    match command.as_deref() {
+        Some("capture") => return capture(args),
+        Some("import") => return import(args),
+        Some("backup") => return backup(args),
+        Some("restore") => return restore(args),
+        _ => {}
     }
     let options = match Options::parse(args, |name| std::env::var(name).ok()) {
         Ok(options) => options,
@@ -207,5 +223,59 @@ async fn terminated() {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {}
         () = term => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{COMMANDS, backup, capture, import, startup};
+
+    /// The flags a usage lists, each at the start of a line.
+    fn flags(usage: &str) -> Vec<String> {
+        usage
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|word| word.starts_with("--"))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Why `command` refuses `flag` with a value and a file, if it does not know it.
+    fn refusal(command: &str, flag: &str) -> String {
+        let args = ["file".to_owned(), flag.to_owned(), "1".to_owned()];
+        let env = |_: &str| None;
+        let unknown = |e: &dyn std::fmt::Display| e.to_string();
+        let refused = match command {
+            "capture" => capture::Options::parse(args.into_iter().skip(1))
+                .err()
+                .map(|e| unknown(&e)),
+            "import" => import::Options::parse(args, env).err().map(|e| unknown(&e)),
+            "backup" => backup::Options::backup(args, env)
+                .err()
+                .map(|e| unknown(&e)),
+            "restore" => backup::Options::restore(args, env)
+                .err()
+                .map(|e| unknown(&e)),
+            _ => startup::Options::parse(args.into_iter().skip(1), env)
+                .err()
+                .map(|e| unknown(&e)),
+        };
+        refused.unwrap_or_default()
+    }
+
+    #[test]
+    fn every_flag_a_usage_lists_is_one_its_command_reads() {
+        let serve = ("serve", startup::USAGE);
+        for (command, usage) in COMMANDS.into_iter().chain([serve]) {
+            let listed = flags(usage);
+            assert!(!listed.is_empty(), "{command}");
+            for flag in listed {
+                let refused = refusal(command, &flag);
+                let unknown = format!("unknown argument `{flag}`");
+                assert!(!refused.contains(&unknown), "{command} {flag}: {refused}");
+            }
+            let bogus = refusal(command, "--bogus");
+            assert!(bogus.contains("unknown argument `--bogus`"), "{command}");
+        }
     }
 }

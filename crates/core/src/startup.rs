@@ -42,6 +42,19 @@ const MINUTE: Duration = Duration::from_secs(60);
 /// How long open requests may finish after a shutdown signal; live streams never do.
 const GRACE: Duration = Duration::from_secs(3);
 
+/// What `sunreye --help` prints: the flags [`Options::parse`] reads.
+pub const USAGE: &str = "\
+Usage: sunreye [--data-dir <dir>] [--listen <address:port>] [--ingress <ip>]
+       sunreye <command> --help
+
+Commands: capture, import, backup, restore
+
+Flags:
+  --data-dir <dir>          the data directory; SUNREYE_DATA_DIR
+  --listen <address:port>   where the API listens, 0.0.0.0:8099 by default; SUNREYE_LISTEN
+  --ingress <ip>            the Home Assistant Supervisor's address to trust; SUNREYE_INGRESS
+";
+
 /// Everything startup takes; every other setting lives in SQLite.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {

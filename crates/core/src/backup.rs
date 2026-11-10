@@ -75,6 +75,27 @@ impl From<storage::Error> for Error {
     }
 }
 
+/// What `sunreye backup --help` prints: the flags [`Options::backup`] reads.
+pub const BACKUP_USAGE: &str = "\
+Usage: sunreye backup <file> [--secrets] [--data-dir <dir>]
+
+Backs up the store and car bodies, the core running or not.
+
+Flags:
+  --secrets          include the connections' secrets
+  --data-dir <dir>   the data directory; SUNREYE_DATA_DIR
+";
+
+/// What `sunreye restore --help` prints: the flags [`Options::restore`] reads.
+pub const RESTORE_USAGE: &str = "\
+Usage: sunreye restore <file> [--data-dir <dir>]
+
+Replaces the store and car bodies while the core is stopped.
+
+Flags:
+  --data-dir <dir>   the data directory; SUNREYE_DATA_DIR
+";
+
 /// What `sunreye backup` and `sunreye restore` take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {

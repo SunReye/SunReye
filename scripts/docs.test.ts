@@ -1,5 +1,5 @@
 // Every command the docs show must exist (ADR 13): each `sunreye`, `sunreye-profile` and `bun`
-// invocation in a fenced shell block, read against the code that parses it.
+// invocation in a fenced shell block, read against the usage each program prints.
 import { expect, test } from "bun:test";
 import { Glob } from "bun";
 import { existsSync } from "node:fs";
@@ -11,14 +11,8 @@ type Check = (args: readonly string[]) => Promise<string[]>;
 
 const root = new URL("..", import.meta.url).pathname;
 
-/** The source file that parses each core subcommand's flags; `serve` is the bare `sunreye`. */
-const parsers = new Map([
-  ["serve", "startup.rs"],
-  ["capture", "capture.rs"],
-  ["import", "import.rs"],
-  ["backup", "backup.rs"],
-  ["restore", "backup.rs"],
-]);
+/** The core binary the gate's cargo steps built, unless `SUNREYE_CORE` names another. */
+const core = process.env["SUNREYE_CORE"] ?? join(root, "target/debug/sunreye");
 
 /** Docker options that take a value, so the image is the first token after them. */
 const dockerValued = new Set(["-v", "-p", "-e", "--name", "--restart", "--device", "--network"]);
@@ -34,16 +28,29 @@ function captures(source: string, pattern: Readonly<RegExp>): string[] {
   return found;
 }
 
-/** The subcommands `main.rs` routes on. */
-async function coreSubcommands(): Promise<string[]> {
-  return captures(await text("crates/core/src/main.rs"), /arg == "(\w+)"/gu);
+/** What `sunreye <sub> --help` prints; `serve` is the bare `sunreye`. */
+async function usage(sub: string): Promise<string> {
+  if (!existsSync(core)) throw new Error(`no core at ${core}: run \`cargo build -p sunreye-core\``);
+
+  const args = sub === "serve" ? ["--help"] : [sub, "--help"];
+  const help = Bun.spawn([core, ...args], { stdout: "pipe", stderr: "ignore" });
+  const out = await new Response(help.stdout).text();
+
+  if ((await help.exited) !== 0) throw new Error(`sunreye ${args.join(" ")} failed`);
+
+  return out;
 }
 
-/** The flags a core source file parses, `--data-dir=` read as `--data-dir`. */
-async function coreFlags(sub: string): Promise<Set<string>> {
-  const source = await text(`crates/core/src/${parsers.get(sub) ?? ""}`);
+/** The subcommands the core's usage lists. */
+async function coreSubcommands(): Promise<string[]> {
+  const [list = ""] = captures(await usage("serve"), /^Commands: (.*)$/gmu);
 
-  return new Set(captures(source, /"(--[a-z][a-z-]*)=?"/gu));
+  return list.split(", ");
+}
+
+/** The flags a core subcommand's usage lists. */
+async function coreFlags(sub: string): Promise<Set<string>> {
+  return new Set(captures(await usage(sub), /^ +(--[a-z][a-z-]*)/gmu));
 }
 
 /** The commands `sunreye-profile` lists in its usage. */
@@ -53,22 +60,19 @@ async function sdkCommands(): Promise<Set<string>> {
   return new Set(captures(err, /^ {2}(\w+) /gmu));
 }
 
-/** Every `SUNREYE_*` name the code reads: literals, and each startup flag's fallback (ADR 2). */
+/** Every `SUNREYE_*` name: those the core's usages list, and those the TypeScript tools read. */
 async function variables(): Promise<Set<string>> {
-  const dirs = ["crates/core/src", "packages/sdk/src", "scripts", "packaging"];
-  const scans = dirs.map((dir) => Array.fromAsync(new Glob(`${dir}/**/*.{rs,ts}`).scan(root)));
+  const dirs = ["packages/sdk/src", "scripts", "packaging"];
+  const scans = dirs.map((dir) => Array.fromAsync(new Glob(`${dir}/**/*.ts`).scan(root)));
   // Tests name variables that do not exist, this one among them.
   const files = (await Promise.all(scans)).flat().filter((file) => !file.endsWith(".test.ts"));
   const sources = await Promise.all(files.map((file) => text(file)));
+  const subs = ["serve", ...(await coreSubcommands())];
+  const usages = await Promise.all(subs.map((sub) => usage(sub)));
 
-  const startup = [...(await coreFlags("serve"))].map(
-    (flag) => `SUNREYE_${flag.slice(2).replaceAll("-", "_").toUpperCase()}`,
+  return new Set(
+    [...sources, ...usages].flatMap((source) => captures(source, /SUNREYE_[A-Z_]+/gu)),
   );
-
-  return new Set([
-    ...sources.flatMap((source) => captures(source, /SUNREYE_[A-Z_]+/gu)),
-    ...startup,
-  ]);
 }
 
 async function checkCore(args: readonly string[]): Promise<string[]> {
