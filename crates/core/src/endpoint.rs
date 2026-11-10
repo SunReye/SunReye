@@ -5,7 +5,7 @@
 //!
 //! A settings write (ADR 7) runs in the same task, between polls.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use sunreye_profile::{Block, Framing, Profile, Registers, Unit};
@@ -55,7 +55,7 @@ impl Task {
     #[must_use]
     pub fn latest(&self) -> Vec<(Reading, Duration)> {
         let now = Instant::now();
-        let latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
+        let latest = crate::lock(&self.latest);
         latest
             .iter()
             .flatten()
@@ -200,7 +200,7 @@ impl Polled {
     fn publish(&self, out: &Out) {
         let time = SystemTime::now();
         let read = Instant::now();
-        let mut latest = out.latest.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut latest = crate::lock(&out.latest);
         let slots = latest.iter_mut().skip(self.slot);
         for ((value, (series, unit, every)), slot) in
             self.values.iter().zip(&self.series).zip(slots)

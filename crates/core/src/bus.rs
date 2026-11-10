@@ -2,7 +2,7 @@
 //! and write read-back subscribe. No consumer decodes registers.
 
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use sunreye_profile::Unit;
@@ -109,8 +109,9 @@ impl Bus {
     }
 
     /// The id of `role` at `index`, the same for every caller.
+    #[must_use]
     pub fn intern(&self, role: &str, index: Option<u32>) -> SeriesId {
-        let mut series = self.0.series.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut series = crate::lock(&self.0.series);
         let id = series
             .iter()
             .position(|s| s.role == role && s.index == index)
@@ -127,7 +128,7 @@ impl Bus {
 
     #[must_use]
     pub fn series(&self, id: SeriesId) -> Option<Series> {
-        let series = self.0.series.lock().unwrap_or_else(PoisonError::into_inner);
+        let series = crate::lock(&self.0.series);
         series.get(id.0).cloned()
     }
 }

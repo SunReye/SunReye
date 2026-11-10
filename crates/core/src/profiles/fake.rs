@@ -1,7 +1,7 @@
 //! A fake index host and test signing keys: tests never reach the network or a release key.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use ring::digest::{SHA256, digest};
 use ring::rand::SystemRandom;
@@ -36,16 +36,8 @@ impl Host {
 
 impl Fetch for Host {
     fn get(&self, url: &str) -> Result<Vec<u8>, String> {
-        self.fetched
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(url.to_owned());
-        let file = self
-            .files
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(url)
-            .cloned();
+        crate::lock(&self.fetched).push(url.to_owned());
+        let file = crate::lock(&self.files).get(url).cloned();
         file.ok_or_else(|| format!("{url}: not found"))
     }
 }

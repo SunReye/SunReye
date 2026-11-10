@@ -37,3 +37,23 @@ pub mod topology;
 pub mod transport;
 pub mod weather;
 pub mod zone;
+
+/// Locks `mutex`. A panic while it was held is already logged, and what it guards stays usable,
+/// so poison is ignored.
+pub(crate) fn lock<T: ?Sized>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Reads `lock`, poison ignored as [`lock`] ignores it.
+pub(crate) fn read<T: ?Sized>(lock: &std::sync::RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Writes `lock`, poison ignored as [`lock`] ignores it.
+pub(crate) fn write<T: ?Sized>(lock: &std::sync::RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}

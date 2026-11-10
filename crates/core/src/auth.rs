@@ -10,7 +10,7 @@ pub use access::{Access, access};
 pub(crate) use sessions::hex;
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
@@ -172,22 +172,15 @@ impl Auth {
     }
 
     fn admin(&self) -> Option<String> {
-        self.0
-            .admin
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.0.admin).clone()
     }
 
     fn backoff(&self) -> std::sync::MutexGuard<'_, Backoff> {
-        self.0
-            .backoff
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.backoff)
     }
 
     fn tokens(&self) -> std::sync::MutexGuard<'_, Known> {
-        self.0.tokens.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.tokens)
     }
 
     /// Who signed `headers`: a bearer token, else a live session, whose use renews it.
@@ -206,10 +199,7 @@ impl Auth {
     }
 
     fn sessions(&self) -> std::sync::MutexGuard<'_, Sessions> {
-        self.0
-            .sessions
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.0.sessions)
     }
 }
 
@@ -252,7 +242,7 @@ async fn setup(
     if inserted == 0 {
         return Err(CONFIGURED);
     }
-    *auth.0.admin.lock().unwrap_or_else(PoisonError::into_inner) = Some(hash);
+    *crate::lock(&auth.0.admin) = Some(hash);
     Ok(StatusCode::NO_CONTENT)
 }
 

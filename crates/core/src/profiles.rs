@@ -19,7 +19,7 @@ mod store;
 mod trust;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 use ring::digest::{SHA256, digest};
@@ -125,19 +125,19 @@ impl Catalogue {
     /// it then needs the admin's enable (ADR 8).
     #[must_use]
     pub fn changed(&self, id: &str, setting: &str) -> bool {
-        let changed = self.changed.read().unwrap_or_else(PoisonError::into_inner);
+        let changed = crate::read(&self.changed);
         changed.contains(&(id.to_owned(), setting.to_owned()))
     }
 
     fn mark(&self, id: &str, settings: Vec<String>) {
-        let mut changed = self.changed.write().unwrap_or_else(PoisonError::into_inner);
+        let mut changed = crate::write(&self.changed);
         changed.extend(settings.into_iter().map(|s| (id.to_owned(), s)));
     }
 
     /// Every profile served, by id.
     #[must_use]
     pub fn profiles(&self) -> Vec<Arc<Profile>> {
-        let profiles = self.served.read().unwrap_or_else(PoisonError::into_inner);
+        let profiles = crate::read(&self.served);
         let mut all: Vec<_> = profiles
             .values()
             .map(|held| Arc::clone(&held.profile))
@@ -159,16 +159,16 @@ impl Catalogue {
     }
 
     fn held(&self, id: &str) -> Option<Held> {
-        let profiles = self.served.read().unwrap_or_else(PoisonError::into_inner);
+        let profiles = crate::read(&self.served);
         profiles.get(id).cloned()
     }
 
     fn replace(&self, profiles: Served) {
-        *self.served.write().unwrap_or_else(PoisonError::into_inner) = profiles;
+        *crate::write(&self.served) = profiles;
     }
 
     fn insert(&self, held: Held) {
-        let mut profiles = self.served.write().unwrap_or_else(PoisonError::into_inner);
+        let mut profiles = crate::write(&self.served);
         profiles.insert(held.profile.id.clone(), held);
     }
 }

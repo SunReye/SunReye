@@ -4,7 +4,7 @@
 //! messages to matching subscriptions at `QoS` 0, and closes its sessions on demand.
 
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -60,7 +60,7 @@ impl Fake {
     /// Keeps `payload` as `topic`'s retained message, sent to each later subscription, and sends
     /// it to the sessions subscribed now.
     pub fn retain(&self, topic: &str, payload: &str) {
-        let mut retained = self.retained.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut retained = crate::lock(&self.retained);
         retained.retain(|(t, _)| t != topic);
         retained.push((topic.to_owned(), payload.to_owned()));
         drop(retained);
@@ -145,10 +145,7 @@ async fn session(mut socket: TcpStream, code: u8, mut channels: Channels) {
                     ack.extend(id.to_be_bytes());
                     ack.extend(std::iter::repeat_n(0, new.len()));
                     socket.write_all(&ack).await.unwrap();
-                    let retained = channels
-                        .retained
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
+                    let retained = crate::lock(&channels.retained)
                         .clone();
                     for (topic, payload) in retained {
                         if new.iter().any(|f| matches(f, &topic)) {

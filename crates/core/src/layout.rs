@@ -5,7 +5,7 @@
 //! instant. A version with a scene (ADR 20) derives its strings' planes and module counts from it.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
@@ -98,14 +98,14 @@ impl FromIterator<(DeviceId, Arc<Profile>)> for Inverters {
 impl Inverters {
     #[must_use]
     pub fn profile(&self, device: DeviceId) -> Option<Arc<Profile>> {
-        let inverters = self.0.read().unwrap_or_else(PoisonError::into_inner);
+        let inverters = crate::read(&self.0);
         inverters.get(&device).cloned()
     }
 
     /// Replaces the set for every clone.
     pub fn replace(&self, inverters: impl IntoIterator<Item = (DeviceId, Arc<Profile>)>) {
         let inverters = inverters.into_iter().collect();
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = inverters;
+        *crate::write(&self.0) = inverters;
     }
 }
 

@@ -512,10 +512,7 @@ struct Lines(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl std::io::Write for Lines {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend_from_slice(buf);
+        crate::lock(&self.0).extend_from_slice(buf);
         Ok(buf.len())
     }
 

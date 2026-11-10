@@ -3,7 +3,7 @@
 
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::body::Body;
@@ -94,20 +94,16 @@ impl Imports {
     }
 
     fn status(&self) -> ImportStatus {
-        self.0
-            .status
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.0.status).clone()
     }
 
     fn set(&self, status: ImportStatus) {
-        *self.0.status.lock().unwrap_or_else(PoisonError::into_inner) = status;
+        *crate::lock(&self.0.status) = status;
     }
 
     /// Marks an import running unless one already is.
     fn claim(&self) -> Result<ImportStatus, Problem> {
-        let mut status = self.0.status.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut status = crate::lock(&self.0.status);
         if status.state == ImportPhase::Running {
             return Err(BUSY);
         }

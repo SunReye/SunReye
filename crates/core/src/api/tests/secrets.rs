@@ -1,7 +1,7 @@
 //! Secrets (ADR 7): a recipe unlocks with a secret its connection names; the value reaches the
 //! device and nothing else: no response, no change log, no write log, no log line.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::http::StatusCode;
@@ -131,10 +131,7 @@ pub(super) struct Lines(pub(super) Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for Lines {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .extend_from_slice(buf);
+        crate::lock(&self.0).extend_from_slice(buf);
         Ok(buf.len())
     }
 

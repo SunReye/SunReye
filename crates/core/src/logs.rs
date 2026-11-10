@@ -2,7 +2,7 @@
 //! screen. Stderr keeps them for journald or Docker; the core writes no log file.
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use axum::Json;
 use axum::extract::State;
@@ -39,7 +39,7 @@ impl Logs {
 
     fn held(&self) -> std::sync::MutexGuard<'_, VecDeque<String>> {
         // A panic mid-push leaves whole lines behind.
-        self.lines.lock().unwrap_or_else(PoisonError::into_inner)
+        crate::lock(&self.lines)
     }
 
     fn keep(&self, text: &str) {

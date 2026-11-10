@@ -11,7 +11,7 @@ mod routes;
 mod store;
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, PoisonError};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::http::StatusCode;
@@ -390,7 +390,7 @@ impl Devices {
     /// The file cannot be read.
     pub async fn connections(&self) -> Result<Vec<Connection>, storage::Error> {
         let mut connections = self.database.run(store::connections).await?;
-        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        let brokers = crate::lock(&self.brokers);
         for connection in &mut connections {
             connection.status = brokers
                 .iter()
@@ -833,7 +833,7 @@ impl Devices {
 
     /// What writes device `id` behind a broker; `None` when no broker reads it.
     fn writer(&self, id: u32) -> Option<subscriber::Writer> {
-        let brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        let brokers = crate::lock(&self.brokers);
         brokers
             .iter()
             .find_map(|b| b.subscriber.writer(DeviceId(id)))
@@ -989,7 +989,7 @@ impl Devices {
                     &self.bus,
                 )
             });
-            let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut brokers = crate::lock(&self.brokers);
             brokers.push(Brokered {
                 brokering,
                 subscriber,
@@ -1014,17 +1014,14 @@ impl Devices {
                 self.declare(device.id, &device.profile).await?;
             }
             let task = http::spawn(hosting.host.clone(), devices, self.bus.clone());
-            self.hosts
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push((hosting, task));
+            crate::lock(&self.hosts).push((hosting, task));
         }
         Ok(())
     }
 
     /// Stops the host tasks no longer `wanted`, and leaves in `wanted` those still to start.
     fn keep_hosts(&self, wanted: &mut Vec<Hosting>) {
-        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut hosts = crate::lock(&self.hosts);
         hosts.retain(|(h, _)| wanted.contains(h));
         wanted.retain(|w| !hosts.iter().any(|(h, _)| h == w));
         drop(hosts);
@@ -1032,7 +1029,7 @@ impl Devices {
 
     /// Stops the clients no longer `wanted`, and leaves in `wanted` those still to start.
     fn keep_brokers(&self, wanted: &mut Vec<Brokering>) {
-        let mut brokers = self.brokers.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut brokers = crate::lock(&self.brokers);
         brokers.retain(|b| wanted.contains(&b.brokering));
         wanted.retain(|w| !brokers.iter().any(|b| b.brokering == *w));
         drop(brokers);
