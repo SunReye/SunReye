@@ -194,6 +194,7 @@
   "outcome_unknown": "Unbekannt: Der Zustand des Geräts ließ sich nicht lesen.",
   "outcome_partial": "Teilweise geschrieben: Der Zustand des Geräts ist ungewiss.",
   "outcome_unchanged": "Unverändert: Der Wert war schon gesetzt.",
+  "outcome_refused": "Abgelehnt: Es wurde nichts geschrieben.",
   "writes_log": "Schreibprotokoll",
   "log_time": "Zeit",
   "log_device": "Gerät",

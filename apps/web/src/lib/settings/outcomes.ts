@@ -8,4 +8,5 @@ export const OUTCOMES: Readonly<Record<Attempt["outcome"], () => string>> = {
   unknown: m.outcome_unknown,
   partial: m.outcome_partial,
   unchanged: m.outcome_unchanged,
+  refused: m.outcome_refused,
 };

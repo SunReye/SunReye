@@ -35,6 +35,8 @@ pub enum Outcome {
     Partial,
     /// The current value already equals the request; nothing was written.
     Unchanged,
+    /// Refused before the device; nothing was written and the interval does not start.
+    Refused,
 }
 
 /// Why a write was refused before anything was written.

@@ -35,6 +35,7 @@ async fn a_remote_write_is_logged_with_the_device_key_it_came_through() {
                 applied,
                 actor: "admin",
                 via,
+                refusal: None,
             };
             append(db, &attempt(Some("Ediz's phone")))?;
             append(db, &attempt(None))?;

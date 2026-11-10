@@ -194,6 +194,7 @@
   "outcome_unknown": "Unknown: the device's state could not be read.",
   "outcome_partial": "Partially written: the device's state is uncertain.",
   "outcome_unchanged": "Unchanged: the value was already set.",
+  "outcome_refused": "Refused: nothing was written.",
   "writes_log": "Write log",
   "log_time": "Time",
   "log_device": "Device",

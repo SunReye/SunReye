@@ -1290,6 +1290,8 @@ export interface components {
              */
             failedStep?: number | null;
             outcome: components["schemas"]["Outcome"];
+            /** @description The code an attempt was refused with before the device; `null` unless `refused`. */
+            refusal?: string | null;
             /** Format: double */
             requested: number;
             setting: string;
@@ -1659,7 +1661,7 @@ export interface components {
          * @description How a write ended.
          * @enum {string}
          */
-        Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged";
+        Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged" | "refused";
         /** @description A deadband override, in the role's unit. */
         Override: {
             /** Format: double */

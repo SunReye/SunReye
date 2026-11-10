@@ -204,7 +204,7 @@ async fn a_write_whose_secret_is_not_set_is_refused_before_the_device() {
     );
     assert_eq!(plant.received(), []);
     let (_, log) = plant.ask("GET", "/api/v1/writes", &Value::Null).await;
-    assert_eq!(log["writes"], json!([]));
+    assert_eq!(log["writes"][0]["refusal"], "secret.missing");
 }
 
 #[tokio::test]

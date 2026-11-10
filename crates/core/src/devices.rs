@@ -630,9 +630,29 @@ impl Devices {
     ) -> Result<log::Entry, Problem> {
         let running = self.running.lock().await;
         let device = self.device(id).await?;
+        let entry = match self
+            .write_device(&running, device, request.clone(), now)
+            .await
+        {
+            Err(problem) if problem.status.is_client_error() => {
+                Err(self.refused(id, &request, problem, now).await)
+            }
+            entry => entry,
+        };
+        drop(running);
+        entry
+    }
+
+    async fn write_device(
+        &self,
+        running: &[Running],
+        device: Device,
+        request: Request,
+        now: SystemTime,
+    ) -> Result<log::Entry, Problem> {
         let profile = self.profile(&device.draft.profile)?;
         let writing = Writing {
-            running: &running,
+            running,
             device,
             profile,
         };
@@ -641,12 +661,47 @@ impl Devices {
             .setting(&request.key)
             .and_then(Setting::toggle)
             .cloned();
-        let entry = match toggle {
+        match toggle {
             Some(toggle) => self.toggle(&writing, request, toggle, now).await,
             None => self.funnel(&writing, request, None, now).await,
+        }
+    }
+
+    /// Logs `request` to device `id` as refused with `problem`'s code (ADR 7), and answers
+    /// `problem`; a refusal that cannot be logged is an internal error.
+    async fn refused(
+        &self,
+        id: u32,
+        request: &Request,
+        problem: Problem,
+        now: SystemTime,
+    ) -> Problem {
+        let Ok(serde_json::Value::String(code)) = serde_json::to_value(problem.code) else {
+            return INTERNAL;
         };
-        drop(running);
-        entry
+        let request = request.clone();
+        let logged = self
+            .database
+            .run(move |db| {
+                let attempt = log::Attempt {
+                    time: now,
+                    device: id,
+                    setting: &request.key,
+                    requested: request.value,
+                    applied: settings::Applied {
+                        outcome: Outcome::Refused,
+                        before: None,
+                        after: None,
+                        failed_step: None,
+                    },
+                    actor: request.actor,
+                    via: request.via.as_deref(),
+                    refusal: Some(&code),
+                };
+                log::append(db, &attempt)
+            })
+            .await;
+        if logged.is_ok() { problem } else { INTERNAL }
     }
 
     /// Engages or releases snapshot toggle `request.key`, through a write of its target.
@@ -737,7 +792,7 @@ impl Devices {
             .iter()
             .find(|r| r.devices.iter().any(|d| d.id == id))
             .map(|r| &r.task);
-        // A precondition that does not hold is a refusal: nothing was written, nothing is logged.
+        // A precondition that does not hold is a refusal: nothing was written.
         let applied = if let Some(task) = task {
             task.write(job).await.ok_or(INTERNAL)??
         } else {
@@ -755,6 +810,7 @@ impl Devices {
                     applied,
                     actor: request.actor,
                     via: request.via.as_deref(),
+                    refusal: None,
                 };
                 log::append(db, &attempt)
             })

@@ -1,4 +1,4 @@
-//! The write log (ADR 7): every write attempt that reached a device, appended and never rolled up.
+//! The write log (ADR 7): every write attempt, refused or not, appended and never rolled up.
 //! The settings module owns the `write_log` table.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -32,6 +32,8 @@ pub struct Entry {
     /// The trusted device key a remote write came through (ADR 16); `null` for a write made at
     /// home.
     pub via: Option<String>,
+    /// The code an attempt was refused with before the device; `null` unless `refused`.
+    pub refusal: Option<String>,
 }
 
 /// An attempt as the funnel records it.
@@ -43,6 +45,8 @@ pub struct Attempt<'a> {
     pub applied: Applied,
     pub actor: &'a str,
     pub via: Option<&'a str>,
+    /// The code it was refused with; set only for a `refused` outcome.
+    pub refusal: Option<&'a str>,
 }
 
 /// Appends `attempt` and returns its entry.
@@ -54,8 +58,8 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
     let outcome = name(applied.outcome);
     db.execute(
         "INSERT INTO write_log
-         (time, device, setting, before, requested, after, outcome, failed_step, actor, via)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+         (time, device, setting, before, requested, after, outcome, failed_step, actor, via, refusal)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             seconds(attempt.time),
             attempt.device,
@@ -67,6 +71,7 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
             applied.failed_step,
             attempt.actor,
             attempt.via,
+            attempt.refusal,
         ],
     )?;
     Ok(Entry {
@@ -80,11 +85,12 @@ pub fn append(db: &Connection, attempt: &Attempt<'_>) -> rusqlite::Result<Entry>
         failed_step: applied.failed_step,
         actor: attempt.actor.to_owned(),
         via: attempt.via.map(str::to_owned),
+        refusal: attempt.refusal.map(str::to_owned),
     })
 }
 
 /// The last attempt at `setting` on `device` that may have written: every outcome but
-/// `unchanged`.
+/// `unchanged` and `refused`.
 ///
 /// # Errors
 /// The file cannot be read.
@@ -96,7 +102,7 @@ pub fn last_write(
     let last: Option<i64> = db
         .query_row(
             "SELECT max(time) FROM write_log
-             WHERE device = ?1 AND setting = ?2 AND outcome != 'unchanged'",
+             WHERE device = ?1 AND setting = ?2 AND outcome NOT IN ('unchanged', 'refused')",
             params![device, setting],
             |row| row.get(0),
         )
@@ -111,8 +117,8 @@ pub fn last_write(
 /// The file cannot be read.
 pub fn entries(db: &Connection) -> rusqlite::Result<Vec<Entry>> {
     db.prepare(
-        "SELECT time, device, setting, before, requested, after, outcome, failed_step, actor, via
-         FROM write_log ORDER BY id",
+        "SELECT time, device, setting, before, requested, after, outcome, failed_step, actor, via,
+         refusal FROM write_log ORDER BY id",
     )?
     .query_map([], |row| {
         Ok(Entry {
@@ -126,6 +132,7 @@ pub fn entries(db: &Connection) -> rusqlite::Result<Vec<Entry>> {
             failed_step: row.get(7)?,
             actor: row.get(8)?,
             via: row.get(9)?,
+            refusal: row.get(10)?,
         })
     })?
     .collect()
@@ -138,6 +145,7 @@ const fn name(outcome: Outcome) -> &'static str {
         Outcome::Unknown => "unknown",
         Outcome::Partial => "partial",
         Outcome::Unchanged => "unchanged",
+        Outcome::Refused => "refused",
     }
 }
 
@@ -148,6 +156,7 @@ fn outcome(name: &str) -> rusqlite::Result<Outcome> {
         "unknown" => Outcome::Unknown,
         "partial" => Outcome::Partial,
         "unchanged" => Outcome::Unchanged,
+        "refused" => Outcome::Refused,
         _ => return Err(rusqlite::Error::InvalidQuery),
     })
 }
