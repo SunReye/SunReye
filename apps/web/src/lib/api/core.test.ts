@@ -142,6 +142,27 @@ test("a stream the core ends reconnects to a fresh snapshot", async () => {
   expect(transport.urls).toHaveLength(2);
 });
 
+test("a stream that breaks after its snapshot keeps its values, marked lost, until the next", async () => {
+  setSystemTime(new Date(5000));
+
+  const broken = new ReadableStream<Uint8Array>({
+    start: (c) => {
+      c.enqueue(new TextEncoder().encode(event("snapshot", '{"devices":{"1":{"pv.power":1}}}')));
+    },
+    pull: (c) => {
+      c.error(new Error("network"));
+    },
+  });
+
+  expect(
+    await updates(scripted(new Response(broken), sse(event("snapshot", '{"devices":{}}'))), 3),
+  ).toEqual([
+    { devices: { "1": { "pv.power": 1 } } },
+    { devices: { "1": { "pv.power": 1 } }, lost: 5000 },
+    { devices: {} },
+  ]);
+});
+
 test("a refused stream reports the problem code", async () => {
   expect(await updates(scripted(problem(401, "auth.required")), 1)).toEqual([
     { problem: "auth.required" },
@@ -151,6 +172,7 @@ test("a refused stream reports the problem code", async () => {
 let server: ReturnType<typeof Bun.serve> | undefined;
 
 afterEach(async () => {
+  setSystemTime();
   await server?.stop(true);
 });
 
