@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { connect, http } from "../lib/api/core";
+  import { drillRoute } from "../lib/components/drill-in/route.ts";
   import Dashboard from "../lib/dashboard/Dashboard.svelte";
   import { entry, type Entry } from "../lib/setup/entry";
   import { access } from "../lib/shell/access.svelte.ts";
@@ -9,6 +12,9 @@
   const core = connect(http(new URL(".", document.baseURI).href));
 
   const shell = access();
+
+  /** The open detail sheet as `?detail=` on the hash route: back closes it, a link opens it (ADR 21). */
+  const detail = drillRoute({ page, goto }, "detail");
 
   /** The entry, with the shell told whether to frame it and whether Controls is listed. */
   async function open(): Promise<Entry> {
@@ -44,6 +50,15 @@
       <Setup {core} signedIn={shown.signedIn} onfinish={reopen} />
     {/await}
   {:else}
-    <Dashboard {core} layout={shown.layout} admin={shown.admin} />
+    <Dashboard
+      {core}
+      layout={shown.layout}
+      admin={shown.admin}
+      detail={detail.open}
+      onopen={detail.navigate}
+      onclose={() => {
+        detail.navigate(null);
+      }}
+    />
   {/if}
 {/await}

@@ -35,11 +35,11 @@ export interface Day {
   readonly rows: readonly DayRow[];
   /** kWh. */
   readonly pv: { readonly total: number; readonly remaining: number };
-  /** The day's spot prices in EUR/kWh; none without the spot-price device. */
-  readonly prices: readonly number[];
+  /** The day's spot prices in EUR/kWh, each from its slot's start; none without the spot-price device. */
+  readonly prices: readonly Target[];
   readonly weather: { readonly celsius: number | null; readonly sky: Sky | null };
   /** EUR; null when the core refused, as without a tariff. */
-  readonly money: CostDays["total"] | null;
+  readonly money: Readonly<CostDays["total"]> | null;
 }
 
 export type Reader = Readonly<
@@ -125,7 +125,7 @@ export async function readDay(core: Reader, now: Readonly<Date>): Promise<Day> {
     today: today({ pv: energy(pv), load: energy(load), grid: energy(grid) }),
     rows: dayRows(pv, pvForecast, { start, end }),
     pv: forecastPv(pvForecast, read),
-    prices: prices.map((p) => p.value),
+    prices,
     weather,
     money: "total" in costs ? costs.total : null,
   };

@@ -10,24 +10,25 @@ export interface Router {
   ) => Promise<void>;
 }
 
-function group(search: string): string | null {
-  return new URLSearchParams(search).get("group");
-}
-
-/** The hash route `url` with `?group=` set to `id`, or dropped for null. */
-function href(url: Router["page"]["url"], id: string | null): string {
+/** The hash route `url` with `?<key>=` set to `id`, or dropped for null. */
+function href(url: Router["page"]["url"], key: string, id: string | null): string {
   const query = new URLSearchParams(url.search);
 
-  if (id === null) query.delete("group");
-  else query.set("group", id);
+  if (id === null) query.delete(key);
+  else query.set(key, id);
 
   const search = query.size > 0 ? `?${query.toString()}` : "";
 
   return `#${url.pathname}${search}`;
 }
 
-/** The drill-in's level as `?group=` on the screen's hash route (ADR 21), for `<DrillIn>`'s `open` and `onnavigate`. */
-export function drillRoute({ page, goto }: Router) {
+/**
+ * The drill-in's level as `?group=` on the screen's hash route (ADR 21), for `<DrillIn>`'s `open`
+ * and `onnavigate`; `key` names another level, such as the dashboard's detail sheet.
+ */
+export function drillRoute({ page, goto }: Router, key = "group") {
+  const group = (search: string): string | null => new URLSearchParams(search).get(key);
+
   return {
     get open(): string | null {
       return group(page.url.search);
@@ -38,9 +39,9 @@ export function drillRoute({ page, goto }: Router) {
 
       // Back to where the drill-in pushed the page; a deep link has no such entry, so it replaces.
       if (id === null && drilled) history.back();
-      else if (id === null) void goto(href(page.url, null), { replace: true, state: {} });
+      else if (id === null) void goto(href(page.url, key, null), { replace: true, state: {} });
       else
-        void goto(href(page.url, id), {
+        void goto(href(page.url, key, id), {
           replace: open !== null,
           state: { drilled: open === null || drilled },
         });

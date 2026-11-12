@@ -125,6 +125,10 @@
   /* ADR 21: movement between two resting places. */
   --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --motion-move: 300ms;
+  /* A large surface (a sheet) enters in about 350 ms; exits ease in, shorter than any entrance. */
+  --motion-enter: 350ms;
+  --motion-exit: 150ms;
+  --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   --ambient-opacity: 72%;
 }
 
@@ -170,6 +174,8 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-move: 0ms;
+    --motion-enter: 0ms;
+    --motion-exit: 0ms;
   }
 }
 
@@ -180,6 +186,8 @@
   --motion-slow: 0ms;
   --motion-press: 0ms;
   --motion-move: 0ms;
+  --motion-enter: 0ms;
+  --motion-exit: 0ms;
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from "./paraglide/messages.js";
   import { getLocale } from "./paraglide/runtime.js";
+  import SpotAttribution from "./SpotAttribution.svelte";
 
   /** The spot-price device's live values: `price.spot` in EUR/kWh (ADR 4). */
   let { values }: { values: Readonly<Record<string, number>> } = $props();
@@ -19,14 +20,7 @@
     <!-- A currency subunit symbol, the same in every locale. -->
     <p class="price">{cents.format(price * 100)} ct/kWh</p>
   {/if}
-  <!-- The licence's conditions: the source, the licence and the change made (CC BY 4.0). -->
-  <p class="source">
-    {m.spot_source()}
-    <a href="https://www.smard.de">Bundesnetzagentur | SMARD.de</a>,
-    <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>,
-    {m.spot_via()}
-    <a href="https://energy-charts.info">energy-charts.info</a>; {m.spot_converted()}
-  </p>
+  <SpotAttribution class="source" />
 </article>
 
 <style>
@@ -35,7 +29,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .source {
+  article :global(.source) {
     font-size: 0.8rem;
   }
 </style>
