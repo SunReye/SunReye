@@ -6,7 +6,7 @@
   import { untrack } from "svelte";
   import { PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { garage, type ModelLoader } from "../cars/garage.ts";
+  import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
@@ -147,24 +147,32 @@
     return controls;
   }
 
-  /** Parks the cars once `due`, each change after the last; their programs compiled first. */
+  /** Parks the cars once `due`, each change after the last; the default body loaded and their
+   * programs compiled first. No car is drawn when the body cannot be read. */
   function parkLater(
     canvas: HTMLCanvasElement,
     opening: Lit["opening"],
-    parking: ReturnType<typeof garage>,
+    open: () => Promise<Garage>,
   ) {
     let due = $state(false);
-    let parked = Promise.resolve();
+    let parking: Promise<Garage | null> | undefined;
+    let parked: Promise<unknown> = Promise.resolve();
 
     $effect(() => {
       const arriving = cars;
 
       if (due) {
-        parked = parked.then(() =>
-          opening.arrive(canvas, ghost, () => {
-            parking.park(arriving);
-          }),
-        );
+        parking ??= open().catch(() => null);
+        parked = parked
+          .then(() => parking)
+          .then(
+            (ready) =>
+              ready &&
+              opening.arrive(canvas, ghost, () => {
+                ready.park(arriving);
+              }),
+          )
+          .catch(() => {});
       }
     });
 
@@ -173,7 +181,7 @@
         due = true;
       },
       dispose: () => {
-        parking.dispose();
+        void parking?.then((ready) => ready?.dispose());
       },
     };
   }
@@ -220,10 +228,8 @@
       onpick: () => onpick,
     });
 
-    const parking = parkLater(
-      canvas,
-      opening,
-      garage(
+    const parking = parkLater(canvas, opening, () =>
+      openGarage(
         studio.scene,
         render,
         untrack(() => model),

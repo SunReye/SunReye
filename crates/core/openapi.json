@@ -191,34 +191,6 @@
         ],
         "type": "object"
       },
-      "Body": {
-        "additionalProperties": false,
-        "description": "A stylised body the browser draws.",
-        "properties": {
-          "class": {
-            "$ref": "#/components/schemas/BodyClass"
-          },
-          "colour": {
-            "description": "`#rrggbb`.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "class",
-          "colour"
-        ],
-        "type": "object"
-      },
-      "BodyClass": {
-        "enum": [
-          "sedan",
-          "hatchback",
-          "suv",
-          "van",
-          "pickup"
-        ],
-        "type": "string"
-      },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
         "properties": {
@@ -353,15 +325,11 @@
         "additionalProperties": false,
         "description": "A parking footprint: its width runs along x and its length along z from its corner, before\nit turns.",
         "properties": {
-          "body": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Body",
-                "description": "The admin's pick, when no catalogue entry matches the vehicle."
-              },
-              {
-                "type": "null"
-              }
+          "colour": {
+            "description": "The default body's paint, `#rrggbb`; the browser's own grey without one.",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "device": {
@@ -376,7 +344,7 @@
             "type": "number"
           },
           "model": {
-            "description": "The uploaded GLB's id, its SHA-256 in hex.",
+            "description": "The uploaded GLB's id, its SHA-256 in hex; it replaces the default body.",
             "type": [
               "string",
               "null"

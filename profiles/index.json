@@ -435,7 +435,7 @@
     },
     {
       "id": "evcc",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "mqtt",
@@ -444,7 +444,7 @@
         "precondition",
         "text-enum"
       ],
-      "sha256": "d17ceeb42f3c72266e1c72177f7efe82b671163212ee57c209827e1d277010f2",
+      "sha256": "aa13b6ed44453e8ed5634e69d07fcad161190ffcce3f7383bb82d70fe84f87f9",
       "url": "evcc.json"
     },
     {

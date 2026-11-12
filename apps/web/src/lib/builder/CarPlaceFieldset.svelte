@@ -1,11 +1,12 @@
-<!-- A car place's level in the inspector: its loadpoint, footprint and body. -->
+<!-- A car place's level in the inspector: its loadpoint, footprint, colour and body. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Device } from "../api/core.ts";
+  import { PLAIN } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import CarModelField from "./CarModelField.svelte";
   import { choices, degrees, metres, REACH } from "./fields.ts";
-  import type { BodyClass, CarPlace } from "./pv.ts";
+  import type { CarPlace } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
 
@@ -22,9 +23,6 @@
     onremove: () => void;
   } = $props();
 
-  /** The colour neither the catalogue nor the admin picked. */
-  const PLAIN = "#8a8f98";
-
   type Numeric = "x" | "z" | "width" | "length" | "rotation";
 
   const fields = [
@@ -35,14 +33,6 @@
     ["rotation", degrees(m.field_rotation(), 0, 359)],
   ] as const satisfies readonly (readonly [Numeric, unknown])[];
 
-  const CLASSES: readonly (readonly [BodyClass, () => string])[] = [
-    ["sedan", m.car_class_sedan],
-    ["hatchback", m.car_class_hatchback],
-    ["suv", m.car_class_suv],
-    ["van", m.car_class_van],
-    ["pickup", m.car_class_pickup],
-  ];
-
   const loadpoint = $derived(
     choices(
       m.car_loadpoint(),
@@ -50,12 +40,7 @@
     ),
   );
 
-  const kind = choices(
-    m.car_class(),
-    CLASSES.map(([, label]) => label()),
-  );
-
-  const body = $derived(place.body ?? ({ class: "sedan", colour: PLAIN } as const));
+  const colour = $derived(place.colour ?? PLAIN);
 </script>
 
 <Item.Group class="gap-0 divide-y divide-border/60">
@@ -77,15 +62,6 @@
       }}
     />
   {/each}
-  <ValueRow
-    edit={kind}
-    value={CLASSES.findIndex(([option]) => option === body.class)}
-    onchange={(index) => {
-      const chosen = CLASSES[index]?.[0];
-
-      if (chosen !== undefined) onchange({ ...place, body: { ...body, class: chosen } });
-    }}
-  />
   <Item.Root class="rounded-none border-0">
     {#snippet child({ props })}
       <label {...props} class={[props.class, "cursor-pointer hover:bg-muted/60"]}>
@@ -95,15 +71,15 @@
         <Item.Actions>
           <span
             class="size-6 rounded-sm ring-1 ring-border ring-inset"
-            style:background={body.colour}
+            style:background={colour}
           ></span>
           <!-- The swatch is the control; the system picker opens from the label. -->
           <input
             type="color"
             class="sr-only"
-            value={body.colour}
+            value={colour}
             onchange={(event) => {
-              onchange({ ...place, body: { ...body, colour: event.currentTarget.value } });
+              onchange({ ...place, colour: event.currentTarget.value });
             }}
           />
         </Item.Actions>

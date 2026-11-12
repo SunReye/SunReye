@@ -21,7 +21,7 @@ pub use equipment::{Equipment, EquipmentKind, Mount, Wall};
 pub use estimate::estimate;
 pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
 pub use mppt::{input_output, module_counts_differ};
-pub use parking::{Body, BodyClass, CarPlace, Stand};
+pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use scene::{Block, Face, Obstacle, Roof, Scene, Surface};
 pub use sun::sun_position;

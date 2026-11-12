@@ -1066,14 +1066,6 @@ export interface components {
             /** Format: double */
             z: number;
         };
-        /** @description A stylised body the browser draws. */
-        Body: {
-            class: components["schemas"]["BodyClass"];
-            /** @description `#rrggbb`. */
-            colour: string;
-        };
-        /** @enum {string} */
-        BodyClass: "sedan" | "hatchback" | "suv" | "van" | "pickup";
         /** @description The inclusive bounds of a setting's value. */
         Bounds: {
             /** Format: double */
@@ -1140,7 +1132,8 @@ export interface components {
          *     it turns.
          */
         CarPlace: {
-            body?: components["schemas"]["Body"] | null;
+            /** @description The default body's paint, `#rrggbb`; the browser's own grey without one. */
+            colour?: string | null;
             /**
              * Format: int32
              * @description The EVCC loadpoint device's id (ADR 10).
@@ -1151,7 +1144,7 @@ export interface components {
              * @description An uploaded body is scaled to it.
              */
             length: number;
-            /** @description The uploaded GLB's id, its SHA-256 in hex. */
+            /** @description The uploaded GLB's id, its SHA-256 in hex; it replaces the default body. */
             model?: string | null;
             /**
              * Format: double

@@ -40,7 +40,7 @@ impl Quantity {
     pub fn kind(&self) -> RoleKind {
         match self.role.as_str() {
             "battery.mode" | "inverter.status" | "ev.connected" | "ev.charging" | "ev.mode"
-            | "ev.battery.boost" | "ev.vehicle.model" => RoleKind::Status,
+            | "ev.battery.boost" => RoleKind::Status,
             "ev.session.energy" | "battery.cycles" => RoleKind::Counter,
             role if role.rsplit('.').next() == Some("total") => RoleKind::Counter,
             _ => RoleKind::Measurement,

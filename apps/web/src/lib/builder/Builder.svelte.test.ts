@@ -113,7 +113,7 @@ test("the admin hangs a battery marker inside the right wall and saves it with t
   });
 });
 
-test("the admin adds a car place under a carport, picks its body, uploads a GLB and saves", async () => {
+test("the admin adds a car place under a carport, paints it, uploads a GLB and saves", async () => {
   const transport = testCore();
   const screen = await gridOnTheSouthFace(transport);
 
@@ -121,7 +121,12 @@ test("the admin adds a car place under a carport, picks its body, uploads a GLB 
   await inspector().getByRole("checkbox", { name: "Carport" }).click();
   await drill("Gebäude", "Szene", "Geräte", "Stellplatz hinzufügen");
 
-  await choose("Fahrzeugklasse", "SUV");
+  const paint = inspector().getByLabelText("Farbe").element();
+
+  if (!(paint instanceof HTMLInputElement)) throw new TypeError("no colour input");
+
+  paint.value = "#c0392b";
+  paint.dispatchEvent(new Event("change", { bubbles: true }));
   await userEvent.upload(
     inspector().getByLabelText("Eigenes Modell (GLB, höchstens 20 MB)").element(),
     new File([new Uint8Array([0x67, 0x6c, 0x54, 0x46])], "car.glb"),
@@ -136,9 +141,10 @@ test("the admin adds a car place under a carport, picks its body, uploads a GLB 
   expect(transport.puts[0]).toMatchObject({
     scene: {
       blocks: [{ x: 0 }, { open: true }],
-      carPlaces: [{ device: 3, body: { class: "suv", colour: "#8a8f98" }, model: "ab".repeat(32) }],
+      carPlaces: [{ device: 3, colour: "#c0392b", model: "ab".repeat(32) }],
     },
   });
+  expect(JSON.stringify(transport.puts[0])).not.toContain("class");
 });
 
 // One snapshot, then the stream stays open: an ended one would reconnect at once.

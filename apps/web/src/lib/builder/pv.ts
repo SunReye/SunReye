@@ -81,8 +81,6 @@ export interface Equipment {
   readonly inside: boolean;
 }
 
-export type BodyClass = "sedan" | "hatchback" | "suv" | "van" | "pickup";
-
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
 export interface CarPlace {
   readonly device: number;
@@ -91,8 +89,8 @@ export interface CarPlace {
   readonly width: number;
   readonly length: number;
   readonly rotation: number;
-  /** The admin's pick of body, colour `#rrggbb`, and the id of an uploaded GLB. */
-  readonly body?: { readonly class: BodyClass; readonly colour: string } | null;
+  /** The default body's paint, `#rrggbb`, and the id of an uploaded GLB that replaces it. */
+  readonly colour?: string | null;
   readonly model?: string | null;
 }
 
