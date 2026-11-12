@@ -6,6 +6,7 @@ const INVERTER = 1;
 const BATTERY = 2;
 const LOADPOINT = 3;
 const PLANT = 4_294_967_294;
+const GENERATOR = 5;
 
 function plant(patch: Partial<Source> = {}): Source {
   return {
@@ -103,6 +104,21 @@ test("the house lists its phases from the per-phase load", () => {
 
   expect(phases?.rows.map((r) => r.label)).toEqual(["L1", "L2", "L3"]);
   expect(phases?.rows[1]?.cells[0]?.value).toBe(0.4);
+});
+
+test("the generator leads with the plant's generator power and counts its energy", () => {
+  const s = plant();
+
+  const values = {
+    ...s.values,
+    [PLANT]: { ...s.values[PLANT], "generator.power": 2100 },
+    [GENERATOR]: { "generator.power": 2100, "generator.energy.total": 3400 },
+  };
+
+  const generator = plant({ values });
+
+  expect(read("generator", generator)?.lead).toBe(2100);
+  expect(row("generator", "generator.energy.total", generator)).toMatchObject({ value: 3.4 });
 });
 
 test("the battery counts its cycles", () => {

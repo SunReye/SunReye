@@ -5,11 +5,11 @@
 <script lang="ts">
   import type { Core, Live } from "../api/core.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
+  import Flow2d from "../flow/Flow2d.svelte";
   import Scene3d from "../live/Scene3d.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import Headline from "./Headline.svelte";
-  import PlantFlows from "./PlantFlows.svelte";
   import ViewToggle from "./ViewToggle.svelte";
 
   let {
@@ -52,7 +52,7 @@
 
 <section class="relative isolate {className}" aria-label={m.dash_hero()}>
   {#if scene === null}
-    <PlantFlows {plant} top={height + 12} {onselect} />
+    <Flow2d {core} {live} top={height + 12} {onselect} />
   {:else}
     <div class="absolute inset-0">
       <Scene3d {core} layout={scene} />

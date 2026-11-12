@@ -588,5 +588,21 @@
   "builder_item": "{name} {number}",
   "builder_height_summary": "Höhe {height} m",
   "builder_face_item": "Baukörper {block}, Fläche {face}",
-  "builder_face_summary": "Azimut {azimuth}°, Neigung {tilt}° · Module: {count}"
+  "builder_face_summary": "Azimut {azimuth}°, Neigung {tilt}° · Module: {count}",
+  "flow_pv_strings": "PV · {count} Strings",
+  "flow_generator": "Generator",
+  "flow_dc": "DC",
+  "flow_details": "{name}: Details",
+  "flow_idle": "Ruht",
+  "flow_producing": "Erzeugt",
+  "flow_charging": "Lädt",
+  "flow_discharging": "Entlädt",
+  "flow_consuming": "Verbraucht",
+  "flow_feeding": "Speist ein",
+  "flow_running": "Läuft",
+  "flow_off": "Aus",
+  "flow_import": "Bezug",
+  "flow_export": "Einspeisung",
+  "flow_plugged": "Angesteckt",
+  "rd_generator_total": "Erzeugung gesamt"
 }

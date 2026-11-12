@@ -38,6 +38,7 @@ test("a node's sheet is that node's, signed figures diverging", () => {
   expect(figure("battery")).toMatchObject({ node: "battery", direction: "battery" });
   expect(figure("string-4")).toMatchObject({ node: "string-4", chart: null });
   expect(figure("ev-7")).toMatchObject({ node: "ev-7" });
+  expect(figure("generator")).toMatchObject({ node: "generator", colour: "var(--e-house)" });
 });
 
 test("an unknown figure has no sheet", () => {

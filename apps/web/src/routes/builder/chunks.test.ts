@@ -79,8 +79,10 @@ test("the dashboard reaches three.js only through the scene's lazy imports", asy
   const routes = await Promise.all(entries.map(async (key) => [key, await route(key)] as const));
   const dashboard = routes.find(([, path]) => path === "")?.[0];
 
-  const lazy = manifest[dashboard ?? ""]?.dynamicImports ?? [];
-  const carriers = lazy.filter((key) => loadsThree(key)).map((key) => manifest[key]?.name);
+  // Rollup may hoist the lazy import into a chunk the route shares, so look
+  // through everything the route loads up front.
+  const lazy = [...closure(dashboard ?? "")].flatMap((key) => manifest[key]?.dynamicImports ?? []);
+  const carriers = lazy.flatMap((key) => (loadsThree(key) ? [manifest[key]?.name] : []));
 
   // Both load together once a scene is shown: the scene and the car models it draws.
   expect(carriers).toEqual(["LiveScene", "models"]);
