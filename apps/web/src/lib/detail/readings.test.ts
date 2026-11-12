@@ -44,6 +44,12 @@ function plant(patch: Partial<Source> = {}): Source {
     names: { [BATTERY]: "Akku" },
     now: NOW,
     status: "live",
+    series: {
+      [`${PLANT}/grid.power`]: [{ t: NOW, v: PLANT }],
+      [`${INVERTER}/pv.string.power[3]`]: [{ t: NOW, v: INVERTER }],
+      [`${INVERTER}/inverter.power`]: [{ t: NOW, v: INVERTER }],
+      [`${LOADPOINT}/ev.charge.power`]: [{ t: NOW, v: LOADPOINT }],
+    },
     ...patch,
   };
 }
@@ -182,4 +188,17 @@ test("a figure that is not a node has no readings", () => {
 
 test("ages read in the largest sensible unit", () => {
   expect([ago(42), ago(240), ago(3 * 3600)]).toEqual(["vor 42 s", "vor 4 min", "vor 3 h"]);
+});
+
+const drawn = (id: string) => read(id)?.points.map((p) => p.v);
+
+test("a node's live graph draws its own figure: the plant's total, or its device's", () => {
+  expect(drawn("grid")).toEqual([PLANT]);
+  expect(drawn("string-3")).toEqual([INVERTER]);
+  expect(drawn("inverter")).toEqual([INVERTER]);
+  expect(drawn(`ev-${LOADPOINT}`)).toEqual([LOADPOINT]);
+});
+
+test("a string on no known device has nothing to draw", () => {
+  expect(read("string-9")?.points).toEqual([]);
 });
