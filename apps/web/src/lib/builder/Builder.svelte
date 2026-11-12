@@ -45,6 +45,8 @@
   const sheet = $derived(!phone.current && portrait.current);
 
   const editing = $derived(phone.current ? undefined : session.editing);
+
+  const painting = $derived(phone.current ? undefined : session.painting);
 </script>
 
 <div
@@ -65,6 +67,7 @@
       {location}
       clear={sheet ? PEEK : 0}
       {editing}
+      {painting}
       onpick={phone.current
         ? undefined
         : (hit) => {

@@ -12,6 +12,8 @@ export type { Hit, Panel } from "./scene.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
+export { Brush, type Painting, type Refused } from "./painting.ts";
+
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
 

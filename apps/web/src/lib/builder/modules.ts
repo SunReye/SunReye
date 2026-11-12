@@ -231,7 +231,9 @@ export function panels(scene: Scene, cells: readonly (readonly CellPlace[] | nul
     grid.modules.flatMap(({ row, column, string }) => {
       const cell = cells[i]?.find((place) => place.row === row && place.column === column);
 
-      return cell === undefined ? [] : [{ corners: cell.corners, string: string ?? null, grid: i }];
+      return cell === undefined
+        ? []
+        : [{ corners: cell.corners, string: string ?? null, grid: i, row, column }];
     }),
   );
 }

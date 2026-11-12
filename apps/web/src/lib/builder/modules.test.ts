@@ -133,7 +133,7 @@ test("a placed module is drawn where the crate laid out its cell; one outside ev
   ] as const;
 
   expect(panels(scene, [[{ row: 0, column: 0, area, corners }]])).toEqual([
-    { corners, string: 0, grid: 0 },
+    { corners, string: 0, grid: 0, row: 0, column: 0 },
   ]);
 });
 

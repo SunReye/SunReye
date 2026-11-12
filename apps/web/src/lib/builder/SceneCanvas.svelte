@@ -1,10 +1,10 @@
 <script lang="ts" module>
-  export type { Editing, Projector } from "./drawing.svelte.ts";
+  export type { Editing, Painting, Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { PerspectiveCamera } from "three";
+  import { type Group, PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
   import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
@@ -12,14 +12,17 @@
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
   import {
+    Brush,
     Handled,
     keep,
     picking,
     projector,
     type Editing,
     type Hit,
+    type Painting,
     type Panel,
     type Projector,
+    type Refused,
   } from "./drawing.svelte.ts";
   import type { Geometry, Point } from "./pv.ts";
 
@@ -37,6 +40,7 @@
     onready,
     onerror,
     editing,
+    painting,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -61,7 +65,12 @@
     onerror?: ((reason: SceneFailure) => void) | undefined;
     /** The selected object's handles and where their drags go; none, nothing is handled. */
     editing?: Editing | undefined;
+    /** The picked string, which a drag across modules paints. */
+    painting?: Painting | undefined;
   } = $props();
+
+  /** Why the last module pressed refused the paint, until the next press. */
+  let refused = $state.raw<Refused>();
 
   const handled = new Handled();
 
@@ -207,6 +216,22 @@
     }
   }
 
+  /** Paints the picked string across the modules a press crosses; before the orbit controls. */
+  function brushOn(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    drawn: () => Group | undefined,
+  ): Brush {
+    return new Brush(canvas, camera, {
+      painting: () => painting,
+      drawn,
+      panels: source.panels,
+      onrefuse: (reason) => {
+        refused = reason;
+      },
+    });
+  }
+
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
@@ -222,6 +247,7 @@
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle never reaches them.
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
+    const brush = brushOn(canvas, camera, kept.drawn);
 
     const unpick = picking(canvas, camera, kept.drawn, {
       panels: source.panels,
@@ -245,6 +271,7 @@
     return () => {
       resize.disconnect();
       unhandle();
+      brush.dispose();
       unpick();
       controls.dispose();
       parking.dispose();
@@ -269,6 +296,16 @@
       style:left="{left}px"
       style:top="{top}px">{text}</output
     >
+  {/if}
+  {#if refused !== undefined}
+    <p
+      role="alert"
+      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap text-destructive ring-1 ring-destructive/40 elevation-1"
+      style:left="{refused.left}px"
+      style:top="{refused.top}px"
+    >
+      {refused.text}
+    </p>
   {/if}
 </div>
 

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type { Editing } from "./SceneCanvas.svelte";
+  export type { Editing, Painting } from "./SceneCanvas.svelte";
 </script>
 
 <script lang="ts">
@@ -11,7 +11,7 @@
   import { getLocale } from "../paraglide/runtime.js";
   import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
   import type { CarPlace, Geometry, Point } from "./pv.ts";
-  import SceneCanvas, { type Editing } from "./SceneCanvas.svelte";
+  import SceneCanvas, { type Editing, type Painting } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
 
   let {
@@ -23,6 +23,7 @@
     devices,
     onpick,
     editing,
+    painting,
   }: {
     core: Core;
     geometry: Geometry;
@@ -35,6 +36,8 @@
     onpick?: ((hit: Hit) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
+    /** The picked string, painted by a drag across modules. */
+    painting?: Painting | undefined;
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -96,6 +99,7 @@
   onview={keep}
   {onpick}
   {editing}
+  {painting}
 />
 <nav
   aria-label={m.builder_views()}

@@ -2,13 +2,12 @@
 // crate makes of it, and the inspector's level.
 import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
 import { haptics } from "../haptics.ts";
-import type { Editing } from "./handles/handled.svelte.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
 import { painted, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
-import type { Hit, Panel } from "./scene.ts";
+import type { Editing, Hit, Painting, Panel } from "./drawing.svelte.ts";
 import { fill, type Template } from "./templates.ts";
 
 const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -136,6 +135,24 @@ export class Session {
     return {
       scene: this.draft.scene,
       target: { kind: level.kind, index: level.index },
+      ondrag: (scene) => {
+        this.drag(scene);
+      },
+      ondrop: () => {
+        this.drop();
+      },
+    };
+  }
+
+  /** The picked string, which a drag across modules in 3D paints (ADR 20). */
+  get painting(): Painting | undefined {
+    const { level } = this;
+
+    if (level.kind !== "string") return undefined;
+
+    return {
+      draft: this.draft,
+      string: level.index,
       ondrag: (scene) => {
         this.drag(scene);
       },

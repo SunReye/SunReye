@@ -1,8 +1,7 @@
 import "../../../app.css";
-import { PerspectiveCamera, Vector3 } from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../../api/core.ts";
 import Builder from "../Builder.svelte";
@@ -13,13 +12,13 @@ import {
   house,
   inspector,
   MODULE,
+  onCanvas,
   pv,
   starts,
   testCore,
   undesk,
 } from "../builder.harness.ts";
-import { presetView } from "../camera.ts";
-import { handles, type Triple } from "./grips.ts";
+import { handles } from "./grips.ts";
 
 type Scene = ReturnType<typeof house>["scene"];
 
@@ -34,26 +33,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await undesk();
 });
-
-/** Where a point lands on the builder's canvas, seen from its first view: the isometric preset. */
-function onCanvas(start: Scene): (at: Triple) => [number, number] {
-  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const view = presetView("isometric", pv.geometry(start));
-  const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
-
-  camera.position.set(...view.position);
-  camera.lookAt(...view.target);
-  camera.updateMatrixWorld();
-
-  return ([x, y, z]) => {
-    const at = new Vector3(x, y, z).project(camera);
-
-    return [
-      canvas.left + ((at.x + 1) / 2) * canvas.width,
-      canvas.top + ((1 - at.y) / 2) * canvas.height,
-    ];
-  };
-}
 
 /** A mouse drag of the first block's width arrow, two metres outward. */
 async function widen(start: Scene): Promise<void> {

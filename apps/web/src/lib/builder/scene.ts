@@ -32,6 +32,9 @@ export interface Panel {
   readonly string?: number | null;
   /** The grid it lies in, by position in the scene; a click on it opens that face. */
   readonly grid?: number;
+  /** Its cell in that grid. */
+  readonly row?: number;
+  readonly column?: number;
 }
 
 /** The string glow: the solar colour, and how far the light it stands for shows (`daylight`). */
@@ -239,9 +242,17 @@ export async function buildSliced(
   return group;
 }
 
+/** Metres a module may sit behind the roof it lies on, by depth-buffer rounding. */
+const ON_ROOF = 0.05;
+
 /** What a click in the scene struck: a module of a grid, a marker, or a surface at a point. */
 export type Hit =
-  | { readonly kind: "grid"; readonly grid: number }
+  | {
+      readonly kind: "grid";
+      readonly grid: number;
+      /** The module's cell, when the panel names it. */
+      readonly cell?: { readonly row: number; readonly column: number };
+    }
   | { readonly kind: "equipment"; readonly index: number }
   | { readonly kind: "point"; readonly point: Point };
 
@@ -261,15 +272,27 @@ export function strike(
 
   ray.setFromCamera(new Vector2(...at), camera);
 
-  const [first] = ray.intersectObject(group, true);
+  const hits = ray.intersectObject(group, true);
+  const [nearest] = hits;
 
-  if (first === undefined) return null;
+  if (nearest === undefined) return null;
+
+  // A module lies on its roof: a tie in depth goes to the module.
+  const first =
+    hits.find(
+      // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's hit, read only.
+      ({ object, distance }) => object.name === "module" && distance <= nearest.distance + ON_ROOF,
+    ) ?? nearest;
 
   const { object, point } = first;
   const index = group.getObjectsByProperty("name", object.name).indexOf(object);
-  const grid = panels[index]?.grid;
+  const { grid, row, column } = panels[index] ?? {};
 
-  if (object.name === "module" && grid !== undefined) return { kind: "grid", grid };
+  if (object.name === "module" && grid !== undefined) {
+    return row === undefined || column === undefined
+      ? { kind: "grid", grid }
+      : { kind: "grid", grid, cell: { row, column } };
+  }
 
   if (object.name === "equipment") return { kind: "equipment", index };
 

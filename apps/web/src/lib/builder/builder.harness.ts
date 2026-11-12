@@ -1,12 +1,14 @@
 // Shared by the builder's component tests: the crate, a module type, the plant's devices, a core
 // that answers layout changes, and the inspector's moves.
+import { PerspectiveCamera, Vector3 } from "three";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
-import { loadPv } from "./pv.ts";
+import { presetView } from "./camera.ts";
+import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
 
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
@@ -200,4 +202,26 @@ export async function press(
   const [x, y] = rest.at(-1) ?? first;
 
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
+}
+
+/** Where a point lands on the builder's canvas, seen from its first view: the isometric preset. */
+export function onCanvas(
+  start: Scene,
+): (at: readonly [number, number, number]) => [number, number] {
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+  const view = presetView("isometric", pv.geometry(start));
+  const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
+
+  camera.position.set(...view.position);
+  camera.lookAt(...view.target);
+  camera.updateMatrixWorld();
+
+  return ([x, y, z]) => {
+    const at = new Vector3(x, y, z).project(camera);
+
+    return [
+      canvas.left + ((at.x + 1) / 2) * canvas.width,
+      canvas.top + ((1 - at.y) / 2) * canvas.height,
+    ];
+  };
 }
