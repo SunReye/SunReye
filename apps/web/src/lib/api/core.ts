@@ -99,7 +99,7 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
   /** Writes `value` to a device's setting through the core's one funnel; admin only. */
   write(device: number, key: string, value: number): Promise<Attempt | Problem>;
   /** A device's setting's current value, `null` when unknown; admin only, as it reaches the device. */
-  read(device: number, key: string): Promise<number | null | Problem>;
+  read(device: number, key: string): Promise<Readonly<{ value: number | null }> | Problem>;
   /** Every write attempt, oldest first; admin only. */
   writes(): Promise<WriteLog | Problem>;
   /** Enables a device's setting as declared now, or withdraws the enable; admin only. */
@@ -241,7 +241,7 @@ function settings(
         params: { path: { id: device, key } },
       });
 
-      return data ? (data.value ?? null) : refusal(error, response.status);
+      return data ? { value: data.value ?? null } : refusal(error, response.status);
     },
     writes: async () => {
       const { data, error, response } = await client.GET("/api/v1/writes");

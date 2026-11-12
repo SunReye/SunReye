@@ -247,8 +247,8 @@ test("a setting's current value is read under the device, null when unknown", as
   const known = recording(Response.json({ value: 108 }));
   const unknown = recording(Response.json({ value: null }));
 
-  expect(await connect(known).read(1, "battery.max_charge_current")).toBe(108);
-  expect(await connect(unknown).read(1, "work_mode")).toBeNull();
+  expect(await connect(known).read(1, "battery.max_charge_current")).toEqual({ value: 108 });
+  expect(await connect(unknown).read(1, "work_mode")).toEqual({ value: null });
   expect([...known.asked, ...unknown.asked]).toEqual([
     `GET ${BASE}api/v1/devices/1/settings/battery.max_charge_current`,
     `GET ${BASE}api/v1/devices/1/settings/work_mode`,
