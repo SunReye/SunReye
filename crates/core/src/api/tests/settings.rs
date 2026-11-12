@@ -749,3 +749,38 @@ async fn a_slot_start_is_written_as_hhmm_and_an_off_step_time_is_refused() {
     );
     assert_eq!(plant.read(START).await.1, json!({ "value": 1350.0 }));
 }
+
+const SCHEDULE: &str = "battery.time_of_use.enabled";
+
+/// Register 146's bit 0 switches Deye's time-of-use schedule; bits 1 to 7 are its weekdays.
+#[tokio::test]
+async fn the_schedule_switch_writes_only_bit_0_of_register_146() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    assert_eq!(
+        plant.capability(SCHEDULE).await,
+        json!({ "key": SCHEDULE, "name": "Time-of-use schedule", "values": [0.0, 1.0],
+            "labels": [{ "value": 0.0, "text": "Off" }, { "value": 1.0, "text": "On" }],
+            "step": 1.0, "enable": "off" })
+    );
+    assert_eq!(
+        plant.enable("PUT", SCHEDULE).await.0,
+        StatusCode::NO_CONTENT
+    );
+    // Register 146 reads 146: bit 0 clear, the weekday bits 0b1001001.
+    assert_eq!(plant.read(SCHEDULE).await.1, json!({ "value": 0.0 }));
+
+    let (status, written) = plant.write(SCHEDULE, json!(1)).await;
+
+    assert_eq!(
+        (status, &written["outcome"]),
+        (StatusCode::OK, &json!("verified"))
+    );
+    assert_eq!(
+        plant.received(),
+        [Write {
+            unit: 1,
+            start: 146,
+            words: vec![147]
+        }]
+    );
+}

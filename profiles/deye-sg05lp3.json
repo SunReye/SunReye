@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.8",
+  "version": "2.2.9",
   "requires": [
     "modbus",
     "u16",
@@ -1185,6 +1185,33 @@
           }
         }
       ]
+    },
+    {
+      "key": "battery.time_of_use.enabled",
+      "name": "Time-of-use schedule",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 146,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 146,
+        "mask": 1
+      }
     },
     {
       "key": "battery.time_of_use.1.start",

@@ -874,6 +874,19 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   },
 ];
 
+/** Bit 0 of register 146 switches the slots on; bits 1 to 7 are the weekdays they run on. */
+const SCHEDULE: Frozen<Setting> = {
+  key: "battery.time_of_use.enabled",
+  name: "Time-of-use schedule",
+  labels: { 0: "Off", 1: "On" },
+  type: "u16",
+  values: [0, 1],
+  minInterval: 60,
+  verified: false,
+  recipe: [{ rmw: { register: 146, mask: 1 } }],
+  readBack: { register: 146, mask: 1 },
+};
+
 /** Deye's six time-of-use slots, from registers 148 to 177; none checked on hardware yet (#636). */
 const SLOTS = [1, 2, 3, 4, 5, 6] as const;
 
@@ -964,6 +977,7 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
     ],
     settings: [
       ...settings(model.current),
+      SCHEDULE,
       ...SLOTS.flatMap((n) => slot(n, model.inverter.acRating)),
     ],
   });

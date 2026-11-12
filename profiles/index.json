@@ -182,7 +182,7 @@
     },
     {
       "id": "deye-sg05lp3",
-      "version": "2.2.8",
+      "version": "2.2.9",
       "schema": 1,
       "requires": [
         "modbus",
@@ -200,12 +200,12 @@
         "verified",
         "time"
       ],
-      "sha256": "67bb30515ff23ef244c87a340222a4f0fac2c46bad7d96c1eff78203c5680f94",
+      "sha256": "975a379dbd6938fb0caa14d6b66494508b7543c982c5d8b53eede644296e662c",
       "url": "deye-sg05lp3.json"
     },
     {
       "id": "deye-sun10k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -223,12 +223,12 @@
         "verified",
         "time"
       ],
-      "sha256": "41987be6f9cb4eabbd8e7d52b82d11cff4e30205593d8cfe6d95c9809562b7ed",
+      "sha256": "77fd52524f2e3c3dcc2c386939b985e45eb068d3680685171310332bb5d77674",
       "url": "deye-sun10k-sg05lp3.json"
     },
     {
       "id": "deye-sun12k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -246,12 +246,12 @@
         "verified",
         "time"
       ],
-      "sha256": "8cbad735eb4f9f8358d4314d12e2963e134207ef279b09e08c25f0f039b785f8",
+      "sha256": "8dd4c77941b3c6f46017ae50f5b9e443e8cd87e34003f4193e3f61637361d0f2",
       "url": "deye-sun12k-sg05lp3.json"
     },
     {
       "id": "deye-sun14k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -269,12 +269,12 @@
         "verified",
         "time"
       ],
-      "sha256": "52e89df6ab96695409ee3c18cd1539f6c20601a9fa20fbf395305e0fb5635010",
+      "sha256": "89b86f1a0a65b26f6f1e83b8efee39a047d022eba7fa4eed3949baf63f549869",
       "url": "deye-sun14k-sg05lp3.json"
     },
     {
       "id": "deye-sun15k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -292,12 +292,12 @@
         "verified",
         "time"
       ],
-      "sha256": "57c36b7dfa65e0bc3ac56c239e64f71fb80fca90b165c8ecbedbc62b85454583",
+      "sha256": "84fadc13f89b25d123a819067965ece555224b984ab4c1b117cfd1324f833671",
       "url": "deye-sun15k-sg05lp3.json"
     },
     {
       "id": "deye-sun16k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -315,12 +315,12 @@
         "verified",
         "time"
       ],
-      "sha256": "93b3123e65f1fd542cbc5db9557ec91ed8c808f99df7fe3b30c2bd867dffd9d7",
+      "sha256": "579f44b1453c6e2559156c22098cab91a06bf849560cfe5c95809e19258516d8",
       "url": "deye-sun16k-sg05lp3.json"
     },
     {
       "id": "deye-sun18k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -338,12 +338,12 @@
         "verified",
         "time"
       ],
-      "sha256": "ea10d45edc3703eca9c4f614265c089e85aeab4c71230dbe046151c5a610a168",
+      "sha256": "79eddbcd78218b99c40390aa0a60867393ff44ebd37028a82dcd422ce1e0b5a2",
       "url": "deye-sun18k-sg05lp3.json"
     },
     {
       "id": "deye-sun20k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -361,12 +361,12 @@
         "verified",
         "time"
       ],
-      "sha256": "2e23901909f3808e78e8caa90a396fe75440c8923eddcd246ab752af9a917720",
+      "sha256": "7a4da25c769c8495860842b783ee0a000f29b1ceab191e0e61f2c3dcf1a08ab2",
       "url": "deye-sun20k-sg05lp3.json"
     },
     {
       "id": "deye-sun5k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -384,12 +384,12 @@
         "verified",
         "time"
       ],
-      "sha256": "52145284952db70ecbf13b4e8f8b84e9007e14e8a39722bdac65b6661835663d",
+      "sha256": "035ef7ee95107cbddcc4984d812476af84967ab7d683353a8e835f0dade18e22",
       "url": "deye-sun5k-sg05lp3.json"
     },
     {
       "id": "deye-sun6k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -407,12 +407,12 @@
         "verified",
         "time"
       ],
-      "sha256": "719b52019578fb26f0d069337c126edd3d5ca94d20790a1cfb11cc3020132d75",
+      "sha256": "f6b13e235a3fc9a88f0aea893adf3051b5eace0b7f238b5a9ff6641c7f15eaa7",
       "url": "deye-sun6k-sg05lp3.json"
     },
     {
       "id": "deye-sun8k-sg05lp3",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -430,7 +430,7 @@
         "verified",
         "time"
       ],
-      "sha256": "18d2dc638a595622045f53e555b81e8f4df8d062432200276c16ab7cb9a1dcbb",
+      "sha256": "a3fc662e4e46d3907a02670b12299ceaa0476f84ccd8dbe0a2aed099851a173c",
       "url": "deye-sun8k-sg05lp3.json"
     },
     {

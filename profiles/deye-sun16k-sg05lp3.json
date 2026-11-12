@@ -3,7 +3,7 @@
   "id": "deye-sun16k-sg05lp3",
   "name": "SUN-16K-SG05LP3-EU-SM2",
   "manufacturer": "Deye",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "requires": [
     "modbus",
     "u16",
@@ -1192,6 +1192,33 @@
           }
         }
       ]
+    },
+    {
+      "key": "battery.time_of_use.enabled",
+      "name": "Time-of-use schedule",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 146,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 146,
+        "mask": 1
+      }
     },
     {
       "key": "battery.time_of_use.1.start",
