@@ -132,6 +132,10 @@ export type LiveControl = { revert: number, heartbeat?: Heartbeat, fallback?: nu
 
 export type Heartbeat = { register: number, interval: number, };
 
+export type Time = { format: TimeFormat, step: number, };
+
+export type TimeFormat = "hhmm";
+
 export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C";
 
 export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle } | { "publish": Publish };
