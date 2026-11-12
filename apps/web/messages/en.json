@@ -418,6 +418,7 @@
   "nav_admin": "Admin",
   "nav_pin": "Pin",
   "nav_unpin": "Unpin",
+  "nav_more": "More",
   "editor_limits": "{min}–{max} {unit} · step {step}",
   "editor_values": "{count} values",
   "editor_type": "Enter {name}",
