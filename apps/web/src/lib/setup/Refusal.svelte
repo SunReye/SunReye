@@ -10,7 +10,7 @@
     text,
   }: {
     refused?: Problem | undefined;
-    /** A refusal the SPA itself makes, before asking the core. */
+    /** A refusal the SPA itself makes, before asking the core; its caller plays the haptic. */
     text?: string | undefined;
   } = $props();
 
@@ -20,7 +20,7 @@
 
   // Each refusal answers once, a repeated one too: it is a new object.
   $effect(() => {
-    if (refused !== undefined || text !== undefined) haptics.error();
+    if (refused !== undefined) haptics.error();
   });
 </script>
 
