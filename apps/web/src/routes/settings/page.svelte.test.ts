@@ -5,5 +5,5 @@ import Page from "./+page.svelte";
 test("the settings route shows the settings", async () => {
   const screen = await render(Page);
 
-  await expect.element(screen.getByRole("main")).toBeInTheDocument();
+  await expect.element(screen.getByRole("heading", { name: "Einstellungen" })).toBeInTheDocument();
 });

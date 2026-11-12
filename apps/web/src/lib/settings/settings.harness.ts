@@ -34,6 +34,16 @@ export const CAPABILITIES = {
   },
 };
 
+/** The device behind CAPABILITIES' "3", as the core lists it. */
+export const DEVICE = {
+  id: 3,
+  connection: 1,
+  name: "Wechselrichter",
+  profile: "hybrid-test",
+  unit: 1,
+  writes: true,
+};
+
 export function attempt(fields: Readonly<Partial<Attempt>>): Attempt {
   return {
     time: "2026-11-09T08:00:00Z",
@@ -74,6 +84,8 @@ export function testCore(
       if (answer !== undefined) return answer();
 
       if (path === "/api/v1/capabilities") return Response.json(CAPABILITIES);
+
+      if (path === "/api/v1/devices") return Response.json({ devices: [DEVICE] });
 
       if (path === "/api/v1/writes") return log();
 
