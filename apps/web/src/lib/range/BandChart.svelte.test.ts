@@ -1,0 +1,116 @@
+import { expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
+import { render } from "vitest-browser-svelte";
+// The chart is laid out and moved by the SPA's utilities and motion tokens.
+import "../../app.css";
+import type { Band, Via } from "./bands.ts";
+import BandChart from "./BandChart.svelte";
+
+const band = (key: string, up: number): Band => ({
+  key,
+  label: key,
+  tick: true,
+  title: `Band ${key}`,
+  state: "data",
+  partial: false,
+  up: [up],
+  down: [],
+  drillable: true,
+});
+
+const via = (id: number): Via => ({ id, kind: "morph", a: 0, b: 1, inward: true, dir: -1 });
+
+function props(bands: readonly Band[], id = 1) {
+  return {
+    bands: [...bands],
+    up: [{ label: "PV", colour: "var(--e-solar)" }],
+    via: via(id),
+    summary: { title: "Summe", up: [bands.reduce((a, b) => a + b.up[0]!, 0)], down: [] },
+    fmt: (v: number) => `${v.toFixed(1)} kWh`,
+    unit: "kWh",
+    label: "Produktion",
+  };
+}
+
+const bars = (root: Element) => [...root.querySelectorAll<HTMLElement>(".bar")];
+
+test("a new range moves the bars it has to their new values instead of redrawing them", async () => {
+  const screen = await render(BandChart, props([band("b0", 2), band("b1", 4), band("b2", 6)]));
+
+  await expect.poll(() => bars(screen.container)).toHaveLength(3);
+
+  const before = bars(screen.container);
+  const heights = before.map((b: Element) => b.querySelector<HTMLElement>(".seg")!.style.transform);
+
+  await screen.rerender(props([band("b0", 6), band("b1", 4), band("b2", 2)], 2));
+
+  await expect
+    .poll(() => before[0]!.querySelector<HTMLElement>(".seg")!.style.transform)
+    .not.toBe(heights[0]);
+  expect(bars(screen.container)).toEqual(before);
+});
+
+test("a change of range eases in and out", async () => {
+  const screen = await render(BandChart, props([band("b0", 2)]));
+
+  await expect.poll(() => bars(screen.container)).toHaveLength(1);
+
+  const style = getComputedStyle(bars(screen.container)[0]!);
+
+  expect(style.transitionProperty).toContain("transform");
+  expect(style.transitionTimingFunction).toContain("cubic-bezier(0.65, 0, 0.35, 1)");
+});
+
+test("the legend shows the band under the pointer, with no floating tooltip", async () => {
+  const screen = await render(BandChart, props([band("b0", 2), band("b1", 4)]));
+  const plot = screen.getByRole("group");
+
+  await expect.element(screen.getByText("Summe")).toBeVisible();
+
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: box.width * 0.75, y: box.height / 2 } });
+
+  await expect.element(screen.getByText("Band b1")).toBeVisible();
+  await expect.element(screen.getByText("4.0 kWh")).toBeVisible();
+  expect(document.querySelector("[role=tooltip]")).toBeNull();
+});
+
+test("keys select a span of bands, which narrows the range", async () => {
+  const brushed: [number, number][] = [];
+
+  const screen = await render(
+    BandChart,
+    Object.assign(props([band("b0", 2), band("b1", 4), band("b2", 6)]), {
+      onbrush: (a: number, b: number) => brushed.push([a, b]),
+    }),
+  );
+
+  screen.getByRole("group").element().focus();
+  await userEvent.keyboard(
+    "{ArrowLeft}{ArrowLeft}{ArrowLeft}{Shift>}{ArrowRight}{ArrowRight}{/Shift}{Enter}",
+  );
+
+  expect(brushed).toEqual([[0, 2]]);
+});
+
+test("on touch, a tap opens its band", async () => {
+  const drilled: number[] = [];
+
+  const screen = await render(
+    BandChart,
+    Object.assign(props([band("b0", 2), band("b1", 4)]), {
+      ondrill: (i: number) => drilled.push(i),
+    }),
+  );
+
+  const plot = screen.getByRole("group").element();
+  const box = plot.getBoundingClientRect();
+  const at = { clientX: box.left + box.width * 0.75, clientY: box.top + box.height / 2 };
+  const touch = { ...at, pointerType: "touch", pointerId: 7, bubbles: true, isPrimary: true };
+
+  plot.dispatchEvent(new PointerEvent("pointerdown", { ...touch, buttons: 1 }));
+  plot.dispatchEvent(new PointerEvent("pointerup", touch));
+
+  expect(drilled).toEqual([1]);
+});
