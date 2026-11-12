@@ -108,6 +108,20 @@
 
 /* ADR 21 tokens, not part of the preset. */
 :root {
+  /*
+   * Energy colours: one per flow, everywhere. Moved off the prototype's values only as far as
+   * 3:1 on every surface and colour-blind separation need (energy-colours.svelte.test.ts).
+   */
+  --e-solar: oklch(0.665 0.148 67);
+  --e-battery: oklch(0.645 0.14 157);
+  --e-import: oklch(0.56 0.217 22);
+  --e-export: oklch(0.6 0.1 196);
+  --e-house: oklch(0.5 0.012 270);
+  --e-ev: oklch(0.56 0.2 300);
+  /* Diverging pair for corrections and comparisons; never a flow. */
+  --d-under: oklch(0.62 0.17 48);
+  --d-over: oklch(0.55 0.06 250);
+
   /* ADR 21: movement between two resting places. */
   --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --motion-move: 300ms;
@@ -115,6 +129,15 @@
 }
 
 .dark {
+  --e-solar: oklch(0.815 0.162 74);
+  --e-battery: oklch(0.785 0.16 153);
+  --e-import: oklch(0.685 0.19 19);
+  --e-export: oklch(0.81 0.118 198);
+  --e-house: oklch(0.72 0.008 270);
+  --e-ev: oklch(0.72 0.17 300);
+  --d-under: oklch(0.76 0.15 55);
+  --d-over: oklch(0.74 0.06 250);
+
   --ambient-opacity: 78%;
 }
 

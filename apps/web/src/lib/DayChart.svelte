@@ -12,6 +12,7 @@
     readonly time: Date;
     readonly power: number;
     readonly series: string;
+    readonly role: string;
   }
 
   // A string, so a live update that names the same series does not reload the day.
@@ -31,7 +32,12 @@
         const history = await from.history(id, name, start, new Date());
 
         return "points" in history
-          ? history.points.map((p) => ({ time: new Date(p.start), power: p.mean, series: name }))
+          ? history.points.map((p) => ({
+              time: new Date(p.start),
+              power: p.mean,
+              series: name,
+              role: name,
+            }))
           : [];
       }),
     );
@@ -49,7 +55,8 @@
       layout.strings
         .filter((s) => s.device === id)
         .map(async (s) => {
-          const forecasts = await from.forecasts(id, `pv.string.power[${s.id}]`, start, end);
+          const role = `pv.string.power[${s.id}]`;
+          const forecasts = await from.forecasts(id, role, start, end);
           const label = m.chart_forecast({ name: s.name });
 
           return "points" in forecasts
@@ -57,6 +64,7 @@
                 time: new Date(p.target),
                 power: p.value,
                 series: label,
+                role,
               }))
             : [];
         }),
