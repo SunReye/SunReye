@@ -65,6 +65,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "verified",
       "poll-group",
       "live-control",
+      "time",
     ],
   });
 });

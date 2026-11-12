@@ -14,6 +14,7 @@ mod publish;
 mod setting;
 mod step;
 mod sunspec;
+mod time;
 mod topic;
 mod types;
 mod unit;

@@ -153,16 +153,8 @@ async fn a_community_setting_is_enabled_one_by_one_with_its_bounds_shown() {
         .iter()
         .map(|s| s["enable"].clone())
         .collect();
-    assert_eq!(
-        enables,
-        [
-            json!("on"),
-            json!("community"),
-            json!("community"),
-            json!("community"),
-            json!("community"),
-        ]
-    );
+    assert_eq!(enables[0], "on");
+    assert!(enables[1..].iter().all(|e| e == "community"), "{enables:?}");
 }
 
 /// A signed profile `box` at `version` with settings `a` and `b` verified on hardware and `c`

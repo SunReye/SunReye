@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { editable, fits, wheel } from "./editable.ts";
+import { clock, editable, fits, wheel } from "./editable.ts";
 
 const charge = editable({
   key: "battery.max_charge_current",
@@ -79,4 +79,27 @@ test("a fractional step lands on clean values", () => {
   expect(rows.count).toBe(11);
   expect(rows.at(3)).toBe(0.3);
   expect(rows.index(0.7)).toBe(7);
+});
+
+const start = editable({
+  key: "battery.time_of_use.1.start",
+  name: "Slot 1 start",
+  range: { min: 0, max: 1435 },
+  step: 5,
+  time: true,
+});
+
+test("a time edits as hours and minutes at its step", () => {
+  expect(start).toEqual({ kind: "time", name: "Slot 1 start", min: 0, max: 1435, step: 5 });
+});
+
+test("a time fits on its step inside the day's bounds", () => {
+  expect(fits(start, 22 * 60 + 30)).toBe(true);
+  expect(fits(start, 22 * 60 + 32)).toBe(false);
+  expect(fits(start, 1440)).toBe(false);
+});
+
+test("a time reads as hours and minutes", () => {
+  expect(clock(0)).toBe("00:00");
+  expect(clock(22 * 60 + 5)).toBe("22:05");
 });

@@ -934,6 +934,10 @@
             "format": "double",
             "type": "number"
           },
+          "time": {
+            "description": "The value is a time of day in minutes since midnight (ADR 5); absent for a number.",
+            "type": "boolean"
+          },
           "values": {
             "description": "The only values it takes, when the profile enumerates them.",
             "items": {

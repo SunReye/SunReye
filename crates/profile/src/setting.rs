@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::Unit;
 use crate::document::{
     BlockDoc, BlockWord, Kind, LiveControlDoc, PreconditionDoc, Range, ReadBackDoc, SettingDoc,
-    StepDoc, ToggleDoc, UnlockDoc,
+    StepDoc, TimeDoc, ToggleDoc, UnlockDoc,
 };
 use crate::profile::{Quantity, Read};
 
@@ -22,6 +22,8 @@ pub struct Setting {
     scale: f64,
     range: Option<Range>,
     values: Option<Vec<f64>>,
+    /// Minutes a time of day is a whole number of; `None` for a number.
+    time: Option<u16>,
     min_interval: Duration,
     recipe: Vec<Step>,
     read_back: Option<Source>,
@@ -181,10 +183,16 @@ impl Setting {
         self.values.as_deref()
     }
 
-    /// The step a value is a whole number of: the register's scale.
+    /// The step a value is a whole number of: a time's minutes, else the register's scale.
     #[must_use]
-    pub const fn step(&self) -> f64 {
-        self.scale
+    pub fn step(&self) -> f64 {
+        self.time.map_or(self.scale, f64::from)
+    }
+
+    /// Whether its value is a time of day in minutes since midnight.
+    #[must_use]
+    pub const fn time(&self) -> bool {
+        self.time.is_some()
     }
 
     /// The steps that apply it, in order.
@@ -284,12 +292,18 @@ impl Setting {
     /// scale, inside the range or among the values, and fits the type.
     #[must_use]
     pub fn encode(&self, value: f64) -> Option<Vec<u16>> {
-        let raw = self.raw(value)?;
+        let mut raw = self.raw(value)?;
         let allowed = match (&self.values, self.range) {
             (Some(values), _) => values.iter().any(|v| self.raw(*v) == Some(raw)),
             (None, Some(range)) => (range.min..=range.max).contains(&value),
             (None, None) => false,
         };
+        if let Some(step) = self.time {
+            if raw % i64::from(step) != 0 {
+                return None;
+            }
+            raw = raw / 60 * 100 + raw % 60;
+        }
         let fits = self.recipe.iter().all(|step| {
             if let Step::Rmw { mask, .. } = *step {
                 u16::try_from(raw)
@@ -316,6 +330,10 @@ impl Setting {
     #[must_use]
     pub fn decode(&self, words: &[u16]) -> Option<f64> {
         let low = *words.first()?;
+        if self.time.is_some() {
+            let (hours, minutes) = (low / 100, low % 100);
+            return (hours < 24 && minutes < 60).then(|| f64::from(hours * 60 + minutes));
+        }
         let raw = match self.kind {
             Kind::U16 => f64::from(low),
             Kind::I16 => f64::from(i16::from_ne_bytes(low.to_ne_bytes())),
@@ -395,6 +413,27 @@ fn toggle(doc: &SettingDoc) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// A time of day's own rules: a whole register word of minutes, within the day, on a step the
+/// minute wheel shows.
+fn time(doc: &SettingDoc) -> Result<(), &'static str> {
+    let Some(TimeDoc { step, .. }) = doc.time else {
+        return Ok(());
+    };
+    if doc.kind != Kind::U16 || doc.scale.is_some_and(|s| (s - 1.0).abs() > f64::EPSILON) {
+        return Err("a time is a `u16` at scale 1");
+    }
+    if doc.values.is_some() || doc.range.is_none_or(|r| r.min < 0.0 || r.max >= 1440.0) {
+        return Err("a time declares a `range` within the day");
+    }
+    if step == 0 || 60 % step != 0 {
+        return Err("a time's step is a whole number of minutes dividing an hour");
+    }
+    if doc.recipe.iter().any(|s| matches!(s, StepDoc::Publish(_))) {
+        return Err("a time is written to a register");
+    }
+    Ok(())
+}
+
 fn mask(mask: u16, kind: Kind) -> Result<u16, &'static str> {
     if kind != Kind::U16 {
         return Err("a masked register holds a `u16`");
@@ -435,7 +474,7 @@ fn block(doc: &BlockDoc, kind: Kind) -> Result<Step, &'static str> {
     })
 }
 
-/// The scale, once the scale, the bounds and the recipe are each declared.
+/// The scale, once the scale, the bounds and the recipe are each declared, and a time's fit.
 fn bounds(doc: &SettingDoc) -> Result<f64, &'static str> {
     let scale = doc.scale.unwrap_or(1.0);
     if !scale.is_finite() || scale == 0.0 {
@@ -450,6 +489,10 @@ fn bounds(doc: &SettingDoc) -> Result<f64, &'static str> {
     if doc.recipe.is_empty() {
         return Err("the recipe has no step");
     }
+    if doc.kind == Kind::Acc32 {
+        return Err("an acc32 is read, never written");
+    }
+    time(doc)?;
     Ok(scale)
 }
 
@@ -466,9 +509,6 @@ fn setting(
     let toggles = matches!(doc.recipe.as_slice(), [StepDoc::SnapshotToggle(_)]);
     if !toggles && doc.read_back.is_some() == doc.write_only {
         return refuse("declare a `readBack`, or `writeOnly` when the device cannot be read");
-    }
-    if doc.kind == Kind::Acc32 {
-        return refuse("an acc32 is read, never written");
     }
     let kind = doc.kind;
     let recipe = recipe(doc.recipe, kind, quantities).map_err(|problem| (key.clone(), problem))?;
@@ -499,6 +539,7 @@ fn setting(
         scale,
         range: doc.range,
         values: doc.values,
+        time: doc.time.map(|t| t.step),
         min_interval: Duration::from_secs(doc.min_interval),
         recipe,
         read_back,

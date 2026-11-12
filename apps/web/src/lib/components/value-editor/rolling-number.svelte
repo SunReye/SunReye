@@ -3,9 +3,9 @@
   continuously up or down with the motion; only transforms change.
 -->
 <script lang="ts">
-  let { value, max }: { value: number; max: number } = $props();
+  let { value, max, pad = 0 }: { value: number; max: number; pad?: number } = $props();
 
-  const columns = $derived(Math.max(String(Math.floor(Math.abs(max))).length, 1));
+  const columns = $derived(Math.max(String(Math.floor(Math.abs(max))).length, pad, 1));
   const v = $derived(Math.max(0, value));
 
   /** Position of column k on its 0-9-0 strip: odometer carry in the last tenth. */
@@ -23,7 +23,7 @@
   }
 
   function visible(k: number, x: number): number {
-    if (k === 0) return 1;
+    if (k === 0 || k < pad) return 1;
 
     return Math.max(0, Math.min(1, x - (10 ** k - 1)));
   }

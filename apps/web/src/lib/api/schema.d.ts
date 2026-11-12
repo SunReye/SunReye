@@ -1327,6 +1327,8 @@ export interface components {
              * @description A value is a whole number of steps.
              */
             step: number;
+            /** @description The value is a time of day in minutes since midnight (ADR 5); absent for a number. */
+            time?: boolean;
             /** @description The only values it takes, when the profile enumerates them. */
             values?: number[] | null;
         };
