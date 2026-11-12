@@ -232,6 +232,14 @@ _Avoid_: Floor, texture
 A line on the plot with a height and a finish. Drawn only; it casts no shade.
 _Avoid_: Wall (a wall is an obstacle)
 
+**Plant peak**:
+The most power the plant has moved recently, remembered with a six-hour half-life. A flow rail shows its share of it.
+_Avoid_: Ceiling, max power
+
+**Motion tier**:
+How much a device animates: full, lite or still. A measured frame strain lowers it; the low-power switch and reduced motion force still.
+_Avoid_: Animation level, performance mode
+
 **Template**:
 A ready-made starting scene the builder offers when the scene is empty.
 _Avoid_: Preset (a preset is a camera view)

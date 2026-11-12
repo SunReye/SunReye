@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10)
+Status: accepted (2026-11-10), amended (2026-11-12)
 
 ## Context
 
@@ -28,7 +28,18 @@ The first integration build rendered browser defaults: plain links for navigatio
 **Details by drilling down.** The dashboard answers "now and today". Every figure on it opens its detail:
 - **Detail sheets:** a glass side sheet on desktop and tablet, a bottom sheet on the phone. Each has its own hash route, so back closes it, and ends with "Open in history →" at the same range.
 - **Range control:** detail pages share one: day, week, month, year, custom, with swipe or arrows to step.
+- **Live graph:** a power figure's detail sheet opens with v3's live graph (`live-area`, `live-window`, `live-cursor`), restyled here. It shows a fixed two-minute window anchored to the newest sample, so its data, scales and tooltip index change only when a sample lands. Between samples one transform scrolls the marks, on a cursor that eases linearly across the feed's own sample spacing (clamped to 250 ms–5 s) with a slight overshoot, snapped to quarter pixels. The plot keeps a few samples of buffer past its left edge and is downsampled to its pixel budget. Grid power fills diverging around zero.
 - **Deep analytics** (heatmaps, the hourly-block grid, per-string comparison) live in tabs on detail pages, never on the dashboard.
+
+**2D power flow.** Ported from v3 (`dev` at `780b4e2`: `power-flow-diagram`, `power-graph`, `flow-pulse`, `plant-ceiling`) and restyled here.
+- **Layout:** chosen from the hero's aspect ratio. In portrait, sources stack above the hub and sinks below it. In landscape, sources fan in from the left and the grid from the right. Anchors are fractions of a safe box inset by one caption stack, so captions never clip.
+- **Hub and nodes:** the hub is the inverter, showing DC input, its own draw and its efficiency. The nodes are PV, battery (with an SOC gauge), house, generator, grid and EV (with the vehicle's SOC).
+- **Data:** values come from the `plant` device (ADR 14) and the `ev` roles (ADR 10). A node shows only when its role exists.
+- **Rails:** one cable per segment, carrying one comet charge: a chain of beads, each on its own `animateMotion` along the cable, so the comet bends with the curve. The comet's speed, size and bloom show the rail's share of the remembered plant peak.
+  - The remembered peak rises at once, halves over six hours, never drops below 1 kW, and is kept per browser.
+  - Crossing times are quantised to quarter seconds, so an unchanged reading never restarts an animation.
+  - A rail that reverses fades out and back in. The bloom's blur is static and never animates.
+- **Tapping:** a node opens its detail sheet.
 
 **Drill-in navigation for Controls and Settings.**
 - **Pattern:** one component. A root list of groups, each row summarising its current values. Tapping a row slides its page in from the right while the parent shifts left and dims. Each level is a hash route, so browser back and the edge-swipe go back. At most two levels deep.
@@ -80,7 +91,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Sheets and back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point.
 - **Jank rules:** animate only `transform` and `opacity`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
 - **Live ticks:** numbers, gauges, flow-line thickness and 3D tints ease to each tick for slightly longer than the tick interval, so values glide. When the stream stalls they stop, and the connection chip shows the stall.
-- **Off switches:** reduced motion and the low-power switch make all of it instant.
+- **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
+- **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
 
 **Smoothness is measured.** A deliberate e2e journey (outside the gate, ADR 11) runs each signature transition under 4× CPU throttling and records Long Animation Frames: drill-in, sheet, rail, route change, camera flight, live tick, value-editor fling. It fails if any frame exceeds 50 ms or the 95th percentile exceeds 20 ms.
 
@@ -107,6 +119,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Settings groups declared in profiles.** Rejected: a profile schema change for what role namespaces already give.
 - **A lock switch on the controls page.** Rejected: it duplicates ADR 7's writes switch.
 - **Sliders and a separate confirmation sheet for writes.** Rejected: a slider is imprecise on touch and has no feel. The value editor shows old → new and applies in one step.
+- **A new 2D flow or new live charts.** Rejected: v3's encode magnitude against a remembered plant peak, glide at sample cadence, and survive slow devices. They took long tuning and are kept.
+- **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override.
 - **Moving particles in the 3D scene.** Rejected: they need a continuous render loop (ADR 20). Particles stay in the 2D flow.
 - **Vendoring `web-haptics`.** Rejected for now: nothing to change. The wrapper keeps a later swap to one file.
 
