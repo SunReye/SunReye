@@ -17,8 +17,8 @@ import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
-import { Flight } from "./flight.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
+import { Opening } from "./opening.svelte.ts";
 import { Studio } from "./studio.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -38,10 +38,24 @@ function dark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
 
+/** Why a scene is not drawn: "webgl2" when this browser has none. */
+export type SceneFailure = "webgl2" | "failed";
+
+/** The picture without newly parked cars, held over the canvas while they fade in beneath it. */
+export class Ghost {
+  canvas = $state<HTMLCanvasElement>();
+  phase = $state<"off" | "hold" | "fade">("off");
+
+  /** The still tier shows them at once. */
+  get instant(): boolean {
+    return motion.still;
+  }
+}
+
 export interface Lit {
   readonly studio: Studio;
   /** The camera's flight to a new view; it lands at once on the still tier. */
-  readonly flight: Flight;
+  readonly flight: Opening["flight"];
   /** The string glow now: read in an effect, it follows the sun and the theme. */
   readonly glow: () => Glow;
   /** Relights `drawn` on each live tick, easing to the new `shares` (ADR 21). */
@@ -52,6 +66,8 @@ export interface Lit {
   /** Draws `group` in place of the last, which it frees; the sun's shadow and the lawn fit it. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
   readonly show: (group: Group) => void;
+  /** When it draws: nothing before `opening.open` has prepared it. */
+  readonly opening: Opening;
   /** Frees the drawn group and the studio. */
   readonly dispose: () => void;
 }
@@ -107,16 +123,21 @@ function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
   };
 }
 
-/** A studio on `canvas`, lit by `sun` (null for a fixed one); `render` draws after each change. */
+/** A studio on `canvas`, lit by `sun` (null for a fixed one), drawn after each change; `drawn`
+ * follows each draw. */
 export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
   sun: () => Point | null,
-  render: () => void,
+  drawn: () => void,
 ): Lit {
   const studio = new Studio(canvas, camera);
+  const opened = new Opening(studio, drawn);
+  const { flight } = opened;
+  const { render } = opened;
+  const shown = stage(studio);
   const day = $derived(daylight(sun()));
   let colour = $state(0);
 
@@ -135,11 +156,16 @@ export function lit(
 
   return {
     studio,
-    flight: new Flight(() => motion.still),
+    flight,
     glow,
-    ease: (drawn, shares) => {
-      easeGlow(drawn, shares, glow, render);
+    ease: (group, shares) => {
+      easeGlow(group, shares, glow, render);
     },
-    ...stage(studio),
+    opening: opened,
+    show: shown.show,
+    dispose() {
+      opened.dispose();
+      shown.dispose();
+    },
   };
 }

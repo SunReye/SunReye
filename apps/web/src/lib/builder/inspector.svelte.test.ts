@@ -9,6 +9,7 @@ import {
   DEVICES,
   drill,
   gridOnTheSouthFace,
+  house,
   inspector,
   MODULE,
   pv,
@@ -16,7 +17,6 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { emptyDraft } from "./modules.ts";
 
 // The inspector beside the canvas or in its sheet (ADR 20), and what a click in 3D opens.
 
@@ -28,7 +28,7 @@ test("a click on the house in 3D drills the inspector to its block", async () =>
   await render(Builder, {
     pv,
     core: connect(testCore()),
-    start: emptyDraft(),
+    start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
   });
@@ -47,7 +47,7 @@ test("on a portrait tablet the inspector is a sheet that a tap or a pick pulls u
   await render(Builder, {
     pv,
     core: connect(testCore()),
-    start: emptyDraft(),
+    start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
   });

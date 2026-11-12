@@ -6,6 +6,7 @@ import { connect, type Corrections, type ModuleType, type Transport } from "../a
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
 import { loadPv } from "./pv.ts";
+import { fill } from "./templates.ts";
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
 // changes the scene.
@@ -37,7 +38,7 @@ beforeEach(async () => {
 /** The default house with two modules of string 5 on its south face, saved. */
 const SAVED = {
   scene: {
-    ...emptyDraft().scene,
+    ...fill(emptyDraft(), "gable").scene,
     grids: [
       {
         block: 0,
