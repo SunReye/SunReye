@@ -48,7 +48,8 @@
       <EvccCard values={device.values} />
     {:else if device.spot}
       <SpotPriceCard values={device.values} />
-    {:else}
+    {:else if device.power.length > 0}
+      <!-- A device without a power, such as the tariff, has no day to chart. -->
       <section>
         <LivePowers power={device.power} stale={device.stale} />
         <DayChart {core} device={device.id} series={device.power.map(([series]) => series)} />

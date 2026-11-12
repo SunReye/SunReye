@@ -33,6 +33,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/balance", Read),
     // History of the `cost.*` rates; no investment (ADR 12).
     (Method::GET, "/api/v1/costs", Read),
+    // The zone history's days are cut in, so a viewer's "today" is the plant's (ADR 3).
+    (Method::GET, "/api/v1/timezone", Read),
     // The scene viewers see read-only (ADR 20).
     (Method::GET, "/api/v1/layout", Read),
     (Method::GET, "/api/v1/module-types", Read),
@@ -73,7 +75,6 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/scan", Admin),
     (Method::GET, "/api/v1/location", Admin),
     (Method::PUT, "/api/v1/location", Admin),
-    (Method::GET, "/api/v1/timezone", Admin),
     (Method::PUT, "/api/v1/timezone", Admin),
     (Method::GET, "/api/v1/retention", Admin),
     (Method::PUT, "/api/v1/retention", Admin),
