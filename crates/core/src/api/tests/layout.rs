@@ -409,7 +409,7 @@ async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_st
         }));
         scene["carPlaces"] = json!([{
             "device": 2, "x": 12.25, "z": 0.0, "width": 2.5, "length": 5.0, "rotation": 0.0,
-            "body": { "class": "sedan", "colour": colour },
+            "colour": colour,
         }]);
         scene
     };
