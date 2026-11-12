@@ -11,6 +11,7 @@ import {
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
+import { cross, dot, normal, unit } from "../builder/vector.ts";
 import { leaves } from "./materials.ts";
 
 /** A convex polygon's corners as a fan of triangles, three corners each. */
@@ -18,33 +19,6 @@ export function fan([first, ...rest]: readonly Point[]): Point[] {
   return first === undefined
     ? []
     : rest.slice(1).flatMap((corner, i) => [first, rest[i] ?? first, corner]);
-}
-
-type Vector = readonly [number, number, number];
-
-const dot = (a: Vector, b: Vector): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-const cross = (a: Vector, b: Vector): Vector => [
-  a[1] * b[2] - a[2] * b[1],
-  a[2] * b[0] - a[0] * b[2],
-  a[0] * b[1] - a[1] * b[0],
-];
-
-function unit(v: Vector): Vector {
-  const length = Math.hypot(...v) || 1;
-
-  return [v[0] / length, v[1] / length, v[2] / length];
-}
-
-/** A face's normal, east, north, up, turned to the sky. */
-function normal([a, b, c]: readonly Point[]): Vector {
-  if (a === undefined || b === undefined || c === undefined) return [0, 0, 1];
-
-  const n = unit(
-    cross([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]),
-  );
-
-  return n[2] < 0 || (n[2] === 0 && n[0] + n[1] < 0) ? [-n[0], -n[1], -n[2]] : n;
 }
 
 /** Whether a face lies level: a flat roof. */
