@@ -56,9 +56,22 @@ impl Quantity {
 
 fn unit(role: &str) -> Option<Unit> {
     Some(match role {
-        "pv.power" | "pv.mppt.power" | "pv.string.power" | "battery.power" | "grid.power"
-        | "grid.phase.power" | "load.power" | "load.phase.power" | "backup.power"
-        | "generator.power" | "inverter.power" | "ev.charge.power" => Unit::Watt,
+        "pv.power"
+        | "pv.mppt.power"
+        | "pv.string.power"
+        | "battery.power"
+        | "grid.power"
+        | "grid.phase.power"
+        | "load.power"
+        | "load.phase.power"
+        | "backup.power"
+        | "generator.power"
+        | "inverter.power"
+        | "ev.charge.power"
+        | "grid.import.power"
+        | "grid.export.power"
+        | "self.consumption.power"
+        | "self.supply.power" => Unit::Watt,
         "pv.energy.total"
         | "battery.capacity"
         | "battery.energy.charged.total"
