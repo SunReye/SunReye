@@ -67,10 +67,10 @@ export function editable(setting: EditableSetting): Editable {
   };
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
 /** Minutes since midnight as `HH:MM`. */
 export function clock(minutes: number): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
 

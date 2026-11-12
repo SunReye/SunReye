@@ -245,11 +245,14 @@ test("a finger dragging the hour wheel up moves to a later hour", async () => {
 
   const hour = page.getByRole("spinbutton", { name: "Stunde" });
   const wheel = hour.element();
+
   // A synthetic pointer has no capture to take.
   wheel.setPointerCapture = () => {};
+
   const box = wheel.getBoundingClientRect();
   const clientX = box.left + box.width / 2;
   const y = box.top + box.height / 2;
+
   const touch = (type: string, clientY: number) =>
     wheel.dispatchEvent(
       new PointerEvent(type, {
@@ -265,9 +268,13 @@ test("a finger dragging the hour wheel up moves to a later hour", async () => {
     );
 
   touch("pointerdown", y);
+
   for (const dy of [10, 30, 50, 70, 88]) touch("pointermove", y - dy);
+
   // The finger rests before it lifts, so the wheel lands where it was let go, without a fling.
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => {
+    setTimeout(resolve, 100);
+  });
   touch("pointerup", y - 88);
 
   await expect.element(hour).toHaveAttribute("aria-valuetext", "08");

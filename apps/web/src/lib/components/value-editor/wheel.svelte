@@ -283,7 +283,9 @@
     >
       <span class={[ad < 0.5 ? "text-foreground" : "text-muted-foreground"]}>{label(i)}</span>
       {#if i === current && marker === "dot"}
-        <span class="absolute left-2 size-1 rounded-full bg-muted-foreground/70" title={m.editor_now()}
+        <span
+          class="absolute left-2 size-1 rounded-full bg-muted-foreground/70"
+          title={m.editor_now()}
         ></span>
       {:else if i === current}
         <span class="absolute right-3 flex items-center gap-1 text-xs text-muted-foreground">
