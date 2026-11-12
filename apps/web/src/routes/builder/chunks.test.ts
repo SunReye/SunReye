@@ -40,7 +40,7 @@ async function carriesThree(file: string): Promise<boolean> {
 const three = new Set(
   (
     await Promise.all(
-      Object.entries(manifest).map(async ([key, chunk]) =>
+      Object.entries(manifest).map(async ([key, chunk]: readonly [string, Chunk]) =>
         (await carriesThree(chunk.file)) ? [key] : [],
       ),
     )
