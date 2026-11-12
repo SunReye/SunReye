@@ -1,6 +1,8 @@
 // The live stream's state, app-wide: the shell's connection chip shows it and every live number
 // stops gliding while it is halted (ADR 21).
 import type { Core, Live } from "../api/core.ts";
+import { motion } from "../motion/tier.svelte.ts";
+import { glideDurationMs, TICK_MS } from "./glide.ts";
 import { streamState, type StreamState } from "./stream.ts";
 
 class Stream {
@@ -33,3 +35,8 @@ class Stream {
 }
 
 export const stream = new Stream();
+
+/** How long a live value glides to a tick now: a step while still or halted (ADR 21). */
+export function tickGlideMs(): number {
+  return glideDurationMs(TICK_MS, motion.still || stream.halted);
+}

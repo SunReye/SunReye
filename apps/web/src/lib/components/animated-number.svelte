@@ -1,9 +1,7 @@
 <script lang="ts">
   import { cubicOut } from "svelte/easing";
   import { Tween } from "svelte/motion";
-  import { glideDurationMs, TICK_MS } from "../live/glide.ts";
-  import { stream } from "../live/stream.svelte.ts";
-  import { motion } from "../motion/tier.svelte.ts";
+  import { tickGlideMs } from "../live/stream.svelte.ts";
   import { getLocale } from "../paraglide/runtime.js";
 
   // Live ticks glide for slightly longer than the tick (ADR 21); a halted stream steps to its last
@@ -16,8 +14,9 @@
 
   $effect(() => {
     if (value === null) return;
-    const still = motion.still || stream.halted;
-    void tween.set(value, { duration: still ? 0 : first ? 900 : glideDurationMs(TICK_MS, false) });
+    const glide = tickGlideMs();
+
+    void tween.set(value, { duration: glide > 0 && first ? 900 : glide });
     first = false;
   });
 
