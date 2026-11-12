@@ -12,7 +12,7 @@
   import { garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
-  import { lit, type Lit } from "../scene/stage.svelte.ts";
+  import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
   import type { Geometry } from "./pv.ts";
   import { buildScene, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
@@ -28,6 +28,8 @@
     onview,
     onrender,
     onpick,
+    onready,
+    onerror,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -47,7 +49,12 @@
     onrender?: (project: Projector) => void;
     /** A click, not a drag: what it struck, if anything. */
     onpick?: ((hit: Hit) => void) | undefined;
+    /** The first frame is drawn: nothing was before, so it never waited on a compile. */
+    onready?: (() => void) | undefined;
+    onerror?: ((reason: SceneFailure) => void) | undefined;
   } = $props();
+
+  const ghost = new Ghost();
 
   function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
     return (point) => {
@@ -128,6 +135,9 @@
 
       if (moved > CLICK) return;
 
+      // A click may come before the first draw has placed the camera's matrices.
+      camera.updateMatrixWorld();
+
       const hit = strike(group, panels, camera, [
         (event.offsetX / canvas.clientWidth) * 2 - 1,
         1 - (event.offsetY / canvas.clientHeight) * 2,
@@ -200,47 +210,92 @@
     return controls;
   }
 
-  /** Draws on a change of geometry, view, sun or theme, a camera move or a resize, once per frame,
-   * and while the camera flies; never in a loop (ADR 20). */
-  function stage(canvas: HTMLCanvasElement): () => void {
-    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
-    let frame = 0;
-
-    // Every change in a frame is drawn once, in the next one.
-    const render = (): void => {
-      frame ||= requestAnimationFrame((now) => {
-        const flying = flight.step(now);
-
-        // Where the flight moved the camera is drawn in this frame, not the next.
-        frame = 0;
-        studio.render();
-        onrender?.(projector(canvas, camera.clone()));
-
-        if (flying) render();
-      });
-    };
-
-    const scene = lit(canvas, camera, () => sun ?? null, render);
-    const { studio, flight } = scene;
-    const resize = fit(canvas, studio, camera, render);
-
-    const drawn = keep(scene, render);
-    const unpick = picking(canvas, camera, drawn);
-
-    const parking = garage(
-      studio.scene,
-      render,
-      untrack(() => model),
-    );
+  /** Parks the cars once `due`, each change after the last; their programs compiled first. */
+  function parkLater(
+    canvas: HTMLCanvasElement,
+    opening: Lit["opening"],
+    parking: ReturnType<typeof garage>,
+  ) {
+    let due = $state(false);
+    let parked = Promise.resolve();
 
     $effect(() => {
-      parking.park(cars);
+      const arriving = cars;
+
+      if (due) {
+        parked = parked.then(() =>
+          opening.arrive(canvas, ghost, () => {
+            parking.park(arriving);
+          }),
+        );
+      }
     });
+
+    return {
+      due: () => {
+        due = true;
+      },
+      dispose: () => {
+        parking.dispose();
+      },
+    };
+  }
+
+  /** The lit studio on `canvas`; null without WebGL2. */
+  function studioOn(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Lit | null {
+    try {
+      return lit(
+        canvas,
+        camera,
+        () => sun ?? null,
+        () => onrender?.(projector(canvas, camera.clone())),
+      );
+    } catch {
+      onerror?.("webgl2");
+
+      return null;
+    }
+  }
+
+  /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
+   * the studio is prepared. Cars come once the house is on screen. */
+  function stage(canvas: HTMLCanvasElement): () => void {
+    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
+    const scene = studioOn(canvas, camera);
+
+    if (scene === null) return () => {};
+
+    const { studio, flight, opening } = scene;
+    const { render } = opening;
+    const resize = fit(canvas, studio, camera, render);
+    const unpick = picking(canvas, camera, keep(scene, render));
+
+    const parking = parkLater(
+      canvas,
+      opening,
+      garage(
+        studio.scene,
+        render,
+        untrack(() => model),
+      ),
+    );
 
     const controls = orbit(canvas, camera, flight, render);
 
+    opening
+      .open(
+        () => {
+          onready?.();
+        },
+        () => {
+          parking.due();
+        },
+      )
+      .catch(() => {
+        onerror?.("failed");
+      });
+
     return () => {
-      cancelAnimationFrame(frame);
       resize.disconnect();
       unpick();
       controls.dispose();
@@ -250,14 +305,49 @@
   }
 </script>
 
-<canvas aria-label={m.builder_scene()} {@attach stage}></canvas>
+<div class="scene">
+  <canvas aria-label={m.builder_scene()} {@attach stage}></canvas>
+  <canvas
+    bind:this={ghost.canvas}
+    class={["ghost", ghost.phase, ghost.instant && "instant"]}
+    ontransitionend={() => (ghost.phase = "off")}
+    aria-hidden="true"
+  ></canvas>
+</div>
 
 <style>
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
   canvas {
     display: block;
     width: 100%;
     height: 100%;
     min-height: 20rem;
     touch-action: none;
+  }
+  /* Opacity only (ADR 21): the picture without the new car goes, the car beneath it stays. */
+  .ghost {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .ghost.hold {
+    opacity: 1;
+  }
+  .ghost.fade {
+    transition: opacity 350ms var(--motion-ease, ease-out);
+  }
+  .ghost.instant {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ghost.fade {
+      transition: none;
+    }
   }
 </style>

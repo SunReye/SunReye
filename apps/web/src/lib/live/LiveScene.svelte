@@ -4,6 +4,7 @@
   import { panels } from "../builder/modules.ts";
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
   import SceneCanvas, { type Projector } from "../builder/SceneCanvas.svelte";
+  import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { spread } from "./chips.ts";
   import LabelChip from "./LabelChip.svelte";
@@ -19,6 +20,8 @@
     model,
     location,
     onselect,
+    onready,
+    onerror,
   }: {
     core: Core;
     pv: Pv;
@@ -33,7 +36,14 @@
     location?: Location | undefined;
     /** Opens a chip's detail sheet. */
     onselect: (id: string) => void;
+    /** The first frame is on screen and the scene has started to fade in. */
+    onready?: (() => void) | undefined;
+    /** The scene could not be drawn. */
+    onerror?: Parameters<typeof SceneCanvas>[1]["onerror"];
   } = $props();
+
+  /** The first frame is drawn: the scene shows, chips included. */
+  let ready = $state(false);
 
   /** The sun moves on every 15 minutes, as the spotlight backdrop does (ADR 21). */
   const SUN_STEP = 15 * 60_000;
@@ -155,7 +165,14 @@
   });
 </script>
 
-<figure aria-label={m.live_scene()} bind:clientWidth={width} bind:clientHeight={height}>
+<!-- Hidden and inert until the first frame is drawn; then all of it fades in, chips included. -->
+<figure
+  aria-label={m.live_scene()}
+  class={[ready && "shown", motion.still && "instant"]}
+  inert={!ready}
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+>
   <SceneCanvas
     {geometry}
     panels={drawn}
@@ -171,6 +188,11 @@
     onrender={(next) => {
       project = next;
     }}
+    onready={() => {
+      ready = true;
+      onready?.();
+    }}
+    {onerror}
   />
   <!-- Chips are HTML over the canvas: readable through walls, and no redraw for new text. -->
   <svg class="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden="true">
@@ -212,5 +234,19 @@
     margin: 0;
     height: 100%;
     overflow: hidden;
+    /* Opacity only (ADR 21): an entrance, eased out. */
+    opacity: 0;
+    transition: opacity 350ms var(--motion-ease, ease-out);
+  }
+  figure.shown {
+    opacity: 1;
+  }
+  figure.instant {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    figure {
+      transition: none;
+    }
   }
 </style>

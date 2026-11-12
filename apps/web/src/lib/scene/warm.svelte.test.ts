@@ -1,3 +1,4 @@
+import { DataTexture } from "three";
 import { expect, test } from "vitest";
 import { GROUPS } from "./pixels.ts";
 import { rememberedWebgl2, warm, warmed } from "./warm.ts";
@@ -18,5 +19,7 @@ test("materials made after the worker answered take its pixels", async () => {
 
   const { plaster } = await import("./materials.ts");
 
-  expect(plaster().map?.image.data).toBe(warmed.plaster?.["plaster.map"]?.data);
+  const { map } = plaster();
+
+  expect(map instanceof DataTexture && map.image.data).toBe(warmed.plaster?.["plaster.map"]?.data);
 });
