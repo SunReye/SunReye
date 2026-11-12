@@ -1,119 +1,48 @@
-import { beforeEach, expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import "../../app.css";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
-import { connect, type ModuleType, type Transport } from "../api/core.ts";
+import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import {
+  choose,
+  desk,
+  DEVICES,
+  drill,
+  enter,
+  gridOnTheSouthFace,
+  inspector,
+  MODULE,
+  pv,
+  saveFrom,
+  SOUTH,
+  testCore,
+  undesk,
+} from "./builder.harness.ts";
 import { emptyDraft } from "./modules.ts";
-import { loadPv } from "./pv.ts";
 
-const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
+beforeEach(desk);
 
-const MODULE: ModuleType = {
-  id: 7,
-  name: "Owner 400",
-  pmax: 400,
-  vmp: 34,
-  imp: 11.76,
-  voc: 41,
-  isc: 12.5,
-  powerCoefficient: -0.35,
-  voltageCoefficient: -0.27,
-  currentCoefficient: 0.05,
-  width: 1.134,
-  height: 1.722,
-  bypassDiodes: 3,
-};
-
-/** The south face of the default 10 m × 8 m gable house. */
-const SOUTH = "Baukörper 1, Fläche 2: Azimut 0°, Neigung 35°";
-
-/** A core that keeps each layout change and answers it saved, with a cold-voltage warning. */
-function testCore(): Transport & { readonly puts: unknown[] } {
-  const puts: unknown[] = [];
-
-  return {
-    base: "http://core.test/",
-    puts,
-    fetch: async (request) => {
-      // The live stream stays open and silent.
-      if (request.method === "GET") return Promise.withResolvers<Response>().promise;
-
-      if (request.url.endsWith("/api/v1/car-bodies")) {
-        return Response.json({ id: "ab".repeat(32) }, { status: 201 });
-      }
-
-      const change: unknown = await request.json();
-
-      puts.push(change);
-
-      return Response.json({
-        appliesFrom: "2026-10-31T23:00:00Z",
-        strings: [
-          {
-            id: 5,
-            name: "String 1",
-            moduleType: 7,
-            device: 1,
-            input: 1,
-            modules: 1,
-            optimized: 0,
-            tilt: 35,
-            azimuth: 0,
-            loss: 2,
-          },
-        ],
-        warnings: [{ string: 5, openCircuitVoltage: 807.741, maxInputVoltage: 800 }],
-      });
-    },
-  };
-}
-
-beforeEach(async () => {
-  await page.viewport(1280, 900);
-});
-
-const DEVICES = [
-  { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 },
-  { id: 2, name: "Speicher", profile: "pylontech", connection: 1, unit: 2 },
-  { id: 3, name: "Wallbox", profile: "evcc", connection: 2, unit: 1 },
-];
-
-async function gridOnTheSouthFace(transport: Transport) {
-  const screen = await render(Builder, {
-    pv,
-    core: connect(transport),
-    start: emptyDraft(),
-    moduleTypes: [MODULE],
-    devices: DEVICES,
-  });
-
-  await userEvent.selectOptions(
-    screen.getByRole("combobox", { name: "Dachfläche" }).element(),
-    SOUTH,
-  );
-  await screen.getByRole("button", { name: "Modulraster auf diese Fläche legen" }).click();
-
-  return screen;
-}
+afterEach(undesk);
 
 test("the admin paints modules into a string, undoes one and saves from a date", async () => {
   const transport = testCore();
   const screen = await gridOnTheSouthFace(transport);
 
-  await screen.getByRole("button", { name: "String hinzufügen" }).click();
-  await screen.getByRole("radio", { name: "String 1 malen" }).click();
-  await screen.getByRole("button", { name: "Reihe 1, Spalte 1" }).click();
-  await screen.getByRole("button", { name: "Reihe 1, Spalte 2" }).click();
-  await screen.getByRole("button", { name: "Rückgängig" }).click();
+  await drill("Module", "Szene", "Strings", "String hinzufügen", "Strings", "Szene");
+  await drill("Module", SOUTH);
+  await inspector().getByRole("radio", { name: "String 1 malen" }).click();
+  await inspector().getByRole("button", { name: "Reihe 1, Spalte 1" }).click();
+  await inspector().getByRole("button", { name: "Reihe 1, Spalte 2" }).click();
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
 
   await expect
-    .element(screen.getByRole("button", { name: "Reihe 1, Spalte 2" }))
+    .element(inspector().getByRole("button", { name: "Reihe 1, Spalte 2" }))
     .toHaveAttribute("aria-pressed", "false");
-  await expect.element(screen.getByText("1 Module, davon 0 mit Optimierer")).toBeVisible();
+  await drill("Module", "Szene", "Strings");
+  await expect.element(inspector().getByText("1 Module, davon 0 mit Optimierer")).toBeVisible();
 
-  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
-  await screen.getByRole("button", { name: "Speichern" }).click();
+  await saveFrom("2026-11-01");
 
   await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   await expect
@@ -145,43 +74,36 @@ test("the admin paints modules into a string, undoes one and saves from a date",
 test("a module the setback no longer holds is flagged before saving", async () => {
   const screen = await gridOnTheSouthFace(testCore());
 
-  await screen.getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
-  await screen.getByRole("radio", { name: "Optimierer" }).click();
-  await screen.getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
+  await inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
+  await inspector().getByRole("radio", { name: "Optimierer" }).click();
+  await inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
 
   await expect
-    .element(screen.getByRole("button", { name: "Reihe 2, Spalte 1" }))
+    .element(inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }))
     .toHaveTextContent("◆");
-  await expect
-    .element(screen.getByText("1 Module gehören zu keinem String und erzeugen nichts."))
-    .toBeVisible();
 
-  await userEvent.fill(screen.getByRole("spinbutton", { name: "Randabstand (m)" }), "1");
+  await enter("Randabstand (m)", "1");
 
   await expect
     .element(screen.getByRole("alert"))
     .toHaveTextContent("Raster 1: Das Modul in Reihe 2, Spalte 1 ragt über den Randabstand.");
+  await drill("Module");
+  await expect
+    .element(inspector().getByText("1 Module gehören zu keinem String und erzeugen nichts."))
+    .toBeVisible();
 });
 
 test("the admin hangs a battery marker inside the right wall and saves it with the scene", async () => {
   const transport = testCore();
   const screen = await gridOnTheSouthFace(transport);
 
-  await screen.getByRole("button", { name: "Batterie platzieren" }).click();
-  const marker = screen.getByRole("group", { name: "Batterie" });
-  await userEvent.selectOptions(
-    marker.getByRole("combobox", { name: "Gerät" }).element(),
-    "Speicher",
-  );
-  await userEvent.selectOptions(marker.getByRole("combobox", { name: "Wand" }).element(), "Rechts");
-  await userEvent.fill(
-    marker.getByRole("spinbutton", { name: "Abstand vom linken Ende (m)" }),
-    "3",
-  );
-  await marker.getByRole("checkbox", { name: "Innen" }).click();
+  await drill("Module", "Szene", "Geräte", "Batterie platzieren");
+  await choose("Gerät", "Speicher");
+  await choose("Wand", "Rechts");
+  await enter("Abstand vom linken Ende (m)", "3");
+  await inspector().getByRole("checkbox", { name: "Innen" }).click();
 
-  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
-  await screen.getByRole("button", { name: "Speichern" }).click();
+  await saveFrom("2026-11-01");
 
   await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({
@@ -195,33 +117,20 @@ test("the admin adds a car place under a carport, picks its body, uploads a GLB 
   const transport = testCore();
   const screen = await gridOnTheSouthFace(transport);
 
-  await screen.getByRole("button", { name: "Baukörper hinzufügen" }).click();
-  await screen
-    .getByRole("group", { name: "Baukörper 2" })
-    .getByRole("checkbox", { name: "Carport" })
-    .click();
-  await screen.getByRole("button", { name: "Stellplatz hinzufügen" }).click();
+  await drill("Module", "Szene", "Gebäude", "Baukörper hinzufügen");
+  await inspector().getByRole("checkbox", { name: "Carport" }).click();
+  await drill("Gebäude", "Szene", "Geräte", "Stellplatz hinzufügen");
 
-  const place = screen.getByRole("group", { name: "Stellplatz 1" });
-
-  await userEvent.selectOptions(
-    place.getByRole("combobox", { name: "Ladepunkt" }).element(),
-    "Wallbox",
-  );
-  await userEvent.selectOptions(
-    place.getByRole("combobox", { name: "Fahrzeugklasse" }).element(),
-    "SUV",
-  );
+  await choose("Fahrzeugklasse", "SUV");
   await userEvent.upload(
-    place.getByLabelText("Eigenes Modell (GLB, höchstens 20 MB)").element(),
+    inspector().getByLabelText("Eigenes Modell (GLB, höchstens 20 MB)").element(),
     new File([new Uint8Array([0x67, 0x6c, 0x54, 0x46])], "car.glb"),
   );
   await expect
-    .element(place.getByRole("button", { name: "Eigenes Modell entfernen" }))
+    .element(inspector().getByRole("button", { name: "Eigenes Modell entfernen" }))
     .toBeVisible();
 
-  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
-  await screen.getByRole("button", { name: "Speichern" }).click();
+  await saveFrom("2026-11-01");
 
   await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({
@@ -280,6 +189,6 @@ test("a connected car shows its charge power and SOC in the builder; none while 
 
   const unplugged = await show(0);
 
-  await expect.element(unplugged.getByRole("group", { name: "Stellplatz 1" })).toBeVisible();
+  await expect.element(unplugged.getByLabelText("3D-Szene des Hauses")).toBeVisible();
   expect(unplugged.getByText(/Auto lädt/u).elements()).toHaveLength(0);
 });

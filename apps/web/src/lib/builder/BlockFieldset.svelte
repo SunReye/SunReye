@@ -1,103 +1,82 @@
+<!-- A block's level in the inspector: its footprint, eave, roof and whether it is a carport. -->
 <script lang="ts">
+  import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
   import { withRoof } from "./draft.ts";
-  import NumberField from "./NumberField.svelte";
-  import type { Block, Roof } from "./pv.ts";
+  import { choices, degrees, metres, REACH } from "./fields.ts";
+  import { ROOFS } from "./outline.ts";
+  import type { Block } from "./pv.ts";
+  import RemoveButton from "./RemoveButton.svelte";
+  import SwitchRow from "./SwitchRow.svelte";
+  import ValueRow from "./ValueRow.svelte";
 
   let {
     block,
-    number,
     onchange,
     onremove,
   }: {
     block: Block;
-    /** From 1, as the admin counts. */
-    number: number;
     onchange: (block: Block) => void;
     /** Without it the block stays: a scene keeps at least one. */
     onremove: (() => void) | undefined;
   } = $props();
 
-  type Numeric = { [K in keyof Block]-?: Block[K] extends number ? K : never }[keyof Block];
+  type Numeric = "x" | "z" | "width" | "depth" | "eave" | "rotation";
 
-  const fields: readonly (readonly [Numeric, () => string])[] = [
-    ["x", m.field_x],
-    ["z", m.field_z],
-    ["width", m.field_width],
-    ["depth", m.field_depth],
-    ["eave", m.field_eave],
-    ["rotation", m.field_rotation],
-  ];
+  const fields = [
+    ["x", metres(m.field_x(), -REACH, REACH)],
+    ["z", metres(m.field_z(), -REACH, REACH)],
+    ["width", metres(m.field_width(), 1, 60)],
+    ["depth", metres(m.field_depth(), 1, 60)],
+    ["eave", metres(m.field_eave(), 1, 30)],
+    ["rotation", degrees(m.field_rotation(), 0, 359)],
+  ] as const satisfies readonly (readonly [Numeric, unknown])[];
 
-  const roofs: readonly (readonly [Roof["kind"], () => string])[] = [
-    ["flat", m.roof_flat],
-    ["monoPitch", m.roof_monoPitch],
-    ["gable", m.roof_gable],
-    ["hip", m.roof_hip],
-  ];
+  const roof = choices(
+    m.field_roof(),
+    ROOFS.map(([, label]) => label()),
+  );
 
-  function chooseRoof(value: string): void {
-    const kind = roofs.find(([option]) => option === value)?.[0];
-
-    if (kind !== undefined) onchange({ ...block, roof: withRoof(block.roof, kind) });
-  }
+  const pitch = degrees(m.field_pitch(), 0, 60);
 </script>
 
-<fieldset>
-  <legend>{m.builder_block({ number })}</legend>
-  {#each fields as [key, label] (key)}
-    <NumberField
-      label={label()}
+<Item.Group class="gap-0 divide-y divide-border/60">
+  {#each fields as [key, edit] (key)}
+    <ValueRow
+      {edit}
       value={block[key]}
       onchange={(value) => {
         onchange({ ...block, [key]: value });
       }}
     />
   {/each}
-  <label>
-    {m.field_roof()}
-    <select
-      value={block.roof.kind}
-      onchange={(event) => {
-        chooseRoof(event.currentTarget.value);
-      }}
-    >
-      {#each roofs as [kind, label] (kind)}
-        <option value={kind}>{label()}</option>
-      {/each}
-    </select>
-  </label>
-  {#if block.roof.kind !== "flat"}
-    {@const roof = block.roof}
-    <NumberField
-      label={m.field_pitch()}
-      min={0}
-      max={60}
-      value={roof.pitch}
-      onchange={(pitch) => {
-        onchange({ ...block, roof: { ...roof, pitch } });
-      }}
-    />
-  {/if}
-  <label>
-    <input
-      type="checkbox"
-      checked={block.open === true}
-      onchange={(event) => {
-        onchange({ ...block, open: event.currentTarget.checked });
-      }}
-    />
-    {m.block_carport()}
-  </label>
-  {#if onremove !== undefined}
-    <button type="button" onclick={onremove}>{m.builder_remove()}</button>
-  {/if}
-</fieldset>
+  <ValueRow
+    edit={roof}
+    value={ROOFS.findIndex(([kind]) => kind === block.roof.kind)}
+    onchange={(index) => {
+      const kind = ROOFS[index]?.[0];
 
-<style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-</style>
+      if (kind !== undefined) onchange({ ...block, roof: withRoof(block.roof, kind) });
+    }}
+  />
+  {#if block.roof.kind !== "flat"}
+    {@const pitched = block.roof}
+    <ValueRow
+      edit={pitch}
+      value={pitched.pitch}
+      onchange={(value) => {
+        onchange({ ...block, roof: { ...pitched, pitch: value } });
+      }}
+    />
+  {/if}
+  <SwitchRow
+    label={m.block_carport()}
+    checked={block.open === true}
+    onchange={(open) => {
+      onchange({ ...block, open });
+    }}
+  />
+</Item.Group>
+{#if onremove !== undefined}
+  <RemoveButton {onremove} />
+{/if}
