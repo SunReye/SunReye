@@ -34,8 +34,11 @@ export default defineConfig({
       "@lucide/svelte/icons/fuel",
       "@lucide/svelte/icons/gauge",
       "@lucide/svelte/icons/house",
+      "@lucide/svelte/icons/lock",
+      "@lucide/svelte/icons/shield-check",
       "@lucide/svelte/icons/sun",
       "@lucide/svelte/icons/utility-pole",
+      "svelte-sonner",
     ],
   },
   test: {
