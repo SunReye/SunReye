@@ -2,9 +2,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
-  import { m } from "../paraglide/messages.js";
   import DeviceSettings from "./DeviceSettings.svelte";
+  import Listing from "./Listing.svelte";
 
   let { core }: { core: Core } = $props();
 
@@ -36,15 +35,13 @@
 </script>
 
 {#if answer !== undefined}
-  {#if "problem" in answer}
-    <p role="alert" class="p-4">{problemText(answer.problem)}</p>
-  {:else if answer.length === 0}
-    <p class="p-4 text-sm text-muted-foreground">{m.settings_none()}</p>
-  {:else}
-    <div class="flex flex-col divide-y divide-border/60">
-      {#each answer as { device, support } (device.id)}
-        <DeviceSettings {core} {device} {support} onchanged={reload} />
-      {/each}
-    </div>
-  {/if}
+  <Listing {answer}>
+    {#snippet items(list)}
+      <div class="flex flex-col divide-y divide-border/60">
+        {#each list as { device, support } (device.id)}
+          <DeviceSettings {core} {device} {support} onchanged={reload} />
+        {/each}
+      </div>
+    {/snippet}
+  </Listing>
 {/if}
