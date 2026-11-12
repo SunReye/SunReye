@@ -10,12 +10,15 @@ beforeEach(() => {
   back.mockClear();
 });
 
-/** A router on the hash route `path`, in the given history state. */
+/**
+ * A router on the hash route `path`, in the given history state. Under the hash router the page's
+ * URL is the document's, here under an ingress prefix, and the route sits in its hash.
+ */
 function on(path: string, drilled?: boolean): Router {
-  const { pathname, search } = new URL(path, "http://host");
+  const address = new URL(`http://host/api/hassio_ingress/tok/#${path}`);
 
   return {
-    page: { url: { pathname, search }, state: drilled === undefined ? {} : { drilled } },
+    page: { url: address, state: drilled === undefined ? {} : { drilled } },
     goto: async (url, options) => {
       sent.push([url, options]);
       await Promise.resolve();
@@ -74,4 +77,18 @@ test("a screen may name its own level, as the dashboard's `detail` sheet", () =>
   drillRoute(on("/"), "detail").navigate("grid");
 
   expect(sent).toEqual([["#/?detail=grid", { replace: false, state: { drilled: true } }]]);
+});
+
+test("the document's own path and query never leak into the hash route", () => {
+  const prefixed = new URL("http://host/api/hassio_ingress/tok/?group=stale#/controls");
+
+  const route = drillRoute({ ...on("/controls"), page: { url: prefixed, state: {} } });
+
+  expect(route.open).toBeNull();
+
+  route.navigate("battery");
+
+  expect(sent).toEqual([
+    ["#/controls?group=battery", { replace: false, state: { drilled: true } }],
+  ]);
 });
