@@ -2881,6 +2881,23 @@
           }
         ]
       },
+      "SunTint": {
+        "description": "The sun tint over the plant, without its location.",
+        "properties": {
+          "tint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Tint",
+                "description": "`null` until the location is set."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "Support": {
         "description": "What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,\nthe one its WASM build reports.",
         "properties": {
@@ -2979,6 +2996,16 @@
           "bucket",
           "hour",
           "day"
+        ],
+        "type": "string"
+      },
+      "Tint": {
+        "description": "The backdrop's tint for the sun over the plant.",
+        "enum": [
+          "dawn",
+          "noon",
+          "dusk",
+          "night"
         ],
         "type": "string"
       },
@@ -5345,6 +5372,32 @@
           }
         },
         "summary": "Chooses the bidding zone spot prices are fetched for, or none; the device follows at once."
+      }
+    },
+    "/api/v1/sun-tint": {
+      "get": {
+        "operationId": "sun_tint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SunTint"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The backdrop's tint for the sun over the plant now; viewers read it, never the location."
       }
     },
     "/api/v1/tariff": {

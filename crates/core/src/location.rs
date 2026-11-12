@@ -5,7 +5,7 @@
 //! it, so a change applies at once.
 
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::State;
@@ -21,6 +21,10 @@ use utoipa_axum::routes;
 use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::changes::{self, Action, Entry, Subject};
 use crate::storage::{Database, Error};
+
+mod tint;
+
+pub use tint::Tint;
 
 const BODY: Problem = Problem {
     status: StatusCode::BAD_REQUEST,
@@ -101,10 +105,11 @@ impl PlantLocation {
         Ok(location)
     }
 
-    /// The location routes, behind the admin's session.
+    /// The location routes: the admin's location and everyone's sun tint.
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(location, set_location))
+            .routes(routes!(sun_tint))
             .with_state((self, clock))
     }
 }
@@ -164,3 +169,28 @@ async fn set_location(
     let Json(draft) = body.map_err(|_| BODY)?;
     Ok(Json(location.set(draft, clock()).await?))
 }
+
+/// The sun tint over the plant, without its location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+pub struct SunTint {
+    /// `null` until the location is set.
+    pub tint: Option<Tint>,
+}
+
+/// The backdrop's tint for the sun over the plant now; viewers read it, never the location.
+#[utoipa::path(get, path = "/api/v1/sun-tint", responses(
+    (status = 200, body = SunTint),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn sun_tint(State((location, clock)): LocationState) -> Json<SunTint> {
+    let current = *location.current.borrow();
+    let unix = clock().duration_since(UNIX_EPOCH).map_or(0, |since| {
+        i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+    });
+    Json(SunTint {
+        tint: current.map(|here| tint::tint_at(here, unix)),
+    })
+}
+
+#[cfg(test)]
+mod tests;
