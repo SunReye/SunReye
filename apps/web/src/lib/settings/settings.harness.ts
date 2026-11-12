@@ -3,11 +3,6 @@ import type { Attempt, Transport } from "../api/core.ts";
 
 export const CHARGE = "battery.max_charge_current";
 
-/** A setting's row, named by its key (no name is declared) and the value it last read back. */
-export function row(key: string, value = "") {
-  return { name: `${key} ${value}`.trim(), exact: true } as const;
-}
-
 /** A profile's settings as the core's capabilities list them; no brand anywhere. */
 export const CAPABILITIES = {
   version: "5.0.0",

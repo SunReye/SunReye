@@ -2715,6 +2715,20 @@
         ],
         "type": "object"
       },
+      "SettingNow": {
+        "description": "A setting's current value.",
+        "properties": {
+          "value": {
+            "description": "In the setting's unit; `null` when it cannot be read or the setting is write-only.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SettingSupport": {
         "allOf": [
           {
@@ -4179,6 +4193,50 @@
       }
     },
     "/api/v1/devices/{id}/settings/{key}": {
+      "get": {
+        "operationId": "read_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Reads a setting's current value from its read-back (ADR 7), between polls. Nothing is written\nor logged."
+      },
       "put": {
         "operationId": "write_setting",
         "parameters": [

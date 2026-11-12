@@ -5,8 +5,11 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
+  import { stream } from "../live/stream.svelte.ts";
+  import Connection from "./Connection.svelte";
   import type { ShellLayout } from "./input.svelte.ts";
   import Bar from "./Bar.svelte";
+  import { DASHBOARD } from "./nav.ts";
   import Rail, { GUTTER } from "./Rail.svelte";
 
   let {
@@ -25,6 +28,9 @@
   } = $props();
 
   const railed = $derived(shell === "rail" || shell === "rail-open");
+
+  // Off the dashboard, whose headline says it, a halted stream still has to be seen.
+  const strip = $derived(stream.halted && current !== DASHBOARD.route);
 </script>
 
 <Tooltip.Provider>
@@ -37,6 +43,9 @@
     class={["relative min-h-dvh", shell === "bar" && "pb-[calc(84px+env(safe-area-inset-bottom))]"]}
     style:padding-left="{railed ? GUTTER : 0}px"
   >
+    {#if strip}
+      <Connection strip />
+    {/if}
     {#key current}
       <!-- No landmark: each screen brings its own `main`. -->
       <div

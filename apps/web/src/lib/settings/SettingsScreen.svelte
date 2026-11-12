@@ -11,12 +11,8 @@
   // Read again after an enable changes or an update applies.
   let capabilities = $derived(core.capabilities());
 
-  // Read again after each write; the core refuses it without the admin's session.
-  let log = $derived(core.writes());
-
-  function reload(): void {
-    log = core.writes();
-  }
+  // The core refuses it without the admin's session.
+  const log = $derived(core.writes());
 
   function reread(): void {
     capabilities = core.capabilities();
@@ -31,7 +27,7 @@
       <p role="alert">{problemText(answer.problem)}</p>
     {:else}
       {#each Object.entries(answer.devices).filter(([, d]) => d.settings.length > 0) as [id, device] (id)}
-        <DeviceSettings {core} {id} {device} onwritten={reload} onchanged={reread} />
+        <DeviceSettings {core} {id} {device} onchanged={reread} />
       {/each}
     {/if}
   {/await}

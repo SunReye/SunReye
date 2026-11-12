@@ -14,15 +14,14 @@
 </script>
 
 <script lang="ts">
-  import Pin from "@lucide/svelte/icons/pin";
-  import PinOff from "@lucide/svelte/icons/pin-off";
-  import { Button } from "#lib/components/ui/button/index.js";
   import { sidebarMenuButtonVariants } from "#lib/components/ui/sidebar/sidebar-menu-button.svelte";
   import SunMark from "#lib/components/sun-mark.svelte";
   import { cn } from "#lib/utils.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { DASHBOARD, RAIL, SETTINGS, href } from "./nav.ts";
+  import Connection from "./Connection.svelte";
+  import PinButton from "./PinButton.svelte";
   import RailItem from "./RailItem.svelte";
 
   let {
@@ -163,16 +162,8 @@
         />
       </li>
       <li class="flex h-8 items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onclick={togglePin}
-          class="label pointer-events-auto ml-auto"
-          aria-label={pinned ? m.nav_unpin() : m.nav_pin()}
-          aria-pressed={pinned}
-        >
-          {#if pinned}<PinOff />{:else}<Pin />{/if}
-        </Button>
+        <Connection />
+        <PinButton {pinned} ontoggle={togglePin} />
       </li>
     </ul>
   </div>

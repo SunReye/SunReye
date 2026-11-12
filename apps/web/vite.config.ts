@@ -44,6 +44,7 @@ export default defineConfig({
       "three/addons/postprocessing/OutputPass.js",
       "three/addons/postprocessing/RenderPass.js",
       ...icons(),
+      "svelte-sonner",
     ],
   },
   test: {

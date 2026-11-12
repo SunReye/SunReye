@@ -597,3 +597,99 @@ async fn a_release_the_device_ignores_keeps_the_stored_value_for_a_retry() {
     }
     assert_eq!(plant.received(), [written(0), written(109), written(109)]);
 }
+
+impl Plant {
+    async fn read(&self, key: &str) -> (StatusCode, Value) {
+        let uri = format!("/api/v1/devices/{}/settings/{key}", self.id);
+        self.core.ask(&self.set_cookie, get(&uri)).await
+    }
+}
+
+#[tokio::test]
+async fn an_admin_reads_a_settings_current_value_with_writes_off_and_nothing_is_written_or_logged()
+{
+    let mut plant = Plant::bare(Writes::Store, false).await;
+
+    // Register 108 reads as its address.
+    assert_eq!(
+        plant.read(CHARGE).await,
+        (StatusCode::OK, json!({ "value": 108.0 }))
+    );
+    assert_eq!(plant.received(), []);
+    assert_eq!(plant.log().await, json!([]));
+}
+
+#[tokio::test]
+async fn a_read_follows_the_device_after_a_write() {
+    let plant = Plant::new(Writes::Store, true).await;
+    assert_eq!(plant.write(CHARGE, json!(50)).await.0, StatusCode::OK);
+
+    assert_eq!(plant.read(CHARGE).await.1, json!({ "value": 50.0 }));
+}
+
+#[tokio::test]
+async fn the_discharge_lock_reads_engaged_while_its_target_holds_the_locked_value() {
+    let plant = Plant::new(Writes::Store, true).await;
+    assert_eq!(plant.read(LOCK).await.1, json!({ "value": 0.0 }));
+
+    assert_eq!(plant.write(LOCK, json!(1)).await.0, StatusCode::OK);
+
+    assert_eq!(plant.read(LOCK).await.1, json!({ "value": 1.0 }));
+}
+
+#[tokio::test]
+async fn only_a_declared_setting_of_a_known_device_is_read() {
+    let plant = Plant::bare(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.read("battery.bogus").await,
+        refused(StatusCode::NOT_FOUND, "setting.none")
+    );
+    assert_eq!(
+        plant.read("battery.power").await,
+        refused(StatusCode::CONFLICT, "setting.read-only")
+    );
+    let uri = format!("/api/v1/devices/42/settings/{CHARGE}");
+    assert_eq!(
+        plant.core.ask(&plant.set_cookie, get(&uri)).await,
+        refused(StatusCode::NOT_FOUND, "device.none")
+    );
+}
+
+#[tokio::test]
+async fn a_setting_whose_device_does_not_answer_reads_null() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    // Bound and dropped: nothing listens on the port.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let gateway = json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
+        "port": port });
+    let connection = core.connection(&set_cookie, &gateway).await;
+    let deye = json!({ "name": "Deye", "connection": connection, "profile": "deye-sg05lp3",
+        "unit": 1, "writes": false });
+    let (_, body) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &deye))
+        .await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", body["id"]);
+
+    assert_eq!(
+        core.ask(&set_cookie, get(&uri)).await,
+        (StatusCode::OK, json!({ "value": null }))
+    );
+}
+
+#[tokio::test]
+async fn reading_a_setting_needs_the_admins_session() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
+
+    assert_eq!(
+        problem(plant.core.send(get(&uri)).await).await,
+        (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+    );
+    assert_eq!(plant.received(), []);
+}
