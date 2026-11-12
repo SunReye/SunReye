@@ -26,6 +26,17 @@ test("the low-power switch forces still, kept or flipped", () => {
   expect(motion.still).toBe(true);
 });
 
+test("the low-power switch is kept per browser", () => {
+  const motion = new MotionStore();
+
+  motion.lowPower = true;
+  expect(localStorage.getItem(LOW_POWER)).toBe("on");
+  expect(new MotionStore().lowPower).toBe(true);
+
+  motion.lowPower = false;
+  expect(localStorage.getItem(LOW_POWER)).toBe("off");
+});
+
 test("reduced motion forces still", async () => {
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],

@@ -68,8 +68,10 @@ export class MotionStore {
     return this.#lowPower;
   }
 
+  /** Kept per browser. */
   set lowPower(on: boolean) {
     this.#lowPower = on;
+    write(LOW_POWER, on ? "on" : "off");
     this.#sync();
   }
 
