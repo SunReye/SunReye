@@ -24,12 +24,27 @@ const hour = (time: string, mean: number) => ({
   mean,
 });
 
-/** Today's plant history so far: one hour each. */
+/** Today's plant history so far, which draws the day curve and the peaks: one hour each. */
 const HISTORY = new Map([
   ["pv.power", [hour("10", 8000)]],
   ["load.power", [hour("10", 4000)]],
-  ["grid.power", [hour("10", -4000)]],
 ]);
+
+/** Today's plant rollups in Wh: 9 kWh made, 5 used, 1 bought, 4.5 fed in. */
+const ROLLUPS = new Map([
+  ["pv.power", 9000],
+  ["load.power", 5000],
+  ["grid.import.power", 1000],
+  ["grid.export.power", 4500],
+  ["self.consumption.power", 4500],
+  ["self.supply.power", 4000],
+]);
+
+const statistics = (series: string, integral = ROLLUPS.get(series)) =>
+  Response.json({
+    period: "day",
+    points: integral === undefined ? [] : [{ date: "", start: "", end: "", integral }],
+  });
 
 const forecast = (value: number) => ({
   points: [{ issued: "2026-11-12T06:00:00Z", target: "2026-11-12T10:00:00Z", value }],
@@ -74,6 +89,7 @@ const DAY = new Map<string, (series: string) => Response>([
     `/api/v1/devices/${PLANT}/history`,
     (series) => Response.json({ tier: "raw", points: HISTORY.get(series) ?? [] }),
   ],
+  [`/api/v1/devices/${PLANT}/statistics`, statistics],
   [`/api/v1/devices/${SPOT}/forecasts`, () => Response.json(forecast(0.061))],
   [
     "/api/v1/costs",
@@ -177,12 +193,13 @@ test("today shows the plant's energy, its money and both meters", async () => {
   const screen = await open();
   const today = screen.getByRole("group", { name: "Heute" });
 
-  // 8 kWh made, 4 used, 4 fed in, nothing bought.
-  await expect.element(today.getByText("8,0", { exact: true })).toBeVisible();
+  // The rollups, not the history: 4 of 5 kWh used and 4.5 of 9 kWh made met on site.
+  await expect.element(today.getByText("9,0", { exact: true })).toBeVisible();
+  await expect.element(today.getByText("1,0", { exact: true })).toBeVisible();
   await expect.element(today.getByText("2,10 €")).toBeVisible();
   await expect
     .element(today.getByRole("progressbar", { name: "Autarkie" }))
-    .toHaveAttribute("aria-valuenow", "100");
+    .toHaveAttribute("aria-valuenow", "80");
   await expect
     .element(today.getByRole("progressbar", { name: "Eigenverbrauch" }))
     .toHaveAttribute("aria-valuenow", "50");

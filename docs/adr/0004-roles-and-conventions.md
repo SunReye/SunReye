@@ -28,6 +28,9 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `grid.frequency` | Hz | measurement | |
 | `grid.phase.voltage` / `.current` / `.power` | V / A / W | measurement, indexed | current, power |
 | `grid.energy.imported.total`, `grid.energy.exported.total` | kWh | counter | |
+| `grid.import.power`, `grid.export.power` | W | measurement; the plant's `grid.power` while it buys, and while it feeds in, else 0; published only by the `plant` device (ADR 14) | |
+| `self.consumption.power` | W | measurement; the plant's PV power not fed in, published only by the `plant` device (ADR 14) | |
+| `self.supply.power` | W | measurement; the plant's house load not bought, published only by the `plant` device (ADR 14) | |
 | `inverter.power` | W | measurement; the inverter's AC output, positive when it delivers AC | yes |
 | `inverter.temperature` | °C | measurement; the hottest sensor the profile maps, usually the heatsink | |
 | `inverter.status` | | status; the operating state through an `enum`: 0 standby, 1 normal, 2 fault | |
@@ -46,6 +49,7 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `cost.import.rate`, `cost.export.rate`, `cost.savings.rate` | EUR/h | measurement; paid for what is bought, earned for what is fed in, and saved against buying the whole house load, published only by the tariff device (ADR 12) | yes |
 
 - **Plant values.** A role has no rule for combining devices. Plant-level values come only from the `plant` computed device and its topology (ADR 14), which weights `battery.soc` by `battery.capacity`.
+- **Self-consumption and autarky** are a day's or period's energy shares, not readings: `self.consumption.power` over `pv.power`, and `self.supply.power` over `load.power`. A percentage reading would roll up as a time-weighted mean (ADR 3), and a night at 0 % would weigh as much as a noon at 100 % whatever the energy behind each.
 - **Reserved namespaces** for the workspace, with roles added by amendment as devices need them: `load.circuit` (indexed sub-meters), `heatpump` (power, thermal energy, SG Ready state), `heat` (thermal energy in kWh), `gas` and `water` (volume counters in m³), `weather` (global, direct and diffuse irradiance in W/m², temperature, wind; ADR 17), `forecast` (future values of any role, ADR 15), `price` (import, export and spot in EUR/kWh), `cost` (signed rates in EUR/h, ADR 12) and `plan` (EMS decisions).
 - **Signs.** `grid.power` is positive when importing. `battery.power` and `battery.current` are positive when charging. `inverter.power` is positive when the inverter delivers AC, negative when it charges the battery from AC. `point.power` is positive when the point consumes. `price.*` and `cost.*` are signed: spot prices go negative (ADR 12). Everything else is non-negative. The decoder converts at read time; no consumer converts. Outbound adapters convert at their own edge (ADR 10).
 - **No day counters.** A device's "today" counters reset on their own schedule; the core derives days from rollups (ADR 3).
@@ -54,6 +58,7 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 
 ## Considered options
 
+- **Self-consumption and autarky as percentage roles.** Rejected: their rollups would be time-weighted, not energy-weighted, and a period's share could not be read from them.
 - **Per-vendor conventions, converted by consumers.** Rejected: v4 hit a battery power sign contradiction in exactly this seam.
 - **Relative deadbands.** Rejected: a second mechanism; an absolute value per unit covers home-scale ranges.
 

@@ -95,6 +95,71 @@ fn the_plant_publishes_its_flows_and_the_house_load() {
     assert_eq!(total(&balance, "load.power"), Some(3400.0));
 }
 
+/// The house's plant values for grid, PV, battery and heat pump readings.
+fn aggregates(grid: f64, pv: f64, battery: f64, heat_pump: f64) -> Balance {
+    let values = [
+        (2, "grid.power", grid),
+        (1, "pv.power", pv),
+        (1, "battery.power", battery),
+        (3, "load.power", heat_pump),
+    ];
+    balanced(&house(), &values)
+}
+
+#[test]
+fn the_grid_splits_into_what_is_bought_and_what_is_fed_in() {
+    let buying = aggregates(1200.0, 3000.0, 800.0, 1500.0);
+    let feeding = aggregates(-1000.0, 4000.0, 500.0, 1500.0);
+
+    assert_eq!(total(&buying, "grid.import.power"), Some(1200.0));
+    assert_eq!(total(&buying, "grid.export.power"), Some(0.0));
+    assert_eq!(total(&feeding, "grid.import.power"), Some(0.0));
+    assert_eq!(total(&feeding, "grid.export.power"), Some(1000.0));
+}
+
+#[test]
+fn self_consumption_is_the_pv_not_fed_in() {
+    // 4000 W made, 1000 W of it fed in.
+    let feeding = aggregates(-1000.0, 4000.0, 500.0, 1500.0);
+    // A battery feeding in more than the PV makes uses none of the PV's on site twice.
+    let draining = aggregates(-2000.0, 500.0, -2600.0, 100.0);
+
+    assert_eq!(total(&feeding, "self.consumption.power"), Some(3000.0));
+    assert_eq!(total(&draining, "self.consumption.power"), Some(0.0));
+}
+
+#[test]
+fn self_supply_is_the_house_load_not_bought() {
+    // 3400 W house load, 1200 W of it bought.
+    let buying = aggregates(1200.0, 3000.0, 800.0, 1500.0);
+    // 3000 W bought, 2500 W of it into the battery: none of the 500 W house load is supplied on site.
+    let charging = aggregates(3000.0, 0.0, 2500.0, 300.0);
+
+    assert_eq!(total(&buying, "self.supply.power"), Some(2200.0));
+    assert_eq!(total(&charging, "load.power"), Some(500.0));
+    assert_eq!(total(&charging, "self.supply.power"), Some(0.0));
+}
+
+#[test]
+fn without_a_grid_reading_nothing_is_split() {
+    let values = [
+        (1, "pv.power", 3000.0),
+        (1, "battery.power", 800.0),
+        (3, "load.power", 1500.0),
+    ];
+
+    let balance = balanced(&house(), &values);
+
+    for role in [
+        "grid.import.power",
+        "grid.export.power",
+        "self.consumption.power",
+        "self.supply.power",
+    ] {
+        assert_eq!(total(&balance, role), None, "{role}");
+    }
+}
+
 /// Behind the grid meter, PV and a garage sub-meter; behind the garage meter, a wallbox.
 fn garage() -> Vec<Point> {
     vec![

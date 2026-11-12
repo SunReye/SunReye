@@ -3776,7 +3776,7 @@
             }
           }
         },
-        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day covers its closed hours."
+        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day runs to the latest reading."
       }
     },
     "/api/v1/devices": {

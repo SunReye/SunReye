@@ -344,7 +344,7 @@ struct CostDays {
 }
 
 /// What the plant paid, earned and saved per plant-local day, from the daily rollups of the
-/// `cost.*` rates; the current day covers its closed hours.
+/// `cost.*` rates; the current day runs to the latest reading.
 #[utoipa::path(get, path = "/api/v1/costs", params(Span), responses(
     (status = 200, body = CostDays),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
