@@ -20,6 +20,7 @@
   import { sidebarMenuButtonVariants } from "#lib/components/ui/sidebar/sidebar-menu-button.svelte";
   import SunMark from "#lib/components/sun-mark.svelte";
   import { cn } from "#lib/utils.js";
+  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { DASHBOARD, RAIL, SETTINGS, href } from "./nav.ts";
   import RailItem from "./RailItem.svelte";
@@ -64,9 +65,12 @@
   function togglePin(): void {
     pinned = !pinned;
     localStorage.setItem(PINNED, pinned ? "on" : "off");
+    haptics.soft();
   }
 
-  function collapse(): void {
+  function navigate(route: string): void {
+    if (route !== current) haptics.selection();
+
     touchCollapsed = true;
   }
 </script>
@@ -74,7 +78,7 @@
 <!-- On touch a tap outside closes an unpinned rail. -->
 <svelte:document
   onpointerdown={(e) => {
-    if (touch && !(e.target as Element).closest("nav.rail")) collapse();
+    if (touch && !(e.target as Element).closest("nav.rail")) touchCollapsed = true;
   }}
 />
 
@@ -122,6 +126,7 @@
 
         e.preventDefault();
         touchCollapsed = !touchCollapsed;
+        haptics.soft();
       }}
       aria-label="SunReye"
     >
@@ -134,7 +139,14 @@
     <ul class="flex flex-col gap-1" data-sidebar="menu">
       {#each items as item (item.route)}
         <li data-sidebar="menu-item">
-          <RailItem {item} active={current === item.route} {expanded} onnavigate={collapse} />
+          <RailItem
+            {item}
+            active={current === item.route}
+            {expanded}
+            onnavigate={() => {
+              navigate(item.route);
+            }}
+          />
         </li>
       {/each}
     </ul>
@@ -145,7 +157,9 @@
           item={SETTINGS}
           active={current === SETTINGS.route}
           {expanded}
-          onnavigate={collapse}
+          onnavigate={() => {
+            navigate(SETTINGS.route);
+          }}
         />
       </li>
       <li class="flex h-8 items-center gap-2">

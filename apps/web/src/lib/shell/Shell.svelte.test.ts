@@ -1,7 +1,8 @@
 import { createRawSnippet, flushSync } from "svelte";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { haptics } from "../haptics.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
@@ -15,7 +16,10 @@ function offset(): number {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
+  // The rail's links move the hash.
+  history.replaceState(null, "", location.pathname + location.search);
 });
 
 test("with a mouse the rail starts as icons and expands on hover", async () => {
@@ -174,4 +178,25 @@ test("a reversed expand continues from where it is", async () => {
   expect(halfway).toBeGreaterThan(collapsed);
   expect(halfway).toBeLessThan(0);
   expect(offset()).toBeCloseTo(halfway, 0);
+});
+
+test("pinning taps soft and moving to another screen ticks selection", async () => {
+  await page.viewport(1280, 800);
+
+  const soft = vi.spyOn(haptics, "soft");
+  const selection = vi.spyOn(haptics, "selection");
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+
+  await screen.getByRole("link", { name: "Verlauf" }).hover();
+  await screen.getByRole("button", { name: "Anheften" }).click();
+
+  expect(soft).toHaveBeenCalledOnce();
+
+  await screen.getByRole("link", { name: "Dashboard" }).click();
+
+  expect(selection).not.toHaveBeenCalled();
+
+  await screen.getByRole("link", { name: "Verlauf" }).click();
+
+  expect(selection).toHaveBeenCalledOnce();
 });
