@@ -66,7 +66,6 @@
 
   const year = $derived(got ? yearOf(got.year.range.from) : 0);
   const bands = $derived(got ? yearBands(metric, got) : []);
-
 </script>
 
 {#if fresh}
@@ -76,30 +75,29 @@
   </div>
 {:else}
   <div class="flex flex-col gap-4">
-  <BandChart
-    {bands}
-    up={[{ label: `${spec.name} ${year}`, colour: spec.colour }]}
-    markLabel={bands.some((b) => b.mark != null) ? String(year - 1) : ""}
-    summary={{
-      title: m.stats_years_sum({ year }),
-      up: [got ? yearTotal(metric, got) : 0],
-      down: [],
-    }}
-    fmt={spec.fmt}
-    unit={spec.unit}
-    max={spec.max}
-    {height}
-    loading={!got}
-    drillLabel={m.stats_drill_month()}
-    label={m.stats_years_chart({ name: spec.name, year })}
-    ondrill={(i) => {
-      const drill = got?.list[i]?.drill;
+    <BandChart
+      {bands}
+      up={[{ label: `${spec.name} ${year}`, colour: spec.colour }]}
+      markLabel={bands.some((b) => b.mark != null) ? String(year - 1) : ""}
+      summary={{
+        title: m.stats_years_sum({ year }),
+        up: [got ? yearTotal(metric, got) : 0],
+        down: [],
+      }}
+      fmt={spec.fmt}
+      unit={spec.unit}
+      max={spec.max}
+      {height}
+      loading={!got}
+      drillLabel={m.stats_drill_month()}
+      label={m.stats_years_chart({ name: spec.name, year })}
+      ondrill={(i) => {
+        const drill = got?.list[i]?.drill;
 
-      if (drill) route.open(drill);
-    }}
-  />
+        if (drill) route.open(drill);
+      }}
+    />
 
-  <YearsRecords {core} {route} {metric} />
+    <YearsRecords {core} {route} {metric} />
   </div>
 {/if}
-

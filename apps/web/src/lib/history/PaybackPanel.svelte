@@ -7,11 +7,8 @@
   import { paybackRows, paybackText } from "./payback.ts";
   import TrendChart from "./TrendChart.svelte";
 
-  let {
-    payback,
-    loading,
-    height,
-  }: { payback: Payback | null; loading: boolean; height: number } = $props();
+  let { payback, loading, height }: { payback: Payback | null; loading: boolean; height: number } =
+    $props();
 
   const shown = $derived(payback ? paybackText(payback, loading) : null);
   const rows = $derived(payback ? paybackRows(payback) : []);
