@@ -1,6 +1,6 @@
 <script lang="ts">
   import { connect, http } from "../lib/api/core";
-  import Home from "../lib/live/Home.svelte";
+  import Dashboard from "../lib/dashboard/Dashboard.svelte";
   import { entry, type Entry } from "../lib/setup/entry";
   import { access } from "../lib/shell/access.svelte.ts";
   import SignIn from "../lib/setup/SignIn.svelte";
@@ -44,6 +44,6 @@
       <Setup {core} signedIn={shown.signedIn} onfinish={reopen} />
     {/await}
   {:else}
-    <Home {core} layout={shown.layout} />
+    <Dashboard {core} layout={shown.layout} admin={shown.admin} />
   {/if}
 {/await}
