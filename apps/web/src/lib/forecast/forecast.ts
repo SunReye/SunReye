@@ -2,6 +2,7 @@
 // strings, with estimated strings marked.
 import type { Core, Forecasts, PvString } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
+import { intervals, spread, type Span } from "../range/fill.ts";
 
 /** One forecast series and its legend label. */
 export interface Line {
@@ -15,17 +16,8 @@ export interface InverterLines {
   readonly lines: readonly Line[];
 }
 
-/** One forecast point of a line. */
-export interface Row {
-  readonly time: Date;
-  readonly power: number;
-  /** The line's label. */
-  readonly series: string;
-  readonly role: string;
-}
-
-/** Today and two more days, as the solar forecast covers (ADR 17). */
-const DAYS = 3;
+/** Two days past today, as far as the solar forecast reaches (ADR 17). */
+export const AHEAD = 2;
 
 function sorted(numbers: readonly number[]): number[] {
   return [...new Set(numbers)].toSorted((a, b) => a - b);
@@ -75,35 +67,32 @@ export async function inverterLines(
   );
 }
 
-/** Each line's latest forecast from today's local midnight for three days. */
-export async function forecastRows(
+/** One forecast's power, held from its target to the next. */
+export interface Planned extends Span {
+  readonly power: number;
+}
+
+/** A line's latest forecasts from `from` to before `to`. */
+export async function planned(
   core: Readonly<Pick<Core, "forecasts">>,
   device: number,
-  lines: readonly Line[],
-): Promise<Row[]> {
-  const start = new Date();
+  series: string,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+): Promise<Planned[]> {
+  const forecasts = await core.forecasts(device, series, new Date(from), new Date(to));
 
-  start.setHours(0, 0, 0, 0);
+  const points: readonly Readonly<Forecasts["points"][number]>[] =
+    "points" in forecasts ? forecasts.points : [];
 
-  const end = new Date(start);
+  return intervals(points, (p) => Date.parse(p.target)).map(({ start, end, item }) => ({
+    start,
+    end,
+    power: item.value,
+  }));
+}
 
-  end.setDate(end.getDate() + DAYS);
-
-  const loaded = await Promise.all(
-    lines.map(async (line) => {
-      const forecasts = await core.forecasts(device, line.series, start, end);
-
-      const points: readonly Readonly<Forecasts["points"][number]>[] =
-        "points" in forecasts ? forecasts.points : [];
-
-      return points.map((p) => ({
-        time: new Date(p.target),
-        power: p.value,
-        series: line.label,
-        role: line.series,
-      }));
-    }),
-  );
-
-  return loaded.flat();
+/** The energy a forecast expects in [from, to), in kWh. */
+export function plannedEnergy(items: readonly Planned[], from: number, to: number): number {
+  return spread(items, from, to, (p) => (p.power * (p.end - p.start)) / 3_600_000_000).sum;
 }

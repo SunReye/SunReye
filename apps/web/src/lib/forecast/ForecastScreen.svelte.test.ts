@@ -1,5 +1,7 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+// The chart is laid out by the SPA's utilities.
+import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import ForecastScreen from "./ForecastScreen.svelte";
 
@@ -32,7 +34,7 @@ const CAPABILITIES = {
   },
 };
 
-/** A test core: the layout, the capabilities and one forecast point per series. */
+/** A test core: the layout, the capabilities, two forecast hours of 900 W per series, nothing measured. */
 function testCore(): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
 
@@ -47,34 +49,54 @@ function testCore(): Transport & { readonly asked: string[] } {
       if (url.pathname.endsWith("/capabilities"))
         return Promise.resolve(Response.json(CAPABILITIES));
 
-      asked.push(`${url.pathname} ${url.searchParams.get("series") ?? ""}`);
-      const point = { target: "2026-11-09T11:00:00Z", issued: "2026-11-09T10:00:00Z", value: 900 };
+      if (url.pathname.endsWith("/timezone"))
+        return Promise.resolve(Response.json({ name: "UTC" }));
 
-      return Promise.resolve(Response.json({ points: [point] }));
+      asked.push(`${url.pathname} ${url.searchParams.get("series") ?? ""}`);
+
+      if (url.pathname.endsWith("/history")) {
+        return Promise.resolve(Response.json({ tier: "hour", points: [] }));
+      }
+
+      const issued = "2026-11-09T10:00:00Z";
+
+      const points = [
+        { target: "2026-11-09T11:00:00Z", issued, value: 900 },
+        { target: "2026-11-09T12:00:00Z", issued, value: 900 },
+      ];
+
+      return Promise.resolve(Response.json({ points }));
     },
   };
 }
 
-test("the forecast screen reads each inverter's, MPPT input's and string's forecast", async () => {
+/** The screen on 2026-11-09. */
+const DAY = { params: new URLSearchParams("range=day&at=2026-11-09"), go: () => {} };
+
+test("each inverter's chart reads its total's forecast and measurement over the range", async () => {
   const transport = testCore();
 
-  await render(ForecastScreen, { core: connect(transport) });
+  const screen = await render(ForecastScreen, { core: connect(transport), ...DAY });
 
   await expect
-    .poll(() => transport.asked.toSorted())
+    .poll(() => [...new Set(transport.asked)].toSorted())
     .toEqual([
-      "/api/v1/devices/1/forecasts pv.mppt.power[1]",
       "/api/v1/devices/1/forecasts pv.power",
-      "/api/v1/devices/1/forecasts pv.string.power[4]",
-      "/api/v1/devices/1/forecasts pv.string.power[5]",
-      "/api/v1/devices/2/forecasts pv.mppt.power[1]",
+      "/api/v1/devices/1/history pv.power",
       "/api/v1/devices/2/forecasts pv.power",
-      "/api/v1/devices/2/forecasts pv.string.power[6]",
+      "/api/v1/devices/2/history pv.power",
     ]);
+  await expect.element(screen.getByText("1,8 kWh").first()).toBeVisible();
+
+  await screen.getByRole("radio", { name: "south (geschätzt)" }).click();
+
+  await expect
+    .poll(() => transport.asked)
+    .toContain("/api/v1/devices/1/forecasts pv.string.power[4]");
 });
 
 test("the forecast screen marks estimated strings", async () => {
-  const screen = await render(ForecastScreen, { core: connect(testCore()) });
+  const screen = await render(ForecastScreen, { core: connect(testCore()), ...DAY });
 
   await expect.element(screen.getByText("south (geschätzt)")).toBeVisible();
   await expect.element(screen.getByText("north (geschätzt)")).toBeVisible();
