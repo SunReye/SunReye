@@ -172,6 +172,7 @@
   "settings_forecast": "Forecast & layout",
   "settings_access": "Users & access",
   "settings_display": "Display",
+  "settings_about": "About SunReye",
   "settings_logs": "Logs",
   "settings_danger": "Danger zone",
   "settings_saved": "Saved.",
@@ -886,5 +887,9 @@
   "stats_payback_so_far": "Saved so far",
   "stats_years_first": "first year",
   "stats_capacity_of_nameplate": "{share} of {nameplate} nameplate capacity",
-  "stats_years_running": "to date"
+  "stats_years_running": "to date",
+  "about_credits": "Credits",
+  "about_car": "Default 3D car",
+  "about_car_by": "by",
+  "about_car_changed": "reduced, without interior, badges and textures"
 }

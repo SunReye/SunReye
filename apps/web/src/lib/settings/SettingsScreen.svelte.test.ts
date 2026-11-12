@@ -33,6 +33,7 @@ test("the admin reaches every group from the root", async () => {
     "Prognose & Belegung",
     "Benutzer & Zugang",
     "Anzeige",
+    "Über SunReye",
     "Protokolle",
     "Gefahrenzone",
   ];
@@ -46,7 +47,7 @@ test("the admin reaches every group from the root", async () => {
   );
 });
 
-test("a viewer sees only the display, which is the browser's own", async () => {
+test("a viewer sees only the display, which is the browser's own, and About", async () => {
   const screen = await render(SettingsScreen, {
     core: connect(testCore(() => Response.json({ writes: [] }))),
     admin: false,
@@ -57,6 +58,7 @@ test("a viewer sees only the display, which is the browser's own", async () => {
   await expect
     .element(screen.getByRole("button", { name: /^Anzeige\s*Dunkel · Deutsch/u }))
     .toBeVisible();
+  await expect.element(screen.getByRole("button", { name: /^Über SunReye/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Anlage/u }).query()).toBeNull();
   expect(screen.getByRole("button", { name: /^Benutzer & Zugang/u }).query()).toBeNull();
 });

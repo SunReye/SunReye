@@ -172,6 +172,7 @@
   "settings_forecast": "Prognose & Belegung",
   "settings_access": "Benutzer & Zugang",
   "settings_display": "Anzeige",
+  "settings_about": "Über SunReye",
   "settings_logs": "Protokolle",
   "settings_danger": "Gefahrenzone",
   "settings_saved": "Gespeichert.",
@@ -886,5 +887,9 @@
   "stats_payback_so_far": "Ersparnis bisher",
   "stats_years_first": "erstes Jahr",
   "stats_capacity_of_nameplate": "{share} von {nameplate} Nennkapazität",
-  "stats_years_running": "bis heute"
+  "stats_years_running": "bis heute",
+  "about_credits": "Danksagungen",
+  "about_car": "Standardauto in 3D",
+  "about_car_by": "von",
+  "about_car_changed": "verkleinert, ohne Innenraum, Embleme und Texturen"
 }
