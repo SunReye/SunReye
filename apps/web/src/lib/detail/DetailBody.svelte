@@ -1,19 +1,18 @@
 <!--
   A figure's detail (ADR 21). It leads with the figure it was opened from; a node's readings follow
-  where the live graph ends, then the day's chart and facts. No cards inside the sheet: the sheet
-  is the one surface, divided by hairlines. It ends with the one way onward.
+  where the live graph ends, then the range, its tabs and the facts. No cards inside the sheet: the
+  sheet is the one surface, divided by hairlines. It ends with the one way onward.
 -->
 <script lang="ts">
-  import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { Day } from "../dashboard/day.ts";
-  import DayChart from "../dashboard/DayChart.svelte";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
+  import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import { facts, type Fact, type Figure } from "./figures.ts";
-  import PriceChart from "./PriceChart.svelte";
+  import HistoryLink from "./HistoryLink.svelte";
   import Readings from "./Readings.svelte";
   import { ago, type NodeReadings } from "./readings.ts";
+  import TodayChart from "./TodayChart.svelte";
 
   let {
     id,
@@ -23,6 +22,7 @@
     status,
     day,
     spot,
+    input,
     onopen,
   }: {
     id: string;
@@ -33,6 +33,8 @@
     day: Day | undefined;
     /** The spot-price device's live values. */
     spot: Readonly<Record<string, number>> | undefined;
+    /** What the range analytics read; every tab reads the sheet's range. */
+    input: AnalyticsInput;
     onopen: (id: string) => void;
   } = $props();
 
@@ -64,14 +66,6 @@
     [m.detail_now(), direction, node?.leadEstimated ? m.detail_estimated() : ""]
       .filter(Boolean)
       .join(" · "),
-  );
-
-  const clock = $derived(
-    new Intl.DateTimeFormat(getLocale(), {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: day?.zone,
-    }),
   );
 </script>
 
@@ -144,17 +138,11 @@
 
   <Readings {node} {status} {onopen} />
 
-  {#if spec.chart}
-    <section class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6">
-      {#if spec.chart === "price"}
-        <PriceChart {day} />
-      {:else if day !== undefined}
-        <div class="h-[190px]"><DayChart rows={day.rows} now={day.now} hours={clock} /></div>
-      {:else}
-        <div class="h-[190px]"></div>
-      {/if}
-    </section>
-  {/if}
+  <Analytics {id} {title} colour={spec.colour} {input}>
+    {#snippet fallback()}
+      <TodayChart chart={spec.chart} {day} />
+    {/snippet}
+  </Analytics>
 
   {#if shown.stats.length > 0}
     <dl class="grid grid-cols-3 divide-x divide-border/60 border-t border-border/60">
@@ -167,12 +155,5 @@
     </dl>
   {/if}
 
-  <!-- The sheet's one way onward, at the end where the scan ends: History at the sheet's range. -->
-  <a
-    href="#/history?range=day"
-    class="group mt-auto flex items-center justify-between gap-3 border-t border-border/60 px-5 py-4 text-left text-sm font-medium text-brand outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-6"
-  >
-    {m.detail_history({ range: m.detail_range_today() })}
-    <ArrowRight class="size-4 transition-transform group-hover:translate-x-0.5" />
-  </a>
+  <HistoryLink route={input.route} />
 </div>

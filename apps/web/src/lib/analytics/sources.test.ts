@@ -3,10 +3,12 @@ import { analyticsOf } from "./sources.ts";
 
 const PLANT = 4_294_967_294;
 
+const WIRING = { azimuth: 0, tilt: 30, loss: 0, optimized: 0, modules: 10, moduleType: 1 };
+
 const STRINGS = [
-  { id: 4, name: "Süd", device: 3, input: 1, modules: 10, moduleType: 1 },
-  { id: 5, name: "Ost", device: 3, input: 2, modules: 10, moduleType: 1 },
-].map((s) => ({ ...s, azimuth: 0, tilt: 30, loss: 0, optimized: 0 }));
+  { id: 4, name: "Süd", device: 3, input: 1, ...WIRING },
+  { id: 5, name: "Ost", device: 3, input: 2, ...WIRING },
+];
 
 test("an energy figure charts its plant series and heats what flows its way", () => {
   const feedIn = analyticsOf("feedIn", STRINGS)!;

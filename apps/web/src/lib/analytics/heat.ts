@@ -1,9 +1,8 @@
 // When in the day energy flows (ADR 21): hour of day against the range's days, or its months
 // when the range is long. Days and hours are plant-local, counted since 1970-01-01.
 import type { Core } from "../api/core.ts";
-import { means } from "../history/history.ts";
+import { means, type Mean } from "../history/history.ts";
 import { civil, fmt } from "../range/calendar.ts";
-import type { Span } from "../range/fill.ts";
 import type { Place } from "../range/range-data.svelte.ts";
 import { hourInstant, rangeFor, step, type Calendar, type Range } from "../range/range.ts";
 
@@ -24,6 +23,7 @@ export interface HeatColumns {
 
 /** Past this many days a column is a month; the core reads hourly rollups up to about 62. */
 const DAYS = 62;
+
 /** Months a long range shows, the latest. */
 const MONTHS = 36;
 
@@ -74,6 +74,12 @@ export function heatColumns(r: Range): HeatColumns {
   return { by: "day", cols: days(window.from, window.to) };
 }
 
+/** The grid's cells, `[col][hour]`, and the largest of them. */
+export interface HeatCells {
+  readonly cells: (number | null)[][];
+  readonly max: number;
+}
+
 /**
  * Each column's hours of day, `[col][hour]`: the mean over its days of `read(t)`. A past hour
  * without a reading is null, a gap; an hour not yet come is NaN.
@@ -83,7 +89,7 @@ export function heatCells(
   cols: readonly HeatColumn[],
   read: (t: number) => number | null,
   now: number,
-): { cells: (number | null)[][]; max: number } {
+): HeatCells {
   let max = 0;
 
   const cells = cols.map((col) =>
@@ -111,12 +117,31 @@ export function heatCells(
   return { cells, max };
 }
 
+/** The time-weighted mean of `pick` over [from, to) from `points` on, and the time it covers. */
+function meanOver(
+  points: readonly Mean[],
+  first: number,
+  [from, to]: readonly [number, number],
+  pick: (watts: number) => number,
+) {
+  let [sum, covered] = [0, 0];
+
+  for (let j = first; j < points.length && points[j]!.start < to; j++) {
+    const p = points[j]!;
+    const inside = Math.min(to, p.end) - Math.max(from, p.start);
+
+    if (inside > 0) [sum, covered] = [sum + pick(p.mean) * inside, covered + inside];
+  }
+
+  return covered > 0 ? sum / covered : null;
+}
+
 /**
  * Each hour's energy in kWh from mean powers: `bounds` are the hours' starts and the last end,
  * in ms; `pick` maps a mean in W to the power counted, such as import only. Null without readings.
  */
 export function hourly(
-  points: readonly (Span & { readonly mean: number })[],
+  points: readonly Mean[],
   bounds: readonly number[],
   pick: (watts: number) => number,
 ): (number | null)[] {
@@ -125,28 +150,19 @@ export function hourly(
 
   for (let i = 0; i + 1 < bounds.length; i++) {
     const [from, to] = [bounds[i]!, bounds[i + 1]!];
-    let [sum, covered] = [0, 0];
 
     while (first < points.length && points[first]!.end <= from) first++;
 
-    for (let j = first; j < points.length && points[j]!.start < to; j++) {
-      const p = points[j]!;
-      const inside = Math.min(to, p.end) - Math.max(from, p.start);
+    const watts = meanOver(points, first, [from, to], pick);
 
-      if (inside > 0) [sum, covered] = [sum + pick(p.mean) * inside, covered + inside];
-    }
-
-    out.push(covered > 0 ? ((sum / covered) * (to - from)) / 3_600_000_000 : null);
+    out.push(watts === null ? null : (watts * (to - from)) / 3_600_000_000);
   }
 
   return out;
 }
 
 /** What the heat grid shows: its columns, cells and largest cell. */
-export interface Heat extends HeatColumns {
-  readonly cells: (number | null)[][];
-  readonly max: number;
-}
+export interface Heat extends HeatColumns, HeatCells {}
 
 /** The power read per hour: a device's series, counted by `pick`. */
 export interface HeatSource {
@@ -172,10 +188,12 @@ export async function readHeat(
   const { by, cols } = heatColumns(r);
   const { zone, cal } = place;
   const now = Date.now();
+
   const windows =
     by === "day"
       ? [[cols[0]!.t0, cols.at(-1)!.t1] as const]
       : cols.map((c) => [c.t0, c.t1] as const);
+
   const read = new Map<number, number>();
 
   await Promise.all(

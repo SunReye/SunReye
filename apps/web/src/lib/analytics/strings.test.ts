@@ -13,11 +13,8 @@ const cell = (month: number, hour: number, factor: number) => ({ month, hour, fa
 
 test("strings compare by specific yield; a shared input makes its strings estimated", () => {
   const rows = stringRows(STRINGS, {
-    pmax: new Map([[7, 400]]),
-    kwh: new Map([
-      [1, 20],
-      [2, 6],
-    ]),
+    pmax: () => 400,
+    kwh: (id) => ({ 1: 20, 2: 6 })[id] ?? null,
     corrections: [],
   });
 
@@ -30,8 +27,8 @@ test("strings compare by specific yield; a shared input makes its strings estima
 
 test("measured over modelled is the input's last 30 days; under 92 % flags the string weak", () => {
   const rows = stringRows(STRINGS, {
-    pmax: new Map([[7, 400]]),
-    kwh: new Map(),
+    pmax: () => 400,
+    kwh: () => null,
     corrections: [
       { device: 1, input: 1, factors: [], recent: { measured: 90, modelled: 100 } },
       { device: 1, input: 2, factors: [], recent: { measured: 50, modelled: 0 } },
@@ -51,8 +48,8 @@ test("mornings well over the model and afternoons under it flag the face", () =>
   factors.push(...[14, 15, 16, 17].map((h) => cell(6, h, 0.95)));
 
   const [row] = stringRows(STRINGS.slice(2), {
-    pmax: new Map([[7, 400]]),
-    kwh: new Map(),
+    pmax: () => 400,
+    kwh: () => null,
     corrections: [{ device: 1, input: 2, factors, recent: { measured: 99, modelled: 100 } }],
   });
 
@@ -71,5 +68,5 @@ test("the correction grid is month by hour; an unlearned cell is empty", () => {
   expect(grid[0]![0]).toBe(0.8);
   expect(grid[11]![23]).toBe(1.2);
   expect(grid[5]![12]).toBeNull();
-  expect(correctionGrid(undefined)[0]![0]).toBeNull();
+  expect(correctionGrid(null)[0]![0]).toBeNull();
 });

@@ -4,6 +4,7 @@ import { rangeFor } from "../range/range.ts";
 import { heatCells, heatColumns, hourly } from "./heat.ts";
 
 const H = 3_600_000;
+
 // Thursday, 12 November 2026, 12:00.
 const TODAY = dayOf(2026, 10, 12);
 
@@ -30,6 +31,7 @@ test("past about two months the heat goes by month, the last 36 at most", () => 
 
 test("a cell is its hour's mean over the column's days; missing is null, not yet is NaN", () => {
   const cols = heatColumns(rangeFor("day", TODAY)).cols;
+
   const read = new Map([
     [(TODAY - 3) * 24 + 10, 1],
     [(TODAY - 3) * 24 + 11, 3],
@@ -49,6 +51,7 @@ test("a cell is its hour's mean over the column's days; missing is null, not yet
 test("a month column averages its days' hours", () => {
   const cols = heatColumns(rangeFor("year", TODAY)).cols;
   const jan = dayOf(2026, 0, 1);
+
   const read = new Map([
     [jan * 24 + 12, 2],
     [(jan + 1) * 24 + 12, 4],

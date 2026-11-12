@@ -33,12 +33,12 @@ const PLANT_SERIES = new Map<string, [string, Analytics["heat"]]>([
 const PV = new Set(["production", "pv", "inverter"]);
 
 /** The analytics of figure `id`; null for one without a series in history. */
-export function analyticsOf(id: string, strings: readonly PvString[]): Analytics | null {
+export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]): Analytics | null {
   const several = strings.length > 1;
   const string = /^string-(\d+)$/u.exec(id);
 
   if (string) {
-    const s = strings.find((x) => x.id === Number(string[1]));
+    const s = strings.find((x: Readonly<PvString>) => x.id === Number(string[1]));
 
     return s
       ? { device: s.device, series: `pv.string.power[${s.id}]`, heat: all, compare: several }

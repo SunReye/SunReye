@@ -4,6 +4,7 @@
   import { connect, http } from "../lib/api/core";
   import { drillRoute } from "../lib/components/drill-in/route.ts";
   import Dashboard from "../lib/dashboard/Dashboard.svelte";
+  import { routeGo, routeParams } from "../lib/range/kit-route.ts";
   import { entry, type Entry } from "../lib/setup/entry";
   import { access } from "../lib/shell/access.svelte.ts";
   import SignIn from "../lib/setup/SignIn.svelte";
@@ -15,6 +16,9 @@
 
   /** The open detail sheet as `?detail=` on the hash route: back closes it, a link opens it (ADR 21). */
   const detail = drillRoute({ page, goto }, "detail");
+
+  /** The hash route's query: a sheet's range lives beside `detail`. */
+  const params = $derived(routeParams());
 
   /** The entry, with the shell told whether to frame it and whether Controls is listed. */
   async function open(): Promise<Entry> {
@@ -56,6 +60,8 @@
       admin={shown.admin}
       detail={detail.open}
       onopen={detail.navigate}
+      {params}
+      go={routeGo}
       onclose={() => {
         detail.navigate(null);
       }}
