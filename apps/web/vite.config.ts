@@ -20,10 +20,19 @@ export default defineConfig({
       "three",
       "three/addons/controls/OrbitControls.js",
       "three/addons/loaders/GLTFLoader.js",
+      "three/addons/geometries/RoundedBoxGeometry.js",
+      "three/addons/objects/Sky.js",
+      "three/addons/postprocessing/EffectComposer.js",
+      "three/addons/postprocessing/GTAOPass.js",
+      "three/addons/postprocessing/OutputPass.js",
+      "three/addons/postprocessing/RenderPass.js",
     ],
   },
   test: {
     include: ["src/**/*.svelte.test.ts"],
+    // Without a GPU every page's WebGL runs through one software renderer: the studio scenes of
+    // files run side by side starve each other into timeouts.
+    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,

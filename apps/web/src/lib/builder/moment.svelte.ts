@@ -1,7 +1,7 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
 // string's production. It reads the draft and never writes it: nothing changes the scene.
-import { load, sunward, wattsAt, type Day, type Reading } from "./moment.ts";
-import type { Point } from "./pv.ts";
+import { load, wattsAt, type Day, type Reading } from "./moment.ts";
+import { sunAt, type Point } from "./pv.ts";
 
 /** `YYYY-MM-DD` of `date` in the browser's calendar, as a date input holds it. */
 function calendarDay(date: Readonly<Date>): string {
@@ -52,9 +52,7 @@ export class Moment {
   get sun(): Point | null {
     const { pv, location } = this.#reading();
 
-    return location === undefined || Number.isNaN(this.at)
-      ? null
-      : sunward(pv.sun(Math.floor(this.at / 1000), location));
+    return location === undefined || Number.isNaN(this.at) ? null : sunAt(pv, location, this.at);
   }
 
   /** Each string's watts at the instant, null without a value. */

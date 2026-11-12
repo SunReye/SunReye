@@ -1,33 +1,26 @@
 // The scene as three.js objects, built from the pv crate's geometry (ADR 20). Pure: the drawing
 // component only adds the group to its renderer.
 import {
-  BoxGeometry,
   BufferGeometry,
-  Color,
   CylinderGeometry,
   DoubleSide,
   Float32BufferAttribute,
   Group,
   Mesh,
-  MeshStandardMaterial,
-  SphereGeometry,
+  MeshPhysicalMaterial,
+  type MeshStandardMaterial,
 } from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import * as finish from "../scene/materials.ts";
+import { crown, fan, level, moduleUvs, uvs } from "../scene/surfaces.ts";
 import type { Face, Geometry, Mount, Point, Solid } from "./pv.ts";
-
-const colours: Readonly<Record<Face["surface"], number>> = {
-  wall: 0xe7e2d8,
-  roof: 0x9a4b3c,
-  obstacle: 0x8a8f98,
-};
-
-const SOLID = 0x5d7a4a;
-
-/** An equipment marker: a dark box the size of a wall-hung inverter. */
-const EQUIPMENT = 0x2b2f36;
 
 /** Strings by position, then again; distinct from roofs and the sky. */
 const STRINGS = [0x1f5fbf, 0xe08a00, 0x2a9d5c, 0xb8336a, 0x6a4fb5, 0x0f8b8d] as const;
 const UNASSIGNED = 0x6b6f76;
+
+/** In the builder, a module's cells glow faintly in its string's colour. */
+const IDENTITY = 0.3;
 
 /** A placed module: its corners on the roof, and its string by position in the layout. */
 export interface Panel {
@@ -35,21 +28,24 @@ export interface Panel {
   readonly string?: number | null;
 }
 
-/** A string's tint in no sun and in full sun: its share of peak blends one into the other. */
-const DIM = new Color(0x39424e);
-const SUN = new Color(0xffb000);
-
-/** The tint of a string at `share` of its peak; unassigned, or without a value, grey. */
-export function shareColour(share: number | null): number {
-  return share === null ? UNASSIGNED : DIM.clone().lerp(SUN, share).getHex();
+/** The string glow: the solar colour, and how far the light it stands for shows (`daylight`). */
+export interface Glow {
+  readonly colour: number;
+  readonly daylight: number;
 }
 
-/** Recolours the group's modules by their strings' shares of peak, in `buildScene`'s order. */
+/** Faint even at peak: the cells light, the glass stays black. */
+const GLOW = 0.1;
+
+/** Lights the group's modules by their strings' shares of peak, in `buildScene`'s order. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js recolours in place.
-export function tint(group: Group, shares: readonly (number | null)[]): void {
+export function tint(group: Group, shares: readonly (number | null)[], glow: Glow): void {
   for (const [i, mesh] of group.getObjectsByProperty("name", "module").entries()) {
-    if (mesh instanceof Mesh && mesh.material instanceof MeshStandardMaterial) {
-      mesh.material.color.setHex(shareColour(shares[i] ?? null));
+    if (mesh instanceof Mesh && mesh.material instanceof MeshPhysicalMaterial) {
+      const share = shares[i] ?? 0;
+
+      mesh.material.emissive.setHex(glow.colour);
+      mesh.material.emissiveIntensity = share * share * GLOW * glow.daylight;
     }
   }
 }
@@ -77,52 +73,65 @@ export function toThree([east, north, up]: Point): [number, number, number] {
 
 /** Each convex face as a fan of triangles. */
 function triangles(faces: readonly Face[]): number[] {
-  return faces.flatMap(({ corners: [first, ...rest] }) =>
-    first === undefined
-      ? []
-      : rest
-          .slice(1)
-          .flatMap((corner, i) =>
-            [first, rest[i] ?? first, corner].flatMap((point) => toThree(point)),
-          ),
-  );
+  return faces.flatMap(({ corners }) => fan(corners).flatMap((point) => toThree(point)));
 }
 
-function surface(name: Face["surface"], faces: readonly Face[]): Mesh {
+function surface(
+  name: Face["surface"] | "flat",
+  faces: readonly Face[],
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
+  material: MeshStandardMaterial,
+  repeat: readonly [number, number],
+): Mesh {
   const geometry = new BufferGeometry();
 
-  geometry.setAttribute(
-    "position",
-    new Float32BufferAttribute(triangles(faces.filter((face) => face.surface === name)), 3),
-  );
+  geometry.setAttribute("position", new Float32BufferAttribute(triangles(faces), 3));
+  geometry.setAttribute("uv", new Float32BufferAttribute(uvs(faces, repeat), 2));
   geometry.computeVertexNormals();
 
-  const mesh = new Mesh(
-    geometry,
-    // Double-sided: the crate does not promise a winding.
-    new MeshStandardMaterial({ color: colours[name], side: DoubleSide, flatShading: true }),
-  );
+  // Double-sided: the crate does not promise a winding.
+  material.side = DoubleSide;
+  material.flatShading = true;
+
+  const mesh = new Mesh(geometry, material);
 
   mesh.name = name;
 
   return mesh;
 }
 
+/** Whether a cylinder carries a crown straight above it: a trunk. */
+function trunk(
+  { base, radius }: Readonly<Solid & { kind: "cylinder" }>,
+  solids: readonly Solid[],
+): boolean {
+  return solids.some(
+    (other) =>
+      other.kind === "sphere" &&
+      Math.hypot(other.centre[0] - base[0], other.centre[1] - base[1]) <= Math.max(radius, 0.01),
+  );
+}
+
 /** A crown or a trunk, a chimney or a pole. */
-function solid(obstacle: Solid): Mesh {
-  const material = new MeshStandardMaterial({ color: SOLID, flatShading: true });
-
+function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
   if (obstacle.kind === "sphere") {
-    const crown = new Mesh(new SphereGeometry(obstacle.radius, 16, 12), material);
+    const leaves = crown(obstacle.radius, 7 + i * 101);
 
-    crown.position.set(...toThree(obstacle.centre));
-    crown.name = "solid";
+    leaves.position.set(...toThree(obstacle.centre));
+    leaves.name = "solid";
 
-    return crown;
+    return leaves;
   }
 
   const { base, radius, height } = obstacle;
-  const upright = new Mesh(new CylinderGeometry(radius, radius, height, 16), material);
+
+  const upright = new Mesh(
+    // A trunk tapers toward its crown.
+    trunk(obstacle, solids)
+      ? new CylinderGeometry(radius * 0.6, radius, height, 14)
+      : new CylinderGeometry(radius, radius, height, 16),
+    trunk(obstacle, solids) ? finish.bark() : finish.render(),
+  );
 
   // three.js centres a cylinder on its position.
   upright.position.set(...toThree([base[0], base[1], base[2] + height / 2]));
@@ -138,19 +147,16 @@ function panel({ corners, string }: Panel): Mesh {
     "position",
     new Float32BufferAttribute(triangles([{ surface: "roof", corners }]), 3),
   );
+  geometry.setAttribute("uv", new Float32BufferAttribute(moduleUvs(corners), 2));
   geometry.computeVertexNormals();
 
-  const mesh = new Mesh(
-    geometry,
-    // Pulled toward the camera, so a module on its roof never flickers through it.
-    new MeshStandardMaterial({
-      color: stringColour(string),
-      side: DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-    }),
-  );
+  const material = finish.module();
+
+  material.side = DoubleSide;
+  material.emissive.setHex(stringColour(string));
+  material.emissiveIntensity = IDENTITY;
+
+  const mesh = new Mesh(geometry, material);
 
   mesh.name = "module";
 
@@ -158,10 +164,7 @@ function panel({ corners, string }: Panel): Mesh {
 }
 
 function marker({ at }: Mount): Mesh {
-  const box = new Mesh(
-    new BoxGeometry(0.5, 0.6, 0.5),
-    new MeshStandardMaterial({ color: EQUIPMENT, flatShading: true }),
-  );
+  const box = new Mesh(new RoundedBoxGeometry(0.5, 0.6, 0.5, 3, 0.03), finish.equipment());
 
   box.position.set(...toThree(at));
   box.name = "equipment";
@@ -172,12 +175,34 @@ function marker({ at }: Mount): Mesh {
 /** The scene's meshes: one per surface kind, solid, placed module and equipment marker. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
+  const roofs = geometry.faces.filter((face) => face.surface === "roof");
 
   group.add(
-    surface("wall", geometry.faces),
-    surface("roof", geometry.faces),
-    surface("obstacle", geometry.faces),
-    ...geometry.solids.map((obstacle) => solid(obstacle)),
+    surface(
+      "wall",
+      geometry.faces.filter((face) => face.surface === "wall"),
+      finish.plaster(),
+      finish.REPEAT.plaster,
+    ),
+    surface(
+      "roof",
+      roofs.filter((face) => !level(face)),
+      finish.tiles(),
+      finish.REPEAT.tiles,
+    ),
+    surface(
+      "flat",
+      roofs.filter((face) => level(face)),
+      finish.render(),
+      finish.REPEAT.render,
+    ),
+    surface(
+      "obstacle",
+      geometry.faces.filter((face) => face.surface === "obstacle"),
+      finish.render(),
+      finish.REPEAT.render,
+    ),
+    ...geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
     ...panels.map((item) => panel(item)),
     ...(geometry.mounts ?? []).map((mount) => marker(mount)),
   );

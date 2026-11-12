@@ -285,3 +285,15 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
   };
 }
+
+/** The unit vector toward the sun: east, north, up, as the pv crate shades. */
+export function sunward({ zenith, azimuth }: Sun): Point {
+  const [z, a] = [(zenith * Math.PI) / 180, (azimuth * Math.PI) / 180];
+
+  return [-Math.sin(a) * Math.sin(z), -Math.cos(a) * Math.sin(z), Math.cos(z)];
+}
+
+/** Toward the sun over `location` at `at`, ms since 1970: east, north, up. */
+export function sunAt(pv: Readonly<Pick<Pv, "sun">>, location: Location, at: number): Point {
+  return sunward(pv.sun(Math.floor(at / 1000), location));
+}
