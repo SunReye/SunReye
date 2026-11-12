@@ -1,6 +1,9 @@
 // Ported from v3 (dev 780b4e2, components/inverter/_shared/glide.ts): one glide length for
 // everything that drifts between live ticks, the number readouts and the live graph (ADR 21).
 
+/** The live stream's tick: a 1 s window of changes (ADR 9). */
+export const TICK_MS = 1000;
+
 /** Floor for a glide, so a fast feed does not degenerate into a flicker. */
 const MIN_GLIDE_MS = 300;
 
