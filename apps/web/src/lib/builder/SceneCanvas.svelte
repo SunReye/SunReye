@@ -1,21 +1,25 @@
 <script lang="ts" module>
-  import type { Point } from "./pv.ts";
-
-  /** Pixels from the canvas's top left corner. */
-  export type Projector = (point: Point) => readonly [number, number] | null;
+  export type { Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import { PerspectiveCamera, Vector3, type Group } from "three";
+  import { PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
   import { garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
-  import type { Geometry } from "./pv.ts";
-  import { buildScene, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
+  import {
+    keep,
+    picking,
+    projector,
+    type Hit,
+    type Panel,
+    type Projector,
+  } from "./drawing.svelte.ts";
+  import type { Geometry, Point } from "./pv.ts";
 
   let {
     geometry,
@@ -56,15 +60,11 @@
 
   const ghost = new Ghost();
 
-  function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
-    return (point) => {
-      const at = new Vector3(...toThree(point)).project(camera);
-
-      return at.z > 1
-        ? null
-        : [((at.x + 1) / 2) * canvas.clientWidth, ((1 - at.y) / 2) * canvas.clientHeight];
-    };
-  }
+  const source = {
+    geometry: () => geometry,
+    panels: () => panels,
+    shares: () => shares,
+  };
 
   /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
   function fit(
@@ -83,76 +83,6 @@
     resize.observe(canvas);
 
     return resize;
-  }
-
-  /** Keeps the drawn meshes in step with the geometry and the live glow; gives the ones drawn. */
-  function keep({ glow, show, ease }: Lit, render: () => void): () => Group | undefined {
-    let drawn: Group | undefined;
-
-    $effect(() => {
-      const next = buildScene(geometry, panels);
-
-      show(next);
-      drawn = next;
-      untrack(() => {
-        if (shares !== undefined) tint(next, shares, glow());
-      });
-      render();
-    });
-
-    // A live tick, a new sun or theme relights the modules it already drew: nothing rebuilt.
-    ease(
-      () => drawn,
-      () => shares,
-    );
-
-    return () => drawn;
-  }
-
-  /** Further than this many pixels between press and release, the pointer orbited. */
-  const CLICK = 5;
-
-  /** Reports a click's hit; a press that moves further orbits instead. */
-  function picking(
-    canvas: HTMLCanvasElement,
-    camera: PerspectiveCamera,
-    drawn: () => Group | undefined,
-  ): () => void {
-    let down: readonly [number, number] | undefined;
-
-    const press = (event: PointerEvent): void => {
-      down = [event.clientX, event.clientY];
-    };
-
-    const release = (event: PointerEvent): void => {
-      const group = drawn();
-
-      if (down === undefined || group === undefined || onpick === undefined) return;
-
-      const moved = Math.hypot(event.clientX - down[0], event.clientY - down[1]);
-
-      down = undefined;
-
-      if (moved > CLICK) return;
-
-      // A click may come before the first draw has placed the camera's matrices.
-      camera.updateMatrixWorld();
-
-      const hit = strike(group, panels, camera, [
-        (event.offsetX / canvas.clientWidth) * 2 - 1,
-        1 - (event.offsetY / canvas.clientHeight) * 2,
-      ]);
-
-      if (hit !== null) onpick(hit);
-    };
-
-    canvas.addEventListener("pointerdown", press);
-    canvas.addEventListener("pointerup", release);
-
-    return () => {
-      canvas.removeEventListener("pointerdown", press);
-      canvas.removeEventListener("pointerup", release);
-    };
   }
 
   /** Flies the camera to each `view` given, from wherever it is; places the first at once. */
@@ -268,7 +198,12 @@
     const { studio, flight, opening } = scene;
     const { render } = opening;
     const resize = fit(canvas, studio, camera, render);
-    const unpick = picking(canvas, camera, keep(scene, render));
+    const kept = keep(scene, source, render);
+
+    const unpick = picking(canvas, camera, kept.drawn, {
+      panels: source.panels,
+      onpick: () => onpick,
+    });
 
     const parking = parkLater(
       canvas,
@@ -284,6 +219,7 @@
 
     opening
       .open(
+        kept.built,
         () => {
           onready?.();
         },

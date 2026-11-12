@@ -39,9 +39,11 @@ export class Opening {
     });
   };
 
-  /** Prepares, draws the first frame, calls `ready` once it is drawn, and `due` when idle after. */
+  /** Once `built`, prepares, draws the first frame, calls `ready` once it is drawn, and `due`
+   * when idle after. */
   // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
-  async open(ready: () => void, due: () => void): Promise<void> {
+  async open(built: Readonly<Promise<void>>, ready: () => void, due: () => void): Promise<void> {
+    await built;
     await pause();
 
     if (this.#gone || !(await prepare(this.#studio, this.#isGone))) return;
