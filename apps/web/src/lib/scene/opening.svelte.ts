@@ -3,9 +3,10 @@
 // from the prototype's background load.
 import { motion } from "../motion/tier.svelte.ts";
 import { Flight } from "./flight.ts";
-import { ahead, gpuIdle, idle, nextFrame, pause, prepare } from "./prepare.ts";
+import { ahead, gpuIdle, nextFrame, pause, prepare } from "./prepare.ts";
 import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
+import { idle } from "./warm.ts";
 
 export class Opening {
   readonly #studio: Studio;
@@ -39,6 +40,7 @@ export class Opening {
   };
 
   /** Prepares, draws the first frame, calls `ready` once it is drawn, and `due` when idle after. */
+  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
   async open(ready: () => void, due: () => void): Promise<void> {
     await pause();
 
@@ -60,7 +62,8 @@ export class Opening {
   }
 
   /** Runs `park`, its programs compiled first; on screen, the change fades in. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the canvas is drawn on.
+  /* oxlint-disable typescript/prefer-readonly-parameter-types -- the canvas is drawn on. */
+  // fallow-ignore-next-line unused-class-member -- SceneCanvas calls it through `Lit["opening"]`.
   async arrive(canvas: HTMLCanvasElement, ghost: Ghost, park: () => void): Promise<void> {
     const fade = !motion.still && !this.flight.flying && ghost.canvas !== undefined;
 
@@ -91,6 +94,8 @@ export class Opening {
 
     if (ghost.phase === "hold") ghost.phase = "fade";
   }
+
+  /* oxlint-enable typescript/prefer-readonly-parameter-types */
 
   dispose(): void {
     this.#gone = true;

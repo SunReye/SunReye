@@ -36,7 +36,7 @@ async function breathe(): Promise<void> {
 }
 
 /** Runs `step` on each item, a few per task; false once `gone`. */
-export async function sliced<T>(
+async function sliced<T>(
   items: readonly T[],
   step: (item: T) => void,
   gone: () => boolean,
@@ -49,12 +49,6 @@ export async function sliced<T>(
   await breathe();
 
   return gone() ? false : sliced(rest, step, gone);
-}
-
-/** Runs `run` once the main thread has nothing better to do, `timeout` ms at the latest. */
-export function idle(run: () => void, timeout: number): void {
-  if ("requestIdleCallback" in globalThis) requestIdleCallback(run, { timeout });
-  else setTimeout(run, 50);
 }
 
 export function nextFrame(): Promise<void> {

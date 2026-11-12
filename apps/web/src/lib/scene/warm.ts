@@ -72,3 +72,9 @@ export function warm(): Warm {
 
   return run;
 }
+
+/** Runs `task` once the main thread has nothing better to do, `timeout` ms at the latest. */
+export function idle(task: () => void, timeout: number): void {
+  if ("requestIdleCallback" in globalThis) requestIdleCallback(task, { timeout });
+  else setTimeout(task, 50);
+}
