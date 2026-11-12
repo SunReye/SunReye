@@ -3,8 +3,9 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
+import { problem } from "../settings/settings.harness.ts";
 import Controls from "./Controls.svelte";
-import { controlsCore } from "./controls.harness.ts";
+import { SCHEDULE, controlsCore } from "./controls.harness.ts";
 
 beforeEach(async () => {
   await page.viewport(414, 896);
@@ -57,4 +58,53 @@ test("applying a slot's start writes minutes since midnight through the funnel",
     'PUT /api/v1/devices/3/settings/battery.time_of_use.1.start {"value":420}',
   ]);
   await expect.element(screen.getByRole("button", { name: "Slot 1 start 07:00" })).toBeVisible();
+});
+
+test("a switch above the slots turns the schedule on through the funnel", async () => {
+  const transport = controlsCore();
+
+  const screen = await render(Controls, {
+    core: connect(transport),
+    open: "schedule",
+    onnavigate: () => {},
+  });
+
+  const on = screen.getByRole("checkbox", { name: "Zeitplan aktiv" });
+
+  await expect.element(on).not.toBeChecked();
+  await on.click();
+
+  await expect.element(on).toBeChecked();
+  expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${SCHEDULE} {"value":1}`]);
+  expect(screen.getByRole("listitem").elements()).toHaveLength(2);
+});
+
+test("the schedule switch waits for the admin's enable like any setting", async () => {
+  const transport = controlsCore({ scheduleEnable: "off" });
+
+  const screen = await render(Controls, {
+    core: connect(transport),
+    open: "schedule",
+    onnavigate: () => {},
+  });
+
+  await expect.element(screen.getByRole("checkbox", { name: "Zeitplan aktiv" })).toBeDisabled();
+  await expect
+    .element(screen.getByText("Braucht deine Freigabe unter Einstellungen › Schreiben"))
+    .toBeVisible();
+});
+
+test("a refused switch stays where the device is and says why", async () => {
+  const screen = await render(Controls, {
+    core: connect(controlsCore({ refuse: () => problem(429, "setting.interval") })),
+    open: "schedule",
+    onnavigate: () => {},
+  });
+
+  const on = screen.getByRole("checkbox", { name: "Zeitplan aktiv" });
+
+  await on.click();
+
+  await expect.element(screen.getByRole("alert").getByText("Abgelehnt.")).toBeVisible();
+  await expect.element(on).not.toBeChecked();
 });

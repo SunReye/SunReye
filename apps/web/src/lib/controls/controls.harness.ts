@@ -2,10 +2,12 @@
 import { type Transport } from "../api/core.ts";
 import { attempt, problem } from "../settings/settings.harness.ts";
 
+export const SCHEDULE = "battery.time_of_use.enabled";
+
 export const MAX_CHARGE = "battery.max_charge_current";
 const LOCK = "battery.discharge_lock";
 
-function capabilities(writes = true, enable = "on") {
+function capabilities(writes = true, enable = "on", scheduleEnable = "on") {
   return {
     version: "5.0.0",
     schema: { min: 1, max: 1 },
@@ -37,6 +39,17 @@ function capabilities(writes = true, enable = "on") {
             enable: "on",
           },
           { key: "work_mode", name: "Work mode", values: [0, 1, 2], step: 1, enable: "on" },
+          {
+            key: SCHEDULE,
+            name: "Time-of-use schedule",
+            values: [0, 1],
+            labels: [
+              { value: 0, text: "Off" },
+              { value: 1, text: "On" },
+            ],
+            step: 1,
+            enable: scheduleEnable,
+          },
           ...[1, 2].flatMap((n) => slot(n)),
         ],
       },
@@ -87,24 +100,36 @@ function slot(n: number) {
   ];
 }
 
-/** A core holding each setting's value: a write stores it unless `refuse` answers instead. */
-export function controlsCore(
-  options: Readonly<{ writes?: boolean; enable?: string; refuse?: () => Response }> = {},
-): Transport & { readonly writes: string[] } {
-  const { writes: on = true, enable = "on", refuse } = options;
-  const support = capabilities(on, enable);
-  const writes: string[] = [];
-
-  const values = new Map([
+/** Each setting's value on the device before any write. */
+function stored(): Map<string, number> {
+  return new Map([
     [MAX_CHARGE, 100],
     [LOCK, 0],
     ["work_mode", 1],
+    [SCHEDULE, 0],
     ["battery.time_of_use.1.start", 6 * 60],
     ["battery.time_of_use.1.power", 3000],
     ["battery.time_of_use.1.soc", 80],
     ["battery.time_of_use.1.grid_charge", 0],
     ["battery.time_of_use.2.start", 22 * 60],
   ]);
+}
+
+/** A core holding each setting's value: a write stores it unless `refuse` answers instead. */
+export function controlsCore(
+  options: Readonly<{
+    writes?: boolean;
+    enable?: string;
+    /** The schedule switch's enable (ADR 8). */
+    scheduleEnable?: string;
+    refuse?: () => Response;
+  }> = {},
+): Transport & { readonly writes: string[] } {
+  const { writes: on = true, enable = "on", scheduleEnable = "on", refuse } = options;
+  const support = capabilities(on, enable, scheduleEnable);
+  const writes: string[] = [];
+
+  const values = stored();
 
   return {
     base: "http://core.test/",

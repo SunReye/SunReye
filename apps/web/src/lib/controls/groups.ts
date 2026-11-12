@@ -8,6 +8,9 @@ import { valueText } from "../settings/bounds.ts";
  */
 const GROUPS = ["battery", "schedule", "grid", "advanced"] as const;
 
+/** A time-of-use setting's key: `<namespace>.time_of_use.…`. */
+const SCHEDULE = /\.time_of_use\./u;
+
 /** A time-of-use slot's setting key: `<namespace>.time_of_use.<slot>.<field>`. */
 const SLOT = /\.time_of_use\.(\d+)\.[^.]+$/u;
 
@@ -38,7 +41,7 @@ export interface ControlGroup {
 
 /** The group a setting's key falls in by its role namespace; profiles carry no groups (ADR 21). */
 function groupOf(key: string): GroupId {
-  if (SLOT.test(key)) return "schedule";
+  if (SCHEDULE.test(key)) return "schedule";
 
   const namespace = key.split(".", 1)[0];
 
@@ -111,6 +114,11 @@ export interface Slot {
   readonly n: number;
   readonly controls: readonly Control[];
   readonly start: Control | undefined;
+}
+
+/** The schedule's own switches, such as the one that turns every slot on: its settings outside a slot. */
+export function switches(group: ControlGroup): Control[] {
+  return group.controls.filter((c) => !SLOT.test(c.setting.key));
 }
 
 /** The schedule's slots, in the order the profile declares them. */

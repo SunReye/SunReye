@@ -6,6 +6,7 @@
   import ControlRows from "./ControlRows.svelte";
   import ControlsHeading from "./ControlsHeading.svelte";
   import ScheduleRows from "./ScheduleRows.svelte";
+  import type { Outcome } from "../components/value-editor/editable.ts";
   import type { Control, ControlGroup } from "./groups.ts";
   import { drillGroups } from "./look.ts";
 
@@ -19,6 +20,7 @@
     text,
     editing,
     onedit,
+    onset,
   }: {
     groups: readonly ControlGroup[];
     /** Each device's name, when more than one has settings. */
@@ -31,6 +33,8 @@
     text: (control: Control) => string;
     editing: Control | null;
     onedit: (control: Control, row: HTMLElement) => void;
+    /** Writes a control's value at once, as a switch does. */
+    onset: (control: Control, value: number) => Promise<Outcome>;
   } = $props();
 </script>
 
@@ -56,10 +60,12 @@
         {#if shown?.id === "schedule"}
           <ScheduleRows
             group={shown}
+            {value}
             {text}
             owner={(c) => names.get(c.device)}
             {editing}
             {onedit}
+            {onset}
           />
         {:else if shown}
           <ControlRows group={shown} {text} owner={(c) => names.get(c.device)} {editing} {onedit} />

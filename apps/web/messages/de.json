@@ -653,6 +653,7 @@
   "controls_groups": "Gruppen",
   "controls_group_battery": "Batterie",
   "controls_group_schedule": "Zeitplan",
+  "controls_schedule_on": "Zeitplan aktiv",
   "controls_slot": "Zeitfenster {n}",
   "controls_field_start": "Beginn",
   "controls_field_power": "Leistung",

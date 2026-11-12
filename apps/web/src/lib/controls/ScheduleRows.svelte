@@ -4,17 +4,30 @@
 -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
-  import { slotEnd, slots, type Control, type ControlGroup, type Slot } from "./groups.ts";
+  import type { Outcome } from "../components/value-editor/editable.ts";
+  import {
+    slotEnd,
+    slots,
+    switches,
+    type Control,
+    type ControlGroup,
+    type Slot,
+  } from "./groups.ts";
+  import ScheduleSwitch from "./ScheduleSwitch.svelte";
   import SlotValue from "./SlotValue.svelte";
 
   let {
     group,
+    value,
     text,
     owner,
     editing,
     onedit,
+    onset,
   }: {
     group: ControlGroup;
+    /** A control's value as the device last read it; `null` when unknown. */
+    value: (control: Control) => number | null;
     /** A control's current value as text; a dash while unknown. */
     text: (control: Control) => string;
     /** The device a control belongs to, when more than one has settings. */
@@ -22,6 +35,8 @@
     /** The control the editor has open. */
     editing: Control | null;
     onedit: (control: Control, cell: HTMLElement) => void;
+    /** Writes a switch's value through the funnel. */
+    onset: (control: Control, value: number) => Promise<Outcome>;
   } = $props();
 
   const rows = $derived(slots(group));
@@ -57,6 +72,9 @@
   }
 </script>
 
+{#each switches(group) as control (`${control.device} ${control.setting.key}`)}
+  <ScheduleSwitch {control} value={value(control)} label={m.controls_schedule_on()} {onset} />
+{/each}
 <ul class="divide-y divide-border/60">
   {#each rows as slot (`${slot.device} ${slot.n}`)}
     {@const why = note(slot)}

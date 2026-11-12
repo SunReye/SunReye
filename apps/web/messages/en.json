@@ -653,6 +653,7 @@
   "controls_groups": "Groups",
   "controls_group_battery": "Battery",
   "controls_group_schedule": "Time-of-use schedule",
+  "controls_schedule_on": "Schedule on",
   "controls_slot": "Slot {n}",
   "controls_field_start": "Start",
   "controls_field_power": "Power",
