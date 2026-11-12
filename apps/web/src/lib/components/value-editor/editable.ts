@@ -1,6 +1,9 @@
 import { valueText } from "../../settings/bounds.ts";
 
-/** What the value editor edits: a bounded stepped number on a wheel, or one of a list (ADR 21). */
+/**
+ * What the value editor edits: a bounded stepped number on a wheel, a time of day on an hour and a
+ * minute wheel, or one of a list (ADR 21).
+ */
 export type Editable =
   | {
       readonly kind: "number";
@@ -8,6 +11,15 @@ export type Editable =
       readonly unit: string;
       readonly min: number;
       readonly max: number;
+      readonly step: number;
+    }
+  | {
+      readonly kind: "time";
+      readonly name: string;
+      /** Minutes since midnight. */
+      readonly min: number;
+      readonly max: number;
+      /** Minutes. */
       readonly step: number;
     }
   | {
@@ -25,6 +37,8 @@ export type EditableSetting = Readonly<{
   step: number;
   values?: readonly number[] | null;
   labels?: readonly Readonly<{ value: number; text: string }>[];
+  /** Its value is a time of day in minutes since midnight (ADR 5). */
+  time?: boolean;
 }>;
 
 export function editable(setting: EditableSetting): Editable {
@@ -40,6 +54,9 @@ export function editable(setting: EditableSetting): Editable {
   // The profile format requires a range where there are no values (ADR 5).
   const range = setting.range ?? { min: 0, max: 0 };
 
+  if (setting.time === true)
+    return { kind: "time", name, min: range.min, max: range.max, step: setting.step };
+
   return {
     kind: "number",
     name,
@@ -48,6 +65,13 @@ export function editable(setting: EditableSetting): Editable {
     max: range.max,
     step: setting.step,
   };
+}
+
+/** Minutes since midnight as `HH:MM`. */
+export function clock(minutes: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
 
 // The core's own tolerance for a whole number of steps (crates/profile setting.rs).

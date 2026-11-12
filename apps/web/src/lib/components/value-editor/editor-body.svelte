@@ -6,9 +6,10 @@
   import { m } from "../../paraglide/messages.js";
   import { getLocale } from "../../paraglide/runtime.js";
   import ApplyBar from "./apply-bar.svelte";
-  import { fits, wheel, type Editable, type Outcome } from "./editable.ts";
+  import { clock, fits, wheel, type Editable, type Outcome } from "./editable.ts";
   import EnumList from "./enum-list.svelte";
   import RollingNumber from "./rolling-number.svelte";
+  import TimeWheels from "./time-wheels.svelte";
   import Wheel from "./wheel.svelte";
 
   let {
@@ -52,10 +53,23 @@
 
   const whole = orig.kind === "number" && Number.isInteger(orig.step);
 
+  // Times: an hour row and a minute row at the step.
+  const at = orig.kind === "time" ? (now ?? orig.min) : 0;
+  const step = orig.kind === "time" ? orig.step : 1;
+  const firstHour = Math.floor(at / 60);
+  const firstMinute = Math.round((at % 60) / step);
+  let hour = $state(firstHour);
+  let minute = $state(firstMinute);
+  let liveTime = $state({ hour: firstHour, minute: firstMinute * step });
+
   // Enums.
   let choice = $state(orig.kind === "enum" ? (now ?? orig.options[0]?.value ?? 0) : 0);
 
-  const next = $derived(rows ? rows.at(index) : choice);
+  const next = $derived.by(() => {
+    if (rows) return rows.at(index);
+
+    return orig.kind === "time" ? hour * 60 + minute * step : choice;
+  });
   const changed = $derived(next !== now);
 
   function text(value: number | null): string {
@@ -63,6 +77,8 @@
 
     if (orig.kind === "enum")
       return orig.options.find((o) => o.value === value)?.text ?? nf.format(value);
+
+    if (orig.kind === "time") return clock(value);
 
     return orig.unit ? `${nf.format(value)} ${orig.unit}` : nf.format(value);
   }
@@ -118,6 +134,8 @@
           step: nf.format(orig.step),
         })}</span
       >
+    {:else if orig.kind === "time"}
+      <span class="text-xs text-muted-foreground">{m.editor_minutes({ step: orig.step })}</span>
     {:else}
       <span class="text-xs text-muted-foreground"
         >{m.editor_values({ count: orig.options.length })}</span
@@ -166,6 +184,14 @@
           <span class="text-xl font-medium text-muted-foreground">{orig.unit}</span>
         </Button>
       {/if}
+    {:else if orig.kind === "time"}
+      <span
+        class="flex h-[64px] items-center text-5xl font-semibold tracking-tight"
+        aria-label={nextText}
+        ><RollingNumber value={liveTime.hour} max={23} pad={2} /><span
+          class="-mt-1 px-0.5 text-muted-foreground">:</span
+        ><RollingNumber value={liveTime.minute} max={59} pad={2} /></span
+      >
     {:else}
       <span class="flex h-[48px] items-center text-2xl font-semibold tracking-tight"
         >{nextText}</span
@@ -183,6 +209,14 @@
         unit={orig.unit}
         ariaLabel={orig.name}
         onlive={(p) => (live = Math.max(0, Math.min(rows.count - 1, p)))}
+      />
+    {:else if orig.kind === "time"}
+      <TimeWheels
+        step={orig.step}
+        {now}
+        bind:hour
+        bind:minute
+        onlive={(h, mm) => (liveTime = { hour: h, minute: mm })}
       />
     {:else if orig.kind === "enum"}
       <EnumList name={orig.name} options={orig.options} {now} bind:choice />

@@ -16,6 +16,8 @@
     unit = "",
     ariaLabel,
     onlive,
+    marker = "label",
+    class: className = "",
   }: {
     rows: Rows;
     index?: number;
@@ -26,6 +28,9 @@
     ariaLabel: string;
     /** The fractional row while it moves, for the rolling digits. */
     onlive?: (pos: number) => void;
+    /** How the device's row is marked: "now" beside it, or a dot where two wheels sit side by side. */
+    marker?: "label" | "dot";
+    class?: string;
   } = $props();
 
   const count = $derived(rows.count);
@@ -244,7 +249,7 @@
 <div
   bind:this={el}
   {@attach attachWheel}
-  class="relative touch-none outline-none select-none"
+  class={["relative touch-none outline-none select-none", className]}
   style:height="{ROWS * ROW}px"
   role="spinbutton"
   tabindex="0"
@@ -277,7 +282,10 @@
       style:opacity={Math.max(0, 1 - ad * 0.34)}
     >
       <span class={[ad < 0.5 ? "text-foreground" : "text-muted-foreground"]}>{label(i)}</span>
-      {#if i === current}
+      {#if i === current && marker === "dot"}
+        <span class="absolute left-2 size-1 rounded-full bg-muted-foreground/70" title={m.editor_now()}
+        ></span>
+      {:else if i === current}
         <span class="absolute right-3 flex items-center gap-1 text-xs text-muted-foreground">
           <span class="size-1 rounded-full bg-muted-foreground/70"></span>{m.editor_now()}
         </span>
