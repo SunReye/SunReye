@@ -7,6 +7,7 @@
   import { input } from "../lib/shell/input.svelte.ts";
   import Shell from "../lib/shell/Shell.svelte";
   import "../app.css";
+  import { motion } from "../lib/motion/tier.svelte.ts";
 
   let { children }: { children: Snippet } = $props();
 
@@ -16,6 +17,13 @@
   const access = provideAccess();
 
   void access.check(core);
+
+  $effect(() => motion.watch());
+
+  // The CSS motion tokens read the tier (ADR 21).
+  $effect(() => {
+    document.documentElement.dataset["motion"] = motion.tier;
+  });
 </script>
 
 <!-- Dark first (ADR 21); a manual choice is kept in local storage. -->

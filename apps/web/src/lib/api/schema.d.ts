@@ -1257,6 +1257,11 @@ export interface components {
              *     in parallel (ADR 17).
              */
             estimated: string[];
+            /**
+             * @description The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
+             *     it can report, not what it reports now.
+             */
+            series: string[];
             /** @description What its profile lets the core write, in the profile's order. */
             settings: components["schemas"]["SettingSupport"][];
             /** @description Whether the admin switched its writes on (ADR 7). */

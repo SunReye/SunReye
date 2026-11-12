@@ -374,6 +374,40 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
     );
 }
 
+/// The detail sheets (ADR 21) show only the roles a device has.
+#[tokio::test]
+async fn capabilities_list_the_series_each_devices_profile_publishes_without_extras() {
+    let plant = Plant::bare(Writes::Store, false).await;
+
+    let (_, body) = plant
+        .core
+        .ask(&plant.set_cookie, get("/api/v1/capabilities"))
+        .await;
+
+    let series: Vec<String> =
+        serde_json::from_value(body["devices"][plant.id.to_string()]["series"].clone()).unwrap();
+    let has = |name: &str| series.iter().any(|s| s == name);
+    assert_eq!(
+        [
+            "inverter.status",
+            "inverter.temperature",
+            "load.phase.power[1]",
+            "load.phase.power[2]",
+            "load.phase.power[3]",
+            "battery.soc",
+            "battery.cycles",
+        ]
+        .map(has),
+        [true, true, true, true, true, true, false]
+    );
+    assert!(
+        !series.iter().any(|s| s.starts_with("extra.")),
+        "{series:?}"
+    );
+    let unique: std::collections::BTreeSet<_> = series.iter().collect();
+    assert_eq!(unique.len(), series.len(), "{series:?}");
+}
+
 #[tokio::test]
 async fn an_unverified_setting_writes_only_while_the_admin_has_it_enabled() {
     let mut plant = Plant::bare(Writes::Store, true).await;

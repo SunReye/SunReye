@@ -21,6 +21,7 @@ export interface Row {
   readonly power: number;
   /** The line's label. */
   readonly series: string;
+  readonly role: string;
 }
 
 /** Today and two more days, as the solar forecast covers (ADR 17). */
@@ -95,7 +96,12 @@ export async function forecastRows(
       const points: readonly Readonly<Forecasts["points"][number]>[] =
         "points" in forecasts ? forecasts.points : [];
 
-      return points.map((p) => ({ time: new Date(p.target), power: p.value, series: line.label }));
+      return points.map((p) => ({
+        time: new Date(p.target),
+        power: p.value,
+        series: line.label,
+        role: line.series,
+      }));
     }),
   );
 

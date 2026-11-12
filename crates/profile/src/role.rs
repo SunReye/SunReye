@@ -39,9 +39,9 @@ impl Quantity {
     #[must_use]
     pub fn kind(&self) -> RoleKind {
         match self.role.as_str() {
-            "battery.mode" | "ev.connected" | "ev.charging" | "ev.mode" | "ev.battery.boost"
-            | "ev.vehicle.model" => RoleKind::Status,
-            "ev.session.energy" => RoleKind::Counter,
+            "battery.mode" | "inverter.status" | "ev.connected" | "ev.charging" | "ev.mode"
+            | "ev.battery.boost" | "ev.vehicle.model" => RoleKind::Status,
+            "ev.session.energy" | "battery.cycles" => RoleKind::Counter,
             role if role.rsplit('.').next() == Some("total") => RoleKind::Counter,
             _ => RoleKind::Measurement,
         }
@@ -57,8 +57,8 @@ impl Quantity {
 fn unit(role: &str) -> Option<Unit> {
     Some(match role {
         "pv.power" | "pv.mppt.power" | "pv.string.power" | "battery.power" | "grid.power"
-        | "grid.phase.power" | "load.power" | "backup.power" | "generator.power"
-        | "inverter.power" | "ev.charge.power" => Unit::Watt,
+        | "grid.phase.power" | "load.power" | "load.phase.power" | "backup.power"
+        | "generator.power" | "inverter.power" | "ev.charge.power" => Unit::Watt,
         "pv.energy.total"
         | "battery.capacity"
         | "battery.energy.charged.total"
@@ -73,7 +73,7 @@ fn unit(role: &str) -> Option<Unit> {
         "pv.mppt.current" | "battery.current" | "grid.phase.current" => Unit::Ampere,
         "grid.frequency" => Unit::Hertz,
         "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" => Unit::Percent,
-        "battery.temperature" => Unit::Celsius,
+        "battery.temperature" | "inverter.temperature" => Unit::Celsius,
         _ => return None,
     })
 }

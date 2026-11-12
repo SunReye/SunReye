@@ -22,8 +22,13 @@ const CAPABILITIES = {
   capabilities: [],
   transports: [],
   devices: {
-    "1": { estimated: ["pv.string.power[4]", "pv.string.power[5]"], settings: [], writes: false },
-    "2": { estimated: [], settings: [], writes: false },
+    "1": {
+      estimated: ["pv.string.power[4]", "pv.string.power[5]"],
+      series: [],
+      settings: [],
+      writes: false,
+    },
+    "2": { estimated: [], series: [], settings: [], writes: false },
   },
 };
 
