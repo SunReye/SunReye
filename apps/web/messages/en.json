@@ -166,7 +166,6 @@
   "misplaced_setback": "Grid {grid}: the module in row {row}, column {column} crosses the setback.",
   "misplaced_overlap": "Grid {grid}: two modules share row {row}, column {column}.",
   "builder_cold_voltage": "{name}: {voltage} V open-circuit at −10 °C exceeds the inverter's {limit} V.",
-  "nav_live": "Overview",
   "nav_settings": "Settings",
   "settings_device": "Device {id}",
   "settings_write": "Write {key}",
@@ -412,5 +411,11 @@
   "tariff_day_7": "Sun",
   "tariff_zone": "Bidding zone",
   "tariff_zone_none": "None",
-  "nav_tariff": "Tariff and savings"
+  "nav_tariff": "Tariff and savings",
+  "nav_main": "Main navigation",
+  "nav_dashboard": "Dashboard",
+  "nav_controls": "Controls",
+  "nav_admin": "Admin",
+  "nav_pin": "Pin",
+  "nav_unpin": "Unpin"
 }
