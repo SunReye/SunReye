@@ -1,12 +1,12 @@
-import createClient from "openapi-fetch";
 import { carBodies, type CarBodies } from "./car-bodies";
-import { refusal, type Client, type Problem } from "./client";
+import { open, refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { follow, type Live } from "./live";
 import { body, type LayoutChange } from "./layout-change";
 import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
-import type { components, paths } from "./schema";
+import type { components } from "./schema";
+import { plantRecords, type PlantRecords } from "./records";
 import { tariffs, type Tariffs } from "./tariff";
 
 export type History = components["schemas"]["History"];
@@ -71,7 +71,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -117,7 +117,7 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
 }
 
 export function connect(transport: Transport): Core {
-  const client = createClient<paths>({ baseUrl: transport.base, fetch: transport.fetch });
+  const client = open(transport.base, transport.fetch);
 
   return {
     live: (listener) => {
@@ -161,6 +161,7 @@ export function connect(transport: Transport): Core {
     ...pvModel(client),
     ...status(client),
     ...tariffs(client),
+    ...plantRecords(client),
   };
 }
 

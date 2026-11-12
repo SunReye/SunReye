@@ -28,6 +28,8 @@ export type StatisticsCore = Readonly<
     | "capabilities"
     | "moduleTypes"
     | "corrections"
+    | "records"
+    | "batteryCapacity"
   >
 >;
 

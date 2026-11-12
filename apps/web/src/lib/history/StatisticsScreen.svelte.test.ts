@@ -69,7 +69,7 @@ test("a route that names question and tab opens them, as after a reload or back"
   await expect
     .element(screen.getByRole("tab", { name: "Amortisation" }))
     .toHaveAttribute("aria-selected", "true");
-  await expect.element(screen.getByText("Noch offen: 9.000 €.")).toBeVisible();
+  await expect.element(screen.getByText("November 2033")).toBeVisible();
 });
 
 test("while the range loads, the figures dash and the space is held", async () => {

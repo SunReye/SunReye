@@ -1,4 +1,4 @@
-<!-- The year by month against the year before. Independent of the range's length: it reads the range's year. -->
+<!-- The year by month against the year before, every recorded year, and the records. Independent of the range's length: it reads the range's year. -->
 <script lang="ts">
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
@@ -6,7 +6,9 @@
   import { kwh, money, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import type { StatsCore } from "./stats.svelte.ts";
+  import type { YearsCore } from "./records.ts";
   import type { Metric } from "./view.ts";
+  import YearsRecords from "./YearsRecords.svelte";
   import { readYears, yearBands, yearTotal, type Years } from "./years.ts";
 
   let {
@@ -16,7 +18,7 @@
     fresh,
     height,
   }: {
-    core: StatsCore;
+    core: StatsCore & YearsCore;
     route: RangeRoute;
     metric: Metric;
     /** Recording began days ago. */
@@ -64,6 +66,7 @@
 
   const year = $derived(got ? yearOf(got.year.range.from) : 0);
   const bands = $derived(got ? yearBands(metric, got) : []);
+
 </script>
 
 {#if fresh}
@@ -72,6 +75,7 @@
     <p class="max-w-[52ch] text-sm text-muted-foreground">{m.stats_years_fresh_text()}</p>
   </div>
 {:else}
+  <div class="flex flex-col gap-4">
   <BandChart
     {bands}
     up={[{ label: `${spec.name} ${year}`, colour: spec.colour }]}
@@ -94,4 +98,8 @@
       if (drill) route.open(drill);
     }}
   />
+
+  <YearsRecords {core} {route} {metric} />
+  </div>
 {/if}
+

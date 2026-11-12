@@ -9,7 +9,17 @@ import type { Loaded } from "./stats.svelte.ts";
 import type { Metric, Tab, StatsView } from "./view.ts";
 
 export type PaneCore = Readonly<
-  Pick<Core, "history" | "costs" | "forecasts" | "tariff" | "moduleTypes" | "corrections">
+  Pick<
+    Core,
+    | "history"
+    | "costs"
+    | "forecasts"
+    | "tariff"
+    | "moduleTypes"
+    | "corrections"
+    | "records"
+    | "batteryCapacity"
+  >
 >;
 
 export interface PaneProps {
