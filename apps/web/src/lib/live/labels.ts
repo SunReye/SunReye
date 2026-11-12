@@ -1,5 +1,5 @@
-// What the live scene shows (ADR 20): each string's power at its modules' centre, tinted by its
-// share of its own peak, and the plant's flows on labels. Pure: no three.js.
+// What the live scene shows (ADR 20): each string tinted by its share of its own peak, and a chip
+// per string, inverter, battery, car and plant flow. Pure: no three.js.
 import type { PvString, Values } from "../api/core.ts";
 import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
@@ -32,158 +32,176 @@ export interface Live3d {
   readonly stands?: Geometry["stands"];
 }
 
-export interface StringLabel {
-  readonly name: string;
+/** What a chip shows; signs follow ADR 4 (grid positive importing, battery charging). */
+export type ChipKind = "string" | "inverter" | "battery" | "grid" | "house" | "car";
+
+/** One label chip (ADR 20). */
+export interface Chip {
+  /** Unique within the scene. */
+  readonly key: string;
+  /** The detail sheet it opens (lib/detail/figures.ts). */
+  readonly id: string;
+  readonly kind: ChipKind;
+  /** A string's name; null for equipment. */
+  readonly name: string | null;
   readonly watts: number | null;
-  /** Of its own peak, 0 to 1; null without a value. */
-  readonly share: number | null;
+  readonly soc: number | null;
   /** Split from its MPPT input's power, not measured (ADR 17). */
   readonly estimated: boolean;
-  /** Its modules' centre; null while it has none placed. */
-  readonly centre: Point | null;
-}
-
-/**
- * One line of a label. Signs follow ADR 4: grid positive importing, battery charging. A stale
- * power is past its gap threshold (ADR 3), shown at its last value.
- */
-export type Quantity =
-  | { readonly kind: "grid" | "house"; readonly watts: number; readonly stale: boolean }
-  | {
-      readonly kind: "battery";
-      readonly watts: number;
-      readonly soc: number | null;
-      readonly stale: boolean;
-    }
-  | {
-      readonly kind: "inverter";
-      readonly device: number;
-      readonly watts: number;
-      readonly stale: boolean;
-    }
-  | {
-      readonly kind: "car";
-      readonly device: number;
-      readonly watts: number | null;
-      readonly soc: number | null;
-    };
-
-export interface Label {
+  /** Past its gap threshold (ADR 3), shown at its last value. */
+  readonly stale: boolean;
   readonly anchor: Point;
   /** The marker its leader line runs down to; null beside the house. */
   readonly leader: Point | null;
-  readonly quantities: readonly Quantity[];
 }
 
 export interface LiveScene {
-  readonly strings: readonly StringLabel[];
+  readonly chips: readonly Chip[];
   /** By panel, its string's share; null for an unassigned module or one without a value. */
   readonly shares: readonly (number | null)[];
-  readonly labels: readonly Label[];
   /** The connected cars at their places. */
   readonly cars: readonly Parked[];
 }
 
+interface Reading {
+  readonly watts: number | null;
+  readonly soc?: number | null;
+  readonly estimated?: boolean;
+  readonly stale?: boolean;
+}
+
+function chip(
+  key: string,
+  id: string,
+  kind: ChipKind,
+  reading: Reading,
+  anchor: Point,
+  leader: Point | null,
+  name: string | null = null,
+): Chip {
+  const { watts, soc = null, estimated = false, stale = false } = reading;
+
+  return { key, id, kind, name, watts, soc, estimated, stale, anchor, leader };
+}
+
 export function liveScene(input: Live3d): LiveScene {
-  const strings = input.strings.map((string, at) => stringLabel(input, string, at));
+  const shares = input.strings.map((string) => share(input, string));
   const cars = parked(input.places ?? [], input.stands, input.values);
 
   return {
-    strings,
+    chips: [
+      ...input.strings.flatMap((string, at) => stringChip(input, string, at)),
+      ...equipment(input),
+      ...cars.map(({ device, at, above, watts, soc }) =>
+        chip(`ev-${device}`, `ev-${device}`, "car", { watts, soc }, above, at),
+      ),
+    ],
     shares: input.panels.map(({ string }) =>
-      string === null || string === undefined ? null : (strings[string]?.share ?? null),
+      string === null || string === undefined ? null : (shares[string] ?? null),
     ),
-    labels: [...labels(input), ...cars.map((car) => carLabel(car))],
     cars,
   };
 }
 
-function stringLabel(input: Live3d, string: Readonly<PvString>, at: number): StringLabel {
-  const series = `pv.string.power[${string.id}]`;
-  const watts = input.values[String(string.device)]?.[series] ?? null;
-  const peak = string.modules * (input.peaks[string.moduleType] ?? 0);
-  const corners = input.panels.filter((panel) => panel.string === at).flatMap((p) => p.corners);
+const stringSeries = (string: Readonly<PvString>): string => `pv.string.power[${string.id}]`;
 
-  return {
-    name: string.name,
-    watts,
-    share: watts === null || peak <= 0 ? null : Math.min(Math.max(watts / peak, 0), 1),
-    estimated: input.estimated[String(string.device)]?.includes(series) ?? false,
-    centre: corners.length === 0 ? null : mean(corners),
-  };
+/** Of its own peak, 0 to 1; null without a value. */
+function share(input: Live3d, string: Readonly<PvString>): number | null {
+  const watts = input.values[String(string.device)]?.[stringSeries(string)];
+  const peak = string.modules * (input.peaks[string.moduleType] ?? 0);
+
+  return watts === undefined || peak <= 0 ? null : Math.min(Math.max(watts / peak, 0), 1);
 }
 
-function labels(input: Live3d): Label[] {
+/** At its modules' centre; none while it has no module placed. */
+function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip[] {
+  const device = String(string.device);
+  const series = stringSeries(string);
+  const corners = input.panels.filter((panel) => panel.string === at).flatMap((p) => p.corners);
+
+  if (corners.length === 0) return [];
+
+  const centre = mean(corners);
+
+  const reading = {
+    watts: input.values[device]?.[series] ?? null,
+    estimated: input.estimated[device]?.includes(series) ?? false,
+    stale: input.stale?.[device]?.[series] !== undefined,
+  };
+
+  return [
+    chip(
+      `string-${string.id}`,
+      `string-${string.id}`,
+      "string",
+      reading,
+      centre,
+      centre,
+      string.name,
+    ),
+  ];
+}
+
+/** A device's power series and whether it is stale; null without a value. */
+function seriesReading(input: Live3d, device: string, series: string): Reading | null {
+  const watts = input.values[device]?.[series];
+
+  return watts === undefined
+    ? null
+    : { watts, stale: input.stale?.[device]?.[series] !== undefined };
+}
+
+function batteryReading(input: Live3d, device: string): Reading | null {
+  const power = seriesReading(input, device, "battery.power");
+
+  return power === null ? null : { ...power, soc: input.values[device]?.["battery.soc"] ?? null };
+}
+
+function equipment(input: Live3d): Chip[] {
   const placed = input.mounts === null || input.mounts === undefined ? [] : input.equipment;
 
   const marked = (kind: Equipment["kind"], device: number): boolean =>
     placed.some((marker) => marker.kind === kind && marker.device === device);
 
-  const plant = input.values[PLANT] ?? {};
+  const beside = besideHouse(input.faces);
 
-  const isStale = (device: string, series: string): boolean =>
-    input.stale?.[device]?.[series] !== undefined;
+  const at = (key: string, id: string, kind: ChipKind, read: Reading | null): Chip[] =>
+    read === null ? [] : [chip(key, id, kind, read, beside, null)];
 
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))
-    .flatMap((device) => inverter(input, device));
+    .flatMap((device) =>
+      at(
+        `inverter-${device}`,
+        "inverter",
+        "inverter",
+        seriesReading(input, String(device), "pv.power"),
+      ),
+    );
 
-  const batteryMarked = placed.some((marker) => marker.kind === "battery");
-
-  const beside: Label = {
-    anchor: besideHouse(input.faces),
-    leader: null,
-    quantities: [
-      ...flow("grid", plant["grid.power"], isStale(PLANT, "grid.power")),
-      ...flow("house", plant["load.power"], isStale(PLANT, "load.power")),
-      ...(batteryMarked ? [] : battery(plant, isStale(PLANT, "battery.power"))),
-      ...inverters,
-    ],
-  };
-
-  const onMarkers = placed.flatMap((marker, i): Label[] => {
+  const onMarkers = placed.flatMap((marker, i): Chip[] => {
     const mount = input.mounts?.[i];
-    const values = input.values[String(marker.device)] ?? {};
+    const device = String(marker.device);
 
-    return mount === undefined
+    const read =
+      marker.kind === "inverter"
+        ? seriesReading(input, device, "pv.power")
+        : batteryReading(input, device);
+
+    return mount === undefined || read === null
       ? []
-      : [
-          {
-            anchor: mount.above,
-            leader: mount.at,
-            quantities:
-              marker.kind === "inverter"
-                ? inverter(input, marker.device)
-                : battery(values, isStale(String(marker.device), "battery.power")),
-          },
-        ];
+      : [chip(`${marker.kind}-${device}`, marker.kind, marker.kind, read, mount.above, mount.at)];
   });
 
-  return [beside, ...onMarkers];
-}
-
-/** A connected car's charge power and SOC, above it. */
-function carLabel({ device, at, above, watts, soc }: Parked): Label {
-  return { anchor: above, leader: at, quantities: [{ kind: "car", device, watts, soc }] };
-}
-
-function flow(kind: "grid" | "house", watts: number | undefined, stale: boolean): Quantity[] {
-  return watts === undefined ? [] : [{ kind, watts, stale }];
-}
-
-function battery(values: Readonly<Record<string, number>>, stale: boolean): Quantity[] {
-  const watts = values["battery.power"];
-
-  return watts === undefined
-    ? []
-    : [{ kind: "battery", watts, soc: values["battery.soc"] ?? null, stale }];
-}
-
-function inverter(input: Live3d, device: number): Quantity[] {
-  const watts = input.values[String(device)]?.["pv.power"];
-  const stale = input.stale?.[String(device)]?.["pv.power"] !== undefined;
-
-  return watts === undefined ? [] : [{ kind: "inverter", device, watts, stale }];
+  return [
+    ...at("grid", "grid", "grid", seriesReading(input, PLANT, "grid.power")),
+    ...at("house", "house", "house", seriesReading(input, PLANT, "load.power")),
+    ...(placed.some((marker) => marker.kind === "battery")
+      ? []
+      : at("battery", "battery", "battery", batteryReading(input, PLANT))),
+    ...inverters,
+    ...onMarkers,
+  ];
 }
 
 function mean(points: readonly Point[]): Point {

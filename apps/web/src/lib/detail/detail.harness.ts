@@ -37,9 +37,18 @@ const STRINGS = [
 export interface Served {
   live: typeof LIVE;
   stale: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined;
+  /** A second frame, a second after the snapshot: the plant importing. */
+  tick: boolean;
 }
 
-export const served: Served = { live: LIVE, stale: undefined };
+export const served: Served = { live: LIVE, stale: undefined, tick: false };
+
+const IMPORTING = { [PLANT]: { "grid.power": 800 } };
+
+/** One server-sent event of the live stream. */
+function event(name: string, data: Readonly<{ devices: object; stale?: object }>) {
+  return new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+}
 
 /** Each history request: device, series and its window. */
 export const asked: Readonly<{ device: string; series: string; from: string; to: string }>[] = [];
@@ -59,12 +68,18 @@ function history(device: string, series: string | null, from: string): Response 
 
 function stream(): Response {
   const frame = { devices: served.live, ...(served.stale && { stale: served.stale }) };
-  const body = `event: snapshot\ndata: ${JSON.stringify(frame)}\n\n`;
 
   return new Response(
     new ReadableStream({
       start: (controller) => {
-        controller.enqueue(new TextEncoder().encode(body));
+        controller.enqueue(event("snapshot", frame));
+
+        if (served.tick) {
+          setTimeout(() => {
+            vi.setSystemTime(Date.now() + 1000);
+            controller.enqueue(event("change", { devices: IMPORTING }));
+          }, 50);
+        }
       },
     }),
     { headers: { "content-type": "text/event-stream" } },
@@ -155,6 +170,7 @@ export async function prepare(): Promise<void> {
   served.live = LIVE;
   served.stale = undefined;
   asked.length = 0;
+  served.tick = false;
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],

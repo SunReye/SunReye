@@ -76,3 +76,10 @@ test("before the day is read every figure is unknown, not zero", () => {
   expect(facts("price").lead).toMatchObject({ value: null });
   expect(facts("autarky").lead).toMatchObject({ value: null });
 });
+
+test("grid figures diverge around zero: import above, export below", () => {
+  for (const id of ["grid", "feedIn", "purchase"])
+    expect(figure(id)?.diverging).toEqual(["var(--e-import)", "var(--e-export)"]);
+
+  expect(figure("pv")?.diverging).toBeUndefined();
+});

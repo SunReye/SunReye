@@ -2,12 +2,11 @@
 <script lang="ts">
   import type { Core } from "../api/core";
   import ConnectionsSettings from "./ConnectionsSettings.svelte";
-  import DangerSettings from "./DangerSettings.svelte";
   import DevicesSettings from "./DevicesSettings.svelte";
   import DisplaySettings from "./DisplaySettings.svelte";
   import ForecastSettings from "./ForecastSettings.svelte";
-  import LogsSettings from "./LogsSettings.svelte";
   import PlantSettings from "./PlantSettings.svelte";
+  import SystemSettings from "./SystemSettings.svelte";
   import TariffSettings from "./TariffSettings.svelte";
   import WritesSettings from "./WritesSettings.svelte";
 
@@ -21,8 +20,6 @@
     ["tariff", tariff],
     ["forecast", forecast],
     ["display", display],
-    ["logs", logs],
-    ["danger", danger],
   ]);
 </script>
 
@@ -33,7 +30,9 @@
 {#snippet tariff()}<TariffSettings {core} />{/snippet}
 {#snippet forecast()}<ForecastSettings />{/snippet}
 {#snippet display()}<DisplaySettings />{/snippet}
-{#snippet logs()}<LogsSettings {core} />{/snippet}
-{#snippet danger()}<DangerSettings {core} />{/snippet}
 
-{@render pages.get(id)?.()}
+{#if pages.has(id)}
+  {@render pages.get(id)?.()}
+{:else}
+  <SystemSettings {core} {id} />
+{/if}

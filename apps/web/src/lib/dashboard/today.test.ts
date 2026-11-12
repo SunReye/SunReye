@@ -1,63 +1,55 @@
 import { expect, test } from "bun:test";
-import { combined, dayRows, energy, forecastPv, today } from "./today.ts";
+import { combined, dayRows, forecastPv, peak, today } from "./today.ts";
 
 const at = (time: string) => `2026-11-12T${time}:00Z`;
 
-test("a day's energy splits into what flowed each way, in kWh", () => {
-  // Grid power: one hour importing 2 kW, half an hour exporting 3 kW.
-  const flowed = energy([
-    { start: at("08:00"), end: at("09:00"), mean: 2000 },
-    { start: at("09:00"), end: at("09:30"), mean: -3000 },
-  ]);
-
-  expect(flowed.positive).toBe(2);
-  expect(flowed.negative).toBe(1.5);
-});
-
-test("a gap adds no energy", () => {
-  const flowed = energy([
-    { start: at("08:00"), end: at("08:30"), mean: 1000 },
-    { start: at("10:00"), end: at("10:30"), mean: 1000 },
-  ]);
-
-  expect(flowed.positive).toBe(1);
-});
-
 test("the peak is the highest mean and when it began", () => {
-  const flowed = energy([
+  const top = peak([
     { start: at("11:00"), end: at("11:15"), mean: 6100 },
     { start: at("13:30"), end: at("13:45"), mean: 8600 },
     { start: at("14:00"), end: at("14:15"), mean: 7000 },
   ]);
 
-  expect(flowed.peak).toEqual({ watts: 8600, at: new Date(at("13:30")) });
+  expect(top).toEqual({ watts: 8600, at: new Date(at("13:30")) });
 });
 
 test("a day without a value has no peak", () => {
-  expect(energy([])).toEqual({ positive: 0, negative: 0, peak: null });
+  expect(peak([])).toBeNull();
 });
 
-test("today's four figures and the two meters come from the plant's PV, load and grid", () => {
-  const hour = (mean: number) => [{ start: at("10:00"), end: at("11:00"), mean }];
+const NO_PEAKS = { production: null, consumption: null };
 
-  const figures = today({
-    pv: energy(hour(8000)),
-    load: energy(hour(4000)),
-    grid: energy([
-      { start: at("10:00"), end: at("10:30"), mean: 2000 },
-      { start: at("10:30"), end: at("11:00"), mean: -10_000 },
-    ]),
-  });
+test("today's figures and meters are the plant's rolled-up energies and their shares", () => {
+  const figures = today(
+    {
+      "pv.power": 8,
+      "load.power": 4,
+      "grid.import.power": 1,
+      "grid.export.power": 5,
+      "self.consumption.power": 3,
+      "self.supply.power": 3,
+    },
+    NO_PEAKS,
+  );
 
   expect(figures).toMatchObject({ production: 8, consumption: 4, purchase: 1, feedIn: 5 });
-  // A quarter of the house came from the grid; five eighths of the PV went to the grid.
+  // Three quarters of the house met on site; three eighths of the PV used on site.
   expect(figures.autarky).toBe(75);
   expect(figures.selfUse).toBe(37.5);
 });
 
 test("a meter without energy to measure against has no value", () => {
-  const none = energy([]);
-  const figures = today({ pv: none, load: none, grid: none });
+  const figures = today(
+    {
+      "pv.power": 0,
+      "load.power": 0,
+      "grid.import.power": 0,
+      "grid.export.power": 0,
+      "self.consumption.power": 0,
+      "self.supply.power": 0,
+    },
+    NO_PEAKS,
+  );
 
   expect(figures.autarky).toBeNull();
   expect(figures.selfUse).toBeNull();

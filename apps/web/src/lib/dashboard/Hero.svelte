@@ -55,7 +55,7 @@
     <Flow2d {core} {live} top={height + 12} {onselect} />
   {:else}
     <div class="absolute inset-0">
-      <Scene3d {core} layout={scene} />
+      <Scene3d {core} layout={scene} {onselect} />
     </div>
   {/if}
 

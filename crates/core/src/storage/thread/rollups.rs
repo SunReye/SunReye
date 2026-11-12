@@ -208,18 +208,63 @@ impl Store {
             }
             Ok((row.get::<_, Tick>(0)?, row.get::<_, Tick>(1)?, columns))
         })?;
-        let mut rollups = Vec::new();
-        for row in rows {
-            let (start, end, columns) = row?;
-            if let Some(aggregate) = aggregate(step, columns) {
-                rollups.push(Rollup {
+        let mut rows = rows.collect::<Result<Vec<_>, _>>()?;
+        if tier == Tier::Day {
+            for (day, sums) in self.open_days(device, series, from..to)? {
+                rows.retain(|&(start, ..)| start != day.start);
+                rows.push((day.start, day.end, columns(sums)));
+            }
+            rows.sort_by_key(|&(start, ..)| start);
+        }
+        Ok(rows
+            .into_iter()
+            .filter_map(|(start, end, columns)| {
+                Some(Rollup {
                     start: time(start),
                     end: time(end),
-                    aggregate,
-                });
+                    aggregate: aggregate(step, columns)?,
+                })
+            })
+            .collect())
+    }
+
+    /// The days starting within `range` that the open hour reaches into, rolled up from their
+    /// change points, the unflushed ones included, to the latest reading (ADR 3).
+    fn open_days(
+        &self,
+        device: DeviceId,
+        series: i64,
+        range: Range<Tick>,
+    ) -> Result<Vec<(Day, Sums)>, Error> {
+        let kind = self
+            .tracks
+            .iter()
+            .find(|((d, _), stored)| *d == device && stored.id == series)
+            .map(|(_, stored)| stored.kind);
+        let (Some(kind), Some(rolled)) = (kind, self.rolled) else {
+            return Ok(Vec::new());
+        };
+        let limit = self.clock;
+        let mut open = Vec::new();
+        for day in rollup::days(&self.zone.1, rolled, limit) {
+            if !range.contains(&day.start) {
+                continue;
+            }
+            let end = limit.min(day.end);
+            let mut points = points(&self.db, device.0, series, day.start, end)?;
+            points.extend(
+                self.pending
+                    .iter()
+                    .filter(|&&(d, s, p)| (d, s) == (device.0, series) && p.time < end)
+                    .map(|&(.., p)| p),
+            );
+            points.sort_by_key(|p| p.time);
+            if let Some(sums) = rollup::roll(kind, window(&points, day.start, end), day.start, end)
+            {
+                open.push((day, sums));
             }
         }
-        Ok(rollups)
+        Ok(open)
     }
 }
 

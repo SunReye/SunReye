@@ -1,5 +1,6 @@
 // What the first run configures (ADR 9, 11): the admin password, sign-in, the plant timezone and
-// location, devices and the topology.
+// location, devices and the topology; and who else signs in afterwards.
+import { access, type Access } from "./access";
 import { done, refusal, type Client, type Problem } from "./client";
 import type { Device } from "./core";
 import type { components } from "./schema";
@@ -41,7 +42,9 @@ export interface TopologyChange {
 
 export type Topology = components["schemas"]["Topology"];
 
-export interface Setup {
+export type { CreatedToken, Scope, Token, Viewer } from "./access";
+
+export interface Setup extends Access {
   /** Undefined while signed in, Home Assistant's ingress too; else `auth.setup` or `auth.required`. */
   session(): Promise<Problem | undefined>;
   /** Sets the admin password on the first run. */
@@ -88,6 +91,7 @@ export function setup(client: Client): Setup {
     ...zone(client),
     ...plant(client),
     ...devices(client),
+    ...access(client),
   };
 }
 
@@ -131,7 +135,14 @@ function plant(
   client: Client,
 ): Omit<
   Setup,
-  "session" | "setPassword" | "signIn" | "timezone" | "setTimezone" | "addDevice" | "changeDevice"
+  | keyof Access
+  | "session"
+  | "setPassword"
+  | "signIn"
+  | "timezone"
+  | "setTimezone"
+  | "addDevice"
+  | "changeDevice"
 > {
   return {
     setLocation: async (location) => {

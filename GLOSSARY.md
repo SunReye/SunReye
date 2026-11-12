@@ -112,6 +112,14 @@ _Avoid_: Window, tick
 An hourly (UTC hour) or daily (plant-local day) aggregate built from intervals.
 _Avoid_: Aggregate, summary
 
+**Self-consumption**:
+The share of the PV energy used on site rather than fed in, over a day or longer.
+_Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)
+
+**Autarky**:
+The share of the house load not bought from the grid, over a day or longer.
+_Avoid_: Self-sufficiency, independence
+
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.
 _Avoid_: Threshold, tolerance
