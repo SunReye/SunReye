@@ -6,6 +6,7 @@
   import type { Snippet } from "svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import type { ShellLayout } from "./input.svelte.ts";
+  import Bar from "./Bar.svelte";
   import Rail, { GUTTER } from "./Rail.svelte";
 
   let {
@@ -31,7 +32,11 @@
     <Rail touch={shell === "rail-open"} {current} {admin} />
   {/if}
 
-  <div class="relative min-h-dvh" style:padding-left="{railed ? GUTTER : 0}px">
+  <!-- The page ends above the bar. -->
+  <div
+    class={["relative min-h-dvh", shell === "bar" && "pb-[calc(84px+env(safe-area-inset-bottom))]"]}
+    style:padding-left="{railed ? GUTTER : 0}px"
+  >
     {#key current}
       <!-- No landmark: each screen brings its own `main`. -->
       <div
@@ -41,4 +46,8 @@
       </div>
     {/key}
   </div>
+
+  {#if shell === "bar"}
+    <Bar {current} {admin} />
+  {/if}
 </Tooltip.Provider>

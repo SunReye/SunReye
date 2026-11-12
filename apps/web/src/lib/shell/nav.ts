@@ -21,19 +21,32 @@ export interface NavItem {
 
 export const DASHBOARD: NavItem = { route: "/", label: m.nav_dashboard, icon: LayoutDashboard };
 
-/** The rail's upper list, in order; Controls is the admin's. */
-export const RAIL: readonly NavItem[] = [
+/** The phone bar's four screens; More holds the rest. */
+export const BAR: readonly NavItem[] = [
   DASHBOARD,
   { route: "/history", label: m.nav_history, icon: ChartLine },
   { route: "/forecast", label: m.nav_forecast, icon: CloudSun },
   { route: "/tariff", label: m.nav_tariff, icon: Receipt },
-  { route: "/controls", label: m.nav_controls, icon: SlidersHorizontal, admin: true },
-  { route: "/builder", label: m.nav_builder, icon: House },
-  { route: "/status", label: m.nav_status, icon: Activity },
 ];
+
+const CONTROLS: NavItem = {
+  route: "/controls",
+  label: m.nav_controls,
+  icon: SlidersHorizontal,
+  admin: true,
+};
+
+const BUILDER: NavItem = { route: "/builder", label: m.nav_builder, icon: House };
+const STATUS: NavItem = { route: "/status", label: m.nav_status, icon: Activity };
+
+/** The rail's upper list, in order; Controls is the admin's. */
+export const RAIL: readonly NavItem[] = [...BAR, CONTROLS, BUILDER, STATUS];
 
 /** Pinned to the rail's foot. */
 export const SETTINGS: NavItem = { route: "/settings", label: m.nav_settings, icon: Settings };
+
+/** The phone's More sheet, in order; Controls is the admin's. */
+export const MORE: readonly NavItem[] = [CONTROLS, SETTINGS, BUILDER, STATUS];
 
 /** The hash link to a route. */
 export function href(route: string): string {
