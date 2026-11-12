@@ -3,28 +3,37 @@ import { render } from "vitest-browser-svelte";
 import Backdrop from "./Backdrop.svelte";
 import "../../app.css";
 
-const tints = ["dawn", "noon", "dusk", "night"];
-
 afterEach(() => {
   delete document.documentElement.dataset["tod"];
 });
 
-test("with the plant's location the backdrop takes the sun's tint", async () => {
-  const core = { location: () => Promise.resolve({ latitude: 52.52, longitude: 13.4 }) };
+test("the backdrop takes the core's tint", async () => {
+  const core = { sunTint: () => Promise.resolve({ tint: "dusk" as const }) };
 
   await render(Backdrop, { core });
 
-  await expect.poll(() => document.documentElement.dataset["tod"]).toBeOneOf(tints);
+  await expect.poll(() => document.documentElement.dataset["tod"]).toBe("dusk");
+});
+
+test("a viewer, refused the location, still gets the tint", async () => {
+  const viewer = {
+    location: () => Promise.resolve({ problem: "auth.forbidden" }),
+    sunTint: () => Promise.resolve({ tint: "dawn" as const }),
+  };
+
+  await render(Backdrop, { core: viewer });
+
+  await expect.poll(() => document.documentElement.dataset["tod"]).toBe("dawn");
 });
 
 test("without a location the backdrop stays indigo", async () => {
   let asked = false;
 
   const core = {
-    location: () => {
+    sunTint: () => {
       asked = true;
 
-      return Promise.resolve({ problem: "auth.forbidden" });
+      return Promise.resolve({ tint: null });
     },
   };
 
@@ -43,7 +52,7 @@ test("each tint has its own spotlight", () => {
   const spotlight = (): string => getComputedStyle(root).getPropertyValue("--spotlight");
   const seen = new Set<string>();
 
-  for (const tint of tints) {
+  for (const tint of ["dawn", "noon", "dusk", "night"]) {
     root.dataset["tod"] = tint;
     seen.add(spotlight());
   }

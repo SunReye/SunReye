@@ -38,6 +38,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     // The scene viewers see read-only (ADR 20).
     (Method::GET, "/api/v1/layout", Read),
     (Method::GET, "/api/v1/module-types", Read),
+    // The backdrop's colour, never the coordinates it comes from (ADR 21).
+    (Method::GET, "/api/v1/sun-tint", Read),
     // Measured against the model, as history; no location (ADR 20).
     (Method::GET, "/api/v1/corrections", Read),
     // Uploaded car bodies the scene names.

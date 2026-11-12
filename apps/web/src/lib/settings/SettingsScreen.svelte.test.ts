@@ -31,6 +31,7 @@ test("the admin reaches every group from the root", async () => {
     "Verbindungen",
     "Tarif",
     "Prognose & Belegung",
+    "Benutzer & Zugang",
     "Anzeige",
     "Protokolle",
     "Gefahrenzone",
@@ -57,6 +58,7 @@ test("a viewer sees only the display, which is the browser's own", async () => {
     .element(screen.getByRole("button", { name: /^Anzeige\s*Dunkel · Deutsch/u }))
     .toBeVisible();
   expect(screen.getByRole("button", { name: /^Anlage/u }).query()).toBeNull();
+  expect(screen.getByRole("button", { name: /^Benutzer & Zugang/u }).query()).toBeNull();
 });
 
 test("the admin sees the write log", async () => {
