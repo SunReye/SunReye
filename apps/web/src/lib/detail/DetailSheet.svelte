@@ -18,6 +18,7 @@
     id,
     core,
     live,
+    series,
     day,
     names,
     params,
@@ -32,6 +33,8 @@
       "layout" | "capabilities" | "timezone" | "history" | "moduleTypes" | "corrections"
     >;
     live: Live | undefined;
+    /** The live stream's last two minutes, for a sheet's live graph. */
+    series: Source["series"];
     day: Day | undefined;
     /** Device names, which only the admin may list (ADR 9). */
     names: ReadonlyMap<number, string>;
@@ -107,6 +110,7 @@
     names: Object.fromEntries(names),
     now,
     status,
+    series,
   });
 
   const node = $derived(spec.node === null ? null : nodeReadings(spec.node, source));
