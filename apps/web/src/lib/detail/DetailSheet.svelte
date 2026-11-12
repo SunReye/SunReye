@@ -6,6 +6,7 @@
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import type { Core, Live } from "../api/core.ts";
   import BottomSheet from "../components/bottom-sheet.svelte";
+  import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
   import type { Day } from "../dashboard/day.ts";
   import { SPOT } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
@@ -59,25 +60,8 @@
     if (!open || read) return;
 
     read = true;
-    void core
-      .layout()
-      .then((layout) => {
-        if ("strings" in layout) strings = layout.strings;
-
-        return null;
-      })
-      .catch(() => null);
-    void core
-      .capabilities()
-      .then((caps) => {
-        if ("devices" in caps)
-          estimated = Object.fromEntries(
-            Object.entries(caps.devices).map(([d, s]) => [d, s.estimated]),
-          );
-
-        return null;
-      })
-      .catch(() => null);
+    void layoutStrings(core).then((next) => (strings = next));
+    void estimatedSeries(core).then((next) => (estimated = next));
   });
 
   $effect(() => {

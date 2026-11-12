@@ -5,6 +5,7 @@ import { m } from "../paraglide/messages.js";
 import {
   battery,
   ev,
+  generator,
   grid,
   house,
   inputs,
@@ -79,6 +80,7 @@ const PLANT_NODES = new Map([
   ["grid", { prefixes: ["grid."], lead: "grid.power", groups: grid }],
   ["house", { prefixes: ["load."], lead: "load.power", groups: house }],
   ["ev", { prefixes: ["ev."], lead: "ev.charge.power", groups: ev }],
+  ["generator", { prefixes: ["generator."], lead: "generator.power", groups: generator }],
 ]);
 
 const STRING = /^string-(?<id>\d+)$/u;

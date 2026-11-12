@@ -578,5 +578,21 @@
   "detail_history": "Open in history · {range}",
   "detail_range_today": "Today",
   "detail_prices": "Today's spot prices",
-  "detail_no_prices": "No prices for today yet"
+  "detail_no_prices": "No prices for today yet",
+  "flow_pv_strings": "PV · {count} strings",
+  "flow_generator": "Generator",
+  "flow_dc": "DC",
+  "flow_details": "{name}: details",
+  "flow_idle": "Idle",
+  "flow_producing": "Producing",
+  "flow_charging": "Charging",
+  "flow_discharging": "Discharging",
+  "flow_consuming": "Consuming",
+  "flow_feeding": "Feeding in",
+  "flow_running": "Running",
+  "flow_off": "Off",
+  "flow_import": "Importing",
+  "flow_export": "Exporting",
+  "flow_plugged": "Plugged in",
+  "rd_generator_total": "Generation total"
 }

@@ -578,5 +578,21 @@
   "detail_history": "Im Verlauf öffnen · {range}",
   "detail_range_today": "Heute",
   "detail_prices": "Spotpreise heute",
-  "detail_no_prices": "Noch keine Preise für heute"
+  "detail_no_prices": "Noch keine Preise für heute",
+  "flow_pv_strings": "PV · {count} Strings",
+  "flow_generator": "Generator",
+  "flow_dc": "DC",
+  "flow_details": "{name}: Details",
+  "flow_idle": "Ruht",
+  "flow_producing": "Erzeugt",
+  "flow_charging": "Lädt",
+  "flow_discharging": "Entlädt",
+  "flow_consuming": "Verbraucht",
+  "flow_feeding": "Speist ein",
+  "flow_running": "Läuft",
+  "flow_off": "Aus",
+  "flow_import": "Bezug",
+  "flow_export": "Einspeisung",
+  "flow_plugged": "Angesteckt",
+  "rd_generator_total": "Erzeugung gesamt"
 }
