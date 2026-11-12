@@ -52,13 +52,16 @@ function extremes(geometry: Geometry): Triple[] {
 
 /** The camera at `preset` around the scene's bounding box, far enough to see all of it. */
 export function presetView(preset: Preset, geometry: Geometry): View {
-  const points = extremes(geometry);
+  const found = extremes(geometry);
+  // Nothing to bound: the origin, where the first block's corner will be.
+  const points: Triple[] = found.length === 0 ? [[0, 0, 0]] : found;
+
   const low = [0, 1, 2].map((axis) => Math.min(...points.map((p) => p[axis] ?? 0)));
   const high = [0, 1, 2].map((axis) => Math.max(...points.map((p) => p[axis] ?? 0)));
   const centre = low.map((l, axis) => (l + (high[axis] ?? l)) / 2);
 
   const radius =
-    points.length === 0 ? EMPTY : Math.hypot(...high.map((h, axis) => h - (centre[axis] ?? h)));
+    found.length === 0 ? EMPTY : Math.hypot(...high.map((h, axis) => h - (centre[axis] ?? h)));
 
   const [x = 0, y = 0, z = 0] = centre;
   const [dx, dy, dz] = directions[preset];

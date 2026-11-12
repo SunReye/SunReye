@@ -57,6 +57,13 @@ test("the top view looks straight down, the isometric view from the south-east a
   expect(ix).toBeGreaterThan(0);
 });
 
+test("an empty scene is seen around the origin, 25 m off, so a template's house lands in view", () => {
+  const { position, target } = presetView("isometric", { faces: [], solids: [] });
+
+  expect(target).toEqual([0, 0, 0]);
+  expect(Math.hypot(...position)).toBeCloseTo(25, 6);
+});
+
 test("a kept view reads back; anything else is no view", () => {
   const view = presetView("west", house);
 
