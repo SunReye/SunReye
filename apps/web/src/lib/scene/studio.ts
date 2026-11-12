@@ -8,6 +8,7 @@ import {
   Fog,
   HalfFloatType,
   HemisphereLight,
+  type Object3D,
   PCFShadowMap,
   type PerspectiveCamera,
   PMREMGenerator,
@@ -86,9 +87,14 @@ export class Studio {
   readonly #centre = new Vector3();
   #radius = 10;
   readonly #toward = new Vector3(0, 1, 0);
+  readonly camera: PerspectiveCamera;
+  /** The environment waits for `environ`: made at once, it would compile its programs blocking. */
+  #held: readonly [Daylight, Theme] | null | undefined = null;
+  #size: readonly [number, number] = [1, 1];
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on them.
   constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera) {
+    this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
       antialias: true,
@@ -154,7 +160,9 @@ export class Studio {
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
     this.#place();
-    this.#environ(day, look);
+
+    if (this.#held === undefined) this.#environ(day, look);
+    else this.#held = [day, look];
 
     const untoned = new Color(
       untone(page.r, look.exposure),
@@ -178,6 +186,7 @@ export class Studio {
   }
 
   setSize(width: number, height: number): void {
+    this.#size = [width, height];
     this.renderer.setSize(width, height, false);
     this.#composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.#composer.setSize(width, height);
@@ -185,6 +194,46 @@ export class Studio {
 
   render(): void {
     this.#composer.render();
+  }
+
+  /** Compiles what `part` needs for the target the scene pass draws into: a program differs by it. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js compiles it.
+  compile(part: Object3D, scene: Scene = this.scene): void {
+    this.renderer.setRenderTarget(this.#composer.readBuffer);
+    this.renderer.compile(part, this.camera, scene);
+    this.renderer.setRenderTarget(null);
+  }
+
+  /** The same for the whole scene, compiled in parallel; resolves once ready. */
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js compiles it.
+  async compileAsync(scene: Scene = this.scene): Promise<void> {
+    this.renderer.setRenderTarget(this.#composer.readBuffer);
+
+    const ready = this.renderer.compileAsync(scene, this.camera, scene);
+
+    this.renderer.setRenderTarget(null);
+    await ready;
+  }
+
+  /** Makes the environment held since: its programs first, used on a map of a few pixels. */
+  async environ(): Promise<void> {
+    await this.compileAsync(this.#skyScene);
+    this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000, { size: 16 }).dispose();
+
+    const held = this.#held;
+
+    this.#held = undefined;
+
+    if (held !== null && held !== undefined) this.#environ(...held);
+  }
+
+  /** A frame of a few pixels: every pass makes and first uses its programs. */
+  warm(): void {
+    const [width, height] = this.#size;
+
+    this.setSize(4, 4);
+    this.render();
+    this.setSize(width, height);
   }
 
   dispose(): void {

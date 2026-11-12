@@ -12,7 +12,7 @@ import {
   type Object3D,
 } from "three";
 import type { Geometry } from "./pv.ts";
-import { buildScene, stringColour, tint } from "./scene.ts";
+import { buildScene, buildSliced, stringColour, tint } from "./scene.ts";
 
 const house: Geometry = {
   faces: [
@@ -214,4 +214,41 @@ test("live, each module's cells glow in the solar colour by its string's share o
   tint(group, [1, 0.5, null], { colour: solar, daylight: 0 });
 
   expect(glows[0]?.emissiveIntensity).toBe(0);
+});
+
+/** Each part's name, in order. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's group.
+const names = (group: Object3D): string[] => group.children.map((child) => child.name);
+
+test("built in slices, the scene waits at each yield between sections and ends as the whole build", async () => {
+  const yields: (() => void)[] = [];
+  let done = false;
+
+  const building = buildSliced(house, [], async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    yields.push(resolve);
+    await promise;
+  });
+
+  void (async () => {
+    await building;
+    done = true;
+  })();
+
+  /** Lets go of each yield in turn; the build ends only after the last. */
+  async function release(seen: number): Promise<number> {
+    await Bun.sleep(0);
+
+    if (done) return seen;
+
+    expect(yields).toHaveLength(seen + 1);
+    yields.at(-1)?.();
+
+    return release(seen + 1);
+  }
+
+  expect(await release(0)).toBeGreaterThan(2);
+
+  expect(names(await building)).toEqual(names(buildScene(house)));
 });

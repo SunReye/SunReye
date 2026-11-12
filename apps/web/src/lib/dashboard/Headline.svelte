@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import type { Snippet } from "svelte";
   import Unplug from "@lucide/svelte/icons/unplug";
   import type { Live } from "../api/core.ts";
   import AnimatedNumber from "../components/animated-number.svelte";
@@ -20,6 +21,7 @@
     figures,
     onselect,
     height = $bindable(0),
+    children,
   }: {
     /** Undefined until the stream first answers. */
     live: Live | undefined;
@@ -32,6 +34,8 @@
     onselect: (id: string) => void;
     /** Pixels it takes, so the flow below starts clear of it. */
     height?: number;
+    /** A quiet note under the figures. */
+    children?: Snippet;
   } = $props();
 
   const lead = $derived(headline(plant));
@@ -119,4 +123,5 @@
       {/if}
     </span>
   {/if}
+  {@render children?.()}
 </div>

@@ -82,6 +82,10 @@ export class Flight {
   }
 
   /** Moves the camera to where the flight is at `now`; true while it has yet to land. */
+  get flying(): boolean {
+    return this.#step !== undefined;
+  }
+
   step(now: number): boolean {
     if (this.#step?.(now) !== true) this.#step = undefined;
 

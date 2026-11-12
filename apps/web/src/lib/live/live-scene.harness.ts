@@ -98,10 +98,12 @@ export function show(
   core: Readonly<Core>,
   estimated: readonly string[] = [],
   onselect: (id: string) => void = () => {},
+  onready?: () => void,
 ) {
   return render(LiveScene, {
     core,
     onselect,
+    onready,
     pv,
     layout,
     scene,
