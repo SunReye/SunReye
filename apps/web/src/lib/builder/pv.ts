@@ -1,5 +1,6 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
+import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import {
   isExports,
   isGeometry,
@@ -10,6 +11,17 @@ import {
   unwrap,
   type Exported,
 } from "./replies.ts";
+
+export type {
+  Fence,
+  FenceFinish,
+  FencePoint,
+  Fencing,
+  Ground,
+  GroundFinish,
+  GroundSurface,
+  Obstacle,
+} from "./obstacles.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -34,24 +46,6 @@ export interface Block {
   /** A carport: a post at each corner instead of walls. */
   readonly open?: boolean;
 }
-
-export type Obstacle =
-  | {
-      readonly kind: "box";
-      readonly x: number;
-      readonly z: number;
-      readonly width: number;
-      readonly depth: number;
-      readonly height: number;
-      readonly rotation: number;
-    }
-  | {
-      readonly kind: "cylinder" | "tree";
-      readonly x: number;
-      readonly z: number;
-      readonly radius: number;
-      readonly height: number;
-    };
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
 export interface Cell {
@@ -113,6 +107,9 @@ export interface Scene {
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
+  /** Each drawn over the last; without any the plot is lawn. */
+  readonly surfaces?: readonly GroundSurface[];
+  readonly fences?: readonly Fence[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -160,7 +157,7 @@ export interface Modules {
 }
 
 export interface Face {
-  readonly surface: "wall" | "roof" | "obstacle";
+  readonly surface: "wall" | "roof" | "obstacle" | "hedge";
   /** A flat convex polygon. */
   readonly corners: readonly Point[];
 }
@@ -168,7 +165,8 @@ export interface Face {
 export type Solid =
   | { readonly kind: "sphere"; readonly centre: Point; readonly radius: number }
   | {
-      readonly kind: "cylinder";
+      /** Upright; a cone narrows from `radius` at its base to its apex `height` above. */
+      readonly kind: "cylinder" | "cone";
       readonly base: Point;
       readonly radius: number;
       readonly height: number;
@@ -191,6 +189,9 @@ export interface Geometry {
   readonly stands?:
     | readonly { readonly at: Point; readonly forward: Point; readonly above: Point }[]
     | null;
+  /** By ground surface and by fence, placed on the ground; null while one is refused. */
+  readonly ground?: readonly Ground[] | null;
+  readonly fences?: readonly Fencing[] | null;
 }
 
 /** North and east positive, in degrees. */

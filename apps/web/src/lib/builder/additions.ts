@@ -1,6 +1,6 @@
 // What each inspector group can add, and the level the new object opens at (ADR 20).
 import { m } from "../paraglide/messages.js";
-import { nextBlock, obstacle } from "./draft.ts";
+import { fence, nextBlock, obstacle, surface } from "./draft.ts";
 import type { Level, Section } from "./levels.ts";
 import { addString, type Draft } from "./modules.ts";
 import type { Plan } from "./outline.ts";
@@ -29,16 +29,31 @@ const OBSTACLES: readonly (readonly [Obstacle["kind"], () => string])[] = [
   ["box", m.builder_add_box],
   ["cylinder", m.builder_add_cylinder],
   ["tree", m.builder_add_tree],
+  ["hedge", m.builder_add_hedge],
 ];
 
 function surroundings({ draft }: Plan): Addition[] {
-  const { obstacles } = draft.scene;
+  const { obstacles, surfaces = [], fences = [] } = draft.scene;
 
-  return OBSTACLES.map(([kind, label]) => ({
+  const solid = OBSTACLES.map(([kind, label]): Addition => ({
     label: label(),
     draft: { ...draft, scene: { ...draft.scene, obstacles: [...obstacles, obstacle(kind)] } },
     level: { kind: "obstacle", index: obstacles.length },
   }));
+
+  return [
+    ...solid,
+    {
+      label: m.builder_add_surface(),
+      draft: { ...draft, scene: { ...draft.scene, surfaces: [...surfaces, surface()] } },
+      level: { kind: "surface", index: surfaces.length },
+    },
+    {
+      label: m.builder_add_fence(),
+      draft: { ...draft, scene: { ...draft.scene, fences: [...fences, fence()] } },
+      level: { kind: "fence", index: fences.length },
+    },
+  ];
 }
 
 const MARKERS: readonly (readonly [Equipment["kind"], () => string])[] = [

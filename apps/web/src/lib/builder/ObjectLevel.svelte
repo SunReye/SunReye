@@ -7,9 +7,9 @@
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
   import { painted, withoutBlock, withoutString, type Draft, type Strokes } from "./modules.ts";
-  import ObstacleFieldset from "./ObstacleFieldset.svelte";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
+  import SurroundingLevel from "./SurroundingLevel.svelte";
 
   let {
     level,
@@ -36,7 +36,6 @@
 
   /** The object the level names, by its kind; undefined for every other kind. */
   const block = $derived(level.kind === "block" ? scene.blocks[index] : undefined);
-  const obstacle = $derived(level.kind === "obstacle" ? scene.obstacles[index] : undefined);
   const equipment = $derived(scene.equipment ?? []);
   const marker = $derived(level.kind === "marker" ? equipment[index] : undefined);
   const places = $derived(scene.carPlaces ?? []);
@@ -79,14 +78,16 @@
     }}
     onremove={removeBlock}
   />
-{:else if obstacle !== undefined}
-  <ObstacleFieldset
-    item={obstacle}
+{:else if level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"}
+  <SurroundingLevel
+    kind={level.kind}
+    {index}
+    {scene}
     onchange={(next) => {
-      sceneChange({ obstacles: scene.obstacles.with(index, next) });
+      onchange({ ...draft, scene: next });
     }}
-    onremove={() => {
-      remove({ ...draft, scene: { ...scene, obstacles: scene.obstacles.toSpliced(index, 1) } });
+    onremove={(next) => {
+      remove({ ...draft, scene: next });
     }}
   />
 {:else if marker !== undefined}

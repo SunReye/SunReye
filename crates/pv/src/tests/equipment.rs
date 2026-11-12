@@ -20,6 +20,8 @@ fn house(equipment: Vec<Equipment>) -> Scene {
         grids: vec![],
         equipment,
         car_places: vec![],
+        surfaces: vec![],
+        fences: vec![],
     }
 }
 

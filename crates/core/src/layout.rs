@@ -55,8 +55,8 @@ enum Refusal {
     ModuleType,
     /// A value out of its physical range.
     Value,
-    /// A scene's grid names no roof face, a module no string or one of another module type, or
-    /// an equipment marker lies off its wall.
+    /// A scene's grid names no roof face, a module no string or one of another module type, an
+    /// equipment marker lies off its wall, or a car place, ground surface or fence is refused.
     Scene,
     /// A module crosses its face's setback.
     Setback,

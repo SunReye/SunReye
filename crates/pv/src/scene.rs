@@ -6,10 +6,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CarPlace, Equipment, ModuleGrid, Occluder, Point};
+use crate::{CarPlace, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Point};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
+/// A conifer's crown starts at this share of its height.
+const CONIFER_FOOT: f64 = 0.2;
 /// A carport post's radius in metres.
 const POST: f64 = 0.06;
 /// Metres within which two corners are one.
@@ -32,6 +34,12 @@ pub struct Scene {
     pub equipment: Vec<Equipment>,
     #[serde(default, rename = "carPlaces", skip_serializing_if = "Vec::is_empty")]
     pub car_places: Vec<CarPlace>,
+    /// Drawn in order, each over the last; without any the plot is lawn. They never shade.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<GroundSurface>,
+    /// Drawn only; they never shade.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fences: Vec<Fence>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
@@ -100,13 +108,35 @@ pub enum Obstacle {
         radius: f64,
         height: f64,
     },
-    /// A trunk under a sphere crown of `radius` whose top is at `height`.
+    /// A trunk under a crown of `radius` whose top is at `height`: a broadleaf's a sphere, a
+    /// conifer's a cone from a fifth of the height.
     Tree {
         x: f64,
         z: f64,
         radius: f64,
         height: f64,
+        #[serde(default)]
+        crown: Crown,
     },
+    /// A straight row: a box whose length runs along x and its depth along z from its corner.
+    Hedge {
+        x: f64,
+        z: f64,
+        length: f64,
+        depth: f64,
+        height: f64,
+        rotation: f64,
+    },
+}
+
+/// A tree's crown, by its leaves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum Crown {
+    #[default]
+    Broadleaf,
+    Conifer,
 }
 
 /// What a face is, so it can be drawn as such.
@@ -115,6 +145,7 @@ pub enum Surface {
     Wall,
     Roof,
     Obstacle,
+    Hedge,
 }
 
 /// A flat convex polygon in the shading frame.
@@ -139,7 +170,7 @@ impl Block {
 type Local = [f64; 3];
 
 impl Scene {
-    /// Every wall and roof of the blocks, and every side of the box obstacles.
+    /// Every wall and roof of the blocks, and every side of the boxes and hedges.
     #[must_use]
     pub fn faces(&self) -> Vec<Face> {
         let blocks = self.blocks.iter().flat_map(|block| {
@@ -167,6 +198,18 @@ impl Scene {
                 vec![lid(width, depth, height)],
                 [Surface::Obstacle; 2],
             ),
+            Obstacle::Hedge {
+                x,
+                z,
+                length,
+                depth,
+                height,
+                rotation,
+            } => self.prism(x, z, rotation).faces(
+                [length, depth],
+                vec![lid(length, depth, height)],
+                [Surface::Hedge; 2],
+            ),
             Obstacle::Cylinder { .. } | Obstacle::Tree { .. } => Vec::new(),
         });
         blocks.chain(boxes).collect()
@@ -191,7 +234,7 @@ impl Scene {
         self.obstacles
             .iter()
             .flat_map(|obstacle| match *obstacle {
-                Obstacle::Box { .. } => Vec::new(),
+                Obstacle::Box { .. } | Obstacle::Hedge { .. } => Vec::new(),
                 Obstacle::Cylinder {
                     x,
                     z,
@@ -207,20 +250,8 @@ impl Scene {
                     z,
                     radius,
                     height,
-                } => {
-                    let foot = self.prism(x, z, 0.0);
-                    vec![
-                        Occluder::Cylinder {
-                            base: foot.place([0.0; 3]),
-                            radius: radius * TRUNK,
-                            height: height - radius,
-                        },
-                        Occluder::Sphere {
-                            centre: foot.place([0.0, height - radius, 0.0]),
-                            radius,
-                        },
-                    ]
-                }
+                    crown,
+                } => tree(&self.prism(x, z, 0.0), radius, height, crown),
             })
             .chain(posts)
             .collect()
@@ -273,6 +304,35 @@ impl Scene {
             z,
             rotation,
             north: self.north,
+        }
+    }
+}
+
+/// A trunk under a sphere, or a cone from a fifth of the height.
+fn tree(foot: &Frame, radius: f64, height: f64, crown: Crown) -> Vec<Occluder> {
+    let trunk = |height| Occluder::Cylinder {
+        base: foot.place([0.0; 3]),
+        radius: radius * TRUNK,
+        height,
+    };
+    match crown {
+        Crown::Broadleaf => vec![
+            trunk(height - radius),
+            Occluder::Sphere {
+                centre: foot.place([0.0, height - radius, 0.0]),
+                radius,
+            },
+        ],
+        Crown::Conifer => {
+            let base = height * CONIFER_FOOT;
+            vec![
+                trunk(base),
+                Occluder::Cone {
+                    base: foot.place([0.0, base, 0.0]),
+                    radius,
+                    height: height - base,
+                },
+            ]
         }
     }
 }

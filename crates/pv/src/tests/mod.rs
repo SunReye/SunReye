@@ -12,4 +12,5 @@ mod scene;
 mod shade;
 mod string;
 mod sun;
+mod surroundings;
 mod temperature;

@@ -11,6 +11,7 @@ import {
   SRGBColorSpace,
   Vector2,
 } from "three";
+import type { FenceFinish, GroundFinish } from "../builder/pv.ts";
 import { GROUPS, type GroupName, type Pixels } from "./pixels.ts";
 import { warmed } from "./warm.ts";
 
@@ -51,7 +52,18 @@ function map(name: GroupName, kind: string): DataTexture {
 }
 
 /** Faces carry their UVs in texture repeats; these are a repeat's metres on each finish. */
-export const REPEAT = { plaster: [3, 3], tiles: [2.4, 2.64], render: [2.4, 2.4] } as const;
+export const REPEAT = {
+  plaster: [3, 3],
+  tiles: [2.4, 2.64],
+  render: [2.4, 2.4],
+  lawn: [3, 3],
+  // The prototype's: eight courses of pavers in 1.6 m.
+  paving: [1.6, 1.6],
+  driveway: [4, 4],
+  gravel: [1.2, 1.2],
+  path: [2.4, 2.4],
+  wood: [1.6, 1.6],
+} as const;
 
 /** Mineral plaster for walls. */
 export function plaster(): MeshStandardMaterial {
@@ -107,6 +119,50 @@ export function lawn(): MeshStandardMaterial {
     roughness: 0.95,
   });
 }
+
+/** A hedge's body under its leaves: dark, so gaps between the clusters read as depth. */
+export function hedge(): MeshStandardMaterial {
+  return new MeshStandardMaterial({
+    color: 0x1f2e16,
+    roughness: 0.9,
+    normalMap: map("grass", "normal"),
+    normalScale: new Vector2(1.5, 1.5),
+  });
+}
+
+/** Ground finishes, each from its own generated maps. */
+export const GROUND: Readonly<Record<GroundFinish, () => MeshStandardMaterial>> = {
+  lawn,
+  paving: () => paved("pavers", 0.8),
+  driveway: () => paved("asphalt", 1),
+  gravel: () => paved("gravel", 0.95),
+  path: () => paved("flags", 0.85),
+};
+
+function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: number) {
+  return new MeshStandardMaterial({
+    map: map(name, "map"),
+    normalMap: map(name, "normal"),
+    roughness,
+    // Over the lawn and over earlier surfaces, never flickering through them.
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+}
+
+/** Fence finishes: painted boards, anthracite powder-coated bars, a rendered wall. */
+export const FENCE: Readonly<Record<FenceFinish, () => MeshStandardMaterial>> = {
+  wood: () =>
+    new MeshStandardMaterial({
+      map: map("wood", "map"),
+      normalMap: map("wood", "normal"),
+      roughness: 0.75,
+    }),
+  // The prototype's window frames.
+  metal: () => new MeshStandardMaterial({ color: 0x2e3136, roughness: 0.45, metalness: 0.6 }),
+  wall: plaster,
+};
 
 /** A wall-hung box: inverter or battery. */
 export function equipment(): MeshStandardMaterial {

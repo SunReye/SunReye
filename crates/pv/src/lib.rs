@@ -14,6 +14,7 @@ mod scene;
 mod shade;
 mod string;
 mod sun;
+mod surroundings;
 mod temperature;
 
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
@@ -23,8 +24,11 @@ pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Si
 pub use mppt::{input_output, module_counts_differ};
 pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
-pub use scene::{Block, Face, Obstacle, Roof, Scene, Surface};
+pub use scene::{Block, Crown, Face, Obstacle, Roof, Scene, Surface};
 pub use sun::sun_position;
+pub use surroundings::{
+    Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
+};
 pub use temperature::cell_temperature;
 
 /// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
@@ -123,8 +127,9 @@ pub struct Module {
     pub place: Option<Place>,
 }
 
-/// What casts beam shade: blocks, roofs and carports as triangles, tree crowns as spheres,
-/// chimneys, poles and trunks as upright cylinders.
+/// What casts beam shade: blocks, roofs, carports, boxes and hedges as triangles, broadleaf
+/// crowns as spheres, conifer crowns as upright cones, chimneys, poles and trunks as upright
+/// cylinders.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Occluder {
     Triangle([Point; 3]),
@@ -133,6 +138,12 @@ pub enum Occluder {
         radius: f64,
     },
     Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+    /// `radius` at its base, narrowing to its apex `height` above.
+    Cone {
         base: Point,
         radius: f64,
         height: f64,

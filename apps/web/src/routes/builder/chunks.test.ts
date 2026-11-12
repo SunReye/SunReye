@@ -31,9 +31,20 @@ if (!isManifest(parsed)) throw new TypeError("not a Vite manifest");
 
 const manifest = parsed;
 
-/** The chunks three.js's modules are bundled into. */
+/** Whether a chunk's code is three.js's: its messages carry the `THREE.` prefix. */
+async function carriesThree(file: string): Promise<boolean> {
+  return (await Bun.file(`${client}${file}`).text()).includes("THREE.");
+}
+
+// Found by content, not name: Rollup names a merged chunk after any of its modules.
 const three = new Set(
-  Object.keys(manifest).filter((key) => /^three(?:\.|$)/u.test(manifest[key]?.name ?? "")),
+  (
+    await Promise.all(
+      Object.entries(manifest).map(async ([key, chunk]: readonly [string, Chunk]) =>
+        (await carriesThree(chunk.file)) ? [key] : [],
+      ),
+    )
+  ).flat(),
 );
 
 /** Every chunk `key` loads before it runs: itself and its static imports. */

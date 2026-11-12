@@ -74,6 +74,42 @@ test("on a portrait tablet the inspector is a sheet that a tap or a pick pulls u
     .toBeVisible();
 });
 
+test("surroundings add a hedge, a ground surface and a fence, each opening its own level", async () => {
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: house(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await drill("Umgebung", "Hecke hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Hecke 1" })).toBeVisible();
+  await expect
+    .element(inspector().getByRole("button", { name: starts("Länge (m)") }))
+    .toBeVisible();
+
+  await drill("Umgebung", "Fläche hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Pflaster 1" })).toBeVisible();
+  await expect.element(inspector().getByRole("button", { name: starts("Belag") })).toBeVisible();
+
+  await drill("Umgebung", "Zaun hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Zaun 1" })).toBeVisible();
+  expect(
+    inspector()
+      .getByRole("button", { name: starts("Letzten Punkt entfernen") })
+      .query(),
+  ).toBeNull();
+
+  await drill("Punkt hinzufügen");
+  await expect
+    .element(inspector().getByRole("button", { name: starts("Punkt 3 x (m)") }))
+    .toBeVisible();
+
+  await drill("Umgebung", "Baum hinzufügen");
+  await expect.element(inspector().getByRole("button", { name: starts("Krone") })).toBeVisible();
+});
+
 /** Form controls the browser draws in its own style; the slider and hidden pickers are styled or unseen. */
 const PLAIN =
   "select, textarea, fieldset, input:not([data-slot='input']):not([type='range']):not(.sr-only)";

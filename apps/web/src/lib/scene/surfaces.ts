@@ -2,17 +2,19 @@
 // on its cells, and a tree's crown of leaves. Pure: no DOM.
 import {
   Color,
+  ConeGeometry,
   Euler,
   IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
+  Mesh,
   Quaternion,
   SRGBColorSpace,
   Vector3,
 } from "three";
 import type { Face, Point } from "../builder/pv.ts";
 import { cross, dot, normal, unit } from "../builder/vector.ts";
-import { leaves } from "./materials.ts";
+import { hedge, leaves } from "./materials.ts";
 
 /** A convex polygon's corners as a fan of triangles, three corners each. */
 export function fan([first, ...rest]: readonly Point[]): Point[] {
@@ -64,13 +66,23 @@ export function moduleUvs([a, b, , d]: readonly Point[]): number[] {
   return fan(corners.map(([u, v]) => [u, v, 0])).flatMap(([u, v]) => [u, v]);
 }
 
-/** A tree's crown: clusters of leaves in a shell of the sphere, lighter high and outside. */
-export function crown(radius: number, seed: number): InstancedMesh {
-  const count = Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
+/** Lehmer's generator: the same leaves on every build. */
+function seeded(seed: number): () => number {
   let state = seed;
-  const random = (): number => (state = (state * 16807) % 2147483647) / 2147483647;
 
-  const mesh = new InstancedMesh(new IcosahedronGeometry(0.5, 1), leaves(), count);
+  return () => (state = (state * 16807) % 2147483647) / 2147483647;
+}
+
+/** One cluster of leaves: where it sits, how big it is, and its hue, saturation and lightness. */
+interface Cluster {
+  readonly at: readonly [number, number, number];
+  readonly size: number;
+  readonly hsl: readonly [number, number, number];
+}
+
+/** Leaf clusters as one instanced mesh of the prototype's icosahedra, each turned at random. */
+function clusters(made: readonly Cluster[], random: () => number): InstancedMesh {
+  const mesh = new InstancedMesh(new IcosahedronGeometry(0.5, 1), leaves(), made.length);
 
   const [matrix, turn, at, size, colour] = [
     new Matrix4(),
@@ -80,7 +92,26 @@ export function crown(radius: number, seed: number): InstancedMesh {
     new Color(),
   ];
 
-  for (let i = 0; i < count; i++) {
+  for (const [i, cluster] of made.entries()) {
+    const k = cluster.size;
+
+    at.set(...cluster.at);
+    turn.setFromEuler(new Euler(random() * 3, random() * 3, random() * 3));
+    size.set(k, k * (0.8 + random() * 0.3), k);
+    mesh.setMatrixAt(i, matrix.compose(at, turn, size));
+    colour.setHSL(...cluster.hsl, SRGBColorSpace);
+    mesh.setColorAt(i, colour);
+  }
+
+  return mesh;
+}
+
+/** A tree's crown: clusters of leaves in a shell of the sphere, lighter high and outside. */
+export function crown(radius: number, seed: number): InstancedMesh {
+  const count = Math.max(12, Math.round(260 * (radius / 2.7) ** 2));
+  const random = seeded(seed);
+
+  const made = Array.from({ length: count }, (): Cluster => {
     // Points in a shell, denser outside so the crown reads as clusters.
     const [u, phi, shell] = [
       random() * 2 - 1,
@@ -90,25 +121,97 @@ export function crown(radius: number, seed: number): InstancedMesh {
 
     const ring = Math.sqrt(1 - u * u);
 
-    at.set(
-      radius * shell * ring * Math.cos(phi),
-      radius * shell * u,
-      radius * shell * ring * Math.sin(phi),
-    );
-    turn.setFromEuler(new Euler(random() * 3, random() * 3, random() * 3));
+    return {
+      at: [
+        radius * shell * ring * Math.cos(phi),
+        radius * shell * u,
+        radius * shell * ring * Math.sin(phi),
+      ],
+      size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
+      hsl: [
+        0.24 + random() * 0.05,
+        0.38 + random() * 0.14,
+        0.17 + u * shell * 0.05 + random() * 0.07,
+      ],
+    };
+  });
 
-    const k = (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3);
+  return clusters(made, random);
+}
 
-    size.set(k, k * (0.8 + random() * 0.3), k);
-    mesh.setMatrixAt(i, matrix.compose(at, turn, size));
-    colour.setHSL(
-      0.24 + random() * 0.05,
-      0.38 + random() * 0.14,
-      0.17 + u * shell * 0.05 + random() * 0.07,
-      SRGBColorSpace,
-    );
-    mesh.setColorAt(i, colour);
-  }
+/** Leaf clusters per square metre of a crown's surface: the broadleaf crown's density. */
+const DENSITY = 2.8;
+
+/**
+ * A conifer's crown: clusters in a shell of the cone from its base up `height`, smaller and
+ * darker blue-green than a broadleaf's, lighter toward the tip.
+ */
+export function conifer(radius: number, height: number, seed: number): InstancedMesh {
+  const count = Math.min(
+    1500,
+    Math.max(24, Math.round(3 * DENSITY * Math.PI * radius * Math.hypot(radius, height))),
+  );
+
+  const random = seeded(seed);
+
+  const made = Array.from({ length: count }, (): Cluster => {
+    // Up the cone by area: more clusters low, where it is wide.
+    const up = 1 - Math.sqrt(random());
+    const [phi, shell] = [random() * Math.PI * 2, 0.6 + 0.4 * Math.cbrt(random())];
+    const reach = radius * (1 - up) * shell;
+
+    return {
+      at: [reach * Math.cos(phi), height * up, reach * Math.sin(phi)],
+      size: (0.45 + random() * 0.45) * Math.min(1, radius / 2 + 0.4) * (1 - up * 0.6),
+      hsl: [0.3 + random() * 0.05, 0.3 + random() * 0.12, 0.12 + up * 0.05 + random() * 0.05],
+    };
+  });
+
+  const mesh = clusters(made, random);
+  // A dark body, so the gaps between the clusters read as depth, not sky.
+  const body = new Mesh(new ConeGeometry(radius * 0.75, height * 0.95, 14), hedge());
+
+  body.position.y = (height * 0.95) / 2;
+  mesh.add(body);
 
   return mesh;
 }
+
+/** Leaf clusters per square metre of a clipped hedge. */
+const HEDGE = 14;
+
+/** A hedge's leaves: small clusters spread over its faces, in three.js's frame. */
+export function foliage(faces: readonly Face[], seed: number): InstancedMesh {
+  const random = seeded(seed);
+
+  const made = faces.flatMap(({ corners }) => {
+    const points = fan(corners);
+
+    return Array.from({ length: points.length / 3 }, (_, t) => {
+      const [a, b, c] = [points[t * 3], points[t * 3 + 1], points[t * 3 + 2]];
+
+      if (a === undefined || b === undefined || c === undefined) return [];
+
+      const area = Math.hypot(...cross(sub(b, a), sub(c, a))) / 2;
+
+      return Array.from({ length: Math.round(area * HEDGE) }, (): Cluster => {
+        // A uniform point of the triangle.
+        let [u, v] = [random(), random()];
+
+        if (u + v > 1) [u, v] = [1 - u, 1 - v];
+
+        const on = (k: 0 | 1 | 2): number => a[k] + u * (b[k] - a[k]) + v * (c[k] - a[k]);
+
+        return {
+          at: [on(0), on(2), 0 - on(1)],
+          size: 0.22 + random() * 0.22,
+          hsl: [0.25 + random() * 0.05, 0.4 + random() * 0.12, 0.13 + random() * 0.07],
+        };
+      });
+    }).flat();
+  });
+
+  return clusters(made.slice(0, 4000), random);
+}
+
+const sub = (a: Point, b: Point): Point => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
