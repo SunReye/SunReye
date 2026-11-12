@@ -12,3 +12,8 @@ class Language {
 }
 
 export const language = new Language();
+
+/** A language in its own name, so an owner finds theirs whatever is shown. */
+export function endonym(locale: Locale): string {
+  return new Intl.DisplayNames([locale], { type: "language" }).of(locale) ?? locale;
+}

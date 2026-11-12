@@ -1,42 +1,54 @@
+<!--
+  Settings on the drill-in (ADR 21): a root list of groups, each opening its page, two panes from
+  1024 px. A viewer sees only the display, which is the browser's own.
+-->
 <script lang="ts">
+  import { userPrefersMode } from "mode-watcher";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
-  import DeviceSettings from "./DeviceSettings.svelte";
-  import ImportPanel from "./ImportPanel.svelte";
-  import ProfileUpdates from "./ProfileUpdates.svelte";
-  import WriteLog from "./WriteLog.svelte";
+  import DrillIn from "../components/drill-in/drill-in.svelte";
+  import { endonym, language } from "../i18n/language.svelte.ts";
+  import { motion } from "../motion/tier.svelte.ts";
+  import { m } from "../paraglide/messages.js";
+  import { DISPLAY, settingsGroups } from "./groups.ts";
+  import SettingsPage from "./SettingsPage.svelte";
 
-  let { core }: { core: Core } = $props();
+  let {
+    core,
+    admin,
+    open,
+    onnavigate,
+  }: {
+    core: Core;
+    admin: boolean;
+    /** The open group's id, from the hash route; null on the root. */
+    open: string | null;
+    onnavigate: (id: string | null) => void;
+  } = $props();
 
-  // Read again after an enable changes or an update applies.
-  let capabilities = $derived(core.capabilities());
+  /** The display's choices in a few words; the other groups have no summary. */
+  function summary(id: string): string | undefined {
+    if (id !== DISPLAY) return undefined;
 
-  // Read again after each write; the core refuses it without the admin's session.
-  let log = $derived(core.writes());
+    const theme = userPrefersMode.current === "light" ? m.display_light() : m.display_dark();
+    const parts = [theme, endonym(language.current)];
 
-  function reload(): void {
-    log = core.writes();
-  }
-
-  function reread(): void {
-    capabilities = core.capabilities();
+    return (motion.lowPower ? [...parts, m.display_low_power()] : parts).join(" · ");
   }
 </script>
 
-<main>
-  <ProfileUpdates {core} onapplied={reread} />
-
-  {#await capabilities then answer}
-    {#if "problem" in answer}
-      <p role="alert">{problemText(answer.problem)}</p>
-    {:else}
-      {#each Object.entries(answer.devices).filter(([, d]) => d.settings.length > 0) as [id, device] (id)}
-        <DeviceSettings {core} {id} {device} onwritten={reload} onchanged={reread} />
-      {/each}
-    {/if}
-  {/await}
-  {#await log then answer}
-    <WriteLog log={answer} />
-  {/await}
-  <ImportPanel {core} />
+<main class="contents">
+  <DrillIn
+    groups={settingsGroups(admin, summary)}
+    {open}
+    {onnavigate}
+    back={m.nav_settings()}
+    label={m.settings_groups()}
+  >
+    {#snippet heading()}
+      <h1 class="px-1 text-2xl font-semibold tracking-tight">{m.nav_settings()}</h1>
+    {/snippet}
+    {#snippet page(group)}
+      <SettingsPage {core} id={group.id} />
+    {/snippet}
+  </DrillIn>
 </main>

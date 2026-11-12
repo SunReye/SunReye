@@ -65,7 +65,10 @@ test("the low-power switch turns every glass surface opaque", async () => {
 });
 
 test("a language chosen renders the whole app in it and is kept per browser", async () => {
-  const titled = createRawSnippet(() => ({ render: () => `<p data-testid="page">${m.nav_settings()}</p>` }));
+  const titled = createRawSnippet(() => ({
+    render: () => `<p data-testid="page">${m.nav_settings()}</p>`,
+  }));
+
   const screen = await render(Layout, { props: { children: titled } });
 
   await expect.element(screen.getByTestId("page")).toHaveTextContent("Einstellungen");

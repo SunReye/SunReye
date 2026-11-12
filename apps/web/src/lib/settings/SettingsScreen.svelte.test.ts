@@ -1,36 +1,71 @@
 import { expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
-import { attempt, CAPABILITIES, CHARGE, problem, row, testCore } from "./settings.harness.ts";
+import { attempt, CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
 
-test("each setting renders from the device's capabilities", async () => {
+/** Settings opened on `group`, as the admin. */
+function opened(transport: Transport, group: string) {
+  return render(SettingsScreen, {
+    core: connect(transport),
+    admin: true,
+    open: group,
+    onnavigate: () => null,
+  });
+}
+
+test("the admin reaches every group from the root", async () => {
   const screen = await render(SettingsScreen, {
     core: connect(testCore(() => Response.json({ writes: [] }))),
+    admin: true,
+    open: null,
+    onnavigate: () => null,
   });
 
-  await userEvent.click(screen.getByRole("button", row(CHARGE)));
-  const charge = page.getByRole("spinbutton", { name: CHARGE });
+  const names = [
+    "Anlage",
+    "Geräte",
+    "Schreiben",
+    "Verbindungen",
+    "Tarif",
+    "Prognose & Belegung",
+    "Anzeige",
+    "Protokolle",
+    "Gefahrenzone",
+  ];
 
-  await expect.element(charge).toHaveAttribute("aria-valuemin", "0");
-  await expect.element(charge).toHaveAttribute("aria-valuemax", "350");
-  await userEvent.keyboard("{Escape}");
+  await Promise.all(
+    names.map((name) =>
+      expect
+        .element(screen.getByRole("button", { name: new RegExp(`^${name}`, "u") }))
+        .toBeVisible(),
+    ),
+  );
+});
 
-  await userEvent.click(screen.getByRole("button", row("work_mode")));
-  const mode = page.getByRole("radiogroup", { name: "work_mode" });
+test("a viewer sees only the display, which is the browser's own", async () => {
+  const screen = await render(SettingsScreen, {
+    core: connect(testCore(() => Response.json({ writes: [] }))),
+    admin: false,
+    open: null,
+    onnavigate: () => null,
+  });
 
-  await expect.element(mode.getByRole("radio", { name: "0" })).toBeChecked();
-  expect(mode.getByRole("radio").elements()).toHaveLength(3);
+  await expect
+    .element(screen.getByRole("button", { name: /^Anzeige\s*Dunkel · Deutsch/u }))
+    .toBeVisible();
+  expect(screen.getByRole("button", { name: /^Anlage/u }).query()).toBeNull();
 });
 
 test("the admin sees the write log", async () => {
   const log = { writes: [attempt({ outcome: "mismatch", after: 108 })] };
 
-  const screen = await render(SettingsScreen, {
-    core: connect(testCore(() => Response.json(log))),
-  });
+  const screen = await opened(
+    testCore(() => Response.json(log)),
+    "logs",
+  );
 
   const table = screen.getByRole("table", { name: "Schreibprotokoll" });
 
@@ -40,34 +75,50 @@ test("the admin sees the write log", async () => {
 });
 
 test("without the admin's session the write log is not shown", async () => {
-  const screen = await render(SettingsScreen, {
-    core: connect(testCore(() => problem(401, "auth.required"))),
-  });
+  const screen = await opened(
+    testCore(() => problem(401, "auth.required")),
+    "logs",
+  );
 
-  await expect.element(screen.getByRole("button", row(CHARGE))).toBeVisible();
+  await expect.element(screen.getByRole("heading", { name: "Protokolle" })).toBeVisible();
   expect(screen.getByRole("table", { name: "Schreibprotokoll" }).query()).toBeNull();
 });
 
-test("a device whose writes are off says so and offers no write", async () => {
+test("a device whose writes are off says so and is switched on in one click", async () => {
   const off = structuredClone(CAPABILITIES);
   off.devices["3"].writes = false;
 
+  const sent: string[] = [];
+
   const transport: Transport = {
     base: "http://core.test/",
-    fetch: (request) =>
-      Promise.resolve(
-        request.url.endsWith("/capabilities")
-          ? Response.json(off)
-          : Response.json({ writes: [], updates: [] }),
-      ),
+    fetch: async (request) => {
+      if (request.url.endsWith("/capabilities")) return Response.json(off);
+
+      if (request.method === "PUT") {
+        sent.push(await request.text());
+
+        return Response.json(DEVICE);
+      }
+
+      return Response.json({ devices: [{ ...DEVICE, writes: false }] });
+    },
   };
 
-  const screen = await render(SettingsScreen, { core: connect(transport) });
+  const screen = await opened(transport, "writes");
+  const writes = screen.getByRole("checkbox", { name: /^Schreiben erlaubt: Wechselrichter/u });
 
+  await expect.element(writes).not.toBeChecked();
   await expect
-    .element(screen.getByText(/Schreiben ist für dieses Gerät ausgeschaltet/u))
+    .element(screen.getByText("Aus: Kein Wert wird an dieses Gerät geschrieben."))
     .toBeVisible();
-  await expect.element(screen.getByRole("button", row(CHARGE))).toBeDisabled();
+
+  await userEvent.click(writes);
+
+  const { id, ...draft } = DEVICE;
+
+  expect(id).toBe(3);
+  expect(sent).toEqual([JSON.stringify({ ...draft, writes: true })]);
 });
 
 test("a setting that needs the admin's enable shows its bounds and is enabled in one click", async () => {
@@ -88,18 +139,16 @@ test("a setting that needs the admin's enable shows its bounds and is enabled in
     { "/api/v1/capabilities": () => Response.json(capabilities) },
   );
 
-  const screen = await render(SettingsScreen, { core: connect(transport) });
+  const screen = await opened(transport, "writes");
 
   await expect
     .element(screen.getByText("Nicht auf Hardware geprüft: wird erst nach Freigabe geschrieben."))
     .toBeVisible();
   await expect.element(screen.getByText("Erlaubt: 0 bis 350, Schritt 1")).toBeVisible();
-  await expect.element(screen.getByRole("button", row(CHARGE))).toBeDisabled();
 
   await userEvent.click(screen.getByRole("button", { name: `${CHARGE} freigeben` }));
 
   expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${CHARGE}/enabled `]);
-  await expect.element(screen.getByRole("button", row(CHARGE))).toBeEnabled();
   await expect
     .element(screen.getByRole("button", { name: `Freigabe von ${CHARGE} zurücknehmen` }))
     .toBeVisible();
@@ -134,7 +183,7 @@ test("an update shows what it changes and is applied in one click", async () => 
     { "/api/v1/profile-updates": () => Response.json({ updates }) },
   );
 
-  const screen = await render(SettingsScreen, { core: connect(transport) });
+  const screen = await opened(transport, "devices");
 
   const diff = screen.getByRole("table", { name: "box: 1.0.0 → 1.1.0" });
   await expect.element(diff).toBeVisible();
@@ -153,4 +202,95 @@ test("an update shows what it changes and is applied in one click", async () => 
 
   expect(transport.writes).toEqual(["POST /api/v1/profile-updates/box "]);
   await expect.element(diff).not.toBeInTheDocument();
+});
+
+test("a setting awaiting its enable lists its values by their labels", async () => {
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    "writes",
+  );
+
+  await expect
+    .element(screen.getByText("Erlaubt: Werte off, now, minpv, pv", { exact: false }))
+    .toBeVisible();
+});
+
+test("the devices page lists each device with its profile", async () => {
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    "devices",
+  );
+
+  await expect.element(screen.getByText("Wechselrichter")).toBeVisible();
+  await expect.element(screen.getByText("hybrid-test")).toBeVisible();
+});
+
+test("the plant page shows the plant's timezone and location and saves them", async () => {
+  const transport = testCore(
+    () => Response.json({ writes: [] }),
+    () => Response.json({ latitude: 48.1, longitude: 11.6 }),
+    {
+      "/api/v1/timezone": () => Response.json({ name: "Europe/Vienna" }),
+      "/api/v1/location": () => Response.json({ latitude: 48.1, longitude: 11.6 }),
+    },
+  );
+
+  const screen = await opened(transport, "plant");
+
+  await expect.element(screen.getByRole("combobox")).toHaveValue("Europe/Vienna");
+  await expect.element(screen.getByRole("spinbutton", { name: "Breitengrad" })).toHaveValue(48.1);
+
+  await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
+  expect(transport.writes).toEqual([
+    'PUT /api/v1/timezone {"name":"Europe/Vienna"}',
+    'PUT /api/v1/location {"latitude":48.1,"longitude":11.6}',
+  ]);
+});
+
+test("the connections page lists each connection and a broker's state", async () => {
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] }), undefined, {
+      "/api/v1/connections": () =>
+        Response.json({
+          connections: [
+            {
+              id: 1,
+              name: "Stick",
+              transport: "modbus-tcp",
+              host: "10.0.0.5",
+              port: 8899,
+              secrets: [],
+            },
+            {
+              id: 2,
+              name: "Broker",
+              transport: "mqtt",
+              host: "broker.lan",
+              port: 1883,
+              topicRoot: "evcc",
+              secrets: [],
+              status: { connected: true },
+            },
+          ],
+        }),
+    }),
+    "connections",
+  );
+
+  await expect.element(screen.getByText("modbus-tcp · 10.0.0.5:8899")).toBeVisible();
+  await expect.element(screen.getByText("mqtt · broker.lan:1883")).toBeVisible();
+  await expect.element(screen.getByText(/Broker.*verbunden/u)).toBeVisible();
+});
+
+test("the forecast page leads to the builder", async () => {
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    "forecast",
+  );
+
+  await expect
+    .element(screen.getByRole("link", { name: /^3D-Haus und PV-Module bearbeiten/u }))
+    .toHaveAttribute("href", "#/builder");
 });

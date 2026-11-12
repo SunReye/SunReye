@@ -3,11 +3,6 @@ import type { Attempt, Transport } from "../api/core.ts";
 
 export const CHARGE = "battery.max_charge_current";
 
-/** A setting's row, named by its key (no name is declared) and the value it last read back. */
-export function row(key: string, value = "") {
-  return { name: `${key} ${value}`.trim(), exact: true } as const;
-}
-
 /** A profile's settings as the core's capabilities list them; no brand anywhere. */
 export const CAPABILITIES = {
   version: "5.0.0",
@@ -37,6 +32,16 @@ export const CAPABILITIES = {
       ],
     },
   },
+};
+
+/** The device behind CAPABILITIES' "3", as the core lists it. */
+export const DEVICE = {
+  id: 3,
+  connection: 1,
+  name: "Wechselrichter",
+  profile: "hybrid-test",
+  unit: 1,
+  writes: true,
 };
 
 export function attempt(fields: Readonly<Partial<Attempt>>): Attempt {
@@ -79,6 +84,8 @@ export function testCore(
       if (answer !== undefined) return answer();
 
       if (path === "/api/v1/capabilities") return Response.json(CAPABILITIES);
+
+      if (path === "/api/v1/devices") return Response.json({ devices: [DEVICE] });
 
       if (path === "/api/v1/writes") return log();
 
