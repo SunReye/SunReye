@@ -759,6 +759,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sun-tint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The backdrop's tint for the sun over the plant now; viewers read it, never the location. */
+        get: operations["sun_tint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tariff": {
         parameters: {
             query?: never;
@@ -1988,6 +2005,10 @@ export interface components {
              */
             id?: number | null;
         };
+        /** @description The sun tint over the plant, without its location. */
+        SunTint: {
+            tint?: components["schemas"]["Tint"] | null;
+        };
         /**
          * @description What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,
          *     the one its WASM build reports.
@@ -2028,6 +2049,11 @@ export interface components {
          * @enum {string}
          */
         Tier: "raw" | "bucket" | "hour" | "day";
+        /**
+         * @description The backdrop's tint for the sun over the plant.
+         * @enum {string}
+         */
+        Tint: "dawn" | "noon" | "dusk" | "night";
         /** @description A token as the API reads it: never the token. */
         Token: {
             /** Format: int32 */
@@ -3856,6 +3882,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpotPriceZone"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    sun_tint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SunTint"];
                 };
             };
             "4XX": {

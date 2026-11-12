@@ -59,3 +59,29 @@ async fn a_location_off_the_globe_is_refused() {
     let (status, _) = core.ask(&set_cookie, get("/api/v1/location")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_viewer_reads_the_sun_tint_but_never_the_location() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.viewer(&admin, "grandma", "sunny days").await;
+    let viewer = core
+        .sign_in(super::viewers::login("grandma", "sunny days"))
+        .await;
+    // 2026-06-21 10:00 UTC, noon in Berlin.
+    core.set_clock(UNIX_EPOCH + Duration::from_hours(495_010));
+    let (status, none) = core.ask(&viewer, get("/api/v1/sun-tint")).await;
+    assert_eq!((status, none), (StatusCode::OK, json!({ "tint": null })));
+
+    let berlin = json!({ "latitude": 52.52, "longitude": 13.38 });
+    core.ask(&admin, send("PUT", "/api/v1/location", &berlin))
+        .await;
+
+    let (status, tint) = core.ask(&viewer, get("/api/v1/sun-tint")).await;
+    assert_eq!((status, tint), (StatusCode::OK, json!({ "tint": "noon" })));
+    let (status, body) = core.ask(&viewer, get("/api/v1/location")).await;
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::FORBIDDEN, &json!("auth.forbidden"))
+    );
+}
