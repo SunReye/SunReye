@@ -170,13 +170,13 @@ function withGrids(
   return { ...scene, grids: change(scene.grids ?? []) };
 }
 
-/** Each placed module whose cell the crate laid out, to draw. */
+/** Each placed module whose cell the crate laid out, to draw, with the grid it lies in. */
 export function panels(scene: Scene, cells: readonly (readonly CellPlace[] | null)[]): Panel[] {
   return (scene.grids ?? []).flatMap((grid, i) =>
     grid.modules.flatMap(({ row, column, string }) => {
       const cell = cells[i]?.find((place) => place.row === row && place.column === column);
 
-      return cell === undefined ? [] : [{ corners: cell.corners, string: string ?? null }];
+      return cell === undefined ? [] : [{ corners: cell.corners, string: string ?? null, grid: i }];
     }),
   );
 }
