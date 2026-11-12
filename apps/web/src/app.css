@@ -141,6 +141,32 @@
   --ambient-opacity: 78%;
 }
 
+/* Sun-tinted spotlight: warm at dawn and dusk, clear by day, indigo at night (ADR 21). Never animated. */
+:root[data-tod="dawn"] {
+  --spotlight: oklch(0.72 0.16 50 / 26%);
+}
+:root[data-tod="noon"] {
+  --spotlight: oklch(0.85 0.09 85 / 30%);
+}
+:root[data-tod="dusk"] {
+  --spotlight: oklch(0.65 0.19 30 / 26%);
+}
+:root[data-tod="night"] {
+  --spotlight: oklch(0.6 0.2 277 / 18%);
+}
+.dark[data-tod="dawn"] {
+  --spotlight: oklch(0.7 0.16 50 / 30%);
+}
+.dark[data-tod="noon"] {
+  --spotlight: oklch(0.85 0.08 90 / 20%);
+}
+.dark[data-tod="dusk"] {
+  --spotlight: oklch(0.62 0.19 28 / 32%);
+}
+.dark[data-tod="night"] {
+  --spotlight: oklch(0.6 0.2 277 / 28%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-move: 0ms;

@@ -40,10 +40,6 @@
   }
 </script>
 
-<header>
-  <a href="#/">{m.nav_live()}</a>
-</header>
-
 <main>
   {#if webgl2}
     {#await load()}
