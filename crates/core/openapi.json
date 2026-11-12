@@ -935,6 +935,13 @@
             },
             "type": "array"
           },
+          "series": {
+            "description": "The series its profile publishes, extras left out, such as `load.phase.power[2]`: what\nit can report, not what it reports now.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "settings": {
             "description": "What its profile lets the core write, in the profile's order.",
             "items": {
@@ -949,6 +956,7 @@
         },
         "required": [
           "estimated",
+          "series",
           "writes",
           "settings"
         ],

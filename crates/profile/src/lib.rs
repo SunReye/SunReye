@@ -54,6 +54,7 @@ pub const CAPABILITIES: &[&str] = &[
     "ac-rating",
     "resolution",
     "text-enum",
+    "register-enum",
     "setting-text",
     "verified",
     "poll-group",

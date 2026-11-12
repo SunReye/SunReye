@@ -17,6 +17,7 @@ export const CAPABILITIES = {
   devices: {
     "3": {
       estimated: [],
+      series: [],
       writes: true,
       settings: [
         { key: CHARGE, range: { min: 0, max: 350 }, step: 1, enable: "on" },

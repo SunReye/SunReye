@@ -42,6 +42,7 @@ export interface Row {
   readonly time: Date;
   readonly power: number;
   readonly series: string;
+  readonly role: string;
 }
 
 /** The series' points over the span up to now, at the tier the core picks (ADR 9). */
@@ -60,6 +61,7 @@ export async function historyRows(
         time: new Date(p.start),
         power: p.mean,
         series,
+        role: series,
       }))
     : [];
 }
