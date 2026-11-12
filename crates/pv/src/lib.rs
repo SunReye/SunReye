@@ -26,7 +26,9 @@ pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
 pub use scene::{Block, Crown, Face, Obstacle, Roof, Scene, Surface};
 pub use sun::sun_position;
-pub use surroundings::{Fence, FenceFinish, Fencing, Ground, GroundFinish, GroundSurface};
+pub use surroundings::{
+    Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
+};
 pub use temperature::cell_temperature;
 
 /// A string's open-circuit voltage at a cell temperature in °C, by the datasheet's voltage

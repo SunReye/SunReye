@@ -412,7 +412,7 @@ async fn surroundings_are_saved_with_the_scene_and_a_flat_surface_or_a_one_point
         scene["fences"] = json!([{ "points": points, "height": 1.2, "finish": "wood" }]);
         scene
     };
-    let line = json!([[0.0, 15.0], [10.0, 15.0]]);
+    let line = json!([{ "x": 0.0, "z": 15.0 }, { "x": 10.0, "z": 15.0 }]);
 
     let (status, saved) = core
         .put_scene(&set_cookie, &strings, &with(5.0, line.clone()))
@@ -421,7 +421,11 @@ async fn surroundings_are_saved_with_the_scene_and_a_flat_surface_or_a_one_point
         .put_scene(&set_cookie, &strings, &with(0.0, line.clone()))
         .await;
     let (point, point_body) = core
-        .put_scene(&set_cookie, &strings, &with(5.0, json!([[0.0, 15.0]])))
+        .put_scene(
+            &set_cookie,
+            &strings,
+            &with(5.0, json!([{ "x": 0.0, "z": 15.0 }])),
+        )
         .await;
 
     assert_eq!(status, StatusCode::OK, "{saved}");

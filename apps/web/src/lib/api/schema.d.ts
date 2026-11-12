@@ -1442,15 +1442,22 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
-        /** @description A polyline on the ground through `points`, each `[x, z]` in the scene's frame. */
+        /** @description A polyline on the ground through `points`. */
         Fence: {
             finish: components["schemas"]["FenceFinish"];
             /** Format: double */
             height: number;
-            points: number[][];
+            points: components["schemas"]["FencePoint"][];
         };
         /** @enum {string} */
         FenceFinish: "wood" | "metal" | "wall";
+        /** @description A point on the ground in the scene's frame. */
+        FencePoint: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        };
         /** @description One period's figures: a measurement's, or a counter's delta. */
         Figures: {
             /** @description The plant-local date the period begins on, `YYYY-MM-DD`. */

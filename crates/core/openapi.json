@@ -1182,7 +1182,7 @@
       },
       "Fence": {
         "additionalProperties": false,
-        "description": "A polyline on the ground through `points`, each `[x, z]` in the scene's frame.",
+        "description": "A polyline on the ground through `points`.",
         "properties": {
           "finish": {
             "$ref": "#/components/schemas/FenceFinish"
@@ -1193,11 +1193,7 @@
           },
           "points": {
             "items": {
-              "items": {
-                "format": "double",
-                "type": "number"
-              },
-              "type": "array"
+              "$ref": "#/components/schemas/FencePoint"
             },
             "type": "array"
           }
@@ -1216,6 +1212,25 @@
           "wall"
         ],
         "type": "string"
+      },
+      "FencePoint": {
+        "additionalProperties": false,
+        "description": "A point on the ground in the scene's frame.",
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z"
+        ],
+        "type": "object"
       },
       "Figures": {
         "description": "One period's figures: a measurement's, or a counter's delta.",

@@ -31,14 +31,23 @@ pub enum GroundFinish {
     Path,
 }
 
-/// A polyline on the ground through `points`, each `[x, z]` in the scene's frame.
+/// A polyline on the ground through `points`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Fence {
-    pub points: Vec<[f64; 2]>,
+    pub points: Vec<FencePoint>,
     pub height: f64,
     pub finish: FenceFinish,
+}
+
+/// A point on the ground in the scene's frame.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct FencePoint {
+    pub x: f64,
+    pub z: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,7 +117,7 @@ impl Scene {
                     points: fence
                         .points
                         .iter()
-                        .map(|&[x, z]| frame.place([x, 0.0, z]))
+                        .map(|p| frame.place([p.x, 0.0, p.z]))
                         .collect(),
                 })
             })

@@ -3,8 +3,9 @@
 
 use super::fixtures::MODULE;
 use crate::{
-    Crown, Face, Fence, FenceFinish, Fencing, Ground, GroundFinish, GroundSurface, Input, Module,
-    Obstacle, Occluder, Place, Plane, PvString, Scene, Sky, Sun, Surface, input_output,
+    Crown, Face, Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
+    Input, Module, Obstacle, Occluder, Place, Plane, PvString, Scene, Sky, Sun, Surface,
+    input_output,
 };
 
 fn scene(obstacles: Vec<Obstacle>) -> Scene {
@@ -147,7 +148,10 @@ fn surface(width: f64, depth: f64) -> GroundSurface {
 
 fn fence(points: Vec<[f64; 2]>) -> Fence {
     Fence {
-        points,
+        points: points
+            .into_iter()
+            .map(|[x, z]| FencePoint { x, z })
+            .collect(),
         height: 1.2,
         finish: FenceFinish::Wood,
     }
