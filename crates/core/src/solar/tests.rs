@@ -375,6 +375,8 @@ fn walled_house(module_type: u32) -> Scene {
         }],
         equipment: vec![],
         car_places: vec![],
+        surfaces: vec![],
+        fences: vec![],
     }
 }
 

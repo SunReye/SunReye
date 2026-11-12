@@ -1,7 +1,7 @@
 //! Blocks, roofs and obstacles as faces and solids in the frame shading uses (ADR 20), checked
 //! against corners worked out by hand.
 
-use crate::{Block, Face, Obstacle, Occluder, Point, Roof, Scene, Surface};
+use crate::{Block, Crown, Face, Obstacle, Occluder, Point, Roof, Scene, Surface};
 
 fn block(roof: Roof) -> Block {
     Block {
@@ -24,6 +24,8 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         grids: vec![],
         equipment: vec![],
         car_places: vec![],
+        surfaces: vec![],
+        fences: vec![],
     }
 }
 
@@ -281,6 +283,7 @@ fn a_chimney_is_an_upright_cylinder_and_a_tree_a_trunk_under_a_crown() {
         z: 0.0,
         radius: 2.0,
         height: 10.0,
+        crown: Crown::Broadleaf,
     };
     let solids = scene(vec![], vec![chimney, tree]).solids();
 

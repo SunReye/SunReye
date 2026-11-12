@@ -754,6 +754,14 @@
         ],
         "type": "object"
       },
+      "Crown": {
+        "description": "A tree's crown, by its leaves.",
+        "enum": [
+          "broadleaf",
+          "conifer"
+        ],
+        "type": "string"
+      },
       "Datasheet": {
         "description": "A PV module model's datasheet values.",
         "properties": {
@@ -1172,6 +1180,58 @@
         ],
         "type": "string"
       },
+      "Fence": {
+        "additionalProperties": false,
+        "description": "A polyline on the ground through `points`.",
+        "properties": {
+          "finish": {
+            "$ref": "#/components/schemas/FenceFinish"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FencePoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points",
+          "height",
+          "finish"
+        ],
+        "type": "object"
+      },
+      "FenceFinish": {
+        "enum": [
+          "wood",
+          "metal",
+          "wall"
+        ],
+        "type": "string"
+      },
+      "FencePoint": {
+        "additionalProperties": false,
+        "description": "A point on the ground in the scene's frame.",
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z"
+        ],
+        "type": "object"
+      },
       "Figures": {
         "description": "One period's figures: a measurement's, or a counter's delta.",
         "properties": {
@@ -1372,6 +1432,55 @@
         },
         "required": [
           "devices"
+        ],
+        "type": "object"
+      },
+      "GroundFinish": {
+        "enum": [
+          "lawn",
+          "paving",
+          "driveway",
+          "gravel",
+          "path"
+        ],
+        "type": "string"
+      },
+      "GroundSurface": {
+        "additionalProperties": false,
+        "description": "A rectangle on the plot: its width runs along x and its depth along z from its corner,\nbefore it turns.",
+        "properties": {
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "finish": {
+            "$ref": "#/components/schemas/GroundFinish"
+          },
+          "rotation": {
+            "description": "Degrees clockwise about the corner, seen from above.",
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z",
+          "width",
+          "depth",
+          "rotation",
+          "finish"
         ],
         "type": "object"
       },
@@ -2062,8 +2171,11 @@
             "type": "object"
           },
           {
-            "description": "A trunk under a sphere crown of `radius` whose top is at `height`.",
+            "description": "A trunk under a crown of `radius` whose top is at `height`: a broadleaf's a sphere, a\nconifer's a cone from a fifth of the height.",
             "properties": {
+              "crown": {
+                "$ref": "#/components/schemas/Crown"
+              },
               "height": {
                 "format": "double",
                 "type": "number"
@@ -2092,6 +2204,51 @@
               "z",
               "radius",
               "height",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A straight row: a box whose length runs along x and its depth along z from its corner.",
+            "properties": {
+              "depth": {
+                "format": "double",
+                "type": "number"
+              },
+              "height": {
+                "format": "double",
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "hedge"
+                ],
+                "type": "string"
+              },
+              "length": {
+                "format": "double",
+                "type": "number"
+              },
+              "rotation": {
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "z": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "z",
+              "length",
+              "depth",
+              "height",
+              "rotation",
               "kind"
             ],
             "type": "object"
@@ -2799,6 +2956,13 @@
             },
             "type": "array"
           },
+          "fences": {
+            "description": "Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Fence"
+            },
+            "type": "array"
+          },
           "grids": {
             "description": "At most one per roof face.",
             "items": {
@@ -2814,6 +2978,13 @@
           "obstacles": {
             "items": {
               "$ref": "#/components/schemas/Obstacle"
+            },
+            "type": "array"
+          },
+          "surfaces": {
+            "description": "Drawn in order, each over the last; without any the plot is lawn. They never shade.",
+            "items": {
+              "$ref": "#/components/schemas/GroundSurface"
             },
             "type": "array"
           }

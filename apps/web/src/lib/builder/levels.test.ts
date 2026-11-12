@@ -77,3 +77,52 @@ test("every level backs out to its section, every section to the root", () => {
   expect(parent({ kind: "string", index: 0 })).toEqual({ kind: "section", section: "strings" });
   expect(parent({ kind: "section", section: "strings" })).toEqual({ kind: "root" });
 });
+
+const GARDEN: Scene = {
+  ...SCENE,
+  obstacles: [
+    ...SCENE.obstacles,
+    { kind: "hedge", x: 0, z: 20, length: 8, depth: 1, height: 1.8, rotation: 0 },
+  ],
+  surfaces: [{ x: -2, z: 8, width: 14, depth: 6, rotation: 0, finish: "paving" }],
+  fences: [
+    {
+      points: [
+        { x: -10, z: 25 },
+        { x: 10, z: 25 },
+        { x: 10, z: 30 },
+      ],
+      height: 1.2,
+      finish: "wood",
+    },
+  ],
+};
+
+test("a hedge drills to its obstacle, a fence near its line to its fence", () => {
+  expect(picked(GARDEN, { kind: "point", point: [7.5, -20.5, 1.8] })).toEqual({
+    kind: "obstacle",
+    index: 2,
+  });
+  expect(picked(GARDEN, { kind: "point", point: [10.1, -28, 1] })).toEqual({
+    kind: "fence",
+    index: 0,
+  });
+});
+
+test("a ground surface answers where nothing stands on it", () => {
+  expect(picked(GARDEN, { kind: "point", point: [10, -9, 0] })).toEqual({
+    kind: "surface",
+    index: 0,
+  });
+  // The box stands on the paving.
+  expect(picked(GARDEN, { kind: "point", point: [2, -12.5, 2] })).toEqual({
+    kind: "obstacle",
+    index: 1,
+  });
+});
+
+test("surfaces and fences back out to the surroundings", () => {
+  for (const kind of ["surface", "fence"] as const) {
+    expect(parent({ kind, index: 0 })).toEqual({ kind: "section", section: "surroundings" });
+  }
+});

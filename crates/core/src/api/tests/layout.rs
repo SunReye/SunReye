@@ -392,6 +392,53 @@ async fn equipment_markers_are_saved_with_the_scene_and_one_off_its_wall_is_refu
 }
 
 #[tokio::test]
+async fn surroundings_are_saved_with_the_scene_and_a_flat_surface_or_a_one_point_fence_is_refused()
+{
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |depth: f64, points: serde_json::Value| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["obstacles"] = json!([
+            { "kind": "tree", "x": -5.0, "z": 10.0, "radius": 2.0, "height": 8.0,
+              "crown": "conifer" },
+            { "kind": "hedge", "x": 0.0, "z": 14.0, "length": 8.0, "depth": 0.8, "height": 1.8,
+              "rotation": 0.0 },
+        ]);
+        scene["surfaces"] = json!([{
+            "x": 0.0, "z": 9.0, "width": 4.0, "depth": depth, "rotation": 0.0, "finish": "driveway",
+        }]);
+        scene["fences"] = json!([{ "points": points, "height": 1.2, "finish": "wood" }]);
+        scene
+    };
+    let line = json!([{ "x": 0.0, "z": 15.0 }, { "x": 10.0, "z": 15.0 }]);
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with(5.0, line.clone()))
+        .await;
+    let (flat, flat_body) = core
+        .put_scene(&set_cookie, &strings, &with(0.0, line.clone()))
+        .await;
+    let (point, point_body) = core
+        .put_scene(
+            &set_cookie,
+            &strings,
+            &with(5.0, json!([{ "x": 0.0, "z": 15.0 }])),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], with(5.0, line));
+    for (refused, body) in [(flat, flat_body), (point, point_body)] {
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_string() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

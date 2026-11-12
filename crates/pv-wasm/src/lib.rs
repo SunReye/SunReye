@@ -14,9 +14,9 @@ use sunreye_pv::{
     CellPlace, Face, Location, Misplaced, Occluder, RoofFace, Scene, Size, Surface, sun_position,
 };
 
-/// The faces, solids, equipment mounts and car stands of a scene, in the shading frame: east,
-/// north, up. The mounts are `null` while a marker lies off its wall, the stands while a car
-/// place is refused.
+/// The faces, solids, equipment mounts, car stands, ground surfaces and fences of a scene, in the
+/// shading frame: east, north, up. The mounts are `null` while a marker lies off its wall, the
+/// stands while a car place is refused, the ground and the fences while one of theirs is.
 fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
@@ -28,6 +28,15 @@ fn geometry(scene: &[u8]) -> String {
             "stands": scene.stands().ok().map(|stands| {
                 stands.iter().map(|s| json!({ "at": s.at, "forward": s.forward, "above": s.above }))
                     .collect::<Vec<_>>()
+            }),
+            "ground": scene.ground().ok().map(|ground| {
+                ground.iter().map(|g| json!({ "finish": g.finish, "corners": g.corners }))
+                    .collect::<Vec<_>>()
+            }),
+            "fences": scene.fencing().ok().map(|fences| {
+                fences.iter().map(|f| json!({
+                    "finish": f.finish, "height": f.height, "points": f.points,
+                })).collect::<Vec<_>>()
             }),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
@@ -151,6 +160,7 @@ fn face(face: &Face) -> Value {
         Surface::Wall => "wall",
         Surface::Roof => "roof",
         Surface::Obstacle => "obstacle",
+        Surface::Hedge => "hedge",
     };
     json!({ "surface": surface, "corners": face.corners })
 }
@@ -166,6 +176,11 @@ fn solid(occluder: &Occluder) -> Value {
             radius,
             height,
         } => json!({ "kind": "cylinder", "base": base, "radius": radius, "height": height }),
+        Occluder::Cone {
+            base,
+            radius,
+            height,
+        } => json!({ "kind": "cone", "base": base, "radius": radius, "height": height }),
     }
 }
 

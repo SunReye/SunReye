@@ -1249,6 +1249,11 @@ export interface components {
             name?: string | null;
             password: string;
         };
+        /**
+         * @description A tree's crown, by its leaves.
+         * @enum {string}
+         */
+        Crown: "broadleaf" | "conifer";
         /** @description A PV module model's datasheet values. */
         Datasheet: {
             /** Format: int32 */
@@ -1437,6 +1442,22 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /** @description A polyline on the ground through `points`. */
+        Fence: {
+            finish: components["schemas"]["FenceFinish"];
+            /** Format: double */
+            height: number;
+            points: components["schemas"]["FencePoint"][];
+        };
+        /** @enum {string} */
+        FenceFinish: "wood" | "metal" | "wall";
+        /** @description A point on the ground in the scene's frame. */
+        FencePoint: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        };
         /** @description One period's figures: a measurement's, or a counter's delta. */
         Figures: {
             /** @description The plant-local date the period begins on, `YYYY-MM-DD`. */
@@ -1517,6 +1538,28 @@ export interface components {
                     [key: string]: number;
                 };
             };
+        };
+        /** @enum {string} */
+        GroundFinish: "lawn" | "paving" | "driveway" | "gravel" | "path";
+        /**
+         * @description A rectangle on the plot: its width runs along x and its depth along z from its corner,
+         *     before it turns.
+         */
+        GroundSurface: {
+            /** Format: double */
+            depth: number;
+            finish: components["schemas"]["GroundFinish"];
+            /**
+             * Format: double
+             * @description Degrees clockwise about the corner, seen from above.
+             */
+            rotation: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
         };
         /** @description Time-weighted means of one series over a range, at the tier the server picked. */
         History: {
@@ -1764,12 +1807,28 @@ export interface components {
             /** Format: double */
             z: number;
         } | {
+            crown?: components["schemas"]["Crown"];
             /** Format: double */
             height: number;
             /** @enum {string} */
             kind: "tree";
             /** Format: double */
             radius: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        } | {
+            /** Format: double */
+            depth: number;
+            /** Format: double */
+            height: number;
+            /** @enum {string} */
+            kind: "hedge";
+            /** Format: double */
+            length: number;
+            /** Format: double */
+            rotation: number;
             /** Format: double */
             x: number;
             /** Format: double */
@@ -2037,6 +2096,8 @@ export interface components {
             carPlaces?: components["schemas"]["CarPlace"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
+            /** @description Drawn only; they never shade. */
+            fences?: components["schemas"]["Fence"][];
             /** @description At most one per roof face. */
             grids?: components["schemas"]["ModuleGrid"][];
             /**
@@ -2045,6 +2106,8 @@ export interface components {
              */
             north: number;
             obstacles: components["schemas"]["Obstacle"][];
+            /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
+            surfaces?: components["schemas"]["GroundSurface"][];
         };
         /** @description One flow's prices. */
         ScheduleView: {

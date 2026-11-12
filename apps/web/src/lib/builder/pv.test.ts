@@ -43,6 +43,74 @@ test("a tree reaches the browser as a trunk under a sphere crown", () => {
   ]);
 });
 
+test("a conifer reaches the browser as a trunk under a cone, a hedge as faces drawn as hedge", () => {
+  const garden: Scene = {
+    north: 0,
+    blocks: [],
+    obstacles: [
+      { kind: "tree", x: -4, z: 0, radius: 2, height: 10, crown: "conifer" },
+      { kind: "hedge", x: 0, z: 5, length: 6, depth: 0.8, height: 1.8, rotation: 0 },
+    ],
+  };
+
+  const { faces, solids } = pv.geometry(garden);
+
+  expect(solids).toEqual([
+    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 2 },
+    { kind: "cone", base: [-4, 0, 2], radius: 2, height: 8 },
+  ]);
+  expect(faces.map(({ surface }) => surface)).toEqual(Array.from({ length: 5 }, () => "hedge"));
+});
+
+test("ground surfaces lie on the ground and fences run through their points; refused, none", () => {
+  const surrounded: Scene = {
+    ...house,
+    surfaces: [{ x: 0, z: 10, width: 4, depth: 2, rotation: 0, finish: "driveway" }],
+    fences: [
+      {
+        points: [
+          { x: 0, z: 12 },
+          { x: 6, z: 12 },
+        ],
+        height: 1.2,
+        finish: "metal",
+      },
+    ],
+  };
+
+  const { ground, fences } = pv.geometry(surrounded);
+
+  expect(ground).toEqual([
+    {
+      finish: "driveway",
+      corners: [
+        [0, -10, 0],
+        [4, -10, 0],
+        [4, -12, 0],
+        [0, -12, 0],
+      ],
+    },
+  ]);
+  expect(fences).toEqual([
+    {
+      finish: "metal",
+      height: 1.2,
+      points: [
+        [0, -12, 0],
+        [6, -12, 0],
+      ],
+    },
+  ]);
+
+  const refused = pv.geometry({
+    ...surrounded,
+    surfaces: [{ x: 0, z: 0, width: 0, depth: 2, rotation: 0, finish: "gravel" }],
+    fences: [{ points: [{ x: 0, z: 0 }], height: 1, finish: "wall" }],
+  });
+
+  expect([refused.ground, refused.fences]).toEqual([null, null]);
+});
+
 test("an equipment marker hangs on its wall with its label above the ridge", () => {
   const marked: Scene = {
     ...house,

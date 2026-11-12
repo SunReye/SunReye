@@ -4,7 +4,7 @@ import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import { parent, type Level, type Section } from "./levels.ts";
 import { painted, type Draft } from "./modules.ts";
-import type { Modules, Obstacle, Roof } from "./pv.ts";
+import type { Fence, FenceFinish, GroundFinish, Modules, Obstacle, Roof } from "./pv.ts";
 
 /** What the inspector reads besides the level. */
 export interface Plan {
@@ -40,7 +40,34 @@ const OBSTACLES: Readonly<Record<Obstacle["kind"], () => string>> = {
   box: m.obstacle_box,
   cylinder: m.obstacle_cylinder,
   tree: m.obstacle_tree,
+  hedge: m.obstacle_hedge,
 };
+
+export const GROUND_FINISHES: readonly (readonly [GroundFinish, () => string])[] = [
+  ["lawn", m.finish_lawn],
+  ["paving", m.finish_paving],
+  ["driveway", m.finish_driveway],
+  ["gravel", m.finish_gravel],
+  ["path", m.finish_path],
+];
+
+export const FENCE_FINISHES: readonly (readonly [FenceFinish, () => string])[] = [
+  ["wood", m.finish_wood],
+  ["metal", m.finish_metal],
+  ["wall", m.finish_wall],
+];
+
+const named = <T>(list: readonly (readonly [T, () => string])[], key: T): string =>
+  list.find(([kind]) => kind === key)?.[1]() ?? "";
+
+/** A fence's length along its points, in metres. */
+function length({ points }: Fence): number {
+  return points.reduce((sum, point, i) => {
+    const before = points[i - 1] ?? point;
+
+    return sum + Math.hypot(point.x - before.x, point.z - before.z);
+  }, 0);
+}
 
 const KINDS = { inverter: m.equipment_inverter, battery: m.equipment_battery } as const;
 
@@ -66,7 +93,10 @@ const SUMMARIES: Readonly<Record<Section, (plan: Plan) => string>> = {
   surroundings: ({ draft }) =>
     m.builder_summary_surroundings({
       north: Math.round(draft.scene.north),
-      count: draft.scene.obstacles.length,
+      count:
+        draft.scene.obstacles.length +
+        (draft.scene.surfaces?.length ?? 0) +
+        (draft.scene.fences?.length ?? 0),
     }),
   equipment: ({ draft }) =>
     m.builder_summary_equipment({
@@ -99,11 +129,36 @@ function buildings({ draft }: Plan): Entry[] {
 function surroundings({ draft }: Plan): Entry[] {
   const number = format();
 
-  return draft.scene.obstacles.map((item, index) => ({
+  const obstacles = draft.scene.obstacles.map((item, index): Entry => ({
     level: { kind: "obstacle", index },
     label: m.builder_item({ name: OBSTACLES[item.kind](), number: index + 1 }),
     summary: m.builder_height_summary({ height: number.format(item.height) }),
   }));
+
+  const surfaces = (draft.scene.surfaces ?? []).map((item, index): Entry => {
+    const finish = named(GROUND_FINISHES, item.finish);
+
+    return {
+      level: { kind: "surface", index },
+      label: m.builder_item({ name: finish, number: index + 1 }),
+      summary: m.builder_block_summary({
+        roof: finish,
+        width: number.format(item.width),
+        depth: number.format(item.depth),
+      }),
+    };
+  });
+
+  const fences = (draft.scene.fences ?? []).map((item, index): Entry => ({
+    level: { kind: "fence", index },
+    label: m.builder_item({ name: m.fence(), number: index + 1 }),
+    summary: m.builder_fence_summary({
+      finish: named(FENCE_FINISHES, item.finish),
+      length: number.format(length(item)),
+    }),
+  }));
+
+  return [...obstacles, ...surfaces, ...fences];
 }
 
 function equipment({ draft, devices }: Plan): Entry[] {
@@ -173,12 +228,16 @@ export function title(level: Level, plan: Plan): string {
 /** How many objects of each kind the plan holds, by level kind. */
 function counts({
   draft,
-}: Plan): Readonly<Record<"block" | "obstacle" | "marker" | "place" | "string", number>> {
+}: Plan): Readonly<
+  Record<"block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string", number>
+> {
   const { scene } = draft;
 
   return {
     block: scene.blocks.length,
     obstacle: scene.obstacles.length,
+    surface: scene.surfaces?.length ?? 0,
+    fence: scene.fences?.length ?? 0,
     marker: scene.equipment?.length ?? 0,
     place: scene.carPlaces?.length ?? 0,
     string: draft.strings.length,
