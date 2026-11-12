@@ -412,5 +412,16 @@
   "tariff_day_7": "Sun",
   "tariff_zone": "Bidding zone",
   "tariff_zone_none": "None",
-  "nav_tariff": "Tariff and savings"
+  "nav_tariff": "Tariff and savings",
+  "editor_limits": "{min}–{max} {unit} · step {step}",
+  "editor_values": "{count} values",
+  "editor_type": "Enter {name}",
+  "editor_tap": "{value}, tap to type",
+  "editor_now": "now",
+  "editor_apply": "Apply",
+  "editor_pending": "Writing …",
+  "editor_confirmed": "Confirmed",
+  "editor_unchanged": "No change",
+  "editor_refused": "Refused.",
+  "editor_mismatch": "Mismatch."
 }
