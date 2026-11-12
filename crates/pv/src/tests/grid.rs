@@ -112,6 +112,21 @@ fn a_cell_is_the_module_plus_a_gap_inside_the_setback() {
 }
 
 #[test]
+fn a_cell_past_the_setback_still_has_its_area_on_the_face() {
+    // Row 2 starts 0.3 + 2 × 1.742 = 3.784 m up the slope and reaches past 4.583.
+    let area = grid(false, vec![]).area(SIZE, 2, 1);
+
+    let expected = [[1.454, 3.784], [2.588, 5.506]];
+    assert!(
+        area.iter()
+            .flatten()
+            .zip(expected.iter().flatten())
+            .all(|(a, e)| close(*a, *e)),
+        "{area:?}"
+    );
+}
+
+#[test]
 fn a_placed_module_takes_its_face_plane_and_its_cell_centre() {
     let scene = house(0.0, vec![grid(false, vec![cell(0, 0, Some(4))])]);
 

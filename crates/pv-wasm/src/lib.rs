@@ -11,7 +11,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sunreye_pv::{
-    CellPlace, Face, Location, Misplaced, Occluder, RoofFace, Scene, Size, Surface, sun_position,
+    COLD, CellPlace, Face, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene, Size,
+    Surface, open_circuit_voltage, sun_position,
 };
 
 /// The faces, solids, equipment mounts and car stands of a scene, in the shading frame: east,
@@ -65,7 +66,7 @@ fn modules(input: &[u8]) -> String {
     let misplaced = scene
         .modules(|id| sizes.get(&id).copied())
         .err()
-        .map(misplaced);
+        .map(|at| misplaced(at, &scene.grids, &sizes));
     json!({ "ok": {
         "roofs": roofs.iter().map(roof).collect::<Vec<_>>(),
         "grids": grids,
@@ -133,17 +134,47 @@ fn cell(cell: &CellPlace) -> Value {
     json!({ "row": cell.row, "column": cell.column, "area": cell.area, "corners": cell.corners })
 }
 
-fn misplaced(misplaced: Misplaced) -> Value {
-    match misplaced {
-        Misplaced::Face { grid } => json!({ "kind": "face", "grid": grid }),
-        Misplaced::ModuleType { grid } => json!({ "kind": "moduleType", "grid": grid }),
-        Misplaced::Setback { grid, row, column } => {
-            json!({ "kind": "setback", "grid": grid, "row": row, "column": column })
+/// The first misplaced module, with its cell's area on the face, so the browser shows it there.
+fn misplaced(misplaced: Misplaced, grids: &[ModuleGrid], sizes: &HashMap<u32, Size>) -> Value {
+    let (kind, grid, row, column) = match misplaced {
+        Misplaced::Face { grid } => return json!({ "kind": "face", "grid": grid }),
+        Misplaced::ModuleType { grid } => return json!({ "kind": "moduleType", "grid": grid }),
+        Misplaced::Setback { grid, row, column } => ("setback", grid, row, column),
+        Misplaced::Overlap { grid, row, column } => ("overlap", grid, row, column),
+    };
+    let area = grids
+        .get(grid)
+        .and_then(|g| Some(g.area(*sizes.get(&g.module_type)?, row, column)));
+    json!({ "kind": kind, "grid": grid, "row": row, "column": column, "area": area })
+}
+
+/// Module types and strings, as `cold_voltages` takes them.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Sized {
+    module_types: Vec<clear::Datasheet>,
+    strings: Vec<clear::Wiring>,
+}
+
+/// Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type.
+fn cold_voltages(input: &[u8]) -> String {
+    match serde_json::from_slice::<Sized>(input) {
+        Ok(Sized {
+            module_types,
+            strings,
+        }) => {
+            let volts: Vec<Option<f64>> = strings
+                .iter()
+                .map(|w| {
+                    let datasheet = module_types.iter().find(|d| d.id == w.module_type)?;
+                    Some(open_circuit_voltage(&datasheet.model(), w.modules, COLD))
+                })
+                .collect();
+            json!({ "ok": volts })
         }
-        Misplaced::Overlap { grid, row, column } => {
-            json!({ "kind": "overlap", "grid": grid, "row": row, "column": column })
-        }
+        Err(error) => json!({ "error": error.to_string() }),
     }
+    .to_string()
 }
 
 fn face(face: &Face) -> Value {
@@ -226,6 +257,15 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::clear_sky(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn cold_voltages(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::cold_voltages(input))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.

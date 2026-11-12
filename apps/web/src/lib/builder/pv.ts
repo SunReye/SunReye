@@ -1,6 +1,15 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
-import { isGeometry, isModules, isSun, isWatts, unwrap } from "./replies.ts";
+import {
+  isExports,
+  isGeometry,
+  isModules,
+  isSun,
+  isVolts,
+  isWatts,
+  unwrap,
+  type Exported,
+} from "./replies.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -139,6 +148,8 @@ export type Misplaced =
       readonly grid: number;
       readonly row: number;
       readonly column: number;
+      /** The module's cell on its face, as `CellPlace.area`; null without a module size. */
+      readonly area: CellPlace["area"] | null;
     };
 
 /** The roofs, each grid's cells (null for a missing face or module type) and the first misfit. */
@@ -213,38 +224,11 @@ export interface Pv {
   readonly sun: (unix: number, location: Location) => Sun;
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
-}
-
-/** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
-interface Exports {
-  readonly memory: WebAssembly.Memory;
-  readonly reserve: (len: number) => number;
-  readonly release: (ptr: number, len: number) => void;
-  readonly geometry: (input: number, inputLen: number) => bigint;
-  readonly modules: (input: number, inputLen: number) => bigint;
-  readonly sun: (input: number, inputLen: number) => bigint;
-  readonly clear_sky: (input: number, inputLen: number) => bigint;
-}
-
-const functions = ["reserve", "release", "geometry", "modules", "sun", "clear_sky"] as const;
-
-function isExports(
-  exports: Readonly<WebAssembly.Exports>,
-): exports is Readonly<WebAssembly.Exports> & Exports {
-  return (
-    exports["memory"] instanceof WebAssembly.Memory &&
-    functions.every((name) => {
-      const value = exports[name];
-
-      // A WASM export that is no memory, global or table is a function.
-      return (
-        value !== undefined &&
-        !(value instanceof WebAssembly.Memory) &&
-        !(value instanceof WebAssembly.Global) &&
-        !(value instanceof WebAssembly.Table)
-      );
-    })
-  );
+  /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
+  readonly coldVoltages: (
+    moduleTypes: readonly Readonly<ModuleType>[],
+    strings: readonly Wiring[],
+  ) => (number | null)[];
 }
 
 /** Instantiates the glue crate's release build. */
@@ -255,10 +239,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
   /** The reply of export `name` to the JSON `input`. */
-  const call = (
-    name: Exclude<(typeof functions)[number], "reserve" | "release">,
-    input: string,
-  ): string => {
+  const call = (name: Exported, input: string): string => {
     const encoded = new TextEncoder().encode(input);
     const at = wasm.reserve(encoded.length);
 
@@ -281,6 +262,8 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
+    coldVoltages: (moduleTypes, strings) =>
+      unwrap(call("cold_voltages", JSON.stringify({ moduleTypes, strings })), isVolts),
   };
 }
 

@@ -40,7 +40,6 @@ const NONE: Problem = Problem {
     code: Code::LayoutNone,
 };
 /// °C: the cell temperature strings are sized for (ADR 20).
-const COLD: f64 = -10.0;
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
@@ -349,7 +348,8 @@ impl Layouts {
                 let module = module_types.iter().find(|m| m.id == w.module_type)?;
                 let profile = self.inverters.profile(DeviceId(w.device))?;
                 let limit = profile.inverter()?.max_input_voltage;
-                let voltage = pv::open_circuit_voltage(&module.datasheet.model(), w.modules, COLD);
+                let voltage =
+                    pv::open_circuit_voltage(&module.datasheet.model(), w.modules, pv::COLD);
                 (voltage > limit).then_some(Warning {
                     string: string.id,
                     open_circuit_voltage: voltage,
