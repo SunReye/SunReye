@@ -1,4 +1,4 @@
-// Reads today from the core: the plant's energy, the PV forecast, the day's prices, the weather
+// Reads today from the core: the plant's energy from its rollups, the PV forecast, the day's prices, the weather
 // and the money (ADR 12, 14, 15, 17). Nothing here is live; the dashboard rereads it.
 import type { Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
@@ -7,10 +7,11 @@ import { current, sky, type Sky } from "./now.ts";
 import {
   combined,
   dayRows,
-  energy,
   forecastPv,
+  peak,
   today,
   type DayRow,
+  type Energies,
   type Interval,
   type Target,
   type Today,
@@ -43,7 +44,7 @@ export interface Day {
 }
 
 export type Reader = Readonly<
-  Pick<Core, "timezone" | "history" | "forecasts" | "layout" | "costs">
+  Pick<Core, "timezone" | "history" | "statistics" | "forecasts" | "layout" | "costs">
 >;
 
 async function measured(core: Reader, series: string, from: Date, to: Date): Promise<Interval[]> {
@@ -53,6 +54,34 @@ async function measured(core: Reader, series: string, from: Date, to: Date): Pro
   const read = await core.history(PLANT, series, from, to);
 
   return "points" in read ? read.points : [];
+}
+
+/** A `plant` power's day energy in kWh, rolled up by the core over the day's closed hours (ADR 3). */
+async function rolledUp(core: Reader, series: keyof Energies, day: readonly [Date, Date]) {
+  const read = await core.statistics(PLANT, series, "day", ...day);
+
+  // Wh; a day without a closed hour has no figures yet.
+  return ("points" in read ? (read.points[0]?.integral ?? 0) : 0) / 1000;
+}
+
+async function energies(core: Reader, day: readonly [Date, Date]): Promise<Energies> {
+  const [pv, load, imported, exported, pvOnSite, loadOnSite] = await Promise.all([
+    rolledUp(core, "pv.power", day),
+    rolledUp(core, "load.power", day),
+    rolledUp(core, "grid.import.power", day),
+    rolledUp(core, "grid.export.power", day),
+    rolledUp(core, "self.consumption.power", day),
+    rolledUp(core, "self.supply.power", day),
+  ]);
+
+  return {
+    "pv.power": pv,
+    "load.power": load,
+    "grid.import.power": imported,
+    "grid.export.power": exported,
+    "self.consumption.power": pvOnSite,
+    "self.supply.power": loadOnSite,
+  };
 }
 
 async function forecast(
@@ -105,10 +134,10 @@ export async function readDay(core: Reader, now: Readonly<Date>): Promise<Day> {
   // Past the longest day, 25 hours, and short of the next.
   const end = plantMidnight(name, new Date(start.getTime() + 36 * HOUR));
 
-  const [pv, load, grid, pvForecast, prices, weather, costs] = await Promise.all([
+  const [pv, load, day, pvForecast, prices, weather, costs] = await Promise.all([
     measured(core, "pv.power", start, read),
     measured(core, "load.power", start, read),
-    measured(core, "grid.power", start, read),
+    energies(core, [start, end]),
     inverters(core).then(async (ids) =>
       combined(await Promise.all(ids.map((id) => forecast(core, id, "pv.power", start, end)))),
     ),
@@ -122,7 +151,7 @@ export async function readDay(core: Reader, now: Readonly<Date>): Promise<Day> {
     now: read,
     start,
     end,
-    today: today({ pv: energy(pv), load: energy(load), grid: energy(grid) }),
+    today: today(day, { production: peak(pv), consumption: peak(load) }),
     rows: dayRows(pv, pvForecast, { start, end }),
     pv: forecastPv(pvForecast, read),
     prices,

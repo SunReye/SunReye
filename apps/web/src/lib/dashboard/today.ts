@@ -1,4 +1,4 @@
-// What the dashboard says of today (ADR 21), from the core's history and forecasts. Pure.
+// What the dashboard says of today (ADR 21), from the core's rollups, history and forecasts. Pure.
 
 const HOUR = 3_600_000;
 
@@ -9,31 +9,16 @@ export interface Interval {
   readonly mean: number;
 }
 
-export interface Flowed {
-  /** kWh while the power was positive. */
-  readonly positive: number;
-  /** kWh while it was negative, as a positive number. */
-  readonly negative: number;
-  readonly peak: { readonly watts: number; readonly at: Readonly<Date> } | null;
-}
+export type Peak = { readonly watts: number; readonly at: Readonly<Date> } | null;
 
-/** A power's energy each way over its intervals; a gap has no interval, so it adds none. */
-export function energy(intervals: readonly Interval[]): Flowed {
-  let positive = 0;
-  let negative = 0;
-  let peak: Flowed["peak"] = null;
+/** A power's highest mean over its intervals, and when it began. */
+export function peak(intervals: readonly Interval[]): Peak {
+  let top: Peak = null;
 
-  for (const { start, end, mean } of intervals) {
-    const from = Date.parse(start);
-    const kwh = (mean * (Date.parse(end) - from)) / HOUR / 1000;
+  for (const { start, mean } of intervals)
+    if (top === null || mean > top.watts) top = { watts: mean, at: new Date(start) };
 
-    if (kwh > 0) positive += kwh;
-    else negative -= kwh;
-
-    if (peak === null || mean > peak.watts) peak = { watts: mean, at: new Date(from) };
-  }
-
-  return { positive, negative, peak };
+  return top;
 }
 
 /** Today's energy in kWh, and the two meters in percent; a meter is null with nothing to measure. */
@@ -44,31 +29,33 @@ export interface Today {
   readonly purchase: number;
   readonly autarky: number | null;
   readonly selfUse: number | null;
-  readonly peaks: { readonly production: Flowed["peak"]; readonly consumption: Flowed["peak"] };
+  readonly peaks: { readonly production: Peak; readonly consumption: Peak };
+}
+
+/** The day's energy in kWh of each `plant` series (ADR 4, 14), as the core rolled it up. */
+export interface Energies {
+  readonly "pv.power": number;
+  readonly "load.power": number;
+  readonly "grid.import.power": number;
+  readonly "grid.export.power": number;
+  readonly "self.consumption.power": number;
+  readonly "self.supply.power": number;
 }
 
 const share = (part: number, whole: number): number | null =>
-  whole > 0 ? Math.min(Math.max(1 - part / whole, 0), 1) * 100 : null;
+  whole > 0 ? Math.min(Math.max(part / whole, 0), 1) * 100 : null;
 
-/** From the `plant` device's `pv.power`, `load.power` and `grid.power` (ADR 4, 14). */
-export function today({
-  pv,
-  load,
-  grid,
-}: {
-  readonly pv: Flowed;
-  readonly load: Flowed;
-  readonly grid: Flowed;
-}): Today {
+/** The four figures and the two meters, from the `plant` device's day rollups. */
+export function today(energies: Readonly<Energies>, peaks: Today["peaks"]): Today {
   return {
-    production: pv.positive,
-    consumption: load.positive,
-    feedIn: grid.negative,
-    purchase: grid.positive,
-    // The house's share not bought, and the PV's share not fed in.
-    autarky: share(grid.positive, load.positive),
-    selfUse: share(grid.negative, pv.positive),
-    peaks: { production: pv.peak, consumption: load.peak },
+    production: energies["pv.power"],
+    consumption: energies["load.power"],
+    feedIn: energies["grid.export.power"],
+    purchase: energies["grid.import.power"],
+    // Autarky: the house load not bought. Self-consumption: the PV not fed in.
+    autarky: share(energies["self.supply.power"], energies["load.power"]),
+    selfUse: share(energies["self.consumption.power"], energies["pv.power"]),
+    peaks,
   };
 }
 
