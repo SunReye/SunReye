@@ -334,7 +334,9 @@ pub struct QuantityDoc {
     pub offset: Option<f64>,
     pub compute: Option<ExprDoc>,
     pub range: Option<Range>,
-    /// A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+    /// A topic's text payloads and the values they read as, such as EVCC's loadpoint mode; or a
+    /// register's raw values, in decimal, and the values they read as, such as Deye's running
+    /// state. Any other payload or raw value is no value.
     #[serde(rename = "enum")]
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub texts: Option<BTreeMap<String, f64>>,
@@ -360,7 +362,10 @@ impl QuantityDoc {
             self.get.as_ref().map(|_| "http"),
             self.scale_factor.map(|_| "scale-factor"),
             self.resolution.map(|_| "resolution"),
-            self.texts.as_ref().map(|_| "text-enum"),
+            self.texts.as_ref().map(|_| match self.topic {
+                Some(_) => "text-enum",
+                None => "register-enum",
+            }),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
             self.poll_group.as_ref().map(|_| "poll-group"),

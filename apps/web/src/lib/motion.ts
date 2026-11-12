@@ -1,5 +1,5 @@
 import { flip as svelteFlip } from "svelte/animate";
-import { prefersReducedMotion } from "svelte/motion";
+import { motion } from "./motion/tier.svelte.ts";
 import {
   crossfade,
   fade as svelteFade,
@@ -46,10 +46,10 @@ export const MOTION_SPRING = "cubic-bezier(0.25, 1.4, 0.5, 1)";
 export const MOTION_SPRING_SOFT = "cubic-bezier(0.3, 1.08, 0.5, 1)";
 
 /**
- * `ms`, or 0 when the user prefers reduced motion. Every transition, animation
+ * `ms`, or 0 on the still tier (reduced motion, low power). Every transition, animation
  * and tween takes its duration from here.
  */
-export function motionMs(ms: number, reduced: boolean = prefersReducedMotion.current): number {
+export function motionMs(ms: number, reduced: boolean = motion.still): number {
   return reduced ? 0 : ms;
 }
 

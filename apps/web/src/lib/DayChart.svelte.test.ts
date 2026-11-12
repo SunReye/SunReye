@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import "../app.css";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "./api/core.ts";
 import DayChart from "./DayChart.svelte";
@@ -125,12 +126,29 @@ function pixels(): Pixels {
     : NONE;
 }
 
-/** Whether `image` holds an opaque pixel of the first series' colour, #4e79a7. */
-function lined(image: Pixels): boolean {
+/** An energy colour token as the browser paints it, 0 to 255 per channel. */
+function token(name: string): ArrayLike<number> {
+  const probe = document.createElement("span");
+
+  probe.style.color = `var(${name})`;
+  document.body.append(probe);
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+
+  context.fillStyle = getComputedStyle(probe).color;
+  probe.remove();
+  context.fillRect(0, 0, 1, 1);
+
+  return context.getImageData(0, 0, 1, 1).data.slice(0, 3);
+}
+
+/** Whether `image` holds an opaque pixel of `colour`, by default solar's. */
+function lined(image: Pixels, colour = token("--e-solar")): boolean {
   for (let i = 0; i < image.data.length; i += 4) {
     const [r, g, b, a] = [0, 1, 2, 3].map((k) => image.data[i + k]);
 
-    if (a === 255 && r === 0x4e && g === 0x79 && b === 0xa7) return true;
+    if (a === 255 && r === colour[0] && g === colour[1] && b === colour[2]) return true;
   }
 
   return false;
@@ -176,6 +194,14 @@ test("the day chart's last x-axis label is not clipped at the right edge", async
   const image = await drawn();
 
   expect(inked(image, image.width - 2)).toBe(0);
+});
+
+test("each series is drawn in its flow's energy colour", async () => {
+  await render(DayChart, { core: connect(testCore(PEAK)), device: 1, series: ["battery.power"] });
+
+  await expect.poll(() => lined(pixels(), token("--e-battery"))).toBe(true);
+  // The strings' forecasts are solar.
+  expect(lined(pixels(), token("--e-solar"))).toBe(true);
 });
 
 test("a forecast of a single point is drawn", async () => {

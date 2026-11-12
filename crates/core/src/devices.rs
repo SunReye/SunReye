@@ -21,7 +21,7 @@ use tokio::sync::{Mutex, watch};
 use utoipa::ToSchema;
 
 use crate::api::{Code, INTERNAL, Problem, internal};
-use crate::bus::{Bus, DeviceId};
+use crate::bus::{Bus, DeviceId, Series};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, Task};
 use crate::http;
@@ -262,6 +262,8 @@ struct Polled {
 #[derive(Debug, Clone)]
 pub struct Writable {
     pub id: u32,
+    /// The series its profile publishes, extras left out, in the profile's order.
+    pub series: Vec<String>,
     pub writes: bool,
     pub settings: Vec<(Setting, Enable)>,
 }
@@ -413,7 +415,7 @@ impl Devices {
         self.database.run(store::devices).await
     }
 
-    /// Every device with its writes switch and its settings, by id.
+    /// Every device with its series, its writes switch and its settings, by id.
     ///
     /// # Errors
     /// The file cannot be read.
@@ -430,6 +432,7 @@ impl Devices {
             }
             writable.push(Writable {
                 id: device.id,
+                series: published(&profile),
                 writes: device.draft.writes,
                 settings,
             });
@@ -1090,6 +1093,25 @@ fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
         }
     }
     grouped
+}
+
+/// Each series `profile` publishes once, extras (ADR 4) left out, in its order.
+fn published(profile: &Profile) -> Vec<String> {
+    let mut series: Vec<String> = Vec::new();
+    for quantity in profile.quantities() {
+        if quantity.role.starts_with("extra.") {
+            continue;
+        }
+        let name = Series {
+            role: quantity.role.clone(),
+            index: quantity.index,
+        }
+        .to_string();
+        if !series.contains(&name) {
+            series.push(name);
+        }
+    }
+    series
 }
 
 /// Strings may be wired to a device whose profile declares an inverter's inputs or reads PV.

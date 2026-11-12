@@ -143,20 +143,3 @@ fn a_text_payload_reads_as_the_value_its_enum_maps_it_to() {
     assert_eq!(received(&p, 0, "fast"), None);
     assert_eq!(received(&p, 0, "1"), None);
 }
-
-#[test]
-fn only_a_topic_maps_texts() {
-    let registered = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16",
-        "enum": { "on": 1 } }]);
-    let doc = json!({
-        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": super::all(), "quantities": registered,
-    });
-    assert!(matches!(
-        Profile::load(&doc.to_string()),
-        Err(LoadError::Quantity {
-            problem: "only a topic maps texts",
-            ..
-        })
-    ));
-}

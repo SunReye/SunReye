@@ -13,7 +13,8 @@ use serde_json::Value;
 
 /// v4's oracle corpus, one line per profile: battery flows negated to ADR 4's charging-positive
 /// sign, day counters left out, and on the SG05LP3 range register 636, which v4 read but left
-/// unmapped, added as the signed inverter output power.
+/// unmapped, added as the signed inverter output power. Register 500 reads through its enum as
+/// `inverter.status`: v4's raw running state 0 as standby, a value past fault as no value.
 const V4_CASES: &str = include_str!("deye-v4-cases.ndjson");
 
 /// A profile and what Deye's datasheet (cited in `profiles/deye/`) and v4 say of its model.

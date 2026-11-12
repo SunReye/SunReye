@@ -195,3 +195,41 @@ fn a_scale_factor_is_a_power_of_ten_read_from_its_own_register() {
         }]
     );
 }
+
+/// Deye's running state, register 500 (v4's manifest): 0 standby, 1 self-check, 2 normal,
+/// 3 alarm, 4 fault, read as `inverter.status` (ADR 4): 0 standby, 1 normal, 2 fault.
+#[test]
+fn a_register_reads_the_value_its_enum_maps_and_an_unknown_variant_is_no_value() {
+    let p = profile(
+        &json!([{ "key": "s", "role": "inverter.status", "register": 500,
+        "type": "u16", "enum": { "0": 0, "1": 0, "2": 1, "3": 1, "4": 2 } }]),
+    );
+    let status = |raw| value(&p, "s", &registers(&[(500, raw)]));
+    assert_eq!(
+        [status(1), status(2), status(4), status(5)],
+        [Some(0.0), Some(1.0), Some(2.0), None]
+    );
+}
+
+#[test]
+fn a_registers_enum_maps_only_raw_values_its_type_holds() {
+    let refused = |quantity: Value| {
+        let doc = json!({
+            "schema": 1, "id": "case", "name": "case", "manufacturer": "test",
+            "version": "1.0.0", "requires": super::all(), "quantities": [quantity],
+        });
+        match Profile::load(&doc.to_string()) {
+            Err(crate::LoadError::Quantity { problem, .. }) => problem,
+            other => panic!("expected a quantity refusal, got {other:?}"),
+        }
+    };
+    let with = |kind: &str, map: Value| json!({ "key": "a", "role": "extra.a", "register": 1, "type": kind, "enum": map });
+    let holds = "an enum maps raw values its register type holds";
+    assert_eq!(refused(with("u16", json!({ "on": 1 }))), holds);
+    assert_eq!(refused(with("u16", json!({ "-1": 1 }))), holds);
+    assert_eq!(refused(with("u16", json!({ "65536": 1 }))), holds);
+    assert_eq!(refused(with("i16", json!({ "40000": 1 }))), holds);
+    let mut scaled = with("u16", json!({ "1": 1 }));
+    scaled["scale"] = json!(0.1);
+    assert_eq!(refused(scaled), "an enum takes no scale or offset");
+}
