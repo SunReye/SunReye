@@ -146,6 +146,10 @@ _Avoid_: Status, result
 A setting that locks another setting at a fixed value and, on release, restores the value it held before. Deye's battery discharge lock is one.
 _Avoid_: Composite control, switch
 
+**Time-of-use slot**:
+One row of a device's own schedule: from its start until the next slot's, the battery works toward a SOC target at a power, charging from the grid or not. Its settings are written like any other.
+_Avoid_: Band (a tariff's), program, time window
+
 **Live control**:
 A write the device reverts unless it is refreshed. Only a controller under a lease may use it.
 _Avoid_: Remote control, setpoint

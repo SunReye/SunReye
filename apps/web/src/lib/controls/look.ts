@@ -1,5 +1,6 @@
 // How Controls' groups look on the drill-in's root (ADR 21): a Paraglide label, an icon, a summary.
 import BatteryCharging from "@lucide/svelte/icons/battery-charging";
+import Clock from "@lucide/svelte/icons/clock";
 import Cpu from "@lucide/svelte/icons/cpu";
 import UtilityPole from "@lucide/svelte/icons/utility-pole";
 import type { DrillGroup } from "../components/drill-in/drill-in.svelte";
@@ -8,11 +9,17 @@ import { summary, type Control, type ControlGroup } from "./groups.ts";
 
 const LABELS = {
   battery: m.controls_group_battery,
+  schedule: m.controls_group_schedule,
   grid: m.controls_group_grid,
   advanced: m.controls_group_advanced,
 } as const;
 
-const ICONS = { battery: BatteryCharging, grid: UtilityPole, advanced: Cpu } as const;
+const ICONS = {
+  battery: BatteryCharging,
+  schedule: Clock,
+  grid: UtilityPole,
+  advanced: Cpu,
+} as const;
 
 /** The drill-in's rows for `groups`, each summarising the values `value` knows. */
 export function drillGroups(

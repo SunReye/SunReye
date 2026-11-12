@@ -1,14 +1,14 @@
 <!-- The value editor's body (ADR 21): header with rolling digits, wheel or list, apply. -->
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import { haptics } from "../../haptics.ts";
   import { m } from "../../paraglide/messages.js";
   import { getLocale } from "../../paraglide/runtime.js";
   import ApplyBar from "./apply-bar.svelte";
-  import { fits, wheel, type Editable, type Outcome } from "./editable.ts";
+  import { clock, fits, wheel, type Editable, type Outcome } from "./editable.ts";
   import EnumList from "./enum-list.svelte";
+  import NumberDigits from "./number-digits.svelte";
   import RollingNumber from "./rolling-number.svelte";
+  import TimeWheels from "./time-wheels.svelte";
   import Wheel from "./wheel.svelte";
 
   let {
@@ -34,28 +34,33 @@
   haptics.nudge();
 
   const nf = new Intl.NumberFormat(getLocale());
-  const parts = nf.formatToParts(1234.5);
-  const group = parts.find((p) => p.type === "group")?.value ?? "";
-  const decimal = parts.find((p) => p.type === "decimal")?.value ?? ".";
 
   // Numbers.
-  const rows = orig.kind === "number" ? wheel(orig) : undefined;
-  const start = orig.kind === "number" && rows ? rows.index(now ?? orig.min) : 0;
+  const numeric = orig.kind === "number" ? { edit: orig, rows: wheel(orig) } : undefined;
+  const rows = numeric?.rows;
+  const start = numeric ? numeric.rows.index(now ?? numeric.edit.min) : 0;
   let index = $state(start);
   let live = $state(start);
 
-  // A step of 10, 100 … rolls the digits above it and keeps its zeros still.
-  const p10 =
-    orig.kind === "number" && orig.step >= 10 && Number.isInteger(Math.log10(orig.step))
-      ? orig.step
-      : 1;
+  // Times: an hour row and a minute row at the step.
+  const step = orig.kind === "time" ? orig.step : 1;
+  const opened = orig.kind === "time" ? (now ?? orig.min) : 0;
+  const firstHour = Math.floor(opened / 60);
+  const firstMinute = Math.round((opened % 60) / step);
 
-  const whole = orig.kind === "number" && Number.isInteger(orig.step);
+  let hour = $state(firstHour);
+  let minute = $state(firstMinute);
+  let liveTime = $state({ hour: firstHour, minute: firstMinute * step });
 
   // Enums.
   let choice = $state(orig.kind === "enum" ? (now ?? orig.options[0]?.value ?? 0) : 0);
 
-  const next = $derived(rows ? rows.at(index) : choice);
+  const next = $derived.by(() => {
+    if (rows) return rows.at(index);
+
+    return orig.kind === "time" ? hour * 60 + minute * step : choice;
+  });
+
   const changed = $derived(next !== now);
 
   function text(value: number | null): string {
@@ -64,27 +69,26 @@
     if (orig.kind === "enum")
       return orig.options.find((o) => o.value === value)?.text ?? nf.format(value);
 
+    if (orig.kind === "time") return clock(value);
+
     return orig.unit ? `${nf.format(value)} ${orig.unit}` : nf.format(value);
   }
 
   const nextText = $derived(text(next));
 
-  let typing = $state(false);
-  let typed = $state("");
+  /** What it may take: bounds and step, the minute step, or how many values. */
+  function limits(): string {
+    if (orig.kind === "number")
+      return m.editor_limits({
+        min: nf.format(orig.min),
+        max: nf.format(orig.max),
+        unit: orig.unit,
+        step: nf.format(orig.step),
+      });
 
-  function commitTyped(): void {
-    typing = false;
+    if (orig.kind === "time") return m.editor_minutes({ step: orig.step });
 
-    if (!rows) return;
-
-    const n = Number(typed.replaceAll(group, "").replace(decimal, "."));
-
-    if (Number.isFinite(n) && typed.trim() !== "") index = rows.index(n);
-  }
-
-  function focusSelect(node: HTMLInputElement) {
-    node.focus();
-    node.select();
+    return m.editor_values({ count: orig.options.length });
   }
 
   let pending = $state(false);
@@ -109,63 +113,25 @@
 <div class={["flex flex-col", compact ? "gap-3" : "gap-4"]}>
   <header class="flex flex-col items-center gap-1 text-center">
     <span class="text-sm font-medium">{orig.name}</span>
-    {#if orig.kind === "number"}
-      <span class="text-xs text-muted-foreground tabular-nums"
-        >{m.editor_limits({
-          min: nf.format(orig.min),
-          max: nf.format(orig.max),
-          unit: orig.unit,
-          step: nf.format(orig.step),
-        })}</span
-      >
-    {:else}
-      <span class="text-xs text-muted-foreground"
-        >{m.editor_values({ count: orig.options.length })}</span
-      >
-    {/if}
+    <span class="text-xs text-muted-foreground tabular-nums">{limits()}</span>
 
-    {#if rows && orig.kind === "number"}
-      {#if typing}
-        <Input
-          {@attach focusSelect}
-          bind:value={typed}
-          inputmode="decimal"
-          class="h-16 w-40 text-center text-5xl! font-semibold tracking-tight tabular-nums"
-          onkeydown={(e) => {
-            if (e.key === "Enter") commitTyped();
-
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              typing = false;
-            }
-          }}
-          onblur={commitTyped}
-          aria-label={m.editor_type({ name: orig.name })}
-        />
-      {:else}
-        <Button
-          variant="ghost"
-          class="h-16 items-baseline gap-2 px-3 text-5xl font-semibold tracking-tight"
-          onclick={() => {
-            typed = nf.format(next);
-            typing = true;
-          }}
-          aria-label={m.editor_tap({ value: nextText })}
-        >
-          {#if whole}
-            <span class="flex"
-              ><RollingNumber
-                value={(rows.at(0) + live * orig.step) / p10}
-                max={orig.max / p10}
-              />{#if p10 > 1}<span class="tabular-nums">{"0".repeat(Math.log10(p10))}</span
-                >{/if}</span
-            >
-          {:else}
-            <span class="tabular-nums">{nf.format(next)}</span>
-          {/if}
-          <span class="text-xl font-medium text-muted-foreground">{orig.unit}</span>
-        </Button>
-      {/if}
+    {#if numeric}
+      <NumberDigits
+        edit={numeric.edit}
+        rows={numeric.rows}
+        bind:index
+        {live}
+        {nf}
+        text={nextText}
+      />
+    {:else if orig.kind === "time"}
+      <span
+        class="flex h-[64px] items-center text-5xl font-semibold tracking-tight"
+        aria-label={nextText}
+        ><RollingNumber value={liveTime.hour} max={23} pad={2} /><span
+          class="-mt-1 px-0.5 text-muted-foreground">:</span
+        ><RollingNumber value={liveTime.minute} max={59} pad={2} /></span
+      >
     {:else}
       <span class="flex h-[48px] items-center text-2xl font-semibold tracking-tight"
         >{nextText}</span
@@ -174,15 +140,23 @@
   </header>
 
   <div data-no-drag>
-    {#if rows && orig.kind === "number"}
+    {#if numeric}
       <Wheel
-        {rows}
+        rows={numeric.rows}
         bind:index
-        current={now === null ? undefined : rows.index(now)}
+        current={now === null ? undefined : numeric.rows.index(now)}
         format={(value) => nf.format(value)}
-        unit={orig.unit}
-        ariaLabel={orig.name}
-        onlive={(p) => (live = Math.max(0, Math.min(rows.count - 1, p)))}
+        unit={numeric.edit.unit}
+        ariaLabel={numeric.edit.name}
+        onlive={(p) => (live = Math.max(0, Math.min(numeric.rows.count - 1, p)))}
+      />
+    {:else if orig.kind === "time"}
+      <TimeWheels
+        step={orig.step}
+        {now}
+        bind:hour
+        bind:minute
+        onlive={(h, mm) => (liveTime = { hour: h, minute: mm })}
       />
     {:else if orig.kind === "enum"}
       <EnumList name={orig.name} options={orig.options} {now} bind:choice />

@@ -6,6 +6,7 @@
   import type { Core, Problem } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { getLocale } from "../paraglide/runtime.js";
+  import { apply } from "./apply.ts";
   import ControlsDrill from "./ControlsDrill.svelte";
   import ControlsEditor from "./ControlsEditor.svelte";
   import { controlGroups, valueOf, type Control, type ControlGroup } from "./groups.ts";
@@ -100,6 +101,8 @@
       {text}
       editing={editorOpen ? editing : null}
       onedit={edit}
+      onset={(c, next) =>
+        apply({ core, text, onwritten: (w) => reread(w, loaded.groups) }, c, next)}
     />
     <ControlsEditor
       {core}
