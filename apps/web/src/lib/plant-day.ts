@@ -38,3 +38,21 @@ export function plantMidnight(zone: string, now: Readonly<Date>): Date {
 
   return new Date(date - offset(zone, guess));
 }
+
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+
+/** The instant `hour` (0–24) of plant-local calendar `day`, counted in days since 1970-01-01, began. */
+export function plantInstant(zone: string, day: number, hour: number): Date {
+  const wall = day * DAY_MS + hour * HOUR_MS;
+  const guess = wall - offset(zone, wall);
+
+  return new Date(wall - offset(zone, guess));
+}
+
+/** The plant-local calendar day, since 1970-01-01, and the hour that `now` falls in. */
+export function plantNow(zone: string, now: Readonly<Date>) {
+  const wall = now.getTime() + offset(zone, now.getTime());
+
+  return { day: Math.floor(wall / DAY_MS), hour: Math.floor((wall % DAY_MS) / HOUR_MS) };
+}
