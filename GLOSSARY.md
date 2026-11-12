@@ -120,6 +120,10 @@ _Avoid_: Self-use, own consumption (a measurement point's own consumption is som
 The share of the house load not bought from the grid, over a day or longer.
 _Avoid_: Self-sufficiency, independence
 
+**Usable capacity**:
+The energy a full battery gives today, inferred from its state of charge over whole discharges, not read from the device.
+_Avoid_: State of health, SOH, nameplate
+
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.
 _Avoid_: Threshold, tolerance
@@ -283,6 +287,10 @@ _Avoid_: Profit, yield
 **Payback**:
 The savings summed since the first, against the investment amount the admin enters.
 _Avoid_: Amortisation, return on investment
+
+**Pace**:
+The savings of the last twelve months, the rate at which payback is projected.
+_Avoid_: Savings rate, trend
 
 ## Remote access
 

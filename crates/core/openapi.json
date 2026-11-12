@@ -118,6 +118,23 @@
         ],
         "type": "object"
       },
+      "BestView": {
+        "properties": {
+          "date": {
+            "description": "`YYYY-MM-DD`.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "value"
+        ],
+        "type": "object"
+      },
       "BiddingZone": {
         "description": "A day-ahead market area.",
         "enum": [
@@ -243,6 +260,92 @@
         },
         "required": [
           "connected"
+        ],
+        "type": "object"
+      },
+      "Capacity": {
+        "description": "The usable capacity inferred from the state of charge over each unbroken discharge of at\nleast 20 points; no vendor register reports it.",
+        "properties": {
+          "cycles": {
+            "description": "Full cycles: `discharged` over the nameplate, else over `now`.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "discharged": {
+            "description": "kWh discharged, summed per hour.",
+            "format": "double",
+            "type": "number"
+          },
+          "first": {
+            "description": "kWh: the median of the first five.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "measurements": {
+            "description": "In time order.",
+            "items": {
+              "$ref": "#/components/schemas/CapacityMeasurement"
+            },
+            "type": "array"
+          },
+          "nameplate": {
+            "description": "kWh, as the latest `battery.capacity` a device reports; `null` without one.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "now": {
+            "description": "kWh: the median of the latest five measurements; `null` before the first.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "perYear": {
+            "description": "The relative change a year, from half a year of measurements and more than five.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "since": {
+            "description": "RFC 3339: the first hour with battery power.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "measurements",
+          "discharged"
+        ],
+        "type": "object"
+      },
+      "CapacityMeasurement": {
+        "properties": {
+          "end": {
+            "description": "RFC 3339: when the discharge ended.",
+            "type": "string"
+          },
+          "kwh": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "end",
+          "kwh"
         ],
         "type": "object"
       },
@@ -1158,6 +1261,37 @@
         ],
         "type": "object"
       },
+      "FiguresView": {
+        "description": "kWh, and EUR saved. Autarky is `selfSupply / consumption`.",
+        "properties": {
+          "consumption": {
+            "format": "double",
+            "type": "number"
+          },
+          "production": {
+            "format": "double",
+            "type": "number"
+          },
+          "saved": {
+            "description": "`null` where no tariff priced a day.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "selfSupply": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "production",
+          "consumption",
+          "selfSupply"
+        ],
+        "type": "object"
+      },
       "ForecastPoint": {
         "properties": {
           "issued": {
@@ -2050,13 +2184,35 @@
         "type": "object"
       },
       "Payback": {
-        "description": "The savings so far against the investment, in EUR to the cent.",
+        "description": "The savings so far against the investment, in EUR to the cent, and when they reach it.",
         "properties": {
           "investment": {
             "description": "What the admin entered; `null` until then.",
             "format": "double",
             "type": [
               "number",
+              "null"
+            ]
+          },
+          "months": {
+            "description": "The savings so far at each month's last recorded day, in time order.",
+            "items": {
+              "$ref": "#/components/schemas/PaybackMonth"
+            },
+            "type": "array"
+          },
+          "pace": {
+            "description": "EUR saved a year: the last twelve months, or the record scaled to a year; `null` under\nthree months of record.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reached": {
+            "description": "The plant-local date, `YYYY-MM-DD`, the savings reach the investment at that pace; `null`\nwithout an investment or a pace, or once paid back.",
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -2075,7 +2231,26 @@
           }
         },
         "required": [
-          "savings"
+          "savings",
+          "months"
+        ],
+        "type": "object"
+      },
+      "PaybackMonth": {
+        "description": "The savings summed up to a plant-local date.",
+        "properties": {
+          "date": {
+            "description": "`YYYY-MM-DD`.",
+            "type": "string"
+          },
+          "saved": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "saved"
         ],
         "type": "object"
       },
@@ -2380,6 +2555,54 @@
         "required": [
           "measured",
           "modelled"
+        ],
+        "type": "object"
+      },
+      "Records": {
+        "description": "Every recorded plant-local year, newest first, and the plant's records.",
+        "properties": {
+          "bestDay": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most kWh produced on a closed day."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bestMonth": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most kWh produced in a closed month, by its first date."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bestSaving": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most EUR saved on a closed day."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/YearView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "years"
         ],
         "type": "object"
       },
@@ -3322,6 +3545,38 @@
         ],
         "type": "object"
       },
+      "YearView": {
+        "properties": {
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FiguresView",
+                "description": "The year before over the same dates; `null` before the record began."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "figures": {
+            "$ref": "#/components/schemas/FiguresView"
+          },
+          "running": {
+            "description": "The year today is in, summed to the latest reading.",
+            "type": "boolean"
+          },
+          "year": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "running",
+          "figures"
+        ],
+        "type": "object"
+      },
       "Zone": {
         "description": "The plant timezone.",
         "properties": {
@@ -3428,6 +3683,32 @@
           }
         },
         "summary": "The residual per plant-local day (ADR 14): energy a consuming point gave out that its\nmeasured children do not explain, so a missing or misplaced point."
+      }
+    },
+    "/api/v1/battery/capacity": {
+      "get": {
+        "operationId": "capacity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capacity"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The battery's usable capacity over the whole record."
       }
     },
     "/api/v1/capabilities": {
@@ -5099,6 +5380,32 @@
           }
         },
         "summary": "Applies the update waiting for a profile. Each setting it adds or changes is off until the\nadmin enables it again (ADR 8)."
+      }
+    },
+    "/api/v1/records": {
+      "get": {
+        "operationId": "records",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Records"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every recorded year with the same dates of the year before, and the best closed day and\nmonth of production and day of savings, from the daily rollups."
       }
     },
     "/api/v1/retention": {

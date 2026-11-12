@@ -44,6 +44,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/battery/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The battery's usable capacity over the whole record. */
+        get: operations["capacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -648,6 +665,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every recorded year with the same dates of the year before, and the best closed day and
+         *     month of production and day of savings, from the daily rollups.
+         */
+        get: operations["records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/retention": {
         parameters: {
             query?: never;
@@ -991,6 +1028,12 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        BestView: {
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** Format: double */
+            value: number;
+        };
         /**
          * @description A day-ahead market area.
          * @enum {string}
@@ -1045,6 +1088,52 @@ export interface components {
             lastConnectedAt?: string | null;
             /** @description Why the last attempt or session failed; kept after a reconnect. */
             lastError?: string | null;
+        };
+        /**
+         * @description The usable capacity inferred from the state of charge over each unbroken discharge of at
+         *     least 20 points; no vendor register reports it.
+         */
+        Capacity: {
+            /**
+             * Format: double
+             * @description Full cycles: `discharged` over the nameplate, else over `now`.
+             */
+            cycles?: number | null;
+            /**
+             * Format: double
+             * @description kWh discharged, summed per hour.
+             */
+            discharged: number;
+            /**
+             * Format: double
+             * @description kWh: the median of the first five.
+             */
+            first?: number | null;
+            /** @description In time order. */
+            measurements: components["schemas"]["CapacityMeasurement"][];
+            /**
+             * Format: double
+             * @description kWh, as the latest `battery.capacity` a device reports; `null` without one.
+             */
+            nameplate?: number | null;
+            /**
+             * Format: double
+             * @description kWh: the median of the latest five measurements; `null` before the first.
+             */
+            now?: number | null;
+            /**
+             * Format: double
+             * @description The relative change a year, from half a year of measurements and more than five.
+             */
+            perYear?: number | null;
+            /** @description RFC 3339: the first hour with battery power. */
+            since?: string | null;
+        };
+        CapacityMeasurement: {
+            /** @description RFC 3339: when the discharge ended. */
+            end: string;
+            /** Format: double */
+            kwh: number;
         };
         /**
          * @description A parking footprint: its width runs along x and its length along z from its corner, before
@@ -1381,6 +1470,20 @@ export interface components {
             /** @description RFC 3339, UTC. */
             start: string;
         };
+        /** @description kWh, and EUR saved. Autarky is `selfSupply / consumption`. */
+        FiguresView: {
+            /** Format: double */
+            consumption: number;
+            /** Format: double */
+            production: number;
+            /**
+             * Format: double
+             * @description `null` where no tariff priced a day.
+             */
+            saved?: number | null;
+            /** Format: double */
+            selfSupply: number;
+        };
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */
             issued: string;
@@ -1697,13 +1800,26 @@ export interface components {
         Password: {
             password: string;
         };
-        /** @description The savings so far against the investment, in EUR to the cent. */
+        /** @description The savings so far against the investment, in EUR to the cent, and when they reach it. */
         Payback: {
             /**
              * Format: double
              * @description What the admin entered; `null` until then.
              */
             investment?: number | null;
+            /** @description The savings so far at each month's last recorded day, in time order. */
+            months: components["schemas"]["PaybackMonth"][];
+            /**
+             * Format: double
+             * @description EUR saved a year: the last twelve months, or the record scaled to a year; `null` under
+             *     three months of record.
+             */
+            pace?: number | null;
+            /**
+             * @description The plant-local date, `YYYY-MM-DD`, the savings reach the investment at that pace; `null`
+             *     without an investment or a pace, or once paid back.
+             */
+            reached?: string | null;
             /**
              * Format: double
              * @description What the savings have yet to pay back, none once they have; `null` without an investment.
@@ -1714,6 +1830,13 @@ export interface components {
              * @description `cost.savings.rate` summed over every rolled-up hour.
              */
             savings: number;
+        };
+        /** @description The savings summed up to a plant-local date. */
+        PaybackMonth: {
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** Format: double */
+            saved: number;
         };
         /**
          * @description A plant-local calendar period.
@@ -1843,6 +1966,13 @@ export interface components {
             measured: number;
             /** Format: double */
             modelled: number;
+        };
+        /** @description Every recorded plant-local year, newest first, and the plant's records. */
+        Records: {
+            bestDay?: components["schemas"]["BestView"] | null;
+            bestMonth?: components["schemas"]["BestView"] | null;
+            bestSaving?: components["schemas"]["BestView"] | null;
+            years: components["schemas"]["YearView"][];
         };
         /** @description An index and the outcome of its last check. */
         Report: {
@@ -2187,6 +2317,14 @@ export interface components {
         WriteLog: {
             writes: components["schemas"]["Entry"][];
         };
+        YearView: {
+            before?: components["schemas"]["FiguresView"] | null;
+            figures: components["schemas"]["FiguresView"];
+            /** @description The year today is in, summed to the latest reading. */
+            running: boolean;
+            /** Format: int32 */
+            year: number;
+        };
         /** @description The plant timezone. */
         Zone: {
             /** @description An IANA name, such as `Europe/Berlin`. */
@@ -2252,6 +2390,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Balance"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    capacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Capacity"];
                 };
             };
             "4XX": {
@@ -3630,6 +3795,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Update"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    records: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Records"];
                 };
             };
             "4XX": {
