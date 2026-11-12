@@ -21,6 +21,8 @@ export interface Control {
   readonly setting: ControlSetting;
   /** The device's writes switch is on (ADR 7) and the setting verified or enabled (ADR 8). */
   readonly writable: boolean;
+  /** Only the admin's enable keeps it read-only: its device's writes are on (ADR 8). */
+  readonly awaiting: boolean;
 }
 
 export interface ControlGroup {
@@ -45,6 +47,7 @@ export function controlGroups(devices: Devices): ControlGroup[] {
         device: Number(id),
         setting,
         writable: device.writes && (setting.enable === "verified" || setting.enable === "on"),
+        awaiting: device.writes && (setting.enable === "off" || setting.enable === "community"),
       });
 
   const groups: ControlGroup[] = [];

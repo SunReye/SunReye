@@ -60,6 +60,12 @@ test("a control writes only with its device's writes on and its setting verified
     false,
     false,
   ]);
+  // Only the grid's setting waits for its enable; the banner covers a device whose writes are off.
+  expect([battery, grid, advanced].map((g) => g?.controls[0]?.awaiting)).toEqual([
+    false,
+    true,
+    false,
+  ]);
 });
 
 test("a group with no settings is left out", () => {

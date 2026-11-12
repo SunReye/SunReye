@@ -24,9 +24,7 @@
 
   /** Why it is read-only while it waits for the admin's enable (ADR 8), else its device. */
   function note(control: Control): string | undefined {
-    const awaiting = control.setting.enable === "off" || control.setting.enable === "community";
-
-    return awaiting ? m.controls_needs_enable() : owner(control);
+    return control.awaiting ? m.controls_needs_enable() : owner(control);
   }
 </script>
 
