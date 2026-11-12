@@ -17,6 +17,7 @@ import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
+import { easeGlow } from "./live-glow.svelte.ts";
 import { Studio } from "./studio.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -40,6 +41,11 @@ export interface Lit {
   readonly studio: Studio;
   /** The string glow now: read in an effect, it follows the sun and the theme. */
   readonly glow: () => Glow;
+  /** Relights `drawn` on each live tick, easing to the new `shares` (ADR 21). */
+  readonly ease: (
+    drawn: () => Group | undefined,
+    shares: () => readonly (number | null)[] | undefined,
+  ) => void;
   /** Draws `group` in place of the last, which it frees; the sun's shadow and the lawn fit it. */
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
   readonly show: (group: Group) => void;
@@ -122,5 +128,14 @@ export function lit(
     render();
   });
 
-  return { studio, glow: () => ({ colour, daylight: day.glow }), ...stage(studio) };
+  const glow = (): Glow => ({ colour, daylight: day.glow });
+
+  return {
+    studio,
+    glow,
+    ease: (drawn, shares) => {
+      easeGlow(drawn, shares, glow, render);
+    },
+    ...stage(studio),
+  };
 }

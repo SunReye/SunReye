@@ -301,7 +301,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Reads a setting's current value from its read-back (ADR 7), between polls. Nothing is written
+         *     or logged.
+         */
+        get: operations["read_setting"];
         /**
          * Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps
          *     it. A refusal never reaches the device.
@@ -1928,6 +1932,14 @@ export interface components {
             change: components["schemas"]["Delta"];
             key: string;
         };
+        /** @description A setting's current value. */
+        SettingNow: {
+            /**
+             * Format: double
+             * @description In the setting's unit; `null` when it cannot be read or the setting is write-only.
+             */
+            value?: number | null;
+        };
         /** @description A setting a device's profile declares (ADR 5, 7). */
         SettingSupport: components["schemas"]["Declared"] & {
             /** @description Whether trust lets it write (ADR 8); the device's `writes` switch applies as well. */
@@ -2834,6 +2846,36 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    read_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingNow"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

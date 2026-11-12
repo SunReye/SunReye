@@ -6,6 +6,7 @@
   import { language } from "../lib/i18n/language.svelte.ts";
   import Backdrop from "../lib/shell/Backdrop.svelte";
   import { provideAccess } from "../lib/shell/access.svelte.ts";
+  import { stream } from "../lib/live/stream.svelte.ts";
   import { input } from "../lib/shell/input.svelte.ts";
   import Shell from "../lib/shell/Shell.svelte";
   import "../app.css";
@@ -21,6 +22,9 @@
   void access.check(core);
 
   $effect(() => motion.watch());
+
+  // One stream for the connection chip and the glide's stall; none around sign-in and setup.
+  $effect(() => (access.bare ? undefined : stream.follow(core)));
 
   // The CSS motion tokens read the tier (ADR 21).
   $effect(() => {

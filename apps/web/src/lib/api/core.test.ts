@@ -1,50 +1,8 @@
 /// <reference types="bun" />
 import { afterEach, expect, setSystemTime, test } from "bun:test";
-import {
-  connect,
-  http,
-  type Attempt,
-  type Capabilities,
-  type Live,
-  type Transport,
-} from "./core.ts";
+import { connect, http, type Live, type Transport } from "./core.ts";
+import { BASE, event, problem, scripted, sse } from "./core.harness.ts";
 
-const BASE = "http://core.test/prefix/";
-
-function sse(...events: readonly string[]): Response {
-  return new Response(events.join(""), { headers: { "content-type": "text/event-stream" } });
-}
-
-function event(name: string, data: string): string {
-  return `event: ${name}\ndata: ${data}\n\n`;
-}
-
-function problem(status: number, code: string): Response {
-  return Response.json(
-    { status, code },
-    { status, headers: { "content-type": "application/problem+json" } },
-  );
-}
-
-/** A test core: answers each request in turn and records its URL. */
-function scripted(...responses: readonly Response[]): Transport & { readonly urls: string[] } {
-  const urls: string[] = [];
-  const queue = [...responses];
-
-  return {
-    base: BASE,
-    urls,
-    fetch: (request) => {
-      urls.push(request.url);
-      const next = queue.shift();
-
-      // Past its script the core holds the request open.
-      return next === undefined ? Promise.withResolvers<Response>().promise : Promise.resolve(next);
-    },
-  };
-}
-
-/** Collects `count` live updates, then stops the stream. */
 async function updates(transport: Transport, count: number): Promise<Live[]> {
   const seen: Live[] = [];
   const { promise, resolve } = Promise.withResolvers<Live[]>();
@@ -142,6 +100,27 @@ test("a stream the core ends reconnects to a fresh snapshot", async () => {
   expect(transport.urls).toHaveLength(2);
 });
 
+test("a stream that breaks after its snapshot keeps its values, marked lost, until the next", async () => {
+  setSystemTime(new Date(5000));
+
+  const broken = new ReadableStream<Uint8Array>({
+    start: (c) => {
+      c.enqueue(new TextEncoder().encode(event("snapshot", '{"devices":{"1":{"pv.power":1}}}')));
+    },
+    pull: (c) => {
+      c.error(new Error("network"));
+    },
+  });
+
+  expect(
+    await updates(scripted(new Response(broken), sse(event("snapshot", '{"devices":{}}'))), 3),
+  ).toEqual([
+    { devices: { "1": { "pv.power": 1 } } },
+    { devices: { "1": { "pv.power": 1 } }, lost: 5000 },
+    { devices: {} },
+  ]);
+});
+
 test("a refused stream reports the problem code", async () => {
   expect(await updates(scripted(problem(401, "auth.required")), 1)).toEqual([
     { problem: "auth.required" },
@@ -151,6 +130,7 @@ test("a refused stream reports the problem code", async () => {
 let server: ReturnType<typeof Bun.serve> | undefined;
 
 afterEach(async () => {
+  setSystemTime();
   await server?.stop(true);
 });
 
@@ -206,73 +186,3 @@ test("a refusal that is no problem document reports its HTTP status", async () =
 });
 
 /** A test core that records each request with its method and body. */
-function recording(response: Response): Transport & { readonly asked: string[] } {
-  const asked: string[] = [];
-
-  return {
-    base: BASE,
-    asked,
-    fetch: async (request) => {
-      asked.push(`${request.method} ${request.url} ${await request.text()}`.trimEnd());
-
-      return response;
-    },
-  };
-}
-
-test("a setting is written under the device with its value, and answers the attempt", async () => {
-  const entry: Attempt = {
-    time: "2026-11-09T00:00:00Z",
-    device: 1,
-    setting: "battery.max_charge_current",
-    before: 108,
-    requested: 50,
-    after: 50,
-    outcome: "verified",
-    failedStep: null,
-    actor: "admin",
-  };
-
-  const transport = recording(Response.json(entry));
-
-  const written = await connect(transport).write(1, "battery.max_charge_current", 50);
-
-  expect(transport.asked).toEqual([
-    `PUT ${BASE}api/v1/devices/1/settings/battery.max_charge_current {"value":50}`,
-  ]);
-  expect(written).toEqual(entry);
-});
-
-test("a refused write reports the problem code", async () => {
-  const core = connect(scripted(problem(409, "setting.writes-off")));
-
-  expect(await core.write(1, "work_mode", 1)).toEqual({ problem: "setting.writes-off" });
-});
-
-test("capabilities and the write log are read from the core", async () => {
-  const support: Capabilities = {
-    version: "5.0.0",
-    schema: { min: 1, max: 1 },
-    capabilities: [],
-    transports: [],
-    devices: {},
-  };
-
-  const capabilities = recording(Response.json(support));
-  const log = recording(Response.json({ writes: [] }));
-
-  expect(await connect(capabilities).capabilities()).toEqual(support);
-  expect(await connect(log).writes()).toEqual({ writes: [] });
-  expect([...capabilities.asked, ...log.asked]).toEqual([
-    `GET ${BASE}api/v1/capabilities`,
-    `GET ${BASE}api/v1/writes`,
-  ]);
-});
-
-test("the devices are listed from the core", async () => {
-  const device = { id: 1, name: "Deye", profile: "deye-sg05lp3", connection: 1, unit: 1 };
-  const listed = recording(Response.json({ devices: [device] }));
-
-  expect(await connect(listed).devices()).toEqual([device]);
-  expect(listed.asked).toEqual([`GET ${BASE}api/v1/devices`]);
-});

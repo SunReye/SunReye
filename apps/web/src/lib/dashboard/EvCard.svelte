@@ -4,6 +4,7 @@
   import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import { tickGlideMs } from "../live/stream.svelte.ts";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -40,7 +41,7 @@
     <span class="grid size-9 shrink-0 place-items-center rounded-md bg-ev/15 text-ev"
       ><Car class="size-5" /></span
     >
-    <span class="flex min-w-0 flex-1 flex-col gap-1.5">
+    <span class="flex min-w-0 flex-1 flex-col gap-1.5" style:--glide="{tickGlideMs()}ms">
       <span class="flex items-baseline gap-2">
         <span class="min-w-0 truncate text-sm font-semibold">{name ?? m.evcc_title()}</span>
         <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{state}</span>
@@ -62,6 +63,6 @@
 <style>
   :global(.ev > [data-slot="progress-indicator"]) {
     background: var(--e-ev);
-    transition-duration: 2200ms;
+    transition-duration: var(--glide);
   }
 </style>

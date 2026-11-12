@@ -33,7 +33,7 @@ impl Devices {
             .routes(routes!(change_connection, remove_connection))
             .routes(routes!(list_devices, add_device))
             .routes(routes!(change_device, remove_device))
-            .routes(routes!(write_setting))
+            .routes(routes!(write_setting, read_setting))
             .routes(routes!(enable_setting, disable_setting))
             .routes(routes!(deadbands))
             .routes(routes!(set_deadband, remove_deadband))
@@ -188,6 +188,29 @@ async fn write_setting(
     };
     let written = devices.write_setting(id, request, clock()).await?;
     Ok(Json(written))
+}
+
+/// A setting's current value.
+#[derive(Serialize, ToSchema)]
+struct SettingNow {
+    /// In the setting's unit; `null` when it cannot be read or the setting is write-only.
+    value: Option<f64>,
+}
+
+/// Reads a setting's current value from its read-back (ADR 7), between polls. Nothing is written
+/// or logged.
+#[utoipa::path(get, path = "/api/v1/devices/{id}/settings/{key}",
+    params(("id" = u32, Path), ("key" = String, Path)), responses(
+    (status = 200, body = SettingNow),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn read_setting(
+    State((devices, _)): DevicesState,
+    path: Result<Path<(u32, String)>, PathRejection>,
+) -> Result<Json<SettingNow>, Problem> {
+    let Path((id, key)) = path.map_err(|_| PATH)?;
+    let value = devices.read_setting(id, &key).await?;
+    Ok(Json(SettingNow { value }))
 }
 
 /// Enables the writes of a setting as its profile declares it now (ADR 8). A community profile's

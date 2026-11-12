@@ -188,7 +188,25 @@ test("an estimated string carries ≈", async () => {
   await expect.element(screen.getByText("Süd: ≈ 600 W")).toBeVisible();
 });
 
-test("the scene draws once per live tick and per camera move, and never on its own", async () => {
+/** Draws counted once ten frames pass without one: a tween has run out. */
+async function settled(draws: () => number): Promise<number> {
+  await expect
+    .poll(
+      async () => {
+        const before = draws();
+
+        await frames(10);
+
+        return draws() - before;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(0);
+
+  return draws();
+}
+
+test("a live tick and a camera move draw a short tween, then drawing stops (ADR 20)", async () => {
   // Each draw runs the studio's passes once.
   const draws = vi.spyOn(EffectComposer.prototype, "render");
   const { core, tick } = ticking();
@@ -196,19 +214,17 @@ test("the scene draws once per live tick and per camera move, and never on its o
 
   await tick(frame(600, -1200));
   await expect.element(screen.getByText("Süd: 600 W")).toBeVisible();
-  await frames(3);
 
-  const settled = draws.mock.calls.length;
+  const first = await settled(() => draws.mock.calls.length);
 
-  expect(settled).toBeGreaterThan(0);
-
-  await frames(10);
-  expect(draws.mock.calls.length).toBe(settled);
+  expect(first).toBeGreaterThan(0);
 
   await tick(frame(700, -1100));
   await expect.element(screen.getByText("Süd: 700 W")).toBeVisible();
-  await frames(10);
-  expect(draws.mock.calls.length).toBe(settled + 1);
+
+  const ticked = await settled(() => draws.mock.calls.length);
+
+  expect(ticked).toBeGreaterThan(first);
 
   const canvas = screen.getByLabelText("3D-Szene des Hauses");
 
@@ -217,7 +233,7 @@ test("the scene draws once per live tick and per camera move, and never on its o
     targetPosition: { x: 250, y: 100 },
   });
 
-  expect(draws.mock.calls.length).toBeGreaterThan(settled + 1);
+  expect(draws.mock.calls.length).toBeGreaterThan(ticked);
 });
 
 test("a car appears at its place while connected, with its charge power and SOC", async () => {

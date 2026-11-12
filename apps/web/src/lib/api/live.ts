@@ -11,18 +11,43 @@ export type Live = Values | Problem;
 /** The wait before reconnecting after a refusal or a failure. */
 const RETRY_MS = 1000;
 
-/** Streams until stopped: a clean end reconnects at once to a fresh snapshot (ADR 9). */
+/**
+ * Streams until stopped: a clean end reconnects at once to a fresh snapshot (ADR 9). A stream that
+ * breaks hands its last values on once more, marked `lost`, until a snapshot replaces them.
+ */
 export async function follow(
   client: Client,
   listener: (live: Live) => void,
   signal: AbortSignal,
+  last?: Live,
 ): Promise<void> {
-  const snapshot = await stream(client, listener, signal).catch(() => false);
+  let latest = last;
 
-  if (!snapshot) await sleep(RETRY_MS, signal);
+  const snapshot = await stream(
+    client,
+    (live) => {
+      latest = live;
+      listener(live);
+    },
+    signal,
+  ).catch(() => false);
+
+  if (!snapshot) {
+    if (
+      !signal.aborted &&
+      latest !== undefined &&
+      "devices" in latest &&
+      latest.lost === undefined
+    ) {
+      latest = { ...latest, lost: Date.now() };
+      listener(latest);
+    }
+
+    await sleep(RETRY_MS, signal);
+  }
 
   // Not awaited, so a core that runs for months builds no chain of promises.
-  if (!signal.aborted) void follow(client, listener, signal);
+  if (!signal.aborted) void follow(client, listener, signal, latest);
 }
 
 /** Follows one stream to its end; resolves whether it delivered a snapshot. */

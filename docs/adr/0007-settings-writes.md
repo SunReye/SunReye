@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12)
 
 ## Context
 
@@ -20,6 +20,8 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - A device that refuses a step with an exception before any write was acknowledged is a `mismatch`; any step failing after an acknowledged write is `partial`.
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
+
+**Reading.** An admin reads a setting's current value from its read-back, in the endpoint's task between polls, as a write reads its value before writing; a device behind a broker reads the retained state. A read writes nothing, starts no interval and is not logged. A write-only setting, or one whose read-back fails, reads as unknown. A snapshot toggle reads engaged while its target holds the locked value.
 
 **Audit.** Every attempt at a known device is appended to a write log, refusals included: time, device, setting, value before, value requested, value read back, outcome, failing step (counted from 1), actor, and `via`: the trusted device key a remote write came through (ADR 16). A refusal is logged with outcome `refused` and the code it was refused with, before and after empty; it writes nothing and does not start the interval. It is kept long and not rolled up.
 
