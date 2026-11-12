@@ -25,6 +25,11 @@
   $effect(() => {
     document.documentElement.dataset["motion"] = motion.tier;
   });
+
+  // The low-power switch also turns every glass surface opaque (ADR 21).
+  $effect(() => {
+    document.documentElement.toggleAttribute("data-low-power", motion.lowPower);
+  });
 </script>
 
 <!-- Dark first (ADR 21); a manual choice is kept in local storage. -->

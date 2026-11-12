@@ -50,3 +50,13 @@ test("on the still tier every motion is instant", async () => {
 
   expect(motionMs(180)).toBe(0);
 });
+
+test("the low-power switch turns every glass surface opaque", async () => {
+  await render(Layout, { props: { children } });
+
+  motion.lowPower = true;
+  await expect.poll(() => document.documentElement.dataset["lowPower"]).toBe("");
+
+  motion.lowPower = false;
+  await expect.poll(() => document.documentElement.dataset["lowPower"]).toBeUndefined();
+});
