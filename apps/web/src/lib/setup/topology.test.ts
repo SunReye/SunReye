@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { propose, remove } from "./topology.ts";
+import { depths, propose, remove } from "./topology.ts";
 
 const INVERTER = { id: 1, name: "Wechselrichter", profile: "p", connection: 1, unit: 1 };
 const WALLBOX = { id: 2, name: "Wallbox", profile: "q", connection: 2, unit: 1 };
@@ -50,4 +50,10 @@ test("a removed point's children move to its parent and later parents follow the
     { name: "Wärmepumpe", parent: 0, claims: [] },
     { name: "Wallbox", parent: 1, claims: [] },
   ]);
+});
+
+const point = (parent: number | null) => ({ name: "", parent, claims: [] });
+
+test("each point sits one level below its parent, the root at none", () => {
+  expect(depths([point(null), point(0), point(1), point(0)])).toEqual([0, 1, 2, 1]);
 });

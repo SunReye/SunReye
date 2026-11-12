@@ -1,9 +1,12 @@
+<!-- Setup's measurement points (ADR 14): the tree proposed from the readings, to rename, re-hang or trim. -->
 <script lang="ts">
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import type { Core, Device, PointDraft, Problem, Values } from "../api/core.ts";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
   import PointRow from "./PointRow.svelte";
   import Refusal from "./Refusal.svelte";
-  import { propose, remove } from "./topology.ts";
+  import { depths, propose, remove } from "./topology.ts";
 
   let { core, devices, ondone }: { core: Core; devices: readonly Device[]; ondone: () => void } =
     $props();
@@ -57,14 +60,23 @@
   }
 </script>
 
-{#if points === undefined}
-  <p role="status">{m.topology_waiting()}</p>
-{:else}
-  <ol>
+<div class="flex flex-col gap-4 p-4">
+  <p class="text-sm text-muted-foreground">{m.topology_hint()}</p>
+  {#if points === undefined}
+    <p role="status" class="flex items-center gap-2 text-sm text-muted-foreground">
+      <LoaderCircle class="size-4 motion-safe:animate-spin" />
+      {m.topology_waiting()}
+    </p>
+  {/if}
+</div>
+{#if points !== undefined}
+  {@const depth = depths(points)}
+  <ol class="divide-y divide-border/60 border-y border-border/60">
     {#each points as point, index (index)}
       <PointRow
         {point}
         number={index + 1}
+        depth={depth[index] ?? 0}
         earlier={points.slice(0, index)}
         onchange={(next) => {
           change(index, next);
@@ -75,6 +87,8 @@
       />
     {/each}
   </ol>
-  <button type="button" onclick={save}>{m.topology_save()}</button>
+  <div class="flex flex-col gap-3 p-4">
+    <Refusal {refused} />
+    <Button class="w-full sm:w-auto sm:self-end" onclick={save}>{m.topology_save()}</Button>
+  </div>
 {/if}
-<Refusal {refused} />

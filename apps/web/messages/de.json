@@ -328,6 +328,7 @@
   "plant_here": "Aktuellen Standort verwenden",
   "plant_here_refused": "Der Browser gibt den Standort nicht frei. Trage ihn von Hand ein.",
   "topology_hint": "Wo jedes Gerät misst: der Netzanschluss oben, alles andere darunter. Der Vorschlag folgt den Messwerten.",
+  "topology_under": "unter",
   "builder_add_car_place": "Stellplatz hinzufügen",
   "car_place": "Stellplatz {number}",
   "car_loadpoint": "Ladepunkt",

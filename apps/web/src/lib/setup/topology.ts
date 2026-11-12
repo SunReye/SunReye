@@ -64,3 +64,13 @@ export function remove(points: readonly PointDraft[], index: number): PointDraft
     at === index ? [] : [{ name, parent: shifted(parent), claims }],
   );
 }
+
+/** How deep each point sits: parents come first, so one pass suffices. */
+export function depths(points: readonly PointDraft[]): number[] {
+  const out: number[] = [];
+
+  for (const { parent } of points)
+    out.push(parent === null || parent === undefined ? 0 : (out[parent] ?? 0) + 1);
+
+  return out;
+}
