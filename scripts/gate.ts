@@ -13,7 +13,6 @@ const steps: readonly Command[] = [
   // Formatting
   ["cargo", "fmt", "--all", "--check"],
   ["oxfmt", "--check"],
-  [...web, "format:check"],
   // Lints
   ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
   ["oxlint", "--deny-warnings"],
