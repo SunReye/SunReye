@@ -19,6 +19,10 @@
     "apps/web/src/lib/api/schema.d.ts",
     "packages/sdk/src/generated.ts",
     "target/**",
+    "apps/web/src/lib/components/ui/**",
+    "apps/web/src/lib/motion.ts",
+    "apps/web/src/lib/utils.ts",
+    "apps/web/src/lib/hooks/**",
     "**/.svelte-kit/**"
   ],
   "jsPlugins": [
@@ -28,6 +32,7 @@
     }
   ],
   "rules": {
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",
@@ -60,6 +65,7 @@
             "name": [
               "AbortSignal",
               "Date",
+              "Element",
               "ReadableStreamDefaultController",
               "Request",
               "Response",
