@@ -154,7 +154,9 @@
       ? Object.assign({}, found, { out: false, slot })
       : rec({ id: nextId, data: nextData, slot, from: dx, fade: true, hold });
 
-    const left = list.map((p) => (p.uid === gone ? Object.assign({}, p, { out: true, from: -dx }) : p));
+    const left = list.map((p) =>
+      p.uid === gone ? Object.assign({}, p, { out: true, from: -dx }) : p,
+    );
 
     panes = found ? left.map((p) => (p.uid === found.uid ? target : p)) : [...left, target];
     cur = target.uid;

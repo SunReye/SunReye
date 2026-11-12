@@ -22,10 +22,11 @@
       {...props}
       type="button"
       aria-current={current === true ? "page" : undefined}
+      disabled={group.disabled}
       {onclick}
       class={[
         props.class,
-        "group relative text-left hover:bg-muted/60 active:bg-muted",
+        "group relative text-left hover:bg-muted/60 active:bg-muted disabled:pointer-events-none disabled:opacity-70",
         current === true && "bg-muted",
       ]}
     >
@@ -41,7 +42,7 @@
           <Item.Description class="truncate tabular-nums">{group.summary}</Item.Description>
         {/if}
       </Item.Content>
-      {#if current === undefined}
+      {#if current === undefined && group.disabled !== true}
         <Item.Actions>
           <ChevronRight
             class="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"

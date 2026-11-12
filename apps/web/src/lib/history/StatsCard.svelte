@@ -31,10 +31,7 @@
   let card = $state<HTMLElement | null>(null);
 </script>
 
-<Card.Root
-  class="glass-ambient @container min-w-0 gap-0 self-start py-0"
-  bind:ref={card}
->
+<Card.Root class="glass-ambient @container min-w-0 gap-0 self-start py-0" bind:ref={card}>
   <FigureTabs
     figures={text.figures}
     plant={{
