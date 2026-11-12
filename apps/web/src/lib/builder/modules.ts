@@ -61,6 +61,12 @@ export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
 }
 
+/** Where a drag's steps go: each shown at once, the drag recorded as one undo step once let go. */
+export interface Strokes {
+  readonly drag: (scene: Scene) => void;
+  readonly drop: () => void;
+}
+
 /** What a drag does to every cell it crosses, as the cell it started on decides (ADR 20). */
 export type Stroke =
   | { readonly kind: "place"; readonly erase: boolean }
@@ -135,11 +141,7 @@ function assigned({ row, column, optimized }: Cell, string?: number): Cell {
 
 /** Whether painting into grid `index` is refused: a string of another module type than the grid,
  * as the core refuses it on save (ADR 20). */
-export function refuses(
-  draft: Draft,
-  index: number,
-  stroke: Pick<Stroke, "kind"> & { readonly string?: number },
-): boolean {
+export function refuses(draft: Draft, index: number, stroke: Tool | Stroke): boolean {
   const grid = draft.scene.grids?.[index];
   const string = stroke.kind === "paint" ? stroke.string : undefined;
 

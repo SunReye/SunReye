@@ -6,7 +6,7 @@
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
-  import { painted, withoutBlock, withoutString, type Draft } from "./modules.ts";
+  import { painted, withoutBlock, withoutString, type Draft, type Strokes } from "./modules.ts";
   import ObstacleFieldset from "./ObstacleFieldset.svelte";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
@@ -16,6 +16,7 @@
     plan,
     moduleTypes,
     moduleType,
+    strokes,
     onchange,
     onlevel,
   }: {
@@ -24,6 +25,7 @@
     moduleTypes: readonly ModuleType[];
     /** A new grid's module type; without one no grid is laid. */
     moduleType: number | undefined;
+    strokes: Strokes;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
   } = $props();
@@ -125,5 +127,5 @@
     }}
   />
 {:else if roof !== undefined}
-  <FaceLevel {roof} {plan} {moduleTypes} {moduleType} {onchange} />
+  <FaceLevel {roof} {plan} {moduleTypes} {moduleType} {strokes} {onchange} />
 {/if}

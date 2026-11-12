@@ -136,6 +136,8 @@
   "builder_landscape": "Landscape",
   "field_setback": "Setback (m)",
   "builder_remove_grid": "Remove the grid",
+  "builder_fill_face": "Fill face",
+  "builder_refused_module_type": "{name} has another module type than this grid.",
   "builder_cells": "Cells of the face",
   "builder_cell": "Row {row}, column {column}",
   "builder_tool": "Tool",

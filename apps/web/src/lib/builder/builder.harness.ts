@@ -149,3 +149,55 @@ export async function desk(): Promise<void> {
 export async function undesk(): Promise<void> {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 }
+
+export type Pointer = "mouse" | "pen" | "touch";
+
+/** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
+export async function press(
+  kind: Pointer,
+  path: readonly (readonly [number, number])[],
+): Promise<void> {
+  const [first, ...rest] = path;
+
+  if (first === undefined) return;
+
+  if (kind === "touch") {
+    await cdp().send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: first[0], y: first[1] }],
+    });
+
+    for (const [x, y] of rest) {
+      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+    }
+
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    return;
+  }
+
+  const mouse = { button: "left", pointerType: kind, clickCount: 1 } as const;
+
+  await cdp().send("Input.dispatchMouseEvent", {
+    ...mouse,
+    type: "mousePressed",
+    x: first[0],
+    y: first[1],
+  });
+
+  for (const [x, y] of rest) {
+    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+    await cdp().send("Input.dispatchMouseEvent", {
+      ...mouse,
+      type: "mouseMoved",
+      buttons: 1,
+      x,
+      y,
+    });
+  }
+
+  const [x, y] = rest.at(-1) ?? first;
+
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
+}

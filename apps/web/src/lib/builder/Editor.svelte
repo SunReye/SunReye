@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
   import type { Level } from "./levels.ts";
-  import type { Draft } from "./modules.ts";
+  import type { Draft, Strokes } from "./modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
   import RootLevel from "./RootLevel.svelte";
@@ -13,12 +13,14 @@
     moduleTypes,
     level,
     onlevel,
+    strokes,
     onchange,
   }: {
     plan: Plan;
     moduleTypes: readonly ModuleType[];
     level: Level;
     onlevel: (level: Level) => void;
+    strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
 
@@ -31,5 +33,5 @@
 {:else if level.kind === "section"}
   <SectionLevel section={level.section} {plan} {moduleType} {onchange} {onlevel} />
 {:else}
-  <ObjectLevel {level} {plan} {moduleTypes} {moduleType} {onchange} {onlevel} />
+  <ObjectLevel {level} {plan} {moduleTypes} {moduleType} {strokes} {onchange} {onlevel} />
 {/if}
