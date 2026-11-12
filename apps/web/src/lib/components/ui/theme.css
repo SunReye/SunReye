@@ -1,0 +1,551 @@
+/* dy-ui registry CSS: surface tokens, glass, glow, elevation, bevel, cursor feedback, motion. Owned with components/ui. */
+
+:root {
+  --blur-soft: 8px;
+  --blur-strong: 16px;
+  --glass-filter-soft: blur(var(--blur-soft));
+  --glass-filter-strong: blur(var(--blur-strong));
+  --glass-opacity: 88%;
+  --glass-muted-mix: 25%;
+  --glass-destructive-mix: 40%;
+  --glass-scrim: rgb(0 0 0 / 16%);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0 0 0 -0.04'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --noise-scrim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.07 0 0 0 -0.028'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --glow-strength: 20%;
+  --glow-blur: 16px;
+  --glow-spread: 0px;
+  --shadow-color: 17 17 24;
+  --elev-1-1: 6%;
+  --elev-1-2: 8%;
+  --elev-1-edge: 70%;
+  --elev-2-1: 6%;
+  --elev-2-2: 18%;
+  --elev-2-3: 10%;
+  --elev-2-edge: 80%;
+  --elev-3-1: 6%;
+  --elev-3-2: 10%;
+  --elev-3-3: 10%;
+  --elev-3-edge: 70%;
+  --elev-4-1: 6%;
+  --elev-4-2: 14%;
+  --elev-4-3: 16%;
+  --elev-4-edge: 70%;
+  --elev-press: 10%;
+  --elev-press-edge: 4%;
+  --bevel-edge: 60%;
+  --bevel-drop: 7%;
+  --bevel-edge-hover: 70%;
+  --bevel-drop-hover-1: 9%;
+  --bevel-drop-hover-2: 14%;
+  --bevel-sink: 12%;
+  --well: 6%;
+}
+
+.dark {
+  --glass-opacity: 97%;
+  --glass-destructive-mix: 50%;
+  --glass-scrim: rgb(0 0 0 / 32%);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.08 0 0 0 -0.032'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --noise-scrim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.06 0 0 0 -0.024'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --glow-strength: 36%;
+  --shadow-color: 0 0 0;
+  --elev-1-1: 20%;
+  --elev-1-2: 26%;
+  --elev-1-edge: 6%;
+  --elev-2-1: 20%;
+  --elev-2-2: 48%;
+  --elev-2-3: 30%;
+  --elev-2-edge: 9%;
+  --elev-3-1: 20%;
+  --elev-3-2: 30%;
+  --elev-3-3: 30%;
+  --elev-3-edge: 6%;
+  --elev-4-1: 20%;
+  --elev-4-2: 40%;
+  --elev-4-3: 46%;
+  --elev-4-edge: 6%;
+  --bevel-edge: 5%;
+  --bevel-drop: 21%;
+  --bevel-edge-hover: 6%;
+  --bevel-drop-hover-1: 21%;
+  --bevel-drop-hover-2: 36%;
+  --bevel-sink: 28%;
+  --well: 22%;
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  :is(:root, .dark) {
+    --glass-opacity: 100%;
+    --glass-muted-mix: 0%;
+    --glass-destructive-mix: 0%;
+    --glass-filter-soft: none;
+    --glass-filter-strong: none;
+    --noise: none;
+    --noise-scrim: none;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :is(:root, .dark) {
+    --glass-opacity: 100%;
+    --glass-muted-mix: 0%;
+    --glass-destructive-mix: 0%;
+    --glass-filter-soft: none;
+    --glass-filter-strong: none;
+    --noise: none;
+    --noise-scrim: none;
+  }
+}
+
+@utility glass {
+  background-color: color-mix(in oklab, var(--popover) var(--glass-opacity), transparent);
+  background-image: var(--noise);
+  backdrop-filter: var(--glass-filter-soft);
+  --glass-muted-base: var(--muted-foreground);
+  --glass-destructive-base: var(--destructive);
+  & > * {
+    --muted-foreground: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-muted-mix),
+      var(--glass-muted-base)
+    );
+    --destructive: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-destructive-mix),
+      var(--glass-destructive-base)
+    );
+  }
+  :where(:root:has(.glass-modal)) & {
+    background-color: var(--popover);
+    background-image: none;
+    backdrop-filter: none;
+  }
+}
+
+@utility glass-modal {
+  background-color: color-mix(in oklab, var(--popover) var(--glass-opacity), transparent);
+  background-image: var(--noise);
+  backdrop-filter: var(--glass-filter-strong);
+  --glass-muted-base: var(--muted-foreground);
+  --glass-destructive-base: var(--destructive);
+  & > * {
+    --muted-foreground: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-muted-mix),
+      var(--glass-muted-base)
+    );
+    --destructive: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-destructive-mix),
+      var(--glass-destructive-base)
+    );
+  }
+}
+
+@utility glass-sidebar {
+  background-color: color-mix(in oklab, var(--sidebar) var(--glass-opacity), transparent);
+  background-image: var(--noise);
+  backdrop-filter: var(--glass-filter-soft);
+  --glass-muted-base: var(--muted-foreground);
+  --glass-destructive-base: var(--destructive);
+  & > * {
+    --muted-foreground: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-muted-mix),
+      var(--glass-muted-base)
+    );
+    --destructive: color-mix(
+      in oklab,
+      var(--foreground) var(--glass-destructive-mix),
+      var(--glass-destructive-base)
+    );
+  }
+}
+
+@utility glass-scrim {
+  background-color: var(--glass-scrim);
+  background-image: var(--noise-scrim);
+  backdrop-filter: var(--glass-filter-soft);
+}
+
+@media (forced-colors: active) {
+  :is(:root, .dark) {
+    --glow-strength: 0%;
+    --shadow-off: 0 0 #0000;
+  }
+}
+
+@utility glow-hover {
+  --glow-rest: 0 0 var(--glow-blur) var(--glow-spread) transparent;
+  --glow-lit: 0 0 var(--glow-blur) var(--glow-spread)
+    color-mix(in oklab, var(--glow-color, var(--ring)) var(--glow-strength), transparent);
+  --tw-ring-offset-shadow: var(--glow-rest);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:hover:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-ring-offset-shadow: var(--glow-lit);
+  }
+  &[aria-invalid="true"] {
+    --glow-color: var(--destructive);
+  }
+}
+
+@utility glow-focus {
+  --glow-rest: 0 0 var(--glow-blur) var(--glow-spread) transparent;
+  --glow-lit: 0 0 var(--glow-blur) var(--glow-spread)
+    color-mix(in oklab, var(--glow-color, var(--ring)) var(--glow-strength), transparent);
+  --tw-ring-offset-shadow: var(--glow-rest);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:focus-visible:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-ring-offset-shadow: var(--glow-lit);
+  }
+  &[aria-invalid="true"] {
+    --glow-color: var(--destructive);
+  }
+}
+
+@utility glow {
+  --glow-rest: 0 0 var(--glow-blur) var(--glow-spread) transparent;
+  --glow-lit: 0 0 var(--glow-blur) var(--glow-spread)
+    color-mix(in oklab, var(--glow-color, var(--ring)) var(--glow-strength), transparent);
+  --tw-ring-offset-shadow: var(--glow-rest);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:hover:not(:disabled, [aria-disabled="true"], [data-disabled]),
+  &:focus-visible:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-ring-offset-shadow: var(--glow-lit);
+  }
+  &[aria-invalid="true"] {
+    --glow-color: var(--destructive);
+  }
+}
+
+@utility elevation-1 {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--elev-1-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 1px 2px 0px rgb(var(--shadow-color) / var(--elev-1-1)),
+    0 4px 8px -2px rgb(var(--shadow-color) / var(--elev-1-2)),
+    0 0 #0000
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@utility elevation-2 {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--elev-2-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 2px 4px 0px rgb(var(--shadow-color) / var(--elev-2-1)),
+    0 14px 28px -8px rgb(var(--shadow-color) / var(--elev-2-2)),
+    0 28px 40px -20px rgb(var(--shadow-color) / var(--elev-2-3))
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@utility elevation-3 {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--elev-3-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 2px 4px 0px rgb(var(--shadow-color) / var(--elev-3-1)),
+    0 8px 16px -4px rgb(var(--shadow-color) / var(--elev-3-2)),
+    0 16px 32px -8px rgb(var(--shadow-color) / var(--elev-3-3))
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@utility elevation-4 {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--elev-4-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 4px 8px 0px rgb(var(--shadow-color) / var(--elev-4-1)),
+    0 16px 32px -8px rgb(var(--shadow-color) / var(--elev-4-2)),
+    0 32px 64px -16px rgb(var(--shadow-color) / var(--elev-4-3))
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@utility elevation-press {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--elev-press-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 1px 1px 0px rgb(var(--shadow-color) / var(--elev-press)),
+    0 0 #0000,
+    0 0 #0000
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@utility bevel-primary {
+  --tw-inset-shadow: var(
+    --shadow-off,
+    inset 0 1px 0 0 rgb(255 255 255 / 18%),
+    inset 0 -1px 0 0 rgb(0 0 0 / 12%)
+  );
+  --tw-shadow: var(
+    --shadow-off,
+    0 1px 2px 0px rgb(var(--shadow-color) / 20%),
+    0 3px 6px -1px color-mix(in oklab, var(--primary) 24%, transparent)
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:hover:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(
+      --shadow-off,
+      inset 0 1px 0 0 rgb(255 255 255 / 22%),
+      inset 0 -1px 0 0 rgb(0 0 0 / 12%)
+    );
+    --tw-shadow: var(
+      --shadow-off,
+      0 2px 3px 0px rgb(var(--shadow-color) / 20%),
+      0 8px 14px -3px color-mix(in oklab, var(--primary) 44%, transparent)
+    );
+  }
+  &:active:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(--shadow-off, inset 0 2px 3px 0 rgb(0 0 0 / 26%), inset 0 0 #0000);
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+  &:is(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(--shadow-off, inset 0 0 #0000, inset 0 0 #0000);
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+}
+
+@utility bevel {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 0 0 rgb(255 255 255 / var(--bevel-edge)));
+  --tw-shadow: var(
+    --shadow-off,
+    0 1px 2px 0px rgb(var(--shadow-color) / var(--bevel-drop)),
+    0 0 #0000
+  );
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:hover:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(
+      --shadow-off,
+      inset 0 1px 0 0 rgb(255 255 255 / var(--bevel-edge-hover))
+    );
+    --tw-shadow: var(
+      --shadow-off,
+      0 2px 4px 0px rgb(var(--shadow-color) / var(--bevel-drop-hover-1)),
+      0 8px 14px -3px rgb(var(--shadow-color) / var(--bevel-drop-hover-2))
+    );
+  }
+  &:active:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(
+      --shadow-off,
+      inset 0 2px 3px 0 rgb(var(--shadow-color) / var(--bevel-sink))
+    );
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+  &:is(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(--shadow-off, inset 0 0 #0000);
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+}
+
+@utility bevel-ghost {
+  --tw-inset-shadow: var(--shadow-off, inset 0 0 #0000);
+  --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+  &:hover:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(
+      --shadow-off,
+      inset 0 1px 0 0 rgb(255 255 255 / var(--bevel-edge-hover))
+    );
+    --tw-shadow: var(
+      --shadow-off,
+      0 2px 4px 0px rgb(var(--shadow-color) / var(--bevel-drop-hover-1)),
+      0 8px 14px -3px rgb(var(--shadow-color) / var(--bevel-drop-hover-2))
+    );
+  }
+  &:active:not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(
+      --shadow-off,
+      inset 0 2px 3px 0 rgb(var(--shadow-color) / var(--bevel-sink))
+    );
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+  &:is(:disabled, [aria-disabled="true"], [data-disabled]) {
+    --tw-inset-shadow: var(--shadow-off, inset 0 0 #0000);
+    --tw-shadow: var(--shadow-off, 0 0 #0000, 0 0 #0000);
+  }
+}
+
+@utility bevel-well {
+  --tw-inset-shadow: var(--shadow-off, inset 0 1px 2px 0 rgb(var(--shadow-color) / var(--well)));
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+
+@layer base {
+  /*
+   * Browsers show the default arrow on buttons, and Tailwind's preflight leaves it (#37). A utility
+   * such as `cursor-not-allowed` still wins over these (the utilities layer comes later), and a
+   * disabled control keeps the cursor of what is under it (`pointer-events-none`).
+   */
+  :where(
+    a[href],
+    button,
+    summary,
+    select,
+    label[for],
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="option"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="switch"],
+    input:is(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="file"],
+      [type="color"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"]
+    )
+  ):not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    @apply cursor-pointer;
+  }
+  :where(
+    input:not([type]),
+    input:is(
+      [type="text"],
+      [type="email"],
+      [type="password"],
+      [type="search"],
+      [type="tel"],
+      [type="url"],
+      [type="number"]
+    ),
+    textarea
+  ):not(:disabled) {
+    @apply cursor-text;
+  }
+}
+
+/*
+ * The `motion` item's variables, as `add` merges them into a consumer. A test keeps them equal to
+ * `MOTION_MS` / `MOTION_EASE` in `#lib/motion.ts` and to the item's `css` in registry.json (ADR 0003).
+ */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 250ms;
+  --motion-press: 80ms;
+  --motion-ease: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --motion-spring: cubic-bezier(0.25, 1.4, 0.5, 1);
+  --motion-spring-soft: cubic-bezier(0.3, 1.08, 0.5, 1);
+  --press-scale: 0.96;
+  --press-scale-calm: 0.97;
+  --press-scale-wide: 0.98;
+  --press-scale-soft: 0.985;
+  --spring-in-scale: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Not `:root`: the CLI writes every item's light tokens into each `:root` rule (#31). */
+  :is(:root) {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+    --motion-press: 0ms;
+  }
+}
+
+@utility transition-spring {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+    opacity, box-shadow, scale, translate;
+  transition-duration:
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-base), var(--motion-base), var(--motion-base);
+  transition-timing-function:
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-spring), var(--motion-spring);
+}
+
+@utility transition-press {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+    opacity, box-shadow, scale, translate;
+  transition-duration:
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-base), var(--motion-base), var(--motion-base);
+  transition-timing-function:
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-spring), var(--motion-spring);
+  &:active {
+    transition-duration:
+      var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+      var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+      var(--motion-base), var(--motion-press), var(--motion-press);
+    transition-timing-function:
+      var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+      var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+      var(--motion-ease), var(--motion-ease), var(--motion-ease);
+  }
+}
+
+@utility transition-press-soft {
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+    opacity, box-shadow, scale, translate;
+  transition-duration:
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+    var(--motion-base), var(--motion-base), var(--motion-base);
+  transition-timing-function:
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+    var(--motion-ease), var(--motion-spring-soft), var(--motion-spring-soft);
+  &:active {
+    transition-duration:
+      var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+      var(--motion-fast), var(--motion-fast), var(--motion-fast), var(--motion-fast),
+      var(--motion-base), var(--motion-press), var(--motion-press);
+    transition-timing-function:
+      var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+      var(--motion-ease), var(--motion-ease), var(--motion-ease), var(--motion-ease),
+      var(--motion-ease), var(--motion-ease), var(--motion-ease);
+  }
+}
