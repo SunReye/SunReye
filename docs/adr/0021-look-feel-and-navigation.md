@@ -64,7 +64,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Energy colours:** each flow has one fixed colour everywhere: charts, tiles, the 2D flow and the 3D scene. Solar amber, battery green, grid import rose-red, export teal, consumption neutral, EV violet. The palette is validated for colour-blind contrast.
 - **Brand:** SunReye's v3 mark, a flat sun of eight rays around a disc, in blue-600 (`#2563eb`; a lighter blue in dark mode). The brand colour marks controls only, never data, which is why no energy flow is blue.
 
-**Surfaces.** kbase's rules apply:
+**Surfaces.** Boxy: a 2 px corner radius (`--radius: 0.125rem`) on every surface and control. kbase's rules apply:
 - a card must do something;
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
