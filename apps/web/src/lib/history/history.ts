@@ -2,6 +2,7 @@
 // statistics in the plant timezone, so the SPA only chooses spans back from now.
 import type { Core, History, Period, Statistics, Values } from "../api/core.ts";
 import { PLANT } from "../live/labels.ts";
+import { spread, type Span } from "../range/fill.ts";
 
 export type Figures = Statistics["points"][number];
 
@@ -27,43 +28,45 @@ function rank(device: number): number {
   return String(device) === PLANT ? 0 : 1;
 }
 
-/** The history chart's spans, in days back from now. */
-const SPANS = { day: 1, week: 7, month: 30, year: 365 } as const;
-
-export type Span = keyof typeof SPANS;
-
 /** How far back each period's statistics reach, in days: a month of days, a quarter of weeks. */
 const LOOKBACK: Readonly<Record<Period, number>> = { day: 31, week: 84, month: 365 };
 
 const DAY_MS = 86_400_000;
 
-/** One line point, as the shared power chart draws it. */
-export interface Row {
-  readonly time: Date;
-  readonly power: number;
-  readonly series: string;
-  readonly role: string;
+/** One stored mean over [start, end), in ms since the epoch. */
+export interface Mean extends Span {
+  readonly mean: number;
 }
 
-/** The series' points over the span up to now, at the tier the core picks (ADR 9). */
-export async function historyRows(
+/** A power series is charted as its energy; any other as its mean. */
+export const isPower = (series: string): boolean => /\.power(\[\d+\])?$/u.test(series);
+
+/** The series' means from `from` to before `to`, at the tier the core picks (ADR 9). */
+export async function means(
   core: Readonly<Pick<Core, "history">>,
   device: number,
   series: string,
-  span: Span,
-): Promise<Row[]> {
-  const to = new Date();
-  const from = new Date(to.getTime() - SPANS[span] * DAY_MS);
-  const history = await core.history(device, series, from, to);
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+): Promise<Mean[]> {
+  const history = await core.history(device, series, new Date(from), new Date(to));
 
   return "points" in history
     ? history.points.map((p: Readonly<History["points"][number]>) => ({
-        time: new Date(p.start),
-        power: p.mean,
-        series,
-        role: series,
+        start: Date.parse(p.start),
+        end: Date.parse(p.end),
+        mean: p.mean,
       }))
     : [];
+}
+
+/** A band's figure from [from, to): a power's energy in kWh, any other series' time-weighted mean. */
+export function bandFigure(series: string, points: readonly Mean[], from: number, to: number) {
+  const { sum, covered } = spread(points, from, to, (p) => p.mean * (p.end - p.start));
+
+  if (isPower(series)) return { value: sum / 3_600_000_000, covered };
+
+  return { value: covered > 0 ? sum / covered : 0, covered };
 }
 
 /** Each period's figures up to now, cut by the core in the plant timezone (ADR 3). */
