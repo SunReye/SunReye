@@ -56,7 +56,7 @@ export function figure(id: string): Figure | null {
 }
 
 /** The title of a fixed figure; a string's and a loadpoint's are their names. */
-export const TITLES = new Map([
+const TITLES = new Map([
   ["production", m.dash_made],
   ["consumption", m.dash_used],
   ["feedIn", m.dash_grid_export],
@@ -74,6 +74,26 @@ export const TITLES = new Map([
   ["ev", m.dash_ev],
   ["generator", m.flow_generator],
 ]);
+
+/**
+ * The sheet title of figure `id`: a string's and a loadpoint's are their names.
+ * @param strings the layout's strings
+ * @param device a device's name, which only the admin may list (ADR 9)
+ */
+export function titleOf(
+  id: string,
+  strings: readonly Readonly<{ id: number; name: string }>[],
+  device: (id: number) => string | undefined,
+): string {
+  const string = /^string-(\d+)$/u.exec(id);
+  const loadpoint = /^ev-(\d+)$/u.exec(id);
+
+  if (string) return strings.find((s) => s.id === Number(string[1]))?.name ?? m.detail_pv();
+
+  if (loadpoint) return device(Number(loadpoint[1])) ?? m.dash_ev();
+
+  return TITLES.get(id)?.() ?? "";
+}
 
 /** One figure: a number in its unit, unknown as null, or words. */
 export type Fact =

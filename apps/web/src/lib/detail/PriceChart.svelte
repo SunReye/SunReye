@@ -9,9 +9,10 @@
   import { getLocale } from "../paraglide/runtime.js";
   import SpotAttribution from "../SpotAttribution.svelte";
 
-  let { day, height = 190 }: { day: Day | undefined; height?: number } = $props();
+  let { day }: { day: Day | undefined } = $props();
 
   const HOUR = 3_600_000;
+  const HEIGHT = 190;
 
   const prices = $derived(day?.prices ?? []);
   const top = $derived(Math.max(0, ...prices.map((p) => p.value)));
@@ -54,12 +55,12 @@
     <!-- The chart's place is held: nothing below it moves when the prices land. -->
     <p
       class="flex items-center justify-center text-xs text-muted-foreground"
-      style:height="{height}px"
+      style:height="{HEIGHT}px"
     >
       {day === undefined ? "" : m.detail_no_prices()}
     </p>
   {:else}
-    <div class="relative" style:height="{height}px" role="img" aria-label={m.detail_prices()}>
+    <div class="relative" style:height="{HEIGHT}px" role="img" aria-label={m.detail_prices()}>
       <div class="absolute inset-0 flex gap-[3px]">
         {#each prices as p, i (p.target)}
           <span class="relative flex-1" data-price={p.value} data-now={i === inForce || undefined}>

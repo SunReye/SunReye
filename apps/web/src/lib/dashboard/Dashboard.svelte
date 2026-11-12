@@ -7,6 +7,7 @@
   import type { Core, Live } from "../api/core.ts";
   import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
+  import type { Go } from "../range/route.svelte.ts";
   import { PLANT, SPOT, TARIFF, readDay, type Day } from "./day.ts";
   import EvCard from "./EvCard.svelte";
   import Hero from "./Hero.svelte";
@@ -20,6 +21,8 @@
     detail = null,
     onopen = () => {},
     onclose = () => {},
+    params = new URLSearchParams(),
+    go = () => {},
   }: {
     core: Core;
     /** The layout in force when it has a scene. */
@@ -32,6 +35,9 @@
     onopen?: (id: string) => void;
     /** Closes the detail sheet. */
     onclose?: () => void;
+    /** The hash route's query, where the sheet's range lives (ADR 21). */
+    params?: URLSearchParams;
+    go?: Go;
   } = $props();
 
   /** How often today is reread: its energy and money move slowly. */
@@ -119,4 +125,4 @@
   </div>
 </main>
 
-<DetailSheet id={detail} {core} {live} {day} {names} {onopen} {onclose} />
+<DetailSheet id={detail} {core} {live} {day} {names} {params} {go} {onopen} {onclose} />

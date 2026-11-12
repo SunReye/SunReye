@@ -19,7 +19,7 @@
     series,
     route,
   }: {
-    core: Core;
+    core: Readonly<Pick<Core, "history">>;
     device: number;
     series: string;
     route: RangeRoute;
