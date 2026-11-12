@@ -5,7 +5,10 @@ import LiveScreen from "./LiveScreen.svelte";
 
 const SNAPSHOT = '{"devices":{"1":{"pv.power":1950,"grid.power":-120,"battery.soc":64}}}';
 
-/** A test core: one live snapshot, then a held stream; history answers with one point. */
+/**
+ * A test core: one live snapshot, then a held stream; history answers with one point, in a plant
+ * on UTC.
+ */
 function testCore(live: Response): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
 
@@ -16,6 +19,9 @@ function testCore(live: Response): Transport & { readonly asked: string[] } {
       const url = new URL(request.url);
 
       asked.push(url.pathname + url.search);
+
+      if (url.pathname.endsWith("/timezone"))
+        return Promise.resolve(Response.json({ name: "UTC" }));
 
       if (url.pathname.endsWith("/history")) {
         return Promise.resolve(
@@ -103,6 +109,24 @@ test("the spot-price device shows on its own card, not charted", async () => {
   await expect.element(screen.getByRole("heading", { name: "Börsenstrompreis" })).toBeVisible();
   await expect.element(screen.getByText("12,00 ct/kWh")).toBeVisible();
   expect(transport.asked.filter((path) => path.includes("/history"))).toEqual([]);
+});
+
+test("a device without a power, such as the tariff, is not charted", async () => {
+  const tariff =
+    '{"devices":{"1":{"pv.power":1950},"4294967293":{"price.import":0.3,"price.export":0.08}}}';
+
+  const transport = testCore(
+    new Response(`event: snapshot\ndata: ${tariff}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const screen = await render(LiveScreen, { core: connect(transport) });
+
+  await expect
+    .poll(() => transport.asked.filter((path) => path.includes("/history")))
+    .toEqual([expect.stringMatching(/^\/api\/v1\/devices\/1\/history\?series=pv\.power&/u)]);
+  expect(screen.getByRole("figure").elements()).toHaveLength(1);
 });
 
 test("a refused stream shows its problem in German", async () => {

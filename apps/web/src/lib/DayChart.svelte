@@ -2,6 +2,7 @@
   import type { Core } from "./api/core";
   import { m } from "./paraglide/messages.js";
   import PowerLines from "./PowerLines.svelte";
+  import { plantMidnight } from "./plant-day";
   import { getLocale } from "./paraglide/runtime.js";
 
   let { core, device, series }: { core: Core; device: number; series: readonly string[] } =
@@ -15,6 +16,8 @@
 
   // A string, so a live update that names the same series does not reload the day.
   const names = $derived(series.join("\n"));
+
+  const HOUR = 3_600_000;
 
   let rows = $state.raw<readonly Row[]>([]);
 
@@ -37,14 +40,10 @@
   }
 
   /** The whole day's forecast of each string wired to this inverter (ADR 17). */
-  async function forecast(from: Core, id: number, start: Date): Promise<Row[]> {
+  async function forecast(from: Core, id: number, start: Date, end: Date): Promise<Row[]> {
     const layout = await from.layout();
 
     if (!("strings" in layout)) return [];
-
-    const end = new Date(start);
-
-    end.setDate(end.getDate() + 1);
 
     const loaded = await Promise.all(
       layout.strings
@@ -67,13 +66,16 @@
   }
 
   async function load(from: Core, id: number, wanted: string, signal: AbortSignal): Promise<void> {
-    const start = new Date();
-
-    start.setHours(0, 0, 0, 0);
+    const zone = await from.timezone();
+    // Unread, the viewer's own zone stands in.
+    const plant = "name" in zone ? zone.name : Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const start = plantMidnight(plant, new Date());
+    // Past the longest day, 25 hours, and short of the next.
+    const end = plantMidnight(plant, new Date(start.getTime() + 36 * HOUR));
 
     const loaded = await Promise.all([
       measured(from, id, wanted, start),
-      forecast(from, id, start),
+      forecast(from, id, start, end),
     ]);
 
     if (!signal.aborted) rows = loaded.flat();

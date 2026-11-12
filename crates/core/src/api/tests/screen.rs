@@ -61,9 +61,17 @@ async fn every_asset_the_screen_links_is_relative_so_it_works_under_a_prefix() {
         let response = core.send(get(&format!("/{path}"))).await;
 
         assert_eq!(response.status(), StatusCode::OK, "{asset}");
+        let css = std::path::Path::new(asset)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("css"));
+        let expected = if css {
+            "text/css; charset=utf-8"
+        } else {
+            "text/javascript; charset=utf-8"
+        };
         assert_eq!(
             response.headers()[header::CONTENT_TYPE],
-            "text/javascript; charset=utf-8",
+            expected,
             "{asset}"
         );
     }

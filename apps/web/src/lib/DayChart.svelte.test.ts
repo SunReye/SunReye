@@ -22,8 +22,14 @@ const PEAK = [
   { start: "2026-11-09T18:00:00Z", end: "2026-11-09T18:01:00Z", mean: 0 },
 ];
 
-/** A test core: the layout, one forecast point per string, and `points` as every history. */
-function testCore(points: readonly object[] = []): Transport & { readonly asked: string[] } {
+/**
+ * A test core: the layout, one forecast point per string, `points` as every history, and the plant
+ * in `zone`.
+ */
+function testCore(
+  points: readonly object[] = [],
+  zone = "UTC",
+): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
 
   return {
@@ -35,6 +41,8 @@ function testCore(points: readonly object[] = []): Transport & { readonly asked:
       asked.push(url.pathname + url.search);
 
       if (url.pathname.endsWith("/layout")) return Promise.resolve(Response.json(LAYOUT));
+
+      if (url.pathname.endsWith("/timezone")) return Promise.resolve(Response.json({ name: zone }));
 
       if (url.pathname.endsWith("/forecasts")) {
         const target = "2026-11-09T11:00:00Z";
@@ -68,6 +76,36 @@ test("the day chart shows each of its inverter's strings' forecast", async () =>
     ]);
   await expect.element(chart.getByText("south (Prognose)")).toBeVisible();
   await expect.element(chart.getByText("north (Prognose)")).toBeVisible();
+});
+
+test("the day starts at the plant's midnight, not the browser's", async () => {
+  // UTC+14 all year: its midnight is 10:00 UTC the day before, whatever the browser's zone.
+  const transport = testCore([], "Pacific/Kiritimati");
+
+  await render(DayChart, { core: connect(transport), device: 1, series: ["pv.power"] });
+
+  /** Each history or forecast read as its route, `from` and `to`, in order. */
+  const spans = (): string[] => {
+    const read: string[] = [];
+
+    for (const path of transport.asked) {
+      const [, route, from, to] =
+        /\/(history|forecasts)\?.*&from=([^&]*)&to=([^&]*)$/u.exec(path) ?? [];
+
+      if (route !== undefined) read.push(`${route} ${from?.slice(10)} ${to?.slice(10)}`);
+    }
+
+    return read.toSorted((x, y) => x.localeCompare(y));
+  };
+
+  // Every read starts at the plant's midnight; forecasts end at the next.
+  await expect
+    .poll(spans)
+    .toEqual([
+      "forecasts T10%3A00%3A00.000Z T10%3A00%3A00.000Z",
+      "forecasts T10%3A00%3A00.000Z T10%3A00%3A00.000Z",
+      expect.stringMatching(/^history T10%3A00%3A00\.000Z T/u),
+    ]);
 });
 
 interface Pixels {
