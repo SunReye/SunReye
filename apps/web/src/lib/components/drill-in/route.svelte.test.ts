@@ -65,3 +65,13 @@ test("navigate works handed over as `onnavigate` on its own", () => {
     ["#/controls?group=battery", { replace: false, state: { drilled: true } }],
   ]);
 });
+
+test("a screen may name its own level, as the dashboard's `detail` sheet", () => {
+  const detail = drillRoute(on("/?detail=battery"), "detail");
+
+  expect(detail.open).toBe("battery");
+
+  drillRoute(on("/"), "detail").navigate("grid");
+
+  expect(sent).toEqual([["#/?detail=grid", { replace: false, state: { drilled: true } }]]);
+});
