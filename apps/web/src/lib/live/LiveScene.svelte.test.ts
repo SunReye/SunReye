@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import {
   connect,
@@ -188,8 +189,8 @@ test("an estimated string carries ≈", async () => {
 });
 
 test("the scene draws once per live tick and per camera move, and never on its own", async () => {
-  // three.js clears the canvas once per draw.
-  const draws = vi.spyOn(WebGL2RenderingContext.prototype, "clear");
+  // Each draw runs the studio's passes once.
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
   const { core, tick } = ticking();
   const screen = await show(core);
 
