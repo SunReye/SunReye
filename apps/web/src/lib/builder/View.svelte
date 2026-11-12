@@ -12,7 +12,7 @@
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, Pv } from "./pv.ts";
   import type { Hit, Panel } from "./scene.ts";
-  import Stage from "./Stage.svelte";
+  import Stage, { type Editing } from "./Stage.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
@@ -26,6 +26,7 @@
     location,
     clear = 0,
     onpick,
+    editing,
   }: {
     pv: Pv;
     core: Core;
@@ -39,6 +40,8 @@
     /** Pixels at the bottom a sheet keeps covered. */
     clear?: number;
     onpick?: ((hit: Hit) => void) | undefined;
+    /** The selected object's handles. */
+    editing?: Editing | undefined;
   } = $props();
 
   const moment = new Moment(() => ({ core, pv, draft, moduleTypes, location }));
@@ -62,6 +65,7 @@
     places={draft.scene.carPlaces ?? []}
     {devices}
     {onpick}
+    {editing}
   />
 
   <div class="pointer-events-none absolute inset-x-3 top-3 flex">

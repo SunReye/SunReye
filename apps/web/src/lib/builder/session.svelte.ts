@@ -2,13 +2,16 @@
 // crate makes of it, and the inspector's level.
 import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
 import { haptics } from "../haptics.ts";
+import type { Editing } from "./handles/handled.svelte.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
 import { painted, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
-import type { Geometry, Modules, Pv } from "./pv.ts";
+import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
 import type { Hit, Panel } from "./scene.ts";
 import { fill, type Template } from "./templates.ts";
+
+const same = (a: Scene, b: Scene): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /** Today in the browser's calendar, as a date input holds it. */
 function today(): string {
@@ -59,6 +62,9 @@ export class Session {
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
 
+  /** A handle drag's scene, shown but not yet recorded. */
+  #dragged = $state.raw<Draft>();
+
   constructor(opening: () => Opening) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
@@ -77,7 +83,7 @@ export class Session {
   }
 
   get draft(): Draft {
-    return this.#history.present;
+    return this.#dragged ?? this.#history.present;
   }
 
   get undoable(): boolean {
@@ -98,12 +104,45 @@ export class Session {
     this.saved = undefined;
   }
 
+  /** Shows a handle drag's step at once; `drop` records the drag as one undo step (ADR 20). */
+  drag(scene: Scene): void {
+    this.#dragged = { ...this.#history.present, scene };
+  }
+
+  drop(): void {
+    const dragged = this.#dragged;
+
+    this.#dragged = undefined;
+
+    if (dragged !== undefined && !same(dragged.scene, this.#history.present.scene)) {
+      this.change(dragged);
+    }
+  }
+
   undo(): void {
     this.#history = undo(this.#history);
   }
 
   redo(): void {
     this.#history = redo(this.#history);
+  }
+
+  /** A selected block or obstacle's handles, and where their drags go. */
+  get editing(): Editing | undefined {
+    const { level } = this;
+
+    if (level.kind !== "block" && level.kind !== "obstacle") return undefined;
+
+    return {
+      scene: this.draft.scene,
+      target: { kind: level.kind, index: level.index },
+      ondrag: (scene) => {
+        this.drag(scene);
+      },
+      ondrop: () => {
+        this.drop();
+      },
+    };
   }
 
   /** Templates are offered while the scene has no block, until the admin starts empty. */

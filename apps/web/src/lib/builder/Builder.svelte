@@ -43,6 +43,8 @@
   provideUploader((glb) => core.uploadCarBody(glb));
 
   const sheet = $derived(!phone.current && portrait.current);
+
+  const editing = $derived(phone.current ? undefined : session.editing);
 </script>
 
 <div
@@ -62,6 +64,7 @@
       {devices}
       {location}
       clear={sheet ? PEEK : 0}
+      {editing}
       onpick={phone.current
         ? undefined
         : (hit) => {

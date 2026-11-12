@@ -1,0 +1,194 @@
+import "../../../app.css";
+import { afterEach, expect, test } from "vitest";
+import { cdp, page } from "vitest/browser";
+import { render } from "vitest-browser-svelte";
+import { presetView, type View } from "../camera.ts";
+import { house, pv } from "../builder.harness.ts";
+import type { Point, Scene } from "../pv.ts";
+import type { Projector } from "../drawing.svelte.ts";
+import SceneCanvas from "../SceneCanvas.svelte";
+import { handles, type Target, type Triple } from "./grips.ts";
+
+// Software GL renders the sky and shadows slowly while other suites run.
+const SLOW = { timeout: 15_000 };
+
+const BLOCK: Target = { kind: "block", index: 0 };
+
+/** A three.js point as the pv crate's: east, north, up. */
+const point = ([x, y, z]: Triple): Point => [x, 0 - z, y];
+
+type Pointer = "mouse" | "pen" | "touch";
+
+/** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
+async function press(kind: Pointer, path: readonly (readonly [number, number])[]): Promise<void> {
+  const [first, ...rest] = path;
+
+  if (first === undefined) return;
+
+  if (kind === "touch") {
+    await cdp().send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: first[0], y: first[1] }],
+    });
+
+    for (const [x, y] of rest) {
+      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
+    }
+
+    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    return;
+  }
+
+  const mouse = { button: "left", pointerType: kind, clickCount: 1 } as const;
+
+  await cdp().send("Input.dispatchMouseEvent", {
+    ...mouse,
+    type: "mousePressed",
+    x: first[0],
+    y: first[1],
+  });
+
+  for (const [x, y] of rest) {
+    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
+    await cdp().send("Input.dispatchMouseEvent", {
+      ...mouse,
+      type: "mouseMoved",
+      buttons: 1,
+      x,
+      y,
+    });
+  }
+
+  const [x, y] = rest.at(-1) ?? first;
+
+  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
+}
+
+async function stage(scene: Scene) {
+  const dragged: Scene[] = [];
+  const dropped: number[] = [];
+  const views: View[] = [];
+  let project: Projector | undefined;
+  let ready = false;
+
+  const geometry = pv.geometry(scene);
+
+  const screen = await render(SceneCanvas, {
+    geometry,
+    view: presetView("isometric", geometry),
+    onview: (view: View) => {
+      views.push(view);
+    },
+    onrender: (next: Projector) => {
+      project = next;
+    },
+    onready: () => {
+      ready = true;
+    },
+    editing: {
+      scene,
+      target: BLOCK,
+      ondrag: (next: Scene) => {
+        dragged.push(next);
+      },
+      ondrop: () => {
+        dropped.push(dragged.length);
+      },
+    },
+  });
+
+  await expect.poll(() => ready, SLOW).toBe(true);
+
+  const canvas = screen.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  /** A three.js point on the page, in pixels. */
+  const onPage = (at: Triple): readonly [number, number] => {
+    const [x = 0, y = 0] = project?.(point(at)) ?? [];
+
+    return [canvas.left + x, canvas.top + y];
+  };
+
+  return { dragged, dropped, views, onPage, corner: [canvas.left + 30, canvas.top + 30] as const };
+}
+
+afterEach(async () => {
+  await page.viewport(1280, 900);
+});
+
+test.each<Pointer>(["mouse", "pen", "touch"])(
+  "a %s drags the width arrow outward: wider, one drop, no orbit",
+  async (kind) => {
+    const scene = house().scene;
+    const { dragged, dropped, views, onPage } = await stage(scene);
+    const arrow = handles(scene, BLOCK).find(({ grip }) => grip === "width");
+
+    if (arrow?.axis === undefined) throw new Error("no width arrow");
+
+    const [ax, ay, az] = arrow.at;
+    const [dx, , dz] = arrow.axis;
+    const start = onPage(arrow.at);
+    const end = onPage([ax + dx * 2, ay, az + dz * 2]);
+    const middle = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2] as const;
+
+    await press(kind, [start, middle, end]);
+
+    await expect.poll(() => dropped).toEqual([dragged.length]);
+
+    const width = dragged.at(-1)?.blocks[0]?.width ?? 0;
+
+    expect(width).toBeGreaterThan(11);
+    expect(width).toBeLessThan(13);
+    expect(views).toEqual([]);
+  },
+);
+
+test("a drag on open ground orbits and drags nothing", async () => {
+  const scene = house().scene;
+  const { dragged, views, corner } = await stage(scene);
+  const [x, y] = corner;
+
+  await press("mouse", [
+    [x, y],
+    [x + 60, y],
+    [x + 120, y],
+  ]);
+
+  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+  expect(dragged).toEqual([]);
+});
+
+test("the live value shows beside the handle while it drags", async () => {
+  const scene = house().scene;
+  const { onPage } = await stage(scene);
+  const arrow = handles(scene, BLOCK).find(({ grip }) => grip === "width");
+
+  if (arrow?.axis === undefined) throw new Error("no width arrow");
+
+  const [ax, ay, az] = arrow.at;
+  const [x, y] = onPage(arrow.at);
+  const [ex, ey] = onPage([ax + arrow.axis[0] * 2, ay, az + arrow.axis[2] * 2]);
+
+  await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", x, y });
+  await cdp().send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    button: "left",
+    buttons: 1,
+    x: ex,
+    y: ey,
+  });
+
+  const value = page.getByRole("status").getByText(/^1[12],\d m$/u);
+
+  await expect.element(value).toBeVisible();
+
+  await cdp().send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    button: "left",
+    x: ex,
+    y: ey,
+  });
+
+  await expect.element(value).not.toBeInTheDocument();
+});
