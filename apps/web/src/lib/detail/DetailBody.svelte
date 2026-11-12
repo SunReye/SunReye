@@ -10,6 +10,7 @@
   import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import { facts, type Fact, type Figure } from "./figures.ts";
   import HistoryLink from "./HistoryLink.svelte";
+  import LiveSection from "./LiveSection.svelte";
   import Readings from "./Readings.svelte";
   import { ago, type NodeReadings } from "./readings.ts";
   import TodayChart from "./TodayChart.svelte";
@@ -134,7 +135,9 @@
     </div>
   </header>
 
-  <!-- The live graph (ADR 21) belongs here, between the figure and the readings. -->
+  {#if power}
+    <LiveSection {spec} {title} points={node?.points ?? []} {silent} {status} />
+  {/if}
 
   <Readings {node} {status} {onopen} />
 

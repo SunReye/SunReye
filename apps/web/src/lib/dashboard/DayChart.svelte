@@ -2,6 +2,7 @@
 <script lang="ts">
   import { curveMonotoneX } from "d3-shape";
   import { Area, Axis, Chart, Layer, Rule, Spline } from "layerchart";
+  import { VALUE_AXIS } from "../chart-axis.ts";
   import type { DayRow } from "./today.ts";
 
   let {
@@ -39,15 +40,7 @@
           <stop offset="100%" stop-color={colour} stop-opacity="0.02" />
         </linearGradient>
       </defs>
-      <Axis
-        placement="left"
-        ticks={3}
-        grid={{ class: "stroke-foreground/[0.07]" }}
-        rule={false}
-        tickLength={0}
-        format={(v: number) => (v === 0 ? "" : `${v}`)}
-        classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
-      />
+      <Axis {...VALUE_AXIS} format={(v: number) => (v === 0 ? "" : `${v}`)} />
       <Axis
         placement="bottom"
         ticks={(scale: { domain: () => Date[] }) => {

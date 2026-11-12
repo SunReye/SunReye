@@ -7,6 +7,7 @@
   import type { Core, Live } from "../api/core.ts";
   import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
+  import { record, type LiveSeries } from "../live-graph/series.ts";
   import type { Go } from "../range/route.svelte.ts";
   import { PLANT, SPOT, TARIFF, readDay, type Day } from "./day.ts";
   import EvCard from "./EvCard.svelte";
@@ -49,9 +50,14 @@
   /** Device names, which only the admin may list (ADR 9). */
   let names = $state.raw<ReadonlyMap<number, string>>(new Map());
 
+  /** Every live power's last two minutes, kept from the start so a sheet opens with its graph. */
+  let recent = $state.raw<LiveSeries>({});
+
   $effect(() =>
     core.live((next) => {
       live = next;
+
+      if ("devices" in next) recent = record(recent, next, Date.now());
     }),
   );
 
@@ -125,4 +131,4 @@
   </div>
 </main>
 
-<DetailSheet id={detail} {core} {live} {day} {names} {params} {go} {onopen} {onclose} />
+<DetailSheet id={detail} {core} {live} series={recent} {day} {names} {params} {go} {onopen} {onclose} />

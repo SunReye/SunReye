@@ -14,6 +14,7 @@ import {
   string,
   type PvString,
 } from "./groups.ts";
+import { pointsOf, type LivePoint, type LiveSeries } from "../live-graph/series.ts";
 import { reader, type Group, type Reader, type Readings } from "./rows.ts";
 
 /** The computed devices count down from here (ADR 15); a node reads a registered device. */
@@ -27,6 +28,8 @@ export interface Source extends Readings {
   readonly names: Readonly<Record<string, string>>;
   /** "stopped" while the stream is refused: then no single row is stale on its own. */
   readonly status: "loading" | "live" | "stopped";
+  /** The live stream's last two minutes of every power. */
+  readonly series: LiveSeries;
 }
 
 export interface NodeReadings {
@@ -38,6 +41,8 @@ export interface NodeReadings {
   readonly lead: number | null;
   /** The sheet's own figure is an estimate. */
   readonly leadEstimated: boolean;
+  /** The sheet's own figure over the last two minutes, for its live graph. */
+  readonly points: readonly LivePoint[];
   readonly groups: readonly Group[];
 }
 
@@ -133,19 +138,28 @@ function silence(source: Source, device: number): number | null {
   return Math.round((source.now - Math.max(...Object.values(stale))) / 1000);
 }
 
+/** The sheet's own figure: its value now, whether it is estimated, its last two minutes. */
+function leadOf(found: Node, source: Source) {
+  const [device, key] = found.lead;
+
+  if (device === null) return { lead: null, leadEstimated: false, points: [] };
+
+  return {
+    lead: source.values[device]?.[key] ?? null,
+    leadEstimated: (source.estimated[device] ?? []).includes(key),
+    points: pointsOf(source.series, device, key),
+  };
+}
+
 /** A node's readings, or null when the sheet is not a node's (a day figure, the price). */
 export function nodeReadings(id: string, source: Source): NodeReadings | null {
   const found = node(id, source);
 
   if (found === null) return null;
 
-  const [leadDevice, leadKey] = found.lead;
-  const lead = leadDevice === null ? null : (source.values[leadDevice]?.[leadKey] ?? null);
+  const own = leadOf(found, source);
 
-  const leadEstimated =
-    leadDevice !== null && (source.estimated[leadDevice] ?? []).includes(leadKey);
-
-  if (found.device === null) return { device: null, silent: null, lead, leadEstimated, groups: [] };
+  if (found.device === null) return { device: null, silent: null, ...own, groups: [] };
 
   const silent = silence(source, found.device);
   // One notice covers a silent device or a stopped stream; a row's own age is for the exception.
@@ -155,7 +169,12 @@ export function nodeReadings(id: string, source: Source): NodeReadings | null {
     .groups(read)
     .filter((g) => g.rows.length > 0 || g.table !== undefined || g.note !== undefined);
 
-  return { device: source.names[found.device] ?? null, silent, lead, leadEstimated, groups };
+  return {
+    device: source.names[found.device] ?? null,
+    silent,
+    ...own,
+    groups,
+  };
 }
 
 /** "vor 42 s", "vor 4 min", "vor 3 h": how old a reading is. */
