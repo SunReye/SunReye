@@ -9,7 +9,9 @@
   import { getLocale } from "../paraglide/runtime.js";
   import SpotAttribution from "../SpotAttribution.svelte";
 
-  let { day, height = 190 }: { day: Day | undefined; height?: number } = $props();
+  let { day }: { day: Day | undefined } = $props();
+
+  const height = 190;
 
   const HOUR = 3_600_000;
 

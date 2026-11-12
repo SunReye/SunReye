@@ -7,8 +7,7 @@
   import type { Core, Live } from "../api/core.ts";
   import BottomSheet from "../components/bottom-sheet.svelte";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
-  import type { Day } from "../dashboard/day.ts";
-  import { SPOT } from "../dashboard/day.ts";
+  import { SPOT, type Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
@@ -19,6 +18,7 @@
     id,
     core,
     live,
+    series,
     day,
     names,
     onopen,
@@ -28,6 +28,8 @@
     id: string | null;
     core: Pick<Core, "layout" | "capabilities">;
     live: Live | undefined;
+    /** The live stream's last two minutes, for a sheet's live graph. */
+    series: Source["series"];
     day: Day | undefined;
     /** Device names, which only the admin may list (ADR 9). */
     names: ReadonlyMap<number, string>;
@@ -87,6 +89,7 @@
     names: Object.fromEntries(names),
     now,
     status,
+    series,
   });
 
   const node = $derived(spec.node === null ? null : nodeReadings(spec.node, source));

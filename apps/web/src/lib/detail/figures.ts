@@ -12,6 +12,8 @@ export interface Figure {
   readonly node: string | null;
   /** A signed power: which words say its direction. */
   readonly direction?: "battery" | "grid";
+  /** The live graph fills around zero: the colour above, then below (ADR 21). */
+  readonly diverging?: readonly [string, string];
   /** Today's energy the sheet leads with, before the live power. */
   readonly today?: Today;
   readonly chart: "pv" | "price" | null;
@@ -19,6 +21,7 @@ export interface Figure {
 
 const SOLAR = "var(--e-solar)";
 const HOUSE = "var(--e-house)";
+const GRID = ["var(--e-import)", "var(--e-export)"] as const;
 const EV: Figure = { colour: "var(--e-ev)", node: "ev", chart: null };
 
 const FIGURES = new Map<string, Figure>([
@@ -26,11 +29,25 @@ const FIGURES = new Map<string, Figure>([
   ["consumption", { colour: HOUSE, node: "house", today: "consumption", chart: null }],
   [
     "feedIn",
-    { colour: "var(--e-export)", node: "grid", direction: "grid", today: "feedIn", chart: null },
+    {
+      colour: "var(--e-export)",
+      node: "grid",
+      direction: "grid",
+      diverging: GRID,
+      today: "feedIn",
+      chart: null,
+    },
   ],
   [
     "purchase",
-    { colour: "var(--e-import)", node: "grid", direction: "grid", today: "purchase", chart: null },
+    {
+      colour: "var(--e-import)",
+      node: "grid",
+      direction: "grid",
+      diverging: GRID,
+      today: "purchase",
+      chart: null,
+    },
   ],
   ["autarky", { colour: "var(--e-battery)", node: null, chart: null }],
   ["saved", { colour: SOLAR, node: null, chart: null }],
@@ -39,8 +56,20 @@ const FIGURES = new Map<string, Figure>([
   ["weather", { colour: SOLAR, node: null, chart: null }],
   ["pv", { colour: SOLAR, node: "pv", chart: "pv" }],
   ["inverter", { colour: SOLAR, node: "inverter", chart: null }],
-  ["battery", { colour: "var(--e-battery)", node: "battery", direction: "battery", chart: null }],
-  ["grid", { colour: "var(--e-export)", node: "grid", direction: "grid", chart: null }],
+  [
+    "battery",
+    {
+      colour: "var(--e-battery)",
+      node: "battery",
+      direction: "battery",
+      diverging: ["var(--e-battery)", "var(--e-battery)"],
+      chart: null,
+    },
+  ],
+  [
+    "grid",
+    { colour: "var(--e-export)", node: "grid", direction: "grid", diverging: GRID, chart: null },
+  ],
   ["house", { colour: HOUSE, node: "house", chart: null }],
   ["ev", EV],
   ["generator", { colour: HOUSE, node: "generator", chart: null }],

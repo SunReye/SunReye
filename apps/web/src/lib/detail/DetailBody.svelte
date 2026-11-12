@@ -7,11 +7,10 @@
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { Day } from "../dashboard/day.ts";
-  import DayChart from "../dashboard/DayChart.svelte";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
+  import DayFigure from "./DayFigure.svelte";
   import { facts, type Fact, type Figure } from "./figures.ts";
-  import PriceChart from "./PriceChart.svelte";
+  import LiveSection from "./LiveSection.svelte";
   import Readings from "./Readings.svelte";
   import { ago, type NodeReadings } from "./readings.ts";
 
@@ -64,14 +63,6 @@
     [m.detail_now(), direction, node?.leadEstimated ? m.detail_estimated() : ""]
       .filter(Boolean)
       .join(" · "),
-  );
-
-  const clock = $derived(
-    new Intl.DateTimeFormat(getLocale(), {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: day?.zone,
-    }),
   );
 </script>
 
@@ -140,20 +131,14 @@
     </div>
   </header>
 
-  <!-- The live graph (ADR 21) belongs here, between the figure and the readings. -->
+  {#if power}
+    <LiveSection {spec} {title} points={node?.points ?? []} {silent} {status} />
+  {/if}
 
   <Readings {node} {status} {onopen} />
 
   {#if spec.chart}
-    <section class="flex flex-col gap-3 border-t border-border/60 px-5 pt-4 pb-4 sm:px-6">
-      {#if spec.chart === "price"}
-        <PriceChart {day} />
-      {:else if day !== undefined}
-        <div class="h-[190px]"><DayChart rows={day.rows} now={day.now} hours={clock} /></div>
-      {:else}
-        <div class="h-[190px]"></div>
-      {/if}
-    </section>
+    <DayFigure chart={spec.chart} {day} />
   {/if}
 
   {#if shown.stats.length > 0}
