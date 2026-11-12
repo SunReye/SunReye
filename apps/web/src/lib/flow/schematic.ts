@@ -1,4 +1,5 @@
 // The 2D power flow's schematic (ADR 21): nodes, rails and their anchors in the safe box.
+import type { RailPulse } from "./flow-pulse.ts";
 
 // Flow relative to the inverter: `in` = power arriving (production, discharge, import),
 // `out` = leaving it (load, charge, export).
@@ -60,8 +61,24 @@ export type GraphSegment = {
   readonly pts: readonly Pt[];
 };
 
+/** Some of a graph's nodes and their rails. */
+export type GraphPart = {
+  readonly nodes: readonly GraphNode[];
+  readonly segments: readonly GraphSegment[];
+};
+
 export type PowerGraph = {
   readonly hub: Pt;
   readonly nodes: readonly GraphNode[];
   readonly segments: readonly GraphSegment[];
+};
+
+/** One rail as drawn: its cable's path in pixels and its charge. */
+export type RailLine = {
+  readonly id: string;
+  readonly flow: Flow;
+  /** CSS colour driving `currentColor`. */
+  readonly color: string;
+  readonly pulse: RailPulse;
+  readonly d: string;
 };

@@ -2,13 +2,8 @@
 // six-hour half-life, decayed by wall-clock time, never below the floor. Ported from v3 (dev 780b4e2,
 // lib/inverter/flow-pulse.test.ts).
 import { expect, test } from "bun:test";
-import {
-  CEILING_FLOOR_W,
-  decayCeiling,
-  parseCeiling,
-  throughputWatts,
-  type Ceiling,
-} from "./ceiling.ts";
+import { CEILING_FLOOR_W, decayCeiling, parseCeiling, type Ceiling } from "./ceiling.ts";
+import { throughputWatts } from "./flow-pulse.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
 

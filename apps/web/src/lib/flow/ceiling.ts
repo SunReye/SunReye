@@ -20,8 +20,6 @@
  * and holds no arithmetic at all.
  */
 
-import type { Flow } from "./schematic.ts";
-
 /** Smallest plant a rail is ever measured against (W). */
 export const CEILING_FLOOR_W = 1000;
 
@@ -80,19 +78,12 @@ export function shouldPersist(last: Ceiling, next: Ceiling): boolean {
   return next.watts >= last.watts * PERSIST_RISE || next.at - last.at >= PERSIST_INTERVAL_MS;
 }
 
-/** Total power the plant is moving right now: what the ceiling is fed. */
-export function throughputWatts(
-  segments: readonly { readonly flow: Flow; readonly value?: number | undefined }[],
-): number {
-  return segments.reduce((t, s) => (s.flow === "in" ? t + Math.abs(s.value ?? 0) : t), 0);
-}
-
 /**
  * A stored ceiling, or a fresh one at the floor. Lives here rather than in the
  * rune shell so the corrupt-entry cases are exercised: this is read before the
  * first paint, and a half-written value must not take the diagram down.
  */
-export function parseCeiling(raw: string | null | undefined): Ceiling {
+export function parseCeiling(raw?: string | null): Ceiling {
   try {
     const stored: unknown = JSON.parse(raw ?? "");
 

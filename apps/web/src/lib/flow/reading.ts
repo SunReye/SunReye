@@ -1,6 +1,6 @@
 // What the 2D power flow reads (ADR 21): the `plant` device's roles (ADR 14), the loadpoints' `ev`
 // roles (ADR 10) and the layout's strings, signs per ADR 4. Pure.
-import type { PvString, Values } from "../api/core.ts";
+import type { Live, PvString, Values } from "../api/core.ts";
 import { PLANT } from "../live/labels.ts";
 
 /** The layout's strings, as far as the flow needs them. */
@@ -108,4 +108,11 @@ export function hubMetrics(values: Values["devices"]): Hub {
   const ac = acs.reduce((t, w) => t + w, 0);
 
   return { dc, efficiency: (ac / dc) * 100, own: Math.abs(dc - ac) };
+}
+
+/** Whether any of the plant's values is past its gap threshold (ADR 3). */
+export function stalled(live: Live | undefined): boolean {
+  return (
+    live !== undefined && "devices" in live && Object.keys(live.stale?.[PLANT] ?? {}).length > 0
+  );
 }

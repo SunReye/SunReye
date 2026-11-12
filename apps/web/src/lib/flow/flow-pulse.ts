@@ -3,6 +3,13 @@
 import { CEILING_FLOOR_W } from "./ceiling.ts";
 import type { Flow } from "./schematic.ts";
 
+/** Total power the plant is moving right now: what the ceiling is fed. */
+export function throughputWatts(
+  segments: readonly { readonly flow: Flow; readonly value?: number | undefined }[],
+): number {
+  return segments.reduce((t, s) => (s.flow === "in" ? t + Math.abs(s.value ?? 0) : t), 0);
+}
+
 /**
  * Magnitude relative to the remembered plant, quantized so a 1 Hz wobble
  * writes no styles at all. Sign is carried by colour and travel direction.

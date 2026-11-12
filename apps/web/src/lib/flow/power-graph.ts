@@ -5,17 +5,13 @@ import type { FlowReading } from "./reading.ts";
 import type {
   Flow,
   GraphNode,
+  GraphPart,
   GraphSegment,
   NodeState,
   Orientation,
   PowerGraph,
   Pt,
 } from "./schematic.ts";
-
-type GraphPart = {
-  readonly nodes: readonly GraphNode[];
-  readonly segments: readonly GraphSegment[];
-};
 
 // Anchors are fractions of the *safe box* (the hero minus the caption insets), so a node centre at
 // y=0 or y=1 sits one caption stack away from the hero's edge and text never clips.
@@ -288,4 +284,15 @@ export function buildPowerGraph(
   ];
 
   return { hub, nodes: parts.flatMap((p) => p.nodes), segments: parts.flatMap((p) => p.segments) };
+}
+
+/** A rail's anchors in the measured box as an SVG path: 2 pts line, 3 quadratic, 4 cubic. */
+export function railPath(pts: readonly Pt[], width: number, height: number): string {
+  const c = pts.map((p) => `${p.x * width} ${p.y * height}`);
+
+  if (pts.length === 4) return `M ${c[0]} C ${c[1]}, ${c[2]}, ${c[3]}`;
+
+  if (pts.length === 3) return `M ${c[0]} Q ${c[1]}, ${c[2]}`;
+
+  return `M ${c[0]} L ${c[1]}`;
 }

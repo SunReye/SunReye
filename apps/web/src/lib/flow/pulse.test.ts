@@ -1,8 +1,8 @@
 // A rail's share of the remembered plant and what its charge looks like at that share. Ported from
 // v3 (dev 780b4e2, lib/inverter/flow-pulse.test.ts).
 import { expect, test } from "bun:test";
-import { CEILING_FLOOR_W, decayCeiling, throughputWatts } from "./ceiling.ts";
-import { crossingSeconds, pulseShare, railPulse } from "./flow-pulse.ts";
+import { CEILING_FLOOR_W, decayCeiling } from "./ceiling.ts";
+import { crossingSeconds, pulseShare, railPulse, throughputWatts } from "./flow-pulse.ts";
 
 test("pulseShare: the same rail against its own plant reads the same at any scale", () => {
   // Why the feature exists: a 5 kW rail on a 5.5 kW plant and a 500 W rail on

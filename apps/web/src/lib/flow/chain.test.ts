@@ -147,7 +147,7 @@ test("a change of speed keeps the comet where it is: animationPhase always lands
     [4, 0, 4],
     [123.456, -0.3, 1.25],
     [1e6, -1e5, 2.75],
-  ]) {
+  ] as const) {
     const p = animationPhase(now, begin, dur);
     expect(p).toBeGreaterThanOrEqual(0);
     expect(p).toBeLessThan(1);
@@ -170,7 +170,7 @@ test("a change of speed keeps the comet where it is: rephasedBegin puts the head
     [4.5, 1.25],
     [1.25, 4.5],
     [2, 2.25],
-  ]) {
+  ] as const) {
     const phase = animationPhase(now, -0.4, oldDur);
     const begin = rephasedBegin(now, phase, newDur);
     expect(animationPhase(now, begin, newDur)).toBeCloseTo(phase, 6);
