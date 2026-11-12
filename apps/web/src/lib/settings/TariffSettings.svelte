@@ -1,6 +1,7 @@
-<!-- Settings › Tariff: the tariff and the spot-price zone (ADR 12). -->
+<!-- Settings › Tariff: the tariff, the spot-price zone and the investment payback counts against (ADR 12). -->
 <script lang="ts">
   import type { Core } from "../api/core";
+  import Payback from "../tariff/Payback.svelte";
   import SpotZone from "../tariff/SpotZone.svelte";
   import TariffPanel from "../tariff/TariffPanel.svelte";
 
@@ -10,4 +11,5 @@
 <div class="flex flex-col gap-6 p-4">
   <TariffPanel {core} />
   <SpotZone {core} />
+  <Payback {core} />
 </div>

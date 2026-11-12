@@ -1,6 +1,6 @@
 <script lang="ts">
   import { connect, http } from "../../lib/api/core";
-  import HistoryScreen from "../../lib/history/HistoryScreen.svelte";
+  import StatisticsScreen from "../../lib/history/StatisticsScreen.svelte";
   import { routeGo, routeParams } from "../../lib/range/kit-route.ts";
 
   // The page's directory is the core's root, under an ingress prefix too (ADR 11).
@@ -10,4 +10,4 @@
   const params = $derived(routeParams());
 </script>
 
-<HistoryScreen {core} {params} go={routeGo} />
+<StatisticsScreen {core} {params} go={routeGo} />

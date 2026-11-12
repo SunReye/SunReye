@@ -64,6 +64,8 @@ const SETTLE_MS = 380;
 export class RangeRoute implements Ranged {
   readonly #input: () => RouteInput;
   readonly #zone: PlantZone;
+  /** The screen's own parameters beside the range's, which the address carries with it. */
+  readonly #owns: readonly string[];
 
   #ahead = $state.raw<{ on: URLSearchParams; to: URLSearchParams } | null>(null);
   #later: ReturnType<typeof setTimeout> | undefined;
@@ -123,9 +125,13 @@ export class RangeRoute implements Ranged {
     return canStep(this.#cal(), this.range, 1);
   }
 
-  /** @param ahead how many days past today the screen reaches, such as a forecast's */
-  constructor(input: () => RouteInput, ahead = 0) {
+  /**
+   * @param ahead how many days past today the screen reaches, such as a forecast's
+   * @param owns the screen's own parameters, which `patch` changes with the range's
+   */
+  constructor(input: () => RouteInput, ahead = 0, owns: readonly string[] = []) {
     this.#input = input;
+    this.#owns = [...RANGE_PARAMS, ...owns];
     this.#zone = new PlantZone(() => input().core, ahead);
 
     $effect(() => () => {
@@ -164,9 +170,19 @@ export class RangeRoute implements Ranged {
 
     const to = untrack(() => this.#now);
 
-    this.#input().go(Object.fromEntries(RANGE_PARAMS.map((k) => [k, to.get(k)])), this.#pushes);
+    this.#input().go(Object.fromEntries(this.#owns.map((k) => [k, to.get(k)])), this.#pushes);
     this.#pushes = false;
   }
+
+  /** The route as the screen sees it, a change made here included. */
+  get params(): URLSearchParams {
+    return this.#now;
+  }
+
+  /** Changes the screen's own parameters; `push` adds a history entry, so back returns. */
+  patch = (patch: Readonly<Record<string, string | null>>, push = false): void => {
+    this.#nav(patch, push);
+  };
 
   /** A new kind, anchored at the range's last day that has happened. */
   setKind = (kind: Kind): void => {

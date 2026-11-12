@@ -158,5 +158,5 @@
     </dl>
   {/if}
 
-  <HistoryLink route={input.route} />
+  <HistoryLink route={input.route} {id} />
 </div>
