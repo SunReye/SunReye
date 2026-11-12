@@ -329,7 +329,7 @@ impl Storage {
     }
 
     /// The rollups of `series` in `tier` that start within `range`. Hours are rolled up once
-    /// closed; the current day covers its closed hours.
+    /// closed; a day the open hour reaches into runs to the latest reading.
     ///
     /// # Errors
     /// The series is unknown, or the file cannot be read.

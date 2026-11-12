@@ -56,11 +56,11 @@ async function measured(core: Reader, series: string, from: Date, to: Date): Pro
   return "points" in read ? read.points : [];
 }
 
-/** A `plant` power's day energy in kWh, rolled up by the core over the day's closed hours (ADR 3). */
+/** A `plant` power's day energy in kWh, rolled up by the core to its latest reading (ADR 3). */
 async function rolledUp(core: Reader, series: keyof Energies, day: readonly [Date, Date]) {
   const read = await core.statistics(PLANT, series, "day", ...day);
 
-  // Wh; a day without a closed hour has no figures yet.
+  // Wh; a day without a reading has no figures.
   return ("points" in read ? (read.points[0]?.integral ?? 0) : 0) / 1000;
 }
 
