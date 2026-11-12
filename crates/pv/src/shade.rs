@@ -107,6 +107,11 @@ fn blocks(occluder: &Occluder, origin: Point, ray: Point) -> bool {
             radius,
             height,
         } => cylinder(sub(origin, base), ray, radius, height),
+        Occluder::Cone {
+            base,
+            radius,
+            height,
+        } => cone(sub(origin, base), ray, radius, height),
     }
 }
 
@@ -124,6 +129,39 @@ fn triangle(origin: Point, ray: Point, [first, second, third]: [Point; 3]) -> bo
     let v = dot(ray, turned) / det;
     let distance = dot(other, turned) / det;
     (0.0..=1.0).contains(&u) && v >= 0.0 && u + v <= 1.0 && distance > CLEARANCE
+}
+
+/// Metres past which a level ray no longer counts, so its stretch in a slab stays finite.
+const FAR: f64 = 1e6;
+
+/// An upright cone standing on the origin of `origin`'s frame, its apex `height` above.
+fn cone(origin: Point, ray: Point, radius: f64, height: f64) -> bool {
+    let [ox, oy, oz] = origin;
+    let [dx, dy, dz] = ray;
+    // The stretch of the ray between the base and the apex…
+    let (enter, leave) = if dz.abs() < 1e-12 {
+        if !(0.0..=height).contains(&oz) {
+            return false;
+        }
+        (CLEARANCE, FAR)
+    } else {
+        let (bottom, top) = (-oz / dz, (height - oz) / dz);
+        (bottom.min(top).max(CLEARANCE), bottom.max(top).min(FAR))
+    };
+    if enter > leave {
+        return false;
+    }
+    // …where it lies inside the double cone x² + y² ≤ k²(h − z)², which below the apex is this
+    // one: f(t) = at² + 2bt + c ≤ 0.
+    let (kk, rest) = ((radius / height).powi(2), height - oz);
+    let a = (-kk * dz).mul_add(dz, dx.mul_add(dx, dy * dy));
+    let b = (kk * rest).mul_add(dz, ox.mul_add(dx, oy * dy));
+    let c = (-kk * rest).mul_add(rest, ox.mul_add(ox, oy * oy));
+    let inside = |t: f64| a.mul_add(t, 2.0 * b).mul_add(t, c) <= 0.0;
+    let vertex = -b / a;
+    inside(enter)
+        || inside(leave)
+        || (a > 0.0 && (enter..=leave).contains(&vertex) && inside(vertex))
 }
 
 /// An upright cylinder standing on the origin of `origin`'s frame.

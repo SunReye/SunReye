@@ -37,12 +37,55 @@ export type Obstacle =
       readonly rotation: number;
     }
   | {
-      readonly kind: "cylinder" | "tree";
+      readonly kind: "cylinder";
       readonly x: number;
       readonly z: number;
       readonly radius: number;
       readonly height: number;
+    }
+  | {
+      readonly kind: "tree";
+      readonly x: number;
+      readonly z: number;
+      readonly radius: number;
+      readonly height: number;
+      /** Broadleaf without one. */
+      readonly crown?: Crown;
+    }
+  | {
+      /** A straight row; its length runs along x, its depth along z. */
+      readonly kind: "hedge";
+      readonly x: number;
+      readonly z: number;
+      readonly length: number;
+      readonly depth: number;
+      readonly height: number;
+      readonly rotation: number;
     };
+
+/** A broadleaf's crown is a sphere, a conifer's a cone. */
+export type Crown = "broadleaf" | "conifer";
+
+export type GroundFinish = "lawn" | "paving" | "driveway" | "gravel" | "path";
+
+/** A rectangle on the plot with a block's footprint; drawn only, it never shades. */
+export interface GroundSurface {
+  readonly x: number;
+  readonly z: number;
+  readonly width: number;
+  readonly depth: number;
+  readonly rotation: number;
+  readonly finish: GroundFinish;
+}
+
+export type FenceFinish = "wood" | "metal" | "wall";
+
+/** A polyline on the ground through `[x, z]` points; drawn only, it never shades. */
+export interface Fence {
+  readonly points: readonly (readonly [number, number])[];
+  readonly height: number;
+  readonly finish: FenceFinish;
+}
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
 export interface Cell {
@@ -104,6 +147,9 @@ export interface Scene {
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
+  /** Each drawn over the last; without any the plot is lawn. */
+  readonly surfaces?: readonly GroundSurface[];
+  readonly fences?: readonly Fence[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -149,7 +195,7 @@ export interface Modules {
 }
 
 export interface Face {
-  readonly surface: "wall" | "roof" | "obstacle";
+  readonly surface: "wall" | "roof" | "obstacle" | "hedge";
   /** A flat convex polygon. */
   readonly corners: readonly Point[];
 }
@@ -157,7 +203,8 @@ export interface Face {
 export type Solid =
   | { readonly kind: "sphere"; readonly centre: Point; readonly radius: number }
   | {
-      readonly kind: "cylinder";
+      /** Upright; a cone narrows from `radius` at its base to its apex `height` above. */
+      readonly kind: "cylinder" | "cone";
       readonly base: Point;
       readonly radius: number;
       readonly height: number;
@@ -179,6 +226,18 @@ export interface Geometry {
    * is refused. */
   readonly stands?:
     | readonly { readonly at: Point; readonly forward: Point; readonly above: Point }[]
+    | null;
+  /** By ground surface, its corners on the ground; null while one is refused. */
+  readonly ground?:
+    | readonly { readonly finish: GroundFinish; readonly corners: readonly Point[] }[]
+    | null;
+  /** By fence, its points on the ground; null while one is refused. */
+  readonly fences?:
+    | readonly {
+        readonly finish: FenceFinish;
+        readonly height: number;
+        readonly points: readonly Point[];
+      }[]
     | null;
 }
 
