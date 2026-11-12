@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { Attempt, Core, Problem, Setting } from "../api/core";
-  import { problemText } from "../i18n/problems";
-  import { m } from "../paraglide/messages.js";
-  import { valueText } from "./bounds";
-  import { OUTCOMES } from "./outcomes";
+  import type { Core, Setting } from "../api/core";
+  import { editable } from "../components/value-editor/editable.ts";
+  import ValueEditor from "../components/value-editor/value-editor.svelte";
+  import { editorOutcome, OUTCOMES } from "./outcomes";
 
   let {
     core,
@@ -20,70 +19,84 @@
     onwritten: () => void;
   } = $props();
 
-  const id = $props.id();
-
-  // An enumerated setting starts at its first value; a ranged one waits for the admin's.
-  let value = $derived<number | null>(setting.values?.[0] ?? null);
+  const edit = $derived(editable(setting));
 
   // The device's switch, and trust once verified or enabled (ADR 8).
   const writable = $derived(writes && (setting.enable === "verified" || setting.enable === "on"));
-  let pending = $state(false);
-  let result = $state.raw<Attempt | Problem>();
 
-  async function write(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
+  let row = $state<HTMLButtonElement | null>(null);
+  let open = $state(false);
 
-    if (value === null) return;
+  /** The last value read back this session; the core has no read of a setting yet. */
+  let current = $state<number | null>(null);
 
-    pending = true;
-    result = await core.write(device, setting.key, value);
-    pending = false;
+  /** What the last confirmed write did; the editor has closed by then. */
+  let status = $state<string>();
+
+  const currentText = $derived.by(() => {
+    if (current === null) return "";
+
+    if (edit.kind === "enum") return edit.options.find((o) => o.value === current)?.text ?? "";
+
+    return edit.unit ? `${current} ${edit.unit}` : String(current);
+  });
+
+  async function write(value: number) {
+    const result = await core.write(device, setting.key, value);
+
     onwritten();
+
+    const outcome = editorOutcome(result);
+
+    if (!("problem" in result)) {
+      current = result.after ?? current;
+
+      if (outcome.kind === "confirmed") status = OUTCOMES[result.outcome]();
+    }
+
+    return outcome;
   }
 </script>
 
-<form onsubmit={write}>
-  <label for={id}>{setting.key}</label>
-  {#if setting.values}
-    <select {id} bind:value>
-      {#each setting.values as option (option)}
-        <option value={option}>{valueText(option, setting.labels)}</option>
-      {/each}
-    </select>
-  {:else}
-    <input
-      {id}
-      type="number"
-      min={setting.range?.min}
-      max={setting.range?.max}
-      step={setting.step}
-      required
-      bind:value
-    />
+<div class="field">
+  <button
+    bind:this={row}
+    type="button"
+    aria-haspopup="dialog"
+    disabled={!writable}
+    onclick={() => {
+      status = undefined;
+      open = true;
+    }}
+  >
+    <span>{edit.name}</span>
+    <span class="value">{currentText}</span>
+  </button>
+  {#if status}
+    <p role="status">{status}</p>
   {/if}
-  <button disabled={!writable || pending}>{m.settings_write({ key: setting.key })}</button>
-  {#if result !== undefined && "problem" in result}
-    <p role="alert">{problemText(result.problem)}</p>
-  {:else if result !== undefined}
-    <p role="status">
-      {OUTCOMES[result.outcome]()}
-      {#if result.failedStep}
-        {m.settings_failed_step({ step: result.failedStep })}
-      {/if}
-    </p>
-  {/if}
-</form>
+  <ValueEditor key={setting.key} {edit} {current} anchor={row} bind:open onapply={write} />
+</div>
 
 <style>
-  form {
+  .field {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  button {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+
+  .value {
+    font-variant-numeric: tabular-nums;
   }
 
   p {
-    flex-basis: 100%;
     margin: 0;
   }
 </style>

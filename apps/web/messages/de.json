@@ -418,5 +418,16 @@
   "nav_admin": "Admin",
   "nav_pin": "Anheften",
   "nav_unpin": "Lösen",
-  "nav_more": "Mehr"
+  "nav_more": "Mehr",
+  "editor_limits": "{min}–{max} {unit} · Schritt {step}",
+  "editor_values": "{count} Werte",
+  "editor_type": "{name} eingeben",
+  "editor_tap": "{value}, tippen zum Eingeben",
+  "editor_now": "jetzt",
+  "editor_apply": "Übernehmen",
+  "editor_pending": "Wird geschrieben …",
+  "editor_confirmed": "Bestätigt",
+  "editor_unchanged": "Keine Änderung",
+  "editor_refused": "Abgelehnt.",
+  "editor_mismatch": "Abweichung."
 }
