@@ -8,6 +8,9 @@ import "../app.css";
 import Page from "./+page.svelte";
 
 const DASHBOARD = "sunreye.dashboard";
+
+/** Where a browser remembers it has no WebGL2. */
+const WEBGL2 = "sunreye.webgl2";
 const LOW_POWER = "sunreye.low-power";
 
 /** A 10 m × 8 m gable house with nothing on its roof. */
@@ -132,6 +135,7 @@ async function asked(path: string): Promise<void> {
 beforeEach(async () => {
   localStorage.removeItem(DASHBOARD);
   localStorage.removeItem(LOW_POWER);
+  localStorage.removeItem(WEBGL2);
   paths.length = 0;
   served.scene = false;
   served.session = undefined;
@@ -221,14 +225,14 @@ test("the low-power switch shows the 2D flow", async () => {
 
 test("without WebGL2 a scene still leaves the 2D flow", async () => {
   served.scene = true;
-  // No context at all: the dashboard asks only for WebGL2.
+  // No context on the page: the scene's renderer finds none and the browser is remembered.
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
   const screen = await render(Page);
 
-  await asked("/api/v1/layout");
+  await expect.poll(() => localStorage.getItem(WEBGL2), { timeout: 20_000 }).toBe("no");
+  await expect.element(screen.getByRole("radio", { name: "2D" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
-  expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
 
 test("a fresh core walks the owner through setup and ends on the live dashboard", async () => {

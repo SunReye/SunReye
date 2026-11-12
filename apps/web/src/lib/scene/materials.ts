@@ -12,6 +12,7 @@ import {
   Vector2,
 } from "three";
 import { GROUPS, type GroupName, type Pixels } from "./pixels.ts";
+import { warmed } from "./warm.ts";
 
 const textures = new Map<string, DataTexture>();
 
@@ -31,14 +32,14 @@ function texture(key: string, pixels: Pixels): DataTexture {
   return made;
 }
 
-/** One map of a material's group, generated on first use. */
+/** One map of a material's group: the warm-up worker's, or generated here on first use. */
 function map(name: GroupName, kind: string): DataTexture {
   const key = `${name}.${kind}`;
   const cached = textures.get(key);
 
   if (cached !== undefined) return cached;
 
-  for (const [made, pixels] of Object.entries<Pixels>(GROUPS[name]())) {
+  for (const [made, pixels] of Object.entries<Pixels>(warmed[name] ?? GROUPS[name]())) {
     textures.set(made, texture(made, pixels));
   }
 

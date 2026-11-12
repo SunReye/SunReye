@@ -1,5 +1,6 @@
 import "../../app.css";
-import { expect, test } from "vitest";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView, type View } from "./camera.ts";
@@ -33,6 +34,26 @@ test("the scene is drawn on a labelled canvas", async () => {
   });
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+test("ready is reported once, after the first frame is drawn", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const ready = vi.fn(() => draws.mock.calls.length);
+
+  await render(SceneCanvas, {
+    geometry: house,
+    view: presetView("isometric", house),
+    onview: () => {},
+    onready: ready,
+  });
+
+  await expect.poll(() => ready.mock.calls.length, SLOW).toBe(1);
+
+  expect(ready.mock.results[0]?.value).toBeGreaterThan(0);
 });
 
 test("dragging the canvas orbits the camera and reports the new view", async () => {
