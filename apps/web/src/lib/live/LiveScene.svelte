@@ -5,10 +5,9 @@
   import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
   import SceneCanvas, { type Projector } from "../builder/SceneCanvas.svelte";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
-  import FlowLabel from "./FlowLabel.svelte";
+  import { spread } from "./chips.ts";
+  import LabelChip from "./LabelChip.svelte";
   import { liveScene } from "./labels.ts";
-  import StringTag from "./StringTag.svelte";
 
   let {
     core,
@@ -19,6 +18,7 @@
     capabilities,
     model,
     location,
+    onselect,
   }: {
     core: Core;
     pv: Pv;
@@ -31,6 +31,8 @@
     model?: Parameters<typeof SceneCanvas>[1]["model"];
     /** The plant's; unknown to a viewer, whose sun then stays put (ADR 20). */
     location?: Location | undefined;
+    /** Opens a chip's detail sheet. */
+    onselect: (id: string) => void;
   } = $props();
 
   /** The sun moves on every 15 minutes, as the spotlight backdrop does (ADR 21). */
@@ -69,8 +71,6 @@
       }
     }),
   );
-
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
 
   // Drawn once per layout; a live tick changes only the tints and the labels.
   const geometry = $derived(pv.geometry(scene));
@@ -112,17 +112,50 @@
     return point === null ? null : (project?.(point) ?? null);
   }
 
-  /** Each leader line, from its label down to its marker, both in view. */
-  const leaders = $derived(
-    live.labels.flatMap(({ anchor, leader }) => {
-      const [from, to] = [at(anchor), at(leader)];
+  let width = $state(0);
+  let height = $state(0);
 
-      return from === null || to === null ? [] : [[from, to] as const];
-    }),
-  );
+  /** A chip's size until it is on screen (the prototype's). */
+  const GUESS = { w: 90, h: 28 };
+
+  /** Each chip's measured size, by key. */
+  let sizes = $state<Record<string, { w: number; h: number }>>({});
+
+  function measured(
+    key: string,
+    size: { w?: number | null | undefined; h?: number | null | undefined },
+  ): void {
+    const { w, h } = sizes[key] ?? GUESS;
+
+    sizes[key] = { w: size.w ?? w, h: size.h ?? h };
+  }
+
+  /** Pixels a string's chip floats above its modules, on its leader line. */
+  const LIFT = 42;
+
+  /** The chips in view, pushed apart and inside the canvas (ADR 20). */
+  const chips = $derived.by(() => {
+    const shown = live.chips.flatMap((chip) => {
+      const anchor = at(chip.anchor);
+
+      return anchor === null ? [] : [{ chip, anchor, marker: at(chip.leader) }];
+    });
+
+    const boxes = spread(
+      shown.map(({ chip, anchor: [x, y] }) => ({
+        x,
+        y: chip.kind === "string" ? y - LIFT : y,
+        ...(sizes[chip.key] ?? GUESS),
+      })),
+      width,
+      height,
+    );
+
+    return shown.map(({ chip, marker }, i) => ({ chip, marker, box: boxes[i]! }));
+  });
 </script>
 
-<figure aria-label={m.live_scene()}>
+<figure aria-label={m.live_scene()} bind:clientWidth={width} bind:clientHeight={height}>
   <SceneCanvas
     {geometry}
     panels={drawn}
@@ -139,23 +172,37 @@
       project = next;
     }}
   />
-  <!-- Labels are HTML over the canvas: readable through walls, and no redraw for new text. -->
-  <svg aria-hidden="true">
-    {#each leaders as [from, to], i (i)}
-      <line x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]} />
+  <!-- Chips are HTML over the canvas: readable through walls, and no redraw for new text. -->
+  <svg class="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden="true">
+    {#each chips as { chip, marker, box } (chip.key)}
+      {#if marker !== null}
+        <line
+          x1={marker[0]}
+          y1={marker[1]}
+          x2={box.x}
+          y2={box.y}
+          class="stroke-foreground/35"
+          stroke-width="1"
+        />
+        <circle
+          cx={marker[0]}
+          cy={marker[1]}
+          r="3"
+          class="fill-background stroke-foreground/60"
+          stroke-width="1.25"
+        />
+      {/if}
     {/each}
   </svg>
-  {#each live.strings as string, i (i)}
-    {@const spot = at(string.centre)}
-    {#if spot !== null}
-      <StringTag {string} at={spot} {format} />
-    {/if}
-  {/each}
-  {#each live.labels as label, i (i)}
-    {@const spot = at(label.anchor)}
-    {#if spot !== null && label.quantities.length > 0}
-      <FlowLabel quantities={label.quantities} at={spot} {format} />
-    {/if}
+  {#each chips as { chip, box } (chip.key)}
+    <div
+      class="absolute top-0 left-0"
+      style:transform="translate({box.x}px, {box.y}px) translate(-50%, -50%)"
+      bind:offsetWidth={null, (w) => measured(chip.key, { w })}
+      bind:offsetHeight={null, (h) => measured(chip.key, { h })}
+    >
+      <LabelChip {chip} {onselect} />
+    </div>
   {/each}
 </figure>
 
@@ -165,18 +212,5 @@
     margin: 0;
     height: 100%;
     overflow: hidden;
-  }
-
-  svg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-
-  line {
-    stroke: #1d232b;
-    stroke-width: 1.5;
   }
 </style>

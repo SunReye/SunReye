@@ -5,7 +5,11 @@
   import { m } from "../paraglide/messages.js";
   import type { SceneLayout } from "./dashboard.ts";
 
-  let { core, layout }: { core: Core; layout: SceneLayout } = $props();
+  let {
+    core,
+    layout,
+    onselect,
+  }: { core: Core; layout: SceneLayout; onselect: (id: string) => void } = $props();
 
   /** three.js, the crate and what the scene needs: loaded only once it is shown. */
   async function load() {
@@ -47,6 +51,7 @@
       {capabilities}
       {model}
       {location}
+      {onselect}
     />
   {/await}
 </div>
