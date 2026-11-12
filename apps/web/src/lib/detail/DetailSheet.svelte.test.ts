@@ -43,6 +43,14 @@ test("every sheet ends with History at its range", async () => {
     .toHaveAttribute("href", "#/history?range=day");
 });
 
+test("History opens at the sheet's figure: its question, tab or string", async () => {
+  const { screen } = await show("saved");
+
+  await expect
+    .element(screen.getByRole("link", { name: /Im Verlauf öffnen/u }))
+    .toHaveAttribute("href", "#/history?range=day&metric=money");
+});
+
 test("a device's sheet lists its readings by group", async () => {
   const { screen } = await show("battery");
   const readings = screen.getByRole("region", { name: "Messwerte" });
