@@ -10,6 +10,10 @@ export interface Router {
   ) => Promise<void>;
 }
 
+function group(search: string): string | null {
+  return new URLSearchParams(search).get("group");
+}
+
 /** The hash route `url` with `?group=` set to `id`, or dropped for null. */
 function href(url: Router["page"]["url"], id: string | null): string {
   const query = new URLSearchParams(url.search);
@@ -26,11 +30,11 @@ function href(url: Router["page"]["url"], id: string | null): string {
 export function drillRoute({ page, goto }: Router) {
   return {
     get open(): string | null {
-      return new URLSearchParams(page.url.search).get("group");
+      return group(page.url.search);
     },
-    navigate(id: string | null): void {
+    navigate: (id: string | null): void => {
       const drilled = page.state.drilled === true;
-      const open = this.open;
+      const open = group(page.url.search);
 
       // Back to where the drill-in pushed the page; a deep link has no such entry, so it replaces.
       if (id === null && drilled) history.back();

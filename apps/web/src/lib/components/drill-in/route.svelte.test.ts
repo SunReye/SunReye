@@ -55,3 +55,13 @@ test("going back from a deep link stays in the app and lands on the root", () =>
   expect(back).not.toHaveBeenCalled();
   expect(sent).toEqual([["#/controls?x=1", { replace: true, state: {} }]]);
 });
+
+test("navigate works handed over as `onnavigate` on its own", () => {
+  const { navigate } = drillRoute(on("/controls"));
+
+  navigate("battery");
+
+  expect(sent).toEqual([
+    ["#/controls?group=battery", { replace: false, state: { drilled: true } }],
+  ]);
+});
