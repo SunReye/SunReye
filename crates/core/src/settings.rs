@@ -141,6 +141,9 @@ pub struct Declared {
     pub values: Option<Vec<f64>>,
     /// A value is a whole number of steps.
     pub step: f64,
+    /// The value is a time of day in minutes since midnight (ADR 5); absent for a number.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub time: bool,
 }
 
 /// The inclusive bounds of a setting's value.
@@ -156,6 +159,7 @@ impl From<&Setting> for Declared {
             range: setting.range().map(|(min, max)| Bounds { min, max }),
             values: setting.values().map(<[f64]>::to_vec),
             step: setting.step(),
+            time: setting.time(),
         }
     }
 }

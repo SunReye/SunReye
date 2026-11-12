@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "register-enum" | "setting-text" | "verified" | "poll-group" | "live-control";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "register-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "time";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -106,6 +106,10 @@ name?: string, type: Kind,
  * The unit of its value after scaling.
  */
 unit?: Unit, scale?: number, range?: Range, values?: Array<number>, 
+/**
+ * A time of day: the value is minutes since midnight, the register holds it in `format`.
+ */
+time?: Time, 
 /**
  * The text the settings screen shows for each of `values`, keyed by the value.
  */
