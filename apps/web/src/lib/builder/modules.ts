@@ -2,7 +2,6 @@
 // returns a new scene; the pv crate decides what fits.
 import type { StringDraft } from "../api/core.ts";
 import type { Cell, CellPlace, Equipment, ModuleGrid, Scene } from "./pv.ts";
-import { nextBlock } from "./draft.ts";
 import type { Panel } from "./scene.ts";
 
 /** What the builder edits and saves: the scene and the strings its modules are painted into. */
@@ -11,9 +10,9 @@ export interface Draft {
   readonly strings: readonly Readonly<StringDraft>[];
 }
 
-/** One gable house and no strings. */
+/** No block and no strings: the builder then offers templates. */
 export function emptyDraft(): Draft {
-  return { scene: { north: 0, blocks: [nextBlock([])], obstacles: [], grids: [] }, strings: [] };
+  return { scene: { north: 0, blocks: [], obstacles: [], grids: [] }, strings: [] };
 }
 
 /** A new string's wiring, soiling and mismatch loss, in %. */

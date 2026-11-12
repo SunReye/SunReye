@@ -855,5 +855,13 @@
   "access_once": "Kopiere es jetzt. Es wird nicht noch einmal angezeigt.",
   "access_copy": "Kopieren",
   "access_copied": "Kopiert",
-  "access_done": "Fertig"
+  "access_done": "Fertig",
+  "builder_templates": "Vorlage wählen",
+  "builder_templates_hint": "Die nächstliegende Form füllt die Szene, nach Süden ausgerichtet. Maße und Dach lassen sich danach anpassen.",
+  "builder_template_gable": "Einfamilienhaus mit Satteldach",
+  "builder_template_bungalow": "Bungalow mit Flachdach",
+  "builder_template_hip": "Haus mit Walmdach",
+  "builder_template_l_shape": "L-Haus aus zwei Baukörpern",
+  "builder_template_terrace_end": "Reihenendhaus",
+  "builder_template_empty": "Leer beginnen"
 }
