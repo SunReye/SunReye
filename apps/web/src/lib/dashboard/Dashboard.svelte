@@ -131,4 +131,15 @@
   </div>
 </main>
 
-<DetailSheet id={detail} {core} {live} series={recent} {day} {names} {params} {go} {onopen} {onclose} />
+<DetailSheet
+  id={detail}
+  {core}
+  {live}
+  series={recent}
+  {day}
+  {names}
+  {params}
+  {go}
+  {onopen}
+  {onclose}
+/>
