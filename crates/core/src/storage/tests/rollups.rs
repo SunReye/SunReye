@@ -101,6 +101,23 @@ async fn hourly_rollups_are_cut_on_utc_hours() {
     );
 }
 
+#[tokio::test]
+async fn todays_rollup_runs_to_the_latest_reading() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant.open(&dir.path().join("t.sqlite"), epoch()).await;
+    // 1000 W for an hour and a half; the second hour is still open, its last minute unflushed.
+    let readings = steady(0.0, 1081, 5.0, |_| 1000.0);
+    plant.record(&storage, &readings).await;
+
+    let day = rollups(&storage, plant.power, Tier::Day, -43_200.0, 43_200.0).await;
+
+    assert_eq!(
+        measured(&day),
+        [(-12.0, 1.5, 1000.0, 1000.0, 1000.0, 1500.0)]
+    );
+}
+
 /// 2026-10-24 00:00 in Berlin (CEST, UTC+2), in seconds from `T0`.
 const BERLIN_OCT_24: f64 = 1_792_792_800.0 - 1_787_745_600.0;
 /// 2026-03-28 00:00 in Berlin (CET, UTC+1), in seconds from `T0`.

@@ -33,7 +33,7 @@ impl Tariffs {
             role: "cost.savings.rate".to_owned(),
             index: None,
         };
-        // Daily rollups are kept forever (ADR 3); the current day covers its closed hours.
+        // Daily rollups are kept forever (ADR 3); the current day runs to the latest reading.
         let days = self
             .reader
             .rollups(DEVICE, &series, Tier::Day, UNIX_EPOCH..UNIX_EPOCH + ALL)

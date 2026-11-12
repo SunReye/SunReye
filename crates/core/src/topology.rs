@@ -289,6 +289,7 @@ pub fn balance(points: &[Point], value: impl Fn(u32, &str) -> Option<f64>) -> Ba
         // A meter that overstates shows in a point's own consumption, not as negative load.
         totals.push(("load.power", load.max(0.0)));
     }
+    totals.extend(shares(&totals));
     // A silent battery still counts: one of two is not the plant's whole charge.
     let batteries: Vec<u32> = points
         .iter()
@@ -392,6 +393,26 @@ fn own(points: &[Point], measured: &BTreeMap<u32, Measured<'_>>) -> BTreeMap<u32
             (id, inflow(m.role, m.value) - below)
         })
         .collect()
+}
+
+/// The grid split by direction, and the PV and house load met on site, from the plant's totals
+/// (ADR 4). Their day energies give self-consumption and autarky as shares.
+fn shares(totals: &[(&'static str, f64)]) -> Vec<(&'static str, f64)> {
+    let total = |role| totals.iter().find(|(r, _)| *r == role).map(|&(_, v)| v);
+    let Some(grid) = total("grid.power") else {
+        return Vec::new();
+    };
+    let (import, export) = (grid.max(0.0), (-grid).max(0.0));
+    let mut shares = vec![("grid.import.power", import), ("grid.export.power", export)];
+    if let Some(pv) = total("pv.power") {
+        // A battery feeding in can export more than the PV makes.
+        shares.push(("self.consumption.power", (pv - export).max(0.0)));
+    }
+    if let Some(load) = total("load.power") {
+        // What is bought beyond the house load charges the battery.
+        shares.push(("self.supply.power", (load - import).max(0.0)));
+    }
+    shares
 }
 
 /// The readings of each summed role's points, while all of them are measured.

@@ -3,8 +3,8 @@
 //!
 //! Each reading of a power role, or of a battery's state of charge or capacity, balances the tree
 //! again over the latest fresh reading of every point. The plant publishes its totals under the
-//! same roles its devices use, and each measured point's own consumption as `point.power`, indexed
-//! by point id.
+//! same roles its devices use, the grid split by direction and the PV and house load met on site,
+//! and each measured point's own consumption as `point.power`, indexed by point id.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
@@ -35,6 +35,13 @@ const ROLES: &[(&str, Unit, f64)] = &[
     ("ev.charge.power", Unit::Watt, 1.0),
     ("battery.soc", Unit::Percent, 0.1),
     ("battery.capacity", Unit::KilowattHour, 0.01),
+];
+/// The roles only the plant publishes (ADR 4): stored in watts, like the powers they split.
+const SHARES: &[&str] = &[
+    "grid.import.power",
+    "grid.export.power",
+    "self.consumption.power",
+    "self.supply.power",
 ];
 
 /// The plant's task; dropping the handle stops it.
@@ -115,8 +122,13 @@ impl Task {
             (age <= STALE).then_some(value)
         });
         for (role, value) in balance.totals {
-            if let Some(&(_, unit, step)) = ROLES.iter().find(|(r, ..)| *r == role) {
-                self.publish((role, None), (unit, step), value, now).await;
+            let policy = ROLES
+                .iter()
+                .find(|(r, ..)| *r == role)
+                .map(|&(_, unit, step)| (unit, step))
+                .or_else(|| SHARES.contains(&role).then_some((Unit::Watt, 1.0)));
+            if let Some(policy) = policy {
+                self.publish((role, None), policy, value, now).await;
             }
         }
         for (point, watts) in balance.own {
