@@ -46,9 +46,12 @@ test("a month reads each plant power once", async () => {
   expect(asked.map((a) => a.series).toSorted()).toEqual([
     "4294967294:battery.power",
     "4294967294:ev.charge.power",
-    "4294967294:grid.power",
+    "4294967294:grid.export.power",
+    "4294967294:grid.import.power",
     "4294967294:load.power",
     "4294967294:pv.power",
+    "4294967294:self.consumption.power",
+    "4294967294:self.supply.power",
   ]);
   expect(asked.every((a) => a.to === T0 + 31 * DAY)).toBe(true);
 });

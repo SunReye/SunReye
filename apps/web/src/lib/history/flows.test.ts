@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { energy, today } from "../dashboard/today.ts";
+import { today } from "../dashboard/today.ts";
 import { gapsOf, sumOf, type Plant } from "./flows.ts";
 
 const H = 3_600_000;
@@ -11,7 +11,10 @@ const span = (h0: number, h1: number, mean: number) => ({ start: at(h0), end: at
 const PLANT: Plant = {
   pv: [span(0, 2, 2000), span(2, 4, 0)],
   load: [span(0, 4, 1000)],
-  grid: [span(0, 2, -1000), span(2, 4, 1000)],
+  imported: [span(0, 2, 0), span(2, 4, 1000)],
+  exported: [span(0, 2, 1000), span(2, 4, 0)],
+  selfUsed: [span(0, 2, 1000), span(2, 4, 0)],
+  selfCovered: [span(0, 2, 1000), span(2, 4, 0)],
   battery: [],
   ev: [],
 };
@@ -25,12 +28,18 @@ test("a range balances: production is self-used plus fed in, consumption self-co
   expect(s.selfCovered + s.purchase).toBe(s.consumption);
 });
 
-test("the whole day sums as the dashboard's today does", () => {
-  const dashboard = today({
-    pv: energy(PLANT.pv),
-    load: energy(PLANT.load),
-    grid: energy(PLANT.grid),
-  });
+test("the whole day sums as the dashboard's today does from the same energies", () => {
+  const dashboard = today(
+    {
+      "pv.power": 4,
+      "load.power": 4,
+      "grid.import.power": 2,
+      "grid.export.power": 2,
+      "self.consumption.power": 2,
+      "self.supply.power": 2,
+    },
+    { production: null, consumption: null },
+  );
 
   expect(sumOf(PLANT, T0, T0 + 24 * H)).toMatchObject({
     production: dashboard.production,
@@ -38,6 +47,7 @@ test("the whole day sums as the dashboard's today does", () => {
     feedIn: dashboard.feedIn,
     purchase: dashboard.purchase,
     autarky: dashboard.autarky,
+    selfUse: dashboard.selfUse,
   });
 });
 

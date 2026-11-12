@@ -1,14 +1,25 @@
 // What the plant's flows sum to over a span, from the `plant` device's powers (ADR 4, 14). The
-// arithmetic is the dashboard's (`dashboard/today.ts`), so a day here reads as it does there.
-import { energy, today, type Interval } from "../dashboard/today.ts";
+// shares are the dashboard's (`dashboard/today.ts`), so a day here reads as it does there.
+import { today, type Interval } from "../dashboard/today.ts";
 import type { Span } from "../range/fill.ts";
 
-/** The plant's power histories: `pv`, `load`, `grid`, `battery` and `ev.charge` power. */
+/** The plant's power histories, each a role of the `plant` device (ADR 4). */
 export interface Plant {
+  /** `pv.power`. */
   readonly pv: readonly Interval[];
+  /** `load.power`. */
   readonly load: readonly Interval[];
-  readonly grid: readonly Interval[];
+  /** `grid.import.power`. */
+  readonly imported: readonly Interval[];
+  /** `grid.export.power`. */
+  readonly exported: readonly Interval[];
+  /** `self.consumption.power`: the PV not fed in. */
+  readonly selfUsed: readonly Interval[];
+  /** `self.supply.power`: the house load not bought. */
+  readonly selfCovered: readonly Interval[];
+  /** `battery.power`, positive while charging. */
   readonly battery: readonly Interval[];
+  /** `ev.charge.power`. */
   readonly ev: readonly Interval[];
 }
 
@@ -48,30 +59,54 @@ function clip(intervals: readonly Interval[], from: number, to: number): Interva
 const length = (intervals: readonly Interval[]) =>
   intervals.reduce((a, i) => a + Date.parse(i.end) - Date.parse(i.start), 0);
 
+const HOUR = 3_600_000;
+
+/** kWh each way over the intervals: while positive, and while negative as a positive number. */
+function energy(intervals: readonly Interval[]): readonly [number, number] {
+  let [up, down] = [0, 0];
+
+  for (const { start, end, mean } of intervals) {
+    const kwh = (mean * (Date.parse(end) - Date.parse(start))) / HOUR / 1000;
+
+    if (kwh > 0) up += kwh;
+    else down -= kwh;
+  }
+
+  return [up, down];
+}
+
 /** The plant's flows over [from, to). */
 export function sumOf(plant: Plant, from: number, to: number): Sum {
-  const flowed = (of: readonly Interval[]) => energy(clip(of, from, to));
-  const [pv, load, grid, battery, ev] = [plant.pv, plant.load, plant.grid, plant.battery, plant.ev];
-  const t = today({ pv: flowed(pv), load: flowed(load), grid: flowed(grid) });
-  const stored = flowed(battery);
+  const kwh = (of: readonly Interval[]) => energy(clip(of, from, to))[0];
+  const [charge, discharge] = energy(clip(plant.battery, from, to));
+
+  const t = today(
+    {
+      "pv.power": kwh(plant.pv),
+      "load.power": kwh(plant.load),
+      "grid.import.power": kwh(plant.imported),
+      "grid.export.power": kwh(plant.exported),
+      "self.consumption.power": kwh(plant.selfUsed),
+      "self.supply.power": kwh(plant.selfCovered),
+    },
+    { production: null, consumption: null },
+  );
 
   return {
     production: t.production,
     consumption: t.consumption,
     feedIn: t.feedIn,
     purchase: t.purchase,
-    selfUsed: Math.max(0, t.production - t.feedIn),
-    selfCovered: Math.max(0, t.consumption - t.purchase),
-    charge: stored.positive,
-    discharge: stored.negative,
-    ev: flowed(ev).positive,
+    selfUsed: kwh(plant.selfUsed),
+    selfCovered: kwh(plant.selfCovered),
+    charge,
+    discharge,
+    ev: kwh(plant.ev),
     autarky: t.autarky,
     selfUse: t.selfUse,
-    covered: length(clip(load, from, to)),
+    covered: length(clip(plant.load, from, to)),
   };
 }
-
-const HOUR = 3_600_000;
 
 /** Holes of an hour or more in the house load's record over [from, min(to, now)). */
 export function gapsOf(plant: Plant, from: number, to: number, now: number): Span[] {

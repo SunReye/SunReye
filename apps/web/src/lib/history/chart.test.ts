@@ -16,7 +16,10 @@ const span = (h0: number, h1: number, mean: number) => ({ start: at(h0), end: at
 const PLANT: Plant = {
   pv: [span(10, 12, 3000)],
   load: [span(10, 12, 1000), span(13, 24, 1000)],
-  grid: [span(10, 12, -2000), span(13, 24, 1000)],
+  imported: [span(13, 24, 1000)],
+  exported: [span(10, 12, 2000)],
+  selfUsed: [span(10, 12, 1000)],
+  selfCovered: [span(10, 12, 1000)],
   battery: [],
   ev: [],
 };

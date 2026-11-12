@@ -31,7 +31,10 @@ function series() {
   return {
     "pv.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 3000)],
     "load.power": [span(y - 1, 0, 24, 500), span(y, 10, 12, 1000), span(y, 13, 24, 1000)],
-    "grid.power": [span(y - 1, 0, 24, 500), span(y, 10, 12, -2000), span(y, 13, 24, 1000)],
+    "grid.import.power": [span(y - 1, 0, 24, 500), span(y, 13, 24, 1000)],
+    "grid.export.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 2000)],
+    "self.consumption.power": [span(y, 10, 12, 1000)],
+    "self.supply.power": [span(y, 10, 12, 1000)],
   };
 }
 
@@ -138,7 +141,7 @@ const READS = new Map<string, (q: Query) => Response>(
             series: [
               "pv.power",
               "load.power",
-              "grid.power",
+              "grid.import.power",
               ...(plant.battery ? ["battery.power"] : []),
             ],
             estimated: [],

@@ -35,8 +35,8 @@ export function heatOf(metric: Metric): HeatSource & { name: string; colour: str
   if (metric === "autarky")
     return {
       device: PLANT,
-      series: "grid.power",
-      pick: (w) => Math.max(0, w),
+      series: "grid.import.power",
+      pick: (w) => w,
       name: m.stats_pattern_grid(),
       colour: "var(--e-import)",
     };

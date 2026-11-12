@@ -1,5 +1,5 @@
-// The range's year by month against the year before, for the chosen question. The year is read
-// at the core's day tier (ADR 9), so its flows are netted per day until the core publishes them.
+// The range's year by month against the year before, for the chosen question, at the core's day
+// tier (ADR 9).
 import type { Edge } from "../range/edges.ts";
 import { edges } from "../range/edges.ts";
 import { bandsOf, spread } from "../range/fill.ts";
@@ -37,7 +37,20 @@ async function readYear(core: StatsCore, zone: string, range: Range, now: number
   const [from, to] = [ms(t0Of(range)), Math.min(ms(t1Of(range)), now)];
 
   if (to <= from)
-    return { range, plant: { pv: [], load: [], grid: [], battery: [], ev: [] }, days: [] };
+    return {
+      range,
+      plant: {
+        pv: [],
+        load: [],
+        imported: [],
+        exported: [],
+        selfUsed: [],
+        selfCovered: [],
+        battery: [],
+        ev: [],
+      },
+      days: [],
+    };
 
   const [plant, costs] = await Promise.all([
     readPlant(core, from, to),

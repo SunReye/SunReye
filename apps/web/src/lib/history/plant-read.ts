@@ -11,7 +11,10 @@ const PIECE = 1400 * DAY;
 const SERIES = {
   pv: "pv.power",
   load: "load.power",
-  grid: "grid.power",
+  imported: "grid.import.power",
+  exported: "grid.export.power",
+  selfUsed: "self.consumption.power",
+  selfCovered: "self.supply.power",
   battery: "battery.power",
   ev: "ev.charge.power",
 } as const satisfies Record<keyof Plant, string>;
@@ -49,11 +52,18 @@ export async function readPlant(
   from: number,
   to: number,
 ): Promise<Plant> {
-  const [pv, load, grid, battery, ev] = await Promise.all(
-    [SERIES.pv, SERIES.load, SERIES.grid, SERIES.battery, SERIES.ev].map((s) =>
-      series(core, s, from, to),
-    ),
-  );
+  const one = (name: string) => series(core, name, from, to);
 
-  return { pv: pv!, load: load!, grid: grid!, battery: battery!, ev: ev! };
+  const [pv, load, imported, exported, selfUsed, selfCovered, battery, ev] = await Promise.all([
+    one(SERIES.pv),
+    one(SERIES.load),
+    one(SERIES.imported),
+    one(SERIES.exported),
+    one(SERIES.selfUsed),
+    one(SERIES.selfCovered),
+    one(SERIES.battery),
+    one(SERIES.ev),
+  ]);
+
+  return { pv, load, imported, exported, selfUsed, selfCovered, battery, ev };
 }
