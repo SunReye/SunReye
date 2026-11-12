@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { loadPv, type Cell, type Scene } from "./pv.ts";
+import { loadPv, sunAt, sunward, type Cell, type Scene } from "./pv.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -185,4 +185,28 @@ test("a clear sky lights a painted south string over one entered by form facing 
   expect(south).toBeGreaterThan(north);
   expect(south).toBeLessThan(4 * 400);
   expect(north).toBeGreaterThan(0);
+});
+
+test("the sun due south at 60° from the zenith shines from the south, up", () => {
+  const [east, north, up] = sunward({ zenith: 60, azimuth: 0 });
+
+  expect(east).toBeCloseTo(0, 9);
+  expect(north).toBeCloseTo(-Math.sqrt(3) / 2, 9);
+  expect(up).toBeCloseTo(0.5, 9);
+});
+
+test("the sun stands where the plant's location and the time put it", () => {
+  const berlin = { latitude: 52.52, longitude: 13.4 };
+  // Solar noon in Berlin on the June solstice: about 11:07 UTC, 61° high.
+  const [east, north, up] = sunAt(pv, berlin, Date.parse("2026-06-21T11:07:00Z"));
+
+  expect(Math.abs(east)).toBeLessThan(0.02);
+  expect(north).toBeLessThan(0);
+  expect((Math.asin(up) * 180) / Math.PI).toBeCloseTo(61, 0);
+
+  // Midnight: below the horizon, in the north.
+  const [, midnightNorth, midnightUp] = sunAt(pv, berlin, Date.parse("2026-06-21T23:07:00Z"));
+
+  expect(midnightUp).toBeLessThan(0);
+  expect(midnightNorth).toBeGreaterThan(0);
 });

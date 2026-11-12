@@ -2,7 +2,7 @@
   import type { Capabilities, Core, Layout, ModuleType, Values } from "../api/core.ts";
   import { parseView, presetView, type View } from "../builder/camera.ts";
   import { panels } from "../builder/modules.ts";
-  import type { Point, Pv, Scene } from "../builder/pv.ts";
+  import { sunAt, type Location, type Point, type Pv, type Scene } from "../builder/pv.ts";
   import SceneCanvas, { type Projector } from "../builder/SceneCanvas.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
@@ -18,6 +18,7 @@
     moduleTypes,
     capabilities,
     model,
+    location,
   }: {
     core: Core;
     pv: Pv;
@@ -28,7 +29,26 @@
     capabilities: Capabilities | undefined;
     /** Reads an uploaded car body. */
     model?: Parameters<typeof SceneCanvas>[1]["model"];
+    /** The plant's; unknown to a viewer, whose sun then stays put (ADR 20). */
+    location?: Location | undefined;
   } = $props();
+
+  /** The sun moves on every 15 minutes, as the spotlight backdrop does (ADR 21). */
+  const SUN_STEP = 15 * 60_000;
+
+  let now = $state(Date.now());
+
+  $effect(() => {
+    const timer = setInterval(() => {
+      now = Date.now();
+    }, SUN_STEP);
+
+    return () => {
+      clearInterval(timer);
+    };
+  });
+
+  const sun = $derived(location === undefined ? null : sunAt(pv, location, now));
 
   /** Where each browser keeps its last view of the dashboard (ADR 20). */
   const KEPT = "sunreye.dashboard.view";
@@ -108,6 +128,7 @@
     panels={drawn}
     shares={live.shares}
     cars={live.cars}
+    {sun}
     {model}
     view={kept ?? presetView("isometric", geometry)}
     onview={(view) => {

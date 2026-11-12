@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import type { Core, ModuleType } from "../api/core.ts";
 import { emptyDraft, type Draft } from "./modules.ts";
-import { load, sourceOf, sunward, wattsAt } from "./moment.ts";
+import { load, sourceOf, wattsAt } from "./moment.ts";
 import { loadPv } from "./pv.ts";
 
 const wasm = new URL(
@@ -19,14 +19,6 @@ test("past days are measured, today and two more forecast, any other day a clear
   expect(sourceOf("2026-11-12", "2026-11-09")).toBe("clearSky");
   expect(sourceOf("2026-12-31", "2026-12-30")).toBe("forecast");
   expect(sourceOf("2027-01-02", "2026-12-30")).toBe("clearSky");
-});
-
-test("the sun due south at 60° from the zenith shines from the south, up", () => {
-  const [east, north, up] = sunward({ zenith: 60, azimuth: 0 });
-
-  expect(east).toBeCloseTo(0, 9);
-  expect(north).toBeCloseTo(-Math.sqrt(3) / 2, 9);
-  expect(up).toBeCloseTo(0.5, 9);
 });
 
 test("a value holds from its start to before its end, and nothing outside", () => {

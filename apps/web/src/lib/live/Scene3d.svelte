@@ -9,7 +9,7 @@
 
   /** three.js, the crate and what the scene needs: loaded only once it is shown. */
   async function load() {
-    const [{ default: LiveScene }, { modelLoader }, pv, moduleTypes, capabilities] =
+    const [{ default: LiveScene }, { modelLoader }, pv, moduleTypes, capabilities, location] =
       await Promise.all([
         import("./LiveScene.svelte"),
         import("../cars/models.ts"),
@@ -18,6 +18,8 @@
         ),
         core.moduleTypes(),
         core.capabilities(),
+        // The admin's (ADR 9): for a viewer the sun stays put.
+        core.location().catch(() => null),
       ]);
 
     return {
@@ -26,6 +28,7 @@
       pv,
       moduleTypes: "problem" in moduleTypes ? [] : moduleTypes,
       capabilities: "problem" in capabilities ? undefined : capabilities,
+      location: location === null || "problem" in location ? undefined : location,
     };
   }
 </script>
@@ -33,7 +36,16 @@
 <main>
   {#await load()}
     <p>{m.live_loading()}</p>
-  {:then { LiveScene, model, pv, moduleTypes, capabilities }}
-    <LiveScene {core} {pv} {layout} scene={layout.scene} {moduleTypes} {capabilities} {model} />
+  {:then { LiveScene, model, pv, moduleTypes, capabilities, location }}
+    <LiveScene
+      {core}
+      {pv}
+      {layout}
+      scene={layout.scene}
+      {moduleTypes}
+      {capabilities}
+      {model}
+      {location}
+    />
   {/await}
 </main>
