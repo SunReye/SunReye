@@ -42,7 +42,12 @@
   };
 
   const level = $derived(
-    spotPrice === undefined || day === undefined ? null : priceLevel(spotPrice, day.prices),
+    spotPrice === undefined || day === undefined
+      ? null
+      : priceLevel(
+          spotPrice,
+          day.prices.map((p) => p.value),
+        ),
   );
 
   const levelWord = $derived(level === null ? BLANK : LEVELS[level].word());

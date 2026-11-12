@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import type { Core, Live } from "../api/core.ts";
+  import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
   import { PLANT, SPOT, TARIFF, readDay, type Day } from "./day.ts";
   import EvCard from "./EvCard.svelte";
@@ -16,15 +17,21 @@
     core,
     layout,
     admin,
+    detail = null,
     onopen = () => {},
+    onclose = () => {},
   }: {
     core: Core;
     /** The layout in force when it has a scene. */
     layout: SceneLayout | null;
     /** Whether the builder is offered. */
     admin: boolean;
+    /** The figure whose detail sheet is open (ADR 21). */
+    detail?: string | null;
     /** Opens a figure's detail. */
     onopen?: (id: string) => void;
+    /** Closes the detail sheet. */
+    onclose?: () => void;
   } = $props();
 
   /** How often today is reread: its energy and money move slowly. */
@@ -111,3 +118,5 @@
     {/each}
   </div>
 </main>
+
+<DetailSheet id={detail} {core} {live} {day} {names} {onopen} {onclose} />
