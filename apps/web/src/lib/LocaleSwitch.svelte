@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from "./paraglide/messages.js";
-  import { assertIsLocale, locales, setLocale, type Locale } from "./paraglide/runtime.js";
+  import { language } from "./i18n/language.svelte.ts";
+  import { assertIsLocale, locales, type Locale } from "./paraglide/runtime.js";
 
   let { locale = $bindable() }: { locale: Locale } = $props();
 
@@ -13,13 +14,9 @@
     const next = assertIsLocale(value);
 
     // No reload: the page renders anew on `locale`.
-    await setLocale(next, { reload: false });
+    await language.choose(next);
     locale = next;
   }
-
-  $effect(() => {
-    document.documentElement.lang = locale;
-  });
 </script>
 
 <label>

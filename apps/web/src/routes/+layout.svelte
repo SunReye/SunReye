@@ -3,6 +3,7 @@
   import { ModeWatcher } from "mode-watcher";
   import { page } from "$app/state";
   import { connect, http } from "../lib/api/core";
+  import { language } from "../lib/i18n/language.svelte.ts";
   import Backdrop from "../lib/shell/Backdrop.svelte";
   import { provideAccess } from "../lib/shell/access.svelte.ts";
   import { input } from "../lib/shell/input.svelte.ts";
@@ -26,6 +27,10 @@
     document.documentElement.dataset["motion"] = motion.tier;
   });
 
+  $effect(() => {
+    document.documentElement.lang = language.current;
+  });
+
   // The low-power switch also turns every glass surface opaque (ADR 21).
   $effect(() => {
     document.documentElement.toggleAttribute("data-low-power", motion.lowPower);
@@ -36,6 +41,9 @@
 <ModeWatcher defaultMode="dark" />
 <Backdrop {core} />
 <!-- Sign-in and setup go bare, so the page is never remounted under another parent. -->
-<Shell shell={access.bare ? "bare" : input.shell} current={page.route.id} admin={access.admin}>
-  {@render children()}
-</Shell>
+<!-- Messages are no state: a new language renders the app anew; the route keeps its place. -->
+{#key language.current}
+  <Shell shell={access.bare ? "bare" : input.shell} current={page.route.id} admin={access.admin}>
+    {@render children()}
+  </Shell>
+{/key}

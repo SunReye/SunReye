@@ -2,13 +2,16 @@ import { mode, setMode } from "mode-watcher";
 import { createRawSnippet } from "svelte";
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { language } from "../lib/i18n/language.svelte.ts";
 import { motionMs } from "../lib/motion.ts";
+import { m } from "../lib/paraglide/messages.js";
 import { motion } from "../lib/motion/tier.svelte.ts";
 import Layout from "./+layout.svelte";
 
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
-afterEach(() => {
+afterEach(async () => {
+  await language.choose("de");
   localStorage.clear();
   motion.lowPower = false;
 });
@@ -59,4 +62,17 @@ test("the low-power switch turns every glass surface opaque", async () => {
 
   motion.lowPower = false;
   await expect.poll(() => document.documentElement.dataset["lowPower"]).toBeUndefined();
+});
+
+test("a language chosen renders the whole app in it and is kept per browser", async () => {
+  const titled = createRawSnippet(() => ({ render: () => `<p data-testid="page">${m.nav_settings()}</p>` }));
+  const screen = await render(Layout, { props: { children: titled } });
+
+  await expect.element(screen.getByTestId("page")).toHaveTextContent("Einstellungen");
+
+  await language.choose("en");
+
+  await expect.element(screen.getByTestId("page")).toHaveTextContent("Settings");
+  expect(document.documentElement.lang).toBe("en");
+  expect(localStorage.getItem("PARAGLIDE_LOCALE")).toBe("en");
 });
