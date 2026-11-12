@@ -1,108 +1,60 @@
+<!--
+  Setup's devices step: a scan, then its devices as rows. Recognised devices come first and chosen;
+  hosts no profile recognises wait folded away; an endpoint the scan misses is entered by hand.
+-->
 <script lang="ts">
-  import type { Connection, Core, Device, Found, Problem } from "../api/core.ts";
+  import type { Connection, Core, Device, Problem } from "../api/core.ts";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
+  import { manual, scanned, type Choice, type Endpoint } from "./choices.ts";
+  import EndpointForm from "./EndpointForm.svelte";
+  import FoundRow from "./FoundRow.svelte";
+  import ManualRow from "./ManualRow.svelte";
+  import OtherHosts from "./OtherHosts.svelte";
   import Refusal from "./Refusal.svelte";
+  import ScanPanel from "./ScanPanel.svelte";
 
   let { core, ondone }: { core: Core; ondone: (devices: readonly Device[]) => void } = $props();
-
-  const uid = $props.id();
-
-  /**
-   * A device the scan proposed, as the admin confirms and names it; or, at an endpoint no profile
-   * recognised, one the admin enters by hand.
-   */
-  interface Choice {
-    /** Fixed while the admin types a manual entry's profile and unit. */
-    readonly key: string;
-    readonly found: Found;
-    readonly manual: boolean;
-    profile: string;
-    unit: number;
-    chosen: boolean;
-    name: string;
-  }
-
-  /** Where a manual entry starts: the usual Modbus unit. */
-  const UNIT = 1;
-
-  /** The Modbus framings an endpoint entered by hand may speak. */
-  const TRANSPORTS: readonly Found["transport"][] = ["modbus-tcp", "rtu-over-tcp", "solarman-v5"];
-
-  /** An endpoint as the admin enters it by hand. */
-  let entered = $state<{ host: string; port: number; transport: Found["transport"] }>({
-    host: "",
-    port: 502,
-    transport: "modbus-tcp",
-  });
-
-  let subnet = $state("");
-
-  let scanning = $state(false);
-
-  let found = $state.raw<readonly Found[]>();
 
   let choices = $state<Choice[]>([]);
 
   let refused = $state.raw<Problem>();
 
   // The keys of the devices the admin entered at an endpoint of their own.
-  const entries = new Set<string>();
+  let entries = $state<readonly string[]>([]);
 
   // What an earlier, partly refused add created, so adding again does not create it twice.
   const connections = new Map<string, Connection>();
   const added = new Map<string, Device>();
 
-  async function scan(): Promise<void> {
-    scanning = true;
-    const report = await core.scan(subnet === "" ? undefined : subnet);
+  const recognised = $derived(choices.filter((c) => !c.manual));
 
-    scanning = false;
-    refused = "problem" in report ? report : undefined;
-    found = "problem" in report ? undefined : report.endpoints;
+  const entered = $derived(choices.filter((c) => entries.includes(c.key)));
 
-    const scanned = (found ?? []).flatMap((endpoint): Choice[] => {
-      const at = `${endpoint.host}:${endpoint.port}`;
+  const others = $derived(choices.filter((c) => c.manual && !entries.includes(c.key)));
 
-      if (endpoint.devices.length === 0) return [manual(endpoint, false)];
+  const chosen = $derived(choices.filter((choice) => choice.chosen).length);
 
-      return endpoint.devices.map(({ profile, unit }) => ({
-        key: `${at}/${profile}/${unit}`,
-        found: endpoint,
-        manual: false,
-        profile,
-        unit,
-        chosen: false,
-        name: profile,
-      }));
-    });
-
-    // An endpoint entered by hand stays as entered, with the transport the admin chose.
+  /** The new scan's choices; an endpoint entered by hand stays as entered. */
+  function show(endpoints: Parameters<typeof scanned>[0]): void {
     choices = [
-      ...choices.filter((choice) => entries.has(choice.key)),
-      ...scanned.filter((choice) => !entries.has(choice.key)),
+      ...choices.filter((choice) => entries.includes(choice.key)),
+      ...scanned(endpoints).filter((choice) => !entries.includes(choice.key)),
     ];
   }
 
-  /** A device the admin enters by hand at `endpoint`. */
-  function manual(endpoint: Found, chosen: boolean): Choice {
-    const key = `${endpoint.host}:${endpoint.port}/manual`;
-
-    return { key, found: endpoint, manual: true, chosen, profile: "", unit: UNIT, name: "" };
-  }
-
   /** Lists the endpoint the admin entered, chosen, for its device to be entered by hand. */
-  function enter(): void {
-    const endpoint: Found = { ...entered, host: entered.host.trim(), devices: [] };
+  function enter(endpoint: Endpoint): void {
     const choice = manual(endpoint, true);
 
-    entries.add(choice.key);
+    entries = [...entries.filter((key) => key !== choice.key), choice.key];
     choices = [...choices.filter((c) => c.key !== choice.key), choice];
   }
 
   /** Adds each chosen endpoint as a connection, then its chosen devices behind it. */
   async function addEndpoint(
-    endpoint: Found,
-    chosen: readonly Choice[],
+    endpoint: Endpoint,
+    picked: readonly Choice[],
   ): Promise<readonly (Device | Problem)[]> {
     const { host, port, transport } = endpoint;
     const at = `${host}:${port}`;
@@ -115,7 +67,7 @@
     connections.set(at, connection);
 
     return Promise.all(
-      chosen
+      picked
         .values()
         .filter((choice) => choice.found === endpoint)
         .map(async (choice) => {
@@ -136,9 +88,9 @@
 
   /** Adds every chosen device; the first refusal stands. */
   async function add(): Promise<void> {
-    const chosen = choices.filter((choice) => choice.chosen);
-    const endpoints = [...new Set(chosen.map((choice) => choice.found))];
-    const outcomes = (await Promise.all(endpoints.map((e) => addEndpoint(e, chosen)))).flat();
+    const picked = choices.filter((choice) => choice.chosen);
+    const endpoints = [...new Set(picked.map((choice) => choice.found))];
+    const outcomes = (await Promise.all(endpoints.map((e) => addEndpoint(e, picked)))).flat();
 
     refused = outcomes.find((outcome) => "problem" in outcome);
 
@@ -147,75 +99,41 @@
   }
 </script>
 
-<label>
-  {m.devices_subnet()}
-  <input placeholder="192.168.1.0/24" bind:value={subnet} />
-</label>
-<button type="button" disabled={scanning} onclick={scan}>{m.devices_scan()}</button>
-{#if scanning}
-  <p role="status">{m.devices_scanning()}</p>
+{#snippet heading(text: string)}
+  <h3 class="px-4 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+    {text}
+  </h3>
+{/snippet}
+
+<div class="flex flex-col gap-4 p-4">
+  <p class="text-sm text-muted-foreground">{m.devices_hint()}</p>
+  <ScanPanel {core} onscanned={show} />
+</div>
+{#if recognised.length > 0}
+  {@render heading(m.devices_found())}
+  <ul class="divide-y divide-border/60 border-y border-border/60">
+    {#each recognised as choice (choice.key)}<FoundRow {choice} />{/each}
+  </ul>
 {/if}
-<fieldset>
-  <legend>{m.devices_endpoint()}</legend>
-  <label>
-    {m.devices_endpoint_host()}
-    <input required bind:value={entered.host} />
-  </label>
-  <label>
-    {m.devices_endpoint_port()}
-    <input type="number" min="1" max="65535" required bind:value={entered.port} />
-  </label>
-  <label for="{uid}-transport">{m.devices_endpoint_transport()}</label>
-  <select id="{uid}-transport" bind:value={entered.transport}>
-    {#each TRANSPORTS as transport (transport)}
-      <option value={transport}>{transport}</option>
-    {/each}
-  </select>
-  <button type="button" disabled={entered.host.trim() === ""} onclick={enter}>
-    {m.devices_endpoint_add()}
-  </button>
-</fieldset>
-{#if found?.length === 0}
-  <p>{m.devices_none()}</p>
-{/if}
-{#if choices.length > 0}
-  <ul>
-    {#each choices as choice (choice.key)}
-      {@const at = { host: choice.found.host, port: choice.found.port }}
-      <li>
-        {#if choice.manual}
-          <p>{m.devices_unknown(at)}</p>
-          <label>
-            <input type="checkbox" bind:checked={choice.chosen} />
-            {m.devices_manual(at)}
-          </label>
-          <label>
-            {m.devices_manual_profile(at)}
-            <input required bind:value={choice.profile} />
-          </label>
-          <label>
-            {m.devices_manual_unit(at)}
-            <input type="number" min="0" required bind:value={choice.unit} />
-          </label>
-          <label>
-            {m.devices_manual_name(at)}
-            <input required bind:value={choice.name} />
-          </label>
-        {:else}
-          <label>
-            <input type="checkbox" bind:checked={choice.chosen} />
-            {m.devices_confirm({ ...at, profile: choice.profile, unit: choice.unit })}
-          </label>
-          <label>
-            {m.devices_name({ profile: choice.profile })}
-            <input required bind:value={choice.name} />
-          </label>
-        {/if}
-      </li>
+{#if entered.length > 0}
+  {@render heading(m.devices_entered())}
+  <ul class="divide-y divide-border/60 border-y border-border/60">
+    {#each entered as choice (choice.key)}
+      <ManualRow {choice} note={m.devices_entered()} />
     {/each}
   </ul>
-  <button type="button" disabled={!choices.some((choice) => choice.chosen)} onclick={add}>
-    {m.devices_add()}
-  </button>
 {/if}
-<Refusal {refused} />
+{#if others.length > 0}
+  <OtherHosts count={others.length}>
+    {#each others as choice (choice.key)}
+      <ManualRow {choice} note={m.devices_unrecognised()} />
+    {/each}
+  </OtherHosts>
+{/if}
+<div class="flex flex-col gap-3 border-t border-border/60 p-4">
+  <EndpointForm onadd={enter} />
+  <Refusal {refused} />
+  <Button class="w-full sm:w-auto sm:self-end" disabled={chosen === 0} onclick={add}>
+    {m.devices_add()}
+  </Button>
+</div>
