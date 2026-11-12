@@ -9,6 +9,7 @@
   import type { Live } from "../api/core.ts";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { problemText } from "../i18n/problems.ts";
+  import { age } from "../live/stream.ts";
   import { m } from "../paraglide/messages.js";
   import { headline } from "./now.ts";
 
@@ -35,17 +36,12 @@
 
   const lead = $derived(headline(plant));
   const refused = $derived(live !== undefined && "problem" in live ? live.problem : null);
+  const lost = $derived(live !== undefined && "devices" in live && live.lost !== undefined);
   const producing = $derived(lead.subject === "production");
   const subject = $derived(producing ? m.dash_production() : m.dash_consumption());
 
   /** When the headline's series was last read, while it is stale. */
   const staleSince = $derived(plantStale?.[producing ? "pv.power" : "load.power"]);
-
-  function age(since: number): string {
-    const seconds = Math.max(Math.round((Date.now() - since) / 1000), 0);
-
-    return seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
-  }
 
   const kw = (watts: number | undefined) => (watts === undefined ? null : watts / 1000);
   const grid = $derived(plant?.["grid.power"]);
@@ -65,8 +61,12 @@
     <span class="flex items-center gap-1.5 text-xs font-medium text-warning" role="status"
       ><TriangleAlert class="size-3.5 shrink-0" />{m.dash_lead_stalled({
         subject,
-        age: age(staleSince),
+        age: age(staleSince, Date.now()),
       })}</span
+    >
+  {:else if lost}
+    <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
+      ><Unplug class="size-3.5 shrink-0" />{m.dash_lead_offline({ subject })}</span
     >
   {:else if refused !== null}
     <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
@@ -84,7 +84,7 @@
   <span
     class={[
       "text-gradient text-5xl leading-[1.1] font-semibold tracking-tight",
-      (staleSince !== undefined || refused !== null) && "opacity-60",
+      (staleSince !== undefined || lost || refused !== null) && "opacity-60",
     ]}
   >
     <AnimatedNumber value={lead.watts === null ? null : lead.watts / 1000} />

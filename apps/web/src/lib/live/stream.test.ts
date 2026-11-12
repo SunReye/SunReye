@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { streamState } from "./stream.ts";
+import { age, streamState } from "./stream.ts";
 
 test("before the first frame the stream is connecting", () => {
   expect(streamState()).toEqual({ kind: "connecting" });
@@ -42,4 +42,11 @@ test("a refused stream is lost with the core's reason", () => {
     kind: "lost",
     problem: "auth.required",
   });
+});
+
+test("an age reads in seconds up to a minute and a half, then in minutes", () => {
+  expect(age(1000, 3400)).toBe("2 s");
+  expect(age(0, 89_000)).toBe("89 s");
+  expect(age(0, 150_000)).toBe("3 min");
+  expect(age(5000, 4000)).toBe("0 s");
 });

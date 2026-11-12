@@ -26,3 +26,10 @@ export function streamState(live?: Live): StreamState {
     ? { kind: "stalled", since: Math.max(...read) }
     : { kind: "live" };
 }
+
+/** How long ago `since` was at `now`, both in epoch milliseconds. */
+export function age(since: number, now: number): string {
+  const seconds = Math.max(Math.round((now - since) / 1000), 0);
+
+  return seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
+}
