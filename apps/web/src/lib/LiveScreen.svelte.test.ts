@@ -105,6 +105,24 @@ test("the spot-price device shows on its own card, not charted", async () => {
   expect(transport.asked.filter((path) => path.includes("/history"))).toEqual([]);
 });
 
+test("a device without a power, such as the tariff, is not charted", async () => {
+  const tariff =
+    '{"devices":{"1":{"pv.power":1950},"4294967293":{"price.import":0.3,"price.export":0.08}}}';
+
+  const transport = testCore(
+    new Response(`event: snapshot\ndata: ${tariff}\n\n`, {
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const screen = await render(LiveScreen, { core: connect(transport) });
+
+  await expect
+    .poll(() => transport.asked.filter((path) => path.includes("/history")))
+    .toEqual([expect.stringMatching(/^\/api\/v1\/devices\/1\/history\?series=pv\.power&/u)]);
+  expect(screen.getByRole("figure").elements()).toHaveLength(1);
+});
+
 test("a refused stream shows its problem in German", async () => {
   const transport = testCore(
     Response.json({ status: 401, code: "auth.required" }, { status: 401 }),
