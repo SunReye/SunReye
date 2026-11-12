@@ -9,9 +9,9 @@
   import { m } from "../paraglide/messages.js";
   import Inspector from "./Inspector.svelte";
   import InspectorSheet, { PEEK } from "./InspectorSheet.svelte";
-  import type { Draft } from "./modules.ts";
   import type { Location, Pv } from "./pv.ts";
-  import { Session } from "./session.svelte.ts";
+  import { Session, type Opening } from "./session.svelte.ts";
+  import Templates from "./Templates.svelte";
   import { provideUploader } from "./upload.ts";
   import View from "./View.svelte";
 
@@ -26,7 +26,7 @@
     pv: Pv;
     core: Core;
     /** The layout in force, or an empty one: nothing to undo before it. */
-    start: Draft;
+    start: Opening["start"];
     moduleTypes: readonly ModuleType[];
     /** What equipment markers may name. */
     devices: readonly Device[];
@@ -51,22 +51,33 @@
     !phone.current && !sheet && "grid-cols-[minmax(0,1fr)_minmax(320px,380px)]",
   ]}
 >
-  <View
-    {pv}
-    {core}
-    draft={session.draft}
-    geometry={session.geometry}
-    panels={session.panels}
-    {moduleTypes}
-    {devices}
-    {location}
-    clear={sheet ? PEEK : 0}
-    onpick={phone.current
-      ? undefined
-      : (hit) => {
-          session.pick(hit);
+  <div class="relative min-h-0">
+    <View
+      {pv}
+      {core}
+      draft={session.draft}
+      geometry={session.geometry}
+      panels={session.panels}
+      {moduleTypes}
+      {devices}
+      {location}
+      clear={sheet ? PEEK : 0}
+      onpick={phone.current
+        ? undefined
+        : (hit) => {
+            session.pick(hit);
+          }}
+    />
+    {#if !phone.current && session.offering}
+      <Templates
+        {pv}
+        clear={sheet ? PEEK : 0}
+        onpick={(template) => {
+          session.begin(template);
         }}
-  />
+      />
+    {/if}
+  </div>
   {#if phone.current}
     <p
       class="glass-ambient absolute inset-x-6 bottom-6 rounded-md px-3 py-2 text-sm text-muted-foreground"

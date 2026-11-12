@@ -201,3 +201,22 @@ async fn an_empty_range_or_an_unknown_period_is_refused() {
         (StatusCode::BAD_REQUEST, &json!("request.query"))
     );
 }
+
+#[tokio::test]
+async fn the_battery_capacity_has_no_estimate_before_a_discharge() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let (status, capacity) = core.ask(&set_cookie, get("/api/v1/battery/capacity")).await;
+
+    assert_eq!(
+        (status, capacity),
+        (
+            StatusCode::OK,
+            json!({
+                "measurements": [], "now": null, "first": null, "perYear": null,
+                "nameplate": null, "discharged": 0.0, "cycles": null, "since": null,
+            })
+        )
+    );
+}

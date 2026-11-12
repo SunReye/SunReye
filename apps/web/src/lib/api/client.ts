@@ -1,8 +1,13 @@
 // What every group of the core's client shares: the generated client and refusals (ADR 9).
-import type createClient from "openapi-fetch";
+import createClient from "openapi-fetch";
 import type { components, paths } from "./schema";
 
 export type Client = ReturnType<typeof createClient<paths>>;
+
+/** The generated client over `fetch`, its paths resolved under `base`. */
+export function open(base: string, fetch: (request: Request) => Promise<Response>): Client {
+  return createClient<paths>({ baseUrl: base, fetch });
+}
 
 export type ProblemDetails = components["schemas"]["ProblemDetails"];
 

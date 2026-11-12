@@ -31,7 +31,16 @@ export interface Loaded {
   /** Null when the core refused, as without a tariff. */
   readonly days: readonly CostDay[] | null;
   readonly money: Money | null;
-  readonly base: { readonly range: Range; readonly sum: Sum; readonly money: Money | null };
+  readonly cmp: Compare;
+  /** The baseline over its compared hours [t0, t1), read like the range. */
+  readonly base: {
+    readonly range: Range;
+    readonly hours: readonly [number, number];
+    readonly sum: Sum;
+    readonly money: Money | null;
+    readonly plant: Plant;
+    readonly days: readonly CostDay[] | null;
+  };
 }
 
 const TIMEOUT_MS = 10_000;
@@ -132,6 +141,43 @@ async function load(
     sum: sumOf(plant, from, to),
     days: costs?.days ?? null,
     money: costs?.total ?? null,
-    base: { range: base.range, sum: sumOf(basePlant, b0, b1), money: baseCosts?.total ?? null },
+    base: {
+      range: base.range,
+      hours: base.hours,
+      sum: sumOf(basePlant, b0, b1),
+      money: baseCosts?.total ?? null,
+      plant: basePlant,
+      days: baseCosts?.days ?? null,
+    },
+  };
+}
+
+const NOTHING: Plant = {
+  pv: [],
+  load: [],
+  imported: [],
+  exported: [],
+  selfUsed: [],
+  selfCovered: [],
+  battery: [],
+  ev: [],
+};
+
+/** A range not read yet, cut into its bands: what a pane a finger uncovers draws while it loads. */
+export function pending(got: Loaded, range: Range): Loaded {
+  const ms = (t: number) => hourInstant(got.zone, t).getTime();
+  const list = edges(got.cal, range);
+  const sum = sumOf(NOTHING, 0, 0);
+
+  return {
+    ...got,
+    range,
+    list,
+    spans: list.map((e) => [ms(e.t0), ms(e.t1)] as const),
+    plant: NOTHING,
+    sum,
+    days: null,
+    money: null,
+    base: { ...got.base, plant: NOTHING, sum, days: null, money: null },
   };
 }

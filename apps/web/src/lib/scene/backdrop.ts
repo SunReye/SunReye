@@ -16,6 +16,7 @@ import {
 import { Sky } from "three/addons/objects/Sky.js";
 import { untone } from "./light.ts";
 import { lawn } from "./materials.ts";
+import { backdropAt } from "./vignette.ts";
 
 /** Metres of lawn each way; it fades long before its edge. */
 const LAWN = 400;
@@ -47,38 +48,22 @@ export function cssColour(expression: string): Color {
   return new Color().setRGB(r / 255, g / 255, b / 255, SRGBColorSpace);
 }
 
-/** The vignette's light middle, how far toward it, and its darker edge, by theme. */
-const VIGNETTE = {
-  light: { light: [1, 1, 1], toward: 0.55, edge: 0.93 },
-  dark: { light: [0.06, 0.065, 0.075], toward: 0.4, edge: 0.7 },
-} as const;
-
-/** From the light middle, 0, to the edge, 1, at a point of the backdrop in 0..1. */
-function vignette(x: number, y: number): number {
-  const d = Math.min(1, Math.hypot(x - 0.5, (y - 0.42) * 1.15) * 1.6);
-
-  return d * d * (3 - 2 * d);
-}
-
 /** A soft vignette that lands on the page colour after tone mapping: no horizon shows. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- cloned, never changed.
 export function backdrop(page: Color, exposure: number, dark: boolean): DataTexture {
   const size = 64;
   const data = new Float32Array(size * size * 4);
 
-  const { light, toward, edge: darker } = dark ? VIGNETTE.dark : VIGNETTE.light;
-  const centre = page.clone().lerp(new Color(...light), toward);
-  const edge = page.clone().multiplyScalar(darker);
+  const linear = [page.r, page.g, page.b] as const;
 
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++) {
-      const t = vignette(x / size, y / size);
-      const c = t < 0.5 ? centre.clone().lerp(page, t * 2) : page.clone().lerp(edge, (t - 0.5) * 2);
+      const [r, g, b] = backdropAt(linear, dark, x / size, y / size);
       const i = (y * size + x) * 4;
 
-      data[i] = untone(c.r, exposure);
-      data[i + 1] = untone(c.g, exposure);
-      data[i + 2] = untone(c.b, exposure);
+      data[i] = untone(r, exposure);
+      data[i + 1] = untone(g, exposure);
+      data[i + 2] = untone(b, exposure);
       data[i + 3] = 1;
     }
 

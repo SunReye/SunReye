@@ -72,12 +72,12 @@ test("the low-power switch shows the 2D flow", async () => {
 
 test("without WebGL2 a scene still leaves the 2D flow", async () => {
   served.scene = true;
-  // No context at all: the dashboard asks only for WebGL2.
+  // No context on the page: the scene's renderer finds none and the browser is remembered.
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
   const screen = await render(Page);
 
-  await asked("/api/v1/layout");
+  await expect.poll(() => localStorage.getItem("sunreye.webgl2"), { timeout: 20_000 }).toBe("no");
+  await expect.element(screen.getByRole("radio", { name: "2D" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
-  expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });

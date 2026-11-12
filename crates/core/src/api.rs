@@ -46,8 +46,10 @@ const METHOD: Problem = Problem {
     code: Code::RequestMethod,
 };
 
+mod battery;
 mod forecasts;
 mod history;
+mod records;
 mod roles;
 mod statistics;
 
@@ -178,6 +180,16 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(forecasts::forecasts))
             .with_state(api.history.clone()),
+        OpenApiRouter::new()
+            .routes(routes!(records::records))
+            .with_state((
+                api.history.clone(),
+                api.storage.zones.watch(),
+                Clock::clone(&api.clock),
+            )),
+        OpenApiRouter::new()
+            .routes(routes!(battery::capacity))
+            .with_state((api.history.clone(), Clock::clone(&api.clock))),
         api.corrections.clone().routes(
             api.location.watch(),
             api.storage.zones.watch(),

@@ -7,6 +7,9 @@ import { motion } from "../lib/motion/tier.svelte.ts";
 import { setLocale } from "../lib/paraglide/runtime.js";
 
 const DASHBOARD = "sunreye.dashboard";
+
+/** Where a browser remembers it has no WebGL2. */
+const WEBGL2 = "sunreye.webgl2";
 const LOW_POWER = "sunreye.low-power";
 
 /** A 10 m × 8 m gable house with nothing on its roof. */
@@ -132,6 +135,7 @@ export async function asked(path: string): Promise<void> {
 export async function serveCore(): Promise<void> {
   localStorage.removeItem(DASHBOARD);
   localStorage.removeItem(LOW_POWER);
+  localStorage.removeItem(WEBGL2);
   paths.length = 0;
   served.scene = false;
   served.session = undefined;

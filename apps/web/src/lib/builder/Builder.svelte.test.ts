@@ -11,6 +11,7 @@ import {
   drill,
   enter,
   gridOnTheSouthFace,
+  house,
   inspector,
   MODULE,
   pv,
@@ -19,7 +20,6 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { emptyDraft } from "./modules.ts";
 
 beforeEach(desk);
 
@@ -161,9 +161,9 @@ function live(connected: number): Response {
 
 test("a connected car shows its charge power and SOC in the builder; none while unplugged", async () => {
   const parked = {
-    ...emptyDraft(),
+    ...house(),
     scene: {
-      ...emptyDraft().scene,
+      ...house().scene,
       carPlaces: [{ device: 3, x: 12, z: 0, width: 2.5, length: 5, rotation: 0 }],
     },
   };

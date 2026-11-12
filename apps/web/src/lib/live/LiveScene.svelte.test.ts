@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { MODULE, pv } from "../builder/builder.harness.ts";
@@ -24,8 +24,9 @@ beforeEach(async () => {
   await page.viewport(1280, 900);
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
 /** Draws counted once ten frames pass without one: a tween has run out. */
@@ -104,4 +105,33 @@ test("a car appears at its place while connected, with its charge power and SOC"
   });
 
   await expect.element((await chip("E-Auto", "7,4")).getByText("63")).toBeVisible();
+});
+
+/** The figure's fade, once it reports ready. */
+async function fadeOnReady(): Promise<string> {
+  const ready = vi.fn<() => void>();
+  const { core } = ticking();
+  const screen = await show(core, [], () => {}, ready);
+  const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" });
+
+  // Hidden and inert until its first frame is drawn, chips included.
+  expect(figure.element().closest("[inert]")).not.toBeNull();
+
+  await expect.poll(() => ready.mock.calls.length, { timeout: 15_000 }).toBe(1);
+  await expect.element(figure).not.toHaveAttribute("inert");
+  await expect.poll(() => getComputedStyle(figure.element()).opacity).toBe("1");
+
+  return getComputedStyle(figure.element()).transitionDuration;
+}
+
+test("the scene and its chips fade in once its first frame is drawn", async () => {
+  expect(await fadeOnReady()).toBe("0.35s");
+});
+
+test("under reduced motion the scene shows without a fade", async () => {
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+
+  expect(await fadeOnReady()).toBe("0s");
 });

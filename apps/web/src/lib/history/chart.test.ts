@@ -24,7 +24,28 @@ const PLANT: Plant = {
   ev: [],
 };
 
-function loaded(plant: Plant, days: Loaded["days"] = null): Loaded {
+/** The day before: 2 kW sun 10–11 h only. */
+const BEFORE: Plant = {
+  ...PLANT,
+  pv: [span(-14, -13, 2000)],
+  load: [span(-14, -13, 500)],
+  exported: [span(-14, -13, 1500)],
+  selfUsed: [span(-14, -13, 500)],
+  selfCovered: [span(-14, -13, 500)],
+  imported: [],
+};
+
+/** No readings the day before. */
+const NOTHING_BEFORE = {
+  plant: { ...PLANT, pv: [], load: [], imported: [], exported: [], selfUsed: [], selfCovered: [] },
+  days: null,
+};
+
+function loaded(
+  plant: Plant,
+  days: Loaded["days"] = null,
+  before: Readonly<{ plant: Plant; days: Loaded["days"] }> = NOTHING_BEFORE,
+): Loaded {
   const range = rangeFor("day", DAY);
   const list = edges(CAL, range);
   const ms = (t: number) => hourInstant(ZONE, t).getTime();
@@ -42,7 +63,15 @@ function loaded(plant: Plant, days: Loaded["days"] = null): Loaded {
     sum: sumOf(plant, from, to),
     days,
     money: null,
-    base: { range, sum: sumOf(plant, from, to), money: null },
+    cmp: "prev",
+    base: {
+      range: rangeFor("day", DAY - 1),
+      hours: [DAY * 24 - 24, DAY * 24],
+      sum: sumOf(before.plant, from - 86_400_000, from),
+      money: null,
+      plant: before.plant,
+      days: before.days,
+    },
   };
 }
 
@@ -80,4 +109,25 @@ test("money comes by the day: savings above zero, the bill below", () => {
   expect(chart.bands).toHaveLength(1);
   expect(chart.bands[0]!.up).toEqual([3, 1]);
   expect(chart.bands[0]!.down).toEqual([3]);
+});
+
+test("each bar carries the same band of the period before as its mark", () => {
+  const chart = chartOf("energy", loaded(PLANT, null, { plant: BEFORE, days: null }));
+
+  expect(chart.bands[10]!.mark).toBe(2);
+  expect(chart.bands[11]!.mark).toBeNull();
+  expect(chart.summary.mark).toBe(2);
+});
+
+test("money marks the savings of the day before; autarky has no mark", () => {
+  const before = [{ start: at(-24), end: at(0), paid: 1, earned: 1, saved: 2.5 }];
+
+  const got = loaded(PLANT, [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4 }], {
+    plant: BEFORE,
+    days: before,
+  });
+
+  expect(chartOf("money", got).bands[0]!.mark).toBe(2.5);
+
+  expect(chartOf("autarky", got).bands.every((b) => b.mark === null)).toBe(true);
 });

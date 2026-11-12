@@ -8,6 +8,7 @@ import { painted, panels, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv } from "./pv.ts";
 import type { Hit, Panel } from "./scene.ts";
+import { fill, type Template } from "./templates.ts";
 
 /** Today in the browser's calendar, as a date input holds it. */
 function today(): string {
@@ -55,6 +56,9 @@ export class Session {
   /** Whether a click in 3D asked the inspector to show itself. */
   expanded = $state(false);
 
+  /** Whether the admin chose to start from nothing. */
+  #empty = $state(false);
+
   constructor(opening: () => Opening) {
     this.#opening = opening;
     // The start is where this session begins; a later one is a new session's.
@@ -100,6 +104,17 @@ export class Session {
 
   redo(): void {
     this.#history = redo(this.#history);
+  }
+
+  /** Templates are offered while the scene has no block, until the admin starts empty. */
+  get offering(): boolean {
+    return this.draft.scene.blocks.length === 0 && !this.#empty;
+  }
+
+  /** Fills the scene from a template, one undo step; nothing remembers which (ADR 20). */
+  begin(template: Template): void {
+    if (template === "empty") this.#empty = true;
+    else this.change(fill(this.draft, template));
   }
 
   go(level: Level): void {

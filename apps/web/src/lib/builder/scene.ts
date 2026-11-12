@@ -8,6 +8,7 @@ import {
   Float32BufferAttribute,
   Group,
   Mesh,
+  type Object3D,
   MeshPhysicalMaterial,
   type MeshStandardMaterial,
   Raycaster,
@@ -177,40 +178,63 @@ function marker({ at }: Mount): Mesh {
   return box;
 }
 
+/** The scene's sections in drawing order, each built on call. */
+function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D[])[] {
+  const faces = (kind: string): Face[] => geometry.faces.filter((face) => face.surface === kind);
+  const roofs = faces("roof");
+
+  return [
+    () => [surface("wall", faces("wall"), finish.plaster(), finish.REPEAT.plaster)],
+    () => [
+      surface(
+        "roof",
+        roofs.filter((face) => !level(face)),
+        finish.tiles(),
+        finish.REPEAT.tiles,
+      ),
+      surface(
+        "flat",
+        roofs.filter((face) => level(face)),
+        finish.render(),
+        finish.REPEAT.render,
+      ),
+    ],
+    () => [surface("obstacle", faces("obstacle"), finish.render(), finish.REPEAT.render)],
+    () => geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
+    () => panels.map((item) => panel(item)),
+    () => (geometry.mounts ?? []).map((mount) => marker(mount)),
+  ];
+}
+
 /** The scene's meshes: one per surface kind, solid, placed module and equipment marker. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
-  const roofs = geometry.faces.filter((face) => face.surface === "roof");
 
-  group.add(
-    surface(
-      "wall",
-      geometry.faces.filter((face) => face.surface === "wall"),
-      finish.plaster(),
-      finish.REPEAT.plaster,
-    ),
-    surface(
-      "roof",
-      roofs.filter((face) => !level(face)),
-      finish.tiles(),
-      finish.REPEAT.tiles,
-    ),
-    surface(
-      "flat",
-      roofs.filter((face) => level(face)),
-      finish.render(),
-      finish.REPEAT.render,
-    ),
-    surface(
-      "obstacle",
-      geometry.faces.filter((face) => face.surface === "obstacle"),
-      finish.render(),
-      finish.REPEAT.render,
-    ),
-    ...geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
-    ...panels.map((item) => panel(item)),
-    ...(geometry.mounts ?? []).map((mount) => marker(mount)),
-  );
+  for (const section of sections(geometry, panels)) group.add(...section());
+
+  return group;
+}
+
+/**
+ * The same, a section at a time, awaiting `pause` between them so the main thread is given back
+ * (ADR 20 Loading).
+ */
+export async function buildSliced(
+  geometry: Geometry,
+  panels: readonly Panel[],
+  pause: () => Promise<void>,
+): Promise<Group> {
+  const group = new Group();
+  const [first, ...rest] = sections(geometry, panels);
+
+  group.add(...(first?.() ?? []));
+
+  for (const section of rest) {
+    // One section per task: each waits for the last to be let go.
+    // oxlint-disable-next-line eslint/no-await-in-loop -- sequential by design.
+    await pause();
+    group.add(...section());
+  }
 
   return group;
 }
