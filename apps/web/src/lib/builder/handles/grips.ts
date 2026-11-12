@@ -26,7 +26,7 @@ export interface Handle {
 }
 
 /** Metres between a wall and its arrow; between the footprint's corners and the ring. */
-export const ARROW = 0.4;
+const ARROW = 0.4;
 const RING = 1;
 
 function rectHandles(north: number, rect: Rect, roof: ReturnType<typeof ridge>): Handle[] {

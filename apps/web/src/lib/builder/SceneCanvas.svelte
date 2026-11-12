@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type { Projector } from "./drawing.svelte.ts";
+  export type { Editing, Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
@@ -12,9 +12,11 @@
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
   import {
+    Handled,
     keep,
     picking,
     projector,
+    type Editing,
     type Hit,
     type Panel,
     type Projector,
@@ -34,6 +36,7 @@
     onpick,
     onready,
     onerror,
+    editing,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -56,7 +59,11 @@
     /** The first frame is drawn: nothing was before, so it never waited on a compile. */
     onready?: (() => void) | undefined;
     onerror?: ((reason: SceneFailure) => void) | undefined;
+    /** The selected object's handles and where their drags go; none, nothing is handled. */
+    editing?: Editing | undefined;
   } = $props();
+
+  const handled = new Handled();
 
   const ghost = new Ghost();
 
@@ -178,7 +185,12 @@
         canvas,
         camera,
         () => sun ?? null,
-        () => onrender?.(projector(canvas, camera.clone())),
+        () => {
+          const project = projector(canvas, camera.clone());
+
+          handled.place(project);
+          onrender?.(project);
+        },
       );
     } catch {
       onerror?.("webgl2");
@@ -199,6 +211,9 @@
     const { render } = opening;
     const resize = fit(canvas, studio, camera, render);
     const kept = keep(scene, source, render);
+    const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
+    // Before the picking and the orbit controls: a press on a handle never reaches them.
+    const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
 
     const unpick = picking(canvas, camera, kept.drawn, {
       panels: source.panels,
@@ -217,22 +232,13 @@
 
     const controls = orbit(canvas, camera, flight, render);
 
-    opening
-      .open(
-        kept.built,
-        () => {
-          onready?.();
-        },
-        () => {
-          parking.due();
-        },
-      )
-      .catch(() => {
-        onerror?.("failed");
-      });
+    opening.open(kept.built, () => onready?.(), parking.due).catch(() => {
+      onerror?.("failed");
+    });
 
     return () => {
       resize.disconnect();
+      unhandle();
       unpick();
       controls.dispose();
       parking.dispose();
@@ -249,6 +255,15 @@
     ontransitionend={() => (ghost.phase = "off")}
     aria-hidden="true"
   ></canvas>
+  {#if handled.label !== undefined}
+    {@const { text, left, top } = handled.label}
+    <!-- The same ambient glass chip as the live scene's labels; it never takes the pointer. -->
+    <output
+      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
+      style:left="{left}px"
+      style:top="{top}px">{text}</output
+    >
+  {/if}
 </div>
 
 <style>

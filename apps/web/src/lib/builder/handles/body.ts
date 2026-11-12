@@ -9,7 +9,7 @@ export interface Target {
   readonly index: number;
 }
 
-type RectChange = Partial<Pick<Block, "x" | "z" | "width" | "depth" | "rotation">>;
+export type RectChange = Partial<Pick<Block, "x" | "z" | "width" | "depth" | "rotation">>;
 
 /** A block or a box: a rectangle turned about its corner. */
 export interface Rect {

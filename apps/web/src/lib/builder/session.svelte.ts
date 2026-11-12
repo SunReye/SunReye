@@ -2,6 +2,7 @@
 // crate makes of it, and the inspector's level.
 import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
 import { haptics } from "../haptics.ts";
+import type { Editing } from "./handles/handled.svelte.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
 import { painted, panels, type Draft } from "./modules.ts";
@@ -124,6 +125,24 @@ export class Session {
 
   redo(): void {
     this.#history = redo(this.#history);
+  }
+
+  /** A selected block or obstacle's handles, and where their drags go. */
+  get editing(): Editing | undefined {
+    const { level } = this;
+
+    if (level.kind !== "block" && level.kind !== "obstacle") return undefined;
+
+    return {
+      scene: this.draft.scene,
+      target: { kind: level.kind, index: level.index },
+      ondrag: (scene) => {
+        this.drag(scene);
+      },
+      ondrop: () => {
+        this.drop();
+      },
+    };
   }
 
   /** Templates are offered while the scene has no block, until the admin starts empty. */

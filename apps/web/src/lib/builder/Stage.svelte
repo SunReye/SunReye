@@ -1,3 +1,7 @@
+<script lang="ts" module>
+  export type { Editing } from "./SceneCanvas.svelte";
+</script>
+
 <script lang="ts">
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Device, Values } from "../api/core.ts";
@@ -7,7 +11,7 @@
   import { getLocale } from "../paraglide/runtime.js";
   import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
   import type { CarPlace, Geometry, Point } from "./pv.ts";
-  import SceneCanvas from "./SceneCanvas.svelte";
+  import SceneCanvas, { type Editing } from "./SceneCanvas.svelte";
   import type { Hit, Panel } from "./scene.ts";
 
   let {
@@ -18,6 +22,7 @@
     places,
     devices,
     onpick,
+    editing,
   }: {
     core: Core;
     geometry: Geometry;
@@ -28,6 +33,8 @@
     /** Names the cars' loadpoints. */
     devices: readonly Device[];
     onpick?: ((hit: Hit) => void) | undefined;
+    /** The selected object's handles. */
+    editing?: Editing | undefined;
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -88,6 +95,7 @@
   view={kept ?? presetView("isometric", geometry)}
   onview={keep}
   {onpick}
+  {editing}
 />
 <nav
   aria-label={m.builder_views()}

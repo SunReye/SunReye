@@ -110,22 +110,28 @@ function spin({ scene, target, from, to }: Slide, rect: Rect): Dragged {
   };
 }
 
-/** The ridge handle slides up and down a plane facing the camera; the pitch follows its height. */
+/** The upright plane a ridge handle slides in: facing the camera, or seen from straight above,
+ * standing across the slope. */
+function upright({ direction: [dx, , dz] }: Ray, rotation: number): Triple {
+  const flat = Math.hypot(dx, dz);
+  const [ax, az] = turn(0, 1, rotation);
+
+  return flat < 1e-6 ? [ax, 0, az] : [-dx / flat, 0, -dz / flat];
+}
+
+/** The ridge handle slides up and down; the pitch follows its height. */
 function tilt(scene: Scene, index: number, grab: Ray, now: Ray): Dragged | null {
   const block = scene.blocks[index];
-  const top = block && ridge(block);
-  const roof = block?.roof;
 
-  if (block === undefined || top === null || roof === undefined || roof.kind === "flat") {
-    return null;
-  }
+  if (block === undefined) return null;
+
+  const { roof } = block;
+  const top = ridge(block);
+
+  if (top === null || roof.kind === "flat") return null;
 
   const at = on(block, top.u, top.top, top.w);
-  const [dx, , dz] = grab.direction;
-  const flat = Math.hypot(dx, dz);
-  const [ax, az] = turn(0, 1, block.rotation);
-  // Seen from straight above, the plane stands across the slope.
-  const normal: Triple = flat < 1e-6 ? [ax, 0, az] : [-dx / flat, 0, -dz / flat];
+  const normal = upright(grab, block.rotation);
   const [from, to] = [meet(grab, at, normal), meet(now, at, normal)];
 
   if (from === null || to === null) return null;
@@ -133,12 +139,9 @@ function tilt(scene: Scene, index: number, grab: Ray, now: Ray): Dragged | null 
   const height = top.top + to[1] - from[1];
   const steep = toDegrees(Math.atan2(height - block.eave, top.run));
   const pitch = clamp(snap(steep, ANGLE), 0, STEEPEST);
+  const blocks = scene.blocks.with(index, { ...block, roof: { ...roof, pitch } });
 
-  return {
-    scene: { ...scene, blocks: scene.blocks.with(index, { ...block, roof: { ...roof, pitch } }) },
-    value: [pitch],
-    unit: "°",
-  };
+  return { scene: { ...scene, blocks }, value: [pitch], unit: "°" };
 }
 
 function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {

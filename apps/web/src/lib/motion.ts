@@ -58,7 +58,7 @@ export function motionMs(ms: number, reduced: boolean = motion.still): number {
  * easing function rather than a CSS string. Solves the curve's x for the given progress by
  * bisection and returns its y.
  */
-const ease = (() => {
+export const ease = (() => {
   const [x1 = 0, y1 = 0, x2 = 1, y2 = 1] = (/\(([^)]+)\)/.exec(MOTION_EASE)?.[1] ?? "")
     .split(",")
     .map(Number);
