@@ -18,7 +18,10 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   const screen = await render(Page);
 
   await expect.element(screen.getByRole("heading", { name: "Einrichtung" })).toBeVisible();
-  await userEvent.fill(screen.getByLabelText("Passwort", { exact: true }), "solar sun");
+  await userEvent.fill(
+    screen.getByRole("region", { name: "Passwort" }).getByLabelText("Passwort", { exact: true }),
+    "solar sun",
+  );
   await userEvent.fill(screen.getByLabelText("Passwort wiederholen"), "solar sun");
   await screen.getByRole("button", { name: "Passwort festlegen" }).click();
 

@@ -11,7 +11,7 @@ import { m } from "../paraglide/messages.js";
 export type Step = "password" | "plant" | "devices" | "topology" | "layout";
 
 const TITLES: Readonly<Record<Step, () => string>> = {
-  password: m.password_set,
+  password: m.password_label,
   plant: m.plant_title,
   devices: m.devices_title,
   topology: m.topology_title,
@@ -33,7 +33,7 @@ export function steps(signedIn: boolean): readonly Step[] {
   return signedIn ? all.slice(1) : all;
 }
 
-export function title(step: Step): string {
+function title(step: Step): string {
   return TITLES[step]();
 }
 

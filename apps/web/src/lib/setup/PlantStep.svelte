@@ -24,8 +24,6 @@
     action?: string;
   } = $props();
 
-  const zones = Intl.supportedValuesOf("timeZone");
-
   // Only a secure page may ask; a core reached over plain HTTP on the LAN is not one.
   const locatable = isSecureContext && "geolocation" in navigator;
 
@@ -38,6 +36,10 @@
 
   // svelte-ignore state_referenced_locally
   let longitude = $state(current?.location?.longitude);
+
+  // The zone held or guessed is listed even where the browser's list leaves it out, such as UTC.
+  // svelte-ignore state_referenced_locally
+  const zones = [...new Set([zone, ...Intl.supportedValuesOf("timeZone")])];
 
   let refused = $state.raw<Problem>();
 

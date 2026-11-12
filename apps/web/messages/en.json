@@ -274,7 +274,6 @@
   "devices_none": "No device found.",
   "devices_confirm": "{profile} at {host}:{port}, unit {unit}",
   "devices_name": "Name of {profile}",
-  "devices_unknown": "{host}:{port} answers, but no profile recognises the device.",
   "devices_manual": "Add {host}:{port} by hand",
   "devices_manual_profile": "Profile for {host}:{port}",
   "devices_manual_unit": "Unit for {host}:{port}",

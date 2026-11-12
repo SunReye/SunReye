@@ -42,7 +42,12 @@
       {m.devices_subnet()}
       <Input placeholder="192.168.1.0/24" autocomplete="off" bind:value={subnet} />
     </label>
-    <Button disabled={scanning} onclick={scan}>
+    <!-- Primary until it found something: then adding is. -->
+    <Button
+      variant={found === undefined ? "default" : "outline"}
+      disabled={scanning}
+      onclick={scan}
+    >
       {#if scanning}
         <LoaderCircle data-icon="inline-start" class="motion-safe:animate-spin" />
       {:else}

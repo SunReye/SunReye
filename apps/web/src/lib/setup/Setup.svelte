@@ -81,7 +81,7 @@
       ondone={onfinish}
     />
   {:else}
-    <main class="contents">
+    <main class="mx-auto block w-full max-w-5xl lg:px-6">
       <DrillIn
         {groups}
         open={shown}

@@ -9,7 +9,7 @@
   import type { Choice } from "./choices.ts";
   import { FIELD } from "./fields.ts";
 
-  let { choice = $bindable(), note }: { choice: Choice; note: string } = $props();
+  let { choice, note }: { choice: Choice; note: string } = $props();
 
   const at = $derived({ host: choice.found.host, port: choice.found.port });
 

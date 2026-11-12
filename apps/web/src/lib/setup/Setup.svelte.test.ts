@@ -32,7 +32,7 @@ test("the first run offers the language switch", async () => {
   await screen.getByRole("radio", { name: "English" }).click();
 
   await expect.element(screen.getByRole("heading", { name: "Setup" })).toBeVisible();
-  await expect.element(screen.getByRole("heading", { name: "Set the password" })).toBeVisible();
+  await expect.element(screen.getByRole("heading", { name: "Password" })).toBeVisible();
 });
 
 test("setup opens on its first step, and back lists the steps with the next one open", async () => {
@@ -42,26 +42,27 @@ test("setup opens on its first step, and back lists the steps with the next one 
   await screen.getByRole("button", { name: "Einrichtung" }).click();
 
   await expect
-    .element(screen.getByRole("button", { name: /^Passwort festlegen.*Als Nächstes/u }))
+    .element(screen.getByRole("button", { name: /^Passwort.*Als Nächstes/u }))
     .toBeEnabled();
   await expect.element(screen.getByRole("button", { name: /^Anlage.*Danach/u })).toBeDisabled();
-  await screen.getByRole("button", { name: /^Passwort festlegen/u }).click();
+  await screen.getByRole("button", { name: /^Passwort.*Als Nächstes/u }).click();
   await expect.element(screen.getByLabelText("Passwort wiederholen")).toBeVisible();
 });
 
 test("a finished step opens the next one and cannot be run again", async () => {
   const screen = await render(Setup, { core: core(), signedIn: false, onfinish: () => {} });
 
-  await userEvent.fill(screen.getByLabelText("Passwort", { exact: true }), "solar sun");
+  await userEvent.fill(
+    screen.getByRole("region", { name: "Passwort" }).getByLabelText("Passwort", { exact: true }),
+    "solar sun",
+  );
   await userEvent.fill(screen.getByLabelText("Passwort wiederholen"), "solar sun");
   await screen.getByRole("button", { name: "Passwort festlegen" }).click();
 
   await expect.element(screen.getByText("Schritt 2 von 5")).toBeVisible();
   await expect.element(screen.getByLabelText("Breitengrad")).toBeVisible();
   await screen.getByRole("button", { name: "Einrichtung" }).click();
-  await expect
-    .element(screen.getByRole("button", { name: /^Passwort festlegen.*Erledigt/u }))
-    .toBeDisabled();
+  await expect.element(screen.getByRole("button", { name: /^Passwort.*Erledigt/u })).toBeDisabled();
 });
 
 test("under Home Assistant's ingress setup counts no password step", async () => {

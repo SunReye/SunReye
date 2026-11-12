@@ -27,9 +27,11 @@
   const connections = new Map<string, Connection>();
   const added = new Map<string, Device>();
 
-  const others = $derived(choices.filter((c) => c.manual && !entries.includes(c.key)).length);
+  const recognised = $derived(choices.filter((c) => !c.manual));
 
-  const recognised = $derived(choices.some((c) => !c.manual));
+  const entered = $derived(choices.filter((c) => entries.includes(c.key)));
+
+  const others = $derived(choices.filter((c) => c.manual && !entries.includes(c.key)));
 
   const chosen = $derived(choices.filter((choice) => choice.chosen).length);
 
@@ -107,30 +109,24 @@
   <p class="text-sm text-muted-foreground">{m.devices_hint()}</p>
   <ScanPanel {core} onscanned={show} />
 </div>
-{#if recognised}
+{#if recognised.length > 0}
   {@render heading(m.devices_found())}
   <ul class="divide-y divide-border/60 border-y border-border/60">
-    {#each choices as choice, index (choice.key)}
-      {#if !choice.manual}<FoundRow bind:choice={choices[index]} />{/if}
-    {/each}
+    {#each recognised as choice (choice.key)}<FoundRow {choice} />{/each}
   </ul>
 {/if}
-{#if entries.length > 0}
+{#if entered.length > 0}
   {@render heading(m.devices_entered())}
   <ul class="divide-y divide-border/60 border-y border-border/60">
-    {#each choices as choice, index (choice.key)}
-      {#if entries.includes(choice.key)}
-        <ManualRow bind:choice={choices[index]} note={m.devices_entered()} />
-      {/if}
+    {#each entered as choice (choice.key)}
+      <ManualRow {choice} note={m.devices_entered()} />
     {/each}
   </ul>
 {/if}
-{#if others > 0}
-  <OtherHosts count={others}>
-    {#each choices as choice, index (choice.key)}
-      {#if choice.manual && !entries.includes(choice.key)}
-        <ManualRow bind:choice={choices[index]} note={m.devices_unrecognised()} />
-      {/if}
+{#if others.length > 0}
+  <OtherHosts count={others.length}>
+    {#each others as choice (choice.key)}
+      <ManualRow {choice} note={m.devices_unrecognised()} />
     {/each}
   </OtherHosts>
 {/if}

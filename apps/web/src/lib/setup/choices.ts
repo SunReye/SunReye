@@ -1,5 +1,5 @@
 // The devices step's model: what the scan found, as the admin chooses, names or enters each device.
-import type { Found } from "../api/setup.ts";
+import type { Found } from "../api/core.ts";
 
 /** An endpoint as the scan found it, or as the admin entered it. */
 export type Endpoint = Readonly<

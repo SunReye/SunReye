@@ -1,7 +1,7 @@
 <!-- A secondary way in: an endpoint the scan does not probe, such as an RTU gateway, entered by hand. -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import type { Found } from "../api/setup.ts";
+  import type { Found } from "../api/core.ts";
   import type { Endpoint } from "./choices.ts";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
