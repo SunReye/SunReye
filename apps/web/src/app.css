@@ -147,6 +147,15 @@
   }
 }
 
+/* The still tier (ADR 21): every motion is instant. */
+:root[data-motion="still"] {
+  --motion-fast: 0ms;
+  --motion-base: 0ms;
+  --motion-slow: 0ms;
+  --motion-press: 0ms;
+  --motion-move: 0ms;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --ambient-opacity: 100%;
