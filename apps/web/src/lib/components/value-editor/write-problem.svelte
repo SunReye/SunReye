@@ -17,8 +17,9 @@
       >{problem.kind === "refused" ? m.editor_refused() : m.editor_mismatch()}</span
     >
     {problem.reason}
-    <a href="#/settings" class="whitespace-nowrap text-brand underline-offset-2 hover:underline"
-      >{m.writes_log()}</a
+    <a
+      href="#/settings?group=logs"
+      class="whitespace-nowrap text-brand underline-offset-2 hover:underline">{m.writes_log()}</a
     >
   </p>
 </div>

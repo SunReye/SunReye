@@ -1,18 +1,34 @@
 <script lang="ts">
   import type { Core, Problem } from "../api/core.ts";
+  import type { Location } from "../api/setup.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal from "./Refusal.svelte";
 
-  let { core, ondone }: { core: Core; ondone: () => void } = $props();
+  let {
+    core,
+    ondone,
+    current,
+    action = m.setup_next(),
+  }: {
+    core: Core;
+    ondone: () => void;
+    /** What the plant holds already, when it is changed later in the settings. */
+    current?: { readonly zone: string; readonly location: Location | undefined };
+    /** The submit button's label. */
+    action?: string;
+  } = $props();
 
   const zones = Intl.supportedValuesOf("timeZone");
 
   // The browser's zone is most often the plant's.
-  let zone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  // svelte-ignore state_referenced_locally
+  let zone = $state(current?.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-  let latitude = $state<number>();
+  // svelte-ignore state_referenced_locally
+  let latitude = $state(current?.location?.latitude);
 
-  let longitude = $state<number>();
+  // svelte-ignore state_referenced_locally
+  let longitude = $state(current?.location?.longitude);
 
   let refused = $state.raw<Problem>();
 
@@ -48,6 +64,6 @@
     {m.plant_longitude()}
     <input type="number" step="any" required bind:value={longitude} />
   </label>
-  <button type="submit">{m.setup_next()}</button>
+  <button type="submit">{action}</button>
 </form>
 <Refusal {refused} />

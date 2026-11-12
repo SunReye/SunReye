@@ -145,46 +145,83 @@
     };
   }
 
-  /** Orbits the camera on a drag and reports the view once let go; follows the `view` given. */
+  /** Flies the camera to each `view` given, from wherever it is; places the first at once. */
+  function follow(
+    camera: PerspectiveCamera,
+    controls: OrbitControls,
+    flight: Lit["flight"],
+    render: () => void,
+  ): void {
+    const place = ({ position, target }: View): void => {
+      camera.position.set(...position);
+      controls.target.set(...target);
+      // Dispatches "change", which draws.
+      controls.update();
+    };
+
+    let placed = false;
+
+    $effect(() => {
+      const to = view;
+
+      untrack(() => {
+        const from = { position: camera.position.toArray(), target: controls.target.toArray() };
+
+        if (!placed) {
+          placed = true;
+          place(to);
+        } else if (JSON.stringify(from) !== JSON.stringify(to)) {
+          flight.fly(from, to, place);
+          render();
+        }
+      });
+    });
+  }
+
+  /** Orbits the camera on a drag and reports the view once let go. */
   function orbit(
     canvas: HTMLCanvasElement,
     camera: PerspectiveCamera,
+    flight: Lit["flight"],
     render: () => void,
   ): OrbitControls {
     const controls = new OrbitControls(camera, canvas);
 
     controls.addEventListener("change", render);
+    // The admin's hand takes the camera from a flight.
+    controls.addEventListener("start", () => {
+      flight.stop();
+    });
     controls.addEventListener("end", () => {
       onview({ position: camera.position.toArray(), target: controls.target.toArray() });
     });
-
-    $effect(() => {
-      camera.position.set(...view.position);
-      controls.target.set(...view.target);
-      // Dispatches "change", which draws.
-      controls.update();
-    });
+    follow(camera, controls, flight, render);
 
     return controls;
   }
 
-  /** Draws on a change of geometry, view, sun or theme, a camera move or a resize, once per frame;
-   * never in a loop (ADR 20). */
+  /** Draws on a change of geometry, view, sun or theme, a camera move or a resize, once per frame,
+   * and while the camera flies; never in a loop (ADR 20). */
   function stage(canvas: HTMLCanvasElement): () => void {
     const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
     let frame = 0;
 
     // Every change in a frame is drawn once, in the next one.
     const render = (): void => {
-      frame ||= requestAnimationFrame(() => {
+      frame ||= requestAnimationFrame((now) => {
+        const flying = flight.step(now);
+
+        // Where the flight moved the camera is drawn in this frame, not the next.
         frame = 0;
         studio.render();
         onrender?.(projector(canvas, camera.clone()));
+
+        if (flying) render();
       });
     };
 
     const scene = lit(canvas, camera, () => sun ?? null, render);
-    const { studio } = scene;
+    const { studio, flight } = scene;
     const resize = fit(canvas, studio, camera, render);
 
     const drawn = keep(scene, render);
@@ -200,7 +237,7 @@
       parking.park(cars);
     });
 
-    const controls = orbit(canvas, camera, render);
+    const controls = orbit(canvas, camera, flight, render);
 
     return () => {
       cancelAnimationFrame(frame);

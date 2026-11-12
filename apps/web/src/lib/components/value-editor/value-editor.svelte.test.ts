@@ -160,7 +160,9 @@ test("a refusal stays open with its reason until the value changes", async () =>
   const alert = page.getByRole("alert");
   await expect.element(alert.getByText("Abgelehnt.")).toBeVisible();
   await expect.element(alert.getByText("Mindestabstand.", { exact: false })).toBeVisible();
-  await expect.element(page.getByRole("link", { name: "Schreibprotokoll" })).toBeVisible();
+  await expect
+    .element(page.getByRole("link", { name: "Schreibprotokoll" }))
+    .toHaveAttribute("href", "#/settings?group=logs");
   await expect.element(page.getByRole("button", { name: /^Übernehmen/u })).toBeDisabled();
 
   page.getByRole("spinbutton").element().focus();

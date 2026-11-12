@@ -60,6 +60,8 @@ export interface Setup {
   addConnection(reach: Reach): Promise<Connection | Problem>;
   /** Adds a device behind a connection; admin only. */
   addDevice(draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
+  /** Changes a device, such as its writes switch (ADR 7); admin only. */
+  changeDevice(id: number, draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
   /** Changes the topology from an instant on; admin only. */
   changeTopology(change: TopologyChange): Promise<Topology | Problem>;
 }
@@ -85,6 +87,7 @@ export function setup(client: Client): Setup {
     },
     ...zone(client),
     ...plant(client),
+    ...devices(client),
   };
 }
 
@@ -104,10 +107,32 @@ function zone(client: Client): Pick<Setup, "timezone" | "setTimezone"> {
   };
 }
 
+/** The devices behind the connections. */
+function devices(client: Client): Pick<Setup, "addDevice" | "changeDevice"> {
+  return {
+    addDevice: async (draft) => {
+      const { data, error, response } = await client.POST("/api/v1/devices", { body: draft });
+
+      return data ?? refusal(error, response.status);
+    },
+    changeDevice: async (id, draft) => {
+      const { data, error, response } = await client.PUT("/api/v1/devices/{id}", {
+        params: { path: { id } },
+        body: draft,
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+  };
+}
+
 /** The plant's configuration. */
 function plant(
   client: Client,
-): Omit<Setup, "session" | "setPassword" | "signIn" | "timezone" | "setTimezone"> {
+): Omit<
+  Setup,
+  "session" | "setPassword" | "signIn" | "timezone" | "setTimezone" | "addDevice" | "changeDevice"
+> {
   return {
     setLocation: async (location) => {
       const { data, error, response } = await client.PUT("/api/v1/location", { body: location });
@@ -123,11 +148,6 @@ function plant(
     },
     addConnection: async (reach) => {
       const { data, error, response } = await client.POST("/api/v1/connections", { body: reach });
-
-      return data ?? refusal(error, response.status);
-    },
-    addDevice: async (draft) => {
-      const { data, error, response } = await client.POST("/api/v1/devices", { body: draft });
 
       return data ?? refusal(error, response.status);
     },
