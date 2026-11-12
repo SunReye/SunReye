@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import GridSettings from "./GridSettings.svelte";
   import { apply, editGrid, removeGrid, type Draft, type Tool } from "./modules.ts";
-  import NumberField from "./NumberField.svelte";
   import type { CellPlace, ModuleGrid, RoofFace } from "./pv.ts";
   import { stringCss } from "./scene.ts";
 
@@ -27,6 +28,8 @@
     onchange: (draft: Draft) => void;
   } = $props();
 
+  const uid = $props.id();
+
   let tool = $state.raw<Tool>({ kind: "place" });
 
   /** The face's extent across and up the slope, in metres. */
@@ -43,74 +46,50 @@
     ),
   ]);
 
-  function percent(metres: number, of: number): string {
-    return `${(100 * metres) / of}%`;
+  function percent(length: number, of: number): string {
+    return `${(100 * length) / of}%`;
   }
 
-  function sameTool(a: Tool, b: Tool): boolean {
-    return a.kind === b.kind && (a.kind !== "paint" || b.kind !== "paint" || a.string === b.string);
+  /** A tool as a toggle's value. */
+  function toolKey(option: Tool): string {
+    return option.kind === "paint" ? `paint:${String(option.string ?? "")}` : option.kind;
   }
 
-  function edit(fields: Partial<Pick<ModuleGrid, "moduleType" | "landscape" | "setback">>): void {
-    onchange({ ...draft, scene: editGrid(draft.scene, index, fields) });
+  function choose(key: string): void {
+    const found = tools.find(([option]) => toolKey(option) === key);
+
+    if (found !== undefined) tool = found[0];
   }
 </script>
 
-<fieldset class="settings">
-  <ModuleTypeSelect
-    value={grid.moduleType}
-    {moduleTypes}
-    onchange={(moduleType) => {
-      edit({ moduleType });
-    }}
-  />
-  <label>
-    {m.builder_orientation()}
-    <select
-      value={grid.landscape ? "landscape" : "portrait"}
-      onchange={(event) => {
-        edit({ landscape: event.currentTarget.value === "landscape" });
-      }}
-    >
-      <option value="portrait">{m.builder_portrait()}</option>
-      <option value="landscape">{m.builder_landscape()}</option>
-    </select>
-  </label>
-  <NumberField
-    label={m.field_setback()}
-    value={grid.setback}
-    min={0}
-    onchange={(setback) => {
-      edit({ setback });
-    }}
-  />
-  <button
-    type="button"
-    onclick={() => {
-      onchange({ ...draft, scene: removeGrid(draft.scene, index) });
-    }}>{m.builder_remove_grid()}</button
-  >
-</fieldset>
+<GridSettings
+  {grid}
+  {moduleTypes}
+  onedit={(fields) => {
+    onchange({ ...draft, scene: editGrid(draft.scene, index, fields) });
+  }}
+/>
 
-<fieldset class="tools">
-  <legend>{m.builder_tool()}</legend>
-  {#each tools as [option, label] (label)}
-    <label>
-      <input
-        type="radio"
-        name="tool"
-        checked={sameTool(option, tool)}
-        onchange={() => {
-          tool = option;
-        }}
-      />
-      {#if option.kind === "paint"}
-        <span class="swatch" style:background={stringCss(option.string)}></span>
-      {/if}
-      {label}
-    </label>
-  {/each}
-</fieldset>
+<div class="flex flex-col gap-2 border-t border-border/60 p-3">
+  <span id="{uid}-tool" class="text-xs font-medium text-muted-foreground">{m.builder_tool()}</span>
+  <ToggleGroup.Root
+    type="single"
+    size="sm"
+    spacing={1}
+    aria-labelledby="{uid}-tool"
+    class="flex-wrap justify-start"
+    bind:value={() => toolKey(tool), choose}
+  >
+    {#each tools as [option, label] (label)}
+      <ToggleGroup.Item value={toolKey(option)} class="px-2.5 text-xs">
+        {#if option.kind === "paint"}
+          <span class="size-2.5 rounded-sm" style:background={stringCss(option.string)}></span>
+        {/if}
+        {label}
+      </ToggleGroup.Item>
+    {/each}
+  </ToggleGroup.Root>
+</div>
 
 <div
   class="face"
@@ -141,24 +120,21 @@
   {/each}
 </div>
 
+<div class="border-t border-border/60 p-3">
+  <Button
+    variant="destructive"
+    class="w-full"
+    onclick={() => {
+      onchange({ ...draft, scene: removeGrid(draft.scene, index) });
+    }}>{m.builder_remove_grid()}</Button
+  >
+</div>
+
 <style>
-  fieldset {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .settings {
-    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-    align-items: end;
-  }
-
-  .tools {
-    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  }
-
   .face {
     position: relative;
-    width: 100%;
+    width: calc(100% - 1.5rem);
+    margin: 0.75rem;
   }
 
   svg {
@@ -169,28 +145,26 @@
   }
 
   polygon {
-    fill: #9a4b3c33;
-    stroke: #9a4b3c;
-    stroke-width: 0.05;
+    fill: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+    stroke: var(--muted-foreground);
+    stroke-width: 0.03;
   }
 
   .cell {
     position: absolute;
     padding: 0;
-    border: 1px dashed #6b6f76;
+    border: 1px dashed var(--border);
+    border-radius: 1px;
     background: transparent;
     color: #fff;
     font-size: 0.75rem;
   }
 
-  .cell[aria-pressed="true"] {
-    border-style: solid;
+  .cell:hover {
+    border-color: var(--muted-foreground);
   }
 
-  .swatch {
-    display: inline-block;
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 2px;
+  .cell[aria-pressed="true"] {
+    border-style: solid;
   }
 </style>

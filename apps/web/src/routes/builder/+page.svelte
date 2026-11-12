@@ -1,6 +1,7 @@
 <script lang="ts">
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { connect, http } from "../../lib/api/core";
   import Builder from "../../lib/builder/Builder.svelte";
   import { emptyDraft } from "../../lib/builder/modules";
@@ -43,27 +44,14 @@
 <main>
   {#if webgl2}
     {#await load()}
-      <p>{m.builder_loading()}</p>
+      <p class="p-6 text-sm text-muted-foreground">{m.builder_loading()}</p>
     {:then { pv, start, moduleTypes, devices, location }}
       <Builder {pv} {core} {start} {moduleTypes} {devices} {location} />
     {/await}
   {:else}
-    <p>{m.builder_no_webgl()}</p>
-    <p><a href="#/">{m.builder_form()}</a></p>
+    <div class="flex flex-col items-start gap-3 p-6">
+      <p>{m.builder_no_webgl()}</p>
+      <Button variant="outline" href="#/">{m.builder_form()}</Button>
+    </div>
   {/if}
 </main>
-
-<style>
-  main {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(20rem, 2fr);
-    align-items: start;
-    gap: 1rem;
-  }
-
-  @media (max-width: 40rem) {
-    main {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>

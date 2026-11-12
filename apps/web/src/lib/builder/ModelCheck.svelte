@@ -54,7 +54,10 @@
 
 {#await loaded then corrections}
   {#if !("problem" in corrections) && corrections.inputs.length > 0}
-    <ul aria-label={m.builder_model_check()}>
+    <ul
+      aria-label={m.builder_model_check()}
+      class="glass-ambient flex flex-col gap-0.5 rounded-md px-2.5 py-1.5 tabular-nums"
+    >
       {#each corrections.inputs as input (`${String(input.device)}:${String(input.input)}`)}
         <li>{line(input)}</li>
       {/each}
