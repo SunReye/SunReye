@@ -151,3 +151,33 @@ async function load(
     },
   };
 }
+
+const NOTHING: Plant = {
+  pv: [],
+  load: [],
+  imported: [],
+  exported: [],
+  selfUsed: [],
+  selfCovered: [],
+  battery: [],
+  ev: [],
+};
+
+/** A range not read yet, cut into its bands: what a pane a finger uncovers draws while it loads. */
+export function pending(got: Loaded, range: Range): Loaded {
+  const ms = (t: number) => hourInstant(got.zone, t).getTime();
+  const list = edges(got.cal, range);
+  const sum = sumOf(NOTHING, 0, 0);
+
+  return {
+    ...got,
+    range,
+    list,
+    spans: list.map((e) => [ms(e.t0), ms(e.t1)] as const),
+    plant: NOTHING,
+    sum,
+    days: null,
+    money: null,
+    base: { ...got.base, plant: NOTHING, sum, days: null, money: null },
+  };
+}

@@ -164,3 +164,44 @@ test("ten years read in pieces and chart as years", async () => {
   await expect.element(screen.getByText(String(new Date().getUTCFullYear() - 10))).toBeVisible();
   await expect.element(screen.getByText(String(new Date().getUTCFullYear() - 1))).toBeVisible();
 });
+
+test("a finger dragging the card pages the range to the neighbour it uncovers", async () => {
+  const { screen, went } = await show(DAY);
+
+  await expect.poll(() => zone.read).toBe(true);
+
+  const verdict = screen.getByText(/^Gestern hat die Anlage/u);
+
+  await expect.element(verdict).toBeVisible();
+
+  const target = verdict.element();
+
+  expect(went).toEqual([]);
+
+  const { left, top } = target.getBoundingClientRect();
+
+  const at = (x: number) => ({
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: left + 260 + x,
+    clientY: top + 4,
+    bubbles: true,
+  });
+
+  target.dispatchEvent(new PointerEvent("pointerdown", at(0)));
+
+  for (let i = 1; i <= 8; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- the moves are paced like a finger's.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 16);
+    });
+    target.dispatchEvent(new PointerEvent("pointermove", at(-30 * i)));
+  }
+
+  // The day after is drawn beside the card's pane while the finger holds it.
+  expect(document.querySelectorAll(".pane.aside").length).toBeGreaterThan(0);
+  target.dispatchEvent(new PointerEvent("pointerup", at(-240)));
+
+  // Today is the default day, so the address names no date.
+  await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: null });
+});

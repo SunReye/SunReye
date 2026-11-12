@@ -4,14 +4,14 @@ import { untrack } from "svelte";
 import type { Core } from "../api/core.ts";
 import { stringRows } from "../analytics/strings.ts";
 import type { Travel } from "../range/Pager.svelte";
-import { rangeKey } from "../range/range.ts";
+import { canStep, rangeKey, step, type Range } from "../range/range.ts";
 import { RangeRoute, type Go } from "../range/route.svelte.ts";
 import { readFacts, type Facts } from "./facts.ts";
 import type { Note } from "./notes.ts";
 
 export type { Summary } from "./summary.ts";
 
-import { StatsData } from "./stats.svelte.ts";
+import { pending, StatsData, type Loaded } from "./stats.svelte.ts";
 import { METRICS, tabsOf, viewOf, VIEW_PARAMS, type Metric, type StatsView } from "./view.ts";
 
 export type StatisticsCore = Readonly<
@@ -31,6 +31,13 @@ export type StatisticsCore = Readonly<
   >
 >;
 
+/** One pane's content. */
+export interface Pane {
+  readonly got: Loaded;
+  readonly view: StatsView;
+  readonly loading: boolean;
+}
+
 const side = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 export class Statistics {
@@ -43,6 +50,10 @@ export class Statistics {
   readonly #cmp = $derived(this.view.cmp);
 
   readonly #shown: { metric: Metric; tab: StatsView["tab"] };
+  /** The next range change came from a finger drag, so it slides. */
+  #dragged = false;
+  /** The range a drag paged to: its pane shows it loading, not the range it left. */
+  #slidTo = $state<string | null>(null);
 
   constructor(input: () => { core: StatisticsCore; params: URLSearchParams; go: Go }) {
     this.route = new RangeRoute(() => input(), 0, VIEW_PARAMS);
@@ -106,11 +117,55 @@ export class Statistics {
 
   /** What tells one pane from the next: payback does not follow the range. */
   get paneId(): string {
-    const v = this.view;
     const r: RangeRoute = this.route;
 
-    return `${v.metric}/${v.tab}/${v.tab === "payback" ? "" : rangeKey(r.range)}`;
+    return this.#paneOf(r.range);
   }
+
+  #paneOf(range: Range): string {
+    const v = this.view;
+
+    return `${v.metric}/${v.tab}/${v.tab === "payback" ? "" : rangeKey(range)}`;
+  }
+
+  /** What the current pane shows; null before the first read. */
+  get pane(): Pane | null {
+    const got = this.data.current;
+    const r: RangeRoute = this.route;
+    const key = rangeKey(r.range);
+
+    if (!got) return null;
+
+    if (rangeKey(got.range) !== key && this.#slidTo === key)
+      return { got: pending(got, r.range), view: this.view, loading: true };
+
+    return { got, view: this.view, loading: this.data.loading || this.data.failed };
+  }
+
+  /** The neighbour a drag uncovers, drawn loading; null at the end of the record or for payback. */
+  peek = (dir: -1 | 1): { id: string; data: Pane } | null => {
+    const got = this.data.current;
+    const r: RangeRoute = this.route;
+    const cal = r.place.cal;
+
+    if (!got || !canStep(cal, r.range, dir)) return null;
+
+    const next = step(cal, r.range, dir);
+    const id = this.#paneOf(next);
+
+    return id === this.paneId
+      ? null
+      : { id, data: { got: pending(got, next), view: this.view, loading: true } };
+  };
+
+  /** A finger paged the range. */
+  drag = (dir: -1 | 1): void => {
+    const r: RangeRoute = this.route;
+
+    this.#dragged = true;
+    r.step(dir);
+    this.#slidTo = untrack(() => rangeKey(r.range));
+  };
 
   pick = (metric: Metric): void => {
     const r: RangeRoute = this.route;
@@ -157,12 +212,15 @@ export class Statistics {
       dir: side(METRICS.indexOf(mt) - METRICS.indexOf(was.metric)),
     };
 
-    if (mt === was.metric && t === was.tab)
+    if (mt === was.metric && t === was.tab && this.#dragged)
+      out = { kind: "slide", dir: r.via.dir };
+    else if (mt === was.metric && t === was.tab)
       out = { kind: t === "time" || t === "forecast" ? "keep" : "shift", dir: r.via.dir };
     else if (mt === was.metric)
       out = { kind: "shift", dir: side(tabs.indexOf(t) - tabs.indexOf(was.tab)) };
 
     [was.metric, was.tab] = [mt, t];
+    this.#dragged = false;
 
     return out;
   };
