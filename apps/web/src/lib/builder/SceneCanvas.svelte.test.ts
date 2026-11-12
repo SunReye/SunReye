@@ -3,8 +3,12 @@ import { expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView, type View } from "./camera.ts";
+import type { Hit } from "./scene.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
+
+// Software GL renders the sky and shadows slowly while other suites run.
+const SLOW = { timeout: 15_000 };
 
 const house: Geometry = {
   faces: [
@@ -50,7 +54,7 @@ test("dragging the canvas orbits the camera and reports the new view", async () 
     targetPosition: { x: 250, y: 100 },
   });
 
-  await expect.poll(() => views.length).toBeGreaterThan(0);
+  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
   expect(views.at(-1)?.target).toEqual(start.target);
   expect(views.at(-1)?.position).not.toEqual(start.position);
 });
@@ -87,6 +91,7 @@ const modules = [
     [east, north + 2, rise(north + 2) + 0.01],
   ] as const,
   string: 0,
+  grid: 0,
 }));
 
 /** The mean colour of a patch of RGBA pixels. */
@@ -105,6 +110,7 @@ function average(data: ArrayLike<number>): [number, number, number] {
 async function closeUp(
   dark: boolean,
   covered = true,
+  onpick?: (hit: Hit) => void,
 ): Promise<{
   drawn: () => [number, number, number] | undefined;
   screen: Awaited<ReturnType<typeof render<typeof SceneCanvas>>>;
@@ -124,6 +130,7 @@ async function closeUp(
     // From the south, 34° above the horizon.
     view: { position: [2, 4.15 + 4.47, 2 + 6.63], target: [2, 4.15, 2] },
     onview: () => {},
+    onpick,
     // Read in the draw that made it: the drawing buffer is cleared once presented.
     onrender: () => {
       const canvas = document.querySelector("canvas");
@@ -172,8 +179,8 @@ test.each([false, true])(
     const { drawn } = await closeUp(dark);
 
     // Near black, and too grey to read as any hue.
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).lightness).toBeLessThan(10);
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).chroma).toBeLessThan(12);
+    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).lightness, SLOW).toBeLessThan(10);
+    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).chroma, SLOW).toBeLessThan(12);
   },
 );
 
@@ -181,10 +188,57 @@ test("a new sun relights the scene: below the horizon only the moon lights the r
   const { drawn, screen } = await closeUp(false, false);
   const lightness = (): number => lab(drawn() ?? [0, 0, 0]).lightness;
 
-  await expect.poll(lightness).toBeGreaterThan(30);
+  await expect.poll(lightness, SLOW).toBeGreaterThan(30);
 
   const noon = lightness();
 
   await screen.rerender({ sun: [0, -0.5, -0.866] });
-  await expect.poll(lightness).toBeLessThan(noon - 15);
+  await expect.poll(lightness, SLOW).toBeLessThan(noon - 15);
+});
+
+test("a click on a module reports its grid; on the bare roof, the point it struck", async () => {
+  const hits: Hit[] = [];
+
+  const covered = await closeUp(true, true, (hit) => {
+    hits.push(hit);
+  });
+
+  await covered.screen.getByLabelText("3D-Szene des Hauses").click();
+
+  await expect.poll(() => hits).toEqual([{ kind: "grid", grid: 0 }]);
+  await covered.screen.unmount();
+
+  const bare = await closeUp(true, false, (hit) => {
+    hits.push(hit);
+  });
+
+  await bare.screen.getByLabelText("3D-Szene des Hauses").click();
+
+  await expect.poll(() => hits.length).toBe(2);
+  const [east = 0, north = 0, up = 0] = hits[1]?.kind === "point" ? hits[1].point : [];
+
+  // The view's target, on the roof 2 m east and 2 m south of the ridge's end.
+  expect([east, north, up].map((value) => Math.round(value))).toEqual([
+    2,
+    -2,
+    Math.round(rise(-2)),
+  ]);
+});
+
+test("a drag orbits and picks nothing", async () => {
+  const hits: Hit[] = [];
+
+  const { screen } = await closeUp(true, false, (hit) => {
+    hits.push(hit);
+  });
+
+  const canvas = screen.getByLabelText("3D-Szene des Hauses");
+
+  await userEvent.dragAndDrop(canvas, canvas, {
+    sourcePosition: { x: 100, y: 100 },
+    targetPosition: { x: 250, y: 100 },
+  });
+  await canvas.click();
+
+  await expect.poll(() => hits.length).toBe(1);
 });

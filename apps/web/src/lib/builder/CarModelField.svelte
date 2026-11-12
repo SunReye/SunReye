@@ -1,4 +1,9 @@
+<!-- A car place's own body: upload a GLB, or drop it for the default. -->
 <script lang="ts">
+  import Upload from "@lucide/svelte/icons/upload";
+  import X from "@lucide/svelte/icons/x";
+  import * as Item from "#lib/components/ui/item/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { problemText } from "../i18n/problems.ts";
   import { m } from "../paraglide/messages.js";
   import { uploader } from "./upload.ts";
@@ -15,11 +20,12 @@
   const upload = uploader();
 
   let refused = $state<string>();
+  let file = $state<HTMLInputElement | null>(null);
 
-  async function send(file: File | undefined): Promise<void> {
-    if (file === undefined) return;
+  async function send(chosen: File | undefined): Promise<void> {
+    if (chosen === undefined) return;
 
-    const stored = await upload(file);
+    const stored = await upload(chosen);
 
     if (stored instanceof Object) {
       refused = problemText(stored.problem);
@@ -32,33 +38,38 @@
   }
 </script>
 
-{#if model === undefined || model === null}
-  <label>
-    {m.car_upload()}
-    <input
-      type="file"
-      accept=".glb,model/gltf-binary"
-      onchange={(event) => {
-        void send(event.currentTarget.files?.[0]);
-      }}
-    />
-  </label>
-{:else}
-  <button
-    type="button"
-    onclick={() => {
-      onchange(null);
-    }}>{m.car_model_remove()}</button
-  >
-{/if}
-{#if refused !== undefined}
-  <p role="alert">{refused}</p>
-{/if}
-
-<style>
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-  }
-</style>
+<Item.Root class="rounded-none border-0">
+  <Item.Content>
+    {#if model === undefined || model === null}
+      <Button variant="outline" onclick={() => file?.click()}>
+        <Upload data-icon="inline-start" />
+        {m.car_upload()}
+      </Button>
+      <!-- The button is the control; the input only reads the file. -->
+      <input
+        bind:this={file}
+        type="file"
+        class="sr-only"
+        tabindex="-1"
+        aria-label={m.car_upload()}
+        accept=".glb,model/gltf-binary"
+        onchange={(event) => {
+          void send(event.currentTarget.files?.[0]);
+        }}
+      />
+    {:else}
+      <Button
+        variant="outline"
+        onclick={() => {
+          onchange(null);
+        }}
+      >
+        <X data-icon="inline-start" />
+        {m.car_model_remove()}
+      </Button>
+    {/if}
+    {#if refused !== undefined}
+      <p role="alert" class="text-sm text-destructive">{refused}</p>
+    {/if}
+  </Item.Content>
+</Item.Root>

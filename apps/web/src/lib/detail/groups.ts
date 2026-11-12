@@ -237,6 +237,17 @@ const MODES = new Map([
   [3, m.rd_mode_pv],
 ]);
 
+export function generator(read: Reader): Group[] {
+  return [
+    {
+      title: m.rd_counters(),
+      rows: kept([
+        read.num("generator.energy.total", { label: m.rd_generator_total(), ...MWH, digits: 1 }),
+      ]),
+    },
+  ];
+}
+
 export function ev(read: Reader): Group[] {
   const charging = read.raw("ev.charging") === 1;
 

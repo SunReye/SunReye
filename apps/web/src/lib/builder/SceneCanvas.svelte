@@ -15,7 +15,7 @@
   import { lit, type Lit } from "../scene/stage.svelte.ts";
   import type { View } from "./camera.ts";
   import type { Geometry } from "./pv.ts";
-  import { buildScene, tint, toThree, type Panel } from "./scene.ts";
+  import { buildScene, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
   let {
     geometry,
@@ -27,6 +27,7 @@
     view,
     onview,
     onrender,
+    onpick,
   }: {
     geometry: Geometry;
     /** The placed modules. */
@@ -44,6 +45,8 @@
     onview: (view: View) => void;
     /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
     onrender?: (project: Projector) => void;
+    /** A click, not a drag: what it struck, if anything. */
+    onpick?: ((hit: Hit) => void) | undefined;
   } = $props();
 
   function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
@@ -75,8 +78,8 @@
     return resize;
   }
 
-  /** Keeps the drawn meshes in step with the geometry and the live glow. */
-  function keep({ glow, show, ease }: Lit, render: () => void): void {
+  /** Keeps the drawn meshes in step with the geometry and the live glow; gives the ones drawn. */
+  function keep({ glow, show, ease }: Lit, render: () => void): () => Group | undefined {
     let drawn: Group | undefined;
 
     $effect(() => {
@@ -95,6 +98,51 @@
       () => drawn,
       () => shares,
     );
+
+    return () => drawn;
+  }
+
+  /** Further than this many pixels between press and release, the pointer orbited. */
+  const CLICK = 5;
+
+  /** Reports a click's hit; a press that moves further orbits instead. */
+  function picking(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    drawn: () => Group | undefined,
+  ): () => void {
+    let down: readonly [number, number] | undefined;
+
+    const press = (event: PointerEvent): void => {
+      down = [event.clientX, event.clientY];
+    };
+
+    const release = (event: PointerEvent): void => {
+      const group = drawn();
+
+      if (down === undefined || group === undefined || onpick === undefined) return;
+
+      const moved = Math.hypot(event.clientX - down[0], event.clientY - down[1]);
+
+      down = undefined;
+
+      if (moved > CLICK) return;
+
+      const hit = strike(group, panels, camera, [
+        (event.offsetX / canvas.clientWidth) * 2 - 1,
+        1 - (event.offsetY / canvas.clientHeight) * 2,
+      ]);
+
+      if (hit !== null) onpick(hit);
+    };
+
+    canvas.addEventListener("pointerdown", press);
+    canvas.addEventListener("pointerup", release);
+
+    return () => {
+      canvas.removeEventListener("pointerdown", press);
+      canvas.removeEventListener("pointerup", release);
+    };
   }
 
   /** Orbits the camera on a drag and reports the view once let go; follows the `view` given. */
@@ -139,7 +187,8 @@
     const { studio } = scene;
     const resize = fit(canvas, studio, camera, render);
 
-    keep(scene, render);
+    const drawn = keep(scene, render);
+    const unpick = picking(canvas, camera, drawn);
 
     const parking = garage(
       studio.scene,
@@ -156,6 +205,7 @@
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
+      unpick();
       controls.dispose();
       parking.dispose();
       scene.dispose();

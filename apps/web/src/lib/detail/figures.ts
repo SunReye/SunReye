@@ -43,6 +43,7 @@ const FIGURES = new Map<string, Figure>([
   ["grid", { colour: "var(--e-export)", node: "grid", direction: "grid", chart: null }],
   ["house", { colour: HOUSE, node: "house", chart: null }],
   ["ev", EV],
+  ["generator", { colour: HOUSE, node: "generator", chart: null }],
 ]);
 
 /** The figure `id` names: a fixed one, `string-<id>` or `ev-<device>`; null for none. */
@@ -71,6 +72,7 @@ export const TITLES = new Map([
   ["grid", m.detail_grid],
   ["house", m.dash_house],
   ["ev", m.dash_ev],
+  ["generator", m.flow_generator],
 ]);
 
 /** One figure: a number in its unit, unknown as null, or words. */

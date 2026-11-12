@@ -1,14 +1,13 @@
+<!-- The builder's time slider (ADR 20): a day and a time that move the sun; it scrubs, so it stays a slider (ADR 21). -->
 <script lang="ts">
+  import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
   import type { Source } from "./moment.ts";
 
   let {
     day = $bindable(),
     minutes = $bindable(),
     source,
-    strings,
-    located,
   }: {
     /** `YYYY-MM-DD` in the browser's calendar. */
     day: string;
@@ -16,10 +15,6 @@
     minutes: number;
     /** Undefined while the day loads. */
     source: Source | undefined;
-    /** Each string's name and its watts at the instant, null without a value. */
-    strings: readonly { readonly name: string; readonly watts: number | null }[];
-    /** Whether the plant's location is known. */
-    located: boolean;
   } = $props();
 
   const sources: Readonly<Record<Source, () => string>> = {
@@ -28,53 +23,85 @@
     clearSky: m.builder_source_clear_sky,
   };
 
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  /** The last quarter hour of a day. */
+  const LAST = 1425;
 
   const clock = $derived(
     [Math.floor(minutes / 60), minutes % 60].map((part) => String(part).padStart(2, "0")).join(":"),
   );
-
-  // Only measured history is a reading; the forecast and a clear sky are estimates (ADR 20).
-  const prefix = $derived(source === "measured" ? "" : "≈");
 </script>
 
-<fieldset>
-  <label>
-    {m.builder_day()}
-    <input type="date" required bind:value={day} />
-  </label>
-  <label>
-    {m.builder_time()}
-    <input type="range" min="0" max="1425" step="15" bind:value={minutes} />
-  </label>
-  <span>{clock}</span>
+<div
+  class="glass-ambient flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2 ring-1 ring-border/60 elevation-1"
+>
+  <Input type="date" required aria-label={m.builder_day()} class="h-8 w-auto" bind:value={day} />
+  <input
+    type="range"
+    min="0"
+    max={LAST}
+    step="15"
+    aria-label={m.builder_time()}
+    class="time min-w-32 flex-1"
+    style:--filled="{(100 * minutes) / LAST}%"
+    bind:value={minutes}
+  />
+  <span class="w-11 text-sm font-medium tabular-nums">{clock}</span>
   {#if source !== undefined}
-    <p>{sources[source]()}</p>
+    <span class="basis-full text-xs text-muted-foreground">{sources[source]()}</span>
   {/if}
-  {#if !located}
-    <p>{m.builder_no_location()}</p>
-  {/if}
-  <ul aria-label={m.builder_strings_power()}>
-    {#each strings as { name, watts }, i (i)}
-      <li>
-        {watts === null
-          ? m.builder_string_dark({ name })
-          : m.builder_string_power({ name, power: `${prefix}${format.format(watts)} W` })}
-      </li>
-    {/each}
-  </ul>
-</fieldset>
+</div>
 
 <style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 0.5rem 1rem;
+  /* The registry slider's look on a native range, which keyboard, touch and form tests already know. */
+  .time {
+    height: 1rem;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
   }
 
-  ul {
-    flex-basis: 100%;
-    margin: 0;
+  .time:focus-visible {
+    outline: none;
+  }
+
+  .time::-webkit-slider-runnable-track {
+    height: 0.25rem;
+    background: linear-gradient(to right, var(--primary) var(--filled), var(--muted) var(--filled));
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .time::-moz-range-track {
+    height: 0.25rem;
+    background: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .time::-moz-range-progress {
+    height: 0.25rem;
+    background: var(--primary);
+  }
+
+  .time::-webkit-slider-thumb {
+    width: 0.625rem;
+    height: 1rem;
+    margin-top: -0.375rem;
+    appearance: none;
+    border: 1px solid color-mix(in oklch, var(--foreground) 70%, transparent);
+    border-radius: 2px;
+    background: var(--card);
+    transition: box-shadow var(--motion-fast) var(--motion-ease);
+  }
+
+  .time::-moz-range-thumb {
+    width: 0.625rem;
+    height: 1rem;
+    border: 1px solid color-mix(in oklch, var(--foreground) 70%, transparent);
+    border-radius: 2px;
+    background: var(--card);
+  }
+
+  .time:hover::-webkit-slider-thumb,
+  .time:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 50%, transparent);
   }
 </style>

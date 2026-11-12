@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
@@ -144,6 +144,24 @@ test("while PV is idle the hero leads with house consumption", async () => {
 
   await expect.element(screen.getByText("Verbrauch jetzt")).toBeVisible();
   await expect.poll(lead).toBe("0,9 kW");
+});
+
+test("without a scene the hero shows the power flow, whose nodes open their details", async () => {
+  const onopen = vi.fn<(id: string) => void>();
+
+  const screen = await render(Dashboard, {
+    core: connect(transport),
+    layout: null,
+    admin: false,
+    onopen,
+  });
+
+  const hero = screen.getByRole("region", { name: "Anlage live" });
+
+  await hero.getByRole("button", { name: "Netz: Details" }).click();
+  await hero.getByRole("button", { name: "Wechselrichter: Details" }).click();
+
+  expect(onopen.mock.calls).toEqual([["grid"], ["inverter"]]);
 });
 
 test("the now strip shows the spot price and the forecast PV still to come", async () => {
