@@ -75,7 +75,7 @@ test("a viewer's rail lists no Controls", async () => {
   const screen = await render(App);
 
   await expect.element(screen.getByRole("link", { name: "Verlauf" })).toBeInTheDocument();
-  await expect.element(screen.getByRole("checkbox", { name: "Stromsparmodus" })).toBeVisible();
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
   expect(screen.getByRole("link", { name: /Steuerung/u }).query()).toBeNull();
 });
 

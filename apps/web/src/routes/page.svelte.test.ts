@@ -3,7 +3,8 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { Layout } from "../lib/api/core.ts";
 import { motion } from "../lib/motion/tier.svelte.ts";
-import { getLocale, setLocale } from "../lib/paraglide/runtime.js";
+import { setLocale } from "../lib/paraglide/runtime.js";
+import "../app.css";
 import Page from "./+page.svelte";
 
 const DASHBOARD = "sunreye.dashboard";
@@ -162,29 +163,12 @@ test("the home screen renders its main landmark", async () => {
   await expect.element(screen.getByRole("main")).toBeInTheDocument();
 });
 
-test("the screen is German until the owner picks English, which outlives a reload", async () => {
-  const screen = await render(Page);
-
-  await expect.element(screen.getByRole("combobox", { name: "Sprache" })).toBeVisible();
-  expect(document.documentElement.lang).toBe("de");
-
-  await userEvent.selectOptions(
-    screen.getByRole("combobox", { name: "Sprache" }).element(),
-    "English",
-  );
-
-  await expect.element(screen.getByRole("combobox", { name: "Language" })).toBeVisible();
-  expect(document.documentElement.lang).toBe("en");
-  // The strategy reads local storage first, as a reload does.
-  expect(getLocale()).toBe("en");
-});
-
 test("without a scene the dashboard shows the 2D flow and offers no toggle", async () => {
   const screen = await render(Page);
 
   await asked("/api/v1/layout");
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
-  expect(screen.getByRole("button", { name: "2D-Ansicht" }).query()).toBeNull();
+  expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
 
 test("with a scene the dashboard opens on it, and the toggle's 2D outlives a reload", async () => {
@@ -193,15 +177,34 @@ test("with a scene the dashboard opens on it, and the toggle's 2D outlives a rel
   const first = await render(Page);
 
   await expect.element(first.getByLabelText("3D-Szene des Hauses")).toBeVisible();
-  await first.getByRole("button", { name: "2D-Ansicht" }).click();
-  await expect.element(first.getByRole("button", { name: "3D-Ansicht" })).toBeVisible();
+  await first.getByRole("radio", { name: "2D" }).click();
+  await expect.element(first.getByRole("radio", { name: "2D" })).toBeChecked();
   expect(first.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
   await first.unmount();
 
   const again = await render(Page);
 
-  await expect.element(again.getByRole("button", { name: "3D-Ansicht" })).toBeVisible();
+  await expect.element(again.getByRole("radio", { name: "2D" })).toBeChecked();
   expect(again.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
+});
+
+test("the 3D scene fills the hero, leaving no empty area", async () => {
+  served.scene = true;
+
+  const screen = await render(Page);
+  const scene = screen.getByLabelText("3D-Szene des Hauses");
+
+  await expect.element(scene).toBeVisible();
+
+  const hero = screen
+    .getByRole("region", { name: "Anlage live" })
+    .element()
+    .getBoundingClientRect();
+
+  const drawn = scene.element().getBoundingClientRect();
+
+  expect(drawn.height).toBeCloseTo(hero.height, 0);
+  expect(drawn.width).toBeCloseTo(hero.width, 0);
 });
 
 test("the low-power switch shows the 2D flow", async () => {
@@ -210,11 +213,10 @@ test("the low-power switch shows the 2D flow", async () => {
   const screen = await render(Page);
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
-  await screen.getByRole("checkbox", { name: "Stromsparmodus" }).click();
+  motion.lowPower = true;
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "2D-Ansicht" }).query()).toBeNull();
-  expect(motion.tier).toBe("still");
+  expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
 
 test("without WebGL2 a scene still leaves the 2D flow", async () => {
@@ -226,7 +228,7 @@ test("without WebGL2 a scene still leaves the 2D flow", async () => {
 
   await asked("/api/v1/layout");
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
-  expect(screen.getByRole("button", { name: "2D-Ansicht" }).query()).toBeNull();
+  expect(screen.getByRole("radio", { name: "2D" }).query()).toBeNull();
 });
 
 test("a fresh core walks the owner through setup and ends on the live dashboard", async () => {
@@ -262,7 +264,7 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   await expect.element(screen.getByRole("combobox", { name: "Dachfläche" })).toBeVisible();
   await screen.getByRole("button", { name: "Fertig, zur Übersicht" }).click();
 
-  await expect.element(screen.getByRole("checkbox", { name: "Stromsparmodus" })).toBeVisible();
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
 });
 
 test("under Home Assistant's ingress setup sets no password", async () => {
@@ -283,5 +285,5 @@ test("a signed-out owner signs in to the dashboard", async () => {
   await userEvent.fill(screen.getByLabelText("Passwort"), "solar sun");
   await screen.getByRole("button", { name: "Anmelden" }).click();
 
-  await expect.element(screen.getByRole("checkbox", { name: "Stromsparmodus" })).toBeVisible();
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
 });

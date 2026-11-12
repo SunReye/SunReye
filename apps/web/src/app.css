@@ -247,6 +247,13 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
 
+  --color-solar: var(--e-solar);
+  --color-battery: var(--e-battery);
+  --color-import: var(--e-import);
+  --color-export: var(--e-export);
+  --color-house: var(--e-house);
+  --color-ev: var(--e-ev);
+
   --ease-in-out-move: var(--motion-ease-in-out);
 
   --animate-rise: rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
