@@ -47,7 +47,7 @@ export type { Problem } from "./client";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 
-export type { Connection, Found, PointDraft } from "./setup";
+export type { Connection, CreatedToken, Found, PointDraft, Scope, Token, Viewer } from "./setup";
 
 export type { Live, Values } from "./live";
 
