@@ -1,0 +1,80 @@
+import { expect, test } from "bun:test";
+import { dayOf } from "../range/calendar.ts";
+import { edges } from "../range/edges.ts";
+import { hourInstant, rangeFor, type Calendar } from "../range/range.ts";
+import { chartOf } from "./chart.ts";
+import { sumOf, type Plant } from "./flows.ts";
+import type { Loaded } from "./stats.svelte.ts";
+
+const ZONE = "UTC";
+const DAY = dayOf(2026, 10, 3);
+const CAL: Calendar = { today: DAY + 1, hour: 10, last: DAY + 1 };
+const at = (h: number) => hourInstant(ZONE, DAY * 24 + h).toISOString();
+const span = (h0: number, h1: number, mean: number) => ({ start: at(h0), end: at(h1), mean });
+
+/** 10–12 h: 3 kW sun, 1 kW house, 2 kW out; 12–13 h unread; then 1 kW bought. */
+const PLANT: Plant = {
+  pv: [span(10, 12, 3000)],
+  load: [span(10, 12, 1000), span(13, 24, 1000)],
+  grid: [span(10, 12, -2000), span(13, 24, 1000)],
+  battery: [],
+  ev: [],
+};
+
+function loaded(plant: Plant, days: Loaded["days"] = null): Loaded {
+  const range = rangeFor("day", DAY);
+  const list = edges(CAL, range);
+  const ms = (t: number) => hourInstant(ZONE, t).getTime();
+  const [from, to] = [ms(DAY * 24), ms(DAY * 24 + 24)];
+
+  return {
+    range,
+    via: { id: 1, kind: "none", a: 0, b: 1, inward: true, dir: 0 },
+    cal: CAL,
+    zone: ZONE,
+    list,
+    spans: list.map((e) => [ms(e.t0), ms(e.t1)] as const),
+    now: to + 3_600_000,
+    plant,
+    sum: sumOf(plant, from, to),
+    days,
+    money: null,
+    base: { range, sum: sumOf(plant, from, to), money: null },
+  };
+}
+
+test("energy: production above zero as self-used and fed in, the house below", () => {
+  const chart = chartOf("energy", loaded(PLANT));
+  const eleven = chart.bands[11]!;
+
+  expect(eleven.up).toEqual([1, 2]);
+  expect(eleven.down).toEqual([1, 0]);
+  expect(chart.summary.up).toEqual([2, 4]);
+  expect(chart.summary.down).toEqual([2, 11]);
+});
+
+test("an hour without readings is a gap; the night before readings began too", () => {
+  const chart = chartOf("energy", loaded(PLANT));
+
+  expect(chart.bands[12]!.state).toBe("gap");
+  expect(chart.bands[3]!.state).toBe("gap");
+  expect(chart.bands[14]!.state).toBe("data");
+});
+
+test("autarky: where each band's house load came from, in shares to 100 %", () => {
+  const chart = chartOf("autarky", loaded(PLANT));
+
+  expect(chart.max).toBe(100);
+  expect(chart.bands[11]!.up).toEqual([100, 0]);
+  expect(chart.bands[15]!.up).toEqual([0, 100]);
+});
+
+test("money comes by the day: savings above zero, the bill below", () => {
+  const days = [{ start: at(0), end: at(24), paid: 3, earned: 1, saved: 4 }];
+
+  const chart = chartOf("money", loaded(PLANT, days));
+
+  expect(chart.bands).toHaveLength(1);
+  expect(chart.bands[0]!.up).toEqual([3, 1]);
+  expect(chart.bands[0]!.down).toEqual([3]);
+});

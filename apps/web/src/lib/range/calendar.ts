@@ -24,6 +24,7 @@ const OPTIONS = {
   dayShortYear: { day: "numeric", month: "short", year: "numeric" },
   weekday: { weekday: "short" },
   monthShort: { month: "short" },
+  month: { month: "long" },
   monthYear: { month: "long", year: "numeric" },
   monthShortYear: { month: "short", year: "2-digit" },
 } satisfies Record<string, Intl.DateTimeFormatOptions>;
