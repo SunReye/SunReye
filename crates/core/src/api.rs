@@ -217,6 +217,9 @@ struct DeviceSupport {
     /// Series computed from others, not measured, such as `pv.string.power[3]` of a string
     /// in parallel (ADR 17).
     estimated: Vec<String>,
+    /// The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
+    /// it can report, not what it reports now.
+    series: Vec<String>,
     /// Whether the admin switched its writes on (ADR 7).
     writes: bool,
     /// What its profile lets the core write, in the profile's order.
@@ -275,6 +278,7 @@ async fn capabilities(
     }
     for device in devices.writable().await.map_err(internal)? {
         let entry = support.entry(device.id.to_string()).or_default();
+        entry.series = device.series;
         entry.writes = device.writes;
         entry.settings = device
             .settings
