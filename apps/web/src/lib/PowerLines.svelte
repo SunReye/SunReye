@@ -1,12 +1,15 @@
 <script lang="ts">
   import { LineChart, Points, Spline } from "layerchart/canvas";
-  import { colour } from "./chart-colours";
+  import { flowColour, roleFlow } from "./energy-colours.ts";
 
   /** One point of a named series. */
   interface Row {
     readonly time: Date;
     readonly power: number;
+    /** The legend's name for the line. */
     readonly series: string;
+    /** The role drawn (ADR 4), which picks the line's energy colour. */
+    readonly role: string;
   }
 
   let {
@@ -19,13 +22,13 @@
     time: Intl.DateTimeFormat;
   } = $props();
 
-  /** One line per series, so the legend names each. */
+  /** One line per series, so the legend names each; its colour is its flow's (ADR 21). */
   const lines = $derived(
-    [...new Set(rows.map((r) => r.series))].map((key, i) => ({
-      key,
-      color: colour(i),
-      data: rows.filter((r) => r.series === key),
-    })),
+    [...new Set(rows.map((r) => r.series))].map((key) => {
+      const data = rows.filter((r) => r.series === key);
+
+      return { key, color: flowColour(roleFlow(data[0]?.role ?? "")), data };
+    }),
   );
 
   /** Series of one point, which a line cannot draw. */
