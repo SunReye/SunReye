@@ -6,7 +6,9 @@ export type Tariff = components["schemas"]["Tariff"];
 
 export type CostDays = components["schemas"]["CostDays"];
 
-export type Payback = components["schemas"]["Payback"];
+export type Payback = Readonly<Omit<components["schemas"]["Payback"], "months">> & {
+  readonly months: readonly Readonly<components["schemas"]["PaybackMonth"]>[];
+};
 
 export type BiddingZone = components["schemas"]["BiddingZone"];
 

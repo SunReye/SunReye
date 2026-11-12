@@ -2,8 +2,8 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import * as Card from "#lib/components/ui/card/index.js";
+  import { haptics } from "../haptics.ts";
   import Pager from "../range/Pager.svelte";
-  import { swipe } from "../range/swipe.ts";
   import CardIntro from "./CardIntro.svelte";
   import { cardText } from "./card-text.ts";
   import FigureTabs from "./FigureTabs.svelte";
@@ -27,11 +27,13 @@
 
   const wide = new MediaQuery("(min-width: 1024px)");
   const height = $derived(wide.current ? 320 : 232);
+
+  let card = $state<HTMLElement | null>(null);
 </script>
 
 <Card.Root
   class="glass-ambient @container min-w-0 gap-0 self-start py-0"
-  {@attach swipe(s.route.step)}
+  bind:ref={card}
 >
   <FigureTabs
     figures={text.figures}
@@ -59,8 +61,19 @@
       />
 
       <div class="min-h-[348px] lg:min-h-[416px]">
-        {#if got}
-          <Pager id={s.paneId} data={{ got, view: s.view }} travel={s.travel}>
+        {#if s.pane}
+          <Pager
+            surface={card}
+            id={s.paneId}
+            data={s.pane}
+            travel={s.travel}
+            peek={s.peek}
+            defer
+            onstep={(dir) => {
+              haptics.selection();
+              s.drag(dir);
+            }}
+          >
             {#snippet children(d)}
               <StatsPane
                 {core}
@@ -69,7 +82,7 @@
                 route={s.route}
                 facts={s.facts}
                 fresh={s.fresh}
-                loading={quiet}
+                loading={d.loading}
                 {height}
                 onview={s.open}
               />

@@ -12,6 +12,7 @@ use crate::bus::{Bus, Reading};
 use crate::plant;
 use crate::storage::Storage;
 
+mod payback;
 mod reprice;
 
 fn instant(text: &str) -> SystemTime {
