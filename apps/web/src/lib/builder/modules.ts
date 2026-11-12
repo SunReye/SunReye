@@ -61,43 +61,99 @@ export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
 }
 
-/** The tool's effect on one cell of grid `index`. */
-export function apply(scene: Scene, index: number, at: At, tool: Tool): Scene {
+/** What a drag does to every cell it crosses, as the cell it started on decides (ADR 20). */
+export type Stroke =
+  | { readonly kind: "place"; readonly erase: boolean }
+  /** Into a string, or unassigned without one; erasing unassigns. */
+  | { readonly kind: "paint"; readonly string?: number; readonly erase: boolean }
+  | { readonly kind: "optimizer"; readonly on: boolean };
+
+function cellAt(scene: Scene, index: number, { row, column }: At): Cell | undefined {
+  return scene.grids?.[index]?.modules.find((cell) => cell.row === row && cell.column === column);
+}
+
+/** The stroke the tool starts on a cell of grid `index`: it toggles that cell. */
+export function strokeOf(scene: Scene, index: number, at: At, tool: Tool): Stroke {
+  const cell = cellAt(scene, index, at);
+
+  if (tool.kind === "place") return { kind: "place", erase: cell !== undefined };
+
+  if (tool.kind === "optimizer") return { kind: "optimizer", on: cell?.optimized !== true };
+
+  const string = tool.string;
+  const into = cell !== undefined && (cell.string ?? undefined) === string;
+
+  return string === undefined
+    ? { kind: "paint", erase: false }
+    : { kind: "paint", string, erase: into };
+}
+
+/** The stroke's effect on one cell of grid `index`; crossing a cell twice changes nothing more. */
+export function paint(scene: Scene, index: number, at: At, stroke: Stroke): Scene {
   return withGrids(scene, (grids) =>
     grids.map((grid, i) =>
-      i === index ? changed(grid, { modules: edit(grid.modules, at, tool) }) : grid,
+      i === index ? changed(grid, { modules: edit(grid.modules, at, stroke) }) : grid,
     ),
   );
 }
 
-function edit(modules: readonly Cell[], { row, column }: At, tool: Tool): Cell[] {
+/** A tap: the tool's effect on one cell of grid `index`. */
+export function apply(scene: Scene, index: number, at: At, tool: Tool): Scene {
+  return paint(scene, index, at, strokeOf(scene, index, at, tool));
+}
+
+function edit(modules: readonly Cell[], { row, column }: At, stroke: Stroke): Cell[] {
   const at = modules.findIndex((cell) => cell.row === row && cell.column === column);
   const cell = modules[at];
 
-  if (cell === undefined) {
-    if (tool.kind === "optimizer") return [...modules];
+  if (stroke.kind === "place") {
+    if (stroke.erase) return cell === undefined ? [...modules] : modules.toSpliced(at, 1);
 
-    return [...modules, assigned({ row, column, optimized: false }, tool)];
+    return cell === undefined ? [...modules, { row, column, optimized: false }] : [...modules];
   }
 
-  if (tool.kind === "place") return modules.toSpliced(at, 1);
+  if (stroke.kind === "optimizer") {
+    return cell === undefined ? [...modules] : modules.with(at, { ...cell, optimized: stroke.on });
+  }
 
-  return modules.with(
-    at,
-    tool.kind === "paint"
-      ? assigned(cell, tool)
-      : { ...cell, optimized: !(cell.optimized ?? false) },
-  );
+  const string = stroke.erase ? undefined : stroke.string;
+
+  if (cell === undefined) {
+    return stroke.erase ? [...modules] : [...modules, assigned({ row, column }, string)];
+  }
+
+  return modules.with(at, assigned(cell, string));
 }
 
-function assigned({ row, column, optimized }: Cell, tool: Tool): Cell {
-  const string = tool.kind === "paint" ? tool.string : undefined;
-
+function assigned({ row, column, optimized }: Cell, string?: number): Cell {
   const kept = optimized ?? false;
 
   return string === undefined
     ? { row, column, optimized: kept }
     : { row, column, string, optimized: kept };
+}
+
+/** Whether painting into grid `index` is refused: a string of another module type than the grid,
+ * as the core refuses it on save (ADR 20). */
+export function refuses(
+  draft: Draft,
+  index: number,
+  stroke: Pick<Stroke, "kind"> & { readonly string?: number },
+): boolean {
+  const grid = draft.scene.grids?.[index];
+  const string = stroke.kind === "paint" ? stroke.string : undefined;
+
+  if (grid === undefined || string === undefined) return false;
+
+  return draft.strings[string]?.moduleType !== grid.moduleType;
+}
+
+/** A module in every cell of grid `index` the crate laid out; painted modules keep their string. */
+export function fillGrid(scene: Scene, index: number, cells: readonly At[]): Scene {
+  return cells.reduce(
+    (filled, at) => paint(filled, index, at, { kind: "place", erase: false }),
+    scene,
+  );
 }
 
 /** The scene without block `index`: its grids and equipment go, later blocks' follow it down. */
@@ -125,11 +181,9 @@ export function withoutString(scene: Scene, index: number): Scene {
         modules: grid.modules.map((cell) => {
           const string = cell.string ?? undefined;
 
-          if (string === index) return assigned(cell, { kind: "place" });
+          if (string === index) return assigned(cell);
 
-          return string !== undefined && string > index
-            ? assigned(cell, { kind: "paint", string: string - 1 })
-            : cell;
+          return string !== undefined && string > index ? assigned(cell, string - 1) : cell;
         }),
       }),
     ),

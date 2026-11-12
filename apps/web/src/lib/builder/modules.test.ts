@@ -4,12 +4,25 @@ import {
   addGrid,
   addString,
   apply,
+  fillGrid,
+  paint,
   painted,
   panels,
+  refuses,
+  strokeOf,
   withoutBlock,
   withoutString,
 } from "./modules.ts";
-import type { Scene } from "./pv.ts";
+import { loadPv, type Scene } from "./pv.ts";
+
+const wasm = new URL(
+  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
+  import.meta.url,
+);
+
+const pv = await loadPv(await Bun.file(wasm).bytes());
+
+const SIZES = { 7: { width: 1.134, height: 1.722 } };
 
 const block = {
   x: 0,
@@ -159,4 +172,69 @@ test("a new string is wired like the first one, else to device 1, and starts emp
   };
 
   expect(addString(rewired, "North", 7).strings[1]).toMatchObject({ device: 4, loss: 3, input: 1 });
+});
+
+test("fill face places a module in every cell the crate's grid holds, keeping painted ones", () => {
+  const started = apply(gridded, 0, { row: 0, column: 1 }, { kind: "paint", string: 0 });
+  const cells = pv.modules(started, SIZES).grids[0] ?? [];
+  const filled = fillGrid(started, 0, cells);
+
+  // A 10 m wide, 4.883 m deep face behind a 0.3 m setback holds 8 × 2 portrait modules.
+  expect(cells).toHaveLength(16);
+  expect(filled.grids?.[0]?.modules).toHaveLength(16);
+  expect(filled.grids?.[0]?.modules).toContainEqual({
+    row: 0,
+    column: 1,
+    string: 0,
+    optimized: false,
+  });
+  expect(pv.modules(filled, SIZES).misplaced).toBeNull();
+});
+
+test("a drag that starts on an empty cell places along its path, one that starts on a module erases", () => {
+  const placing = strokeOf(gridded, 0, { row: 0, column: 0 }, { kind: "place" });
+  let scene = paint(gridded, 0, { row: 0, column: 0 }, placing);
+
+  scene = paint(scene, 0, { row: 0, column: 1 }, placing);
+  scene = paint(scene, 0, { row: 0, column: 1 }, placing);
+
+  expect(scene.grids?.[0]?.modules).toHaveLength(2);
+
+  const erasing = strokeOf(scene, 0, { row: 0, column: 1 }, { kind: "place" });
+
+  scene = paint(scene, 0, { row: 0, column: 1 }, erasing);
+  scene = paint(scene, 0, { row: 0, column: 0 }, erasing);
+  scene = paint(scene, 0, { row: 1, column: 0 }, erasing);
+
+  expect(scene.grids?.[0]?.modules).toEqual([]);
+});
+
+test("a string stroke paints across grids, and one starting on the string's own module unpaints", () => {
+  const two = addGrid(gridded, 1, 0, 7);
+  const painting = strokeOf(two, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+  let scene = paint(two, 0, { row: 0, column: 0 }, painting);
+
+  scene = paint(scene, 1, { row: 0, column: 0 }, painting);
+
+  expect(painted(scene, 0).modules).toBe(2);
+
+  const unpainting = strokeOf(scene, 1, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+
+  scene = paint(scene, 1, { row: 0, column: 0 }, unpainting);
+  scene = paint(scene, 0, { row: 0, column: 0 }, unpainting);
+
+  expect(painted(scene, 0).modules).toBe(0);
+  expect(scene.grids?.flatMap((grid) => grid.modules)).toHaveLength(2);
+});
+
+test("painting a string into a grid of another module type is refused", () => {
+  const draft = {
+    scene: addGrid(gridded, 1, 0, 8),
+    strings: addString({ scene: gridded, strings: [] }, "South", 7).strings,
+  };
+
+  expect(refuses(draft, 0, { kind: "paint", string: 0 })).toBe(false);
+  expect(refuses(draft, 1, { kind: "paint", string: 0 })).toBe(true);
+  expect(refuses(draft, 1, { kind: "paint" })).toBe(false);
+  expect(refuses(draft, 1, { kind: "place", erase: false })).toBe(false);
 });
