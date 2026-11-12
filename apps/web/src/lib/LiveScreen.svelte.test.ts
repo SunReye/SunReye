@@ -5,7 +5,10 @@ import LiveScreen from "./LiveScreen.svelte";
 
 const SNAPSHOT = '{"devices":{"1":{"pv.power":1950,"grid.power":-120,"battery.soc":64}}}';
 
-/** A test core: one live snapshot, then a held stream; history answers with one point. */
+/**
+ * A test core: one live snapshot, then a held stream; history answers with one point, in a plant
+ * on UTC.
+ */
 function testCore(live: Response): Transport & { readonly asked: string[] } {
   const asked: string[] = [];
 
@@ -16,6 +19,9 @@ function testCore(live: Response): Transport & { readonly asked: string[] } {
       const url = new URL(request.url);
 
       asked.push(url.pathname + url.search);
+
+      if (url.pathname.endsWith("/timezone"))
+        return Promise.resolve(Response.json({ name: "UTC" }));
 
       if (url.pathname.endsWith("/history")) {
         return Promise.resolve(

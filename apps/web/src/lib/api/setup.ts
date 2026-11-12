@@ -6,6 +6,9 @@ import type { components } from "./schema";
 
 export type Location = components["schemas"]["Location"];
 
+/** A timezone by IANA name. */
+export type Zone = components["schemas"]["Zone"];
+
 /** What the setup scan found: each endpoint with the devices proposed behind it (ADR 6). */
 export type ScanReport = components["schemas"]["ScanReport"];
 
@@ -45,6 +48,8 @@ export interface Setup {
   setPassword(password: string): Promise<Problem | undefined>;
   /** Signs the admin in, or a viewer by `name`. */
   signIn(password: string, name?: string): Promise<Problem | undefined>;
+  /** The plant timezone, which days are cut in (ADR 3). */
+  timezone(): Promise<Zone | Problem>;
   /** Sets the plant timezone by IANA name; admin only. */
   setTimezone(name: string): Promise<Problem | undefined>;
   /** Sets the plant's location; admin only. */
@@ -78,18 +83,32 @@ export function setup(client: Client): Setup {
 
       return done(error, response);
     },
+    ...zone(client),
     ...plant(client),
   };
 }
 
-/** The plant's configuration. */
-function plant(client: Client): Omit<Setup, "session" | "setPassword" | "signIn"> {
+/** The plant timezone. */
+function zone(client: Client): Pick<Setup, "timezone" | "setTimezone"> {
   return {
+    timezone: async () => {
+      const { data, error, response } = await client.GET("/api/v1/timezone");
+
+      return data ?? refusal(error, response.status);
+    },
     setTimezone: async (name) => {
       const { error, response } = await client.PUT("/api/v1/timezone", { body: { name } });
 
       return done(error, response);
     },
+  };
+}
+
+/** The plant's configuration. */
+function plant(
+  client: Client,
+): Omit<Setup, "session" | "setPassword" | "signIn" | "timezone" | "setTimezone"> {
+  return {
     setLocation: async (location) => {
       const { data, error, response } = await client.PUT("/api/v1/location", { body: location });
 
