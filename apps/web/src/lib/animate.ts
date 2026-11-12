@@ -5,7 +5,7 @@ const bezier = (a: number, c: number, s: number) =>
   3 * a * (1 - s) ** 2 * s + 3 * c * (1 - s) * s ** 2 + s ** 3;
 
 /** ADR 21's `--motion-ease-in-out`, cubic-bezier(0.65, 0, 0.35, 1), solved by bisection. */
-const easeInOut = (t: number): number => {
+export const easeInOut = (t: number): number => {
   if (t <= 0) return 0;
 
   if (t >= 1) return 1;

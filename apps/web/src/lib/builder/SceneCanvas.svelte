@@ -76,7 +76,7 @@
   }
 
   /** Keeps the drawn meshes in step with the geometry and the live glow. */
-  function keep({ glow, show }: Lit, render: () => void): void {
+  function keep({ glow, show, ease }: Lit, render: () => void): void {
     let drawn: Group | undefined;
 
     $effect(() => {
@@ -91,12 +91,10 @@
     });
 
     // A live tick, a new sun or theme relights the modules it already drew: nothing rebuilt.
-    $effect(() => {
-      if (shares !== undefined && drawn !== undefined) {
-        tint(drawn, shares, glow());
-        render();
-      }
-    });
+    ease(
+      () => drawn,
+      () => shares,
+    );
   }
 
   /** Orbits the camera on a drag and reports the view once let go; follows the `view` given. */
