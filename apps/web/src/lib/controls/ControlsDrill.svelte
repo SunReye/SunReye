@@ -5,6 +5,7 @@
   import { getLocale } from "../paraglide/runtime.js";
   import ControlRows from "./ControlRows.svelte";
   import ControlsHeading from "./ControlsHeading.svelte";
+  import ScheduleRows from "./ScheduleRows.svelte";
   import type { Control, ControlGroup } from "./groups.ts";
   import { drillGroups } from "./look.ts";
 
@@ -52,7 +53,15 @@
       {/snippet}
       {#snippet page(group)}
         {@const shown = groups.find((g) => g.id === group.id)}
-        {#if shown}
+        {#if shown?.id === "schedule"}
+          <ScheduleRows
+            group={shown}
+            {text}
+            owner={(c) => names.get(c.device)}
+            {editing}
+            {onedit}
+          />
+        {:else if shown}
           <ControlRows group={shown} {text} owner={(c) => names.get(c.device)} {editing} {onedit} />
         {/if}
       {/snippet}
