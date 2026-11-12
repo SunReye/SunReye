@@ -5,7 +5,7 @@
   import type { Payback } from "../api/tariff.ts";
   import { m } from "../paraglide/messages.js";
   import { money, num } from "../range/format.ts";
-  import { paybackShare } from "./payback.ts";
+  import { paybackShare, reachedYear } from "./payback.ts";
 
   let {
     payback,
@@ -15,6 +15,7 @@
   }: { payback: Payback; loading: boolean; tucked: boolean; onopen: () => void } = $props();
 
   const share = $derived(paybackShare(payback));
+  const year = $derived(reachedYear(payback));
 </script>
 
 <div class={["tuck", tucked && "tucked"]} inert={tucked}>
@@ -45,10 +46,10 @@
       {#if payback.investment == null}
         {m.stats_payback_none()}
       {:else}
-        {m.stats_payback_saved({
-          saved: money(payback.savings),
-          investment: money(payback.investment),
-        })}
+        {@const amounts = { saved: money(payback.savings), investment: money(payback.investment) }}
+        {year === null
+          ? m.stats_payback_saved(amounts)
+          : m.stats_payback_saved_until({ ...amounts, year: String(year) })}
       {/if}
     </span>
   </button>

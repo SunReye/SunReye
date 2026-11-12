@@ -1,8 +1,30 @@
-import { expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Device, type Transport } from "../api/core.ts";
+import "../../app.css";
 import DevicesStep from "./DevicesStep.svelte";
+
+/** A phone; the value editor lands at once. */
+beforeEach(async () => {
+  await page.viewport(390, 800);
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+});
+
+afterEach(async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+});
+
+/** Types `value` into a number row's value editor and applies it. */
+async function enter(row: string, value: string): Promise<void> {
+  await page.getByRole("button", { name: new RegExp(`^${row} `, "u") }).click();
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
+  await userEvent.keyboard("{Enter}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+}
 
 const ADDED = {
   id: 6,
@@ -72,11 +94,8 @@ test("the admin confirms a scanned device under a name of their own", async () =
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
 
   await expect
-    .element(screen.getByText("192.168.1.30:502 antwortet, aber kein Profil erkennt das Gerät."))
-    .toBeVisible();
-  await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
-    .click();
+    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" }))
+    .toBeChecked();
   await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
@@ -95,9 +114,6 @@ test("adding again after a refused device does not add its connection twice", as
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
-    .click();
   await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
 
   const add = screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" });
@@ -121,9 +137,13 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen.getByRole("checkbox", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
+  await screen
+    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
+    .click();
+  await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
+  await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
   await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.30:502"), "sunspec-meter");
-  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.30:502"), "3");
+  await enter("Adresse für 192.168.1.30:502", "3");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.30:502"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
@@ -139,12 +159,13 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
+  await screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }).click();
   await userEvent.fill(screen.getByLabelText("Host"), "192.168.1.40");
-  await userEvent.fill(screen.getByLabelText("Port"), "4196");
-  await userEvent.selectOptions(screen.getByLabelText("Übertragung"), "rtu-over-tcp");
+  await enter("Port", "4196");
+  await screen.getByRole("radio", { name: "rtu-over-tcp" }).click();
   await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
   await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.40:4196"), "eastron-sdm630");
-  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.40:4196"), "2");
+  await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
@@ -153,4 +174,54 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
     '/api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":4196,"transport":"rtu-over-tcp"}',
     '/api/v1/devices {"connection":5,"name":"Zähler","profile":"eastron-sdm630","unit":2}',
   ]);
+});
+
+test("hosts no profile recognises wait folded away under their own row", async () => {
+  const screen = await render(DevicesStep, { core: connect(testCore()), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  const more = screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u });
+
+  await expect.element(more).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("192.168.1.30:502").query()).toBeNull();
+  await more.click();
+  await expect.element(screen.getByText("192.168.1.30:502")).toBeVisible();
+});
+
+test("a scan that finds nothing says so and offers the endpoint by hand", async () => {
+  const transport: Transport = {
+    base: "http://core.test/",
+    fetch: () => Promise.resolve(Response.json({ subnet: "192.168.1.0/24", endpoints: [] })),
+  };
+
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  await expect.element(screen.getByText("Kein Gerät gefunden.")).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: /^Ausgewählte Geräte hinzufügen/u }))
+    .toBeDisabled();
+});
+
+test("a running scan shows its progress", async () => {
+  const report = Promise.withResolvers<Response>();
+
+  const transport: Transport = { base: "http://core.test/", fetch: () => report.promise };
+
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  await expect
+    .element(screen.getByRole("status").getByText(/Netzwerk wird durchsucht/u))
+    .toBeVisible();
+  report.resolve(Response.json(REPORT));
+  await expect
+    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" }))
+    .toBeChecked();
 });

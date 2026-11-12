@@ -3,9 +3,9 @@
 import { m } from "../paraglide/messages.js";
 import type { Band, SeriesMeta } from "../range/bands.ts";
 import { edges } from "../range/edges.ts";
-import { bandsOf } from "../range/fill.ts";
+import { bandsOf, spread } from "../range/fill.ts";
 import { kwh, money, num } from "../range/format.ts";
-import { hourInstant } from "../range/range.ts";
+import { hourInstant, t0Of } from "../range/range.ts";
 import { costBands, split } from "../tariff/costs.ts";
 import { sumOf, type Sum } from "./flows.ts";
 import type { Loaded } from "./stats.svelte.ts";
@@ -16,7 +16,11 @@ export interface Chart {
   readonly up: SeriesMeta[];
   readonly down: SeriesMeta[];
   readonly groups: [string, string];
-  readonly summary: { readonly up: number[]; readonly down: number[] };
+  readonly summary: {
+    readonly up: number[];
+    readonly down: number[];
+    readonly mark: number | null;
+  };
   readonly fmt: (v: number) => string;
   readonly unit: string;
   readonly max: number | undefined;
@@ -39,6 +43,69 @@ function sources(s: Sum, battery: boolean): number[] {
   return [share(own - stored, s), share(stored, s), share(s.purchase, s)];
 }
 
+/**
+ * Each band's span shifted onto the baseline, cut to as much of the band as has run and to the
+ * baseline's compared hours, in ms; null where nothing of it is compared.
+ */
+function baseSpan(got: Loaded, i: number): readonly [number, number] | null {
+  const edge = got.list[i];
+  const [a, b] = got.spans[i] ?? [0, 0];
+
+  if (!edge) return null;
+
+  const shift = t0Of(got.range) - got.base.hours[0];
+  const ms = (t: number) => hourInstant(got.zone, t).getTime();
+  const from = ms(edge.t0 - shift);
+  const to = Math.min(ms(edge.t1 - shift), from + Math.min(b, got.now) - a, ms(got.base.hours[1]));
+
+  return to > from ? [from, to] : null;
+}
+
+const top = (xs: readonly number[]) => xs.reduce((a, v) => a + v, 0);
+
+/** Above zero production or the house load's sources; below it the house load, for energy. */
+function flowSeries(energy: boolean, battery: boolean): Pick<Chart, "up" | "down"> {
+  if (!energy)
+    return {
+      up: [
+        { label: m.stats_from_pv(), colour: "var(--e-solar)" },
+        ...(battery ? [{ label: m.stats_from_battery(), colour: "var(--e-battery)" }] : []),
+        { label: m.stats_from_grid(), colour: "var(--e-import)" },
+      ],
+      down: [],
+    };
+
+  return {
+    up: [
+      { label: m.stats_self_used(), colour: "var(--e-solar)" },
+      { label: m.stats_fed_in(), colour: "var(--e-export)" },
+    ],
+    down: [
+      { label: m.stats_self_covered(), colour: "var(--e-house)" },
+      { label: m.stats_bought(), colour: "var(--e-import)" },
+    ],
+  };
+}
+
+/** The baseline's savings on each day band, by index. */
+function savedMarks(daily: Loaded): (i: number) => number | null {
+  const before = (daily.base.days ?? []).map((d) => ({
+    saved: d.saved,
+    start: Date.parse(d.start),
+    end: Date.parse(d.end),
+  }));
+
+  return (i) => {
+    const was = baseSpan(daily, i);
+
+    const saved = was
+      ? spread(before, was[0], was[1], (d: Readonly<{ saved: number }>) => d.saved)
+      : null;
+
+    return saved && saved.covered > 0 ? saved.sum : null;
+  };
+}
+
 function flows(got: Loaded, metric: "energy" | "autarky"): Chart {
   const battery = got.sum.discharge > 0.05;
   const energy = metric === "energy";
@@ -48,34 +115,28 @@ function flows(got: Loaded, metric: "energy" | "autarky"): Chart {
   const bands = bandsOf(got.list, (_, i) => {
     const [a, b] = got.spans[i]!;
     const s = sumOf(got.plant, a, b);
+    const was = energy ? baseSpan(got, i) : null;
+    const before = was ? sumOf(got.base.plant, was[0], was[1]) : null;
 
     return {
       up: upOf(s),
       down: downOf(s),
+      // The compared span as a mark on each bar's upper side; a share of 100 % has no such mark.
+      mark: before && before.covered > 0 ? top(upOf(before)) : null,
       covered: s.covered,
       elapsed: Math.max(0, Math.min(b, got.now) - a),
     };
   });
 
-  const solar = { label: m.stats_self_used(), colour: "var(--e-solar)" };
-
   return {
     bands,
-    up: energy
-      ? [solar, { label: m.stats_fed_in(), colour: "var(--e-export)" }]
-      : [
-          { label: m.stats_from_pv(), colour: "var(--e-solar)" },
-          ...(battery ? [{ label: m.stats_from_battery(), colour: "var(--e-battery)" }] : []),
-          { label: m.stats_from_grid(), colour: "var(--e-import)" },
-        ],
-    down: energy
-      ? [
-          { label: m.stats_self_covered(), colour: "var(--e-house)" },
-          { label: m.stats_bought(), colour: "var(--e-import)" },
-        ]
-      : [],
+    ...flowSeries(energy, battery),
     groups: energy ? [m.stats_production(), m.stats_consumption()] : ["", ""],
-    summary: { up: upOf(got.sum), down: downOf(got.sum) },
+    summary: {
+      up: upOf(got.sum),
+      down: downOf(got.sum),
+      mark: energy && got.base.sum.covered > 0 ? top(upOf(got.base.sum)) : null,
+    },
     fmt: energy ? kwh : (v) => `${num(v)} %`,
     unit: energy ? "kWh" : "%",
     max: energy ? undefined : 100,
@@ -90,15 +151,19 @@ function costs(got: Loaded): Chart {
   const ms = (t: number) => hourInstant(got.zone, t).getTime();
   const spans = list.map((e) => [ms(e.t0), ms(e.t1)] as const);
 
+  const fill = costBands(got.days ?? [], spans, got.now);
+  // Money bands are days, so the baseline is cut by the same day edges.
+  const mark = savedMarks({ ...got, list, spans });
+
   return {
-    bands: bandsOf(list, costBands(got.days ?? [], spans, got.now)),
+    bands: bandsOf(list, (_, i) => ({ ...fill(list[i]!, i), mark: mark(i) })),
     up: [
       { label: m.stats_avoided(), colour: "var(--e-solar)" },
       { label: m.stats_feed_in_pay(), colour: "var(--e-export)" },
     ],
     down: [{ label: m.stats_import_cost(), colour: "var(--e-import)" }],
     groups: [m.stats_savings(), m.stats_costs()],
-    summary: split(got.money ?? undefined),
+    summary: { ...split(got.money ?? undefined), mark: got.base.money?.saved ?? null },
     fmt: money,
     unit: "€",
     max: undefined,

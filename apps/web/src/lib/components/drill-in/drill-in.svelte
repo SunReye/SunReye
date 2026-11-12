@@ -13,6 +13,8 @@
     /** Its current values in a few words, under the label. */
     readonly summary?: string;
     readonly icon?: Component<{ class?: string }>;
+    /** Listed but not open, such as a setup step not yet reached. */
+    readonly disabled?: boolean;
   }
 </script>
 

@@ -20,7 +20,7 @@
   let saved = $state(false);
 </script>
 
-<div class="flex flex-col gap-3 p-4">
+<div class="flex flex-col">
   {#await current then plant}
     <PlantStep
       {core}
@@ -31,5 +31,7 @@
       }}
     />
   {/await}
-  {#if saved}<p role="status" class="text-sm text-muted-foreground">{m.settings_saved()}</p>{/if}
+  {#if saved}<p role="status" class="px-4 pb-4 text-sm text-muted-foreground">
+      {m.settings_saved()}
+    </p>{/if}
 </div>

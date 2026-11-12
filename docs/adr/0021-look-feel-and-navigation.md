@@ -53,6 +53,13 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Control groups:** come from the role namespace (`battery.*` → Battery, `grid.*` → Grid & export), labelled by Paraglide. Settings without a role go into Advanced. Profiles carry no groups.
 - **Writes:** there is no page lock; ADR 7's writes switch is the lock. With writes off, every control is read-only, under a banner explaining why.
 
+**Onboarding.** First-run setup and sign-in (ADR 9, 11) use the same components as Settings, not a look of their own.
+- **Steps on the drill-in:** the root lists the steps in order (password, plant, devices, measurement points, PV layout), each row saying whether it is done, next or still to come, under a progress count and bar. One level per step. Only the next step opens: a finished one is changed later in Settings, so setup never runs a write twice. Finishing a step opens the next one; back returns to the list. Under Home Assistant ingress the password step is left out.
+- **Values:** bounded numbers (a port, a Modbus unit) use the value editor; free-form values (password, names, hosts, coordinates) keep a text field.
+- **PV layout:** the step is the 3D builder (ADR 20), canvas and inspector filling the screen under the setup's progress and back. Skipping it is always offered, and without WebGL2 skipping is the only way on; the layout can be drawn later on the builder route.
+- **Sign-in:** one glass card on the backdrop, with the brand mark and the language switch. The admin signs in with the password alone; a viewer chooses "Viewer" and adds their name (ADR 9).
+- **Motion and refusals:** the drill-in's slides follow the tiers and land at once on still. A refusal or failed sign-in uses the `error` treatment: the `error` haptic and a destructive alert beside the action, which stays for a fix.
+
 **Value editor.** No sliders in Controls or Settings.
 - **Opening:** tapping a setting row opens the value editor: a bottom drawer on touch at any width, an anchored glass popover with a mouse, beside the row in the drill-in and under the row's value in two panes.
 - **Header:** the setting's name, its limits, and a large value whose digits roll up or down with the motion.

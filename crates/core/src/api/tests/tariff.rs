@@ -235,7 +235,10 @@ async fn payback_sums_the_savings_against_the_investment_the_admin_enters() {
         (status, payback),
         (
             StatusCode::OK,
-            json!({ "investment": null, "savings": 0.0, "remaining": null })
+            json!({
+                "investment": null, "savings": 0.0, "remaining": null,
+                "pace": null, "reached": null, "months": [],
+            })
         )
     );
 
@@ -260,11 +263,15 @@ async fn payback_sums_the_savings_against_the_investment_the_admin_enters() {
         .await;
     assert_eq!((status, &set), (StatusCode::OK, &investment));
 
-    // Saved: 2 h × (0.5 kW × 0.30 + 2 kW × 0.08) = 0.62.
+    // Saved: 2 h × (0.5 kW × 0.30 + 2 kW × 0.08) = 0.62. Eight days set no pace.
     let (_, payback) = core.ask(&set_cookie, get("/api/v1/payback")).await;
     assert_eq!(
         payback,
-        json!({ "investment": 10000.0, "savings": 0.62, "remaining": 9999.38 })
+        json!({
+            "investment": 10000.0, "savings": 0.62, "remaining": 9999.38,
+            "pace": null, "reached": null,
+            "months": [{ "date": "2026-11-01", "saved": 0.62 }],
+        })
     );
     let (_, log) = core.ask(&set_cookie, get("/api/v1/changes")).await;
     assert_eq!(
@@ -362,4 +369,38 @@ async fn costs_over_an_empty_range_are_refused() {
         (status, &body["code"]),
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("history.range"))
     );
+}
+
+#[tokio::test]
+async fn records_sum_each_year_and_name_the_best_saving_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::on_2026_11_09(&dir.path().join("core.sqlite")).await;
+    // 2 kW fed in for two hours while the house uses 500 W, priced as above: 0.62 saved.
+    core.flows(
+        "2026-11-01T00:00:00Z",
+        &[(0, Some((-2000.0, 500.0))), (7200, None)],
+    )
+    .await;
+    let fixed = json!({
+        "appliesFrom": "2026-11-01T00:00:00Z",
+        "import": { "price": 0.30, "bands": [] },
+        "export": { "price": 0.08, "bands": [] },
+    });
+    let (status, _) = core
+        .ask(&set_cookie, send("POST", "/api/v1/tariff/reprice", &fixed))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, records) = core.ask(&set_cookie, get("/api/v1/records")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let year = &records["years"][0];
+    assert_eq!(
+        (&year["year"], &year["running"]),
+        (&json!(2026), &json!(true))
+    );
+    assert_eq!(year["figures"]["consumption"], json!(1.0));
+    assert!((year["figures"]["saved"].as_f64().unwrap() - 0.62).abs() < 1e-9);
+    assert_eq!(records["bestSaving"]["date"], json!("2026-11-01"));
+    assert_eq!(records["bestDay"], json!(null));
 }
