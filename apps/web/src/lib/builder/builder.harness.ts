@@ -7,6 +7,7 @@ import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
 import { loadPv } from "./pv.ts";
+import { fill } from "./templates.ts";
 
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
 
@@ -25,6 +26,9 @@ export const MODULE: ModuleType = {
   height: 1.722,
   bypassDiodes: 3,
 };
+
+/** A 10 m × 8 m gable house facing south, as its template places it. */
+export const house = () => fill(emptyDraft(), "gable");
 
 /** The south face of the default 10 m × 8 m gable house. */
 export const SOUTH = "Baukörper 1, Fläche 2";
@@ -123,7 +127,7 @@ export async function gridOnTheSouthFace(transport: Transport) {
   const screen = await render(Builder, {
     pv,
     core: connect(transport),
-    start: emptyDraft(),
+    start: house(),
     moduleTypes: [MODULE],
     devices: DEVICES,
   });

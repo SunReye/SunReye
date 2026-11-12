@@ -44,8 +44,15 @@ test("on a phone the scene opens view-only", async () => {
   await expect.element(screen.getByRole("button", { name: "Norden" })).toBeVisible();
 });
 
+/** The route starts without a layout: the admin first picks the gable house's template. */
+async function gableHouse(): Promise<void> {
+  await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
+}
+
 test("a preset view is kept in this browser", async () => {
   const screen = await render(Page);
+
+  await gableHouse();
 
   await screen.getByRole("button", { name: "Norden" }).click();
 
@@ -68,6 +75,7 @@ async function press(label: string): Promise<void> {
 
 test("the admin adds a block, a tree and a box, and turns a roof flat", async () => {
   await render(Page);
+  await gableHouse();
 
   await press("Gebäude");
   await press("Baukörper hinzufügen");
@@ -101,6 +109,7 @@ test("the admin adds a block, a tree and a box, and turns a roof flat", async ()
 
 test("the compass dial turns the scene to north", async () => {
   await render(Page);
+  await gableHouse();
 
   await press("Umgebung");
   await press("Nordrichtung");

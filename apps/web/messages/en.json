@@ -853,5 +853,13 @@
   "access_once": "Copy it now. It will not be shown again.",
   "access_copy": "Copy",
   "access_copied": "Copied",
-  "access_done": "Done"
+  "access_done": "Done",
+  "builder_templates": "Pick a template",
+  "builder_templates_hint": "The closest shape fills the scene, facing south. Sizes and roof can be adjusted afterwards.",
+  "builder_template_gable": "Detached house with gable roof",
+  "builder_template_bungalow": "Bungalow with flat roof",
+  "builder_template_hip": "House with hip roof",
+  "builder_template_l_shape": "L-house of two blocks",
+  "builder_template_terrace_end": "Terrace end",
+  "builder_template_empty": "Start empty"
 }
