@@ -6,10 +6,23 @@
     ".claude/**",
     "tools/oxlint/anti-slop/**",
     "target/**",
-    "**/.svelte-kit/**"
+    "**/.svelte-kit/**",
+    "apps/web/src/lib/components/ui/**",
+    "apps/web/src/lib/motion.ts",
+    "apps/web/src/lib/utils.ts",
+    "apps/web/src/lib/hooks/**"
   ],
   "ignoreBinaries": ["systemd-analyze"],
-  "ignoreDependencies": ["@oxlint/plugins", "@inlang/plugin-message-format"],
+  "ignoreDependencies": [
+    "@oxlint/plugins",
+    "@inlang/plugin-message-format",
+    "@lucide/svelte",
+    "bits-ui",
+    "clsx",
+    "svelte-sonner",
+    "tailwind-merge",
+    "tailwind-variants"
+  ],
   "rules": {
     "unused-files": "error",
     "unused-exports": "error",
