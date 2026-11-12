@@ -143,3 +143,43 @@ test("a ray that never meets the drag's plane changes nothing", () => {
 
   expect(dragged(scene(), "width", 1.5, [down(10.4, 4), up])).toBeNull();
 });
+
+test("a hedge's length arrow, depth arrow, ring and footprint drag it like a box", () => {
+  const hedged: Scene = {
+    ...scene(),
+    obstacles: [{ kind: "hedge", x: 0, z: 20, length: 8, depth: 1, height: 1.8, rotation: 0 }],
+  };
+
+  const hedge: Target = { kind: "obstacle", index: 0 };
+
+  expect(handles(hedged, hedge).map(({ grip }) => grip)).toEqual([
+    "width",
+    "depth",
+    "turn",
+    "move",
+  ]);
+
+  const longer = dragged(hedged, "width", 0.9, [down(8.4, 20.5), down(10.43, 20.5)], hedge);
+
+  expect(longer?.scene.obstacles[0]).toMatchObject({ kind: "hedge", length: 10 });
+});
+
+test("a ground surface stretches, turns and moves on the ground", () => {
+  const paved: Scene = {
+    ...scene(),
+    surfaces: [{ x: 0, z: 12, width: 4, depth: 6, rotation: 0, finish: "driveway" }],
+  };
+
+  const surface: Target = { kind: "surface", index: 0 };
+
+  expect(handles(paved, surface).map(({ grip }) => grip)).toEqual([
+    "width",
+    "depth",
+    "turn",
+    "move",
+  ]);
+
+  const deeper = dragged(paved, "depth", 0, [down(2, 18.4), down(2, 20.38)], surface);
+
+  expect(deeper?.scene.surfaces?.[0]).toMatchObject({ depth: 8, finish: "driveway" });
+});

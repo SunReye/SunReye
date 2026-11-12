@@ -1,11 +1,11 @@
-// The object the handles sit on (ADR 20): a block or a box as a turned rectangle, a cylinder or a
-// tree as a circle, each able to write a change back into the scene. Pure.
+// The object the handles sit on (ADR 20): a block, a box, a hedge or a ground surface as a turned
+// rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene. Pure.
 import type { Block, Obstacle, Scene } from "../pv.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle";
+  readonly kind: "block" | "obstacle" | "surface";
   readonly index: number;
 }
 
@@ -48,6 +48,17 @@ function obstacleIn(scene: Scene, index: number, item: Obstacle): Body {
     return { ...item, kind: "rect", shortest: 0.1, apply: (change) => put({ ...item, ...change }) };
   }
 
+  if (item.kind === "hedge") {
+    // Its length is a rectangle's width.
+    return {
+      ...item,
+      kind: "rect",
+      width: item.length,
+      shortest: 0.1,
+      apply: ({ width = item.length, ...change }) => put({ ...item, ...change, length: width }),
+    };
+  }
+
   return { ...item, kind: "round", apply: (change) => put({ ...item, ...change }) };
 }
 
@@ -56,6 +67,21 @@ export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined 
     const item = scene.obstacles[index];
 
     return item && obstacleIn(scene, index, item);
+  }
+
+  if (kind === "surface") {
+    const surfaces = scene.surfaces ?? [];
+    const item = surfaces[index];
+
+    return (
+      item && {
+        ...item,
+        kind: "rect",
+        height: 0,
+        shortest: 0.1,
+        apply: (change) => ({ ...scene, surfaces: surfaces.with(index, { ...item, ...change }) }),
+      }
+    );
   }
 
   const block = scene.blocks[index];

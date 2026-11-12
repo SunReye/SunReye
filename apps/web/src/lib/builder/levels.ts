@@ -1,5 +1,5 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import type { Point, Scene } from "./pv.ts";
+import type { FencePoint, Point, Scene } from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -10,7 +10,7 @@ export type Level =
   | { readonly kind: "root" }
   | { readonly kind: "section"; readonly section: Section }
   | {
-      readonly kind: "block" | "obstacle" | "marker" | "place" | "string";
+      readonly kind: "block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string";
       readonly index: number;
     }
   | { readonly kind: "face"; readonly block: number; readonly face: number };
@@ -18,6 +18,8 @@ export type Level =
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
   obstacle: "surroundings",
+  surface: "surroundings",
+  fence: "surroundings",
   marker: "equipment",
   place: "equipment",
   face: "modules",
@@ -33,6 +35,9 @@ export function parent(level: Level): Level {
 
 /** Lines drawn on a footprint's edge still count as on it, in metres. */
 const EDGE = 0.05;
+
+/** A click this close to a fence's line, in metres, strikes it. */
+const NEAR = 0.3;
 
 /** The pv crate's `turn`: clockwise seen from above, where forward is −z. */
 function turn(x: number, z: number, degrees: number): readonly [number, number] {
@@ -52,21 +57,46 @@ function within([x, z]: readonly [number, number], footprint: Footprint): boolea
   return u >= -EDGE && u <= footprint.width + EDGE && w >= -EDGE && w <= footprint.depth + EDGE;
 }
 
-/** The object at a point of the scene's surfaces, obstacles before the blocks they stand by. */
+/** How far scene point `p` lies from the segment from `a` to `b`. */
+function distance(
+  [px, pz]: readonly [number, number],
+  { x: ax, z: az }: FencePoint,
+  { x: bx, z: bz }: FencePoint,
+): number {
+  const [dx, dz] = [bx - ax, bz - az];
+  const t = Math.min(1, Math.max(0, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+
+  return Math.hypot(px - ax - t * dx, pz - az - t * dz);
+}
+
+/** The object at a point: what stands before the blocks it stands by, the ground last, the
+ * latest surface first as it is drawn over the others. */
 function at(scene: Scene, [east, north]: Point): Level | null {
   const point = turn(east, -north, -scene.north);
 
-  const obstacle = scene.obstacles.findIndex((item) =>
-    item.kind === "box"
-      ? within(point, item)
-      : Math.hypot(point[0] - item.x, point[1] - item.z) <= item.radius + EDGE,
-  );
+  const obstacle = scene.obstacles.findIndex((item) => {
+    if (item.kind === "box") return within(point, item);
+
+    if (item.kind === "hedge") return within(point, { ...item, width: item.length });
+
+    return Math.hypot(point[0] - item.x, point[1] - item.z) <= item.radius + EDGE;
+  });
 
   if (obstacle >= 0) return { kind: "obstacle", index: obstacle };
 
+  const fence = (scene.fences ?? []).findIndex(({ points }) =>
+    points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
+  );
+
+  if (fence >= 0) return { kind: "fence", index: fence };
+
   const block = scene.blocks.findIndex((item) => within(point, item));
 
-  return block >= 0 ? { kind: "block", index: block } : null;
+  if (block >= 0) return { kind: "block", index: block };
+
+  const surface = (scene.surfaces ?? []).findLastIndex((item) => within(point, item));
+
+  return surface >= 0 ? { kind: "surface", index: surface } : null;
 }
 
 /** The level a click in 3D drills the inspector to; null for open ground. */
