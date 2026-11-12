@@ -62,6 +62,11 @@ export function previousLabel(r: Range): string {
   }[r.kind]();
 }
 
+/** The baseline as a mark's name: the previous period, or the year before. */
+export function baselineLabel(r: Range, cmp: Compare): string {
+  return cmp === "year" ? m.stats_prev_year() : previousLabel(r);
+}
+
 /** Beside a change: "zum Vormonat". */
 export function against(r: Range, cmp: Compare): string {
   return {

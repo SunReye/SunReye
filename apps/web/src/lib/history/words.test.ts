@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { dayOf } from "../range/calendar.ts";
 import { rangeFor, type Calendar } from "../range/range.ts";
 import type { Sum } from "./flows.ts";
-import { change, delta, verdict } from "./words.ts";
+import { baselineLabel, change, delta, verdict } from "./words.ts";
 
 const TODAY = dayOf(2026, 10, 12);
 const CAL: Calendar = { today: TODAY, hour: 15, last: TODAY };
@@ -52,4 +52,11 @@ test("a change is relative, signed, and absent without a baseline", () => {
   expect(delta(-0.123)).toBe("−12 %");
   expect(delta(0.05, true)).toBe("+5 Pkt.");
   expect(delta(null)).toBe("–");
+});
+
+test("a mark is named after the baseline: the period before, or the year before", () => {
+  const day = rangeFor("day", dayOf(2026, 10, 3));
+
+  expect(baselineLabel(day, "prev")).toBe("Vortag");
+  expect(baselineLabel(day, "year")).toBe("Vorjahr");
 });

@@ -9,6 +9,7 @@
   import type { Loaded } from "./stats.svelte.ts";
   import type { Metric } from "./view.ts";
   import { drillLabel } from "./drill.ts";
+  import { baselineLabel } from "./words.ts";
 
   let {
     got,
@@ -32,6 +33,7 @@
   up={chart.up}
   down={chart.down}
   groups={chart.groups}
+  markLabel={chart.bands.some((b) => b.mark != null) ? baselineLabel(got.range, got.cmp) : ""}
   via={got.via}
   summary={{ title: m.range_sum({ range: rangeLabel(got.cal, got.range) }), ...chart.summary }}
   fmt={chart.fmt}
