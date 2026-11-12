@@ -205,7 +205,7 @@ A rectangular building footprint with one roof.
 _Avoid_: Building, house
 
 **Obstacle**:
-An opaque box, cylinder or tree in the scene that casts shade on the modules.
+An opaque box, cylinder, tree or hedge in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
 **Equipment marker**:
@@ -221,8 +221,20 @@ An open block: a post at each corner instead of walls, under a roof that carries
 _Avoid_: Shelter
 
 **Car body**:
-What the scene draws for a connected car: a stylised body of one class in one colour, or a GLB the admin uploaded.
-_Avoid_: Car model (a model is a catalogue entry's name)
+What the scene draws for a connected car: the default low-poly sedan in the car place's colour, or a GLB the admin uploaded.
+_Avoid_: Car model
+
+**Ground surface**:
+A rectangle on the plot with one finish, such as lawn, paving or a driveway. Drawn only; it casts no shade.
+_Avoid_: Floor, texture
+
+**Fence**:
+A line on the plot with a height and a finish. Drawn only; it casts no shade.
+_Avoid_: Wall (a wall is an obstacle)
+
+**Template**:
+A ready-made starting scene the builder offers when the scene is empty.
+_Avoid_: Preset (a preset is a camera view)
 
 **Computed device**:
 A device whose readings the core computes or fetches instead of polling hardware: a tariff, a price feed, a forecast, the plant aggregates.

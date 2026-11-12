@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12)
 
 ## Context
 
@@ -17,13 +17,17 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
   - A face's module grid holds one module type. Columns run across the slope and rows up it, from the face's lowest corner on the left seen from the front, starting at the setback; the gap is 2 cm. A flat roof's grid runs along the block's width.
   - The scene is stored with its layout version as one document in the `pv` crate's schema, in which a module names its string by id. Through the API a module names its string by position in the version's strings, so new strings need no id first.
   - The core derives each string's module count, optimizer count and plane, the plane of its first module, with the `pv` crate; the browser's numbers are not trusted. A painted string of another module type than its grid is refused.
-- **Obstacles.** Opaque boxes (a neighbour, a wall), cylinders (a chimney, a pole) and trees (a trunk with a sphere crown), each with position, size and height.
+- **Obstacles.** Opaque boxes (a neighbour, a wall), cylinders (a chimney, a pole), trees (a trunk with a crown, broadleaf or conifer) and hedges (a straight row), each with position, size and height. A tree shades all year; leaf fall is not modelled.
+- **Garage.** A block with walls and any roof; it needs no kind of its own.
+- **Surroundings.** Ground surfaces and fences are drawn and never shade; the `pv` crate stores them and ignores them for shading.
+  - A *ground surface* is a rectangle on the plot with a footprint like a block's and one finish: lawn, paving, driveway, gravel or path. Later surfaces draw over earlier ones. Without any, the plot is lawn.
+  - A *fence* is a polyline on the ground with a height and one finish: wood, metal or wall.
 - **Equipment.** Markers for inverters and batteries, each linked to its device and placed on a block's wall, inside or outside.
   - A marker names its device, its kind (inverter or battery, so a hybrid inverter may carry one of each), its block, the wall (front along +z, right along +x, back, left) and its distance from the wall's left end seen from outside. It hangs at 1.5 m, at most half the eave, 10 cm off the wall; its label's anchor floats 1 m above the block's highest point. The `pv` crate places it, so the browser and the core agree; a marker past its wall's ends or on no block is refused. A marker of a removed device shows nothing.
 - **Car places.** A parking footprint, optionally under a carport whose roof carries modules, linked to one EVCC loadpoint device (ADR 10). It shows the car while one is connected.
   - A carport is a block marked open: a post at each corner reaches up to its roof instead of walls, and its roof faces carry module grids and shade like any other. A car place stands under one by position, not by reference.
-  - A place names its device, its corner, width, length and rotation like a block's footprint, the admin's pick of class and colour (`#rrggbb`), and an uploaded body by id. The `pv` crate stands the car at the place's centre, its nose along the place's −z, its label's anchor 2.5 m up; a place without a positive size, with another colour or an id no SHA-256 is refused.
-- **Car bodies.** SunReye draws its own low-poly bodies per class: sedan, hatchback, SUV, van, pickup. A small catalogue maps model names to a class and a colour (Tesla Model 3 Highland: sedan, pearl white); a matching EVCC vehicle title selects it, otherwise the admin picks. The catalogue is data in the SPA; each entry keeps a stable id, which the EVCC profile reads an exactly matching `vehicleTitle` as, `ev.vehicle.model` (ADR 4, 10). The admin may upload a GLB per catalogue entry or car place: at most 20 MB, no external URIs, scaled to the place's length and set on the ground, stored in the data directory and included in backups.
+  - A place names its device, its corner, width, length and rotation like a block's footprint, a colour (`#rrggbb`), and an uploaded body by id. The `pv` crate stands the car at the place's centre, its nose along the place's −z, its label's anchor 2.5 m up; a place without a positive size, with another colour or an id no SHA-256 is refused.
+- **Car body.** One default body ships: a low-poly mid-size sedan of about 4,000 triangles and under 50 KB, cut from "2024 Tesla Model 3 + Interior" by tonielpro520 (CC BY 4.0) without badges, interior or textures, and painted in the place's colour. The About page credits it. The admin may upload a GLB per car place instead: at most 20 MB, no external URIs, scaled to the place's length and set on the ground, stored in the data directory and included in backups.
   - An upload is admitted only as a glTF 2.0 binary container whose JSON names no `uri` anywhere, so every buffer and image is embedded; the cap holds while the body streams. It is kept as `cars/<sha256>.glb` in the data directory and named by that digest; backups (ADR 3) take the `cars` directory with the database. Viewers read a body; uploading is the admin's.
 
 **Editing.** Undo and redo until save. Saving checks that modules sit inside their face's setback and do not overlap. Unassigned modules are shown and produce nothing. A string whose open-circuit voltage at −10 °C exceeds the inverter's maximum DC input voltage (ADR 5) raises a warning, never a refusal, because the plant may already exist. That voltage scales the datasheet's Voc by its voltage coefficient, as string sizing does. The layout's answer carries the warnings, for strings entered by form too. The browser runs the same checks through the `pv` crate before saving.
@@ -40,13 +44,13 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Live dashboard.** When a scene exists, the dashboard opens on it, updated by live ticks (ADR 9): each string's power, tinted by its share of its own peak and labelled at its centre (estimates carry "≈"); each inverter's AC power; the battery's power, direction and SOC; the car's charging power and the vehicle's SOC when EVCC reports them; grid import or export and house consumption from the `plant` device. Equipment labels float above their markers on leader lines, readable through walls; without markers they sit beside the house. The 2D power flow serves when there is no scene, no WebGL2 or the low-power switch is on, and a toggle switches between them per browser. Until ADR 4 has a role for an inverter's AC output, its label shows its `pv.power`. The scene's tints and labels come from the live values only; three.js loads when the scene is shown.
 
-**Look.** A matte architectural clay model that matches the SPA (ADR 21):
-- **Materials:** soft white walls, a graphite or terracotta roof, and dark glass modules with a faint sheen. No texture files.
-- **Ground:** a round plate that fades into the page background.
-- **Light:** a hemisphere light plus the sun at its real position for the plant and time, casting soft shadows. The builder's time slider moves it, and nights use night lighting.
-- **Strings:** tinted on the solar amber ramp.
-- **Theme:** background, fog and light follow light or dark mode.
-- **Rendering quality:** antialiasing is on, and the wall moiré is fixed.
+**Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
+- **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
+- **Modules:** full black: black cells, backsheet and frames under anti-reflective glass, which reflects about half as much as plain glass.
+- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off under the low-power switch.
+- **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
+- **Theme:** the page background, fog and exposure follow light or dark mode.
+- **Rendering quality:** antialiasing is on, and tone mapping is filmic.
 
 **Motion.** There is still no continuous loop. Short ease-in-out tweens run, then rendering stops:
 - the camera flies to a preset in about 600 ms;
@@ -56,7 +60,19 @@ Energy flow shows as tint and label arrows.
 
 **Labels.** Labels are ambient-glass chips with an icon, an animated value and a flow-colour dot. They push each other apart so they never overlap, and stay inside the canvas. Tapping a chip opens that equipment's detail sheet.
 
-**Builder layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Obstacles, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up.
+**Building it.** Anyone should get from nothing to their roof in minutes, on a tablet or with a mouse.
+- **Templates.** An empty scene offers starting points: detached house with gable roof, bungalow with flat roof, house with hip roof, L-house (two blocks), terrace end, and empty. A template only fills the scene; nothing remembers it.
+- **Handles.** Selecting an object shows handles in 3D:
+  - arrows on its walls drag width and depth;
+  - a handle on the ridge or high eave drags the pitch;
+  - a ring rotates it;
+  - dragging its footprint moves it.
+- **Snapping.** Lengths snap to 10 cm, angles to 5°, and edges to other blocks' edges and the compass axes. The live value shows beside the handle while dragging.
+- **Modules.** "Fill face" places as many modules as the face's grid holds. A tap toggles one cell, and a drag paints or erases cells.
+- **Strings.** Pick a string, then drag across modules to paint it.
+- **Inspector.** It shows the exact numbers. Editing one moves the handles, and every handle drag is one undo step.
+- **Touch.** One finger on a handle drags it, and on empty space orbits. Two fingers pan and zoom.
+- **Layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Surroundings, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up.
 
 ## Considered options
 
@@ -65,8 +81,10 @@ Energy flow shows as tint and label arrows.
 - **Shading in three.js.** Rejected: the forecast and the scene would disagree.
 - **Threlte.** Rejected: a wrapper that must follow every Svelte major.
 - **Map tiles to trace the roof.** Rejected: privacy, licensing and network.
-- **Bundled realistic car models.** Rejected: brand replicas carry copyright and design rights; uploads cover owners who want one.
+- **SunReye-drawn bodies per class, picked through a car catalogue from the EVCC vehicle title.** Rejected: a stylised body looks like a toy beside the realistic house, and a catalogue is upkeep for a cosmetic. One de-badged default plus uploads covers every car.
+- **The full textured car model (2.5 MB).** Rejected: about 2.5 minutes over a slow link, for detail nobody sees from the yard.
+- **A numbers-only builder.** Rejected: homeowners think in roofs and drags; the numbers stay in the inspector for precision.
 
 ## Consequences
 
-The builder ships after 5.0.0 (ADR 1). The `pv` crate models every module, which also improves the forecast of plants entered by form. Inverter profiles gain their maximum DC input voltage. The dashboard loads three.js when a scene exists.
+The builder ships after 5.0.0 (ADR 1). The `pv` crate models every module, which also improves the forecast of plants entered by form. The default car keeps a real car's shape, without badge or name; its CC BY credit must stay on the About page. Inverter profiles gain their maximum DC input voltage. The dashboard loads three.js when a scene exists.

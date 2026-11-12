@@ -61,8 +61,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 **Colour.**
 - **Theme:** dark by default and designed dark-first. Light is fully supported, with a manual override.
-- **Energy colours:** each flow has one fixed colour everywhere: charts, tiles, the 2D flow and the 3D scene. Solar amber, battery green, grid import red-violet, export teal, consumption neutral, EV blue. The palette is validated for colour-blind contrast.
-- **Brand colour:** marks controls only, never data.
+- **Energy colours:** each flow has one fixed colour everywhere: charts, tiles, the 2D flow and the 3D scene. Solar amber, battery green, grid import rose-red, export teal, consumption neutral, EV violet. The palette is validated for colour-blind contrast.
+- **Brand:** SunReye's v3 mark, a flat sun of eight rays around a disc, in blue-600 (`#2563eb`; a lighter blue in dark mode). The brand colour marks controls only, never data, which is why no energy flow is blue.
 
 **Surfaces.** kbase's rules apply:
 - a card must do something;
