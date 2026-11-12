@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "register-enum" | "setting-text" | "verified" | "poll-group" | "live-control";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -42,7 +42,9 @@ scaleFactor?: number,
  */
 resolution?: number, offset?: number, compute?: Expr, range?: Range, 
 /**
- * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+ * A topic's text payloads and the values they read as, such as EVCC's loadpoint mode; or a
+ * register's raw values, in decimal, and the values they read as, such as Deye's running
+ * state. Any other payload or raw value is no value.
  */
 enum?: Record<string, number>, 
 /**

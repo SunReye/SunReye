@@ -69,6 +69,8 @@ pub struct Quantity {
     pub index: Option<u32>,
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
+    /// A register's raw values and the values they read as; any other raw value is no value.
+    pub(crate) variants: Vec<(f64, f64)>,
     step: f64,
     deadband: Option<f64>,
     cadence: Duration,
@@ -132,7 +134,9 @@ impl Quantity {
     #[must_use]
     pub const fn linear(&self) -> Option<(u16, f64, f64)> {
         match &self.read {
-            Read::Register(r) if r.scale_factor.is_none() => Some((r.address, r.scale, r.offset)),
+            Read::Register(r) if r.scale_factor.is_none() && self.variants.is_empty() => {
+                Some((r.address, r.scale, r.offset))
+            }
             Read::Register(_)
             | Read::Point { .. }
             | Read::Topic { .. }
@@ -636,6 +640,7 @@ fn compile(
         {
             return Err(refuse("a profile reads through one binding"));
         }
+        let variants = variants(&doc, &read).map_err(refuse)?;
         let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
         let cadence =
             cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
@@ -646,6 +651,7 @@ fn compile(
             index: doc.index,
             read,
             range: doc.range,
+            variants,
             step,
             deadband: doc.deadband,
             cadence,
@@ -686,8 +692,8 @@ fn step(read: &Read, earlier: &[Quantity]) -> f64 {
 fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &'static str> {
     let scale = doc.scale.unwrap_or(1.0);
     let offset = doc.offset.unwrap_or(0.0);
-    if doc.texts.is_some() && doc.topic.is_none() {
-        return Err("only a topic maps texts");
+    if doc.texts.is_some() && doc.topic.is_none() && doc.register.is_none() {
+        return Err("only a topic or a register maps an enum");
     }
     // A JSON number is a float, which may declare the resolution it is stored in.
     if doc.scale_factor.is_some() != doc.resolution.is_some() && doc.get.is_none() {
@@ -727,6 +733,29 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
         }
         _ => Err("declare one of `register`, `topic`, `get` or `compute`"),
     }
+}
+
+/// The raw values a register's `enum` maps, each a decimal integer its type holds.
+fn variants(doc: &QuantityDoc, read: &Read) -> Result<Vec<(f64, f64)>, &'static str> {
+    let (Some(texts), Read::Register(register)) = (&doc.texts, read) else {
+        return Ok(Vec::new());
+    };
+    if doc.scale.is_some() || doc.offset.is_some() {
+        return Err("an enum takes no scale or offset");
+    }
+    let (min, max) = match register.kind {
+        Kind::U16 => (0, i64::from(u16::MAX)),
+        Kind::I16 => (i64::from(i16::MIN), i64::from(i16::MAX)),
+        Kind::U32 | Kind::Acc32 => (0, i64::from(u32::MAX)),
+    };
+    texts
+        .iter()
+        .map(|(raw, value)| match raw.parse::<i64>() {
+            #[expect(clippy::cast_precision_loss, reason = "within u32, exact in an f64")]
+            Ok(raw) if (min..=max).contains(&raw) => Ok((raw as f64, *value)),
+            _ => Err("an enum maps raw values its register type holds"),
+        })
+        .collect()
 }
 
 fn json(doc: &QuantityDoc, get: &str, scale: f64, offset: f64) -> Result<Read, &'static str> {
