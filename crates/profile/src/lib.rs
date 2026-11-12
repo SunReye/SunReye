@@ -59,6 +59,7 @@ pub const CAPABILITIES: &[&str] = &[
     "verified",
     "poll-group",
     "live-control",
+    "time",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

@@ -26,6 +26,14 @@ const MODE = editable({
   step: 1,
 });
 
+const START = editable({
+  key: "battery.time_of_use.1.start",
+  name: "Zeitfenster 1 · Beginn",
+  range: { min: 0, max: 1435 },
+  step: 5,
+  time: true,
+});
+
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 
 beforeEach(async () => {
@@ -203,4 +211,71 @@ test("opening plays nudge", async () => {
 
   await expect.element(page.getByRole("spinbutton")).toBeVisible();
   expect(vibrate).toHaveBeenCalled();
+});
+
+test("a time shows an hour and a minute wheel at the step the profile allows", async () => {
+  await editor(undefined, START, 22 * 60 + 30);
+
+  const hour = page.getByRole("spinbutton", { name: "Stunde" });
+  const minute = page.getByRole("spinbutton", { name: "Minute" });
+
+  await expect.element(hour).toHaveAttribute("aria-valuetext", "22");
+  await expect.element(minute).toHaveAttribute("aria-valuetext", "30");
+  await expect.element(minute).toHaveAttribute("aria-valuemax", "55");
+});
+
+test("arrows move a time's hours and minutes and apply writes minutes since midnight", async () => {
+  const onapply = vi.fn((_value: number) => Promise.resolve<Outcome>({ kind: "confirmed" }));
+  await editor(onapply, START, 22 * 60 + 30);
+
+  page.getByRole("spinbutton", { name: "Minute" }).element().focus();
+  await userEvent.keyboard("{ArrowUp}");
+  page.getByRole("spinbutton", { name: "Stunde" }).element().focus();
+  await userEvent.keyboard("{ArrowDown}");
+
+  const change = page.getByRole("button", { name: /^Übernehmen/u });
+  await expect.element(change).toHaveTextContent("Übernehmen 22:30 21:35");
+  await userEvent.click(change);
+
+  expect(onapply).toHaveBeenCalledExactlyOnceWith(21 * 60 + 35);
+});
+
+test("a finger dragging the hour wheel up moves to a later hour", async () => {
+  await editor(undefined, START, 6 * 60);
+
+  const hour = page.getByRole("spinbutton", { name: "Stunde" });
+  const wheel = hour.element();
+
+  // A synthetic pointer has no capture to take.
+  wheel.setPointerCapture = () => {};
+
+  const box = wheel.getBoundingClientRect();
+  const clientX = box.left + box.width / 2;
+  const y = box.top + box.height / 2;
+
+  const touch = (type: string, clientY: number) =>
+    wheel.dispatchEvent(
+      new PointerEvent(type, {
+        clientX,
+        clientY,
+        pointerType: "touch",
+        pointerId: 7,
+        isPrimary: true,
+        bubbles: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+      }),
+    );
+
+  touch("pointerdown", y);
+
+  for (const dy of [10, 30, 50, 70, 88]) touch("pointermove", y - dy);
+
+  // The finger rests before it lifts, so the wheel lands where it was let go, without a fling.
+  await new Promise((resolve) => {
+    setTimeout(resolve, 100);
+  });
+  touch("pointerup", y - 88);
+
+  await expect.element(hour).toHaveAttribute("aria-valuetext", "08");
 });
