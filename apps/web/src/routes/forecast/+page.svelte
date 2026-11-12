@@ -5,6 +5,7 @@
 
   // The page's directory is the core's root, under an ingress prefix too (ADR 11).
   const core = connect(http(new URL(".", document.baseURI).href));
+
   // The range lives in the hash route (ADR 21).
   const params = $derived(routeParams());
 </script>
