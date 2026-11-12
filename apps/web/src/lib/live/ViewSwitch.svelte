@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import { CHOICE, LOW_POWER, type View } from "./dashboard.ts";
 
@@ -32,6 +33,7 @@
     onchange={(event) => {
       lowPower = event.currentTarget.checked;
       localStorage.setItem(LOW_POWER, lowPower ? "on" : "off");
+      motion.lowPower = lowPower;
     }}
   />
   {m.live_low_power()}

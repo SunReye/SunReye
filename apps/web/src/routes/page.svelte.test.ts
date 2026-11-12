@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { Layout } from "../lib/api/core.ts";
+import { motion } from "../lib/motion/tier.svelte.ts";
 import { getLocale, setLocale } from "../lib/paraglide/runtime.js";
 import Page from "./+page.svelte";
 
@@ -152,6 +153,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  motion.lowPower = false;
   await setLocale("de", { reload: false });
 });
 
@@ -212,6 +214,7 @@ test("the low-power switch shows the 2D flow", async () => {
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "2D-Ansicht" }).query()).toBeNull();
+  expect(motion.tier).toBe("still");
 });
 
 test("without WebGL2 a scene still leaves the 2D flow", async () => {
