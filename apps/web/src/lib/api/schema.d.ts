@@ -1363,6 +1363,12 @@ export interface components {
              */
             estimated: string[];
             /**
+             * Format: double
+             * @description An inverter's maximum DC input voltage in volts, from its profile: what a string's
+             *     open-circuit voltage at −10 °C is checked against (ADR 20).
+             */
+            maxInputVoltage?: number | null;
+            /**
              * @description The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
              *     it can report, not what it reports now.
              */

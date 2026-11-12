@@ -20,6 +20,7 @@ use utoipa_axum::routes;
 
 use crate::auth::Auth;
 use crate::backup::Backups;
+use crate::bus::DeviceId;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::correction::Corrections;
@@ -225,6 +226,7 @@ struct Support {
 }
 
 #[derive(Default, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 struct DeviceSupport {
     /// Series computed from others, not measured, such as `pv.string.power[3]` of a string
     /// in parallel (ADR 17).
@@ -236,6 +238,10 @@ struct DeviceSupport {
     writes: bool,
     /// What its profile lets the core write, in the profile's order.
     settings: Vec<SettingSupport>,
+    /// An inverter's maximum DC input voltage in volts, from its profile: what a string's
+    /// open-circuit voltage at −10 °C is checked against (ADR 20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_input_voltage: Option<f64>,
 }
 
 /// A setting a device's profile declares (ADR 5, 7).
@@ -297,6 +303,12 @@ async fn capabilities(
             .iter()
             .map(|(setting, enable)| setting_support(setting, *enable))
             .collect();
+    }
+    for (DeviceId(device), volts) in layouts.inverters().max_input_voltages() {
+        support
+            .entry(device.to_string())
+            .or_default()
+            .max_input_voltage = Some(volts);
     }
     let devices = support;
     let support = sunreye_profile::SUPPORT;

@@ -101,6 +101,16 @@ impl Inverters {
         inverters.get(&device).cloned()
     }
 
+    /// Each inverter's maximum DC input voltage, by device, where its profile declares one.
+    #[must_use]
+    pub fn max_input_voltages(&self) -> Vec<(DeviceId, f64)> {
+        let inverters = crate::read(&self.0);
+        inverters
+            .iter()
+            .filter_map(|(id, profile)| Some((*id, profile.inverter()?.max_input_voltage)))
+            .collect()
+    }
+
     /// Replaces the set for every clone.
     pub fn replace(&self, inverters: impl IntoIterator<Item = (DeviceId, Arc<Profile>)>) {
         let inverters = inverters.into_iter().collect();
