@@ -1,5 +1,4 @@
 import createClient from "openapi-fetch";
-import { access, type Access } from "./access";
 import { carBodies, type CarBodies } from "./car-bodies";
 import { refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
@@ -46,11 +45,9 @@ export type WriteLog = components["schemas"]["WriteLog"];
 
 export type { Problem } from "./client";
 
-export type { CreatedToken, Scope, Token, Viewer } from "./access";
-
 export type { ImportStatus, SharedArchive } from "./imports";
 
-export type { Connection, Found, PointDraft } from "./setup";
+export type { Connection, CreatedToken, Found, PointDraft, Scope, Token, Viewer } from "./setup";
 
 export type { Live, Values } from "./live";
 
@@ -74,7 +71,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, Access {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -164,7 +161,6 @@ export function connect(transport: Transport): Core {
     ...pvModel(client),
     ...status(client),
     ...tariffs(client),
-    ...access(client),
   };
 }
 

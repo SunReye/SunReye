@@ -62,7 +62,7 @@ test("tokens list with their scope, never the token", async () => {
 });
 
 test("a created token answers the token once, with its name and scope", async () => {
-  const created = { id: 3, name: "evcc", scope: "admin", token: "a".repeat(64) };
+  const created = { id: 3, name: "evcc", scope: "admin" as const, token: "a".repeat(64) };
   const core = answering(Response.json(created, { status: 201 }));
 
   expect(await connect(core).addToken("evcc", "admin")).toEqual(created);
