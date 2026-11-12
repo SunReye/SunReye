@@ -31,6 +31,9 @@ pub use surroundings::{
 };
 pub use temperature::cell_temperature;
 
+/// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
+pub const COLD: f64 = -10.0;
+
 /// A string's open-circuit voltage at a cell temperature in °C, by the datasheet's voltage
 /// coefficient: what sizing checks against an inverter's maximum DC input voltage (ADR 20).
 #[must_use]

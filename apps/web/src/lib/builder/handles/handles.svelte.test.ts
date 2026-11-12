@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { presetView, type View } from "../camera.ts";
-import { house, pv } from "../builder.harness.ts";
+import { house, press, pv, type Pointer } from "../builder.harness.ts";
 import type { Point, Scene } from "../pv.ts";
 import type { Projector } from "../drawing.svelte.ts";
 import SceneCanvas from "../SceneCanvas.svelte";
@@ -16,55 +16,6 @@ const BLOCK: Target = { kind: "block", index: 0 };
 
 /** A three.js point as the pv crate's: east, north, up. */
 const point = ([x, y, z]: Triple): Point => [x, 0 - z, y];
-
-type Pointer = "mouse" | "pen" | "touch";
-
-/** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
-async function press(kind: Pointer, path: readonly (readonly [number, number])[]): Promise<void> {
-  const [first, ...rest] = path;
-
-  if (first === undefined) return;
-
-  if (kind === "touch") {
-    await cdp().send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: first[0], y: first[1] }],
-    });
-
-    for (const [x, y] of rest) {
-      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
-    }
-
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-
-    return;
-  }
-
-  const mouse = { button: "left", pointerType: kind, clickCount: 1 } as const;
-
-  await cdp().send("Input.dispatchMouseEvent", {
-    ...mouse,
-    type: "mousePressed",
-    x: first[0],
-    y: first[1],
-  });
-
-  for (const [x, y] of rest) {
-    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-    await cdp().send("Input.dispatchMouseEvent", {
-      ...mouse,
-      type: "mouseMoved",
-      buttons: 1,
-      x,
-      y,
-    });
-  }
-
-  const [x, y] = rest.at(-1) ?? first;
-
-  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
-}
 
 async function stage(scene: Scene) {
   const dragged: Scene[] = [];

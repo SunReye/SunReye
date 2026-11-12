@@ -92,6 +92,7 @@
           {moduleTypes}
           {level}
           onlevel={go}
+          strokes={session}
           onchange={(draft) => {
             session.change(draft);
           }}

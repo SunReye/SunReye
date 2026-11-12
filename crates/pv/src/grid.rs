@@ -99,6 +99,22 @@ pub enum Misplaced {
     Overlap { grid: usize, row: u32, column: u32 },
 }
 
+impl ModuleGrid {
+    /// A cell's lower left and upper right corner in its face's outline, whether or not it fits
+    /// inside the setback.
+    #[must_use]
+    pub fn area(&self, size: Size, row: u32, column: u32) -> [[f64; 2]; 2] {
+        let (wide, high) = if self.landscape {
+            (size.height, size.width)
+        } else {
+            (size.width, size.height)
+        };
+        let left = (wide + GAP).mul_add(f64::from(column), self.setback);
+        let bottom = (high + GAP).mul_add(f64::from(row), self.setback);
+        [[left, bottom], [left + wide, bottom + high]]
+    }
+}
+
 impl Scene {
     /// Every roof face of every block, block by block.
     #[must_use]
@@ -179,17 +195,10 @@ impl RoofFace {
     /// Every cell of `grid` whose module fits inside the setback, row by row.
     #[must_use]
     pub fn cells(&self, grid: &ModuleGrid, size: Size) -> Vec<CellPlace> {
-        let (wide, high) = if grid.landscape {
-            (size.height, size.width)
-        } else {
-            (size.width, size.height)
-        };
         (0..LIMIT)
             .flat_map(|row| (0..LIMIT).map(move |column| (row, column)))
             .filter_map(|(row, column)| {
-                let left = (wide + GAP).mul_add(f64::from(column), grid.setback);
-                let bottom = (high + GAP).mul_add(f64::from(row), grid.setback);
-                let area = [[left, bottom], [left + wide, bottom + high]];
+                let area = grid.area(size, row, column);
                 let [[l, b], [r, t]] = area;
                 let square = [[l, b], [r, b], [r, t], [l, t]];
                 square

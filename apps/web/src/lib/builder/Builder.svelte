@@ -22,6 +22,7 @@
     moduleTypes,
     devices,
     location,
+    limits = {},
   }: {
     pv: Pv;
     core: Core;
@@ -32,19 +33,23 @@
     devices: readonly Device[];
     /** Unknown to a viewer: the sun stays put and no clear sky is run. */
     location?: Location | undefined;
+    /** Each inverter's maximum DC input voltage, by device id; a viewer knows none. */
+    limits?: Opening["limits"];
   } = $props();
 
   // Desktop and tablet edit; a phone views (ADR 20).
   const phone = new MediaQuery("max-width: 40rem");
   const portrait = new MediaQuery("orientation: portrait");
 
-  const session = new Session(() => ({ pv, core, start, moduleTypes, devices }));
+  const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits }));
 
   provideUploader((glb) => core.uploadCarBody(glb));
 
   const sheet = $derived(!phone.current && portrait.current);
 
   const editing = $derived(phone.current ? undefined : session.editing);
+
+  const painting = $derived(phone.current ? undefined : session.painting);
 </script>
 
 <div
@@ -65,6 +70,7 @@
       {location}
       clear={sheet ? PEEK : 0}
       {editing}
+      {painting}
       onpick={phone.current
         ? undefined
         : (hit) => {

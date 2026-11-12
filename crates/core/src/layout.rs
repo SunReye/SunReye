@@ -40,7 +40,6 @@ const NONE: Problem = Problem {
     code: Code::LayoutNone,
 };
 /// °C: the cell temperature strings are sized for (ADR 20).
-const COLD: f64 = -10.0;
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
@@ -100,6 +99,16 @@ impl Inverters {
     pub fn profile(&self, device: DeviceId) -> Option<Arc<Profile>> {
         let inverters = crate::read(&self.0);
         inverters.get(&device).cloned()
+    }
+
+    /// Each inverter's maximum DC input voltage, by device, where its profile declares one.
+    #[must_use]
+    pub fn max_input_voltages(&self) -> Vec<(DeviceId, f64)> {
+        let inverters = crate::read(&self.0);
+        inverters
+            .iter()
+            .filter_map(|(id, profile)| Some((*id, profile.inverter()?.max_input_voltage)))
+            .collect()
     }
 
     /// Replaces the set for every clone.
@@ -349,7 +358,8 @@ impl Layouts {
                 let module = module_types.iter().find(|m| m.id == w.module_type)?;
                 let profile = self.inverters.profile(DeviceId(w.device))?;
                 let limit = profile.inverter()?.max_input_voltage;
-                let voltage = pv::open_circuit_voltage(&module.datasheet.model(), w.modules, COLD);
+                let voltage =
+                    pv::open_circuit_voltage(&module.datasheet.model(), w.modules, pv::COLD);
                 (voltage > limit).then_some(Warning {
                     string: string.id,
                     open_circuit_voltage: voltage,

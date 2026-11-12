@@ -1018,6 +1018,14 @@
             },
             "type": "array"
           },
+          "maxInputVoltage": {
+            "description": "An inverter's maximum DC input voltage in volts, from its profile: what a string's\nopen-circuit voltage at −10 °C is checked against (ADR 20).",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "series": {
             "description": "The series its profile publishes, extras left out, such as `load.phase.power[2]`: what\nit can report, not what it reports now.",
             "items": {

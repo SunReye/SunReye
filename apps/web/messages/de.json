@@ -159,6 +159,8 @@
   "builder_landscape": "Quer",
   "field_setback": "Randabstand (m)",
   "builder_remove_grid": "Raster entfernen",
+  "builder_fill_face": "Fläche füllen",
+  "builder_refused_module_type": "{name} hat einen anderen Modultyp als dieses Raster.",
   "builder_cells": "Zellen der Fläche",
   "builder_cell": "Reihe {row}, Spalte {column}",
   "builder_tool": "Werkzeug",

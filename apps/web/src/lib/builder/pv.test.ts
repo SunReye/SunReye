@@ -163,7 +163,13 @@ test("the crate lays out a south face's cells: 8 columns and 2 rows of portrait 
 test("a module beyond the setback comes back misplaced", () => {
   const { misplaced } = pv.modules(gridded([{ row: 2, column: 0, optimized: false }]), sizes);
 
-  expect(misplaced).toEqual({ kind: "setback", grid: 0, row: 2, column: 0 });
+  // Row 2 starts 0.3 + 2 × 1.742 m up the slope and reaches past the face's 4.883 m.
+  expect(misplaced).toMatchObject({ kind: "setback", grid: 0, row: 2, column: 0 });
+  const area = misplaced && "area" in misplaced ? (misplaced.area?.flat() ?? []) : [];
+
+  expect(area.map((metres) => Math.round(metres * 1000) / 1000)).toEqual([
+    0.3, 3.784, 1.434, 5.506,
+  ]);
 });
 
 test("a carport has posts for walls and a car stands at its place's centre, nose forward", () => {
@@ -253,6 +259,15 @@ test("a clear sky lights a painted south string over one entered by form facing 
   expect(south).toBeGreaterThan(north);
   expect(south).toBeLessThan(4 * 400);
   expect(north).toBeGreaterThan(0);
+});
+
+test("each string's open-circuit voltage at −10 °C scales its modules' Voc by the coefficient", () => {
+  // 16 × 41 V × (1 + 0.27 %/K × 35 K), worked by hand.
+  const [volts] = pv.coldVoltages([datasheet], [wired(16, 0)]);
+
+  expect(volts).toBeCloseTo(717.992, 3);
+  // An unknown module type has no voltage.
+  expect(pv.coldVoltages([], [wired(16, 0)])).toEqual([null]);
 });
 
 test("the sun due south at 60° from the zenith shines from the south, up", () => {

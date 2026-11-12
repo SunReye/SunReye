@@ -5,7 +5,7 @@
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import FaceGrid from "./FaceGrid.svelte";
-  import { addGrid, type Draft } from "./modules.ts";
+  import { addGrid, type Draft, type Strokes } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import type { RoofFace } from "./pv.ts";
 
@@ -14,6 +14,7 @@
     plan,
     moduleTypes,
     moduleType,
+    strokes,
     onchange,
   }: {
     roof: RoofFace;
@@ -21,6 +22,7 @@
     moduleTypes: readonly ModuleType[];
     /** A new grid's module type; without one no grid is laid. */
     moduleType: number | undefined;
+    strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
 
@@ -38,7 +40,12 @@
     grid={draft.scene.grids[index]}
     {roof}
     cells={plan.laid.grids[index] ?? []}
+    checks={{
+      misplaced: plan.laid.misplaced?.grid === index ? plan.laid.misplaced : null,
+      cold: plan.cold,
+    }}
     {moduleTypes}
+    {strokes}
     {onchange}
   />
 {:else if moduleType !== undefined}

@@ -235,6 +235,8 @@ async fn capabilities_mark_parallel_strings_estimated() {
     // The second string is alone on input 2: measured, not estimated.
     let estimated = [&ids[0].1, &ids[1].1].map(|id| format!("pv.string.power[{id}]"));
     assert_eq!(body["devices"]["1"]["estimated"], json!(estimated));
+    // The builder checks each string's cold voltage against it before saving (ADR 20).
+    assert_eq!(body["devices"]["1"]["maxInputVoltage"], json!(800.0));
 }
 
 /// A 10 m × 8 m gable house at 35°; face 1 faces south.

@@ -14,6 +14,7 @@ function session(): Session {
       start,
       moduleTypes: [MODULE],
       devices: DEVICES,
+      limits: {},
     }));
   });
 

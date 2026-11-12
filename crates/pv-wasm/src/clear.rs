@@ -14,8 +14,8 @@ use crate::Place;
 /// A module type's datasheet, as the core's API names it.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Datasheet {
-    id: u32,
+pub struct Datasheet {
+    pub id: u32,
     vmp: f64,
     imp: f64,
     voc: f64,
@@ -28,7 +28,7 @@ struct Datasheet {
 }
 
 impl Datasheet {
-    const fn model(&self) -> ModuleType {
+    pub const fn model(&self) -> ModuleType {
         ModuleType {
             vmp: self.vmp,
             imp: self.imp,
@@ -46,11 +46,11 @@ impl Datasheet {
 /// A string's wiring, as the core's API names it.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Wiring {
-    module_type: u32,
+pub struct Wiring {
+    pub module_type: u32,
     device: u32,
     input: u32,
-    modules: u16,
+    pub modules: u16,
     optimized: u16,
     tilt: f64,
     azimuth: f64,

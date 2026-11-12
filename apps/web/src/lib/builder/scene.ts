@@ -2,7 +2,6 @@
 // component only adds the group to its renderer.
 import {
   BufferGeometry,
-  type Camera,
   CylinderGeometry,
   DoubleSide,
   Float32BufferAttribute,
@@ -11,8 +10,6 @@ import {
   type Object3D,
   MeshPhysicalMaterial,
   type MeshStandardMaterial,
-  Raycaster,
-  Vector2,
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
@@ -33,6 +30,9 @@ export interface Panel {
   readonly string?: number | null;
   /** The grid it lies in, by position in the scene; a click on it opens that face. */
   readonly grid?: number;
+  /** Its cell in that grid. */
+  readonly row?: number;
+  readonly column?: number;
 }
 
 /** The string glow: the solar colour, and how far the light it stands for shows (`daylight`). */
@@ -262,39 +262,4 @@ export async function buildSliced(
   return group;
 }
 
-/** What a click in the scene struck: a module of a grid, a marker, or a surface at a point. */
-export type Hit =
-  | { readonly kind: "grid"; readonly grid: number }
-  | { readonly kind: "equipment"; readonly index: number }
-  | { readonly kind: "point"; readonly point: Point };
-
-/**
- * What the ray from `camera` through `at` (−1 to 1 across the canvas, y up) strikes first among
- * `buildScene`'s meshes; null for nothing.
- */
-export function strike(
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js updates its matrices.
-  group: Group,
-  panels: readonly Panel[],
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js updates its matrices.
-  camera: Camera,
-  at: readonly [number, number],
-): Hit | null {
-  const ray = new Raycaster();
-
-  ray.setFromCamera(new Vector2(...at), camera);
-
-  const [first] = ray.intersectObject(group, true);
-
-  if (first === undefined) return null;
-
-  const { object, point } = first;
-  const index = group.getObjectsByProperty("name", object.name).indexOf(object);
-  const grid = panels[index]?.grid;
-
-  if (object.name === "module" && grid !== undefined) return { kind: "grid", grid };
-
-  if (object.name === "equipment") return { kind: "equipment", index };
-
-  return { kind: "point", point: [point.x, 0 - point.z, point.y] };
-}
+export { strike, type Hit } from "./strike.ts";
