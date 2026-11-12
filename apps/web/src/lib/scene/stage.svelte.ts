@@ -17,6 +17,7 @@ import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
+import { Flight } from "./flight.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Studio } from "./studio.ts";
 
@@ -39,6 +40,8 @@ function dark(): boolean {
 
 export interface Lit {
   readonly studio: Studio;
+  /** The camera's flight to a new view; it lands at once on the still tier. */
+  readonly flight: Flight;
   /** The string glow now: read in an effect, it follows the sun and the theme. */
   readonly glow: () => Glow;
   /** Relights `drawn` on each live tick, easing to the new `shares` (ADR 21). */
@@ -132,6 +135,7 @@ export function lit(
 
   return {
     studio,
+    flight: new Flight(() => motion.still),
     glow,
     ease: (drawn, shares) => {
       easeGlow(drawn, shares, glow, render);
