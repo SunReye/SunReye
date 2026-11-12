@@ -66,7 +66,16 @@ test("ground surfaces lie on the ground and fences run through their points; ref
   const surrounded: Scene = {
     ...house,
     surfaces: [{ x: 0, z: 10, width: 4, depth: 2, rotation: 0, finish: "driveway" }],
-    fences: [{ points: [[0, 12], [6, 12]], height: 1.2, finish: "metal" }],
+    fences: [
+      {
+        points: [
+          { x: 0, z: 12 },
+          { x: 6, z: 12 },
+        ],
+        height: 1.2,
+        finish: "metal",
+      },
+    ],
   };
 
   const { ground, fences } = pv.geometry(surrounded);
@@ -96,7 +105,7 @@ test("ground surfaces lie on the ground and fences run through their points; ref
   const refused = pv.geometry({
     ...surrounded,
     surfaces: [{ x: 0, z: 0, width: 0, depth: 2, rotation: 0, finish: "gravel" }],
-    fences: [{ points: [[0, 0]], height: 1, finish: "wall" }],
+    fences: [{ points: [{ x: 0, z: 0 }], height: 1, finish: "wall" }],
   });
 
   expect([refused.ground, refused.fences]).toEqual([null, null]);

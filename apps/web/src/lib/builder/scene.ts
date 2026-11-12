@@ -16,7 +16,8 @@ import {
 } from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as finish from "../scene/materials.ts";
-import { crown, fan, level, moduleUvs, uvs } from "../scene/surfaces.ts";
+import { fence, ground } from "../scene/surroundings.ts";
+import { conifer, crown, fan, foliage, level, moduleUvs, uvs } from "../scene/surfaces.ts";
 import type { Face, Geometry, Mount, Point, Solid } from "./pv.ts";
 
 /** Strings by position, then again; distinct from roofs and the sky. */
@@ -108,22 +109,28 @@ function surface(
 
 /** Whether a cylinder carries a crown straight above it: a trunk. */
 function trunk(
-  { base, radius }: Readonly<Solid & { kind: "cylinder" }>,
+  { base, radius }: Readonly<Solid & { kind: "cylinder" | "cone" }>,
   solids: readonly Solid[],
 ): boolean {
-  return solids.some(
-    (other) =>
-      other.kind === "sphere" &&
-      Math.hypot(other.centre[0] - base[0], other.centre[1] - base[1]) <= Math.max(radius, 0.01),
-  );
+  return solids.some((other) => {
+    const above =
+      other.kind === "sphere" ? other.centre : other.kind === "cone" ? other.base : null;
+
+    return (
+      above !== null && Math.hypot(above[0] - base[0], above[1] - base[1]) <= Math.max(radius, 0.01)
+    );
+  });
 }
 
 /** A crown or a trunk, a chimney or a pole. */
 function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
-  if (obstacle.kind === "sphere") {
-    const leaves = crown(obstacle.radius, 7 + i * 101);
+  if (obstacle.kind !== "cylinder") {
+    const leaves =
+      obstacle.kind === "sphere"
+        ? crown(obstacle.radius, 7 + i * 101)
+        : conifer(obstacle.radius, obstacle.height, 7 + i * 101);
 
-    leaves.position.set(...toThree(obstacle.centre));
+    leaves.position.set(...toThree(obstacle.kind === "sphere" ? obstacle.centre : obstacle.base));
     leaves.name = "solid";
 
     return leaves;
@@ -144,6 +151,17 @@ function solid(obstacle: Solid, i: number, solids: readonly Solid[]): Mesh {
   upright.name = "solid";
 
   return upright;
+}
+
+/** Hedges: a dark body under clusters of leaves. */
+function hedges(faces: readonly Face[]): Mesh[] {
+  if (faces.length === 0) return [];
+
+  const body = surface("hedge", faces, finish.hedge(), finish.REPEAT.render);
+
+  body.add(foliage(faces, 13));
+
+  return [body];
 }
 
 function panel({ corners, string }: Panel): Mesh {
@@ -200,13 +218,18 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
       ),
     ],
     () => [surface("obstacle", faces("obstacle"), finish.render(), finish.REPEAT.render)],
+    () => hedges(faces("hedge")),
+    () => [
+      ...(geometry.ground ?? []).map((item, i) => ground(item, i)),
+      ...(geometry.fences ?? []).map((item) => fence(item)),
+    ],
     () => geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
     () => panels.map((item) => panel(item)),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
   ];
 }
 
-/** The scene's meshes: one per surface kind, solid, placed module and equipment marker. */
+/** The scene's meshes: per surface kind, solid, ground, fence, placed module and marker. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
 

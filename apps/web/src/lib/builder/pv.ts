@@ -1,6 +1,18 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
+import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import { isGeometry, isModules, isSun, isWatts, unwrap } from "./replies.ts";
+
+export type {
+  Fence,
+  FenceFinish,
+  FencePoint,
+  Fencing,
+  Ground,
+  GroundFinish,
+  GroundSurface,
+  Obstacle,
+} from "./obstacles.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -24,67 +36,6 @@ export interface Block {
   readonly roof: Roof;
   /** A carport: a post at each corner instead of walls. */
   readonly open?: boolean;
-}
-
-export type Obstacle =
-  | {
-      readonly kind: "box";
-      readonly x: number;
-      readonly z: number;
-      readonly width: number;
-      readonly depth: number;
-      readonly height: number;
-      readonly rotation: number;
-    }
-  | {
-      readonly kind: "cylinder";
-      readonly x: number;
-      readonly z: number;
-      readonly radius: number;
-      readonly height: number;
-    }
-  | {
-      readonly kind: "tree";
-      readonly x: number;
-      readonly z: number;
-      readonly radius: number;
-      readonly height: number;
-      /** Broadleaf without one. */
-      readonly crown?: Crown;
-    }
-  | {
-      /** A straight row; its length runs along x, its depth along z. */
-      readonly kind: "hedge";
-      readonly x: number;
-      readonly z: number;
-      readonly length: number;
-      readonly depth: number;
-      readonly height: number;
-      readonly rotation: number;
-    };
-
-/** A broadleaf's crown is a sphere, a conifer's a cone. */
-export type Crown = "broadleaf" | "conifer";
-
-export type GroundFinish = "lawn" | "paving" | "driveway" | "gravel" | "path";
-
-/** A rectangle on the plot with a block's footprint; drawn only, it never shades. */
-export interface GroundSurface {
-  readonly x: number;
-  readonly z: number;
-  readonly width: number;
-  readonly depth: number;
-  readonly rotation: number;
-  readonly finish: GroundFinish;
-}
-
-export type FenceFinish = "wood" | "metal" | "wall";
-
-/** A polyline on the ground through `[x, z]` points; drawn only, it never shades. */
-export interface Fence {
-  readonly points: readonly (readonly [number, number])[];
-  readonly height: number;
-  readonly finish: FenceFinish;
 }
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
@@ -227,18 +178,9 @@ export interface Geometry {
   readonly stands?:
     | readonly { readonly at: Point; readonly forward: Point; readonly above: Point }[]
     | null;
-  /** By ground surface, its corners on the ground; null while one is refused. */
-  readonly ground?:
-    | readonly { readonly finish: GroundFinish; readonly corners: readonly Point[] }[]
-    | null;
-  /** By fence, its points on the ground; null while one is refused. */
-  readonly fences?:
-    | readonly {
-        readonly finish: FenceFinish;
-        readonly height: number;
-        readonly points: readonly Point[];
-      }[]
-    | null;
+  /** By ground surface and by fence, placed on the ground; null while one is refused. */
+  readonly ground?: readonly Ground[] | null;
+  readonly fences?: readonly Fencing[] | null;
 }
 
 /** North and east positive, in degrees. */
