@@ -98,6 +98,8 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
   capabilities(): Promise<Capabilities | Problem>;
   /** Writes `value` to a device's setting through the core's one funnel; admin only. */
   write(device: number, key: string, value: number): Promise<Attempt | Problem>;
+  /** A device's setting's current value, `null` when unknown; admin only, as it reaches the device. */
+  read(device: number, key: string): Promise<Readonly<{ value: number | null }> | Problem>;
   /** Every write attempt, oldest first; admin only. */
   writes(): Promise<WriteLog | Problem>;
   /** Enables a device's setting as declared now, or withdraws the enable; admin only. */
@@ -212,7 +214,9 @@ function trust(client: Client): Pick<Core, "enable" | "updates" | "apply"> {
 }
 
 /** Devices, capabilities, setting writes and the write log. */
-function settings(client: Client): Pick<Core, "devices" | "capabilities" | "write" | "writes"> {
+function settings(
+  client: Client,
+): Pick<Core, "devices" | "capabilities" | "write" | "read" | "writes"> {
   return {
     devices: async () => {
       const { data, error, response } = await client.GET("/api/v1/devices");
@@ -231,6 +235,13 @@ function settings(client: Client): Pick<Core, "devices" | "capabilities" | "writ
       });
 
       return data ?? refusal(error, response.status);
+    },
+    read: async (device, key) => {
+      const { data, error, response } = await client.GET("/api/v1/devices/{id}/settings/{key}", {
+        params: { path: { id: device, key } },
+      });
+
+      return data ? { value: data.value ?? null } : refusal(error, response.status);
     },
     writes: async () => {
       const { data, error, response } = await client.GET("/api/v1/writes");

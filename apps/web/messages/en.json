@@ -608,5 +608,18 @@
   "flow_import": "Importing",
   "flow_export": "Exporting",
   "flow_plugged": "Plugged in",
-  "rd_generator_total": "Generation total"
+  "rd_generator_total": "Generation total",
+  "controls_title": "Controls",
+  "controls_writes_on": "Writes on",
+  "controls_read_only": "Read only.",
+  "controls_writes_off": "The writes switch is off, so nothing here can change.",
+  "controls_to_writes": "Settings › Writes",
+  "controls_groups": "Groups",
+  "controls_group_battery": "Battery",
+  "controls_group_grid": "Grid & export",
+  "controls_group_advanced": "Advanced",
+  "controls_footnote": "Limits and steps come from the device profile. Every change is read back.",
+  "controls_needs_enable": "Needs your enable under Settings › Writes",
+  "controls_none": "No device declares a setting.",
+  "controls_confirmed": "Confirmed by the device · before {before}"
 }

@@ -3,12 +3,12 @@
 //!
 //! At each connect it discovers the SunSpec chain of every device whose profile reads one (ADR 5).
 //!
-//! A settings write (ADR 7) runs in the same task, between polls.
+//! A settings write or read (ADR 7) runs in the same task, between polls.
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use sunreye_profile::{Block, Framing, Profile, Registers, Unit};
+use sunreye_profile::{Block, Framing, Profile, Registers, Setting, Unit};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -44,11 +44,15 @@ type Latest = Arc<Mutex<Vec<Option<(Reading, Instant)>>>>;
 pub struct Task {
     handle: JoinHandle<()>,
     latest: Latest,
-    writes: mpsc::Sender<Write>,
+    orders: mpsc::Sender<Order>,
 }
 
-/// A write waiting for the task, and where its result goes.
-type Write = (Job, oneshot::Sender<Result<Applied, Refusal>>);
+/// A settings write or read waiting for the task, and where its result goes.
+enum Order {
+    Write(Job, oneshot::Sender<Result<Applied, Refusal>>),
+    /// A setting of the device at a unit id.
+    Read(u8, Setting, oneshot::Sender<Option<f64>>),
+}
 
 impl Task {
     /// The last good value of every quantity read so far, with its age.
@@ -66,8 +70,19 @@ impl Task {
     /// Runs `job` after the poll cycle in progress; `None` when the task has stopped.
     pub async fn write(&self, job: Job) -> Option<Result<Applied, Refusal>> {
         let (reply, applied) = oneshot::channel();
-        self.writes.send((job, reply)).await.ok()?;
+        self.orders.send(Order::Write(job, reply)).await.ok()?;
         applied.await.ok()
+    }
+
+    /// Reads `setting` of unit `unit` after the poll cycle in progress; `None` when it cannot be
+    /// read or the task has stopped.
+    pub async fn read(&self, unit: u8, setting: Setting) -> Option<f64> {
+        let (reply, value) = oneshot::channel();
+        self.orders
+            .send(Order::Read(unit, setting, reply))
+            .await
+            .ok()?;
+        value.await.ok()?
     }
 }
 
@@ -95,11 +110,11 @@ pub fn spawn(endpoint: Endpoint, devices: Vec<Device>, bus: Bus) -> Task {
         bus,
         latest: Arc::clone(&latest),
     };
-    let (writes, queued) = mpsc::channel(1);
+    let (orders, queued) = mpsc::channel(1);
     Task {
         handle: tokio::spawn(run(endpoint, devices, out, queued)),
         latest,
-        writes,
+        orders,
     }
 }
 
@@ -300,7 +315,7 @@ async fn run(
     endpoint: Endpoint,
     mut devices: Vec<Polled>,
     out: Out,
-    mut writes: mpsc::Receiver<Write>,
+    mut orders: mpsc::Receiver<Order>,
 ) {
     let mut client = None;
     let mut words = [0; MAX_READ];
@@ -309,8 +324,16 @@ async fn run(
     loop {
         tokio::select! {
             () = tokio::time::sleep_until(next) => {}
-            Some((job, reply)) = writes.recv() => {
-                reply.send(settings::run(&endpoint, &mut client, TIMEOUT, job).await).ok();
+            Some(order) = orders.recv() => {
+                match order {
+                    Order::Write(job, reply) => {
+                        reply.send(settings::run(&endpoint, &mut client, TIMEOUT, job).await).ok();
+                    }
+                    Order::Read(unit, setting, reply) => {
+                        let read = settings::read(&endpoint, &mut client, TIMEOUT, unit, &setting);
+                        reply.send(read.await).ok();
+                    }
+                }
                 continue;
             }
         }

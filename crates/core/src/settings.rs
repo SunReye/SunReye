@@ -356,6 +356,29 @@ pub async fn run(
     Ok(applied)
 }
 
+/// The value `setting`'s read-back holds on unit `unit`, read through `client`, connecting to
+/// `endpoint` when it has none; `None` for a write-only setting or a read that fails. Nothing is
+/// written.
+pub async fn read(
+    endpoint: &Endpoint,
+    client: &mut Option<Client>,
+    timeout: Duration,
+    unit: u8,
+    setting: &Setting,
+) -> Option<f64> {
+    let mut link = Link {
+        endpoint,
+        client,
+        timeout,
+        unit,
+    };
+    let words = link
+        .read_back(setting.read_back()?, usize::from(setting.width()))
+        .await
+        .ok()?;
+    setting.decode(&words)
+}
+
 /// Stores `before` through `snapshot`, if any: before the write, so a release can restore it
 /// whatever the write's outcome. `false` when it was not stored and nothing may be written.
 async fn snapshot(snapshot: Option<Snapshot>, before: Option<f64>) -> bool {
