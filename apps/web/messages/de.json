@@ -593,5 +593,6 @@
   "flow_off": "Aus",
   "flow_import": "Bezug",
   "flow_export": "Einspeisung",
-  "flow_plugged": "Angesteckt"
+  "flow_plugged": "Angesteckt",
+  "rd_generator_total": "Erzeugung gesamt"
 }

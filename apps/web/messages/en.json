@@ -593,5 +593,6 @@
   "flow_off": "Off",
   "flow_import": "Importing",
   "flow_export": "Exporting",
-  "flow_plugged": "Plugged in"
+  "flow_plugged": "Plugged in",
+  "rd_generator_total": "Generation total"
 }
