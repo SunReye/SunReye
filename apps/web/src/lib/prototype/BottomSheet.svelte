@@ -75,7 +75,13 @@
     bind:ref={sheet}
     side="bottom"
     showCloseButton={false}
-    class="glass-ambient mx-auto max-h-[90dvh] max-w-xl touch-none gap-0 pb-[max(1rem,env(safe-area-inset-bottom))] {className}"
+    tabindex={-1}
+    onOpenAutoFocus={(e) => {
+      // Focus the sheet, not its first control: opening should not paint a focus ring.
+      e.preventDefault();
+      sheet?.focus();
+    }}
+    class="glass-ambient mx-auto max-h-[90dvh] max-w-xl touch-none gap-0 outline-none pb-[max(1rem,env(safe-area-inset-bottom))] {className}"
     style="translate: 0 {y}px"
     onpointerdown={down}
     onpointermove={move}

@@ -3,7 +3,6 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import * as tex from "./textures";
-import { buildCar, CHARGE_PORT } from "./car";
 
 export type AnchorId = "s1" | "s2" | "s3" | "inverter" | "battery" | "ev";
 
@@ -16,7 +15,12 @@ export interface Plant {
   panes: THREE.MeshPhysicalMaterial;
   /** Ground pieces that fade into the studio backdrop. */
   fade: { uniform: { value: number } };
+  /** Where the car stands, empty until it has loaded, and what arrives with it. */
+  car: { slot: THREE.Group; cable: THREE.Mesh };
 }
+
+/** The charge port, rear left (+x with the nose at +z), in car space. */
+const CHARGE_PORT = new THREE.Vector3(0.9, 0.88, -1.98);
 
 const PITCH = Math.PI / 6;
 const RISE = 5 * Math.tan(PITCH);
@@ -57,7 +61,11 @@ const shadowed = <T extends THREE.Object3D>(o: T): T => {
   return o;
 };
 
-export function buildPlant(ready: () => void = () => {}): Plant {
+/**
+ * Builds the plant in sections and awaits `pause` between them, so the caller can give the main
+ * thread back: the scene is built behind a dashboard that is already in use.
+ */
+export async function buildPlant(pause: () => Promise<void>): Promise<Plant> {
   const root = new THREE.Group();
   const fade = { uniform: { value: 1 } };
 
@@ -96,6 +104,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
     emissiveIntensity: 0,
   });
 
+  await pause();
   // Walls and plinth.
   const walls = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 10), [wallShort, wallShort, wallLong, wallLong, wallLong, wallLong]);
   walls.position.y = 3;
@@ -160,6 +169,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
   chimney.position.set(-3.6, 6 + RISE - 1.2 * Math.tan(PITCH) - 1.1, -1.2);
   root.add(shadowed(chimney));
 
+  await pause();
   // Windows: anthracite frames, sills, reflective panes.
   const window = (w: number, h: number, x: number, y: number, z: number, ry: number, bars = w > 1.3) => {
     const g = new THREE.Group();
@@ -229,6 +239,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
   step.position.set(0.25, 0.09, 5.45);
   root.add(shadowed(step));
 
+  await pause();
   // Equipment on the east wall: inverter, battery, wallbox.
   const box = (w: number, h: number, d: number, label: THREE.Texture | null, led: string, pos: THREE.Vector3) => {
     const body = new THREE.MeshStandardMaterial({ color: "#eceef0", roughness: 0.4, metalness: 0.05 });
@@ -245,6 +256,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
   box(0.7, 1.15, 0.28, tex.label("bat", "SunReye", "Battery 15.4", "#47d18c"), "#47d18c", new THREE.Vector3(7.15, 0.58 + 0.42, 3.2));
   box(0.3, 0.42, 0.14, null, "#9b6cf0", new THREE.Vector3(7.08, 1.35, 4.4));
 
+  await pause();
   // PV modules: full black, black anodised frames, AR glass over black cells.
   const pv = tex.pvModule();
   const frameGeo = new THREE.BoxGeometry(1.06, 0.04, 1.74);
@@ -290,6 +302,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
   anchors.battery = new THREE.Vector3(7.3, 1.1, 3.2);
   anchors.ev = new THREE.Vector3(11.2, 1.55, 3.6);
 
+  await pause();
   // Ground: lawn to the horizon, pavers, a street; everything fades out in studio mode.
   const g = tex.grass();
   const lawn = new THREE.Mesh(
@@ -322,6 +335,7 @@ export function buildPlant(ready: () => void = () => {}): Plant {
   road.receiveShadow = true;
   root.add(road);
 
+  await pause();
   // Tree: bark trunk, a few limbs, layered instanced foliage clusters.
   const tree = new THREE.Group();
   const b = tex.bark();
@@ -373,11 +387,13 @@ export function buildPlant(ready: () => void = () => {}): Plant {
     root.add(shrub);
   }
 
-  // Car on the driveway, nose south, charging from the wallbox at its rear-left port.
-  const car = buildCar(ready);
-  car.position.set(11.2, 0, 3.6);
-  root.add(car);
-  const port = CHARGE_PORT.clone().add(car.position);
+  await pause();
+  // Car on the driveway, nose south, charging from the wallbox at its rear-left port. The body
+  // loads after the house is on screen; its cable waits for it.
+  const slot = new THREE.Group();
+  slot.position.set(11.2, 0, 3.6);
+  root.add(slot);
+  const port = CHARGE_PORT.clone().add(slot.position);
   const cable = new THREE.Mesh(
     new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3([
@@ -395,7 +411,8 @@ export function buildPlant(ready: () => void = () => {}): Plant {
     ),
     new THREE.MeshStandardMaterial({ color: "#151618", roughness: 0.6 }),
   );
+  cable.visible = false;
   root.add(shadowed(cable));
 
-  return { root, anchors, strings, panes, fade };
+  return { root, anchors, strings, panes, fade, car: { slot, cable } };
 }

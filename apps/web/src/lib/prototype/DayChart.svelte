@@ -48,7 +48,7 @@
           rule={false}
           tickLength={0}
           format={(v: number) => (v === 0 ? "" : `${v}`)}
-          classes={{ tickLabel: "fill-muted-foreground text-[10px] tabular-nums" }}
+          classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
         />
         <Axis
           placement="bottom"
@@ -59,7 +59,7 @@
           format={(d: Date) => `${d.getHours()}:00`}
           rule={false}
           tickLength={0}
-          classes={{ tickLabel: "fill-muted-foreground text-[10px] tabular-nums" }}
+          classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
         />
       {/if}
       <Spline

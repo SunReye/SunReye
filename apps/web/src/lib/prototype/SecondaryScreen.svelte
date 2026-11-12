@@ -1,4 +1,4 @@
-<!-- PROTOTYPE: placeholder for History / Forecast / Tariff and the More screens. -->
+<!-- PROTOTYPE: placeholder for Forecast / Tariff and the More screens. History is stats/Statistics.svelte. -->
 <script lang="ts">
   import { SPOT, type LiveSim } from "./sim.svelte";
   import { NAV, type Screen } from "./nav";
@@ -8,7 +8,7 @@
 
   let { screen, sim }: { screen: Screen; sim: LiveSim } = $props();
   const item = $derived(NAV[screen]);
-  const charted = $derived(screen === "history" || screen === "forecast" || screen === "tariff");
+  const charted = $derived(screen === "forecast" || screen === "tariff");
   const spotMax = Math.max(...SPOT);
 </script>
 
@@ -21,19 +21,19 @@
     </div>
   </header>
   {#if charted}
-    <RangeControl />
+    <RangeControl kind="day" label="Heute" onkind={() => {}} onstep={() => {}} />
     <Card.Root class="glass-ambient px-4">
       {#if screen === "tariff"}
         <div class="flex h-[300px] items-end gap-1">
           {#each SPOT as p, h (h)}
             <span class="flex flex-1 flex-col items-center gap-1">
               <span class={["w-full rounded-sm", h === 15 ? "bg-foreground" : "bg-foreground/25"]} style:height="{(p / spotMax) * 260}px"></span>
-              <span class="text-[9px] text-muted-foreground tabular-nums">{h % 3 === 0 ? h : ""}</span>
+              <span class="text-[11px] text-muted-foreground tabular-nums">{h % 3 === 0 ? h : ""}</span>
             </span>
           {/each}
         </div>
       {:else}
-        <DayChart data={sim.day} height={320} metric={screen === "history" ? "house" : "pv"} />
+        <DayChart data={sim.day} height={320} metric="pv" />
       {/if}
     </Card.Root>
     <Card.Root size="sm" class="glass-ambient py-0"><dl class="grid grid-cols-2 divide-border/60 md:grid-cols-4 md:divide-x">

@@ -1,6 +1,7 @@
 <!--
   PROTOTYPE: shell by input and width (ADR 21). Mouse: floating icon rail that expands over the
-  content. Touch ≥768 px: the rail, expanded. Touch <768 px: floating bottom bar with More.
+  content. Touch ≥768 px: the same rail, opened from the logo. Touch <768 px: floating bottom bar with More.
+  An opened rail never pushes the page: hovered, pinned or opened by touch, it floats above it.
   The registry's Sidebar animates its width and pushes the content, which ADR 21 rules out, so the
   rail keeps its own transform-only frame but is built from the sidebar's parts: the floating
   sidebar's surface, `sidebarMenuButtonVariants` rows and the Tooltip for collapsed icons.
@@ -22,12 +23,26 @@
   import { input } from "./input.svelte";
   import { haptics } from "./haptics";
   import BottomSheet from "./BottomSheet.svelte";
+  import type { LiveSim } from "./sim.svelte";
 
   let {
-    screen = $bindable("dashboard"),
+    screen = "dashboard",
+    onnavigate,
+    sim,
     forceExpanded = false,
     children,
-  }: { screen?: Screen; forceExpanded?: boolean; children: Snippet } = $props();
+  }: { screen?: Screen; onnavigate: (id: Screen) => void; sim: LiveSim; forceExpanded?: boolean; children: Snippet } = $props();
+
+  // The connection chip (ADR 21): quiet while live, loud when the stream stalls or drops.
+  const stream = $derived(
+    sim.status === "live"
+      ? { dot: "bg-success text-success animate-pulse-dot motion-reduce:animate-none", text: `Live · vor ${sim.age} s`, loud: false }
+      : sim.status === "loading"
+        ? { dot: "bg-muted-foreground", text: "Verbinde …", loud: false }
+        : sim.status === "stalled"
+          ? { dot: "bg-warning", text: `Keine Daten seit ${sim.age} s`, loud: true }
+          : { dot: "bg-destructive", text: "Verbindung getrennt", loud: true },
+  );
 
   // The sidebar's own widths: 16rem open, 3rem as icons.
   const RAIL_W = 256;
@@ -36,7 +51,8 @@
   let hovered = $state(false);
   let focused = $state(false);
   let pinned = $state(typeof localStorage !== "undefined" && localStorage.getItem("proto.rail.pinned") === "1");
-  let touchCollapsed = $state(false);
+  // Touch: the rail opens from the logo and floats over the page; it starts as icons.
+  let touchCollapsed = $state(true);
   let moreOpen = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -44,7 +60,6 @@
   const expanded = $derived(
     forceExpanded || (shell === "rail" ? hovered || focused || pinned : shell === "rail-open" ? !touchCollapsed : false),
   );
-  const pushes = $derived((shell === "rail" && pinned) || (shell === "rail-open" && !touchCollapsed));
 
   function enter(): void {
     clearTimeout(timer);
@@ -57,8 +72,9 @@
 
   function go(id: Screen): void {
     if (id !== screen) haptics.selection();
-    screen = id;
     moreOpen = false;
+    touchCollapsed = true;
+    onnavigate(id);
   }
 
   function togglePin(): void {
@@ -111,6 +127,13 @@
   </Tooltip.Root>
 {/snippet}
 
+<!-- An opened rail always floats above the page (owner, 2026-11-12); on touch a tap outside closes it. -->
+<svelte:document
+  onpointerdown={(e) => {
+    if (shell === "rail-open" && !touchCollapsed && !(e.target as Element).closest("nav.rail")) touchCollapsed = true;
+  }}
+/>
+
 <Tooltip.Provider>
   {#if shell !== "bar"}
     {#if shell === "rail"}
@@ -148,9 +171,9 @@
           aria-label="SunReye"
         >
           {@render logo()}
-          <span class="label flex flex-col leading-tight">
+          <span class="label flex min-w-0 flex-col leading-tight">
             <span class="text-sm font-semibold">SunReye</span>
-            <span class="text-xs text-muted-foreground">Musterstraße 4</span>
+            <span class="truncate text-xs text-muted-foreground" title={sim.plantName}>{sim.plantName}</span>
           </span>
         </button>
 
@@ -163,10 +186,10 @@
         <ul class="mt-auto flex flex-col gap-1" data-sidebar="menu">
           <li>{@render railItem("settings")}</li>
           <li class="flex h-8 items-center gap-2">
-            <span class="grid size-8 shrink-0 place-items-center" title="Live">
-              <span class="size-2 animate-pulse-dot rounded-full bg-success text-success motion-reduce:animate-none"></span>
+            <span class="grid size-8 shrink-0 place-items-center" title={stream.text} role="status" aria-label={stream.text}>
+              <span class={["size-2 rounded-full", stream.dot]}></span>
             </span>
-            <span class="label text-xs text-muted-foreground">Live · vor 1 s</span>
+            <span class={["label truncate text-xs", stream.loud ? "font-medium text-foreground" : "text-muted-foreground"]}>{stream.text}</span>
             {#if shell === "rail"}
               <Button
                 variant="ghost"
@@ -188,10 +211,17 @@
   <div
     class={["relative min-h-dvh", shell === "bar" ? "pb-[calc(84px+env(safe-area-inset-bottom))]" : ""]}
     style:padding-left="var(--shell-pad)"
-    style:--shell-pad={shell === "bar" ? "0px" : `${(pushes ? RAIL_W : ICON_W) + 24}px`}
+    style:--shell-pad={shell === "bar" ? "0px" : `${ICON_W + 24}px`}
   >
+    <!-- Away from the dashboard's own headline a stall still has to be seen: one strip in the flow, covering nothing. -->
+    {#if stream.loud && screen !== "dashboard"}
+      <div class="mx-auto mt-3 flex w-fit items-center gap-2 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium" role="status">
+        <span class={["size-2 rounded-full", stream.dot]}></span>{stream.text}
+      </div>
+    {/if}
     {@render children()}
   </div>
+
 
   {#if shell === "bar"}
     <nav
@@ -211,9 +241,9 @@
       >
         {#each [...BAR, "more" as const] as id (id)}
           {@const item = id === "more" ? { label: "Mehr", icon: Ellipsis } : NAV[id]}
-          <ToggleGroup.Item value={id} aria-label={item.label} class="h-14 w-full flex-col gap-1 text-muted-foreground data-[state=on]:text-foreground">
+          <ToggleGroup.Item value={id} aria-label={item.label} class="h-14 w-full min-w-0 flex-col gap-1.5 px-0 text-muted-foreground data-[state=on]:text-foreground">
             <item.icon class={["size-5", barActive === id && "text-brand"]} />
-            <span class="text-[10.5px] font-medium">{item.label}</span>
+            <span class="text-[11px] leading-none font-medium">{item.label}</span>
           </ToggleGroup.Item>
         {/each}
       </ToggleGroup.Root>

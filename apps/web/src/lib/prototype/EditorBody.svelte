@@ -11,12 +11,14 @@
   import { cn } from "#lib/utils.js";
   import { display, hhmm, type Setting } from "./settings";
   import { haptics } from "./haptics";
+  import type { Outcome } from "./ValueEditor.svelte";
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
 
   let {
     setting,
     onapply,
     compact = false,
-  }: { setting: Setting; onapply: (value: number | string) => Promise<void>; compact?: boolean } = $props();
+  }: { setting: Setting; onapply: (value: number | string) => Promise<Outcome>; compact?: boolean } = $props();
 
   // svelte-ignore state_referenced_locally
   const orig = setting;
@@ -62,12 +64,17 @@
 
   let pending = $state(false);
   let done = $state(false);
+  /** A refusal or a mismatch stays beside its cause until the value changes (never a toast). */
+  let problem = $state<{ at: number | string; outcome: Exclude<Outcome, { kind: "confirmed" }> } | null>(null);
+  const shownProblem = $derived(problem && problem.at === next ? problem.outcome : null);
   async function apply(): Promise<void> {
     haptics.light();
     pending = true;
-    await onapply(next);
+    const at = next;
+    const outcome = await onapply(at);
     pending = false;
-    done = true;
+    if (outcome.kind === "confirmed") done = true;
+    else problem = { at, outcome };
   }
 </script>
 
@@ -75,11 +82,11 @@
   <header class="flex flex-col items-center gap-1 text-center">
     <span class="text-sm font-medium">{orig.label}</span>
     {#if orig.kind === "number"}
-      <span class="text-[11px] text-muted-foreground tabular-nums">{nf.format(orig.min)}–{nf.format(orig.max)} {orig.unit} · Schritt {nf.format(orig.step)}</span>
+      <span class="text-xs text-muted-foreground tabular-nums">{nf.format(orig.min)}–{nf.format(orig.max)} {orig.unit} · Schritt {nf.format(orig.step)}</span>
     {:else if orig.kind === "time"}
-      <span class="text-[11px] text-muted-foreground">Minuten in {orig.step}er-Schritten</span>
+      <span class="text-xs text-muted-foreground">Minuten in {orig.step}er-Schritten</span>
     {:else if orig.kind === "enum"}
-      <span class="text-[11px] text-muted-foreground">{orig.options.length} Modi</span>
+      <span class="text-xs text-muted-foreground">{orig.options.length} Modi</span>
     {/if}
 
     {#if orig.kind === "number"}
@@ -161,7 +168,7 @@
                   <Item.Description class="text-xs">{o.hint}</Item.Description>
                 </Item.Content>
                 <Item.Actions>
-                  {#if orig.value === o.value}<span class="text-[10px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">jetzt</span>{/if}
+                  {#if orig.value === o.value}<span class="text-xs whitespace-nowrap text-muted-foreground">jetzt</span>{/if}
                   {#if choice === o.value}<Check class="size-4 text-primary" />{/if}
                 </Item.Actions>
               </button>
@@ -172,10 +179,21 @@
     {/if}
   </div>
 
+  {#if shownProblem}
+    <div class="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-left text-sm" role="alert">
+      <CircleAlert class="mt-0.5 size-4 shrink-0 text-destructive" />
+      <p class="flex-1">
+        <span class="font-medium">{shownProblem.kind === "refused" ? "Abgelehnt." : "Abweichung."}</span>
+        {shownProblem.reason}
+        <a href="#/prototype?screen=status" class="whitespace-nowrap text-brand underline-offset-2 hover:underline">Schreibprotokoll</a>
+      </p>
+    </div>
+  {/if}
+
   <Button
     size="lg"
     class="h-11 w-full text-[15px]"
-    disabled={!changed || pending || done}
+    disabled={!changed || pending || done || shownProblem !== null}
     onclick={apply}
   >
     {#if pending}
@@ -184,8 +202,10 @@
       Übernehmen <ArrowRight class="size-4 opacity-70" /> {nextText}
     {:else if changed}
       Übernehmen <span class="opacity-70">{display(orig)}</span> <ArrowRight class="size-4 opacity-70" /> {nextText}
+    {:else if done}
+      Bestätigt
     {:else}
-      Übernehmen
+      Keine Änderung
     {/if}
   </Button>
 </div>

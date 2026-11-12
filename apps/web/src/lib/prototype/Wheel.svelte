@@ -238,7 +238,7 @@
       {#if i === current && marker === "dot"}
         <span class="absolute left-2 size-1 rounded-full bg-muted-foreground/70" title="jetzt"></span>
       {:else if i === current}
-        <span class="absolute right-3 flex items-center gap-1 text-[10px] font-medium tracking-wide text-muted-foreground/80 uppercase">
+        <span class="absolute right-3 flex items-center gap-1 text-xs text-muted-foreground">
           <span class="size-1 rounded-full bg-muted-foreground/70"></span>jetzt
         </span>
       {/if}

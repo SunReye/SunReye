@@ -1,16 +1,15 @@
 <script lang="ts">
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  let { label, value, colour, hint }: { label: string; value: number; colour: string; hint?: string } = $props();
+  let { label, value, colour }: { label: string; value: number | null; colour: string } = $props();
 </script>
 
 <div class="flex min-w-0 flex-col gap-1.5" style:--meter={colour}>
   <div class="flex items-baseline justify-between gap-2 text-xs">
-    <span class="font-medium text-muted-foreground">{label}</span>
-    <span class="text-sm font-semibold"><AnimatedNumber {value} digits={0} /> %</span>
+    <span class="truncate font-medium text-muted-foreground">{label}</span>
+    <span class="text-sm font-semibold whitespace-nowrap"><AnimatedNumber {value} digits={0} /> %</span>
   </div>
-  <Progress {value} size="square" class="meter" aria-label={label} />
-  {#if hint}<span class="text-[11px] text-muted-foreground">{hint}</span>{/if}
+  <Progress value={value ?? 0} size="square" class="meter" aria-label={label} />
 </div>
 
 <style>

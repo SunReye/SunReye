@@ -1,11 +1,12 @@
 <!--
-  PROTOTYPE: clay-model live scene (ADR 20 Look/Motion/Labels, ADR 21). No continuous loop:
-  it renders on a tick, on an orbit change, and while a short tween runs.
--->
-<!--
   PROTOTYPE: the plant as a realistic architectural render (ADR 20 Look/Motion/Labels, ADR 21).
   Procedural PBR materials, a Sky-driven PMREM environment, sun shadows and one GTAO pass.
   No continuous loop: it renders on a tick, on an orbit change, and while a short tween runs.
+
+  The hero imports this component only once the dashboard is in use, and the scene then builds
+  behind it in short tasks: textures in a worker, the plant in sections, shaders compiled in
+  parallel. The first frame is drawn hidden; the layer fades in when it is on screen, labels
+  included. The car loads after the house and fades in on its own.
 -->
 <script lang="ts">
   import * as THREE from "three";
@@ -15,7 +16,7 @@
   import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
   import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
   import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Sun from "@lucide/svelte/icons/sun";
   import Cpu from "@lucide/svelte/icons/cpu";
   import BatteryCharging from "@lucide/svelte/icons/battery-charging";
@@ -27,24 +28,36 @@
   import { easeInOut, reducedMotion } from "./animate";
   import { haptics } from "./haptics";
   import { buildPlant, type Plant } from "./scene/house";
+  import { warm } from "./scene/warm";
+  import { motion } from "./motion/tier.svelte";
   import { view } from "./view.svelte";
+  import { scrollFade } from "./scrollFade";
 
   let {
     sim,
     dark,
     tod,
     onselect,
-    framing = "hero",
-    presets = "left",
+    onready,
+    onerror,
   }: {
     sim: LiveSim;
     dark: boolean;
     tod: string;
     onselect?: (id: string) => void;
-    /** "hero" frames the house; "wide" leaves room around it for floating cards. */
-    framing?: "hero" | "wide";
-    presets?: "left" | "right";
+    /** The first frame is on screen and the layer has started to fade in. */
+    onready?: () => void;
+    /** The scene could not be built ("webgl2": this browser has none); the hero falls back to the 2D flow. */
+    onerror?: (reason: unknown) => void;
   } = $props();
+
+  /** three.js state exists: effects may touch it. */
+  let live = $state(false);
+  /** The first frame is on screen: the layer is visible, labels included. */
+  let shown = $state(false);
+  /** The picture without the car, held over the canvas while the car fades in beneath it. */
+  let ghost: HTMLCanvasElement | undefined = $state();
+  let ghosting = $state<"off" | "hold" | "fade">("off");
 
   let host: HTMLDivElement | undefined = $state();
   let canvas: HTMLCanvasElement | undefined = $state();
@@ -86,7 +99,8 @@
   function cssColour(expr: string): THREE.Color {
     const c = document.createElement("canvas");
     c.width = c.height = 1;
-    const ctx = c.getContext("2d")!;
+    // A CPU canvas: reading a GPU one back waits behind whatever the GPU is still drawing.
+    const ctx = c.getContext("2d", { willReadFrequently: true })!;
     const probe = document.createElement("span");
     probe.style.color = expr;
     document.body.appendChild(probe);
@@ -149,9 +163,9 @@
     night: { az: 320, el: -9, colour: "#9db0ff", i: 0.35, env: 0.35, fog: ["#28324a", "#0e121c"] },
   };
 
-  function build(): void {
+  async function build(): Promise<void> {
     scene = new THREE.Scene();
-    plant = buildPlant(() => requestRender());
+    plant = await buildPlant(pause);
     scene.add(plant.root);
     for (const id of Object.keys(plant.strings)) tint[id] = { from: 0, to: 0, now: 0 };
 
@@ -192,7 +206,6 @@
 
   /** Sun, sky, environment, background and fog for the time of day, theme and mode. */
   function applyLight(): void {
-    if (!scene) return;
     const s = SUNS[tod] ?? SUNS.noon!;
     const dir = sunDir(s.az, s.el);
     sunLight.position.copy(sunLight.target.position).addScaledVector(dir, 60);
@@ -266,7 +279,7 @@
 
   function fitRadius(): number {
     const aspect = width / Math.max(1, height);
-    const base = (framing === "wide" ? 50 : 42) * (view.scene === "sky" ? 0.85 : 1);
+    const base = 42 * (view.scene === "sky" ? 0.85 : 1);
     return Math.min(78, base * Math.max(1, 1.15 / aspect) ** 0.7);
   }
 
@@ -296,8 +309,10 @@
   let frame = 0;
   const frameMs: number[] = [];
 
+  /** Nothing is drawn before the first frame: a half-built scene would compile its shaders twice. */
+  let drawable = false;
   function requestRender(): void {
-    if (frame || !renderer) return;
+    if (frame || !drawable) return;
     frame = requestAnimationFrame(loop);
   }
 
@@ -319,6 +334,7 @@
     frame = 0;
     let again = false;
     if (flight) {
+      ghosting = "off";
       const t = Math.min(1, (now - flight.t0) / 600);
       const e = easeInOut(t);
       const r = flight.from.radius + (flight.to.radius - flight.from.radius) * e;
@@ -370,16 +386,16 @@
   // Ticks: ease string tints for ~400 ms.
   $effect(() => {
     const shares = sim.strings.map((s) => [s.id, s.kw / s.peak] as const);
-    if (!renderer) return;
+    if (!live) return;
     for (const [id, share] of shares) {
       const tw = tint[id];
       if (!tw) continue;
       tw.from = tw.now;
       tw.to = share;
     }
-    tintT0 = performance.now();
-    tinting = !reducedMotion();
-    if (!tinting) for (const tw of Object.values(tint)) tw.now = tw.to;
+    // Reduced motion lands on the new tint in the next frame instead of easing to it.
+    tintT0 = performance.now() - (reducedMotion() ? 400 : 0);
+    tinting = true;
     requestRender();
   });
 
@@ -387,12 +403,12 @@
     void dark;
     void tod;
     void view.scene;
-    applyLight();
+    if (live) applyLight();
   });
 
   $effect(() => {
     void view.lowPower;
-    requestRender();
+    if (live) requestRender();
   });
 
   const perf = typeof location !== "undefined" && location.hash.includes("perf=1");
@@ -446,8 +462,117 @@
     }
   }
 
-  onMount(() => {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  /** Gives the main thread back between two steps of the build, so input is never held up. */
+  let sliceT0 = 0;
+  const pause = async (): Promise<void> => {
+    const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+    await (s?.yield ? s.yield() : new Promise((r) => setTimeout(r)));
+    sliceT0 = performance.now();
+  };
+  /** Inside a loop of small steps: pauses once the current task has run for a few milliseconds. */
+  const breathe = (): Promise<void> | undefined => (performance.now() - sliceT0 > 6 ? pause() : undefined);
+  const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+
+  /**
+   * Resolves once the GPU has finished what was sent to it, without waiting on it: a fence, polled.
+   * Any call that asks the GPU a question (a program's first use, a read-back) blocks the main
+   * thread until everything queued before it is drawn. Asked only after this, such a call returns
+   * at once, on a fast GPU and under software rendering alike.
+   */
+  function gpuIdle(): Promise<void> {
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    return new Promise((resolve) => {
+      const poll = () => {
+        if (!fence || gl.isContextLost() || gl.clientWaitSync(fence, 0, 0) !== gl.TIMEOUT_EXPIRED) {
+          gl.deleteSync(fence);
+          resolve();
+        } else setTimeout(poll, 8);
+      };
+      poll();
+    });
+  }
+
+  /**
+   * Compiles what `object` needs without blocking, for the target the scene pass draws into.
+   * Writing a program's source is main-thread work, so `parts` are prepared a few per task; the
+   * GPU then compiles them in parallel and this resolves when they are ready.
+   */
+  async function compile(object: THREE.Object3D, parts: THREE.Object3D[] = []): Promise<void> {
+    // A program differs by its target's colour space and tone mapping: compile for the composer's.
+    for (const part of [...parts, object]) {
+      renderer.setRenderTarget(composer.readBuffer);
+      const ready = part === object ? renderer.compileAsync(object, camera, scene) : renderer.compile(part, camera, scene);
+      renderer.setRenderTarget(null);
+      await (part === object ? ready : breathe());
+    }
+  }
+
+  /**
+   * A program's first use asks the GPU for its uniforms and waits for the answer, behind whatever
+   * the GPU is still drawing. Asked here, a few per task and before a frame is queued, the answer
+   * is immediate.
+   */
+  let touched = 0;
+  async function touchPrograms(gone: () => boolean): Promise<boolean> {
+    const programs = renderer.info.programs ?? [];
+    for (; touched < programs.length; touched++) {
+      programs[touched]!.getUniforms();
+      programs[touched]!.getAttributes();
+      await breathe();
+      if (gone()) return false;
+    }
+    return true;
+  }
+
+  /** One shadow pass and a scene pass into a few pixels: makes the programs only a frame creates. */
+  function warmShadows(): void {
+    const tiny = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+    renderer.setRenderTarget(tiny);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    tiny.dispose();
+  }
+
+  function resize(): void {
+    if (!host) return;
+    width = host.clientWidth;
+    height = host.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    renderer.setSize(width, height, false);
+    composer.setPixelRatio(dpr);
+    composer.setSize(width, height);
+    camera.aspect = width / Math.max(1, height);
+    lens();
+    camera.updateProjectionMatrix();
+    if (preset) placeCamera(preset);
+    requestRender();
+  }
+
+  // How long each stage of the background load took, for the smoothness journey (ADR 21).
+  const stages: Record<string, number> = {};
+  let loadT0 = 0;
+
+  /** Builds the scene in short tasks. Resolves false when the component went away meanwhile. */
+  async function init(gone: () => boolean): Promise<boolean> {
+    const t0 = (loadT0 = performance.now());
+    stages.start = Math.round(t0);
+    (window as unknown as { __sceneLoad: Record<string, number> }).__sceneLoad = stages;
+    const step = async (name: string): Promise<boolean> => {
+      stages[name] = Math.round(performance.now() - t0);
+      await pause();
+      return !gone();
+    };
+
+    await warm().textures;
+    if (!(await step("textures"))) return false;
+
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    } catch {
+      throw "webgl2";
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     // r187 dropped PCFSoftShadowMap; PCF with a radius gives the soft edge.
@@ -457,7 +582,10 @@
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     pmrem = new THREE.PMREMGenerator(renderer);
     camera = new THREE.PerspectiveCamera(32, 1, 0.3, 9000);
-    build();
+    if (!(await step("renderer"))) return false;
+
+    await build();
+    if (!(await step("plant"))) return false;
 
     // Post: multisampled HDR target -> GTAO -> tone mapping and sRGB.
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
@@ -481,51 +609,178 @@
     controls.addEventListener("start", () => {
       flight = undefined;
       preset = "";
+      ghosting = "off";
     });
 
-    const ro = new ResizeObserver(() => {
-      if (!host) return;
-      width = host.clientWidth;
-      height = host.clientHeight;
-      const dpr = Math.min(window.devicePixelRatio, 2);
-      renderer.setSize(width, height, false);
-      composer.setPixelRatio(dpr);
-      composer.setSize(width, height);
-      camera.aspect = width / Math.max(1, height);
-      lens();
-      camera.updateProjectionMatrix();
-      if (preset) placeCamera(preset);
-      requestRender();
-    });
-    ro.observe(host!);
     const initial = typeof location !== "undefined" ? new URLSearchParams(location.hash.split("?")[1] ?? "").get("cam") : null;
     if (initial && PRESETS[initial]) preset = initial;
-    applyLight();
+    resize();
+    if (!(await step("post"))) return false;
+
+    // The environment map's own programs, compiled in parallel and first used on a map of a few
+    // pixels, so the real one below never waits on a compile.
+    await compile(envScene);
+    if (!(await touchPrograms(gone))) return false;
+    pmrem.fromScene(envScene, 0, 0.1, 2000, { size: 16 }).dispose();
+    if (!(await step("environment"))) return false;
+
+    // The effects take over from here: light, sky and environment for the time of day.
+    live = true;
+    await tick();
+    if (!(await step("light"))) return false;
+
+    // Upload the textures one per task, then compile the programs in parallel.
+    const textures = new Set<THREE.Texture>();
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      for (const mat of Array.isArray(m) ? m : m ? [m] : [])
+        for (const key of ["map", "normalMap", "roughnessMap", "emissiveMap"] as const) {
+          const t = (mat as THREE.MeshStandardMaterial)[key];
+          if (t) textures.add(t);
+        }
+    });
+    for (const t of textures) {
+      renderer.initTexture(t);
+      await breathe();
+      if (gone()) return false;
+    }
+    if (!(await step("upload"))) return false;
+    // Mesh by mesh: writing one program's source is the smallest step there is.
+    const meshes: THREE.Object3D[] = [];
+    plant.root.traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o)));
+    await compile(scene, meshes);
+    // The environment map and the uploads are still being drawn: ask nothing until they are done.
+    await gpuIdle();
+    if (!(await touchPrograms(gone))) return false;
+    if (!(await step("compile"))) return false;
+
+    // Warm-up frames of a few pixels: the shadow pass and then every post pass create and first
+    // use their programs while there is next to nothing to rasterise, so the real frame after
+    // them never waits on the GPU.
+    warmShadows();
+    await gpuIdle();
+    if (gone()) return false;
+    renderer.setSize(4, 4, false);
+    composer.setSize(4, 4);
+    draw();
+    resize();
+    if (!(await step("warmup"))) return false;
+
+    // The first frame, drawn hidden, with the tints already where they belong: the layer fades
+    // in once it has been presented.
     for (const s of sim.strings) {
-      const tw = tint[s.id]!;
-      tw.now = tw.to = s.kw / s.peak;
+      const tw = tint[s.id];
+      if (tw) tw.now = tw.from = tw.to = s.kw / s.peak;
     }
     tinting = true;
     tintT0 = performance.now() - 400;
+    drawable = true;
+    loop(performance.now());
+    // Not before the GPU has drawn it: a fade over a frame still being rasterised is a cut.
+    await gpuIdle();
+    await nextFrame();
+    if (gone()) return false;
+    placeChips();
+    stages.frame = Math.round(performance.now() - t0);
+    shown = true;
+    return true;
+  }
+
+  /** The car body: loaded once the house is on screen, then faded in on its own. */
+  async function addCar(gone: () => boolean): Promise<void> {
+    const { loadCar } = await import("./scene/car");
+    const car = await loadCar(pause);
+    if (gone()) return;
+    // Compiled where it will stand, so its programs see the scene's lights and shadows.
+    // Hidden until it is ready to fade in: a live tick may draw the scene meanwhile.
+    car.visible = false;
+    plant.car.slot.add(car);
+    await compile(car);
+    // Frames are still being drawn: ask the GPU nothing until it is idle, then everything at once.
+    await gpuIdle();
+    if (gone()) return;
+    const programs = renderer.info.programs ?? [];
+    for (; touched < programs.length; touched++) {
+      programs[touched]!.getUniforms();
+      programs[touched]!.getAttributes();
+    }
+    // The car's shadow program is made by its first shadow pass: run one into a few pixels, so
+    // the frames below never wait for it behind a full frame.
+    car.visible = plant.car.cable.visible = true;
+    warmShadows();
+    car.visible = plant.car.cable.visible = false;
+    const fade = !motion.still && !flight && ghost !== undefined;
+    if (fade) {
+      // Hold the picture without the car over the canvas; the car is drawn beneath it and the
+      // held picture fades out: an opacity-only crossfade, with no render loop.
+      cancelAnimationFrame(frame);
+      frame = 0;
+      loop(performance.now());
+      const still = createImageBitmap(canvas!);
+      ghost!.getContext("bitmaprenderer")!.transferFromImageBitmap(await still);
+      if (gone()) return;
+      ghosting = "hold";
+    }
+    car.visible = true;
+    plant.car.cable.visible = true;
+    requestRender();
+    stages.car = Math.round(performance.now() - loadT0);
+    if (!fade) return;
+    // The frame with the car must be on the canvas before the held picture starts to go.
+    await nextFrame();
+    await gpuIdle();
+    await nextFrame();
+    if (ghosting === "hold") ghosting = "fade";
+  }
+
+  onMount(() => {
+    let dead = false;
+    const gone = () => dead;
+    const ro = new ResizeObserver(() => {
+      if (live) resize();
+    });
+    ro.observe(host!);
+    let carTimer: ReturnType<typeof setTimeout> | undefined;
+    init(gone)
+      .then((ok) => {
+        if (!ok) return;
+        onready?.();
+        // After the fade, when nothing else is waiting.
+        carTimer = setTimeout(() => {
+          const idle = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 50));
+          idle(() => void addCar(gone).catch(() => {}), { timeout: 2000 });
+        }, 450);
+      })
+      .catch((e: unknown) => {
+        if (!dead) onerror?.(e);
+      });
     return () => {
+      dead = true;
+      clearTimeout(carTimer);
       ro.disconnect();
       cancelAnimationFrame(frame);
-      controls.dispose();
-      composer.dispose();
+      controls?.dispose();
+      composer?.dispose();
       envTarget?.dispose();
-      pmrem.dispose();
-      renderer.dispose();
+      pmrem?.dispose();
+      renderer?.dispose();
     };
   });
 
   const strings = $derived(Object.fromEntries(sim.strings.map((s) => [s.id, s])));
+  // A chip shows only when its role exists (ADR 21).
+  const visibleChips = $derived(
+    chips.filter((c) => (c.id === "battery" ? sim.has.battery : c.id === "ev" ? sim.has.ev : c.id === "inverter" || strings[c.id] !== undefined)),
+  );
   function short(name: string): string {
     return name.replace("MPPT", "M").replace(" Süd", " S").replace(" Nord", " N");
   }
 </script>
 
-<div bind:this={host} class="absolute inset-0 overflow-hidden">
+<!-- Hidden and inert until the first frame is on screen; then the whole layer fades in, labels included. -->
+<div bind:this={host} class={["layer absolute inset-0 overflow-hidden", shown && "shown", motion.still && "instant"]} inert={!shown}>
   <canvas bind:this={canvas} class="absolute inset-0 size-full touch-none outline-none"></canvas>
+  <canvas bind:this={ghost} class={["ghost pointer-events-none absolute inset-0 size-full", ghosting]} ontransitionend={() => (ghosting = "off")} aria-hidden="true"></canvas>
   {#if view.scene === "sky"}
     <!-- The hero figure sits over the sky; a page-colour scrim keeps it legible at any sun. -->
     <div class="pointer-events-none absolute inset-x-0 top-0 h-2/5 bg-linear-to-b from-background/85 via-background/40 to-transparent"></div>
@@ -533,7 +788,7 @@
 
   <!-- Leader lines from each marker to its chip. -->
   <svg class="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden="true">
-    {#each chips as c (c.id)}
+    {#each visibleChips as c (c.id)}
       {#if !c.hidden}
         <line x1={c.ax} y1={c.ay} x2={c.x} y2={c.y} class="stroke-foreground/35" stroke-width="1" />
         <circle cx={c.ax} cy={c.ay} r="3" class="fill-background stroke-foreground/60" stroke-width="1.25" />
@@ -541,7 +796,7 @@
     {/each}
   </svg>
 
-  {#each chips as c (c.id)}
+  {#each visibleChips as c (c.id)}
     <Button
       variant="ghost"
       size="sm"
@@ -558,7 +813,8 @@
         <span class="size-1.5 rounded-full bg-solar"></span>
         <Sun class="size-3.5 text-solar" />
         <span class="text-muted-foreground">{short(strings[c.id]!.name)}</span>
-        <span><AnimatedNumber value={strings[c.id]!.kw} digits={1} /> <span class="text-muted-foreground">kW</span></span>
+        <!-- A string sharing its MPPT input is an estimate (ADR 17, ADR 20). -->
+        <span>{#if sim.readings[`pv.string.power[${c.id}]`]?.est}<span class="me-0.5 text-muted-foreground">≈</span>{/if}<AnimatedNumber value={strings[c.id]!.kw} digits={1} /> <span class="text-muted-foreground">kW</span></span>
       {:else if c.id === "inverter"}
         <span class="size-1.5 rounded-full bg-solar"></span>
         <Cpu class="size-3.5 text-muted-foreground" />
@@ -577,17 +833,42 @@
     </Button>
   {/each}
 
-  <!-- Camera presets. -->
-  <ToggleGroup.Root
-    type="single"
-    size="sm"
-    spacing={1}
-    bind:value={() => preset, (v: string) => v && fly(v)}
-    class={["glass-ambient absolute bottom-3 rounded-md p-0.5 ring-1 ring-border/60 elevation-1", presets === "left" ? "left-3" : "right-3 max-md:bottom-28"]}
-    aria-label="Kamera"
-  >
-    {#each Object.keys(PRESETS) as name (name)}
-      <ToggleGroup.Item value={name} class="px-2 text-xs">{name}</ToggleGroup.Item>
-    {/each}
-  </ToggleGroup.Root>
+  <!-- Camera presets: one scrolling row whose edge fades where more waits (ADR 21). -->
+  <div {@attach scrollFade} class="glass-ambient absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] overflow-x-auto rounded-md p-0.5 ring-1 ring-border/60 elevation-1 no-scrollbar">
+    <ToggleGroup.Root type="single" size="sm" spacing={1} bind:value={() => preset, (v: string) => v && fly(v)} class="w-max" aria-label="Kamera">
+      {#each Object.keys(PRESETS) as name (name)}
+        <ToggleGroup.Item value={name} class="px-2 text-xs">{name}</ToggleGroup.Item>
+      {/each}
+    </ToggleGroup.Root>
+  </div>
 </div>
+
+<style>
+  /* Opacity only (ADR 21). An entrance, eased out; reduced motion and the still tier show it at once. */
+  .layer {
+    opacity: 0;
+    transition: opacity 350ms var(--motion-ease, ease-out);
+  }
+  .layer.shown {
+    opacity: 1;
+  }
+  .ghost {
+    opacity: 0;
+  }
+  .ghost.hold {
+    opacity: 1;
+  }
+  .ghost.fade {
+    transition: opacity 350ms var(--motion-ease, ease-out);
+  }
+  .layer.instant,
+  .layer.instant .ghost {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .layer,
+    .ghost.fade {
+      transition: none;
+    }
+  }
+</style>
