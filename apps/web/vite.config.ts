@@ -30,6 +30,9 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.svelte.test.ts"],
+    // Without a GPU every page's WebGL runs through one software renderer: the studio scenes of
+    // files run side by side starve each other into timeouts.
+    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,
