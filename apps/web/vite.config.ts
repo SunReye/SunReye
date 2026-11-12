@@ -1,8 +1,25 @@
+import { readdirSync, readFileSync } from "node:fs";
 import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+/** Every lucide icon the sources import, so each new icon is pre-bundled without a list to keep. */
+function icons(): string[] {
+  const src = `${import.meta.dirname}/src`;
+  const found = new Set<string>();
+
+  for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
+    if (/\.(?:svelte|ts)$/u.test(file)) {
+      const source = readFileSync(`${src}/${file}`, "utf8");
+
+      for (const [name] of source.matchAll(/@lucide\/svelte\/icons\/[a-z0-9-]+/gu)) found.add(name);
+    }
+  }
+
+  return [...found].toSorted();
+}
 
 export default defineConfig({
   plugins: [
@@ -26,18 +43,7 @@ export default defineConfig({
       "three/addons/postprocessing/GTAOPass.js",
       "three/addons/postprocessing/OutputPass.js",
       "three/addons/postprocessing/RenderPass.js",
-      "@lucide/svelte/icons/arrow-down",
-      "@lucide/svelte/icons/arrow-up",
-      "@lucide/svelte/icons/battery-charging",
-      "@lucide/svelte/icons/car",
-      "@lucide/svelte/icons/cpu",
-      "@lucide/svelte/icons/fuel",
-      "@lucide/svelte/icons/gauge",
-      "@lucide/svelte/icons/house",
-      "@lucide/svelte/icons/lock",
-      "@lucide/svelte/icons/shield-check",
-      "@lucide/svelte/icons/sun",
-      "@lucide/svelte/icons/utility-pole",
+      ...icons(),
       "svelte-sonner",
     ],
   },

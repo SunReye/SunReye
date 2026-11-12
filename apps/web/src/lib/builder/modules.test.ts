@@ -119,7 +119,9 @@ test("a placed module is drawn where the crate laid out its cell; one outside ev
     [1, 1],
   ] as const;
 
-  expect(panels(scene, [[{ row: 0, column: 0, area, corners }]])).toEqual([{ corners, string: 0 }]);
+  expect(panels(scene, [[{ row: 0, column: 0, area, corners }]])).toEqual([
+    { corners, string: 0, grid: 0 },
+  ]);
 });
 
 test("a new string is wired like the first one, else to device 1, and starts empty", () => {

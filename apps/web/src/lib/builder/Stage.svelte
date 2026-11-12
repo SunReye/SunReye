@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Device, Values } from "../api/core.ts";
   import { modelLoader } from "../cars/models.ts";
   import { parked, type Parked } from "../cars/parked.ts";
@@ -7,7 +8,7 @@
   import { parseView, presetView, presets, type Preset, type View } from "./camera.ts";
   import type { CarPlace, Geometry, Point } from "./pv.ts";
   import SceneCanvas from "./SceneCanvas.svelte";
-  import type { Panel } from "./scene.ts";
+  import type { Hit, Panel } from "./scene.ts";
 
   let {
     core,
@@ -16,6 +17,7 @@
     sun,
     places,
     devices,
+    onpick,
   }: {
     core: Core;
     geometry: Geometry;
@@ -25,6 +27,7 @@
     places: readonly CarPlace[];
     /** Names the cars' loadpoints. */
     devices: readonly Device[];
+    onpick?: ((hit: Hit) => void) | undefined;
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -76,46 +79,38 @@
   }
 </script>
 
-<section>
-  <SceneCanvas
-    {geometry}
-    {panels}
-    {sun}
-    {cars}
-    {model}
-    view={kept ?? presetView("isometric", geometry)}
-    onview={keep}
-  />
-  {#if cars.length > 0}
-    <ul aria-label={m.builder_cars()}>
-      {#each cars as car, i (i)}
-        <li>{carState(car)}</li>
-      {/each}
-    </ul>
-  {/if}
-  <nav aria-label={m.builder_views()}>
-    {#each presets as preset (preset)}
-      <button
-        type="button"
-        onclick={() => {
-          keep(presetView(preset, geometry));
-        }}>{labels[preset]()}</button
-      >
+<SceneCanvas
+  {geometry}
+  {panels}
+  {sun}
+  {cars}
+  {model}
+  view={kept ?? presetView("isometric", geometry)}
+  onview={keep}
+  {onpick}
+/>
+<nav
+  aria-label={m.builder_views()}
+  class="glass-ambient absolute top-1/2 right-3 flex -translate-y-1/2 flex-col gap-0.5 rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
+>
+  {#each presets as preset (preset)}
+    <Button
+      variant="ghost"
+      size="xs"
+      class="justify-start"
+      onclick={() => {
+        keep(presetView(preset, geometry));
+      }}>{labels[preset]()}</Button
+    >
+  {/each}
+</nav>
+{#if cars.length > 0}
+  <ul
+    aria-label={m.builder_cars()}
+    class="glass-ambient absolute right-3 bottom-3 flex flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-xs"
+  >
+    {#each cars as car, i (i)}
+      <li>{carState(car)}</li>
     {/each}
-  </nav>
-</section>
-
-<style>
-  section {
-    display: grid;
-    grid-template-rows: minmax(20rem, 70vh) auto;
-    gap: 0.5rem;
-  }
-
-  nav {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 0.5rem;
-  }
-</style>
+  </ul>
+{/if}

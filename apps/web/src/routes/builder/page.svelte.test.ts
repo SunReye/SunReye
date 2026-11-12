@@ -1,5 +1,6 @@
+import "../../app.css";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { parseView } from "../../lib/builder/camera.ts";
 import Page from "./+page.svelte";
@@ -9,10 +10,15 @@ const KEPT = "sunreye.builder.view";
 beforeEach(async () => {
   localStorage.removeItem(KEPT);
   await page.viewport(1280, 900);
+  // The inspector's levels land at once: these tests read what it shows, not how it slides.
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
 test("without WebGL2 the route points to the form", async () => {
@@ -49,32 +55,60 @@ test("a preset view is kept in this browser", async () => {
   expect(kept?.position[2]).toBeLessThan(kept?.target[2] ?? 0);
 });
 
+/** The inspector beside the canvas. */
+const inspector = () => page.getByRole("complementary", { name: "Szene bearbeiten" });
+
+/** Presses an inspector button whose name starts with `label`. */
+async function press(label: string): Promise<void> {
+  await inspector()
+    .getByRole("button", { name: new RegExp(`^${label}`, "u") })
+    .first()
+    .click();
+}
+
 test("the admin adds a block, a tree and a box, and turns a roof flat", async () => {
-  const screen = await render(Page);
+  await render(Page);
 
-  await screen.getByRole("button", { name: "Baukörper hinzufügen" }).click();
-  await screen.getByRole("button", { name: "Baum hinzufügen" }).click();
-  await screen.getByRole("button", { name: "Quader hinzufügen" }).click();
+  await press("Gebäude");
+  await press("Baukörper hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Baukörper 2" })).toBeVisible();
 
-  await expect.element(screen.getByRole("group", { name: "Baukörper 2" })).toBeVisible();
-  await expect.element(screen.getByRole("group", { name: "Baum" })).toBeVisible();
-  await expect.element(screen.getByRole("group", { name: "Quader" })).toBeVisible();
+  await press("Gebäude");
+  await press("Szene");
+  await press("Umgebung");
+  await press("Baum hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Baum 1" })).toBeVisible();
+  await press("Umgebung");
+  await press("Quader hinzufügen");
+  await expect.element(inspector().getByRole("heading", { name: "Quader 2" })).toBeVisible();
 
-  const first = screen.getByRole("group", { name: "Baukörper 1" });
+  await press("Umgebung");
+  await press("Szene");
+  await press("Gebäude");
+  await press("Baukörper 1 ");
+  await expect.element(inspector().getByRole("button", { name: /^Dachneigung/u })).toBeVisible();
+  await press("Dach ");
+  await page.getByRole("radio", { name: "Flachdach" }).click();
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
 
-  await expect.element(first.getByRole("spinbutton", { name: "Dachneigung (°)" })).toBeVisible();
-  await userEvent.selectOptions(
-    first.getByRole("combobox", { name: "Dach" }).element(),
-    "Flachdach",
-  );
-  expect(first.getByRole("spinbutton", { name: "Dachneigung (°)" }).query()).toBeNull();
+  await expect.element(inspector().getByRole("button", { name: "Dach Flachdach" })).toBeVisible();
+  expect(
+    inspector()
+      .getByRole("button", { name: /^Dachneigung/u })
+      .query(),
+  ).toBeNull();
 });
 
 test("the compass dial turns the scene to north", async () => {
-  const screen = await render(Page);
-  const dial = screen.getByRole("slider", { name: "Nordrichtung (°)" });
+  await render(Page);
 
-  await userEvent.fill(dial, "90");
+  await press("Umgebung");
+  await press("Nordrichtung");
+  page.getByRole("spinbutton", { name: "Nordrichtung (°)" }).element().focus();
+  await userEvent.keyboard("{PageUp}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
 
-  await expect.element(dial).toHaveValue("90");
+  await expect
+    .element(inspector().getByRole("button", { name: "Nordrichtung (°) 10" }))
+    .toBeVisible();
 });

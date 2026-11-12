@@ -28,16 +28,16 @@
 </script>
 
 {#if misplaced !== null}
-  <p role="alert">{misplacedText(misplaced)}</p>
+  <p role="alert" class="mb-2 text-sm text-destructive">{misplacedText(misplaced)}</p>
 {/if}
 {#if saved !== undefined}
   {#if "problem" in saved}
-    <p role="alert">{problemText(saved.problem)}</p>
+    <p role="alert" class="mb-2 text-sm text-destructive">{problemText(saved.problem)}</p>
   {:else}
-    <p role="status">{m.builder_saved()}</p>
+    <p role="status" class="mb-2 text-sm text-success">{m.builder_saved()}</p>
     <!-- A warning, never a refusal: the plant may already exist (ADR 20). -->
     {#each saved.warnings as warning (warning.string)}
-      <p role="alert">
+      <p role="alert" class="mb-2 text-sm text-warning">
         {m.builder_cold_voltage({
           name: name(saved, warning.string),
           voltage: Math.round(warning.openCircuitVoltage),

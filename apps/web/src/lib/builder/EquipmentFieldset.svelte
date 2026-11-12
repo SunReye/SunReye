@@ -1,8 +1,13 @@
+<!-- A marker's level in the inspector: its device, block, wall and place along it. -->
 <script lang="ts">
+  import * as Item from "#lib/components/ui/item/index.js";
   import type { Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import NumberField from "./NumberField.svelte";
+  import { choices, metres } from "./fields.ts";
   import type { Equipment, Wall } from "./pv.ts";
+  import RemoveButton from "./RemoveButton.svelte";
+  import SwitchRow from "./SwitchRow.svelte";
+  import ValueRow from "./ValueRow.svelte";
 
   let {
     marker,
@@ -19,96 +24,74 @@
     onremove: () => void;
   } = $props();
 
-  const kinds: Readonly<Record<Equipment["kind"], () => string>> = {
-    inverter: m.equipment_inverter,
-    battery: m.equipment_battery,
-  };
-
-  const walls: readonly (readonly [Wall, () => string])[] = [
+  const WALLS: readonly (readonly [Wall, () => string])[] = [
     ["front", m.wall_front],
     ["right", m.wall_right],
     ["back", m.wall_back],
     ["left", m.wall_left],
   ];
 
-  const numbers = $derived(Array.from({ length: blocks }, (_, index) => index));
+  const device = $derived(
+    choices(
+      m.equipment_device(),
+      devices.map(({ name }) => name),
+    ),
+  );
+
+  const block = $derived(
+    choices(
+      m.equipment_block(),
+      Array.from({ length: blocks }, (_, index) => m.builder_block({ number: index + 1 })),
+    ),
+  );
+
+  const wall = choices(
+    m.equipment_wall(),
+    WALLS.map(([, label]) => label()),
+  );
+
+  const along = metres(m.equipment_along(), 0, 60);
 </script>
 
-<fieldset>
-  <legend>{kinds[marker.kind]()}</legend>
-  <label>
-    {m.equipment_device()}
-    <select
-      value={marker.device}
-      onchange={(event) => {
-        onchange({ ...marker, device: Number(event.currentTarget.value) });
-      }}
-    >
-      {#each devices as device (device.id)}
-        <option value={device.id}>{device.name}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    {m.equipment_block()}
-    <select
-      value={marker.block}
-      onchange={(event) => {
-        onchange({ ...marker, block: Number(event.currentTarget.value) });
-      }}
-    >
-      {#each numbers as index (index)}
-        <option value={index}>{m.builder_block({ number: index + 1 })}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    {m.equipment_wall()}
-    <select
-      value={marker.wall}
-      onchange={(event) => {
-        const wall = walls.find(([side]) => side === event.currentTarget.value)?.[0];
+<Item.Group class="gap-0 divide-y divide-border/60">
+  <ValueRow
+    edit={device}
+    value={devices.findIndex(({ id }) => id === marker.device)}
+    onchange={(index) => {
+      const chosen = devices[index];
 
-        if (wall !== undefined) onchange({ ...marker, wall });
-      }}
-    >
-      {#each walls as [side, label] (side)}
-        <option value={side}>{label()}</option>
-      {/each}
-    </select>
-  </label>
-  <NumberField
-    label={m.equipment_along()}
-    value={marker.along}
-    min={0}
-    onchange={(along) => {
-      onchange({ ...marker, along });
+      if (chosen !== undefined) onchange({ ...marker, device: chosen.id });
     }}
   />
-  <label>
-    <input
-      type="checkbox"
-      checked={marker.inside}
-      onchange={(event) => {
-        onchange({ ...marker, inside: event.currentTarget.checked });
-      }}
-    />
-    {m.equipment_inside()}
-  </label>
-  <button type="button" onclick={onremove}>{m.builder_remove()}</button>
-</fieldset>
+  <ValueRow
+    edit={block}
+    value={marker.block}
+    onchange={(index) => {
+      onchange({ ...marker, block: index });
+    }}
+  />
+  <ValueRow
+    edit={wall}
+    value={WALLS.findIndex(([side]) => side === marker.wall)}
+    onchange={(index) => {
+      const side = WALLS[index]?.[0];
 
-<style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 0.75rem;
-  }
-
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-  }
-</style>
+      if (side !== undefined) onchange({ ...marker, wall: side });
+    }}
+  />
+  <ValueRow
+    edit={along}
+    value={marker.along}
+    onchange={(value) => {
+      onchange({ ...marker, along: value });
+    }}
+  />
+  <SwitchRow
+    label={m.equipment_inside()}
+    checked={marker.inside}
+    onchange={(inside) => {
+      onchange({ ...marker, inside });
+    }}
+  />
+</Item.Group>
+<RemoveButton {onremove} />

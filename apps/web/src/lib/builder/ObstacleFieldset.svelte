@@ -1,7 +1,12 @@
+<!-- An obstacle's level in the inspector: where it stands and how big it is. -->
 <script lang="ts">
+  import * as Item from "#lib/components/ui/item/index.js";
+  import type { Editable } from "../components/value-editor/editable.ts";
   import { m } from "../paraglide/messages.js";
-  import NumberField from "./NumberField.svelte";
+  import { degrees, metres, REACH } from "./fields.ts";
   import type { Obstacle } from "./pv.ts";
+  import RemoveButton from "./RemoveButton.svelte";
+  import ValueRow from "./ValueRow.svelte";
 
   let {
     item,
@@ -19,54 +24,43 @@
 
   type Numeric<T> = { [K in keyof T]: T[K] extends number ? K : never }[keyof T];
 
-  const names: Readonly<Record<Obstacle["kind"], () => string>> = {
-    box: m.obstacle_box,
-    cylinder: m.obstacle_cylinder,
-    tree: m.obstacle_tree,
-  };
+  const x = metres(m.field_x(), -REACH, REACH);
+  const z = metres(m.field_z(), -REACH, REACH);
+  const height = metres(m.field_height(), 0.1, 60);
 
   const boxFields = [
-    ["x", m.field_x],
-    ["z", m.field_z],
-    ["width", m.field_width],
-    ["depth", m.field_depth],
-    ["height", m.field_height],
-    ["rotation", m.field_rotation],
-  ] as const satisfies readonly (readonly [Numeric<BoxObstacle>, () => string])[];
+    ["x", x],
+    ["z", z],
+    ["width", metres(m.field_width(), 0.1, 60)],
+    ["depth", metres(m.field_depth(), 0.1, 60)],
+    ["height", height],
+    ["rotation", degrees(m.field_rotation(), 0, 359)],
+  ] as const satisfies readonly (readonly [Numeric<BoxObstacle>, Editable])[];
 
   const roundFields = [
-    ["x", m.field_x],
-    ["z", m.field_z],
-    ["radius", m.field_radius],
-    ["height", m.field_height],
-  ] as const satisfies readonly (readonly [Numeric<RoundObstacle>, () => string])[];
+    ["x", x],
+    ["z", z],
+    ["radius", metres(m.field_radius(), 0.1, 20)],
+    ["height", height],
+  ] as const satisfies readonly (readonly [Numeric<RoundObstacle>, Editable])[];
 
-  /** The obstacle's sizes with their labels. */
+  /** The obstacle's sizes with their bounds. */
   const sizes = $derived(
     item.kind === "box"
-      ? boxFields.map(([key, label]) => [key, label, item[key]] as const)
-      : roundFields.map(([key, label]) => [key, label, item[key]] as const),
+      ? boxFields.map(([key, edit]) => [key, edit, item[key]] as const)
+      : roundFields.map(([key, edit]) => [key, edit, item[key]] as const),
   );
 </script>
 
-<fieldset>
-  <legend>{names[item.kind]()}</legend>
-  {#each sizes as [key, label, value] (key)}
-    <NumberField
-      label={label()}
+<Item.Group class="gap-0 divide-y divide-border/60">
+  {#each sizes as [key, edit, value] (key)}
+    <ValueRow
+      {edit}
       {value}
       onchange={(next) => {
         onchange({ ...item, [key]: next });
       }}
     />
   {/each}
-  <button type="button" onclick={onremove}>{m.builder_remove()}</button>
-</fieldset>
-
-<style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-</style>
+</Item.Group>
+<RemoveButton {onremove} />
