@@ -1,6 +1,8 @@
 import { expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+// The chart is laid out by the SPA's utilities.
+import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import TariffScreen from "./TariffScreen.svelte";
 
@@ -55,6 +57,9 @@ function testCore(routes: Readonly<Record<string, Answer>>): TestCore {
   };
 }
 
+/** The screen at the current month. */
+const NOW = { params: new URLSearchParams(), go: () => {} };
+
 function forbidden(): Response {
   return Response.json(
     { status: 403, code: "auth.forbidden" },
@@ -63,7 +68,7 @@ function forbidden(): Response {
 }
 
 test("the prices in force show in ct/kWh, the spot price with its attribution", async () => {
-  const screen = await render(TariffScreen, { core: connect(testCore({})) });
+  const screen = await render(TariffScreen, { core: connect(testCore({})), ...NOW });
 
   await expect
     .element(screen.getByRole("definition").filter({ hasText: "30,00 ct/kWh" }))
@@ -95,27 +100,25 @@ const COSTS = {
   total: { paid: 0.3, earned: 0.32, saved: 0.77 },
 };
 
-test("each day's costs show with the total the core serves", async () => {
-  const core = testCore({ "GET /api/v1/costs": () => Response.json(COSTS) });
+test("the range's savings and costs read in the chart's legend, as the core totals them", async () => {
+  const core = testCore({
+    "GET /api/v1/costs": () => Response.json(COSTS),
+    "GET /api/v1/timezone": () => Response.json({ name: "UTC" }),
+  });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const route = { params: new URLSearchParams("range=month&at=2026-11-01"), go: () => {} };
 
-  const day = screen.getByRole("row").filter({ hasText: "01.11.2026" }).getByRole("cell");
-  const total = screen.getByRole("row").filter({ hasText: "Summe" }).getByRole("cell");
+  const screen = await render(TariffScreen, { core: connect(core), ...route });
 
-  await expect.element(day.nth(0)).toHaveTextContent("0,00 €");
-  await expect.element(day.nth(1)).toHaveTextContent("0,32 €");
-  await expect.element(day.nth(2)).toHaveTextContent("0,62 €");
-  await expect.element(total.nth(0)).toHaveTextContent("0,30 €");
-  await expect.element(total.nth(1)).toHaveTextContent("0,32 €");
-  await expect.element(total.nth(2)).toHaveTextContent("0,77 €");
-
-  const asked = core.sent.find(({ route }) => route.startsWith("GET /api/v1/costs"));
-  const query = new URLSearchParams(asked?.route.split("?")[1]);
-  // The last 31 days, so a month shows whole.
-  expect(Date.parse(query.get("to") ?? "") - Date.parse(query.get("from") ?? "")).toBe(
-    31 * 86_400_000,
-  );
+  // Avoided import is what was saved beyond the feed-in pay.
+  await expect.element(screen.getByText("0,45 €")).toBeVisible();
+  await expect.element(screen.getByText("0,32 €")).toBeVisible();
+  await expect.element(screen.getByText("0,30 €")).toBeVisible();
+  await expect
+    .poll(() => core.sent.map((s) => s.route))
+    .toContain(
+      "GET /api/v1/costs?from=2026-11-01T00%3A00%3A00.000Z&to=2026-12-01T00%3A00%3A00.000Z",
+    );
 });
 
 test("payback shows the savings against the investment, which the admin enters", async () => {
@@ -131,7 +134,7 @@ test("payback shows the savings against the investment, which the admin enters",
     },
   });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const screen = await render(TariffScreen, { core: connect(core), ...NOW });
   const payback = screen.getByRole("region", { name: "Amortisation" });
 
   await expect.element(payback.getByRole("definition").nth(1)).toHaveTextContent("0,62 €");
@@ -160,7 +163,7 @@ test("the admin changes the tariff in force from now on", async () => {
     "PUT /api/v1/tariff": () => Response.json(WEEKNIGHTS),
   });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const screen = await render(TariffScreen, { core: connect(core), ...NOW });
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
@@ -194,7 +197,7 @@ test("the admin adds a band and reprices from a past date", async () => {
     "POST /api/v1/tariff/reprice": () => Response.json(WEEKNIGHTS),
   });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const screen = await render(TariffScreen, { core: connect(core), ...NOW });
   const fed = screen.getByRole("group", { name: "Einspeisung" });
 
   await expect.element(fed.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" })).toHaveValue(8);
@@ -226,7 +229,7 @@ test("a tariff the core refuses shows why", async () => {
       ),
   });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const screen = await render(TariffScreen, { core: connect(core), ...NOW });
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
@@ -248,7 +251,7 @@ test("the admin chooses the bidding zone spot prices are fetched for", async () 
     "PUT /api/v1/spot-prices": () => Response.json({ zone: "DE-LU" }),
   });
 
-  const screen = await render(TariffScreen, { core: connect(core) });
+  const screen = await render(TariffScreen, { core: connect(core), ...NOW });
   const zone = screen.getByRole("combobox", { name: "Gebotszone" });
 
   await expect.element(zone).toHaveValue("");
