@@ -108,3 +108,27 @@ fn a_loadpoints_settings_read_as_ev_roles() {
         ]
     );
 }
+
+#[test]
+fn inverter_temperature_and_status_per_phase_load_and_battery_cycles_follow_adr_4() {
+    let profile = load(&[
+        ("inverter.temperature", None),
+        ("inverter.status", None),
+        ("load.phase.power", Some(2)),
+        ("battery.cycles", None),
+    ]);
+    let read: Vec<(RoleKind, Option<Unit>)> = profile
+        .quantities()
+        .iter()
+        .map(|q| (q.kind(), q.unit()))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (RoleKind::Measurement, Some(Unit::Celsius)),
+            (RoleKind::Status, None),
+            (RoleKind::Measurement, Some(Unit::Watt)),
+            (RoleKind::Counter, None),
+        ]
+    );
+}

@@ -5,6 +5,7 @@ import {
   CURRENTS,
   FLOWS,
   LOW_VOLTAGE,
+  RUNNING_STATE,
   bounded,
   identify,
   inputs,
@@ -42,9 +43,10 @@ export interface Model {
 const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.status",
-    role: "extra.inverter_status",
+    role: "inverter.status",
     register: 500,
     type: "u16",
+    enum: RUNNING_STATE,
   },
   {
     key: "ac.relay_status",
@@ -54,7 +56,7 @@ const STATUS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "radiator_temp",
-    role: "extra.radiator_temp",
+    role: "inverter.temperature",
     register: 540,
     type: "i16",
     scale: 0.1,
@@ -450,19 +452,22 @@ const AC: readonly Frozen<Quantity>[] = [
   },
   {
     key: "ac.ups.l1.power",
-    role: "extra.ac_ups_l1_power",
+    role: "load.phase.power",
+    index: 1,
     register: 650,
     type: "i16",
   },
   {
     key: "ac.ups.l2.power",
-    role: "extra.ac_ups_l2_power",
+    role: "load.phase.power",
+    index: 2,
     register: 651,
     type: "i16",
   },
   {
     key: "ac.ups.l3.power",
-    role: "extra.ac_ups_l3_power",
+    role: "load.phase.power",
+    index: 3,
     register: 652,
     type: "i16",
   },
@@ -887,6 +892,7 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "identify",
       "ac-rating",
       "setting-text",
+      "register-enum",
     ],
     identify: identify(LOW_VOLTAGE, model.rated),
     inverter: model.inverter,

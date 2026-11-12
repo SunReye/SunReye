@@ -150,7 +150,7 @@ function show(core: Readonly<Core>, estimated: readonly string[] = []) {
       schema: { min: 1, max: 1 },
       capabilities: [],
       transports: [],
-      devices: { "1": { estimated: [...estimated], settings: [], writes: false } },
+      devices: { "1": { estimated: [...estimated], series: [], settings: [], writes: false } },
     },
   });
 }
