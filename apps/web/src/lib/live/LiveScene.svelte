@@ -163,8 +163,7 @@
   figure {
     position: relative;
     margin: 0;
-    height: 70vh;
-    min-height: 20rem;
+    height: 100%;
     overflow: hidden;
   }
 

@@ -1,16 +1,33 @@
 <script lang="ts">
   import { connect, http } from "../lib/api/core";
-  import Home from "../lib/live/Home.svelte";
-  import { entry } from "../lib/setup/entry";
+  import Dashboard from "../lib/dashboard/Dashboard.svelte";
+  import { entry, type Entry } from "../lib/setup/entry";
+  import { access } from "../lib/shell/access.svelte.ts";
   import SignIn from "../lib/setup/SignIn.svelte";
 
   // The page's directory is the core's root, under an ingress prefix too (ADR 11).
   const core = connect(http(new URL(".", document.baseURI).href));
 
-  let opening = $state.raw(entry(core));
+  const shell = access();
+
+  /** The entry, with the shell told whether to frame it and whether Controls is listed. */
+  async function open(): Promise<Entry> {
+    if (shell) shell.bare = true;
+
+    const shown = await entry(core);
+
+    if (shell && shown.screen === "dashboard") {
+      shell.admin = shown.admin;
+      shell.bare = false;
+    }
+
+    return shown;
+  }
+
+  let opening = $state.raw(open());
 
   function reopen(): void {
-    opening = entry(core);
+    opening = open();
   }
 
   /** Lazy: the dashboard loads only what it shows, and setup reaches the builder (ADR 11). */
@@ -27,6 +44,6 @@
       <Setup {core} signedIn={shown.signedIn} onfinish={reopen} />
     {/await}
   {:else}
-    <Home {core} layout={shown.layout} />
+    <Dashboard {core} layout={shown.layout} admin={shown.admin} />
   {/if}
 {/await}

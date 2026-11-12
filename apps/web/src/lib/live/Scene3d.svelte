@@ -33,7 +33,8 @@
   }
 </script>
 
-<main>
+<!-- Fills the hero, which sizes it. -->
+<div class="size-full">
   {#await load()}
     <p>{m.live_loading()}</p>
   {:then { LiveScene, model, pv, moduleTypes, capabilities, location }}
@@ -48,4 +49,4 @@
       {location}
     />
   {/await}
-</main>
+</div>
