@@ -349,8 +349,9 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
     assert_eq!(status, StatusCode::OK);
     let device = &body["devices"][plant.id.to_string()];
     assert_eq!(device["writes"], true);
+    let settings = device["settings"].as_array().unwrap();
     assert_eq!(
-        device["settings"],
+        json!(settings[..5]),
         json!([
             { "key": CHARGE, "name": "Max battery charge current", "unit": "A",
                 "range": { "min": 0.0, "max": 350.0 }, "step": 1.0, "enable": "on" },
@@ -692,4 +693,59 @@ async fn reading_a_setting_needs_the_admins_session() {
         (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
     );
     assert_eq!(plant.received(), []);
+}
+
+const START: &str = "battery.time_of_use.1.start";
+
+/// Deye's time-of-use slots (ADR 5): a start is minutes since midnight, held as `HHMM`.
+#[tokio::test]
+async fn capabilities_list_each_time_of_use_slot_with_its_start_as_a_time() {
+    let plant = Plant::bare(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.capability(START).await,
+        json!({ "key": START, "name": "Slot 1 start", "range": { "min": 0.0, "max": 1435.0 },
+            "step": 5.0, "time": true, "enable": "off" })
+    );
+    for n in 1..=6 {
+        for field in ["start", "power", "soc", "grid_charge"] {
+            let key = format!("battery.time_of_use.{n}.{field}");
+            assert_eq!(plant.capability(&key).await["enable"], "off", "{key}");
+        }
+    }
+    assert!(
+        plant
+            .capability("battery.time_of_use.1.power")
+            .await
+            .get("time")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn a_slot_start_is_written_as_hhmm_and_an_off_step_time_is_refused() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    assert_eq!(plant.enable("PUT", START).await.0, StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        plant.write(START, json!(1352)).await,
+        refused(StatusCode::UNPROCESSABLE_ENTITY, "setting.value")
+    );
+    let (status, written) = plant.write(START, json!(1350)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    // Register 148 reads 148 before the write: 01:48.
+    assert_eq!(
+        (&written["before"], &written["after"], &written["outcome"]),
+        (&json!(108.0), &json!(1350.0), &json!("verified"))
+    );
+    assert_eq!(
+        plant.received(),
+        [Write {
+            unit: 1,
+            start: 148,
+            words: vec![2230]
+        }]
+    );
+    assert_eq!(plant.read(START).await.1, json!({ "value": 1350.0 }));
 }
