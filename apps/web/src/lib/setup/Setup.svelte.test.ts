@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import { setLocale } from "../paraglide/runtime.js";
@@ -17,7 +16,7 @@ test("the first run offers the language switch", async () => {
 
   const screen = await render(Setup, { core, signedIn: false, onfinish: () => {} });
 
-  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Sprache" }), "en");
+  await screen.getByRole("radio", { name: "English" }).click();
 
   await expect.element(screen.getByRole("heading", { name: "Setup" })).toBeVisible();
   await expect.element(screen.getByRole("heading", { name: "Set the password" })).toBeVisible();
