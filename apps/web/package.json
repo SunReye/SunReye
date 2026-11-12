@@ -13,7 +13,7 @@
     "api:check": "bun run api:types --check",
     "sync": "bun run i18n && svelte-kit sync",
     "check": "bun run sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test:components": "bun run wasm && bun run i18n && vitest run",
+    "test:components": "bun run wasm && bun run i18n && vitest run --shard=1/2 && vitest run --shard=2/2",
     "wasm": "cargo build --locked --release -p sunreye-pv-wasm --target wasm32-unknown-unknown"
   },
   "dependencies": {
