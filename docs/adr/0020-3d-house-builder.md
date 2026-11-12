@@ -36,6 +36,8 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Rendering.** three.js directly, without a Svelte wrapper. The scene is built by pure functions from the layout and drawn by one thin component. It needs WebGL2. It redraws only on a live tick or a camera move, never in a continuous loop. An orbit camera offers preset views (north, east, south, west, top, isometric); each viewer's last view is kept in their browser. The `pv` crate reaches the browser through its own WASM glue crate (ADR 2). Desktop and tablet edit; a phone views.
 
+**Loading.** The dashboard never waits for the scene. three.js and the scene load after the dashboard is interactive: noise textures in a worker, the plant built in slices, shader programs compiled ahead, and the first frame drawn hidden. Meanwhile the hero shows the scene's own studio backdrop with a faint ground shadow; "3D-Ansicht lädt …" appears only after a second. Once the GPU has finished the first frame, the scene and its labels fade in over about 350 ms; the car loads after the house and fades in on its own. With 2D chosen, under the low-power switch or without WebGL2, three.js is never requested; a first switch from 2D keeps the flow until the scene can fade over it. A failed load leaves the 2D flow with "Erneut versuchen".
+
 **Time slider.** A date and time slider moves the sun and the shadows. Per-string production comes from measured values or estimates for past dates, the forecast for today and the next two days, and a clear-sky run of the `pv` crate in the browser for any other date. Once readings exist, each MPPT input's learned correction and its residual over the last 30 days are shown, so a misplaced face or a missing obstacle shows where it is drawn. Nothing changes the scene automatically.
 
 - A day with nothing stored, such as one before the first reading, runs the clear sky too. The browser's clear sky caps no MPPT input, as it reads no inverter profile. The location is the admin's (ADR 9), so for a viewer the sun stays put and no clear sky runs.
@@ -47,7 +49,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 **Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
 - **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
 - **Modules:** full black: black cells, backsheet and frames under anti-reflective glass, which reflects about half as much as plain glass.
-- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off under the low-power switch.
+- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
 - **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
 - **Theme:** the page background, fog and exposure follow light or dark mode.
 - **Rendering quality:** antialiasing is on, and tone mapping is filmic.

@@ -1,6 +1,6 @@
 # 4. Roles and conventions
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
 
 ## Context
 
@@ -22,13 +22,17 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `battery.current` | A | measurement | yes |
 | `battery.voltage`, `battery.temperature` | V, °C | measurement | |
 | `battery.mode` | | status | |
+| `battery.cycles` | | counter; the vendor's own cycle count | |
 | `battery.energy.charged.total`, `battery.energy.discharged.total` | kWh | counter | |
 | `grid.power` | W | measurement | yes |
 | `grid.frequency` | Hz | measurement | |
 | `grid.phase.voltage` / `.current` / `.power` | V / A / W | measurement, indexed | current, power |
 | `grid.energy.imported.total`, `grid.energy.exported.total` | kWh | counter | |
 | `inverter.power` | W | measurement; the inverter's AC output, positive when it delivers AC | yes |
+| `inverter.temperature` | °C | measurement; the hottest sensor the profile maps, usually the heatsink | |
+| `inverter.status` | | status; the operating state through an `enum`: 0 standby, 1 normal, 2 fault | |
 | `load.power`, `backup.power`, `generator.power` | W | measurement | |
+| `load.phase.power` | W | measurement, indexed by phase | |
 | `load.energy.total`, `backup.energy.total`, `generator.energy.total` | kWh | counter | |
 | `point.power` | W | measurement, indexed by measurement point id; a point's own consumption, published only by the `plant` device (ADR 14) | yes |
 | `ev.charge.power`, `ev.vehicle.soc`, `ev.session.energy` | W, %, kWh | measurement, measurement, counter | |
