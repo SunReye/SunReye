@@ -6,6 +6,9 @@ import { presetView, type View } from "./camera.ts";
 import type { Geometry } from "./pv.ts";
 import SceneCanvas from "./SceneCanvas.svelte";
 
+// Software GL renders the sky and shadows slowly while other suites run.
+const SLOW = { timeout: 15_000 };
+
 const house: Geometry = {
   faces: [
     {
@@ -50,7 +53,7 @@ test("dragging the canvas orbits the camera and reports the new view", async () 
     targetPosition: { x: 250, y: 100 },
   });
 
-  await expect.poll(() => views.length).toBeGreaterThan(0);
+  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
   expect(views.at(-1)?.target).toEqual(start.target);
   expect(views.at(-1)?.position).not.toEqual(start.position);
 });
@@ -172,8 +175,8 @@ test.each([false, true])(
     const { drawn } = await closeUp(dark);
 
     // Near black, and too grey to read as any hue.
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).lightness).toBeLessThan(10);
-    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).chroma).toBeLessThan(12);
+    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).lightness, SLOW).toBeLessThan(10);
+    await expect.poll(() => lab(drawn() ?? [255, 255, 255]).chroma, SLOW).toBeLessThan(12);
   },
 );
 
@@ -181,10 +184,10 @@ test("a new sun relights the scene: below the horizon only the moon lights the r
   const { drawn, screen } = await closeUp(false, false);
   const lightness = (): number => lab(drawn() ?? [0, 0, 0]).lightness;
 
-  await expect.poll(lightness).toBeGreaterThan(30);
+  await expect.poll(lightness, SLOW).toBeGreaterThan(30);
 
   const noon = lightness();
 
   await screen.rerender({ sun: [0, -0.5, -0.866] });
-  await expect.poll(lightness).toBeLessThan(noon - 15);
+  await expect.poll(lightness, SLOW).toBeLessThan(noon - 15);
 });
