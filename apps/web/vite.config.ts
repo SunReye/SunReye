@@ -37,6 +37,7 @@ export default defineConfig({
       "three",
       "three/addons/controls/OrbitControls.js",
       "three/addons/loaders/GLTFLoader.js",
+      "three/addons/libs/meshopt_decoder.module.js",
       "three/addons/geometries/RoundedBoxGeometry.js",
       "three/addons/objects/Sky.js",
       "three/addons/postprocessing/EffectComposer.js",

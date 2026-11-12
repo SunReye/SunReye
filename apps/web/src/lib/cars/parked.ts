@@ -1,11 +1,10 @@
 // Which cars the scene draws (ADR 20): one per car place whose loadpoint reports a connected
-// vehicle, in the body its catalogue entry, else the admin's pick, names. Pure: no three.js.
+// vehicle, in the place's colour. Pure: no three.js.
 import type { Values } from "../api/core.ts";
-import type { BodyClass, CarPlace, Geometry, Point } from "../builder/pv.ts";
-import { catalogue } from "./catalogue.ts";
+import type { CarPlace, Geometry, Point } from "../builder/pv.ts";
 
-/** What neither the catalogue nor the admin picked. */
-const PLAIN = { class: "sedan", colour: "#8a8f98" } as const;
+/** The default body's paint without the admin's pick: Stealth Grey, quiet beside the energy colours. */
+export const PLAIN = "#232528";
 
 export interface Parked {
   readonly device: number;
@@ -14,18 +13,12 @@ export interface Parked {
   readonly above: Point;
   readonly length: number;
   readonly width: number;
-  readonly body: { readonly class: BodyClass; readonly colour: string };
-  /** An uploaded body's id, drawn in place of `body` once loaded. */
+  /** The default body's paint, `#rrggbb`. */
+  readonly colour: string;
+  /** An uploaded body's id, drawn in place of the default once loaded. */
   readonly model: string | null;
   readonly watts: number | null;
   readonly soc: number | null;
-}
-
-/** The catalogue entry the vehicle's title names, else the admin's pick. */
-function body(place: CarPlace, model: number | undefined): Parked["body"] {
-  const entry = catalogue.find(({ id }) => id === model);
-
-  return entry === undefined ? (place.body ?? PLAIN) : { class: entry.class, colour: entry.colour };
 }
 
 type Stand = NonNullable<Geometry["stands"]>[number];
@@ -37,7 +30,7 @@ function car(place: CarPlace, stand: Stand, live: Readonly<Record<string, number
     device: place.device,
     length: place.length,
     width: place.width,
-    body: body(place, live["ev.vehicle.model"]),
+    colour: place.colour ?? PLAIN,
     model: place.model ?? null,
     watts: live["ev.charge.power"] ?? null,
     soc: live["ev.vehicle.soc"] ?? null,

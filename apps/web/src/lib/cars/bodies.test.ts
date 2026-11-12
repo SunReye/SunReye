@@ -1,11 +1,24 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { Box3, BoxGeometry, Mesh, Vector3 } from "three";
-import type { BodyClass } from "../builder/pv.ts";
-import { carBody, fitModel } from "./bodies.ts";
+import { stat } from "node:fs/promises";
+import {
+  Box3,
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
+  Mesh,
+  MeshStandardMaterial,
+  Vector3,
+  type Group,
+} from "three";
+import { carBody, fitModel, loadCar } from "./bodies.ts";
 import type { Parked } from "./parked.ts";
 
-function car(kind: BodyClass, forward: Parked["forward"] = [0, 1, 0]): Parked {
+const SHIPPED = new URL("car.glb", import.meta.url);
+
+const loaded = loadCar(SHIPPED.href);
+
+function car(colour: string, forward: Parked["forward"] = [0, 1, 0]): Parked {
   return {
     device: 7,
     at: [4, -3, 0],
@@ -13,31 +26,77 @@ function car(kind: BodyClass, forward: Parked["forward"] = [0, 1, 0]): Parked {
     above: [4, -3, 2.5],
     length: 5,
     width: 2.5,
-    body: { class: kind, colour: "#f2f2ee" },
+    colour,
     model: null,
     watts: null,
     soc: null,
   };
 }
 
-function size(kind: BodyClass, forward?: Parked["forward"]): Vector3 {
-  const body = carBody(car(kind, forward));
+async function placed(colour: string, forward?: Parked["forward"]): Promise<Group> {
+  const body = carBody(car(colour, forward), await loaded);
 
   body.updateMatrixWorld(true);
 
-  return new Box3().setFromObject(body).getSize(new Vector3());
+  return body;
 }
 
-test("a stylised body stands on the ground at its place's centre, inside the place", () => {
-  const body = carBody(car("sedan"));
+/** The triangles of `object`'s meshes, and whether each has normals. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js walks a live group.
+function triangles(object: Group) {
+  let count = 0;
+  let normals = true;
 
-  body.updateMatrixWorld(true);
+  for (const mesh of object.getObjectsByProperty("isMesh", true)) {
+    const geometry: unknown = mesh instanceof Mesh ? mesh.geometry : null;
 
-  const box = new Box3().setFromObject(body);
+    if (geometry instanceof BufferGeometry) {
+      const position: unknown = geometry.getAttribute("position");
+      const listed = position instanceof BufferAttribute ? position.count : 0;
+      const corners = geometry.index?.count ?? listed;
+
+      count += corners / 3;
+      normals &&= geometry.getAttribute("normal") !== undefined;
+    }
+  }
+
+  return { count, normals };
+}
+
+/** The colours of `object`'s own paint. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js walks a live group.
+function paints(object: Group): Set<string> {
+  const found = new Set<string>();
+
+  for (const mesh of object.getObjectsByProperty("isMesh", true)) {
+    if (
+      mesh instanceof Mesh &&
+      mesh.material instanceof MeshStandardMaterial &&
+      mesh.material.userData["paint"] === true
+    ) {
+      found.add(`#${mesh.material.color.getHexString()}`);
+    }
+  }
+
+  return found;
+}
+
+test("the shipped body is under 50 KB, about 4,000 triangles, its normals rebuilt on load", async () => {
+  const { size } = await stat(SHIPPED);
+  const { count, normals } = triangles(await loaded);
+
+  expect(size).toBeLessThan(50_000);
+  expect(count).toBeGreaterThan(3000);
+  expect(count).toBeLessThan(5000);
+  expect(normals).toBe(true);
+});
+
+test("the default body stands on the ground at its place's centre, inside the place", async () => {
+  const box = new Box3().setFromObject(await placed("#f2f2ee"));
   const centre = box.getCenter(new Vector3());
 
   // Three.js's frame: x east, y up, z south.
-  expect(box.min.y).toBeCloseTo(0, 6);
+  expect(box.min.y).toBeCloseTo(0, 2);
   expect(centre.x).toBeCloseTo(4, 1);
   expect(centre.z).toBeCloseTo(3, 1);
   expect(box.max.z - box.min.z).toBeLessThanOrEqual(5);
@@ -45,29 +104,19 @@ test("a stylised body stands on the ground at its place's centre, inside the pla
   expect(box.max.z - box.min.z).toBeGreaterThan(4);
 });
 
-test("a body turns its long side along the place's forward", () => {
-  const east = size("sedan", [1, 0, 0]);
+test("the default body turns its long side along the place's forward", async () => {
+  const east = new Box3().setFromObject(await placed("#f2f2ee", [1, 0, 0])).getSize(new Vector3());
 
   expect(east.x).toBeGreaterThan(4);
   expect(east.z).toBeLessThanOrEqual(2.5);
 });
 
-test("each class has its own shape: a van stands taller than an SUV, an SUV than a sedan", () => {
-  const [sedan, suv, van] = (["sedan", "suv", "van"] as const).map((kind) => size(kind).y);
+test("each car is painted in its place's colour, the next car's paint its own", async () => {
+  const red = await placed("#c0392b");
+  const blue = await placed("#1f3a5f");
 
-  expect(suv).toBeGreaterThan(sedan ?? Infinity);
-  expect(van).toBeGreaterThan(suv ?? Infinity);
-
-  const classes = ["sedan", "hatchback", "suv", "van", "pickup"] as const;
-
-  const outlines = classes.map((kind) =>
-    size(kind)
-      .toArray()
-      .map((v) => v.toFixed(2))
-      .join(),
-  );
-
-  expect(new Set(outlines).size).toBe(classes.length);
+  expect(paints(red)).toEqual(new Set(["#c0392b"]));
+  expect(paints(blue)).toEqual(new Set(["#1f3a5f"]));
 });
 
 test("an uploaded model is scaled to the place's length and set on the ground", () => {

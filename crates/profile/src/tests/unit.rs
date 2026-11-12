@@ -91,7 +91,6 @@ fn a_loadpoints_settings_read_as_ev_roles() {
         ("ev.mode", None),
         ("ev.battery.boost", None),
         ("ev.limit.soc", None),
-        ("ev.vehicle.model", None),
     ]);
     let read: Vec<(RoleKind, Option<Unit>)> = profile
         .quantities()
@@ -104,7 +103,6 @@ fn a_loadpoints_settings_read_as_ev_roles() {
             (RoleKind::Status, None),
             (RoleKind::Status, None),
             (RoleKind::Measurement, Some(Unit::Percent)),
-            (RoleKind::Status, None),
         ]
     );
 }

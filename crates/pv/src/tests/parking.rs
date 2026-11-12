@@ -1,6 +1,6 @@
 //! Car places (ADR 20), checked against points worked out by hand.
 
-use crate::{Body, BodyClass, CarPlace, Scene, Stand};
+use crate::{CarPlace, Scene, Stand};
 
 fn place(rotation: f64) -> CarPlace {
     CarPlace {
@@ -10,10 +10,7 @@ fn place(rotation: f64) -> CarPlace {
         width: 3.0,
         length: 5.0,
         rotation,
-        body: Some(Body {
-            class: BodyClass::Sedan,
-            colour: "#f2f2ee".to_owned(),
-        }),
+        colour: Some("#f2f2ee".to_owned()),
         model: None,
     }
 }
@@ -71,10 +68,7 @@ fn a_place_without_size_with_a_colour_no_hex_code_or_a_model_no_digest_is_refuse
         ..place(0.0)
     };
     let named = CarPlace {
-        body: Some(Body {
-            class: BodyClass::Van,
-            colour: "white".to_owned(),
-        }),
+        colour: Some("white".to_owned()),
         ..place(0.0)
     };
     let linked = CarPlace {
