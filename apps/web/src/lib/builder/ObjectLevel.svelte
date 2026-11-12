@@ -117,6 +117,7 @@
     {string}
     position={index}
     made={painted(scene, index)}
+    warning={plan.cold.find((cold) => cold.string === index)?.text}
     {moduleTypes}
     devices={plan.devices}
     onchange={(next) => {

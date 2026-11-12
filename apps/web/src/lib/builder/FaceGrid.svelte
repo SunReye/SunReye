@@ -5,7 +5,7 @@
   import { m } from "../paraglide/messages.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import FaceCells from "./FaceCells.svelte";
+  import FaceCells, { type Checks } from "./FaceCells.svelte";
   import GridSettings from "./GridSettings.svelte";
   import {
     editGrid,
@@ -24,6 +24,7 @@
     grid,
     roof,
     cells,
+    checks,
     moduleTypes,
     strokes,
     onchange,
@@ -35,6 +36,7 @@
     roof: RoofFace;
     /** Every cell the setback holds, as the crate lays them out. */
     cells: readonly CellPlace[];
+    checks: Checks;
     moduleTypes: readonly ModuleType[];
     /** Where a drag's steps go: shown at once, recorded once let go. */
     strokes: Strokes;
@@ -108,7 +110,7 @@
   </Button>
 </div>
 
-<FaceCells {draft} {index} {grid} {roof} {cells} {tool} {strokes} {onchange} />
+<FaceCells {draft} {index} {grid} {roof} {cells} {checks} {tool} {strokes} {onchange} />
 
 <div class="border-t border-border/60 p-3">
   <Button

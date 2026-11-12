@@ -40,6 +40,10 @@
     grid={draft.scene.grids[index]}
     {roof}
     cells={plan.laid.grids[index] ?? []}
+    checks={{
+      misplaced: plan.laid.misplaced?.grid === index ? plan.laid.misplaced : null,
+      cold: plan.cold,
+    }}
     {moduleTypes}
     {strokes}
     {onchange}

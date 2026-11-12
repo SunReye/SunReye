@@ -3,10 +3,12 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { addGrid, paint, type Draft } from "./modules.ts";
 import {
   desk,
   DEVICES,
   drill,
+  enter,
   gridOnTheSouthFace,
   house,
   inspector,
@@ -113,4 +115,72 @@ test("a string of another module type is refused in place, and nothing is painte
   await expect
     .element(inspector().getByRole("button", { name: "Modulraster auf diese Fläche legen" }))
     .toBeVisible();
+});
+
+test("a module the setback no longer holds shows where it lies, refused as on save", async () => {
+  await gridOnTheSouthFace(testCore());
+  await inspector().getByRole("button", { name: "Fläche füllen" }).click();
+
+  await enter("Randabstand (m)", "0,5");
+
+  // 0.5 + 8 × 1.154 m reaches past 10 − 0.5 m: the eighth column falls out.
+  await expect
+    .element(
+      inspector()
+        .getByRole("group", { name: "Zellen der Fläche" })
+        .getByRole("img", { name: /Spalte 8 ragt über den Randabstand/u }),
+    )
+    .toBeVisible();
+});
+
+/** The template house with both roof faces filled and painted into one string. */
+function overVoltage(): Draft {
+  const { scene } = house();
+  const size = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
+  let gridded = addGrid(addGrid(scene, 0, 0, MODULE.id), 0, 1, MODULE.id);
+  const laid = pv.modules(gridded, size).grids;
+
+  const into = { kind: "paint", string: 0, erase: false } as const;
+
+  for (const [index, cells] of laid.entries()) {
+    for (const at of cells ?? []) gridded = paint(gridded, index, at, into);
+  }
+
+  return {
+    scene: gridded,
+    strings: [
+      {
+        name: "Süd",
+        moduleType: MODULE.id,
+        device: 1,
+        input: 1,
+        modules: 0,
+        optimized: 0,
+        tilt: 0,
+        azimuth: 0,
+        loss: 2,
+      },
+    ],
+  };
+}
+
+test("a string over its inverter's voltage in the cold is warned of at its modules, before saving", async () => {
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: overVoltage(),
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    limits: { 1: 800 },
+  });
+
+  // 32 × 41 V × (1 + 0.27 %/K × 35 K), worked by hand.
+  const warning =
+    "Süd: 1436 V Leerlaufspannung bei −10 °C übersteigen die 800 V des Wechselrichters.";
+
+  await drill("Module", SOUTH);
+  await expect.element(inspector().getByRole("status").filter({ hasText: warning })).toBeVisible();
+
+  await drill("Module", "Szene", "Strings", "Süd");
+  await expect.element(inspector().getByRole("status").filter({ hasText: warning })).toBeVisible();
 });

@@ -1,6 +1,7 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
 import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
+import { coldStrings, type Limits } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
@@ -29,6 +30,8 @@ export interface Opening {
   readonly start: Draft;
   readonly moduleTypes: readonly Readonly<ModuleType>[];
   readonly devices: readonly Readonly<Device>[];
+  /** Each inverter's maximum DC input voltage, by device id. */
+  readonly limits: Limits;
 }
 
 export class Session {
@@ -78,7 +81,12 @@ export class Session {
     this.geometry = $derived(opening().pv.geometry(this.draft.scene));
     this.laid = $derived(opening().pv.modules(this.draft.scene, sizes));
     this.panels = $derived(panels(this.draft.scene, this.laid.grids));
-    this.plan = $derived({ draft: this.draft, laid: this.laid, devices: opening().devices });
+    this.plan = $derived({
+      draft: this.draft,
+      laid: this.laid,
+      devices: opening().devices,
+      cold: coldStrings(opening().pv, this.draft, opening().moduleTypes, opening().limits),
+    });
   }
 
   get draft(): Draft {

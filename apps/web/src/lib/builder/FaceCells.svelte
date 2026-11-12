@@ -2,6 +2,10 @@
   A face's cells (ADR 20): a tap toggles one cell, and a drag paints or erases along the pointer's
   path as one undo step, by mouse, pen or touch. A refused paint answers in place.
 -->
+<script lang="ts" module>
+  export type { Checks } from "./checks.ts";
+</script>
+
 <script lang="ts">
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
@@ -17,6 +21,7 @@
     type Strokes,
     type Tool,
   } from "./modules.ts";
+  import { misplacedText, type Checks } from "./checks.ts";
   import type { CellPlace, ModuleGrid, RoofFace } from "./pv.ts";
   import { stringCss } from "./scene.ts";
 
@@ -26,6 +31,7 @@
     grid,
     roof,
     cells,
+    checks,
     tool,
     strokes,
     onchange,
@@ -37,6 +43,7 @@
     roof: RoofFace;
     /** Every cell the setback holds, as the crate lays them out. */
     cells: readonly CellPlace[];
+    checks: Checks;
     tool: Tool;
     /** Where a drag's steps go: shown at once, recorded once let go. */
     strokes: Strokes;
@@ -51,6 +58,16 @@
   function percent(length: number, of: number): string {
     return `${(100 * length) / of}%`;
   }
+
+  /** The strings painted here that are too high in the cold. */
+  const coldHere = $derived(
+    checks.cold.filter(({ string }) => grid.modules.some((cell) => cell.string === string)),
+  );
+
+  /** Where the refused module lies, even past the face's edge. */
+  const misplaced = $derived(checks.misplaced);
+
+  const stray = $derived(misplaced !== null && "area" in misplaced ? misplaced.area : null);
 
   /** Why the last press was refused, until the next one. */
   let refusal = $state<string>();
@@ -132,7 +149,7 @@
     {@const [[left, bottom], [right, top]] = cell.area}
     <button
       type="button"
-      class="cell"
+      class={["cell", coldHere.some(({ string }) => module?.string === string) && "cold"]}
       aria-label={m.builder_cell({ row: cell.row + 1, column: cell.column + 1 })}
       aria-pressed={module !== undefined}
       data-row={cell.row}
@@ -150,7 +167,22 @@
       }}>{module?.optimized === true ? "◆" : ""}</button
     >
   {/each}
+  {#if misplaced !== null && stray !== null}
+    {@const [[left, bottom], [right, top]] = stray}
+    <span
+      class="stray"
+      role="img"
+      aria-label={misplacedText(misplaced)}
+      style:left={percent(left, across)}
+      style:bottom={percent(bottom, up)}
+      style:width={percent(right - left, across)}
+      style:height={percent(top - bottom, up)}
+    ></span>
+  {/if}
 </div>
+{#each coldHere as warning (warning.string)}
+  <p role="status" class="px-3 pb-2 text-sm text-warning">{warning.text}</p>
+{/each}
 {#if refusal !== undefined}
   <div class="px-3 pb-3"><Refusal text={refusal} /></div>
 {/if}
@@ -193,5 +225,19 @@
 
   .cell[aria-pressed="true"] {
     border-style: solid;
+  }
+
+  /* Over its inverter's limit in the cold: a warning, never a refusal (ADR 20). */
+  .cell.cold {
+    box-shadow: inset 0 0 0 2px var(--warning);
+  }
+
+  /* A module the core would refuse, where it lies, even past the face's edge. */
+  .stray {
+    position: absolute;
+    border: 2px dashed var(--destructive);
+    border-radius: 1px;
+    background: color-mix(in oklch, var(--destructive) 18%, transparent);
+    pointer-events: none;
   }
 </style>

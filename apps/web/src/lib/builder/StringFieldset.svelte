@@ -15,6 +15,7 @@
     string,
     position,
     made,
+    warning,
     moduleTypes,
     devices,
     onchange,
@@ -25,6 +26,8 @@
     position: number;
     /** What the scene paints into it. */
     made: Painted;
+    /** Why it is over its inverter's limit in the cold, if it is. */
+    warning: string | undefined;
     moduleTypes: readonly ModuleType[];
     /** The inverters it may be wired to. */
     devices: readonly Device[];
@@ -96,6 +99,9 @@
   <Item.Root class="rounded-none border-0">
     <Item.Content>
       <Item.Description>{m.builder_string_modules(made)}</Item.Description>
+      {#if warning !== undefined}
+        <p role="status" class="text-sm text-warning">{warning}</p>
+      {/if}
     </Item.Content>
   </Item.Root>
 </Item.Group>
