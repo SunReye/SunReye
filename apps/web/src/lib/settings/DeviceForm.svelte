@@ -8,9 +8,10 @@
   import type { Connection, Core, Device, Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "../setup/fields.ts";
+  import { FIELD } from "../setup/fields.ts";
   import ProfilePicker from "../setup/ProfilePicker.svelte";
   import Refusal from "../setup/Refusal.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
@@ -48,6 +49,14 @@
     ...connections,
     ...made.filter((c) => !connections.some((known) => known.id === c.id)),
   ]);
+
+  const id = $props.id();
+
+  const chosen = $derived.by(() => {
+    const at = choices.find((c) => c.id === fields.connection);
+
+    return at && `${at.name} · ${at.transport}`;
+  });
 
   const broker = $derived(choices.find((c) => c.id === fields.connection)?.transport === "mqtt");
 
@@ -114,20 +123,29 @@
       <span class="text-xs text-muted-foreground">{m.settings_device_profile_fixed()}</span>
     </div>
   {/if}
-  <label class={FIELD}>
-    {m.settings_device_connection()}
-    <select
-      class={SELECT}
-      value={fields.connection}
-      onchange={(event) => {
-        fields.connection = Number(event.currentTarget.value);
-      }}
+  <div class={FIELD}>
+    <label for="{id}-connection">{m.settings_device_connection()}</label>
+    <Select.Root
+      type="single"
+      bind:value={
+        () => String(fields.connection),
+        (next) => {
+          fields.connection = Number(next);
+        }
+      }
     >
-      {#each choices as option (option.id)}
-        <option value={option.id}>{option.name} · {option.transport}</option>
-      {/each}
-    </select>
-  </label>
+      <Select.Trigger id="{id}-connection" class="w-full">
+        <span class="truncate">{chosen ?? ""}</span>
+      </Select.Trigger>
+      <Select.Content>
+        <Select.Group>
+          {#each choices as option (option.id)}
+            <Select.Item value={String(option.id)} label="{option.name} · {option.transport}" />
+          {/each}
+        </Select.Group>
+      </Select.Content>
+    </Select.Root>
+  </div>
   {#if device === undefined}
     {#if making}
       <div class="rounded-md border border-border/60">

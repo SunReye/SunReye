@@ -5,9 +5,10 @@
   import type { Location } from "../api/setup.ts";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "./fields.ts";
+  import { FIELD } from "./fields.ts";
   import Refusal from "./Refusal.svelte";
 
   let {
@@ -32,13 +33,23 @@
   // svelte-ignore state_referenced_locally
   let zone = $state(current?.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-  // The fields start from the stored plant; the admin's edits own them after.
+  const id = $props.id();
+
+  // The fields start from the stored plant as text, typed with the locale's decimal key; the
+  // admin's edits own them after.
   // svelte-ignore state_referenced_locally
-  let latitude = $state(current?.location?.latitude);
+  let latitudeText = $state(String(current?.location?.latitude ?? ""));
 
   // As the latitude.
   // svelte-ignore state_referenced_locally
-  let longitude = $state(current?.location?.longitude);
+  let longitudeText = $state(String(current?.location?.longitude ?? ""));
+
+  /** A typed coordinate, with a comma or a point; empty or not a number is none. */
+  function degrees(text: string): number | undefined {
+    const value = Number(text.trim().replace(",", "."));
+
+    return text.trim() === "" || Number.isNaN(value) ? undefined : value;
+  }
 
   // The zone held or guessed is listed even where the browser's list leaves it out, such as UTC.
   // svelte-ignore state_referenced_locally
@@ -55,8 +66,8 @@
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         kept = undefined;
-        latitude = round(coords.latitude);
-        longitude = round(coords.longitude);
+        latitudeText = String(round(coords.latitude));
+        longitudeText = String(round(coords.longitude));
         haptics.selection();
       },
       () => {
@@ -68,6 +79,9 @@
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+
+    const latitude = degrees(latitudeText);
+    const longitude = degrees(longitudeText);
 
     if (latitude === undefined || longitude === undefined) return;
 
@@ -83,22 +97,29 @@
 
 <form onsubmit={submit} class="flex flex-col gap-4 p-4">
   {#if current === undefined}<p class="text-sm text-muted-foreground">{m.plant_hint()}</p>{/if}
-  <label class={FIELD}>
-    {m.plant_timezone()}
-    <select bind:value={zone} class={SELECT}>
-      {#each zones as option (option)}
-        <option value={option}>{option}</option>
-      {/each}
-    </select>
-  </label>
+  <div class={FIELD}>
+    <label for="{id}-zone">{m.plant_timezone()}</label>
+    <Select.Root type="single" bind:value={zone}>
+      <Select.Trigger id="{id}-zone" class="w-full">
+        <span class="truncate">{zone}</span>
+      </Select.Trigger>
+      <Select.Content class="max-h-80">
+        <Select.Group>
+          {#each zones as option (option)}
+            <Select.Item value={option} label={option} />
+          {/each}
+        </Select.Group>
+      </Select.Content>
+    </Select.Root>
+  </div>
   <div class="grid grid-cols-2 gap-3">
     <label class={FIELD}>
       {m.plant_latitude()}
-      <Input type="number" inputmode="decimal" step="any" required bind:value={latitude} />
+      <Input inputmode="decimal" autocomplete="off" required bind:value={latitudeText} />
     </label>
     <label class={FIELD}>
       {m.plant_longitude()}
-      <Input type="number" inputmode="decimal" step="any" required bind:value={longitude} />
+      <Input inputmode="decimal" autocomplete="off" required bind:value={longitudeText} />
     </label>
   </div>
   {#if locatable}

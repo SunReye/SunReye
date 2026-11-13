@@ -6,13 +6,14 @@
   import type { Connection, ConnectionDraft, Core, Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
-  import SwitchRow from "../builder/SwitchRow.svelte";
+  import * as Select from "#lib/components/ui/select/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "../setup/fields.ts";
+  import { FIELD } from "../setup/fields.ts";
   import Refusal from "../setup/Refusal.svelte";
   import { portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
   import SecretField from "./SecretField.svelte";
+  import ToggleRow from "./ToggleRow.svelte";
 
   let {
     core,
@@ -85,8 +86,10 @@
       (fields.transport !== "mqtt" || fields.topicRoot.trim() !== ""),
   );
 
-  function pick(event: Event & { currentTarget: HTMLSelectElement }): void {
-    const next = TRANSPORTS.find(([t]) => t === event.currentTarget.value)?.[0];
+  const id = $props.id();
+
+  function pick(value: string): void {
+    const next = TRANSPORTS.find(([t]) => t === value)?.[0];
 
     if (next === undefined) return;
 
@@ -116,12 +119,19 @@
     {m.settings_connection_name()}
     <Input required autocomplete="off" bind:value={fields.name} />
   </label>
-  <label class={FIELD}>
-    {m.devices_endpoint_transport()}
-    <select class={SELECT} value={fields.transport} onchange={pick}>
-      {#each TRANSPORTS as [option] (option)}<option value={option}>{option}</option>{/each}
-    </select>
-  </label>
+  <div class={FIELD}>
+    <label for="{id}-transport">{m.devices_endpoint_transport()}</label>
+    <Select.Root type="single" bind:value={() => fields.transport, pick}>
+      <Select.Trigger id="{id}-transport" class="w-full">{fields.transport}</Select.Trigger>
+      <Select.Content>
+        <Select.Group>
+          {#each TRANSPORTS as [option] (option)}
+            <Select.Item value={option} label={option} />
+          {/each}
+        </Select.Group>
+      </Select.Content>
+    </Select.Root>
+  </div>
   <label class={FIELD}>
     {m.devices_endpoint_host()}
     <Input required autocomplete="off" placeholder="192.168.1.40" bind:value={fields.host} />
@@ -141,7 +151,7 @@
       <Input required autocomplete="off" placeholder="evcc" bind:value={fields.topicRoot} />
     </label>
     <div class="overflow-hidden rounded-md border border-border/60">
-      <SwitchRow
+      <ToggleRow
         label={m.settings_connection_publish()}
         hint={m.settings_connection_publish_hint()}
         checked={fields.publish}
@@ -150,7 +160,7 @@
         }}
       />
       {#if fields.publish}
-        <SwitchRow
+        <ToggleRow
           label={m.settings_connection_discovery()}
           checked={fields.discovery}
           onchange={(on) => {
