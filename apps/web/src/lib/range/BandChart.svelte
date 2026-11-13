@@ -184,24 +184,31 @@
       : summary,
   );
 
-  // What the reference was called, so it fades out in place.
-  let markWas = $state("");
+  // What the reference was last called, so it fades out in place. A plain memory, not state:
+  // only the derived reads it.
+  let markWas = "";
+
+  const markName = $derived.by(() => {
+    if (markLabel) markWas = markLabel;
+
+    return markWas;
+  });
 
   // Where the highlight last was, so it fades out in place.
-  let hlWas = $state(0);
+  let hlWas = 0;
 
-  $effect.pre(() => {
+  const hlAt = $derived.by(() => {
     if (active !== null) hlWas = active;
 
-    if (markLabel) markWas = markLabel;
+    return hlWas;
   });
 
   const markOf = (): Legend["mark"] => {
-    if (loading || !(markLabel || markWas)) return null;
+    if (loading || !markName) return null;
 
     const on = markLabel !== "" && hasMarks;
 
-    return { label: markLabel || markWas, on, value: on ? (readout.mark ?? null) : null };
+    return { label: markName, on, value: on ? (readout.mark ?? null) : null };
   };
 
   const ghostOf = (): Legend["ghost"] => {
@@ -212,7 +219,7 @@
 
   const hl = $derived({
     opacity: active === null ? 0 : 1,
-    transform: `translateX(${((active ?? hlWas) * slot).toFixed(2)}px) scaleX(${(slot / 100).toFixed(4)})`,
+    transform: `translateX(${(hlAt * slot).toFixed(2)}px) scaleX(${(slot / 100).toFixed(4)})`,
   });
 
   const brushBox = $derived(
