@@ -9,6 +9,7 @@
     "i18n": "bun scripts/i18n.ts",
     "car": "bun scripts/car.ts",
     "smoothness": "bun e2e/smoothness.ts",
+    "flash": "bun e2e/flash.ts",
     "build": "bun run wasm && bun run i18n && vite build",
     "api": "SUNREYE_UPDATE_OPENAPI=1 cargo test -q -p sunreye-core --lib committed_openapi && bun run api:types",
     "api:types": "openapi-typescript ../../crates/core/openapi.json -o src/lib/api/schema.d.ts",
