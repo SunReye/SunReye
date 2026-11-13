@@ -231,10 +231,6 @@
   "updates_note": "Jede Einstellung, die ein Update hinzufügt oder ändert, bleibt aus, bis du sie wieder freigibst.",
   "updates_profile": "{id}: {from} → {to}",
   "updates_apply": "Update für {id} anwenden",
-  "updates_key": "Schlüssel",
-  "updates_change": "Änderung",
-  "updates_before": "Vorher",
-  "updates_after": "Nachher",
   "change_added": "hinzugefügt",
   "change_removed": "entfernt",
   "change_changed": "geändert",
@@ -1072,5 +1068,6 @@
   "settings_writes_allowed": "Schreiben erlaubt",
   "settings_verified": "auf Hardware geprüft",
   "log_empty": "Noch nichts geschrieben",
-  "log_empty_hint": "Jeder Schreibvorgang landet hier, mit seinem Ergebnis."
+  "log_empty_hint": "Jeder Schreibvorgang landet hier, mit seinem Ergebnis.",
+  "tariff_now": "Ab sofort"
 }

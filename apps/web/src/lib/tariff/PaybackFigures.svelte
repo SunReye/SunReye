@@ -1,3 +1,4 @@
+<!-- What the investment has earned back so far and what is still open, as label and value rows. -->
 <script lang="ts">
   import type { Payback } from "../api/tariff";
   import { m } from "../paraglide/messages.js";
@@ -6,17 +7,15 @@
   let { payback }: { payback: Payback } = $props();
 </script>
 
-<dl>
-  <div>
-    <dt>{m.tariff_investment()}</dt>
-    <dd>{payback.investment == null ? "–" : euros(payback.investment)}</dd>
-  </div>
-  <div>
+<dl class="flex flex-col divide-y divide-border/60">
+  <div class="flex items-baseline justify-between gap-3 px-4 py-3 text-[15px]">
     <dt>{m.tariff_savings()}</dt>
-    <dd>{euros(payback.savings)}</dd>
+    <dd class="font-medium tabular-nums">{euros(payback.savings)}</dd>
   </div>
-  <div>
+  <div class="flex items-baseline justify-between gap-3 px-4 py-3 text-[15px]">
     <dt>{m.tariff_remaining()}</dt>
-    <dd>{payback.remaining == null ? "–" : euros(payback.remaining)}</dd>
+    <dd class="font-medium tabular-nums">
+      {payback.remaining == null ? "–" : euros(payback.remaining)}
+    </dd>
   </div>
 </dl>

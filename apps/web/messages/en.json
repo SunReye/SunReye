@@ -231,10 +231,6 @@
   "updates_note": "Each setting an update adds or changes stays off until you enable it again.",
   "updates_profile": "{id}: {from} → {to}",
   "updates_apply": "Apply the update to {id}",
-  "updates_key": "Key",
-  "updates_change": "Change",
-  "updates_before": "Before",
-  "updates_after": "After",
   "change_added": "added",
   "change_removed": "removed",
   "change_changed": "changed",
@@ -1072,5 +1068,6 @@
   "settings_writes_allowed": "Writes allowed",
   "settings_verified": "verified on hardware",
   "log_empty": "Nothing written yet",
-  "log_empty_hint": "Every write lands here, with its outcome."
+  "log_empty_hint": "Every write lands here, with its outcome.",
+  "tariff_now": "From now"
 }

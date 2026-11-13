@@ -185,7 +185,7 @@
     <div
       bind:this={box}
       data-drill="box"
-      class="glass-ambient relative grid touch-pan-y grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border border-border/60 elevation-2"
+      class="glass-ambient relative grid touch-pan-y grid-cols-[minmax(0,1fr)] overflow-clip rounded-lg border border-border/60 elevation-2"
       onpointerdown={down}
       onpointermove={move}
       onpointerup={up}
