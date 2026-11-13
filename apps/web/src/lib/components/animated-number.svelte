@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { Tween } from "svelte/motion";
   import { tickGlideMs } from "../live/stream.svelte.ts";
@@ -11,7 +11,8 @@
   // number's width and nothing shifts when the first sample lands.
   // `format` writes the rolling value itself (a unit, a sign); `duration` sets a glide that is not
   // a live tick's; `appear` false starts at the value instead of counting up from zero, for a
-  // figure that arrives with content already in motion.
+  // figure that arrives with content already in motion. `unit` writes a unit that follows the
+  // rolling value, such as W giving way to kW mid-glide.
   let {
     value,
     digits = 1,
@@ -19,6 +20,7 @@
     placeholder,
     duration,
     appear = true,
+    unit,
   }: {
     value: number | null;
     digits?: number;
@@ -26,6 +28,7 @@
     placeholder?: string;
     duration?: number;
     appear?: boolean;
+    unit?: Snippet<[number]>;
   } = $props();
 
   const tween = new Tween(
@@ -53,11 +56,13 @@
 
   const write = $derived(format ?? ((v: number) => nf.format(v)));
 
+  const shown = $derived(value === null ? 0 : tween.current);
+
   const dash = $derived(placeholder ?? (digits > 0 ? `–,${"–".repeat(digits)}` : "––"));
 </script>
 
 <span class="inline-grid tabular-nums"
   ><span class={["[grid-area:1/1]", value === null && "invisible"]}
-    >{write(value === null ? 0 : tween.current)}</span
+    >{write(shown)}</span
   >{#if value === null}<span class="[grid-area:1/1] text-center">{dash}</span>{/if}</span
->
+>{@render unit?.(shown)}
