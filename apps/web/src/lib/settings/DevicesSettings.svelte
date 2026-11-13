@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { Core } from "../api/core";
   import * as Item from "#lib/components/ui/item/index.js";
+  import LoadingRows from "../components/loading-rows.svelte";
   import { problemText } from "../i18n/problems";
   import ProfileUpdates from "./ProfileUpdates.svelte";
 
@@ -10,7 +11,9 @@
   const devices = $derived(core.devices());
 </script>
 
-{#await devices then answer}
+{#await devices}
+  <LoadingRows />
+{:then answer}
   {#if "problem" in answer}
     <p role="alert" class="p-4">{problemText(answer.problem)}</p>
   {:else}

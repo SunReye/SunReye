@@ -2,6 +2,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Core } from "../api/core";
+  import LoadingRows from "../components/loading-rows.svelte";
   import DeviceSettings from "./DeviceSettings.svelte";
   import Listing from "./Listing.svelte";
 
@@ -34,7 +35,9 @@
   });
 </script>
 
-{#if answer !== undefined}
+{#if answer === undefined}
+  <LoadingRows />
+{:else}
   <Listing {answer}>
     {#snippet items(list)}
       <div class="flex flex-col divide-y divide-border/60">

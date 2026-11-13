@@ -1,6 +1,7 @@
 <!-- Settings › Plant: the plant timezone and location, as set up on the first run. -->
 <script lang="ts">
   import type { Core } from "../api/core";
+  import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import PlantStep from "../setup/PlantStep.svelte";
 
@@ -21,7 +22,9 @@
 </script>
 
 <div class="flex flex-col">
-  {#await current then plant}
+  {#await current}
+    <LoadingRows rows={3} />
+  {:then plant}
     <PlantStep
       {core}
       current={plant}
