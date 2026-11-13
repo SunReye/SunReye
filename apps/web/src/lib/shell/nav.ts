@@ -1,15 +1,14 @@
 // The shell's destinations (ADR 21). Devices has no screen of its own; it opens Settings › Devices.
 import Activity from "@lucide/svelte/icons/activity";
 import ChartLine from "@lucide/svelte/icons/chart-line";
-import CloudSun from "@lucide/svelte/icons/cloud-sun";
-import Cpu from "@lucide/svelte/icons/cpu";
 import House from "@lucide/svelte/icons/house";
 import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
-import Receipt from "@lucide/svelte/icons/receipt";
 import Settings from "@lucide/svelte/icons/settings";
 import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 import type { Component } from "svelte";
 import { m } from "../paraglide/messages.js";
+// Forecast, Tariff and Devices share their settings groups' icons.
+import { ICONS } from "../settings/group-icons.ts";
 
 export interface NavItem {
   /** The route id, as `page.route.id` reports it. */
@@ -26,8 +25,8 @@ export const DASHBOARD: NavItem = { route: "/", label: m.nav_dashboard, icon: La
 export const BAR: readonly NavItem[] = [
   DASHBOARD,
   { route: "/history", label: m.nav_history, icon: ChartLine },
-  { route: "/forecast", label: m.nav_forecast, icon: CloudSun },
-  { route: "/tariff", label: m.nav_tariff, icon: Receipt },
+  { route: "/forecast", label: m.nav_forecast, icon: ICONS.forecast },
+  { route: "/tariff", label: m.nav_tariff, icon: ICONS.tariff },
 ];
 
 const CONTROLS: NavItem = {
@@ -38,10 +37,11 @@ const CONTROLS: NavItem = {
 };
 
 const BUILDER: NavItem = { route: "/builder", label: m.nav_builder, icon: House };
+
 const DEVICES: NavItem = {
   route: "/settings?group=devices",
   label: m.settings_devices,
-  icon: Cpu,
+  icon: ICONS.devices,
   admin: true,
 };
 
