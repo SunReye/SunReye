@@ -1,9 +1,9 @@
 <!--
-  A part of a screen that fills in a frame of its own (ADR 21): the screen mounts its frame and the
-  skeletons in the first frame, then each staged part, in order, one per frame after that.
+  A part of a screen that fills after the screen mounts (ADR 21): the screen mounts its frame and the
+  skeletons in the first frame, then the staged parts, in order, as many a frame as fit its slice.
 -->
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { flushSync, type Snippet } from "svelte";
   import { stage } from "./frames.ts";
 
   let { children, skeleton }: { children: Snippet; skeleton?: Snippet } = $props();
@@ -13,6 +13,8 @@
   $effect(() =>
     stage(() => {
       ready = true;
+      // Built now, so the frame's slice counts what it cost.
+      flushSync();
     }),
   );
 </script>
