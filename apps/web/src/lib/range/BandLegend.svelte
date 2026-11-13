@@ -81,7 +81,7 @@
 {#snippet reference(mark: NonNullable<Legend["mark"]>)}
   <div class={["key flex items-baseline gap-1.5", !mark.on && "off"]} aria-hidden={!mark.on}>
     <span class="h-0.5 w-2.5 shrink-0 translate-y-[-3px] bg-foreground"></span>
-    <dt class="text-muted-foreground">{mark.label}</dt>
+    <dt class="whitespace-nowrap text-muted-foreground">{mark.label}</dt>
     {#if mark.value !== null}
       <dd class="font-semibold whitespace-nowrap tabular-nums">{@render figure(mark.value)}</dd>
     {/if}
@@ -94,7 +94,7 @@
       class="size-2 shrink-0 translate-y-[-1px] rounded-[1px] opacity-30"
       style:background={ghost.colour}
     ></span>
-    <dt class="text-muted-foreground">{ghost.label}</dt>
+    <dt class="whitespace-nowrap text-muted-foreground">{ghost.label}</dt>
     {#if ghost.value !== null}
       <dd class="font-semibold whitespace-nowrap tabular-nums">{fmt(ghost.value)}</dd>
     {/if}
@@ -107,7 +107,7 @@
       class="h-0 w-3 shrink-0 translate-y-[-3px] border-t border-dashed"
       style:border-color={line.colour}
     ></span>
-    <dt class="text-muted-foreground">{line.label}</dt>
+    <dt class="whitespace-nowrap text-muted-foreground">{line.label}</dt>
     {#if line.value !== null}
       <dd class="font-semibold whitespace-nowrap tabular-nums">{@render figure(line.value)}</dd>
     {/if}
@@ -117,15 +117,16 @@
 {#snippet hatched(label: string)}
   <div class="flex items-baseline gap-1.5">
     <span class="hatch size-2 shrink-0 translate-y-[-1px]"></span>
-    <dt class="text-muted-foreground">{label}</dt>
+    <dt class="whitespace-nowrap text-muted-foreground">{label}</dt>
   </div>
 {/snippet}
 
 {#snippet row(r: Row)}
-  <!-- Narrow: two columns, the upper side's row above the lower side's, as in the plot. -->
-  <dl
-    class="grid grid-cols-2 items-baseline gap-x-3 gap-y-0.5 text-xs @[520px]:flex @[520px]:flex-wrap @[520px]:gap-x-4"
-  >
+  <!--
+    The upper side's row above the lower side's, as in the plot. Keys wrap whole: a fixed two-column
+    grid let a long key run into its neighbour on a phone.
+  -->
+  <dl class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs @[520px]:gap-x-4">
     {#if r.name}
       <dt class="hidden w-[4.75rem] shrink-0 text-muted-foreground @[520px]:block">{r.name}</dt>
     {/if}
