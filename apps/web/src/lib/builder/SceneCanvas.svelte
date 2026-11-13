@@ -15,6 +15,7 @@
     Brush,
     Handled,
     keep,
+    overlaid,
     picking,
     projector,
     type Editing,
@@ -247,6 +248,7 @@
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle never reaches them.
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
+    const unlay = overlaid(studio.scene, () => painting, render);
     const brush = brushOn(canvas, camera, kept.drawn);
 
     const unpick = picking(canvas, camera, kept.drawn, {
@@ -272,6 +274,7 @@
       resize.disconnect();
       unhandle();
       brush.dispose();
+      unlay();
       unpick();
       controls.dispose();
       parking.dispose();

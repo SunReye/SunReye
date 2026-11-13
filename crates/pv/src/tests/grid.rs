@@ -60,6 +60,7 @@ const fn cell(row: u32, column: u32, string: Option<u32>) -> Cell {
         column,
         string,
         optimized: false,
+        order: None,
     }
 }
 

@@ -2,9 +2,18 @@
 // glow, the first build in slices, and the hits of a click.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { untrack } from "svelte";
-import { type Group, type PerspectiveCamera, Vector3 } from "three";
+import {
+  type Color,
+  type Group,
+  type PerspectiveCamera,
+  type Scene as Studio,
+  Vector3,
+} from "three";
+import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
+import { freeOverlay, overlay } from "./overlay.ts";
+import type { Painting } from "./painting.ts";
 import type { Geometry, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
@@ -132,5 +141,49 @@ export function picking(
   return () => {
     canvas.removeEventListener("pointerdown", press);
     canvas.removeEventListener("pointerup", release);
+  };
+}
+
+/** Keeps the overlay of what `painting` lays or wires in the studio, rebuilt with each step;
+ * returns its removal. */
+export function overlaid(
+  studio: Studio,
+  painting: () => Painting | undefined,
+  render: () => void,
+): () => void {
+  let group: Group | undefined;
+  let brand: { readonly key: string; readonly colour: Color } | undefined;
+
+  // Read on a new face or string only, as the handles: a drag rebuilds the overlay every step.
+  const colour = (shown: Painting): Color => {
+    const key = shown.kind === "string" ? `string ${shown.string}` : `grid ${shown.grid}`;
+
+    if (brand?.key !== key) brand = { key, colour: cssColour("var(--brand)") };
+
+    return brand.colour;
+  };
+
+  const replace = (next?: Group): void => {
+    if (group !== undefined) {
+      studio.remove(group);
+      freeOverlay(group);
+    }
+
+    group = next;
+
+    if (next !== undefined) studio.add(next);
+  };
+
+  $effect(() => {
+    const shown = painting();
+
+    untrack(() => {
+      replace(shown && overlay(shown, colour(shown)));
+      render();
+    });
+  });
+
+  return () => {
+    replace();
   };
 }

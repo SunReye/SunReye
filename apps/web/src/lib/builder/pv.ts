@@ -62,6 +62,8 @@ export interface Cell {
   /** The string it is painted into; unassigned, it produces nothing. */
   readonly string?: number | null;
   readonly optimized?: boolean;
+  /** Its place along its string's wiring, from the lowest; one without follows them. */
+  readonly order?: number | null;
 }
 
 /** The modules on one roof face; cells are the module type's size plus a gap. */

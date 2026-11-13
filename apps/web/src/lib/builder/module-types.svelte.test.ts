@@ -1,28 +1,38 @@
 import "../../app.css";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
+  cellsOnPage,
   desk,
   DEVICES,
   drill,
   enter,
+  house,
   inspector,
   MODULE,
+  press,
   pv,
   SOUTH,
   undesk,
 } from "./builder.harness.ts";
-import { emptyDraft } from "./modules.ts";
+import { addGrid, emptyDraft } from "./modules.ts";
 
 // Module types in the builder (ADR 17, 20): a face's modules start from a type the admin picks or
 // enters from its datasheet; the core keeps it.
 
-beforeEach(desk);
+beforeEach(async () => {
+  localStorage.removeItem("sunreye.builder.view");
+  await desk();
+});
 
-afterEach(undesk);
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await undesk();
+});
 
 const { id: _, ...DATASHEET } = MODULE;
 
@@ -123,9 +133,13 @@ async function datasheet(): Promise<void> {
   }
 }
 
-const placed = () => inspector().getByRole("button", { pressed: true }).all();
+/** The face level's count of placed modules. */
+/** The face level's count of placed modules, `count` a pattern. */
+const placed = (count: string) =>
+  inspector().getByText(new RegExp(`^${count} von \\d+ Modulen gesetzt$`, "u"));
 
 test("from an empty core an admin creates a module type, fills a roof face and paints a string", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
   const core = emptyCore();
 
   await opened(core);
@@ -139,14 +153,16 @@ test("from an empty core an admin creates a module type, fills a roof face and p
 
   // The new type lays the face's grid at once.
   await inspector().getByRole("button", { name: "Fläche füllen" }).click();
-  await expect.poll(placed).toHaveLength(16);
+  await expect.element(placed("16")).toBeVisible();
 
   await drill("Module", "Szene", "Strings", "String hinzufügen");
-  await drill("Strings", "Szene", "Module", SOUTH);
-  await inspector().getByRole("radio", { name: "String 1 malen" }).click();
-  await inspector().getByRole("button", { name: "Reihe 1, Spalte 1" }).click();
+  await expect.poll(() => draws.mock.calls.length).toBeGreaterThan(0);
 
-  await drill("Module", "Szene", "Strings");
+  const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
+
+  await press("mouse", [cells("0.0")]);
+
+  await drill("Strings");
   await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();
 });
 
@@ -221,5 +237,5 @@ test("an admin picks an AIKO Neostar 2S+ from the module catalogue and fills a f
   expect(core.posts).toEqual([A450]);
 
   await inspector().getByRole("button", { name: "Fläche füllen" }).click();
-  await expect.poll(() => placed().length).toBeGreaterThan(0);
+  await expect.element(placed(String.raw`[1-9]\d*`)).toBeVisible();
 });

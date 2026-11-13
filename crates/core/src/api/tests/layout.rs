@@ -314,6 +314,32 @@ async fn a_scene_derives_its_strings_planes_and_module_counts() {
 }
 
 #[tokio::test]
+async fn a_strings_wiring_order_is_kept_with_its_modules() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let wired = |row, column, order| {
+        let mut wired = cell(row, column, Some(0), false);
+        wired["order"] = json!(order);
+        wired
+    };
+    let scene = house(&module, &[wired(1, 1, 0), wired(0, 0, 2), wired(0, 1, 1)]);
+
+    let (status, saved) = core
+        .put_scene(
+            &set_cookie,
+            &[string(None, "south", &module, 1, 0.0)],
+            &scene,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], scene);
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(read["scene"], scene);
+}
+
+#[tokio::test]
 async fn saving_refuses_modules_outside_the_setback_or_overlapping_or_unknown() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

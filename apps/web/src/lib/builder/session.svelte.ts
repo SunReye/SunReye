@@ -12,8 +12,8 @@ import type {
 import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { parent, picked, type Level } from "./levels.ts";
-import { painted, panels, type Draft } from "./modules.ts";
+import { faceCells, parent, picked, type Level } from "./levels.ts";
+import { painted, panels, wiring, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
 import type { Editing, Hit, Painting, Panel } from "./drawing.svelte.ts";
@@ -199,20 +199,40 @@ export class Session {
     };
   }
 
-  /** The picked string, which a drag across modules in 3D paints (ADR 20). */
+  /** The selected face's grid, whose free cells a drag in 3D lays modules in, or the picked
+   * string, which a drag across modules wires (ADR 20). */
   get painting(): Painting | undefined {
-    const { level } = this;
+    const { level, draft } = this;
 
-    if (level.kind !== "string") return undefined;
-
-    return {
-      draft: this.draft,
-      string: level.index,
-      ondrag: (scene) => {
+    const steps = {
+      draft,
+      ondrag: (scene: Scene) => {
         this.drag(scene);
       },
       ondrop: () => {
         this.drop();
+      },
+    };
+
+    if (level.kind === "string") {
+      const path = wiring(draft.scene, this.laid.grids, level.index);
+
+      return { ...steps, kind: "string", string: level.index, path };
+    }
+
+    if (level.kind !== "face" && level.kind !== "module") return undefined;
+
+    const cells = faceCells(draft.scene, this.laid, level);
+
+    if (cells === null) return undefined;
+
+    return {
+      ...steps,
+      ...cells,
+      kind: "modules",
+      laid: this.laid,
+      onselect: ({ row, column }) => {
+        this.go({ kind: "module", block: level.block, face: level.face, row, column });
       },
     };
   }
@@ -236,7 +256,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit, this.laid.roofs);
+    const level = picked(this.draft.scene, hit, this.laid.roofs, this.laid.grids);
 
     if (level === null) return;
 

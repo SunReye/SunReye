@@ -45,6 +45,10 @@ pub struct Cell {
     pub string: Option<u32>,
     #[serde(default)]
     pub optimized: bool,
+    /// Its place along its string's wiring, which runs through the string's modules from the
+    /// lowest; a module without one follows them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<u32>,
 }
 
 /// A module's outline in metres: `height` is its long side.

@@ -1,10 +1,13 @@
 import "../../app.css";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { addGrid } from "./modules.ts";
 import {
+  cellsOnPage,
   choose,
   desk,
   DEVICES,
@@ -14,32 +17,53 @@ import {
   house,
   inspector,
   MODULE,
+  press,
   pv,
   saveFrom,
-  SOUTH,
   testCore,
   undesk,
 } from "./builder.harness.ts";
 
-beforeEach(desk);
+const SLOW = { timeout: 15_000 };
 
-afterEach(undesk);
+/** How many frames the canvas drew, counted from before each test renders. */
+let drawn = (): number => 0;
 
-test("the admin paints modules into a string, undoes one and saves from a date", async () => {
+beforeEach(async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+
+  drawn = () => draws.mock.calls.length;
+  localStorage.removeItem("sunreye.builder.view");
+  await desk();
+});
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await undesk();
+});
+
+/** The south face's grid, laid out, and a press on its cell `row.column` in 3D. */
+async function onTheRoof(): Promise<(key: string) => Promise<void>> {
+  await expect.poll(drawn, SLOW).toBeGreaterThan(0);
+
+  const cells = cellsOnPage(addGrid(house().scene, 0, 1, MODULE.id), 0);
+
+  return (key) => press("mouse", [cells(key)]);
+}
+
+test("the admin lays modules, wires one into a string, undoes one and saves from a date", async () => {
   const transport = testCore();
   const screen = await gridOnTheSouthFace(transport);
+  const roof = await onTheRoof();
 
-  await drill("Module", "Szene", "Strings", "String hinzufügen", "Strings", "Szene");
-  await drill("Module", SOUTH);
-  await inspector().getByRole("radio", { name: "String 1 malen" }).click();
-  await inspector().getByRole("button", { name: "Reihe 1, Spalte 1" }).click();
-  await inspector().getByRole("button", { name: "Reihe 1, Spalte 2" }).click();
+  await roof("0.0");
+  await roof("0.1");
   await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await expect.element(inspector().getByText("1 von 16 Modulen gesetzt")).toBeVisible();
 
-  await expect
-    .element(inspector().getByRole("button", { name: "Reihe 1, Spalte 2" }))
-    .toHaveAttribute("aria-pressed", "false");
-  await drill("Module", "Szene", "Strings");
+  await drill("Module", "Szene", "Strings", "String hinzufügen");
+  await roof("0.0");
+  await drill("Strings");
   await expect.element(inspector().getByText("1 Module, davon 0 mit Optimierer")).toBeVisible();
 
   await saveFrom("2026-11-01");
@@ -62,7 +86,7 @@ test("the admin paints modules into a string, undoes one and saves from a date",
           moduleType: 7,
           landscape: false,
           setback: 0.3,
-          modules: [{ row: 0, column: 0, string: 0, optimized: false }],
+          modules: [{ row: 0, column: 0, string: 0, optimized: false, order: 0 }],
         },
       ],
     },
@@ -73,14 +97,13 @@ test("the admin paints modules into a string, undoes one and saves from a date",
 
 test("a module the setback no longer holds is flagged before saving", async () => {
   const screen = await gridOnTheSouthFace(testCore());
+  const roof = await onTheRoof();
 
-  await inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
-  await inspector().getByRole("radio", { name: "Optimierer" }).click();
-  await inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }).click();
-
-  await expect
-    .element(inspector().getByRole("button", { name: "Reihe 2, Spalte 1" }))
-    .toHaveTextContent("◆");
+  await roof("1.0");
+  // A tap on the module selects it.
+  await roof("1.0");
+  await inspector().getByRole("checkbox", { name: "Optimierer" }).click();
+  await drill("Baukörper 1, Fläche 2");
 
   await enter("Randabstand (m)", "1");
 
