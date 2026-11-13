@@ -1,10 +1,10 @@
-<!-- One connection under Settings › Connections: where it reaches, and a broker's state. -->
+<!-- One connection under Settings › Connections: where it reaches and a broker's state; it opens its level. -->
 <script lang="ts">
   import type { Connection } from "../api/core";
-  import * as Item from "#lib/components/ui/item/index.js";
+  import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
 
-  let { connection }: { connection: Connection } = $props();
+  let { connection, onclick }: { connection: Connection; onclick: () => void } = $props();
 
   /** A broker's state; other transports report none. */
   const state = $derived.by(() => {
@@ -18,14 +18,15 @@
       ? m.status_failed({ name, error: status.lastError })
       : m.status_disconnected({ name });
   });
+
+  const reach = $derived(`${connection.transport} · ${connection.host}:${connection.port}`);
 </script>
 
-<Item.Root class="rounded-none border-0">
-  <Item.Content>
-    <Item.Title class="text-[15px] font-normal">{connection.name}</Item.Title>
-    <Item.Description class="tabular-nums">
-      {connection.transport} · {connection.host}:{connection.port}
-    </Item.Description>
-    {#if state}<Item.Description>{state}</Item.Description>{/if}
-  </Item.Content>
-</Item.Root>
+<DrillRow
+  group={{
+    id: String(connection.id),
+    label: connection.name,
+    summary: state === null ? reach : `${reach} · ${state}`,
+  }}
+  {onclick}
+/>

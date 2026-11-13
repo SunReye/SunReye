@@ -14,7 +14,16 @@
   import Refusal from "./Refusal.svelte";
   import ScanPanel from "./ScanPanel.svelte";
 
-  let { core, ondone }: { core: Core; ondone: (devices: readonly Device[]) => void } = $props();
+  let {
+    core,
+    known = { connections: [], devices: [] },
+    ondone,
+  }: {
+    core: Core;
+    /** What the core already has, after setup: a scan leaves its devices out and reuses its connections. */
+    known?: { readonly connections: readonly Connection[]; readonly devices: readonly Device[] };
+    ondone: (devices: readonly Device[]) => void;
+  } = $props();
 
   let choices = $state<Choice[]>([]);
 
@@ -23,8 +32,13 @@
   // The keys of the devices the admin entered at an endpoint of their own.
   let entries = $state<readonly string[]>([]);
 
-  // What an earlier, partly refused add created, so adding again does not create it twice.
-  const connections = new Map<string, Connection>();
+  // The connections the core already has and those an earlier, partly refused add created, so
+  // adding again does not create one twice.
+  // svelte-ignore state_referenced_locally
+  const connections = new Map<string, Connection>(
+    known.connections.map((connection) => [`${connection.host}:${connection.port}`, connection]),
+  );
+
   const added = new Map<string, Device>();
 
   const recognised = $derived(choices.filter((c) => !c.manual));
@@ -35,12 +49,30 @@
 
   const chosen = $derived(choices.filter((choice) => choice.chosen).length);
 
+  /** How many devices the last scan found that the core already reads. */
+  let skipped = $state(0);
+
   /** The new scan's choices; an endpoint entered by hand stays as entered. */
   function show(endpoints: Parameters<typeof scanned>[0]): void {
+    const fresh = scanned(endpoints).filter((choice) => !entries.includes(choice.key));
+
+    skipped = fresh.filter((choice) => registered(choice)).length;
     choices = [
       ...choices.filter((choice) => entries.includes(choice.key)),
-      ...scanned(endpoints).filter((choice) => !entries.includes(choice.key)),
+      ...fresh.filter((choice) => !registered(choice)),
     ];
+  }
+
+  /** Whether the core already reads the device a scan proposes. */
+  function registered(choice: Choice): boolean {
+    const { found, unit } = choice;
+    const connection = connections.get(`${found.host}:${found.port}`);
+
+    return (
+      !choice.manual &&
+      connection !== undefined &&
+      known.devices.some((device) => device.connection === connection.id && device.unit === unit)
+    );
   }
 
   /** Lists the endpoint the admin entered, chosen, for its device to be entered by hand. */
@@ -108,6 +140,11 @@
 <div class="flex flex-col gap-4 p-4">
   <p class="text-sm text-muted-foreground">{m.devices_hint()}</p>
   <ScanPanel {core} onscanned={show} />
+  {#if skipped > 0}
+    <p role="status" class="text-sm text-muted-foreground">
+      {m.devices_known({ count: skipped })}
+    </p>
+  {/if}
 </div>
 {#if recognised.length > 0}
   {@render heading(m.devices_found())}

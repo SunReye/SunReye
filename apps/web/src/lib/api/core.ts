@@ -47,6 +47,7 @@ export type { ImportStatus, SharedArchive } from "./imports";
 
 export type {
   Connection,
+  ConnectionDraft,
   CreatedToken,
   Found,
   Listing,
