@@ -91,3 +91,65 @@ test("the devices are listed from the core", async () => {
   expect(await connect(listed).devices()).toEqual([device]);
   expect(listed.asked).toEqual([`GET ${BASE}api/v1/devices`]);
 });
+
+test("a device is removed by its id", async () => {
+  const transport = recording(new Response(null, { status: 204 }));
+
+  expect(await connect(transport).removeDevice(4)).toBeUndefined();
+  expect(transport.asked).toEqual([`DELETE ${BASE}api/v1/devices/4`]);
+});
+
+test("a broker is added with its topic root and secrets, and its secrets are only named back", async () => {
+  const created = {
+    id: 2,
+    name: "EVCC",
+    transport: "mqtt",
+    host: "evcc.lan",
+    port: 1883,
+    topicRoot: "evcc",
+    secrets: ["password", "username"],
+  };
+
+  const transport = recording(Response.json(created, { status: 201 }));
+
+  const answer = await connect(transport).addConnection({
+    name: "EVCC",
+    transport: "mqtt",
+    host: "evcc.lan",
+    port: 1883,
+    topicRoot: "evcc",
+    secrets: { username: "sunreye", password: "hunter2" },
+  });
+
+  expect(transport.asked).toEqual([
+    `POST ${BASE}api/v1/connections {"name":"EVCC","transport":"mqtt","host":"evcc.lan","port":1883,"topicRoot":"evcc","secrets":{"username":"sunreye","password":"hunter2"}}`,
+  ]);
+  expect(answer).toEqual(created);
+});
+
+test("a connection is changed and removed by its id; a removal in use reports the problem code", async () => {
+  const changed = recording(
+    Response.json({
+      id: 2,
+      name: "Gateway",
+      transport: "modbus-tcp",
+      host: "10.0.0.9",
+      port: 502,
+      secrets: [],
+    }),
+  );
+
+  await connect(changed).changeConnection(2, {
+    name: "Gateway",
+    transport: "modbus-tcp",
+    host: "10.0.0.9",
+    port: 502,
+  });
+
+  expect(changed.asked).toEqual([
+    `PUT ${BASE}api/v1/connections/2 {"name":"Gateway","transport":"modbus-tcp","host":"10.0.0.9","port":502}`,
+  ]);
+  expect(await connect(scripted(problem(409, "connection.in-use"))).removeConnection(2)).toEqual({
+    problem: "connection.in-use",
+  });
+});
