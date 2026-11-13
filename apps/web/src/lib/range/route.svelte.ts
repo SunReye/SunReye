@@ -132,7 +132,10 @@ export class RangeRoute implements Ranged {
   constructor(input: () => RouteInput, ahead = 0, owns: readonly string[] = []) {
     this.#input = input;
     this.#owns = [...RANGE_PARAMS, ...owns];
-    this.#zone = new PlantZone(() => input().core, ahead);
+    // Its own derived: `input()` also reads the route, whose every change would re-read the zone.
+    const core = $derived(input().core);
+
+    this.#zone = new PlantZone(() => core, ahead);
 
     $effect(() => () => {
       if (this.#later) this.#sync();

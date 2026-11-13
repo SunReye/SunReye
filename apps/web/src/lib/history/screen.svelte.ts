@@ -58,12 +58,15 @@ export class Statistics {
   #slidTo = $state<string | null>(null);
 
   constructor(input: () => { core: StatisticsCore; params: URLSearchParams; go: Go }) {
+    // Its own derived: `input()` also reads the route, and the router catching up with a new
+    // question or tab must not read the range or the facts again.
+    const core = $derived(input().core);
+
     this.route = new RangeRoute(() => input(), 0, VIEW_PARAMS);
-    this.data = new StatsData(() => ({ core: input().core, route: this.route, cmp: this.#cmp }));
+    this.data = new StatsData(() => ({ core, route: this.route, cmp: this.#cmp }));
     this.#shown = untrack(() => ({ metric: this.view.metric, tab: this.view.tab }));
 
     $effect(() => {
-      const core = input().core;
       let live = true;
 
       const read = async () => {

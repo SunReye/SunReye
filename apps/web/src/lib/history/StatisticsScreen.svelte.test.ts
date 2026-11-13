@@ -205,3 +205,21 @@ test("a finger dragging the card pages the range to the neighbour it uncovers", 
   // Today is the default day, so the address names no date.
   await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: null });
 });
+
+test("the router catching up with a new question re-reads nothing for the same range", async () => {
+  const { screen } = await show(DAY);
+  const yesterday = (TODAY - 1) * 86_400_000;
+
+  await expect.element(screen.getByText(/^Gestern hat die Anlage/u)).toBeVisible();
+  await expect.poll(() => zone.read).toBe(true);
+  asked.length = 0;
+  zone.read = false;
+
+  await screen.rerender({ params: new URLSearchParams(`${DAY}&metric=money`) });
+  // A new range afterwards: once it is read, any re-read of the old one would have been asked.
+  await screen.rerender({ params: new URLSearchParams(`range=day&at=${iso(TODAY - 5)}`) });
+  await expect.poll(() => asked.some((a) => a.from === (TODAY - 5) * 86_400_000)).toBe(true);
+
+  expect(asked.filter((a) => a.from === yesterday)).toEqual([]);
+  expect(zone.read).toBe(false);
+});
