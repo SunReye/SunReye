@@ -1,12 +1,12 @@
 <!-- One object's level in the inspector; a face's level is its module-grid editor (ADR 20). -->
 <script lang="ts">
-  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { ModuleType } from "../api/core.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
-  import { painted, withoutBlock, withoutString, type Draft, type Strokes } from "./modules.ts";
+  import { painted, withoutBlock, withoutString, type Draft, type Strokes, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -15,7 +15,7 @@
     level,
     plan,
     moduleTypes,
-    addType,
+    types,
     strokes,
     onchange,
     onlevel,
@@ -23,8 +23,8 @@
     level: Exclude<Level, { kind: "root" | "section" }>;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** Adds a module type to the core. */
-    addType: (datasheet: Readonly<Datasheet>) => Promise<ModuleType | Problem>;
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
     strokes: Strokes;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
@@ -129,5 +129,5 @@
     }}
   />
 {:else if roof !== undefined}
-  <FaceLevel {roof} {plan} {moduleTypes} {addType} {strokes} {onchange} />
+  <FaceLevel {roof} {plan} {moduleTypes} {types} {strokes} {onchange} />
 {/if}

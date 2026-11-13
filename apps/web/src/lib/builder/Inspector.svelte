@@ -89,7 +89,7 @@
         <Editor
           plan={session.plan}
           moduleTypes={session.moduleTypes}
-          addType={(datasheet) => session.addModuleType(datasheet)}
+          types={session}
           {level}
           onlevel={go}
           strokes={session}

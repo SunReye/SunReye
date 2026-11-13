@@ -1,6 +1,7 @@
 // A module type's datasheet as the admin enters it (ADR 17): its rows, bounds and first values.
 import type { Datasheet } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
+import { getLocale } from "../paraglide/runtime.js";
 import type { Editable } from "../components/value-editor/editable.ts";
 import { amount } from "./fields.ts";
 
@@ -69,4 +70,15 @@ export function datasheet(name: string, entered: Entered): Datasheet {
     height: entered.height / 1000,
     width: entered.width / 1000,
   };
+}
+
+/** Pmax and size as a datasheet heads them, millimetres long side first. */
+export function summary({ pmax, height, width }: Readonly<Datasheet>): string {
+  const whole = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+
+  return m.builder_module_type_summary({
+    pmax: whole.format(pmax),
+    length: whole.format(height * 1000),
+    width: whole.format(width * 1000),
+  });
 }

@@ -26,6 +26,44 @@ afterEach(undesk);
 
 const { id: _, ...DATASHEET } = MODULE;
 
+/** AIKO's A450 as its datasheet prints it. */
+const A450 = {
+  name: "AIKO-A450-MAH54Db",
+  pmax: 450,
+  vmp: 34.5,
+  imp: 13.05,
+  voc: 40.94,
+  isc: 14.12,
+  powerCoefficient: -0.26,
+  voltageCoefficient: -0.22,
+  currentCoefficient: 0.05,
+  width: 1.134,
+  height: 1.757,
+  bypassDiodes: 3,
+};
+
+/** The module catalogue: two AIKO power classes and one LONGi. */
+const CATALOGUE = {
+  sheets: [
+    {
+      maker: "AIKO",
+      series: "Neostar 2S+",
+      source: {
+        title: "Neostar 2S+ AIKO-A-MAH54Db",
+        revision: "DS_EN_2405_V1.5",
+        url: "https://a",
+      },
+      modules: [{ ...A450, name: "AIKO-A440-MAH54Db", pmax: 440, imp: 12.8 }, A450],
+    },
+    {
+      maker: "LONGi",
+      series: "Hi-MO 6",
+      source: { title: "Hi-MO 6 Explorer LR5-54HTH", revision: "20230210V17", url: "https://l" },
+      modules: [{ ...A450, name: "LR5-54HTH-430M", pmax: 430 }],
+    },
+  ],
+};
+
 /** A core without module types that keeps each one added, or refuses it with `refusal`. */
 function emptyCore(refusal?: string): Transport & { readonly posts: unknown[] } {
   const posts: unknown[] = [];
@@ -34,6 +72,8 @@ function emptyCore(refusal?: string): Transport & { readonly posts: unknown[] } 
     base: "http://core.test/",
     posts,
     fetch: async (request) => {
+      if (request.url.endsWith("/api/v1/module-catalogue")) return Response.json(CATALOGUE);
+
       if (request.method !== "POST" || !request.url.endsWith("/api/v1/module-types")) {
         return Promise.withResolvers<Response>().promise;
       }
@@ -43,7 +83,7 @@ function emptyCore(refusal?: string): Transport & { readonly posts: unknown[] } 
       posts.push(sheet);
 
       return refusal === undefined
-        ? Response.json({ id: 9, ...DATASHEET }, { status: 201 })
+        ? Response.json(Object.assign({ id: 9 }, sheet), { status: 201 })
         : Response.json(
             { type: "about:blank", title: "Unprocessable", status: 422, code: refusal },
             { status: 422, headers: { "content-type": "application/problem+json" } },
@@ -139,4 +179,24 @@ test("a datasheet the core refuses shows its problem text and keeps what was ent
     .toHaveTextContent("Ein Wert liegt außerhalb seines physikalischen Bereichs.");
   await expect.element(inspector().getByLabelText("Name")).toHaveValue(MODULE.name);
   expect(core.posts).toHaveLength(1);
+});
+
+test("an admin picks an AIKO Neostar 2S+ from the module catalogue and fills a face with it", async () => {
+  const core = emptyCore();
+
+  await opened(core);
+  await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
+
+  await drill("Module", SOUTH, "Aus dem Modulkatalog");
+  await expect.element(inspector().getByText("LR5-54HTH-430M")).toBeVisible();
+  await expect.element(inspector().getByText(/DS_EN_2405_V1\.5/u)).toBeVisible();
+
+  await userEvent.fill(inspector().getByRole("searchbox", { name: "Modul suchen" }), "aiko 450");
+  await expect.element(inspector().getByText("LR5-54HTH-430M")).not.toBeInTheDocument();
+  await drill(A450.name);
+
+  expect(core.posts).toEqual([A450]);
+
+  await inspector().getByRole("button", { name: "Fläche füllen" }).click();
+  await expect.poll(() => placed().length).toBeGreaterThan(0);
 });

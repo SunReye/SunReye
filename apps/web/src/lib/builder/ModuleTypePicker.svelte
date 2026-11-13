@@ -1,34 +1,27 @@
-<!-- A face's module types to lay its grid with, and "Neuer Modultyp" (ADR 17, 20). -->
+<!-- A face's module types to lay its grid with, the module catalogue and "Neuer Modultyp" (ADR 17, 20). -->
 <script lang="ts">
+  import Library from "@lucide/svelte/icons/library";
   import Plus from "@lucide/svelte/icons/plus";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
+  import { summary } from "./datasheet.ts";
 
   let {
     moduleTypes,
     onpick,
+    oncatalogue,
     onnew,
   }: {
     moduleTypes: readonly Readonly<ModuleType>[];
     onpick: (moduleType: number) => void;
+    oncatalogue: () => void;
     onnew: () => void;
   } = $props();
 
   const uid = $props.id();
 
-  const whole = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
-
-  /** Pmax and size as a datasheet heads them, millimetres long side first. */
-  function summary({ pmax, height, width }: Readonly<ModuleType>): string {
-    return m.builder_module_type_summary({
-      pmax: whole.format(pmax),
-      length: whole.format(height * 1000),
-      width: whole.format(width * 1000),
-    });
-  }
 </script>
 
 <h3 id="{uid}-types" class="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
@@ -46,6 +39,15 @@
       }}
     />
   {/each}
+  <DrillRow
+    group={{
+      id: "catalogue",
+      label: m.builder_module_catalogue(),
+      summary: m.builder_module_catalogue_hint(),
+      icon: Library,
+    }}
+    onclick={oncatalogue}
+  />
   <DrillRow
     group={{ id: "new", label: m.builder_new_module_type(), icon: Plus }}
     onclick={onnew}
