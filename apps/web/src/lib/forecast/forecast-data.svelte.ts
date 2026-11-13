@@ -5,7 +5,7 @@ import { periodOf, rollups } from "../history/history.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
 import { rangeKey } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
-import { planned } from "./forecast.ts";
+import { planned, type Part } from "./forecast.ts";
 import { headline, judge, summaryOf } from "./judge.ts";
 
 export class ForecastData {
@@ -31,8 +31,8 @@ export class ForecastData {
       core: Core;
       device: number;
       series: string;
-      /** MPPT input series stacked in the bars; empty for one bar. */
-      parts: readonly string[];
+      /** The parts stacked in the bars; empty for one bar. */
+      parts: readonly Part[];
       route: RangeRoute;
     },
   ) {
@@ -49,6 +49,11 @@ export class ForecastData {
   /** The chart's bands; none while loading. */
   get bands() {
     return this.view?.bands ?? [];
+  }
+
+  /** Which stacked parts show: an optional one only while it holds energy. */
+  get kept(): readonly number[] | null {
+    return this.view?.kept ?? null;
   }
 
   /** The chart's sums while no band is read. */
@@ -73,7 +78,7 @@ async function read(
   core: Readonly<Pick<Core, "statistics" | "forecasts">>,
   device: number,
   series: string,
-  parts: readonly string[],
+  parts: readonly Part[],
   period: ReturnType<typeof periodOf>,
   from: Readonly<Date>,
   to: Readonly<Date>,
@@ -84,11 +89,24 @@ async function read(
   const measuredOf = (s: string) =>
     from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [];
 
-  const [measured, forecast, ...split] = await Promise.all([
+  const names = [...new Set(parts.flatMap((p) => [p.series, ...p.minus]))];
+
+  const [measured, forecast, ...rolled] = await Promise.all([
     measuredOf(series),
     planned(core, device, series, from, to),
-    ...parts.map((s) => measuredOf(s)),
+    ...names.map((s) => measuredOf(s)),
   ]);
 
-  return { series, measured, forecast, parts: split };
+  const of = (s: string) => rolled[names.indexOf(s)] ?? [];
+
+  return {
+    series,
+    measured,
+    forecast,
+    parts: parts.map((p) => ({
+      measured: of(p.series),
+      minus: p.minus.map(of),
+      optional: p.optional,
+    })),
+  };
 }

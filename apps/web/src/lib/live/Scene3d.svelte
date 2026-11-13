@@ -9,12 +9,17 @@
   let {
     core,
     layout,
+    locked,
+    top,
     onselect,
     onready,
     onerror,
   }: {
     core: Core;
     layout: SceneLayout;
+    locked: boolean;
+    /** Pixels at the top the chips leave free. */
+    top: number;
     onselect: (id: string) => void;
     /** The first frame is on screen and the scene has started to fade in. */
     onready: () => void;
@@ -73,6 +78,8 @@
         {capabilities}
         {model}
         {location}
+        {locked}
+        {top}
         {onselect}
         {onready}
         {onerror}

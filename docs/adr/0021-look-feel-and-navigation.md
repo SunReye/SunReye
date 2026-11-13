@@ -22,8 +22,8 @@ The first integration build rendered browser defaults: plain links for navigatio
   - the today-energy cards (production, consumption, feed-in, purchase, with € and the autarky and self-consumption meters);
   - a small day chart, actual against forecast;
   - EV.
-- **Phone:** the same blocks scroll in that order, hero first.
-- **3D/2D toggle:** sits in the hero's corner.
+- **Phone:** the same blocks scroll in that order, hero first. The hero's height follows the screen's width, capped by the small viewport (`svh`), never the dynamic one: a browser bar that shows or hides while scrolling moves nothing below it.
+- **3D/2D toggle:** sits in the hero's corner, the 3D scene's camera lock (ADR 20) beside it.
 - **Headline:** the hero's large figure is PV power while PV produces and switches to house consumption while PV is idle.
 
 **Details by drilling down.** The dashboard answers "now and today". Every figure on it opens its detail:
