@@ -10,18 +10,39 @@ function measuredBar() {
   return { label: m.forecast_measured(), colour: flowColour("solar") };
 }
 
+/** One stacked part: a whole MPPT input, or one string of several sharing an input. */
+function partsOf(lines: readonly Readonly<Line>[]): readonly Readonly<Line>[] {
+  return lines
+    .filter((l) => l.kind === "input")
+    .flatMap((input) => {
+      const strings = lines.filter((l) => l.kind === "string" && l.input === input.input);
+
+      return strings.length > 1 ? strings : [input];
+    });
+}
+
+/** The colour of the `nth` part on MPPT input `input`: the input's colour, lightened per string. */
+function partColour(input: number, nth: number): string {
+  const base = mpptColour(input);
+
+  return nth === 0 ? base : `color-mix(in oklab, ${base} ${100 - nth * 30}%, white)`;
+}
+
 /**
- * What `line`'s bars stack: an inverter's total with two or more MPPT inputs stacks them, each in
- * its own colour; anything else is one measured bar.
+ * What `line`'s bars stack: an inverter's total with two or more parts stacks them, an MPPT input
+ * shared by parallel strings split into its (estimated) strings; anything else is one measured bar.
  */
 export function stackOf(line: Readonly<Line>, lines: readonly Readonly<Line>[]) {
-  const inputs = line.kind === "total" ? lines.filter((l) => l.kind === "input") : [];
+  const parts = line.kind === "total" ? partsOf(lines) : [];
 
-  if (inputs.length < 2) return { parts: [], up: [measuredBar()] };
+  if (parts.length < 2) return { parts: [], up: [measuredBar()] };
 
   return {
-    parts: inputs.map((l) => l.series),
-    up: inputs.map((l) => ({ label: l.label, colour: mpptColour(l.input ?? 1) })),
+    parts: parts.map((l) => l.series),
+    up: parts.map((l, i) => ({
+      label: l.kind === "string" && l.estimated ? `${l.label} ≈` : l.label,
+      colour: partColour(l.input ?? 1, parts.slice(0, i).filter((p) => p.input === l.input).length),
+    })),
   };
 }
 
