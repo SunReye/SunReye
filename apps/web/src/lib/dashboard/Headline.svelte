@@ -4,14 +4,12 @@
   grid.
 -->
 <script lang="ts">
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import type { Snippet } from "svelte";
-  import Unplug from "@lucide/svelte/icons/unplug";
   import type { Live } from "../api/core.ts";
   import PowerNumber from "../components/power-number.svelte";
-  import { problemText } from "../i18n/problems.ts";
-  import { age } from "../live/stream.ts";
   import { m } from "../paraglide/messages.js";
+  import HeadlineFigures from "./HeadlineFigures.svelte";
+  import HeadlineStatus from "./HeadlineStatus.svelte";
   import { headline } from "./now.ts";
 
   let {
@@ -46,44 +44,19 @@
 
   /** When the headline's series was last read, while it is stale. */
   const staleSince = $derived(plantStale?.[producing ? "pv.power" : "load.power"]);
-
-  const grid = $derived(plant?.["grid.power"]);
-  const battery = $derived(plant?.["battery.power"]);
-  const exporting = $derived(grid !== undefined && grid < 0);
-
-  const figure =
-    "rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
 </script>
 
 <div
   class="pointer-events-none absolute top-0 left-0 flex max-w-[calc(100%-7.5rem)] flex-col p-4"
   bind:clientHeight={height}
 >
-  <!-- The label stops claiming "now" the moment the stream does (ADR 21). -->
-  {#if staleSince !== undefined}
-    <span class="flex items-center gap-1.5 text-xs font-medium text-warning" role="status"
-      ><TriangleAlert class="size-3.5 shrink-0" />{m.dash_lead_stalled({
-        subject,
-        age: age(staleSince, Date.now()),
-      })}</span
-    >
-  {:else if lost}
-    <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
-      ><Unplug class="size-3.5 shrink-0" />{m.dash_lead_offline({ subject })}</span
-    >
-  {:else if refused !== null}
-    <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
-      ><Unplug class="size-3.5 shrink-0" />{m.dash_lead_offline({ subject })} · {problemText(
-        refused,
-      )}</span
-    >
-  {:else if live === undefined}
-    <span class="text-xs font-medium text-muted-foreground" role="status"
-      >{m.dash_connecting()}</span
-    >
-  {:else}
-    <span class="text-xs font-medium text-muted-foreground">{m.dash_lead_now({ subject })}</span>
-  {/if}
+  <HeadlineStatus
+    {subject}
+    {staleSince}
+    {lost}
+    {refused}
+    connecting={live === undefined}
+  />
   <span
     class={[
       "text-gradient text-5xl leading-[1.1] font-semibold tracking-tight",
@@ -93,33 +66,7 @@
     <PowerNumber watts={lead.watts} unitClass="text-2xl text-muted-foreground" />
   </span>
   {#if figures && plant !== undefined}
-    <span
-      class="pointer-events-auto mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted-foreground"
-    >
-      {#if producing}
-        <button type="button" class={figure} onclick={() => onselect("house")}
-          >{m.dash_house()}
-          <span class="font-semibold text-foreground"
-            ><PowerNumber watts={plant["load.power"] ?? null} unitClass="font-normal text-muted-foreground" /></span
-          ></button
-        >
-      {:else if battery !== undefined}
-        <button type="button" class={figure} onclick={() => onselect("battery")}
-          >{m.dash_battery()}
-          <span class="font-semibold text-battery"
-            ><PowerNumber watts={Math.abs(battery)} unitClass="font-normal text-muted-foreground" /></span
-          ></button
-        >
-      {/if}
-      {#if grid !== undefined}
-        <button type="button" class={figure} onclick={() => onselect("grid")}>
-          {exporting ? m.dash_grid_export() : m.dash_grid_import()}
-          <span class={["font-semibold", exporting ? "text-export" : "text-import"]}
-            ><PowerNumber watts={Math.abs(grid)} unitClass="font-normal text-muted-foreground" /></span
-          >
-        </button>
-      {/if}
-    </span>
+    <HeadlineFigures {plant} {producing} {onselect} />
   {/if}
   {@render children?.()}
 </div>

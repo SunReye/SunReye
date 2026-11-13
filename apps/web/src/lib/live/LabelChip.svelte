@@ -4,11 +4,11 @@
 -->
 <script lang="ts">
   import AnimatedNumber from "../components/animated-number.svelte";
-  import PowerNumber from "../components/power-number.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { flowColour, type Flow } from "../energy-colours.ts";
   import { KIND_ICONS, KIND_NAMES } from "../equipment-kinds.ts";
   import { m } from "../paraglide/messages.js";
+  import ChipPower from "./ChipPower.svelte";
   import type { Chip } from "./labels.ts";
 
   let { chip, onselect }: { chip: Chip; onselect: (id: string) => void } = $props();
@@ -24,15 +24,6 @@
       default:
         return chip.kind;
     }
-  });
-
-  /** Battery charging and grid export point up (ADR 4 signs), as in the 2D flow. */
-  const arrow = $derived.by(() => {
-    const watts = chip.watts ?? 0;
-
-    if (watts === 0 || (chip.kind !== "battery" && chip.kind !== "grid")) return "";
-
-    return (chip.kind === "battery") === watts > 0 ? "↑" : "↓";
   });
 
   const name = $derived(chip.name ?? KIND_NAMES[chip.kind]());
@@ -59,15 +50,7 @@
     style={chip.kind === "inverter" ? undefined : `color: ${flowColour(flow)}`}
   />
   {#if chip.name !== null}<span class="text-muted-foreground">{chip.name}</span>{/if}
-  <span
-    >{#if arrow}<span class="me-1">{arrow}</span>{/if}{#if chip.estimated}<span
-        class="me-0.5 text-muted-foreground">≈</span
-      >{/if}<PowerNumber
-      watts={chip.watts === null ? null : Math.abs(chip.watts)}
-      unitClass="text-muted-foreground"
-      suffix={chip.kind === "inverter" ? " AC" : ""}
-    /></span
-  >
+  <ChipPower {chip} />
   {#if chip.soc !== null}
     <span class="text-muted-foreground"><AnimatedNumber value={chip.soc} digits={0} /> %</span>
   {/if}
