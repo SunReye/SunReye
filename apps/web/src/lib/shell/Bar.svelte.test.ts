@@ -15,9 +15,12 @@ const tall = createRawSnippet(() => ({
 afterEach(() => {
   vi.restoreAllMocks();
   scrollTo(0, 0);
-  // The bar moves the hash.
+  // The More sheet's links move the hash.
   history.replaceState(null, "", location.pathname + location.search);
 });
+
+/** SvelteKit's `goto`, which the root layout passes: no router runs here. */
+const goto = vi.fn((_url: string) => Promise.resolve());
 
 const bar = () => page.getByRole("navigation", { name: "Hauptnavigation" });
 
@@ -25,7 +28,7 @@ const sheet = () => page.getByRole("dialog", { name: "Mehr" });
 
 async function phone(current: string, admin = false): Promise<void> {
   await page.viewport(400, 800);
-  await render(Shell, { shell: "bar", current, admin, children });
+  await render(Shell, { shell: "bar", current, admin, goto, children });
 }
 
 async function openMore(): Promise<void> {
@@ -47,7 +50,7 @@ test("on a phone the bar holds exactly five items, above the screen's edge", asy
 
 test("the bar never hides on scroll and the page ends above it", async () => {
   await page.viewport(400, 800);
-  await render(Shell, { shell: "bar", current: "/", admin: false, children: tall });
+  await render(Shell, { shell: "bar", current: "/", admin: false, goto, children: tall });
   const before = bar().element().getBoundingClientRect().top;
 
   scrollTo(0, document.documentElement.scrollHeight);
@@ -61,9 +64,10 @@ test("the bar never hides on scroll and the page ends above it", async () => {
   expect(end).toBeLessThanOrEqual(bar().element().getBoundingClientRect().top);
 });
 
-test("a bar item moves to its screen and ticks selection", async () => {
+test("a bar item moves to its screen through the router and ticks selection", async () => {
   const selection = vi.spyOn(haptics, "selection");
 
+  goto.mockClear();
   await phone("/");
   await bar().getByRole("radio", { name: "Dashboard" }).click();
 
@@ -71,7 +75,9 @@ test("a bar item moves to its screen and ticks selection", async () => {
 
   await bar().getByRole("radio", { name: "Verlauf" }).click();
 
-  expect(location.hash).toBe("#/history");
+  // A bare hash write reads to the hash router as an address-bar edit: a full reload, a white frame.
+  expect(goto).toHaveBeenCalledExactlyOnceWith("#/history");
+  expect(location.hash).toBe("");
   expect(selection).toHaveBeenCalledOnce();
 });
 

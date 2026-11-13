@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { language } from "../lib/i18n/language.svelte.ts";
-  import Backdrop from "../lib/shell/Backdrop.svelte";
   import Document from "../lib/shell/Document.svelte";
   import { provideAccess } from "../lib/shell/access.svelte.ts";
   import { stream } from "../lib/live/stream.svelte.ts";
@@ -23,12 +23,16 @@
   $effect(() => (access.bare ? undefined : stream.follow(core)));
 </script>
 
-<Document />
-<Backdrop {core} />
+<Document {core} />
 <!-- Sign-in and setup go bare, so the page is never remounted under another parent. -->
 <!-- Messages are no state: a new language renders the app anew; the route keeps its place. -->
 {#key language.current}
-  <Shell shell={access.bare ? "bare" : input.shell} current={page.route.id} admin={access.admin}>
+  <Shell
+    shell={access.bare ? "bare" : input.shell}
+    current={page.route.id}
+    admin={access.admin}
+    {goto}
+  >
     {@render children()}
   </Shell>
 {/key}

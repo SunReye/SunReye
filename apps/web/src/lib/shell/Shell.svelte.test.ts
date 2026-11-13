@@ -7,6 +7,9 @@ import { motion } from "../motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
+/** SvelteKit's `goto`, which the root layout passes: no router runs here. */
+const goto = vi.fn((_url: string) => Promise.resolve());
+
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
 /** The rail surface's horizontal offset as it is drawn now, mid-transition too. */
@@ -26,7 +29,7 @@ afterEach(() => {
 
 test("with a mouse the rail starts as icons and expands on hover", async () => {
   await page.viewport(1280, 800);
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
   const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
 
   await expect.element(rail).toHaveAttribute("data-expanded", "false");
@@ -38,7 +41,7 @@ test("with a mouse the rail starts as icons and expands on hover", async () => {
 
 test("with a mouse the rail collapses a moment after the cursor leaves", async () => {
   await page.viewport(1280, 800);
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
   const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
 
   await screen.getByRole("link", { name: "Verlauf" }).hover();
@@ -51,7 +54,7 @@ test("with a mouse the rail collapses a moment after the cursor leaves", async (
 
 test("keyboard focus expands the rail", async () => {
   await page.viewport(1280, 800);
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
 
   await userEvent.tab();
 
@@ -62,7 +65,15 @@ test("keyboard focus expands the rail", async () => {
 
 test("on touch at 768 px and wider the logo opens the rail and a tap outside closes it", async () => {
   await page.viewport(1024, 800);
-  const screen = await render(Shell, { shell: "rail-open", current: "/", admin: false, children });
+
+  const screen = await render(Shell, {
+    shell: "rail-open",
+    current: "/",
+    admin: false,
+    goto,
+    children,
+  });
+
   const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
 
   await expect.element(rail).toHaveAttribute("data-expanded", "false");
@@ -78,7 +89,15 @@ test("on touch at 768 px and wider the logo opens the rail and a tap outside clo
 
 test("on touch a pinned rail stays open after a tap outside", async () => {
   await page.viewport(1024, 800);
-  const screen = await render(Shell, { shell: "rail-open", current: "/", admin: false, children });
+
+  const screen = await render(Shell, {
+    shell: "rail-open",
+    current: "/",
+    admin: false,
+    goto,
+    children,
+  });
+
   const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
 
   await screen.getByRole("link", { name: "SunReye" }).click();
@@ -90,7 +109,7 @@ test("on touch a pinned rail stays open after a tap outside", async () => {
 
 test("on touch narrower than 768 px there is no rail", async () => {
   await page.viewport(400, 800);
-  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
 
   await expect.element(screen.getByText("page")).toBeVisible();
   expect(document.querySelector("nav.rail")).toBeNull();
@@ -98,7 +117,7 @@ test("on touch narrower than 768 px there is no rail", async () => {
 
 test("expanding never moves the content", async () => {
   await page.viewport(1280, 800);
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
   const content = screen.getByText("page");
 
   // After the route's entrance.
@@ -116,13 +135,13 @@ test("expanding never moves the content", async () => {
 
 test("the pin is kept per browser", async () => {
   await page.viewport(1280, 800);
-  const first = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const first = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
 
   await first.getByRole("link", { name: "Verlauf" }).hover();
   await first.getByRole("button", { name: "Anheften" }).click();
   await first.unmount();
 
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
 
   await expect
     .element(screen.getByRole("navigation", { name: "Hauptnavigation" }))
@@ -131,13 +150,13 @@ test("the pin is kept per browser", async () => {
 
 test("Controls appears only for admins", async () => {
   await page.viewport(1280, 800);
-  const viewer = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const viewer = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
 
   await expect.element(viewer.getByRole("link", { name: "Verlauf" })).toBeInTheDocument();
   expect(viewer.getByRole("link", { name: /Steuerung/u }).query()).toBeNull();
   await viewer.unmount();
 
-  const admin = await render(Shell, { shell: "rail", current: "/", admin: true, children });
+  const admin = await render(Shell, { shell: "rail", current: "/", admin: true, goto, children });
 
   await expect
     .element(admin.getByRole("link", { name: /Steuerung/u }))
@@ -151,6 +170,7 @@ test("the shown route is marked current", async () => {
     shell: "rail",
     current: "/history",
     admin: false,
+    goto,
     children,
   });
 
@@ -161,7 +181,7 @@ test("the shown route is marked current", async () => {
 
 test("a reversed expand continues from where it is", async () => {
   await page.viewport(1280, 800);
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
   const pin = screen.getByRole("button", { name: "Anheften" }).element();
   const collapsed = offset();
 
@@ -187,7 +207,7 @@ test("pinning taps soft and moving to another screen ticks selection", async () 
 
   const soft = vi.spyOn(haptics, "soft");
   const selection = vi.spyOn(haptics, "selection");
-  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
 
   await screen.getByRole("link", { name: "Verlauf" }).hover();
   await screen.getByRole("button", { name: "Anheften" }).click();
@@ -209,7 +229,7 @@ function screens(): HTMLElement[] {
 }
 
 test("a route change cross-fades the screens", async () => {
-  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
 
   await screen.rerender({ current: "/history" });
 
@@ -224,7 +244,7 @@ test("a route change cross-fades the screens", async () => {
 test("with low power a route change is instant", async () => {
   motion.lowPower = true;
 
-  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
 
   await screen.rerender({ current: "/history" });
 
@@ -240,7 +260,14 @@ test("a screen as tall as the screen less the bar ends above the bar", async () 
       `<main data-testid="full" style="height: calc(100dvh - var(--bar-clear, 0px))"></main>`,
   }));
 
-  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children: full });
+  const screen = await render(Shell, {
+    shell: "bar",
+    current: "/",
+    admin: false,
+    goto,
+    children: full,
+  });
+
   const bar = screen.getByRole("navigation", { name: "Hauptnavigation" }).element();
   const bottom = screen.getByTestId("full").element().getBoundingClientRect().bottom;
 
