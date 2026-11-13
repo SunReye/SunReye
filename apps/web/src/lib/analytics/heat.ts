@@ -1,7 +1,7 @@
 // When in the day energy flows (ADR 21): hour of day against the range's days, or its months
 // when the range is long. Days and hours are plant-local, counted since 1970-01-01.
 import type { Core } from "../api/core.ts";
-import { means, type Mean } from "../history/history.ts";
+import { rollups } from "../history/history.ts";
 import { civil, fmt } from "../range/calendar.ts";
 import type { Place } from "../range/range-data.svelte.ts";
 import { hourInstant, rangeFor, step, type Calendar, type Range } from "../range/range.ts";
@@ -117,58 +117,13 @@ export function heatCells(
   return { cells, max };
 }
 
-/** The time-weighted mean of `pick` over [from, to) from `points` on, and the time it covers. */
-function meanOver(
-  points: readonly Mean[],
-  first: number,
-  [from, to]: readonly [number, number],
-  pick: (watts: number) => number,
-) {
-  let [sum, covered] = [0, 0];
-
-  for (let j = first; j < points.length && points[j]!.start < to; j++) {
-    const p = points[j]!;
-    const inside = Math.min(to, p.end) - Math.max(from, p.start);
-
-    if (inside > 0) [sum, covered] = [sum + pick(p.mean) * inside, covered + inside];
-  }
-
-  return covered > 0 ? sum / covered : null;
-}
-
-/**
- * Each hour's energy in kWh from mean powers: `bounds` are the hours' starts and the last end,
- * in ms; `pick` maps a mean in W to the power counted, such as import only. Null without readings.
- */
-export function hourly(
-  points: readonly Mean[],
-  bounds: readonly number[],
-  pick: (watts: number) => number,
-): (number | null)[] {
-  const out: (number | null)[] = [];
-  let first = 0;
-
-  for (let i = 0; i + 1 < bounds.length; i++) {
-    const [from, to] = [bounds[i]!, bounds[i + 1]!];
-
-    while (first < points.length && points[first]!.end <= from) first++;
-
-    const watts = meanOver(points, first, [from, to], pick);
-
-    out.push(watts === null ? null : (watts * (to - from)) / 3_600_000_000);
-  }
-
-  return out;
-}
-
 /** What the heat grid shows: its columns, cells and largest cell. */
 export interface Heat extends HeatColumns, HeatCells {}
 
-/** The power read per hour: a device's series, counted by `pick`. */
+/** The power whose hourly energy is read: a device's series. */
 export interface HeatSource {
   readonly device: number;
   readonly series: string;
-  readonly pick: (watts: number) => number;
 }
 
 /** The hours [t0, t1) as instants in `zone`: each start and the last end, in ms. */
@@ -176,11 +131,11 @@ const instants = (zone: string, t0: number, t1: number): number[] =>
   Array.from({ length: t1 - t0 + 1 }, (_, i) => hourInstant(zone, t0 + i).getTime());
 
 /**
- * The heat grid of range `r` from the core's hourly means: one read for a run of days, one per
- * month for a long range, so each stays inside the core's hourly tier.
+ * The heat grid of range `r` from the core's hourly rollups (ADR 3, 9): one read for a run of
+ * days, one per month for a long range, so each stays inside the core's hourly tier.
  */
 export async function readHeat(
-  core: Readonly<Pick<Core, "history">>,
+  core: Readonly<Pick<Core, "statistics">>,
   source: HeatSource,
   place: Place,
   r: Range,
@@ -203,17 +158,24 @@ export async function readHeat(
 
       if (bounds[0]! >= until) return;
 
-      const points = await means(
+      const hours = await rollups(
         core,
         source.device,
         source.series,
+        "hour",
         new Date(bounds[0]!),
         new Date(until),
       );
 
-      hourly(points, bounds, source.pick).forEach((v, i) => {
-        if (v !== null) read.set(t0 + i, v);
-      });
+      // Rollups come in time order: each counts in the hour its start falls in.
+      let i = 0;
+
+      for (const h of hours) {
+        while (i + 1 < bounds.length && bounds[i + 1]! <= h.start) i++;
+
+        if (h.start >= bounds[0]! && i + 1 < bounds.length)
+          read.set(t0 + i, (read.get(t0 + i) ?? 0) + h.integral / 1000);
+      }
     }),
   );
 

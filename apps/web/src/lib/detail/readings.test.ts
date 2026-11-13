@@ -148,7 +148,7 @@ test("the house lists each measured point's consumption, and what none explains"
     ["Wärmepumpe", 1.5, undefined],
     ["Nicht einzeln gemessen", 0.6, undefined],
   ]);
-  // Without the topology, which only the admin may read (ADR 9), no point can be named.
+  // Without the topology no point can be named.
   expect(titles("house", plant({ values }))).not.toContain("Verbraucher");
 });
 

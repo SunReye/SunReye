@@ -33,7 +33,7 @@
       | "layout"
       | "capabilities"
       | "timezone"
-      | "history"
+      | "statistics"
       | "forecasts"
       | "moduleTypes"
       | "corrections"
@@ -84,7 +84,7 @@
   let strings = $state.raw<readonly PvString[]>([]);
   let estimated = $state.raw<Source["estimated"]>({});
 
-  /** The topology's points, which only the admin may read (ADR 9, 14). */
+  /** The topology's points, which viewers read too (ADR 9, 14). */
   let points = $state.raw<Source["points"]>([]);
 
   let now = $state(Date.now());

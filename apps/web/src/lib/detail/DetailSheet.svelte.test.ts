@@ -164,3 +164,11 @@ test("on a desktop it is a side sheet, on a phone a bottom sheet", async () => {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }
 });
+
+test("a viewer's house sheet names its consumers from the topology", async () => {
+  const { screen } = await show("house");
+  const sheet = screen.getByRole("dialog", { name: "Haus" });
+
+  await expect.element(sheet.getByText("Verbraucher")).toBeVisible();
+  await expect.element(sheet.getByText("Wärmepumpe")).toBeVisible();
+});

@@ -7,7 +7,7 @@ import { fixed } from "./fixtures.ts";
 import { plantAt } from "./plant.ts";
 import { costs, forecasts, history, statistics, type Plant } from "./series.ts";
 
-const PERIODS = ["day", "week", "month"] as const;
+const PERIODS = ["hour", "day", "week", "month"] as const;
 
 type Query = Readonly<URLSearchParams>;
 

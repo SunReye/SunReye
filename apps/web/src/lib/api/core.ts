@@ -15,7 +15,7 @@ export type Forecasts = components["schemas"]["Forecasts"];
 
 export type Statistics = components["schemas"]["Statistics"];
 
-/** A plant-local calendar period statistics are cut in (ADR 3). */
+/** A UTC hour or a plant-local calendar period statistics are cut in (ADR 3, 9). */
 export type Period = components["schemas"]["Period"];
 
 export type Layout = components["schemas"]["Layout"];

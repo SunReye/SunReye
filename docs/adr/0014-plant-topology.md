@@ -1,6 +1,6 @@
 # 14. Plant topology
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -14,7 +14,7 @@ A home with a grid meter, an inverter, a battery and a heat-pump sub-meter has o
 - A point is measured by one power role, whose sign convention (ADR 4) says which way power flows: `grid.power` at the root and nowhere else; `battery.power`, `load.power`, `backup.power` and `ev.charge.power` into the point; `pv.power` and `generator.power` out of it. A point whose reading is missing or stale is unmeasured, and its parent subtracts its nearest measured descendants instead.
 - The house load is all consumption except the battery's charging: the own consumption of the root and of every consuming point, summed. Like every plant total, it is published only while every point it needs is measured. Sums of the points measured by one role give the plant's `grid.power`, `pv.power`, `generator.power`, `battery.power` and `ev.charge.power`. One battery gives its own state of charge; several give one only while each reports its capacity.
 - Plant aggregates (house load, self-consumption, autarky, flows between grid, PV, battery, heat pump and EV) are computed from the tree and published as readings of a computed `plant` device (ADR 15). They are stored and rolled up like any reading, and are the only plant-level values (ADR 4).
-- The `plant` device balances the tree in force at each reading over every point's latest reading younger than the gap threshold (ADR 3). It publishes its totals under the roles its devices use, the grid split into what is bought and fed in, the PV and house load met on site (self-consumption and autarky, ADR 4), and each measured point's own consumption as `point.power` indexed by point id (ADR 4). An unchanged value is published once a poll cadence, so it is neither a gap nor a flood on the bus.
+- The `plant` device balances the tree in force at each reading over every point's latest reading younger than the gap threshold (ADR 3). It publishes its totals under the roles its devices use, the battery split into what charges it and what it gives, the grid split into what is bought and fed in, the PV and house load met on site (self-consumption and autarky, ADR 4), and each measured point's own consumption as `point.power` indexed by point id (ADR 4). An unchanged value is published once a poll cadence, so it is neither a gap nor a flood on the bus.
 - Setup proposes a tree from the devices' capabilities (an inverter with its grid meter, PV and battery); the admin adjusts it in the SPA.
 - An energy balance check reports the residual per plant-local day, so a missing or misplaced point is visible. A point's day energy is its claim's counter delta where its role has lifetime counters (ADR 3: `grid.power` imported minus exported, `battery.power` charged minus discharged, `pv.power`, `generator.power`, `load.power` and `backup.power` their totals), else its integrated power. The tree is balanced over each point's day energy as over powers, in the version in force at the day's end. A consumer, the root or a load point, cannot give energy out: what its own consumption falls below zero is its residual. Only a negative remainder shows a wrong tree: own consumptions sum to the grid's energy whatever its shape.
 

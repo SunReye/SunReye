@@ -18,7 +18,7 @@
     name,
     colour,
   }: {
-    core: Readonly<Pick<Core, "history">>;
+    core: Readonly<Pick<Core, "statistics">>;
     route: RangeRoute;
     source: HeatSource;
     name: string;

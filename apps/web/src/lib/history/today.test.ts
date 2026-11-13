@@ -17,7 +17,8 @@ const ROLLED = new Map(
     "grid.export.power": 5_600,
     "self.consumption.power": 6_700,
     "self.supply.power": 6_700,
-    "battery.power": -800,
+    "battery.charge.power": 300,
+    "battery.discharge.power": 1_100,
     "ev.charge.power": 1_900,
   }),
 );
@@ -92,8 +93,8 @@ test("History's today reads the core's rollups, as the dashboard does", async ()
     feedIn: 5.6,
     selfUsed: 6.7,
     selfCovered: 6.7,
-    charge: 0,
-    discharge: 0.8,
+    charge: 0.3,
+    discharge: 1.1,
     ev: 1.9,
   });
   expect(s).toMatchObject({

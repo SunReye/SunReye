@@ -10,13 +10,13 @@ const STRINGS = [
   { id: 5, name: "Ost", device: 3, input: 2, ...WIRING },
 ];
 
-test("an energy figure charts its plant series and heats what flows its way", () => {
+test("an energy figure charts its plant series and heats the plant's rollups of its way", () => {
   const feedIn = analyticsOf("feedIn", STRINGS)!;
 
   expect([feedIn.device, feedIn.series]).toEqual([PLANT, "grid.power"]);
-  expect(feedIn.heat?.(-2000)).toBe(2000);
-  expect(feedIn.heat?.(500)).toBe(0);
-  expect(analyticsOf("purchase", STRINGS)!.heat?.(500)).toBe(500);
+  expect(feedIn.heat).toBe("grid.export.power");
+  expect(analyticsOf("purchase", STRINGS)!.heat).toBe("grid.import.power");
+  expect(analyticsOf("string-4", STRINGS)!.heat).toBe("pv.string.power[4]");
 });
 
 test("a string reads its own series from its inverter, and compares with its siblings", () => {

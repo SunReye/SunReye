@@ -182,7 +182,8 @@ impl Store {
         let Some((series, step)) = lookup(&self.db, device, name)? else {
             return Ok(Vec::new());
         };
-        let (from, to) = (tick(from).unwrap_or(0), tick(to).unwrap_or(0));
+        let range = tick(from).unwrap_or(0)..tick(to).unwrap_or(0);
+        let (from, to) = (range.start, range.end);
         let (sql, from, to) = match tier {
             Tier::Hour => (
                 "SELECT hour * 36000, hour * 36000 + 36000,
@@ -209,13 +210,11 @@ impl Store {
             Ok((row.get::<_, Tick>(0)?, row.get::<_, Tick>(1)?, columns))
         })?;
         let mut rows = rows.collect::<Result<Vec<_>, _>>()?;
-        if tier == Tier::Day {
-            for (day, sums) in self.open_days(device, series, from..to)? {
-                rows.retain(|&(start, ..)| start != day.start);
-                rows.push((day.start, day.end, columns(sums)));
-            }
-            rows.sort_by_key(|&(start, ..)| start);
+        for (window, sums) in self.open(device, series, tier, range)? {
+            rows.retain(|&(start, ..)| start != window.start);
+            rows.push((window.start, window.end, columns(sums)));
         }
+        rows.sort_by_key(|&(start, ..)| start);
         Ok(rows
             .into_iter()
             .filter_map(|(start, end, columns)| {
@@ -228,14 +227,15 @@ impl Store {
             .collect())
     }
 
-    /// The days starting within `range` that the open hour reaches into, rolled up from their
-    /// change points, the unflushed ones included, to the latest reading (ADR 3).
-    fn open_days(
+    /// The hours or days starting within `range` that the open hour reaches into, rolled up from
+    /// their change points, the unflushed ones included, to the latest reading (ADR 3).
+    fn open(
         &self,
         device: DeviceId,
         series: i64,
+        tier: Tier,
         range: Range<Tick>,
-    ) -> Result<Vec<(Day, Sums)>, Error> {
+    ) -> Result<Vec<(Range<Tick>, Sums)>, Error> {
         let kind = self
             .tracks
             .iter()
@@ -245,13 +245,23 @@ impl Store {
             return Ok(Vec::new());
         };
         let limit = self.clock;
+        let windows: Vec<Range<Tick>> = match tier {
+            Tier::Hour => (floor(rolled)..limit)
+                .step_by(usize::try_from(HOUR).unwrap_or(usize::MAX))
+                .map(|start| start..start + HOUR)
+                .collect(),
+            Tier::Day => rollup::days(&self.zone.1, rolled, limit)
+                .into_iter()
+                .map(|day| day.start..day.end)
+                .collect(),
+        };
         let mut open = Vec::new();
-        for day in rollup::days(&self.zone.1, rolled, limit) {
-            if !range.contains(&day.start) {
+        for open_window in windows {
+            let (start, end) = (open_window.start, limit.min(open_window.end));
+            if !range.contains(&start) {
                 continue;
             }
-            let end = limit.min(day.end);
-            let mut points = points(&self.db, device.0, series, day.start, end)?;
+            let mut points = points(&self.db, device.0, series, start, end)?;
             points.extend(
                 self.pending
                     .iter()
@@ -259,9 +269,8 @@ impl Store {
                     .map(|&(.., p)| p),
             );
             points.sort_by_key(|p| p.time);
-            if let Some(sums) = rollup::roll(kind, window(&points, day.start, end), day.start, end)
-            {
-                open.push((day, sums));
+            if let Some(sums) = rollup::roll(kind, window(&points, start, end), start, end) {
+                open.push((open_window, sums));
             }
         }
         Ok(open)

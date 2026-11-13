@@ -141,6 +141,17 @@ fn self_supply_is_the_house_load_not_bought() {
 }
 
 #[test]
+fn the_battery_splits_into_what_charges_it_and_what_it_gives() {
+    let charging = aggregates(1200.0, 3000.0, 800.0, 1500.0);
+    let draining = aggregates(-2000.0, 500.0, -2600.0, 100.0);
+
+    assert_eq!(total(&charging, "battery.charge.power"), Some(800.0));
+    assert_eq!(total(&charging, "battery.discharge.power"), Some(0.0));
+    assert_eq!(total(&draining, "battery.charge.power"), Some(0.0));
+    assert_eq!(total(&draining, "battery.discharge.power"), Some(2600.0));
+}
+
+#[test]
 fn without_a_grid_reading_nothing_is_split() {
     let values = [
         (1, "pv.power", 3000.0),

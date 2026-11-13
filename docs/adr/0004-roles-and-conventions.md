@@ -1,6 +1,6 @@
 # 4. Roles and conventions
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -28,6 +28,7 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 | `grid.frequency` | Hz | measurement | |
 | `grid.phase.voltage` / `.current` / `.power` | V / A / W | measurement, indexed | current, power |
 | `grid.energy.imported.total`, `grid.energy.exported.total` | kWh | counter | |
+| `battery.charge.power`, `battery.discharge.power` | W | measurement; the plant's `battery.power` while it charges, and while it discharges, else 0; published only by the `plant` device (ADR 14) | |
 | `grid.import.power`, `grid.export.power` | W | measurement; the plant's `grid.power` while it buys, and while it feeds in, else 0; published only by the `plant` device (ADR 14) | |
 | `self.consumption.power` | W | measurement; the plant's PV power not fed in, published only by the `plant` device (ADR 14) | |
 | `self.supply.power` | W | measurement; the plant's house load not bought, published only by the `plant` device (ADR 14) | |
