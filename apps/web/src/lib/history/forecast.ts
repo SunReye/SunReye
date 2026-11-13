@@ -9,6 +9,9 @@ import { bandSum } from "./flows.ts";
 import { delta } from "./words.ts";
 import type { Loaded } from "./stats.svelte.ts";
 
+// The panel draws the measured production in its series colour.
+export { measuredSeries } from "./series.ts";
+
 /** The plant's forecast over [from, to): each inverter's `pv.power` summed (ADR 17). */
 export async function readForecast(
   core: Readonly<Pick<Core, "forecasts">>,

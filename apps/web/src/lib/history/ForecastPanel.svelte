@@ -8,7 +8,7 @@
   import { rangeLabel } from "../range/range.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import { drillLabel } from "./drill.ts";
-  import { accuracyText, forecastView, readForecast } from "./forecast.ts";
+  import { accuracyText, forecastView, measuredSeries, readForecast } from "./forecast.ts";
   import type { Loaded } from "./stats.svelte.ts";
 
   let {
@@ -53,7 +53,7 @@
 <div class="flex flex-col gap-4">
   <BandChart
     bands={view.bands}
-    up={[{ label: m.stats_measured(), colour: "var(--e-solar)" }]}
+    up={measuredSeries()}
     markLabel={m.range_forecast()}
     ghostLabel={m.range_forecast()}
     via={got.via}

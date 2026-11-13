@@ -1,6 +1,5 @@
 // The statistics screen's main chart for each question (ADR 21): the range's bands, a diverging
 // split around one baseline, and the range's sums for the legend. Pure.
-import { m } from "../paraglide/messages.js";
 import type { Band, SeriesMeta } from "../range/bands.ts";
 import { edges } from "../range/edges.ts";
 import { bandsOf, spread } from "../range/fill.ts";
@@ -8,6 +7,7 @@ import { kwh, money, num } from "../range/format.ts";
 import { hourInstant, t0Of } from "../range/range.ts";
 import { costBands, split } from "../tariff/costs.ts";
 import { bandSum, type Sum } from "./flows.ts";
+import { costSeries, flowSeries } from "./series.ts";
 import type { Loaded } from "./stats.svelte.ts";
 import type { Metric } from "./view.ts";
 
@@ -63,30 +63,6 @@ function baseSpan(got: Loaded, i: number): readonly [number, number] | null {
 
 const top = (xs: readonly number[]) => xs.reduce((a, v) => a + v, 0);
 
-/** Above zero production or the house load's sources; below it the house load, for energy. */
-function flowSeries(energy: boolean, battery: boolean): Pick<Chart, "up" | "down"> {
-  if (!energy)
-    return {
-      up: [
-        { label: m.stats_from_pv(), colour: "var(--e-solar)" },
-        ...(battery ? [{ label: m.stats_from_battery(), colour: "var(--e-battery)" }] : []),
-        { label: m.stats_from_grid(), colour: "var(--e-import)" },
-      ],
-      down: [],
-    };
-
-  return {
-    up: [
-      { label: m.stats_self_used(), colour: "var(--e-solar)" },
-      { label: m.stats_fed_in(), colour: "var(--e-export)" },
-    ],
-    down: [
-      { label: m.stats_self_covered(), colour: "var(--e-house)" },
-      { label: m.stats_bought(), colour: "var(--e-import)" },
-    ],
-  };
-}
-
 /** The baseline's savings on each day band, by index. */
 function savedMarks(daily: Loaded): (i: number) => number | null {
   const before = (daily.base.days ?? []).map((d) => ({
@@ -132,7 +108,6 @@ function flows(got: Loaded, metric: "energy" | "autarky"): Chart {
   return {
     bands,
     ...flowSeries(energy, battery),
-    groups: energy ? [m.stats_production(), m.stats_consumption()] : ["", ""],
     summary: {
       up: upOf(got.sum),
       down: downOf(got.sum),
@@ -141,7 +116,6 @@ function flows(got: Loaded, metric: "energy" | "autarky"): Chart {
     fmt: energy ? kwh : (v) => `${num(v)} %`,
     unit: energy ? "kWh" : "%",
     max: energy ? undefined : 100,
-    label: energy ? m.stats_chart_energy() : m.stats_chart_autarky(),
     drills: got.list,
   };
 }
@@ -158,17 +132,11 @@ function costs(got: Loaded): Chart {
 
   return {
     bands: bandsOf(list, (_, i) => ({ ...fill(list[i]!, i), mark: mark(i) })),
-    up: [
-      { label: m.stats_avoided(), colour: "var(--e-solar)" },
-      { label: m.stats_feed_in_pay(), colour: "var(--e-export)" },
-    ],
-    down: [{ label: m.stats_import_cost(), colour: "var(--e-import)" }],
-    groups: [m.stats_savings(), m.stats_costs()],
+    ...costSeries(),
     summary: { ...split(got.money ?? undefined), mark: got.base.money?.saved ?? null },
     fmt: money,
     unit: "€",
     max: undefined,
-    label: m.stats_chart_money(),
     drills: list,
   };
 }

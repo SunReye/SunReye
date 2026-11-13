@@ -3,10 +3,10 @@
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { yearOf } from "../range/calendar.ts";
-  import { kwh, money, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import type { StatsCore } from "./stats.svelte.ts";
   import type { YearsCore } from "./records.ts";
+  import { yearSeries } from "./series.ts";
   import type { Metric } from "./view.ts";
   import YearsRecords from "./YearsRecords.svelte";
   import { readYears, yearBands, yearTotal, type Years } from "./years.ts";
@@ -44,25 +44,7 @@
     };
   });
 
-  const spec = $derived(
-    metric === "money"
-      ? { name: m.stats_savings(), colour: "var(--e-solar)", fmt: money, unit: "€", max: undefined }
-      : metric === "autarky"
-        ? {
-            name: m.stats_autarky(),
-            colour: "var(--e-battery)",
-            fmt: (v: number) => `${num(v)} %`,
-            unit: "%",
-            max: 100,
-          }
-        : {
-            name: m.stats_production(),
-            colour: "var(--e-solar)",
-            fmt: kwh,
-            unit: "kWh",
-            max: undefined,
-          },
-  );
+  const spec = $derived(yearSeries(metric));
 
   const year = $derived(got ? yearOf(got.year.range.from) : 0);
   const bands = $derived(got ? yearBands(metric, got) : []);

@@ -14,6 +14,7 @@ import {
   Vector3,
 } from "three";
 import { Sky } from "three/addons/objects/Sky.js";
+import { flowColour, type Flow } from "../energy-colours.ts";
 import { untone } from "./light.ts";
 import { lawn } from "./materials.ts";
 import { backdropAt } from "./vignette.ts";
@@ -23,6 +24,9 @@ const LAWN = 400;
 
 /** Metres of lawn per grass texture repeat. */
 const GRASS = 3;
+
+/** An energy flow's colour in the current theme, as linear RGB. */
+export const flowRgb = (flow: Flow): Color => cssColour(flowColour(flow));
 
 /** Resolves any CSS colour (oklch included) to linear RGB through a 1 px canvas. */
 export function cssColour(expression: string): Color {
