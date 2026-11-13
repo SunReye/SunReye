@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { afterEach, expect, jest, setSystemTime, test } from "bun:test";
 import { connect, http, type Live, type Transport } from "./core.ts";
 import { BASE, event, problem, scripted, sse } from "./core.harness.ts";
 
@@ -119,6 +119,72 @@ test("a stream that breaks after its snapshot keeps its values, marked lost, unt
     { devices: { "1": { "pv.power": 1 } }, lost: 5000 },
     { devices: {} },
   ]);
+});
+
+/** A stream the test feeds by hand, and a way to let its bytes through the parser. */
+function held() {
+  let feed!: ReadableStreamDefaultController<Uint8Array>;
+
+  const body = new ReadableStream<Uint8Array>({
+    start: (c) => {
+      feed = c;
+    },
+  });
+
+  return {
+    response: new Response(body),
+    send: (text: string) => {
+      feed.enqueue(new TextEncoder().encode(text));
+    },
+  };
+}
+
+/** Lets queued promise jobs run: the fake clock moves no bytes through the streams. */
+async function drain(rounds = 50): Promise<void> {
+  if (rounds === 0) return;
+
+  await Promise.resolve();
+  await drain(rounds - 1);
+}
+
+test("a stream silent for 30 s is marked lost and reconnects; a keep-alive keeps it", async () => {
+  jest.useFakeTimers();
+  setSystemTime(new Date(1000));
+
+  try {
+    const silent = held();
+    const seen: Live[] = [];
+    const transport = scripted(silent.response, sse(event("snapshot", '{"devices":{}}')));
+
+    const stop = connect(transport).live((live) => {
+      seen.push(live);
+    });
+
+    await drain();
+    silent.send(event("snapshot", '{"devices":{"1":{"pv.power":1}}}'));
+    await drain();
+    jest.advanceTimersByTime(20_000);
+    // The core's 15 s keep-alive is a comment: no event, but proof the line is up.
+    silent.send(":\n\n");
+    await drain();
+    jest.advanceTimersByTime(20_000);
+    await drain();
+
+    expect(seen).toEqual([{ devices: { "1": { "pv.power": 1 } } }]);
+
+    jest.advanceTimersByTime(10_000);
+    await drain();
+
+    expect(seen.at(-1)).toEqual({ devices: { "1": { "pv.power": 1 } }, lost: 51_000 });
+
+    jest.advanceTimersByTime(1000);
+    await drain();
+    stop();
+
+    expect(seen.at(-1)).toEqual({ devices: {} });
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test("a refused stream reports the problem code", async () => {
