@@ -10,15 +10,46 @@ function measuredBar() {
   return { label: m.forecast_measured(), colour: flowColour("solar") };
 }
 
-/** One stacked part: a whole MPPT input, or one string of several sharing an input. */
-function partsOf(lines: readonly Readonly<Line>[]): readonly Readonly<Line>[] {
-  return lines
-    .filter((l) => l.kind === "input")
-    .flatMap((input) => {
-      const strings = lines.filter((l) => l.kind === "string" && l.input === input.input);
+/** One stacked part: a series measured, less the parts stacked beside it from the same input. */
+export interface Part {
+  readonly series: string;
+  readonly minus: readonly string[];
+  /** Shown only while it holds energy: what an input measured before its strings were laid out. */
+  readonly optional: boolean;
+}
 
-      return strings.length > 1 ? strings : [input];
-    });
+interface Stacked {
+  readonly part: Part;
+  readonly label: string;
+  readonly input: number;
+}
+
+/**
+ * One input's parts: the input whole, or each of its parallel strings (estimated) plus what the
+ * input measured that its strings do not hold, such as before they were laid out.
+ */
+function inputParts(input: Readonly<Line>, lines: readonly Readonly<Line>[]): Stacked[] {
+  const at = input.input ?? 1;
+  const strings = lines.filter((l) => l.kind === "string" && l.input === input.input);
+
+  if (strings.length < 2)
+    return [
+      { part: { series: input.series, minus: [], optional: false }, label: input.label, input: at },
+    ];
+
+  const split = strings.map((l) => ({
+    part: { series: l.series, minus: [], optional: false },
+    label: l.estimated ? `${l.label} ≈` : l.label,
+    input: at,
+  }));
+
+  const rest = {
+    part: { series: input.series, minus: strings.map((l) => l.series), optional: true },
+    label: m.forecast_unsplit({ input: input.label }),
+    input: at,
+  };
+
+  return [...split, rest];
 }
 
 /** The colour of the `nth` part on MPPT input `input`: the input's colour, lightened per string. */
@@ -33,15 +64,20 @@ function partColour(input: number, nth: number): string {
  * shared by parallel strings split into its (estimated) strings; anything else is one measured bar.
  */
 export function stackOf(line: Readonly<Line>, lines: readonly Readonly<Line>[]) {
-  const parts = line.kind === "total" ? partsOf(lines) : [];
+  const stacked =
+    line.kind === "total"
+      ? lines.filter((l) => l.kind === "input").flatMap((input) => inputParts(input, lines))
+      : [];
 
-  if (parts.length < 2) return { parts: [], up: [measuredBar()] };
+  if (stacked.filter((s) => !s.part.optional).length < 2)
+    return { parts: [], up: [{ ...measuredBar(), optional: false }] };
 
   return {
-    parts: parts.map((l) => l.series),
-    up: parts.map((l, i) => ({
-      label: l.kind === "string" && l.estimated ? `${l.label} ≈` : l.label,
-      colour: partColour(l.input ?? 1, parts.slice(0, i).filter((p) => p.input === l.input).length),
+    parts: stacked.map((s) => s.part),
+    up: stacked.map((s, i) => ({
+      label: s.label,
+      colour: partColour(s.input, stacked.slice(0, i).filter((p) => p.input === s.input).length),
+      optional: s.part.optional,
     })),
   };
 }

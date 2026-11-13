@@ -421,6 +421,7 @@
   "forecast_inverter": "Inverter {device}",
   "forecast_total": "Total",
   "forecast_input": "MPPT {input}",
+  "forecast_unsplit": "{input} not split",
   "forecast_none": "No strings yet.",
   "builder_moment": "Moment",
   "builder_status": "In the scene now",

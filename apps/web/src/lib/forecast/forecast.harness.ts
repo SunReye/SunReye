@@ -48,9 +48,42 @@ const rolled = (start: number, kwh: number) => ({
 export interface Plant {
   /** Day rollups by their UTC midnight. */
   readonly days: readonly (readonly [number, number])[];
+  /** Day rollups for a series by name, in place of `days`. */
+  readonly series?: Readonly<Record<string, readonly (readonly [number, number])[]>>;
   /** The forecast's power, held on every hour of [from, to). */
   readonly forecast: { readonly from: number; readonly to: number; readonly watts: number };
 }
+
+/** The plant's day rollups of the asked series over [from, to). */
+function statistics(plant: Readonly<Plant>, series: string, from: number, to: number) {
+  const days = plant.series?.[series] ?? plant.days;
+
+  const points = days
+    .filter(([start]) => start >= from && start < to)
+    .map(([start, kwh]) => rolled(start, kwh));
+
+  return { period: "day", points };
+}
+
+/** The plant's hourly forecast over [from, to). */
+function forecasts(plant: Readonly<Plant>, from: number, to: number) {
+  const issued = new Date(plant.forecast.from - DAY).toISOString();
+  const points = [];
+
+  for (let t = Math.max(from, plant.forecast.from); t < Math.min(to, plant.forecast.to); t += H)
+    points.push({ target: new Date(t).toISOString(), issued, value: plant.forecast.watts });
+
+  return { points };
+}
+
+/** What the core answers that does not depend on the plant. */
+const FIXED = {
+  layout: LAYOUT,
+  capabilities: CAPABILITIES,
+  timezone: { name: "UTC" },
+} as const;
+
+const fixed = (name: string): name is keyof typeof FIXED => Object.hasOwn(FIXED, name);
 
 /** A test core: the layout, the capabilities, the plant's day rollups and its hourly forecast. */
 export function testCore(plant: Plant): Transport & { readonly asked: string[] } {
@@ -61,41 +94,28 @@ export function testCore(plant: Plant): Transport & { readonly asked: string[] }
     asked,
     fetch: (request) => {
       const url = new URL(request.url);
+      const last = url.pathname.split("/").at(-1) ?? "";
 
-      if (url.pathname.endsWith("/layout")) return Promise.resolve(Response.json(LAYOUT));
+      if (fixed(last)) return Promise.resolve(Response.json(FIXED[last]));
 
-      if (url.pathname.endsWith("/capabilities"))
-        return Promise.resolve(Response.json(CAPABILITIES));
+      const series = url.searchParams.get("series") ?? "";
 
-      if (url.pathname.endsWith("/timezone"))
-        return Promise.resolve(Response.json({ name: "UTC" }));
-
-      asked.push(`${url.pathname} ${url.searchParams.get("series") ?? ""}`);
+      asked.push(`${url.pathname} ${series}`);
 
       const from = Date.parse(url.searchParams.get("from") ?? "");
       const to = Date.parse(url.searchParams.get("to") ?? "");
 
-      if (url.pathname.endsWith("/statistics")) {
-        const points = plant.days
-          .filter(([start]) => start >= from && start < to)
-          .map(([start, kwh]) => rolled(start, kwh));
-
-        return Promise.resolve(Response.json({ period: "day", points }));
-      }
-
-      const issued = new Date(plant.forecast.from - DAY).toISOString();
-      const points = [];
-
-      for (let t = Math.max(from, plant.forecast.from); t < Math.min(to, plant.forecast.to); t += H)
-        points.push({ target: new Date(t).toISOString(), issued, value: plant.forecast.watts });
-
-      return Promise.resolve(Response.json({ points }));
+      return Promise.resolve(
+        Response.json(
+          last === "statistics" ? statistics(plant, series, from, to) : forecasts(plant, from, to),
+        ),
+      );
     },
   };
 }
 
 /** Week 45 of 2026: Monday to Wednesday measured, Thursday forecast but unmeasured. */
-const MONDAY = Date.UTC(2026, 10, 2);
+export const MONDAY = Date.UTC(2026, 10, 2);
 
 export const WEEK: Plant = {
   days: [
