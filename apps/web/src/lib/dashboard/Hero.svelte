@@ -70,7 +70,7 @@
     <Flow2d {core} {live} top={height + 12} {onselect} />
   {/if}
   {#if mode === "3d" && scene !== null}
-    <HeroScene {core} layout={scene} {load} {locked} {onselect} />
+    <HeroScene {core} layout={scene} {load} {locked} top={height} {onselect} />
   {/if}
 
   <Headline {live} {plant} {plantStale} figures={!flowShown} {onselect} bind:height>

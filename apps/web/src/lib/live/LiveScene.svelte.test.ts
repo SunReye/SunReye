@@ -135,3 +135,74 @@ test("under reduced motion the scene shows without a fade", async () => {
 
   expect(await fadeOnReady()).toBe("0s");
 });
+
+/** Each chip's box on the page, by name. */
+function boxes(names: readonly string[]): Record<string, DOMRect> {
+  return Object.fromEntries(
+    names.map((name) => [
+      name,
+      page
+        .getByRole("button", { name: `${name}: Details` })
+        .element()
+        .getBoundingClientRect(),
+    ]),
+  );
+}
+
+test("on a phone the chips sit in rows around the house and keep their place", async () => {
+  await page.viewport(390, 600);
+
+  const { core, tick } = ticking();
+  const screen = await show(core);
+
+  await tick(frame(600, -1200));
+  await chip("Süd", "600");
+
+  const names = ["Süd", "Wechselrichter", "Netz", "Haus"];
+  const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" }).element();
+
+  // Each chip is measured, then placed once more by its own size.
+  const settle = async () => {
+    let last = "";
+
+    await expect
+      .poll(() => {
+        const before = last;
+
+        last = JSON.stringify(boxes(names));
+
+        return last === before;
+      })
+      .toBe(true);
+
+    return boxes(names);
+  };
+
+  const first = await settle();
+  const within = figure.getBoundingClientRect();
+
+  // The string above the house, the inverter under it, grid and house in one row below that.
+  expect(first["Süd"]!.bottom).toBeLessThan(first["Wechselrichter"]!.top);
+  expect(first["Wechselrichter"]!.bottom).toBeLessThan(first["Netz"]!.top);
+  expect(first["Netz"]!.top).toBe(first["Haus"]!.top);
+  expect(first["Netz"]!.right).toBeLessThan(first["Haus"]!.left);
+
+  for (const box of Object.values(first)) {
+    expect(box.left).toBeGreaterThanOrEqual(within.left);
+    expect(box.right).toBeLessThanOrEqual(within.right);
+    expect(box.top).toBeGreaterThanOrEqual(within.top);
+    expect(box.bottom).toBeLessThanOrEqual(within.bottom);
+  }
+
+  // A tick redraws the scene with the camera still: no chip moves.
+  await tick(frame(700, -1100));
+  await chip("Süd", "700");
+  await frames(5);
+
+  const second = boxes(names);
+
+  for (const name of names) {
+    expect(second[name]!.top).toBe(first[name]!.top);
+    expect(Math.abs(second[name]!.left - first[name]!.left)).toBeLessThan(2);
+  }
+});

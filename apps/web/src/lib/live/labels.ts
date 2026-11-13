@@ -1,7 +1,7 @@
 // What the live scene shows (ADR 20): each string tinted by its share of its own peak, and a chip
 // per string, inverter, battery, car and plant flow. Pure: no three.js.
 import type { PvString, Values } from "../api/core.ts";
-import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../builder/pv.ts";
+import type { CarPlace, Equipment, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
 import { parked, type Parked } from "../cars/parked.ts";
 import { formatFigure } from "../detail/figures.ts";
@@ -10,9 +10,6 @@ import type { EquipmentKind } from "../equipment-kinds.ts";
 /** The `plant` computed device's fixed id (ADR 15). */
 export const PLANT = "4294967294";
 
-/** Metres between the house and the label beside it. */
-const BESIDE = 2;
-
 /** What the live scene is built from. */
 export interface Live3d {
   /** The layout's strings; a panel names its string by position here. */
@@ -20,7 +17,6 @@ export interface Live3d {
   /** Watts at standard test conditions, by module type id. */
   readonly peaks: Readonly<Record<number, number>>;
   readonly panels: readonly Panel[];
-  readonly faces: readonly Face[];
   readonly equipment: readonly Equipment[];
   /** By `equipment`; none while a marker lies off its wall. */
   readonly mounts: readonly Mount[] | null | undefined;
@@ -55,8 +51,7 @@ export interface Chip {
   readonly estimated: boolean;
   /** Past its gap threshold (ADR 3), shown at its last value. */
   readonly stale: boolean;
-  readonly anchor: Point;
-  /** The marker its leader line runs down to; null beside the house. */
+  /** The modules, marker or car its leader line runs to; null for a chip that stands for none. */
   readonly leader: Point | null;
 }
 
@@ -80,13 +75,12 @@ function chip(
   id: string,
   kind: ChipKind,
   reading: Reading,
-  anchor: Point,
   leader: Point | null,
   name: string | null = null,
 ): Chip {
   const { watts, soc = null, estimated = false, stale = false } = reading;
 
-  return { key, id, kind, name, watts, soc, estimated, stale, anchor, leader };
+  return { key, id, kind, name, watts, soc, estimated, stale, leader };
 }
 
 export function liveScene(input: Live3d): LiveScene {
@@ -97,10 +91,10 @@ export function liveScene(input: Live3d): LiveScene {
     chips: [
       ...input.strings.flatMap((string, at) => stringChip(input, string, at)),
       ...equipment(input),
-      ...cars.map(({ device, at, above, watts, soc }) => {
+      ...cars.map(({ device, at, watts, soc }) => {
         const id = formatFigure({ kind: "ev", id: device });
 
-        return chip(id, id, "ev", { watts, soc }, above, at);
+        return chip(id, id, "ev", { watts, soc }, at);
       }),
     ],
     shares: input.panels.map(({ string }) =>
@@ -137,7 +131,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
     stale: input.stale?.[device]?.[series] !== undefined,
   };
 
-  return [chip(id, id, "string", reading, centre, centre, string.name)];
+  return [chip(id, id, "string", reading, centre, string.name)];
 }
 
 /** A device's power series and whether it is stale; null without a value. */
@@ -165,10 +159,8 @@ function equipment(input: Live3d): Chip[] {
   const marked = (kind: Equipment["kind"], device: number): boolean =>
     placed.some((marker) => marker.kind === kind && marker.device === device);
 
-  const beside = besideHouse(input.faces);
-
   const at = (key: string, id: string, kind: ChipKind, read: Reading | null): Chip[] =>
-    read === null ? [] : [chip(key, id, kind, read, beside, null)];
+    read === null ? [] : [chip(key, id, kind, read, null)];
 
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))
@@ -185,7 +177,7 @@ function equipment(input: Live3d): Chip[] {
 
     return mount === undefined || read === null
       ? []
-      : [chip(`${marker.kind}-${device}`, marker.kind, marker.kind, read, mount.above, mount.at)];
+      : [chip(`${marker.kind}-${device}`, marker.kind, marker.kind, read, mount.at)];
   });
 
   return [
@@ -204,20 +196,4 @@ function mean(points: readonly Point[]): Point {
     points.reduce((total, point) => total + point[axis], 0) / points.length;
 
   return [sum(0), sum(1), sum(2)];
-}
-
-/** East of the house's eastmost point, level with its middle and its top. */
-function besideHouse(faces: readonly Face[]): Point {
-  const corners = faces.flatMap((face) => face.corners);
-
-  if (corners.length === 0) return [0, 0, 0];
-
-  const along = (axis: 0 | 1 | 2) => corners.map((corner) => corner[axis]);
-  const north = along(1);
-
-  return [
-    Math.max(...along(0)) + BESIDE,
-    (Math.min(...north) + Math.max(...north)) / 2,
-    Math.max(...along(2)),
-  ];
 }
