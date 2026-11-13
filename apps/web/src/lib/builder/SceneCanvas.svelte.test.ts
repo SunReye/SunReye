@@ -132,6 +132,7 @@ async function closeUp(
   dark: boolean,
   covered = true,
   onpick?: (hit: Hit) => void,
+  colour?: string,
 ): Promise<{
   drawn: () => [number, number, number] | undefined;
   screen: Awaited<ReturnType<typeof render<typeof SceneCanvas>>>;
@@ -143,7 +144,13 @@ async function closeUp(
   let pixel: [number, number, number] | undefined;
 
   const screen = await render(SceneCanvas, {
-    geometry: roof,
+    geometry:
+      colour === undefined
+        ? roof
+        : {
+            ...roof,
+            faces: roof.faces.map(({ surface, corners }) => ({ surface, corners, colour })),
+          },
     panels: covered ? modules : [],
     // Live, at noon: no string makes anything.
     shares: covered ? modules.map(() => 0) : [],
@@ -215,6 +222,27 @@ test("a new sun relights the scene: below the horizon only the moon lights the r
 
   await screen.rerender({ sun: [0, -0.5, -0.866] });
   await expect.poll(lightness, SLOW).toBeLessThan(noon - 15);
+});
+
+/** How far red leads the other channels at the canvas's middle. */
+function redness(drawn: () => [number, number, number] | undefined): number {
+  const [r, g, b] = drawn() ?? [0, 0, 0];
+
+  return r - Math.max(g, b);
+}
+
+test("a roof in its block's colour reads in that colour's hue, redder than the finish's own", async () => {
+  const own = await closeUp(false, false);
+
+  await expect.poll(() => own.drawn()?.[0] ?? 0, SLOW).toBeGreaterThan(0);
+
+  const plain = redness(own.drawn);
+
+  await own.screen.unmount();
+
+  const red = await closeUp(false, false, undefined, "#9c4a32");
+
+  await expect.poll(() => redness(red.drawn), SLOW).toBeGreaterThan(plain + 30);
 });
 
 test("a click on a module reports its grid; on the bare roof, the point it struck", async () => {

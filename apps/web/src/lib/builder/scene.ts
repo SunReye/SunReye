@@ -196,28 +196,49 @@ function marker({ at }: Mount): Mesh {
   return box;
 }
 
+/** Faces by their colour, the finish's own first; at least one group, so a kind is always drawn. */
+function painted(faces: readonly Face[]): (readonly [string | undefined, readonly Face[]])[] {
+  const groups = new Map<string | undefined, Face[]>([[undefined, []]]);
+
+  for (const face of faces) {
+    const group = groups.get(face.colour) ?? [];
+
+    group.push(face);
+    groups.set(face.colour, group);
+  }
+
+  return [...groups].filter(
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the map's own entries, read only.
+    ([colour, group]) => colour === undefined || group.length > 0,
+  );
+}
+
 /** The scene's sections in drawing order, each built on call. */
 function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D[])[] {
   const faces = (kind: string): Face[] => geometry.faces.filter((face) => face.surface === kind);
   const roofs = faces("roof");
 
   return [
-    () => [surface("wall", faces("wall"), finish.plaster(), finish.REPEAT.plaster)],
-    () => [
-      surface(
-        "roof",
-        roofs.filter((face) => !level(face)),
-        finish.tiles(),
-        finish.REPEAT.tiles,
+    () =>
+      painted(faces("wall")).map(([colour, walls]) =>
+        surface("wall", walls, finish.plaster(colour), finish.REPEAT.plaster),
       ),
-      surface(
-        "flat",
-        roofs.filter((face) => level(face)),
-        finish.render(),
-        finish.REPEAT.render,
+    () => [
+      ...painted(roofs.filter((face) => !level(face))).map(([colour, pitched]) =>
+        surface("roof", pitched, finish.tiles(colour), finish.REPEAT.tiles),
+      ),
+      ...painted(roofs.filter((face) => level(face))).map(([colour, flat]) =>
+        surface("flat", flat, finish.render(colour), finish.REPEAT.render),
       ),
     ],
     () => [surface("obstacle", faces("obstacle"), finish.render(), finish.REPEAT.render)],
+    () => {
+      const chimneys = faces("chimney");
+
+      return chimneys.length === 0
+        ? []
+        : [surface("chimney", chimneys, finish.render(), finish.REPEAT.render)];
+    },
     () => hedges(faces("hedge")),
     () => [
       ...(geometry.ground ?? []).map((item, i) => ground(item, i)),

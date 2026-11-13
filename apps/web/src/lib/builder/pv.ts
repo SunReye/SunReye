@@ -1,6 +1,7 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
+import type { Chimney, Overhang } from "./roofing.ts";
 import {
   isExports,
   isGeometry,
@@ -22,6 +23,8 @@ export type {
   GroundSurface,
   Obstacle,
 } from "./obstacles.ts";
+
+export type { Chimney, Overhang } from "./roofing.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -45,6 +48,11 @@ export interface Block {
   readonly roof: Roof;
   /** A carport: a post at each corner instead of walls. */
   readonly open?: boolean;
+  /** Metres the roof reaches past the walls, level: at the eaves and at the verges. */
+  readonly overhang?: Overhang;
+  /** `#rrggbb`; the finish's own colour without one. */
+  readonly roofColour?: string | null;
+  readonly wallColour?: string | null;
 }
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
@@ -107,6 +115,7 @@ export interface Scene {
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
+  readonly chimneys?: readonly Chimney[];
   /** Each drawn over the last; without any the plot is lawn. */
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
@@ -157,9 +166,11 @@ export interface Modules {
 }
 
 export interface Face {
-  readonly surface: "wall" | "roof" | "obstacle" | "hedge";
+  readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
   /** A flat convex polygon. */
   readonly corners: readonly Point[];
+  /** Its block's wall or roof colour, `#rrggbb`. */
+  readonly colour?: string;
 }
 
 export type Solid =

@@ -1,6 +1,7 @@
 // The scene's physically based finishes, every map generated in code (ADR 20 Look). Textures are
 // made once and shared; materials are made per build, so disposing a build keeps the textures.
 import {
+  Color,
   DataTexture,
   LinearFilter,
   LinearMipmapLinearFilter,
@@ -65,8 +66,56 @@ export const REPEAT = {
   wood: [1.6, 1.6],
 } as const;
 
-/** Mineral plaster for walls. */
-export function plaster(): MeshStandardMaterial {
+const means = new Map<DataTexture, Color>();
+
+/** A map's mean albedo in linear light. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only; three.js's texture.
+function mean(made: DataTexture): Color {
+  const known = means.get(made);
+
+  if (known !== undefined) return known;
+
+  const data: ArrayLike<number> = made.image.data ?? [];
+  const sum = new Color(0, 0, 0);
+  const texel = new Color();
+
+  for (let i = 0; i + 2 < data.length; i += 4) {
+    sum.add(
+      texel
+        .fromArray(data, i)
+        .multiplyScalar(1 / 255)
+        .convertSRGBToLinear(),
+    );
+  }
+
+  const found = sum.multiplyScalar(1 / Math.max(1, data.length / 4));
+
+  means.set(made, found);
+
+  return found;
+}
+
+/** The material with its map's mean albedo turned to `colour`, `#rrggbb`; the grain stays. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
+function painted(material: MeshStandardMaterial, colour: string | undefined): MeshStandardMaterial {
+  if (colour === undefined || material.map === null || !(material.map instanceof DataTexture)) {
+    return material;
+  }
+
+  const { r, g, b } = mean(material.map);
+  const wanted = new Color(colour);
+
+  material.color.setRGB(wanted.r / r, wanted.g / g, wanted.b / b);
+
+  return material;
+}
+
+/** Mineral plaster for walls, in a block's wall colour. */
+export function plaster(colour?: string): MeshStandardMaterial {
+  return painted(plastered(), colour);
+}
+
+function plastered(): MeshStandardMaterial {
   return new MeshStandardMaterial({
     map: map("plaster", "map"),
     normalMap: map("plaster", "normal"),
@@ -75,8 +124,12 @@ export function plaster(): MeshStandardMaterial {
   });
 }
 
-/** Concrete roof tiles. */
-export function tiles(): MeshStandardMaterial {
+/** Concrete roof tiles, in a block's roof colour. */
+export function tiles(colour?: string): MeshStandardMaterial {
+  return painted(tiled(), colour);
+}
+
+function tiled(): MeshStandardMaterial {
   return new MeshStandardMaterial({
     map: map("tiles", "map"),
     normalMap: map("tiles", "normal"),
@@ -86,13 +139,16 @@ export function tiles(): MeshStandardMaterial {
   });
 }
 
-/** Grey render: flat roofs, obstacles, chimneys and poles. */
-export function render(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    map: map("plinth", "map"),
-    normalMap: map("plinth", "normal"),
-    roughness: 0.85,
-  });
+/** Grey render: flat roofs, obstacles, chimneys and poles; a flat roof in its block's colour. */
+export function render(colour?: string): MeshStandardMaterial {
+  return painted(
+    new MeshStandardMaterial({
+      map: map("plinth", "map"),
+      normalMap: map("plinth", "normal"),
+      roughness: 0.85,
+    }),
+    colour,
+  );
 }
 
 export function bark(): MeshStandardMaterial {
@@ -161,7 +217,7 @@ export const FENCE: Readonly<Record<FenceFinish, () => MeshStandardMaterial>> = 
     }),
   // The prototype's window frames.
   metal: () => new MeshStandardMaterial({ color: 0x2e3136, roughness: 0.45, metalness: 0.6 }),
-  wall: plaster,
+  wall: () => plaster(),
 };
 
 /** A wall-hung box: inverter or battery. */
