@@ -50,8 +50,9 @@ function extremes(geometry: Geometry): Triple[] {
   return [...corners, ...solids].map((point) => toThree(point));
 }
 
-/** The camera at `preset` around the scene's bounding box, far enough to see all of it. */
-export function presetView(preset: Preset, geometry: Geometry): View {
+/** The camera at `preset` around the scene's bounding box, far enough to see all of it on a canvas
+ * `aspect` (width over height) wide: a narrower canvas than square stands it back. */
+export function presetView(preset: Preset, geometry: Geometry, aspect = 1): View {
   const found = extremes(geometry);
   // Nothing to bound: the origin, where the first block's corner will be.
   const points: Triple[] = found.length === 0 ? [[0, 0, 0]] : found;
@@ -65,7 +66,7 @@ export function presetView(preset: Preset, geometry: Geometry): View {
 
   const [x = 0, y = 0, z = 0] = centre;
   const [dx, dy, dz] = directions[preset];
-  const far = radius * DISTANCE;
+  const far = (radius * DISTANCE) / Math.min(1, aspect);
 
   return {
     position: [x + dx * far, y + dy * far, z + dz * far],

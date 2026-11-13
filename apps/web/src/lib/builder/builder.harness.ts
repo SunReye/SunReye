@@ -1,7 +1,7 @@
 // Shared by the builder's component tests: the crate, a module type, the plant's devices, a core
 // that answers layout changes, and the inspector's moves.
 import { PerspectiveCamera, Vector3 } from "three";
-import { cdp, page, userEvent } from "vitest/browser";
+import { cdp, page, userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
@@ -209,7 +209,7 @@ export function onCanvas(
   start: Scene,
 ): (at: readonly [number, number, number]) => [number, number] {
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const view = presetView("isometric", pv.geometry(start));
+  const view = presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
   const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
 
   camera.position.set(...view.position);
@@ -224,4 +224,20 @@ export function onCanvas(
       canvas.top + ((1 - at.y) / 2) * canvas.height,
     ];
   };
+}
+
+/** One finger taps the middle of what `locator` finds, through the browser's touch input. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, read only.
+export async function tap(locator: Locator): Promise<void> {
+  const box = (await locator.findElement()).getBoundingClientRect();
+
+  await press("touch", [[box.left + box.width / 2, box.top + box.height / 2]]);
+}
+
+/** A phone held upright, its inspector levels landing at once. */
+export async function phone(): Promise<void> {
+  await page.viewport(390, 844);
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
 }

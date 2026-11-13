@@ -72,3 +72,13 @@ test("a kept view reads back; anything else is no view", () => {
   expect(parseView("{")).toBeUndefined();
   expect(parseView('{"position":[1,2],"target":[0,0,0]}')).toBeUndefined();
 });
+
+test("a canvas narrower than tall stands the camera back until the scene fits across it", () => {
+  const square = Math.hypot(...offset(presetView("isometric", house)));
+  const phone = Math.hypot(...offset(presetView("isometric", house, 0.5)));
+  const wide = Math.hypot(...offset(presetView("isometric", house, 2)));
+
+  // Twice as narrow, twice as far: the same width of the scene across the canvas.
+  expect(phone / square).toBeCloseTo(2, 6);
+  expect(wide).toBeCloseTo(square, 6);
+});

@@ -1,5 +1,7 @@
 <script lang="ts" module>
   export type { Editing, Painting } from "./SceneCanvas.svelte";
+
+  export type { Hit, Panel } from "./scene.ts";
 </script>
 
 <script lang="ts">
@@ -24,6 +26,8 @@
     onpick,
     editing,
     painting,
+    clear = 0,
+    aspect = 1,
   }: {
     core: Core;
     geometry: Geometry;
@@ -38,6 +42,10 @@
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
     painting?: Painting | undefined;
+    /** Pixels at the bottom a sheet or the tools keep covered. */
+    clear?: number;
+    /** The canvas's width over its height: preset views fit the scene across it. */
+    aspect?: number;
   } = $props();
 
   /** Where each browser keeps its last view (ADR 20). */
@@ -95,7 +103,7 @@
   {sun}
   {cars}
   {model}
-  view={kept ?? presetView("isometric", geometry)}
+  view={kept ?? presetView("isometric", geometry, aspect)}
   onview={keep}
   {onpick}
   {editing}
@@ -111,7 +119,7 @@
       size="xs"
       class="justify-start"
       onclick={() => {
-        keep(presetView(preset, geometry));
+        keep(presetView(preset, geometry, aspect));
       }}>{labels[preset]()}</Button
     >
   {/each}
@@ -120,6 +128,7 @@
   <ul
     aria-label={m.builder_cars()}
     class="glass-ambient absolute right-3 bottom-3 flex flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-xs"
+    style:margin-bottom="{clear}px"
   >
     {#each cars as car, i (i)}
       <li>{carState(car)}</li>
