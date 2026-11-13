@@ -365,8 +365,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One series' figures for each plant-local period starting in the range, folded from its
-         *     daily rollups.
+         * One series' figures for each hour, or plant-local period, starting in the range, from its
+         *     hourly rollups or folded from its daily ones.
          */
         get: operations["statistics"];
         put?: never;
@@ -1477,6 +1477,11 @@ export interface components {
             end: string;
             /**
              * Format: double
+             * @description The hours with a value: gaps excluded.
+             */
+            hours?: number | null;
+            /**
+             * Format: double
              * @description `Σ value·duration` in the unit times hours: Wh for power.
              */
             integral?: number | null;
@@ -1899,10 +1904,10 @@ export interface components {
             saved: number;
         };
         /**
-         * @description A plant-local calendar period.
+         * @description A UTC hour, as hourly rollups are cut, or a plant-local calendar period.
          * @enum {string}
          */
-        Period: "day" | "week" | "month";
+        Period: "hour" | "day" | "week" | "month";
         Point: {
             /** @description RFC 3339, UTC. */
             end: string;

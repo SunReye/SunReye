@@ -1259,6 +1259,14 @@
             "description": "RFC 3339, UTC.",
             "type": "string"
           },
+          "hours": {
+            "description": "The hours with a value: gaps excluded.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "integral": {
             "description": "`Σ value·duration` in the unit times hours: Wh for power.",
             "format": "double",
@@ -2392,8 +2400,9 @@
         "type": "object"
       },
       "Period": {
-        "description": "A plant-local calendar period.",
+        "description": "A UTC hour, as hourly rollups are cut, or a plant-local calendar period.",
         "enum": [
+          "hour",
           "day",
           "week",
           "month"
@@ -4896,7 +4905,7 @@
             }
           }
         },
-        "summary": "One series' figures for each plant-local period starting in the range, folded from its\ndaily rollups."
+        "summary": "One series' figures for each hour, or plant-local period, starting in the range, from its\nhourly rollups or folded from its daily ones."
       }
     },
     "/api/v1/import": {
