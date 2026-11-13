@@ -485,6 +485,7 @@
   "tariff_zone": "Gebotszone",
   "tariff_zone_none": "Keine",
   "nav_tariff": "Tarif und Ersparnis",
+  "nav_tariff_short": "Tarif",
   "range_kind": "Zeitraum",
   "range_day": "Tag",
   "range_week": "Woche",

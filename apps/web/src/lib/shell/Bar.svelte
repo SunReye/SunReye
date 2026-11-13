@@ -69,7 +69,7 @@
 >
   <ToggleGroup.Root
     type="single"
-    spacing={1}
+    spacing={0.5}
     class="grid w-full grid-cols-5"
     bind:value={() => active, pick}
   >
@@ -80,7 +80,10 @@
         class="h-14 w-full min-w-0 flex-col gap-1.5 px-0 text-muted-foreground data-[state=on]:text-foreground"
       >
         <item.icon class={cn("size-5", active === item.route && "text-brand")} />
-        <span class="text-[11px] leading-none font-medium">{item.label()}</span>
+        <!-- Truncated as a last resort; every locale's labels fit 320 px (tested). -->
+        <span class="max-w-full truncate text-[11px] leading-none font-medium tracking-tight"
+          >{(item.short ?? item.label)()}</span
+        >
       </ToggleGroup.Item>
     {/each}
   </ToggleGroup.Root>

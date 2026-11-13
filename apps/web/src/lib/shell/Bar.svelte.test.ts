@@ -1,8 +1,9 @@
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { locales, setLocale } from "../paraglide/runtime.js";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
@@ -46,6 +47,41 @@ test("on a phone the bar holds exactly five items, above the screen's edge", asy
 
   expect(names).toEqual(["Dashboard", "Verlauf", "Prognose", "Tarif und Ersparnis", "Mehr"]);
   expect(bar().element().getBoundingClientRect().bottom).toBeLessThanOrEqual(800 - 8);
+});
+
+test.each(locales)(
+  "no two bar labels overlap or leave their item at 320 px in %s",
+  async (locale) => {
+    onTestFinished(() => setLocale("de", { reload: false }));
+    await setLocale(locale, { reload: false });
+    await page.viewport(320, 700);
+
+    const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+    const items = [...shown.container.querySelectorAll("nav [role=radio]")];
+
+    const boxes = items.map((item) => {
+      const label = item.querySelector("span")!;
+      const [own, text] = [item.getBoundingClientRect(), label.getBoundingClientRect()];
+
+      // The text as wide as it runs, not as its box clips it.
+      expect(label.scrollWidth, label.textContent).toBeLessThanOrEqual(label.clientWidth);
+      expect(text.left).toBeGreaterThanOrEqual(own.left);
+      expect(text.right).toBeLessThanOrEqual(own.right);
+
+      return text;
+    });
+
+    for (const [i, box] of boxes.entries())
+      expect(box.right).toBeLessThanOrEqual(boxes[i + 1]?.left ?? Infinity);
+  },
+);
+
+test("the bar names Tariff short and keeps its full name for assistive tech", async () => {
+  await phone("/");
+
+  const tariff = bar().getByRole("radio", { name: "Tarif und Ersparnis" });
+
+  await expect.element(tariff.getByText("Tarif", { exact: true })).toBeVisible();
 });
 
 test("the bar never hides on scroll and the page ends above it", async () => {

@@ -485,6 +485,7 @@
   "tariff_zone": "Bidding zone",
   "tariff_zone_none": "None",
   "nav_tariff": "Tariff and savings",
+  "nav_tariff_short": "Tariff",
   "range_kind": "Range",
   "range_day": "Day",
   "range_week": "Week",

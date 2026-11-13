@@ -14,6 +14,8 @@ export interface NavItem {
   /** The route id, as `page.route.id` reports it. */
   readonly route: string;
   readonly label: () => string;
+  /** The bar's label, where the full one would not fit its fifth of a phone. */
+  readonly short?: () => string;
   readonly icon: Component<{ class?: string }>;
   /** Shown to the admin only. */
   readonly admin?: true;
@@ -26,7 +28,7 @@ export const BAR: readonly NavItem[] = [
   DASHBOARD,
   { route: "/history", label: m.nav_history, icon: ChartLine },
   { route: "/forecast", label: m.nav_forecast, icon: ICONS.forecast },
-  { route: "/tariff", label: m.nav_tariff, icon: ICONS.tariff },
+  { route: "/tariff", label: m.nav_tariff, short: m.nav_tariff_short, icon: ICONS.tariff },
 ];
 
 const CONTROLS: NavItem = {
