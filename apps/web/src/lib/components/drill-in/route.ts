@@ -7,7 +7,7 @@ export interface Router {
   };
   readonly goto: (
     url: string,
-    options: Readonly<{ replace: boolean; state: App.PageState }>,
+    options: Readonly<{ replace: boolean; state: App.PageState; reset?: boolean }>,
   ) => Promise<void>;
 }
 
@@ -30,9 +30,16 @@ function href(url: Router["page"]["url"], key: string, id: string | null): strin
 
 /**
  * The drill-in's level as `?group=` on the screen's hash route (ADR 21), for `<DrillIn>`'s `open`
- * and `onnavigate`; `key` names another level, such as the dashboard's detail sheet.
+ * and `onnavigate`; `key` names another level, such as the dashboard's detail sheet. An `overlay`
+ * (a sheet over the page) leaves the page's scroll alone: a drill-in level starts at its top.
  */
-export function drillRoute({ page, goto }: Router, key = "group") {
+export function drillRoute(
+  { page, goto }: Router,
+  key = "group",
+  options: Readonly<{ overlay?: boolean }> = {},
+) {
+  const still = options.overlay === true ? { reset: false } : {};
+
   const group = (url: Router["page"]["url"]): string | null => route(url).searchParams.get(key);
 
   return {
@@ -45,11 +52,13 @@ export function drillRoute({ page, goto }: Router, key = "group") {
 
       // Back to where the drill-in pushed the page; a deep link has no such entry, so it replaces.
       if (id === null && drilled) history.back();
-      else if (id === null) void goto(href(page.url, key, null), { replace: true, state: {} });
+      else if (id === null)
+        void goto(href(page.url, key, null), { replace: true, state: {}, ...still });
       else
         void goto(href(page.url, key, id), {
           replace: open !== null,
           state: { drilled: open === null || drilled },
+          ...still,
         });
     },
   };

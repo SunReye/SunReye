@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { drillRoute, type Router } from "./route.ts";
 
 /** Where the router was sent. */
-const sent: [string, Readonly<{ replace: boolean; state: App.PageState }>][] = [];
+const sent: [string, Readonly<{ replace: boolean; state: App.PageState; reset?: boolean }>][] = [];
 const back = vi.spyOn(history, "back").mockImplementation(() => {});
 
 beforeEach(() => {
@@ -90,5 +90,15 @@ test("the document's own path and query never leak into the hash route", () => {
 
   expect(sent).toEqual([
     ["#/controls?group=battery", { replace: false, state: { drilled: true } }],
+  ]);
+});
+
+test("a sheet over the page opens and closes without moving the page's scroll", () => {
+  drillRoute(on("/?x=1"), "detail", { overlay: true }).navigate("pv");
+  drillRoute(on("/?detail=pv"), "detail", { overlay: true }).navigate(null);
+
+  expect(sent).toEqual([
+    ["#/?x=1&detail=pv", { replace: false, state: { drilled: true }, reset: false }],
+    ["#/", { replace: true, state: {}, reset: false }],
   ]);
 });
