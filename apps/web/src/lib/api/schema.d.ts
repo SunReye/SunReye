@@ -1207,6 +1207,12 @@ export interface components {
             /** Format: int32 */
             column: number;
             optimized?: boolean;
+            /**
+             * Format: int32
+             * @description Its place along its string's wiring, which runs through the string's modules from the
+             *     lowest; a module without one follows them.
+             */
+            order?: number | null;
             /** Format: int32 */
             row: number;
             /**

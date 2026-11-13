@@ -343,6 +343,7 @@ fn walled_house(module_type: u32) -> Scene {
             column,
             string: Some(column / 4),
             optimized: false,
+            order: None,
         })
     });
     Scene {
