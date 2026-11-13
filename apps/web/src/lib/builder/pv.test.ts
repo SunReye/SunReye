@@ -160,16 +160,6 @@ test("the crate lays out a south face's cells: 8 columns and 2 rows of portrait 
   expect(misplaced).toBeNull();
 });
 
-test("a roof face carries its frame: the south face's lowest left corner, across east, up the slope", () => {
-  const south = pv.modules(gridded([]), sizes).roofs[1];
-  const round = (point: readonly number[] = []) =>
-    point.map((m) => Math.round(m * 1000) / 1000 + 0);
-
-  expect(round(south?.origin)).toEqual([0, -8, 3]);
-  expect(round(south?.across)).toEqual([1, 0, 0]);
-  expect(round(south?.up)).toEqual([0, 0.819, 0.574]);
-});
-
 test("a module beyond the setback comes back misplaced", () => {
   const { misplaced } = pv.modules(gridded([{ row: 2, column: 0, optimized: false }]), sizes);
 

@@ -5,7 +5,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
-import type { Scene } from "../pv.ts";
+import type { RoofFace, Scene } from "../pv.ts";
 import { strike, type Panel } from "../scene.ts";
 import { handleOf } from "./gizmo.ts";
 import {
@@ -24,6 +24,8 @@ import { listen } from "../pointer.ts";
 export interface Editing {
   readonly scene: Scene;
   readonly target: Target;
+  /** The laid-out roof faces a chimney stands on. */
+  readonly roofs?: readonly RoofFace[];
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -125,7 +127,7 @@ export class Grabbing {
 
     if (hit?.kind !== "point") return undefined;
 
-    const level = picked(editing.scene, hit);
+    const level = picked(editing.scene, hit, editing.roofs);
 
     return level !== null && same(editing.target, level)
       ? { grip: "move", ray, height: hit.point[2] }
@@ -186,11 +188,11 @@ export class Grabbing {
   };
 
   #step({ editing, grab }: Held, ray: Ray): void {
-    const dragged = drag(editing.scene, editing.target, grab, ray);
+    const dragged = drag(editing.scene, editing.target, grab, ray, editing.roofs);
 
     if (dragged === null) return;
 
-    const at = handles(dragged.scene, editing.target).find(
+    const at = handles(dragged.scene, editing.target, editing.roofs).find(
       (item) => item.grip === grab.grip && item.point === grab.point,
     )?.at;
 

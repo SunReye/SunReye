@@ -1,7 +1,8 @@
 // The builder's 3D handles (ADR 20): where each sits on the selected object, and what a drag from
 // one pointer ray to another makes of the scene, snapped. Pure and three.js-free: rays and points
 // are in three.js's frame (x east, y up, z south, turned by the scene's north).
-import type { Scene } from "../pv.ts";
+import { footing } from "../chimneys.ts";
+import type { RoofFace, Scene } from "../pv.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
@@ -100,9 +101,28 @@ function fenceHandles({ north, fences = [] }: Scene, index: number): Handle[] {
   }));
 }
 
-/** The selected object's handles. */
-export function handles(scene: Scene, target: Target): Handle[] {
+/** A chimney's foot outlined on its roof face; its top, where the live value shows. The chimney
+ * itself is dragged. */
+function chimneyHandles({ chimneys = [] }: Scene, index: number, roofs: readonly RoofFace[]) {
+  const chimney = chimneys[index];
+  const roof = roofs.find((face) => face.block === chimney?.block && face.face === chimney.face);
+
+  if (chimney === undefined || roof === undefined) return [];
+
+  const { foot, top } = footing(chimney, roof);
+  // The crate's east, north, up in three.js's frame.
+  const outline = foot.map(([east, north, up]): Triple => [east, up, 0 - north]);
+  const [east, north] = [0, 1].map((i) => foot.reduce((sum, p) => sum + (p[i] ?? 0), 0) / 4);
+  const handle: Handle = { grip: "move", at: [east ?? 0, top, 0 - (north ?? 0)], outline };
+
+  return [handle];
+}
+
+/** The selected object's handles; a chimney's stand on the laid-out `roofs`. */
+export function handles(scene: Scene, target: Target, roofs: readonly RoofFace[] = []): Handle[] {
   if (target.kind === "fence") return fenceHandles(scene, target.index);
+
+  if (target.kind === "chimney") return chimneyHandles(scene, target.index, roofs);
 
   const body = bodyOf(scene, target);
 

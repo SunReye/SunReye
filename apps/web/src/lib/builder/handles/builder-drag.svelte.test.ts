@@ -14,6 +14,7 @@ import {
   inspector,
   MODULE,
   onCanvas,
+  press,
   pv,
   starts,
   testCore,
@@ -168,3 +169,59 @@ test("dragging a car place moves it in one undo step; its ring turns it", SLOW, 
 
   await expect.element(rotation.getByText(/^90$/u)).toBeVisible();
 });
+
+/** The house with a chimney on its south face, 3 m across and 1.5 m up it. */
+function chimneyed() {
+  const start = house();
+  const chimney = { block: 0, face: 1, across: 3, up: 1.5, width: 0.6, depth: 0.6, height: 1.2 };
+
+  return { ...start, scene: { ...start.scene, chimneys: [chimney] } };
+}
+
+test(
+  "a tap picks a chimney in 3D; a drag slides it along its face, never off it",
+  SLOW,
+  async () => {
+    const draws = vi.spyOn(EffectComposer.prototype, "render");
+    const start = chimneyed();
+    const { roofs } = pv.modules(start.scene, {});
+    const [top] = handles(start.scene, { kind: "chimney", index: 0 }, roofs);
+
+    if (top === undefined) throw new Error("no chimney handle");
+
+    await render(Builder, {
+      pv,
+      core: connect(testCore()),
+      start,
+      moduleTypes: [MODULE],
+      devices: DEVICES,
+    });
+
+    await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+    const onPage = onCanvas(start.scene);
+    const [x, y] = top.at;
+
+    await press("mouse", [onPage(top.at)]);
+    await expect.element(inspector().getByRole("heading", { name: "Schornstein 1" })).toBeVisible();
+
+    const across = inspector().getByRole("button", { name: starts("Mitte von links (m)") });
+
+    await press("mouse", [
+      onPage(top.at),
+      onPage([x + 1, y, top.at[2]]),
+      onPage([x + 2, y, top.at[2]]),
+    ]);
+    await expect.element(across.getByText(/^5$/u)).toBeVisible();
+
+    // Far past the face's east end: it stops with its side on the verge, 10 m across.
+    const moved = [x + 2, y, top.at[2]] as const;
+
+    await press("mouse", [
+      onPage(moved),
+      onPage([x + 5, y, top.at[2]]),
+      onPage([x + 9, y, top.at[2]]),
+    ]);
+    await expect.element(across.getByText(/^9,7$/u)).toBeVisible();
+  },
+);
