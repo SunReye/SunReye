@@ -7,8 +7,10 @@ import { snap, turn } from "./frame.ts";
 
 /** An edge this close to another block's edge, in metres, snaps to it. */
 const EDGE = 0.25;
+
 /** A turn this close to the compass or another block's, in degrees, snaps to it. */
 const ALIGN = 3;
+
 /** Any other turn snaps to this step, in degrees. */
 const ANGLE = 5;
 
