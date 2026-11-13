@@ -167,6 +167,7 @@
   "builder_string_hint": "Ziehe auf dem Dach über Module, um sie in dieser Reihenfolge zu verdrahten. Ein Tipp auf ein verdrahtetes Modul löst es.",
   "builder_module_string": "String",
   "builder_module_unwired": "Keinem String zugeordnet",
+  "builder_module_new_string": "Neuer String",
   "builder_refused_module_type": "{name} hat einen anderen Modultyp als dieses Raster.",
   "builder_cell": "Reihe {row}, Spalte {column}",
   "builder_strings": "Strings",

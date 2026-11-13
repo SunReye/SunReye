@@ -17,6 +17,7 @@ import {
   press,
   pv,
   SOUTH,
+  choose,
   starts,
   tap,
   testCore,
@@ -38,6 +39,10 @@ function gridded(): Draft {
 /** The face level's count of placed modules. */
 const count = (placed: number) =>
   inspector().getByText(new RegExp(`^${placed} von 16 Modulen gesetzt$`, "u"));
+
+/** The module level's string row, naming the string the module is wired into. */
+const wiredTo = (name: string) =>
+  inspector().getByRole("button", { name: `String ${name}`, exact: true });
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -104,6 +109,35 @@ test("a tap on a placed module selects it, and a drag that starts on one removes
   await inspector().getByRole("button", { name: "Entfernen" }).click();
 
   await expect.element(count(1)).toBeVisible();
+});
+
+test("a module tapped in 3D is wired into a new string or a picked one, or unwired, from its level", async () => {
+  const draft = gridded();
+
+  await opened(draft);
+
+  const cells = cellsOnPage(draft.scene, 0);
+  const at = (...keys: readonly string[]) => keys.map((key) => cells(key));
+
+  await press("mouse", at("0.0", "0.1"));
+  await expect.element(count(2)).toBeVisible();
+
+  await press("mouse", at("0.0"));
+  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+  await choose("String", "Neuer String");
+  await expect.element(wiredTo("String 1")).toBeVisible();
+
+  await press("mouse", at("0.1"));
+  await choose("String", "String 1");
+  await press("mouse", at("0.0"));
+  await choose("String", "Keinem String zugeordnet");
+  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+
+  await drill("Baukörper 1, Fläche 2", "Module", "Szene", "Strings", "String 1");
+  await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();
+
+  await inspector().getByRole("button", { name: "Rückgängig" }).click();
+  await expect.element(inspector().getByText(/^2 Module, davon 0 mit Optimierer$/u)).toBeVisible();
 });
 
 test("a drag that starts off the roof orbits the camera and places nothing", async () => {

@@ -167,6 +167,7 @@
   "builder_string_hint": "Drag across modules on the roof to wire them in that order. Tap a wired module to unwire it.",
   "builder_module_string": "String",
   "builder_module_unwired": "Not in a string",
+  "builder_module_new_string": "New string",
   "builder_refused_module_type": "{name} has another module type than this grid.",
   "builder_cell": "Row {row}, column {column}",
   "builder_strings": "Strings",
