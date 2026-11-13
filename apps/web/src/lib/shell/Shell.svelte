@@ -18,6 +18,7 @@
     shell,
     current,
     admin,
+    goto,
     children,
   }: {
     /** The layout the input and width call for; `bare` around sign-in and setup. */
@@ -26,6 +27,8 @@
     current: string | null;
     /** Whether Controls is listed. */
     admin: boolean;
+    /** SvelteKit's `goto`, for the bar, whose items are no links. */
+    goto: (url: string) => Promise<void>;
     children: Snippet;
   } = $props();
 
@@ -64,6 +67,6 @@
   </div>
 
   {#if shell === "bar"}
-    <Bar {current} {admin} />
+    <Bar {current} {admin} {goto} />
   {/if}
 </Tooltip.Provider>
