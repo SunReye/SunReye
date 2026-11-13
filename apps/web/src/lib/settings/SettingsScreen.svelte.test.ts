@@ -283,8 +283,10 @@ test("the plant page shows the plant's timezone and location and saves them", as
 
   const screen = await opened(transport, "plant");
 
-  await expect.element(screen.getByRole("combobox")).toHaveValue("Europe/Vienna");
-  await expect.element(screen.getByRole("spinbutton", { name: "Breitengrad" })).toHaveValue(48.1);
+  await expect
+    .element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" }))
+    .toHaveTextContent("Europe/Vienna");
+  await expect.element(screen.getByRole("textbox", { name: "Breitengrad" })).toHaveValue("48.1");
 
   await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
 
@@ -326,8 +328,9 @@ test("the connections page lists each connection and a broker's state", async ()
   );
 
   await expect.element(screen.getByText(/^modbus-tcp · 10\.0\.0\.5:8899$/u)).toBeVisible();
-  await expect.element(screen.getByText(/^mqtt · broker\.lan:1883 · /u)).toBeVisible();
-  await expect.element(screen.getByText(/Broker.*verbunden/u)).toBeVisible();
+  await expect.element(screen.getByText(/^mqtt · broker\.lan:1883$/u)).toBeVisible();
+  // The state has a line of its own, so a long error never pushes the address off.
+  await expect.element(screen.getByText("Broker: verbunden", { exact: true })).toBeVisible();
 });
 
 test("the forecast page leads to the builder", async () => {
