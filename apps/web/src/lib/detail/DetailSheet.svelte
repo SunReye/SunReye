@@ -34,6 +34,7 @@
       | "capabilities"
       | "timezone"
       | "history"
+      | "forecasts"
       | "moduleTypes"
       | "corrections"
       | "topology"

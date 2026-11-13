@@ -10,6 +10,8 @@ export interface Analytics {
   readonly heat: ((watts: number) => number) | null;
   /** The layout's strings are compared. */
   readonly compare: boolean;
+  /** The inverters whose `pv.power` forecasts add up to what the figure expects; none for most. */
+  readonly forecast: readonly number[];
 }
 
 const all = (w: number): number => w;
@@ -32,6 +34,9 @@ const PLANT_SERIES = new Map<string, [string, Analytics["heat"]]>([
 /** PV figures compare their strings, when there are several. */
 const PV = new Set(["production", "pv", "inverter"]);
 
+/** The figures that overlay the plant's PV forecast. */
+const FORECAST = new Set(["production", "pv"]);
+
 /** The analytics of figure `id`; null for one without a series in history. */
 export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]): Analytics | null {
   const several = strings.length > 1;
@@ -41,7 +46,13 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
     const s = strings.find((x: Readonly<PvString>) => x.id === Number(string[1]));
 
     return s
-      ? { device: s.device, series: `pv.string.power[${s.id}]`, heat: all, compare: several }
+      ? {
+          device: s.device,
+          series: `pv.string.power[${s.id}]`,
+          heat: all,
+          compare: several,
+          forecast: [],
+        }
       : null;
   }
 
@@ -49,5 +60,11 @@ export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]):
 
   if (!plant) return null;
 
-  return { device: PLANT, series: plant[0], heat: plant[1], compare: several && PV.has(id) };
+  return {
+    device: PLANT,
+    series: plant[0],
+    heat: plant[1],
+    compare: several && PV.has(id),
+    forecast: FORECAST.has(id) ? [...new Set(strings.map((s) => s.device))] : [],
+  };
 }
