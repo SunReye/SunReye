@@ -140,15 +140,18 @@
   </div>
 </main>
 
-<DetailSheet
-  id={detail}
-  {core}
-  {live}
-  series={recent}
-  {day}
-  {names}
-  {params}
-  {go}
-  {onopen}
-  {onclose}
-/>
+<!-- Closed, or opening, a frame after the screen (ADR 21). -->
+<Staged>
+  <DetailSheet
+    id={detail}
+    {core}
+    {live}
+    series={recent}
+    {day}
+    {names}
+    {params}
+    {go}
+    {onopen}
+    {onclose}
+  />
+</Staged>

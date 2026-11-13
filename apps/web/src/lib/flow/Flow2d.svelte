@@ -5,6 +5,7 @@
   remembered plant peak, and the full, lite and still tiers.
 -->
 <script lang="ts">
+  import Staged from "../motion/Staged.svelte";
   import type { Core, Live } from "../api/core.ts";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
   import { motion } from "../motion/tier.svelte.ts";
@@ -126,14 +127,15 @@
     style="top:{insets.top}px;bottom:{insets.bottom}px;left:{insets.side}px;right:{insets.side}px"
   >
     <div class="relative size-full" bind:clientWidth={w} bind:clientHeight={h}>
+      <!-- The rails and each node in a frame of their own (ADR 21). -->
       {#if measured}
-        <FlowRails {lines} {flowing} tier={motion.tier} width={w} height={h} />
+        <Staged><FlowRails {lines} {flowing} tier={motion.tier} width={w} height={h} /></Staged>
       {/if}
 
       <FlowHub at={graph.hub} {hub} {plantLevel} tier={motion.tier} pill={h >= 264} {onselect} />
 
       {#each nodes as r (r.node.id)}
-        <FlowNode {...r} tier={motion.tier} {onselect} />
+        <Staged><FlowNode {...r} tier={motion.tier} {onselect} /></Staged>
       {/each}
     </div>
   </div>

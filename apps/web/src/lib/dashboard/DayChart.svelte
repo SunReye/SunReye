@@ -42,25 +42,34 @@
           <stop offset="100%" stop-color={colour} stop-opacity="0.02" />
         </linearGradient>
       </defs>
-      <!-- Each mark in a frame of its own: the whole chart at once overruns a frame (ADR 21). -->
-      <Staged>
-        <Axis {...VALUE_AXIS} format={(v: number) => (v === 0 ? "" : `${v}`)} />
-      </Staged>
-      <Staged>
-        <Axis
-          placement="bottom"
-          ticks={(scale: { domain: () => Date[] }) => {
-            const [a] = scale.domain();
-            return a === undefined
-              ? []
-              : [3, 6, 9, 12, 15, 18, 21].map((h) => new Date(a.getTime() + h * HOUR));
-          }}
-          format={(d: Date) => hours.format(d)}
-          rule={false}
-          tickLength={0}
-          classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
-        />
-      </Staged>
+      <!-- Each mark in a frame of its own, each axis tick too: one of layerchart's ticks costs a
+           frame's share at 4x throttle, the whole chart at once overruns a frame (ADR 21). The
+           single-tick axes draw the same ticks the whole axes would. -->
+      {#each [0, 1, 2, 3, 4] as i (i)}
+        <Staged>
+          <Axis
+            {...VALUE_AXIS}
+            ticks={(scale: { ticks?: (n: number) => number[] }) =>
+              (scale.ticks?.(VALUE_AXIS.ticks) ?? []).slice(i, i + 1)}
+            format={(v: number) => (v === 0 ? "" : `${v}`)}
+          />
+        </Staged>
+      {/each}
+      {#each [3, 6, 9, 12, 15, 18, 21] as h (h)}
+        <Staged>
+          <Axis
+            placement="bottom"
+            ticks={(scale: { domain: () => Date[] }) => {
+              const [a] = scale.domain();
+              return a === undefined ? [] : [new Date(a.getTime() + h * HOUR)];
+            }}
+            format={(d: Date) => hours.format(d)}
+            rule={false}
+            tickLength={0}
+            classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
+          />
+        </Staged>
+      {/each}
       <Staged>
         <Spline
           y="forecast"
