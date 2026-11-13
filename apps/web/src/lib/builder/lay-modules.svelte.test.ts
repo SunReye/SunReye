@@ -1,7 +1,7 @@
 import "../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { page } from "vitest/browser";
+import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
@@ -13,9 +13,12 @@ import {
   house,
   inspector,
   MODULE,
+  phone,
   press,
   pv,
   SOUTH,
+  starts,
+  tap,
   testCore,
   undesk,
 } from "./builder.harness.ts";
@@ -44,6 +47,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.restoreAllMocks();
   await undesk();
+  await page.viewport(1280, 900);
 });
 
 async function opened(draft: Draft): Promise<void> {
@@ -119,3 +123,80 @@ test("a drag that starts off the roof orbits the camera and places nothing", asy
   await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
   await expect.element(count(0)).toBeVisible();
 });
+
+/** The fingers at `points`, through the browser's touch input; each keeps its id by position. */
+async function touch(
+  type: "touchStart" | "touchMove" | "touchEnd",
+  points: readonly (readonly [number, number])[],
+): Promise<void> {
+  await cdp().send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+  });
+}
+
+/** Two fingers: the first presses `one` and moves to `two`, then a second joins and both move. */
+async function pinch(
+  one: readonly [number, number],
+  two: readonly [number, number],
+): Promise<void> {
+  await touch("touchStart", [one]);
+  await touch("touchMove", [two]);
+  await touch("touchStart", [two, [two[0] + 80, two[1] + 80]]);
+  await touch("touchMove", [
+    [two[0] - 40, two[1] - 40],
+    [two[0] + 140, two[1] + 140],
+  ]);
+  await touch("touchEnd", []);
+}
+
+/** A phone's inspector sheet, and the handle that pulls it up. */
+const sheet = () => page.getByRole("region", { name: "Szene bearbeiten" });
+const handle = () => page.getByRole("button", { name: "Szene bearbeiten" });
+
+/** Taps a row or button of the pulled-up sheet whose name starts with `label`. */
+async function row(label: string): Promise<void> {
+  const button = sheet()
+    .getByRole("button", { name: starts(label) })
+    .first();
+
+  await expect.element(button).toBeVisible();
+  await tap(button);
+}
+
+test("on a phone a finger lays a run on the selected face and a tap selects one; a second finger orbits", async () => {
+  await phone();
+
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const draft = gridded();
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: draft,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+
+  await tap(handle());
+  await row("Module");
+  await row(SOUTH);
+  await tap(handle());
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  const at = cellsOnPage(draft.scene, 0);
+
+  await press("touch", [at("0.0"), at("0.1"), at("0.2")]);
+  await press("touch", [at("0.1")]);
+  await expect
+    .element(sheet().getByRole("heading", { name: "Reihe 1, Spalte 2" }))
+    .toBeInTheDocument();
+
+  // A second finger puts its run back and turns the camera instead.
+  await pinch(at("0.4"), at("0.5"));
+  await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
+
+  await tap(handle());
+  await row("Baukörper 1, Fläche 2");
+  await expect.element(sheet().getByText("3 von 16 Modulen gesetzt")).toBeVisible();
+}, 60_000);
