@@ -46,6 +46,7 @@ export default defineConfig({
       "three/addons/postprocessing/RenderPass.js",
       ...icons(),
       "svelte-sonner",
+      "vaul-svelte",
     ],
   },
   test: {
