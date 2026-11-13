@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LoadingRows from "../components/loading-rows.svelte";
   import type { Core, ImportStatus, Problem, SharedArchive } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
@@ -87,7 +88,9 @@
 </script>
 
 <!-- Admin only: a refused status read means the panel is not for this session. -->
-{#if status !== undefined && "state" in status}
+{#if status === undefined}
+  <LoadingRows />
+{:else if "state" in status}
   <section aria-labelledby="import-title">
     <h2 id="import-title">{m.import_title()}</h2>
     <p>{m.import_note()}</p>

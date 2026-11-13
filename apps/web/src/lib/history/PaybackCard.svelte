@@ -1,7 +1,7 @@
 <!-- Stored value: every day moves this bar (ADR 12). It opens the payback tab. -->
 <script lang="ts">
   import { Progress } from "#lib/components/ui/progress/index.js";
-  import AnimatedNumber from "../AnimatedNumber.svelte";
+  import AnimatedNumber from "../components/animated-number.svelte";
   import type { Payback } from "../api/tariff.ts";
   import { m } from "../paraglide/messages.js";
   import { money, num } from "../range/format.ts";

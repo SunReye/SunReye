@@ -202,6 +202,7 @@
   "settings_danger": "Gefahrenzone",
   "settings_saved": "Gespeichert.",
   "settings_save": "Speichern",
+  "loading": "Wird geladen …",
   "settings_none": "Noch nichts eingerichtet.",
   "settings_device_writes": "Schreiben erlaubt: {name}",
   "settings_device_writes_hint": "Aus: Kein Wert wird an dieses Gerät geschrieben.",

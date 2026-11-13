@@ -202,6 +202,7 @@
   "settings_danger": "Danger zone",
   "settings_saved": "Saved.",
   "settings_save": "Save",
+  "loading": "Loading …",
   "settings_none": "Nothing set up yet.",
   "settings_device_writes": "Writes allowed: {name}",
   "settings_device_writes_hint": "Off: no value is written to this device.",

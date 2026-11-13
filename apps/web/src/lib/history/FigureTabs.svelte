@@ -2,7 +2,7 @@
 <script lang="ts">
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import AnimatedNumber from "../AnimatedNumber.svelte";
+  import AnimatedNumber from "../components/animated-number.svelte";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { indicator } from "../range/indicator.ts";

@@ -2,6 +2,8 @@
 <script lang="ts">
   import type { Day } from "../dashboard/day.ts";
   import DayChart from "../dashboard/DayChart.svelte";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import type { Figure } from "./figures.ts";
   import PriceChart from "./PriceChart.svelte";
@@ -24,7 +26,7 @@
     {:else if day !== undefined}
       <div class="h-[190px]"><DayChart rows={day.rows} now={day.now} hours={clock} /></div>
     {:else}
-      <div class="h-[190px]"></div>
+      <Skeleton class="h-[190px]" role="status" aria-label={m.loading()} />
     {/if}
   </section>
 {/if}

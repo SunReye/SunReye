@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
   import * as Card from "#lib/components/ui/card/index.js";
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
@@ -175,7 +176,9 @@
       <span class="ml-auto text-muted-foreground">kW</span>
     </span>
     <span class="relative block min-h-0 w-full flex-1">
-      {#if day !== undefined}
+      {#if day === undefined}
+        <Skeleton class="absolute inset-0" role="status" aria-label={m.loading()} />
+      {:else}
         <span class="absolute inset-0"
           ><DayChart rows={day.rows} now={day.now} hours={clock} /></span
         >
