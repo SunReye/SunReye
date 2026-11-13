@@ -2,10 +2,10 @@ import { flip as svelteFlip } from "svelte/animate";
 import { motion } from "./motion/tier.svelte.ts";
 import {
   crossfade,
-  fade as svelteFade,
   slide as svelteSlide,
   type FadeParams,
   type SlideParams,
+  type TransitionConfig,
 } from "svelte/transition";
 
 /**
@@ -83,15 +83,23 @@ export const ease = (() => {
 
 type Duration = { duration?: number };
 
-// svelte/transition's own, with our default duration and easing and reduced motion applied.
-
-export function fade(node: Element, params: Omit<FadeParams, "easing"> & Duration = {}) {
-  return svelteFade(node, {
-    ...params,
+/**
+ * From nothing to full opacity. Unlike svelte/transition's, it never reads the element's computed
+ * opacity: that read forces the style of a whole arriving screen in the frame that mounts it.
+ */
+export function fade(
+  _node: Element,
+  params: Omit<FadeParams, "easing"> & Duration = {},
+): TransitionConfig {
+  return {
+    delay: params.delay ?? 0,
     duration: motionMs(params.duration ?? MOTION_MS.base),
     easing: ease,
-  });
+    css: (t) => `opacity: ${t}`,
+  };
 }
+
+// svelte/transition's own, with our default duration and easing and reduced motion applied.
 
 export function slide(node: Element, params: Omit<SlideParams, "easing"> & Duration = {}) {
   return svelteSlide(node, {
