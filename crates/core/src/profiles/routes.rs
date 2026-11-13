@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use super::{Profiles, Report, Update};
+use super::{Listing, Profiles, Report, Update};
 use crate::api::{Clock, Code, Problem, ProblemDetails};
 
 const BODY: Problem = Problem {
@@ -24,6 +24,7 @@ const PATH: Problem = Problem {
 impl Profiles {
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
+            .routes(routes!(catalogue))
             .routes(routes!(indexes, add_index))
             .routes(routes!(check))
             .routes(routes!(updates))
@@ -33,6 +34,23 @@ impl Profiles {
 }
 
 type ProfilesState = State<(Profiles, Clock)>;
+
+#[derive(Serialize, ToSchema)]
+struct Catalogue {
+    profiles: Vec<Listing>,
+}
+
+/// Every profile the core serves, bundled and fetched alike, by id: what a device can be added
+/// with.
+#[utoipa::path(get, path = "/api/v1/profiles", responses(
+    (status = 200, body = Catalogue),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn catalogue(State((profiles, _)): ProfilesState) -> Json<Catalogue> {
+    Json(Catalogue {
+        profiles: profiles.catalogue.listings(),
+    })
+}
 
 #[derive(Serialize, ToSchema)]
 struct Indexes {

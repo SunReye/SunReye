@@ -665,6 +665,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every profile the core serves, bundled and fetched alike, by id: what a device can be added
+         *     with.
+         */
+        get: operations["catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/records": {
         parameters: {
             query?: never;
@@ -1157,6 +1177,9 @@ export interface components {
             x: number;
             /** Format: double */
             z: number;
+        };
+        Catalogue: {
+            profiles: components["schemas"]["Listing"][];
         };
         /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
         Cell: {
@@ -1708,6 +1731,20 @@ export interface components {
         Lines: {
             /** @description Oldest first, as written to stderr. */
             lines: string[];
+        };
+        /** @description A profile served, as an admin picks it for a device. */
+        Listing: {
+            /**
+             * Format: double
+             * @description Watts of AC output at the inverter's rating; a family's largest.
+             */
+            acRating?: number | null;
+            id: string;
+            manufacturer: string;
+            /** @description The model, or the family it covers. */
+            name: string;
+            official: boolean;
+            version: string;
         };
         /** @description The plant's location in degrees, north and east positive. */
         Location: {
@@ -3864,6 +3901,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Update"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    catalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalogue"];
                 };
             };
             "4XX": {
