@@ -229,7 +229,12 @@ export function onCanvas(
 /** One finger taps the middle of what `locator` finds, through the browser's touch input. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, read only.
 export async function tap(locator: Locator): Promise<void> {
-  const box = (await locator.findElement()).getBoundingClientRect();
+  const element = await locator.findElement();
+
+  // A finger scrolls a long sheet to what it taps first.
+  element.scrollIntoView({ block: "nearest" });
+
+  const box = element.getBoundingClientRect();
 
   await press("touch", [[box.left + box.width / 2, box.top + box.height / 2]]);
 }

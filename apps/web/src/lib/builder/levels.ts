@@ -1,5 +1,5 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import type { FencePoint, Point, Scene } from "./pv.ts";
+import type { Block, FencePoint, Point, Scene } from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -10,13 +10,22 @@ export type Level =
   | { readonly kind: "root" }
   | { readonly kind: "section"; readonly section: Section }
   | {
-      readonly kind: "block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string";
+      readonly kind:
+        | "block"
+        | "chimney"
+        | "obstacle"
+        | "surface"
+        | "fence"
+        | "marker"
+        | "place"
+        | "string";
       readonly index: number;
     }
   | { readonly kind: "face"; readonly block: number; readonly face: number };
 
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
+  chimney: "buildings",
   obstacle: "surroundings",
   surface: "surroundings",
   fence: "surroundings",
@@ -53,11 +62,24 @@ function turn(x: number, z: number, degrees: number): readonly [number, number] 
 /** A rectangle on the ground: a block's or a box's. */
 type Footprint = Readonly<Record<"x" | "z" | "width" | "depth" | "rotation", number>>;
 
-/** Whether scene point `x`, `z` lies on the footprint. */
-function within([x, z]: readonly [number, number], footprint: Footprint): boolean {
+/** Whether scene point `x`, `z` lies on the footprint, grown by `across` and `deep` metres. */
+function within(
+  [x, z]: readonly [number, number],
+  footprint: Footprint,
+  [across, deep]: readonly [number, number] = [0, 0],
+): boolean {
   const [u, w] = turn(x - footprint.x, z - footprint.z, -footprint.rotation);
+  const [side, end] = [across + EDGE, deep + EDGE];
 
-  return u >= -EDGE && u <= footprint.width + EDGE && w >= -EDGE && w <= footprint.depth + EDGE;
+  return u >= -side && u <= footprint.width + side && w >= -end && w <= footprint.depth + end;
+}
+
+/** How far a block's roof reaches past its walls across and along its depth, as the crate
+ * widens it: a flat or hip roof by its eave overhang all round. */
+function reach({ overhang, roof }: Block): readonly [number, number] {
+  const { eave, verge } = overhang ?? { eave: 0, verge: 0 };
+
+  return [roof.kind === "flat" || roof.kind === "hip" ? eave : verge, eave];
 }
 
 /** How far scene point `p` lies from the segment from `a` to `b`. */
@@ -104,7 +126,7 @@ function at(scene: Scene, [east, north, up]: Point): Level | null {
 
   if (place >= 0) return { kind: "place", index: place };
 
-  const block = scene.blocks.findIndex((item) => within(point, item));
+  const block = scene.blocks.findIndex((item) => within(point, item, reach(item)));
 
   if (block >= 0) return { kind: "block", index: block };
 

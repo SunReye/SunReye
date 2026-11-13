@@ -86,7 +86,9 @@ test("a module the setback no longer holds is flagged before saving", async () =
 
   await expect
     .element(screen.getByRole("alert"))
-    .toHaveTextContent("Raster 1: Das Modul in Reihe 2, Spalte 1 ragt über den Randabstand.");
+    .toHaveTextContent(
+      "Raster 1: Das Modul in Reihe 2, Spalte 1 ragt über den Randabstand oder in einen Schornstein.",
+    );
   await drill("Module");
   await expect
     .element(inspector().getByText("1 Module gehören zu keinem String und erzeugen nichts."))

@@ -81,6 +81,20 @@ test("removing a block drops its grids and renumbers those of later blocks", () 
   expect(withoutBlock(two, 0).grids?.map((grid) => [grid.block, grid.face])).toEqual([[0, 1]]);
 });
 
+test("removing a block drops the chimneys on its roof and renumbers those of later blocks", () => {
+  const stack = { face: 0, across: 2, up: 2, width: 0.6, depth: 0.6, height: 1 } as const;
+
+  const stacked: Scene = {
+    ...empty,
+    chimneys: [
+      { ...stack, block: 0 },
+      { ...stack, block: 1 },
+    ],
+  };
+
+  expect(withoutBlock(stacked, 0).chimneys).toEqual([{ ...stack, block: 0 }]);
+});
+
 test("removing a block drops the equipment on its walls and renumbers that of later blocks", () => {
   const marker = { device: 1, kind: "inverter", wall: "front", along: 1, inside: false } as const;
 

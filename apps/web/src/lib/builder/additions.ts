@@ -1,6 +1,6 @@
 // What each inspector group can add, and the level the new object opens at (ADR 20).
 import { m } from "../paraglide/messages.js";
-import { fence, nextBlock, obstacle, surface } from "./draft.ts";
+import { chimney, fence, nextBlock, obstacle, surface } from "./draft.ts";
 import type { Level, Section } from "./levels.ts";
 import { addString, type Draft } from "./modules.ts";
 import type { Plan } from "./outline.ts";
@@ -13,16 +13,27 @@ export interface Addition {
   readonly level: Level;
 }
 
-function buildings({ draft }: Plan): Addition[] {
-  const { blocks } = draft.scene;
+/** A chimney goes on the first roof face; without a roof, none is added. */
+function buildings({ draft, laid }: Plan): Addition[] {
+  const { blocks, chimneys = [] } = draft.scene;
+  const [face] = laid.roofs;
 
-  return [
-    {
-      label: m.builder_add_block(),
-      draft: { ...draft, scene: { ...draft.scene, blocks: [...blocks, nextBlock(blocks)] } },
-      level: { kind: "block", index: blocks.length },
-    },
-  ];
+  const block: Addition = {
+    label: m.builder_add_block(),
+    draft: { ...draft, scene: { ...draft.scene, blocks: [...blocks, nextBlock(blocks)] } },
+    level: { kind: "block", index: blocks.length },
+  };
+
+  return face === undefined
+    ? [block]
+    : [
+        block,
+        {
+          label: m.builder_add_chimney(),
+          draft: { ...draft, scene: { ...draft.scene, chimneys: [...chimneys, chimney(face)] } },
+          level: { kind: "chimney", index: chimneys.length },
+        },
+      ];
 }
 
 const OBSTACLES: readonly (readonly [Obstacle["kind"], () => string])[] = [

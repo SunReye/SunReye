@@ -1,12 +1,12 @@
 <!-- One object's level in the inspector; a face's level is its module-grid editor (ADR 20). -->
 <script lang="ts">
   import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
-  import BlockFieldset from "./BlockFieldset.svelte";
+  import BuildingLevel from "./BuildingLevel.svelte";
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
-  import { painted, withoutBlock, withoutString, type Draft, type Strokes } from "./modules.ts";
+  import { painted, withoutString, type Draft, type Strokes } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -35,7 +35,6 @@
   const index = $derived("index" in level ? level.index : -1);
 
   /** The object the level names, by its kind; undefined for every other kind. */
-  const block = $derived(level.kind === "block" ? scene.blocks[index] : undefined);
   const equipment = $derived(scene.equipment ?? []);
   const marker = $derived(level.kind === "marker" ? equipment[index] : undefined);
   const places = $derived(scene.carPlaces ?? []);
@@ -54,41 +53,46 @@
     onchange({ ...draft, scene: { ...scene, ...next } });
   }
 
+  /** A building or a surrounding object's level: the kinds that edit the scene alone. */
+  const building = $derived(level.kind === "block" || level.kind === "chimney" ? level.kind : null);
+
+  const surrounding = $derived(
+    level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"
+      ? level.kind
+      : null,
+  );
+
+  function sceneEdit(next: Draft["scene"]): void {
+    onchange({ ...draft, scene: next });
+  }
+
+  function sceneRemove(next: Draft["scene"]): void {
+    remove({ ...draft, scene: next });
+  }
+
   /** The draft without this object, back at its group. */
   function remove(next: Draft): void {
     onchange(next);
     onlevel(parent(level));
   }
-
-  // A scene keeps at least one block.
-  const removeBlock = $derived(
-    scene.blocks.length > 1
-      ? () => {
-          remove({ ...draft, scene: withoutBlock(scene, index) });
-        }
-      : undefined,
-  );
 </script>
 
-{#if block !== undefined}
-  <BlockFieldset
-    {block}
-    onchange={(next) => {
-      sceneChange({ blocks: scene.blocks.with(index, next) });
-    }}
-    onremove={removeBlock}
-  />
-{:else if level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"}
-  <SurroundingLevel
-    kind={level.kind}
+{#if building !== null}
+  <BuildingLevel
+    kind={building}
     {index}
     {scene}
-    onchange={(next) => {
-      onchange({ ...draft, scene: next });
-    }}
-    onremove={(next) => {
-      remove({ ...draft, scene: next });
-    }}
+    roofs={plan.laid.roofs}
+    onchange={sceneEdit}
+    onremove={sceneRemove}
+  />
+{:else if surrounding !== null}
+  <SurroundingLevel
+    kind={surrounding}
+    {index}
+    {scene}
+    onchange={sceneEdit}
+    onremove={sceneRemove}
   />
 {:else if marker !== undefined}
   <EquipmentFieldset

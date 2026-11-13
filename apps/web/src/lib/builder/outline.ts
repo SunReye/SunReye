@@ -60,6 +60,9 @@ export const FENCE_FINISHES: readonly (readonly [FenceFinish, () => string])[] =
   ["wall", m.finish_wall],
 ];
 
+/** How long a list the scene may leave out is. */
+const many = (list: readonly unknown[] | undefined): number => list?.length ?? 0;
+
 const named = <T>(list: readonly (readonly [T, () => string])[], key: T): string =>
   list.find(([kind]) => kind === key)?.[1]() ?? "";
 
@@ -103,8 +106,8 @@ const SUMMARIES: Readonly<Record<Section, (plan: Plan) => string>> = {
     }),
   equipment: ({ draft }) =>
     m.builder_summary_equipment({
-      markers: draft.scene.equipment?.length ?? 0,
-      places: draft.scene.carPlaces?.length ?? 0,
+      markers: many(draft.scene.equipment),
+      places: many(draft.scene.carPlaces),
     }),
   modules: ({ draft }) => m.builder_summary_modules(placed(draft)),
   strings: ({ draft }) => m.builder_summary_strings({ count: draft.strings.length }),
@@ -118,7 +121,17 @@ export function summary(section: Section, plan: Plan): string {
 function buildings({ draft }: Plan): Entry[] {
   const number = format();
 
-  return draft.scene.blocks.map((block, index) => ({
+  const chimneys = (draft.scene.chimneys ?? []).map((item, index): Entry => ({
+    level: { kind: "chimney", index },
+    label: m.builder_item({ name: m.chimney(), number: index + 1 }),
+    summary: m.builder_chimney_summary({
+      block: item.block + 1,
+      face: item.face + 1,
+      height: number.format(item.height),
+    }),
+  }));
+
+  const blocks = draft.scene.blocks.map((block, index): Entry => ({
     level: { kind: "block", index },
     label: m.builder_block({ number: index + 1 }),
     summary: m.builder_block_summary({
@@ -127,6 +140,8 @@ function buildings({ draft }: Plan): Entry[] {
       depth: number.format(block.depth),
     }),
   }));
+
+  return [...blocks, ...chimneys];
 }
 
 function surroundings({ draft }: Plan): Entry[] {
@@ -232,17 +247,21 @@ export function title(level: Level, plan: Plan): string {
 function counts({
   draft,
 }: Plan): Readonly<
-  Record<"block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string", number>
+  Record<
+    "block" | "chimney" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string",
+    number
+  >
 > {
   const { scene } = draft;
 
   return {
     block: scene.blocks.length,
+    chimney: many(scene.chimneys),
     obstacle: scene.obstacles.length,
-    surface: scene.surfaces?.length ?? 0,
-    fence: scene.fences?.length ?? 0,
-    marker: scene.equipment?.length ?? 0,
-    place: scene.carPlaces?.length ?? 0,
+    surface: many(scene.surfaces),
+    fence: many(scene.fences),
+    marker: many(scene.equipment),
+    place: many(scene.carPlaces),
     string: draft.strings.length,
   };
 }
