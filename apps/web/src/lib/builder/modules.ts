@@ -1,6 +1,6 @@
 // Module placement on the roof faces' grids and string painting (ADR 20). Pure: each edit
 // returns a new scene; the pv crate decides what fits.
-import type { StringDraft } from "../api/core.ts";
+import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
 import type { Cell, CellPlace, Equipment, ModuleGrid, Scene } from "./pv.ts";
 import type { Panel } from "./scene.ts";
 
@@ -62,6 +62,14 @@ export function removeGrid(scene: Scene, index: number): Scene {
 }
 
 /** Where a drag's steps go: each shown at once, the drag recorded as one undo step once let go. */
+/** Where a face's module types come from: the core, or a test's fake. */
+export interface TypeSource {
+  /** Adds a module type to the core. */
+  addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem>;
+  /** The module catalogue's sheets. */
+  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem>;
+}
+
 export interface Strokes {
   readonly drag: (scene: Scene) => void;
   readonly drop: () => void;

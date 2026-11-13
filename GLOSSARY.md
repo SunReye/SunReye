@@ -208,6 +208,10 @@ _Avoid_: Cell string, diode group
 The datasheet values of one PV module model.
 _Avoid_: Panel model
 
+**Module catalogue**:
+Module types' datasheet values bundled with SunReye, each naming the maker's datasheet it was copied from. Picking one adds a module type.
+_Avoid_: Preset (a preset is a camera view), module database
+
 **Scene**:
 The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
 _Avoid_: Model, 3D view

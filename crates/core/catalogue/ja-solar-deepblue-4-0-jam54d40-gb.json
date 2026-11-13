@@ -1,0 +1,96 @@
+{
+  "maker": "JA Solar",
+  "series": "DeepBlue 4.0",
+  "source": {
+    "title": "DEEP BLUE 4.0 JAM54D40 415-440/GB/1500V Series, 440W n-type Bifacial Double Glass High Efficiency Mono Module",
+    "revision": "Global_EN_20221207A",
+    "url": "https://www.jasolar.com/uploadfile/2023/0224/20230224014825425.pdf",
+    "note": "Text layer is mostly vector/raster; values read from the rendered page. Supersedes Global_EN_20221122A (JAM54D40 410-435/GB/1500V, https://www.jasolar.com/uploadfile/2022/1130/20221130094951200.pdf), whose 415-435 values are identical; its 410 W class is not in this edition."
+  },
+  "modules": [
+    {
+      "name": "JAM54D40-415/GB/1500V",
+      "pmax": 415,
+      "vmp": 31.59,
+      "imp": 13.14,
+      "voc": 37.92,
+      "isc": 14.02,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D40-420/GB/1500V",
+      "pmax": 420,
+      "vmp": 31.8,
+      "imp": 13.21,
+      "voc": 38.05,
+      "isc": 14.09,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D40-425/GB/1500V",
+      "pmax": 425,
+      "vmp": 32.01,
+      "imp": 13.28,
+      "voc": 38.2,
+      "isc": 14.16,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D40-430/GB/1500V",
+      "pmax": 430,
+      "vmp": 32.21,
+      "imp": 13.35,
+      "voc": 38.32,
+      "isc": 14.23,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D40-435/GB/1500V",
+      "pmax": 435,
+      "vmp": 32.42,
+      "imp": 13.42,
+      "voc": 38.45,
+      "isc": 14.3,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D40-440/GB/1500V",
+      "pmax": 440,
+      "vmp": 32.65,
+      "imp": 13.48,
+      "voc": 38.6,
+      "isc": 14.36,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    }
+  ]
+}

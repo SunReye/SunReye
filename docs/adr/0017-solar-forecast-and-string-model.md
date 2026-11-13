@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -12,7 +12,8 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
 
 - An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5).
 - A string is a series of modules of one module type, with an optional loss in %. Each module has a plane (tilt, and azimuth with 0 = south, −90 = east, 90 = west) and may have an optimizer, so a string may span roof faces. Entered by form, a string has one plane for all its modules and a count of optimized modules; a scene (ADR 20) places each module. Strings on one MPPT input are in parallel.
-- A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them; there is no built-in catalogue.
+- A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them or copies them from the module catalogue.
+- The module catalogue is bundled with the core, like the official profiles (ADR 8), one sheet per maker's datasheet: maker, series, the datasheet's title, revision and URL, and each power class it prints. Every value is copied from that datasheet; a power class or series whose datasheet lacks a value, the bypass diodes included, is left out, never estimated. The core refuses at build time, by test, a sheet without its source or with a value out of range or inconsistent (Vmp above Voc, Imp above Isc, Vmp × Imp more than 2 % off Pmax, a coefficient of the wrong sign, a size outside 0.2–3 m). Admins read it at `GET /api/v1/module-catalogue`. Picking an entry adds a module type with its values (`POST /api/v1/module-types`), so a layout never depends on the catalogue and keeps working when it changes.
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
@@ -52,6 +53,8 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
 
 - **kWp arrays (3.x).** Rejected: they cannot express parallel strings or MPPT limits.
 - **Tilted irradiance from the provider (3.x).** Rejected: few providers deliver it; plain irradiance makes any weather source an adapter.
+- **No catalogue (2026-11-08).** Superseded: typing a whole datasheet by hand is the builder's slowest step.
+- **Layouts referencing catalogue entries.** Rejected: a catalogue fix would silently change past layouts; a copy keeps them as entered.
 - **Power-level providers (Forecast.Solar, Solcast).** Rejected: they bypass the string model, so per-string views vanish.
 - **Hay–Davies transposition.** Rejected: simpler, less precise.
 - **The PV model as a module inside the core.** Rejected: the 3D builder needs it in the browser, and a crate keeps I/O out by construction.

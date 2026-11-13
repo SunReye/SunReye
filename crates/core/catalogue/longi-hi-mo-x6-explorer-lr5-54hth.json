@@ -1,0 +1,82 @@
+{
+  "maker": "LONGi",
+  "series": "Hi-MO X6",
+  "source": {
+    "title": "Hi-MO X6 Explorer 型式: LR5-54HTH-420～440M (DSLR5-54HTH(E)20240116H2NPK)",
+    "revision": "2024-01 (DSLR5-54HTH(E)20240116H2NPK)",
+    "url": "https://static.longi.com/LR_5_54_HTH_420_440_M_Explorer_20240116cplite_9ef55e77ed.pdf",
+    "note": "Japanese-language edition (longi.com/jp). Used because it states 'IP68、バイパスダイオード×3'; the English V19 sheet (https://static.longi.com/L_Gi_LE_PM_T_PMD_059_F130_LR_5_54_HTH_420_440_M_30_30_and_15_Frame_Explorer_V19_4448f2931d.pdf, 20230926V19) has identical STC values but omits the bypass diode count."
+  },
+  "modules": [
+    {
+      "name": "LR5-54HTH-420M",
+      "pmax": 420,
+      "vmp": 32.44,
+      "imp": 12.95,
+      "voc": 38.73,
+      "isc": 14.0,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-425M",
+      "pmax": 425,
+      "vmp": 32.64,
+      "imp": 13.03,
+      "voc": 38.93,
+      "isc": 14.07,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-430M",
+      "pmax": 430,
+      "vmp": 32.84,
+      "imp": 13.1,
+      "voc": 39.13,
+      "isc": 14.15,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-435M",
+      "pmax": 435,
+      "vmp": 33.04,
+      "imp": 13.17,
+      "voc": 39.33,
+      "isc": 14.22,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-440M",
+      "pmax": 440,
+      "vmp": 33.24,
+      "imp": 13.24,
+      "voc": 39.53,
+      "isc": 14.3,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    }
+  ]
+}

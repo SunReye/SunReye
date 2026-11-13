@@ -1,0 +1,54 @@
+{
+  "maker": "LONGi",
+  "series": "Hi-MO 6",
+  "source": {
+    "title": "Hi-MO 6 Scientist LR5-54HTB 435~445M (LGiLE（PM）-T-PMD-059-F129)",
+    "revision": "20230210V17 DG",
+    "url": "https://static.longi.com/20230117_LON_Gi_Data_Sheet_LR_5_54_HTB_435_445_M_Scientist_DG_V17_French_d8c989d3a0.pdf",
+    "note": "French-language edition; the only Hi-MO 6 (LR5-54HT*) datasheet on longi.com that states the bypass diode count ('IP68, trois diodes'); the V19 English sheets omit it. Image-only PDF, values read from the rendered page. File name dated 20230117; printed revision is 20230210V17."
+  },
+  "modules": [
+    {
+      "name": "LR5-54HTB-435M",
+      "pmax": 435,
+      "vmp": 33.36,
+      "imp": 13.05,
+      "voc": 39.63,
+      "isc": 14.08,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTB-440M",
+      "pmax": 440,
+      "vmp": 33.56,
+      "imp": 13.12,
+      "voc": 39.83,
+      "isc": 14.15,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTB-445M",
+      "pmax": 445,
+      "vmp": 33.76,
+      "imp": 13.19,
+      "voc": 40.03,
+      "isc": 14.23,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    }
+  ]
+}

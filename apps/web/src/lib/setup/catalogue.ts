@@ -1,6 +1,7 @@
 // The profile catalogue as setup's picker shows it: by manufacturer, then family, filtered by what the admin types.
 import type { Listing } from "../api/core.ts";
 import { getLocale } from "../paraglide/runtime.js";
+import { compact, found, queryWords, tokens } from "../search.ts";
 
 /** A family: its own profile first, when one is served, then its models by rating. */
 export type Family = readonly Readonly<Listing>[];
@@ -10,14 +11,6 @@ export interface Manufacturer {
   readonly families: readonly Family[];
 }
 
-const tokens = (text: string): string[] =>
-  text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/u)
-    .filter(Boolean);
-
-const compact = (text: string): string => tokens(text).join("");
-
 /** What a query word may begin with: each token, each field run together, and the rating as `15kw`. */
 function words({ id, manufacturer, name, acRating }: Readonly<Listing>): string[] {
   const rating = acRating === undefined || acRating === null ? [] : [`${acRating / 1000}kw`];
@@ -25,14 +18,8 @@ function words({ id, manufacturer, name, acRating }: Readonly<Listing>): string[
   return [...tokens(`${manufacturer} ${name} ${id}`), compact(name), compact(id), ...rating];
 }
 
-/** The query's words, a number joined to the unit after it ("15 kW" is "15kw"). */
-const query = (text: string): string[] =>
-  tokens(text.replaceAll(/(\d)\s+(?=[a-z])/giu, "$1")).filter(Boolean);
-
 function matches(listing: Readonly<Listing>, wanted: readonly string[]): boolean {
-  const own = words(listing);
-
-  return wanted.every((word) => own.some((w) => w.startsWith(word)));
+  return found(words(listing), wanted);
 }
 
 /**
@@ -59,7 +46,7 @@ const byRating = (a: Readonly<Listing>, b: Readonly<Listing>): number =>
 
 /** Every served profile matching `text`, grouped; families and manufacturers in name order. */
 export function catalogue(all: readonly Readonly<Listing>[], text: string): Manufacturer[] {
-  const wanted = query(text);
+  const wanted = queryWords(text);
 
   const families = Map.groupBy(
     all.filter((listing) => matches(listing, wanted)),

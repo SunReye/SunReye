@@ -1,0 +1,96 @@
+{
+  "maker": "Trina Solar",
+  "series": "Vertex S+",
+  "source": {
+    "title": "PRODUKT: TSM-NEG9R.28 – DOPPELGLAS N-Typ i-TOPCon MODUL – LEISTUNGSBEREICH: 450–475 W",
+    "revision": "TSM_DE_2026_A",
+    "url": "https://www-cdn.trinasolar.com/wwwstorage/sites/8/260227_Datasheet_Vertex-S_NEG9R.28_DE_2026_A_web.pdf",
+    "note": "German edition used: it is the newest maker datasheet for NEG9R.28 and the only one that states the bypass diode count (Anschlussdose: IP 68, 3 Bypass-Dioden). English editions (TSM_EN_2024_C, TSM_APAC_EN_2025_D) omit it. Values printed with decimal commas."
+  },
+  "modules": [
+    {
+      "name": "TSM-450NEG9R.28",
+      "pmax": 450,
+      "vmp": 44.6,
+      "imp": 10.09,
+      "voc": 52.9,
+      "isc": 10.74,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "TSM-455NEG9R.28",
+      "pmax": 455,
+      "vmp": 45.0,
+      "imp": 10.11,
+      "voc": 53.4,
+      "isc": 10.77,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "TSM-460NEG9R.28",
+      "pmax": 460,
+      "vmp": 45.4,
+      "imp": 10.14,
+      "voc": 53.8,
+      "isc": 10.81,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "TSM-465NEG9R.28",
+      "pmax": 465,
+      "vmp": 45.8,
+      "imp": 10.16,
+      "voc": 54.2,
+      "isc": 10.85,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "TSM-470NEG9R.28",
+      "pmax": 470,
+      "vmp": 46.1,
+      "imp": 10.2,
+      "voc": 54.6,
+      "isc": 10.89,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "TSM-475NEG9R.28",
+      "pmax": 475,
+      "vmp": 46.4,
+      "imp": 10.24,
+      "voc": 55.0,
+      "isc": 10.93,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.24,
+      "currentCoefficient": 0.04,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    }
+  ]
+}

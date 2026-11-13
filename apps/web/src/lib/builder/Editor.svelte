@@ -1,8 +1,8 @@
 <!-- The inspector's body at one level (ADR 20): the root groups, a group's rows, or one object. -->
 <script lang="ts">
-  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { ModuleType } from "../api/core.ts";
   import type { Level } from "./levels.ts";
-  import type { Draft, Strokes } from "./modules.ts";
+  import type { Draft, Strokes, TypeSource } from "./modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
   import RootLevel from "./RootLevel.svelte";
@@ -11,7 +11,7 @@
   let {
     plan,
     moduleTypes,
-    addType,
+    types,
     level,
     onlevel,
     strokes,
@@ -19,8 +19,8 @@
   }: {
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** Adds a module type to the core. */
-    addType: (datasheet: Readonly<Datasheet>) => Promise<ModuleType | Problem>;
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
     level: Level;
     onlevel: (level: Level) => void;
     strokes: Strokes;
@@ -36,5 +36,5 @@
 {:else if level.kind === "section"}
   <SectionLevel section={level.section} {plan} {moduleType} {onchange} {onlevel} />
 {:else}
-  <ObjectLevel {level} {plan} {moduleTypes} {addType} {strokes} {onchange} {onlevel} />
+  <ObjectLevel {level} {plan} {moduleTypes} {types} {strokes} {onchange} {onlevel} />
 {/if}

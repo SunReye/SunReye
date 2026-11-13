@@ -1,11 +1,12 @@
 <!--
-  A roof face's level (ADR 20): its module-grid editor or, before one, its module type. A type picked
-  or entered here lays the grid at once.
+  A roof face's level (ADR 20): its module-grid editor or, before one, its module type. A type picked,
+  copied from the module catalogue or entered here lays the grid at once.
 -->
 <script lang="ts">
-  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
+  import type { ModuleType } from "../api/core.ts";
   import FaceGrid from "./FaceGrid.svelte";
-  import { addGrid, type Draft, type Strokes } from "./modules.ts";
+  import ModuleCatalogue from "./ModuleCatalogue.svelte";
+  import { addGrid, type Draft, type Strokes, type TypeSource } from "./modules.ts";
   import ModuleTypeForm from "./ModuleTypeForm.svelte";
   import ModuleTypePicker from "./ModuleTypePicker.svelte";
   import type { Plan } from "./outline.ts";
@@ -15,15 +16,15 @@
     roof,
     plan,
     moduleTypes,
-    addType,
+    types,
     strokes,
     onchange,
   }: {
     roof: RoofFace;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** Adds a module type to the core. */
-    addType: (datasheet: Readonly<Datasheet>) => Promise<ModuleType | Problem>;
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
     strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
@@ -34,8 +35,8 @@
     (draft.scene.grids ?? []).findIndex((g) => g.block === roof.block && g.face === roof.face),
   );
 
-  /** Whether the new module type's form shows instead of the types. */
-  let entering = $state(false);
+  /** What shows instead of the types: the module catalogue or the new module type's form. */
+  let adding = $state<"catalogue" | "form">();
 
   function lay(moduleType: number): void {
     onchange({ ...draft, scene: addGrid(draft.scene, roof.block, roof.face, moduleType) });
@@ -57,23 +58,37 @@
     {strokes}
     {onchange}
   />
-{:else if entering}
-  <ModuleTypeForm
-    add={addType}
+{:else if adding === "catalogue"}
+  <ModuleCatalogue
+    {types}
     onadded={({ id }) => {
-      entering = false;
+      adding = undefined;
       lay(id);
     }}
     oncancel={() => {
-      entering = false;
+      adding = undefined;
+    }}
+  />
+{:else if adding === "form"}
+  <ModuleTypeForm
+    add={(datasheet) => types.addModuleType(datasheet)}
+    onadded={({ id }) => {
+      adding = undefined;
+      lay(id);
+    }}
+    oncancel={() => {
+      adding = undefined;
     }}
   />
 {:else}
   <ModuleTypePicker
     {moduleTypes}
     onpick={lay}
+    oncatalogue={() => {
+      adding = "catalogue";
+    }}
     onnew={() => {
-      entering = true;
+      adding = "form";
     }}
   />
 {/if}

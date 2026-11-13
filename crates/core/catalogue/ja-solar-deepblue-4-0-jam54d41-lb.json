@@ -1,0 +1,96 @@
+{
+  "maker": "JA Solar",
+  "series": "DeepBlue 4.0",
+  "source": {
+    "title": "DEEP BLUE 4.0 JAM54D41 430-455/LB/1500V Series, 455W n-type Bifacial Double Glass High Efficiency Mono Module",
+    "revision": "Global_EN_20230522A",
+    "url": "https://www.jasolar.com/uploadfile/2023/0606/20230606020521211.pdf",
+    "note": "Text layer is mostly vector/raster; values read from the rendered page."
+  },
+  "modules": [
+    {
+      "name": "JAM54D41-430/LB/1500V",
+      "pmax": 430,
+      "vmp": 32.12,
+      "imp": 13.39,
+      "voc": 38.5,
+      "isc": 14.14,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D41-435/LB/1500V",
+      "pmax": 435,
+      "vmp": 32.29,
+      "imp": 13.47,
+      "voc": 38.7,
+      "isc": 14.23,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D41-440/LB/1500V",
+      "pmax": 440,
+      "vmp": 32.47,
+      "imp": 13.55,
+      "voc": 38.9,
+      "isc": 14.31,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D41-445/LB/1500V",
+      "pmax": 445,
+      "vmp": 32.65,
+      "imp": 13.63,
+      "voc": 39.1,
+      "isc": 14.4,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D41-450/LB/1500V",
+      "pmax": 450,
+      "vmp": 32.82,
+      "imp": 13.71,
+      "voc": 39.3,
+      "isc": 14.48,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "JAM54D41-455/LB/1500V",
+      "pmax": 455,
+      "vmp": 33.0,
+      "imp": 13.79,
+      "voc": 39.5,
+      "isc": 14.56,
+      "powerCoefficient": -0.3,
+      "voltageCoefficient": -0.26,
+      "currentCoefficient": 0.046,
+      "width": 1.134,
+      "height": 1.762,
+      "bypassDiodes": 3
+    }
+  ]
+}

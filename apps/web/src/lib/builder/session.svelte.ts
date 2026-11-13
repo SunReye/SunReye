@@ -1,6 +1,14 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
-import type { Core, Datasheet, Device, Layout, ModuleType, Problem } from "../api/core.ts";
+import type {
+  CatalogueSheet,
+  Core,
+  Datasheet,
+  Device,
+  Layout,
+  ModuleType,
+  Problem,
+} from "../api/core.ts";
 import { coldStrings, type Limits } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
@@ -102,6 +110,11 @@ export class Session {
     if (!("problem" in added)) this.#added = [...this.#added, added];
 
     return added;
+  }
+
+  /** The module catalogue's sheets (ADR 17), read anew each time a face asks. */
+  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem> {
+    return this.#opening().core.moduleCatalogue();
   }
 
   get draft(): Draft {
