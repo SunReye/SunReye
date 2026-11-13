@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cdp, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
@@ -66,6 +66,11 @@ async function step() {
 
   return { screen, transport, done };
 }
+
+// The emulation outlives the file: later files would run under reduced motion.
+afterEach(async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+});
 
 const grid = { device: 1, role: "grid.power" };
 

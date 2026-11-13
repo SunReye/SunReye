@@ -181,3 +181,84 @@ test("the live value shows beside the handle while it drags", async () => {
 
   await expect.element(value).not.toBeInTheDocument();
 });
+
+/** How far the camera stands from what it looks at. */
+const distance = ({ position, target }: View): number =>
+  Math.hypot(...position.map((p, i) => p - (target[i] ?? 0)));
+
+/** Two fingers from `from` to `to`, each pair in page pixels. */
+async function twoFingers(
+  from: readonly (readonly [number, number])[],
+  to: readonly (readonly [number, number])[],
+): Promise<void> {
+  const points = (pair: readonly (readonly [number, number])[], step: number) =>
+    pair.map(([x, y], id) => {
+      const [tx = x, ty = y] = to[id] ?? [];
+
+      return { x: x + ((tx - x) * step) / 4, y: y + ((ty - y) * step) / 4, id: id + 1 };
+    });
+
+  await cdp().send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: points(from, 0),
+  });
+
+  for (const step of [1, 2, 3, 4]) {
+    // oxlint-disable-next-line no-await-in-loop -- fingers move one step at a time.
+    await cdp().send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: points(from, step),
+    });
+  }
+
+  await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+test("two fingers spreading zoom in and drag nothing", SLOW, async () => {
+  const scene = house().scene;
+  const { dragged, views, corner } = await stage(scene);
+  const start = presetView("isometric", pv.geometry(scene));
+  const [x, y] = corner;
+
+  await twoFingers(
+    [
+      [x + 80, y],
+      [x + 120, y],
+    ],
+    [
+      [x, y],
+      [x + 200, y],
+    ],
+  );
+
+  await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+  expect(distance(views.at(-1) ?? start)).toBeLessThan(distance(start));
+  expect(dragged).toEqual([]);
+});
+
+test(
+  "two fingers on the selected house zoom too: the first finger's drag is let go",
+  SLOW,
+  async () => {
+    const scene = house().scene;
+    const { dragged, views, onPage } = await stage(scene);
+    const start = presetView("isometric", pv.geometry(scene));
+    const [x, y] = onPage([5, 0, 4]);
+
+    await twoFingers(
+      [
+        [x - 20, y],
+        [x + 20, y],
+      ],
+      [
+        [x - 100, y],
+        [x + 100, y],
+      ],
+    );
+
+    await expect.poll(() => views.length, SLOW).toBeGreaterThan(0);
+    expect(distance(views.at(-1) ?? start)).toBeLessThan(distance(start));
+    // Whatever the first finger moved is put back, and nothing is recorded.
+    expect(dragged.at(-1) ?? scene).toEqual(scene);
+  },
+);

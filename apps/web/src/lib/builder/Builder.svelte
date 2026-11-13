@@ -1,15 +1,15 @@
 <!--
   The 3D house builder (ADR 20): the canvas takes the full height on the left, a glass drill-in
-  inspector sits on the right. On a portrait tablet the inspector is a sheet pulled up over the
-  canvas; a phone views only. A click on an object in 3D drills the inspector to it.
+  inspector sits on the right. On a portrait tablet or a phone the inspector is a sheet pulled up
+  over the canvas. A click on an object in 3D drills the inspector to it.
 -->
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, ModuleType } from "../api/core.ts";
-  import { m } from "../paraglide/messages.js";
-  import Inspector from "./Inspector.svelte";
-  import InspectorSheet, { PEEK } from "./InspectorSheet.svelte";
+  import { PEEK } from "./InspectorSheet.svelte";
+  import InspectorPane from "./InspectorPane.svelte";
   import type { Location, Pv } from "./pv.ts";
+  import PhoneTools from "./PhoneTools.svelte";
   import { Session, type Opening } from "./session.svelte.ts";
   import Templates from "./Templates.svelte";
   import { provideUploader } from "./upload.ts";
@@ -37,7 +37,7 @@
     limits?: Opening["limits"];
   } = $props();
 
-  // Desktop and tablet edit; a phone views (ADR 20).
+  // Every width edits (ADR 20): a phone with the inspector as a sheet and "+" on the canvas.
   const phone = new MediaQuery("max-width: 40rem");
   const portrait = new MediaQuery("orientation: portrait");
 
@@ -45,17 +45,15 @@
 
   provideUploader((glb) => core.uploadCarBody(glb));
 
-  const sheet = $derived(!phone.current && portrait.current);
-
-  const editing = $derived(phone.current ? undefined : session.editing);
-
-  const painting = $derived(phone.current ? undefined : session.painting);
+  const sheet = $derived(phone.current || portrait.current);
 </script>
 
+<!-- A phone's canvas runs edge to edge; the shell's bottom bar, if any, sets `--bar-clear`. -->
 <div
   class={[
-    "relative grid h-dvh min-h-[480px] gap-3 p-3",
-    !phone.current && !sheet && "grid-cols-[minmax(0,1fr)_minmax(320px,380px)]",
+    "relative grid h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]",
+    !phone.current && "gap-3 p-3",
+    !sheet && "grid-cols-[minmax(0,1fr)_minmax(320px,380px)]",
   ]}
 >
   <div class="relative min-h-0">
@@ -69,15 +67,14 @@
       {devices}
       {location}
       clear={sheet ? PEEK : 0}
-      {editing}
-      {painting}
-      onpick={phone.current
-        ? undefined
-        : (hit) => {
-            session.pick(hit);
-          }}
+      editing={session.editing}
+      painting={session.painting}
+      tools={phone.current ? tools : undefined}
+      onpick={(hit) => {
+        session.pick(hit, phone.current);
+      }}
     />
-    {#if !phone.current && session.offering}
+    {#if session.offering}
       <Templates
         {pv}
         clear={sheet ? PEEK : 0}
@@ -87,22 +84,9 @@
       />
     {/if}
   </div>
-  {#if phone.current}
-    <p
-      class="glass-ambient absolute inset-x-6 bottom-6 rounded-md px-3 py-2 text-sm text-muted-foreground"
-    >
-      {m.builder_view_only()}
-    </p>
-  {:else if sheet}
-    <InspectorSheet bind:expanded={session.expanded}>
-      <Inspector {session} {moduleTypes} />
-    </InspectorSheet>
-  {:else}
-    <aside
-      aria-label={m.builder_edit()}
-      class="glass-ambient min-h-0 overflow-hidden rounded-lg border border-border/60 elevation-1"
-    >
-      <Inspector {session} {moduleTypes} />
-    </aside>
-  {/if}
+  <InspectorPane {session} {moduleTypes} {sheet} />
 </div>
+
+{#snippet tools()}
+  <PhoneTools {session} moduleType={moduleTypes[0]?.id} />
+{/snippet}

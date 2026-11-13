@@ -36,15 +36,17 @@ test("without WebGL2 the route points to the form", async () => {
   expect(screen.getByLabelText("3D-Szene des Hauses").query()).toBeNull();
 });
 
-test("on a phone the scene opens view-only", async () => {
+test('on a phone the scene edits too: templates, the inspector\'s sheet and "+"', async () => {
   await page.viewport(390, 800);
 
   const screen = await render(Page, { context: emptyCore() });
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
-  await expect.element(screen.getByText(/nur ansehen/u)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Baukörper hinzufügen" }).query()).toBeNull();
-  await expect.element(screen.getByRole("button", { name: "Norden" })).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }))
+    .toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Szene bearbeiten" })).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Hinzufügen" })).toBeInTheDocument();
 });
 
 /** The route starts without a layout: the admin first picks the gable house's template. */

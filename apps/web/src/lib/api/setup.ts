@@ -26,6 +26,9 @@ export type Connection = components["schemas"]["Connection"];
 
 export type DeviceDraft = components["schemas"]["DeviceDraft"];
 
+/** A profile the core serves, as a device is added with it (ADR 8). */
+export type Listing = components["schemas"]["Listing"];
+
 export type Claim = Readonly<components["schemas"]["Claim"]>;
 
 /** A point as the admin enters it, naming its parent by index. */
@@ -61,6 +64,8 @@ export interface Setup extends Access {
   scan(subnet?: string): Promise<ScanReport | Problem>;
   /** Adds a connection; admin only. */
   addConnection(reach: Reach): Promise<Connection | Problem>;
+  /** Every profile the core serves, bundled and fetched alike; admin only. */
+  profiles(): Promise<readonly Listing[] | Problem>;
   /** Adds a device behind a connection; admin only. */
   addDevice(draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
   /** Changes a device, such as its writes switch (ADR 7); admin only. */
@@ -115,8 +120,13 @@ function zone(client: Client): Pick<Setup, "timezone" | "setTimezone"> {
 }
 
 /** The devices behind the connections. */
-function devices(client: Client): Pick<Setup, "addDevice" | "changeDevice"> {
+function devices(client: Client): Pick<Setup, "profiles" | "addDevice" | "changeDevice"> {
   return {
+    profiles: async () => {
+      const { data, error, response } = await client.GET("/api/v1/profiles");
+
+      return data === undefined ? refusal(error ?? "", response.status) : data.profiles;
+    },
     addDevice: async (draft) => {
       const { data, error, response } = await client.POST("/api/v1/devices", { body: draft });
 
@@ -170,6 +180,7 @@ function plant(
   | "signIn"
   | "timezone"
   | "setTimezone"
+  | "profiles"
   | "addDevice"
   | "changeDevice"
   | "topology"

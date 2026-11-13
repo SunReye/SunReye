@@ -37,7 +37,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Physics.** Shading is computed in the `pv` crate (ADR 17), per bypass-diode substring, against blocks, obstacles and carport roofs; diffuse light stays unshaded. The `pv` crate also turns blocks, roofs and obstacles into the faces and solids the browser draws, so what is drawn is what shades: the forecast shades with each face as a fan of triangles and with the solids. The core's forecast and the browser run the same code, so the scene and the forecast never disagree. three.js only draws.
 
-**Rendering.** three.js directly, without a Svelte wrapper. The scene is built by pure functions from the layout and drawn by one thin component. It needs WebGL2. It redraws only on a live tick or a camera move, never in a continuous loop. An orbit camera offers preset views (north, east, south, west, top, isometric); each viewer's last view is kept in their browser. The `pv` crate reaches the browser through its own WASM glue crate (ADR 2). Desktop and tablet edit; a phone views.
+**Rendering.** three.js directly, without a Svelte wrapper. The scene is built by pure functions from the layout and drawn by one thin component. It needs WebGL2. It redraws only on a live tick or a camera move, never in a continuous loop. An orbit camera offers preset views (north, east, south, west, top, isometric); each viewer's last view is kept in their browser. The `pv` crate reaches the browser through its own WASM glue crate (ADR 2). The admin edits at every width, the phone included: setup's layout step is the builder, and a homeowner may set up from a phone.
 
 **Loading.** The dashboard never waits for the scene. three.js and the scene load after the dashboard is interactive: noise textures in a worker, the plant built in slices, shader programs compiled ahead, and the first frame drawn hidden. Meanwhile the hero shows the scene's own studio backdrop with a faint ground shadow; "3D-Ansicht lädt …" appears only after a second. Once the GPU has finished the first frame, the scene and its labels fade in over about 350 ms; the car loads after the house and fades in on its own. With 2D chosen, under the low-power switch or without WebGL2, three.js is never requested; a first switch from 2D keeps the flow until the scene can fade over it. A failed load leaves the 2D flow with "Erneut versuchen".
 
@@ -65,7 +65,7 @@ Energy flow shows as tint and label arrows.
 
 **Labels.** Labels are ambient-glass chips with an icon, an animated value and a flow-colour dot. They push each other apart so they never overlap, and stay inside the canvas. Tapping a chip opens that equipment's detail sheet.
 
-**Building it.** Anyone should get from nothing to their roof in minutes, on a tablet or with a mouse.
+**Building it.** Anyone should get from nothing to their roof in minutes, on a phone, a tablet or with a mouse.
 - **Templates.** An empty scene offers starting points: detached house with gable roof, bungalow with flat roof, house with hip roof, L-house (two blocks), terrace end, and empty. A template only fills the scene; nothing remembers it.
 - **Handles.** Selecting an object shows handles in 3D:
   - arrows on its walls drag width and depth;
@@ -77,8 +77,8 @@ Energy flow shows as tint and label arrows.
 - **Modules.** "Fill face" places as many modules as the face's grid holds. A tap toggles one cell, and a drag paints or erases cells.
 - **Strings.** Pick a string, then drag across modules to paint it.
 - **Inspector.** It shows the exact numbers. Editing one moves the handles, and every handle drag is one undo step.
-- **Touch.** One finger on a handle drags it, and on empty space orbits. Two fingers pan and zoom.
-- **Layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Surroundings, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up.
+- **Touch.** One finger on a handle drags it, and on empty space orbits. Two fingers pan and zoom. A handle's touch target is at least 44 px, whatever its drawn size.
+- **Layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Surroundings, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up. On a phone the canvas fills the screen and the inspector is that bottom sheet, peeking at its header; "+" opens a sheet of everything that can be added, and an undo button sits on the canvas. The canvas's notices stack and never overlap.
 
 ## Considered options
 

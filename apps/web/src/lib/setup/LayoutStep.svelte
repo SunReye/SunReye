@@ -44,20 +44,21 @@
 </script>
 
 <main class="flex h-dvh flex-col">
+  <!-- On a phone back keeps only its chevron, so the title shows whole or wraps. -->
   <header
     class="glass-ambient flex items-center gap-2 border-b border-border/60 py-1.5 pr-3 pl-1.5"
   >
-    <Button variant="ghost" size="sm" onclick={onback} class="text-brand">
+    <Button variant="ghost" size="sm" onclick={onback} class="shrink-0 text-brand">
       <ChevronLeft data-icon="inline-start" />
-      {m.setup_title()}
+      <span class="max-sm:sr-only">{m.setup_title()}</span>
     </Button>
-    <div class="flex min-w-0 flex-col leading-tight">
-      <h2 class="truncate text-[15px] font-semibold">{m.layout_title()}</h2>
+    <div class="flex min-w-0 flex-1 flex-col leading-tight">
+      <h2 class="text-[15px] font-semibold text-balance break-words">{m.layout_title()}</h2>
       <span class="text-xs text-muted-foreground tabular-nums">
         {m.setup_progress({ step, count })}
       </span>
     </div>
-    <Button class="ml-auto" onclick={ondone}>{m.setup_finish()}</Button>
+    <Button class="shrink-0" onclick={ondone}>{m.setup_finish()}</Button>
   </header>
   <!-- The builder sizes itself to the screen; here it takes what the header leaves. -->
   <div class="min-h-0 flex-1 [&>div]:h-full">

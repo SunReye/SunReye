@@ -1,6 +1,7 @@
 // The pointer on the handles (ADR 20): a press on a handle, or on the selected object itself,
 // takes the pointer from the orbit controls and drags until let go; anywhere else it orbits.
-// Mouse, pen and touch alike; a second finger during a drag is ignored.
+// Mouse, pen and touch alike. A second finger lets the drag go and hands both fingers to the orbit
+// controls, which pan and zoom.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
@@ -53,6 +54,8 @@ interface Held {
   readonly grab: Grab;
   readonly editing: Editing;
   readonly down: readonly [number, number];
+  /** Where the pointer is now. */
+  at: readonly [number, number];
   moving: boolean;
 }
 
@@ -73,6 +76,9 @@ export class Grabbing {
   readonly #camera: PerspectiveCamera;
   readonly #sources: Sources;
   #held: Held | undefined;
+
+  /** The first finger's press, given again to the orbit controls once a second one comes. */
+  #handed: PointerEvent | undefined;
 
   /** Stops listening. */
   readonly dispose: () => void;
@@ -99,7 +105,7 @@ export class Grabbing {
     // A press may come before the first draw has placed the camera's matrices.
     this.#camera.updateMatrixWorld();
 
-    return shown === undefined ? null : handleOf(shown, this.#camera, at);
+    return shown === undefined ? null : handleOf(shown, this.#camera, at, this.#canvas);
   }
 
   /** A handle, or the selected object's own surface: what the press grabbed. */
@@ -126,8 +132,11 @@ export class Grabbing {
   }
 
   readonly #press = (event: PointerEvent): void => {
+    if (event === this.#handed) return;
+
     if (this.#held !== undefined) {
-      event.stopImmediatePropagation();
+      if (event.pointerType === "touch") this.#handOver(this.#held);
+      else event.stopImmediatePropagation();
 
       return;
     }
@@ -149,6 +158,7 @@ export class Grabbing {
       grab,
       editing,
       down: [event.clientX, event.clientY],
+      at: [event.clientX, event.clientY],
       moving: grab.grip !== "move",
     };
     this.#canvas.style.cursor = "grabbing";
@@ -168,6 +178,7 @@ export class Grabbing {
     if (event.pointerId !== held.pointer) return;
 
     event.stopImmediatePropagation();
+    held.at = [event.clientX, event.clientY];
     held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= CLICK;
 
     if (held.moving) this.#step(held, rayAt(this.#camera, this.#ndc(event)));
@@ -185,6 +196,33 @@ export class Grabbing {
     editing.ondrag(dragged.scene);
 
     if (at !== undefined) this.#sources.onreading({ value: dragged.value, unit: dragged.unit, at });
+  }
+
+  /** Puts the dragged object back, unrecorded, and presses the first finger again where it is now,
+   * for the orbit controls; the second finger's press follows it there. */
+  #handOver(held: Held): void {
+    if (held.moving) {
+      held.editing.ondrag(held.editing.scene);
+      held.editing.ondrop();
+    }
+
+    this.#held = undefined;
+    this.#sources.onreading();
+    this.#canvas.style.cursor = "";
+
+    const [clientX, clientY] = held.at;
+
+    this.#handed = new PointerEvent("pointerdown", {
+      pointerId: held.pointer,
+      pointerType: "touch",
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX,
+      clientY,
+    });
+    this.#canvas.dispatchEvent(this.#handed);
+    this.#handed = undefined;
   }
 
   readonly #release = (event: PointerEvent): void => {

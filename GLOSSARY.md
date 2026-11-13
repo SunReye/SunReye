@@ -42,6 +42,10 @@ _Avoid_: Protocol, driver
 A declarative file describing one device model: its quantities, how to read them and which settings it may write.
 _Avoid_: Driver, template, map
 
+**Family**:
+A manufacturer's model range sharing one register map, such as Deye's SG05LP3. A family profile covers every model of it; a model's own profile adds its ratings.
+_Avoid_: Series, line
+
 **Official profile**:
 A profile signed by the profile key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
 _Avoid_: Verified profile
