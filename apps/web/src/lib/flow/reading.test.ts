@@ -56,7 +56,7 @@ test("every plant role yields its node", () => {
     "battery",
     "generator",
     "grid",
-    "load",
+    "house",
     "pv",
     "pv",
   ]);
@@ -90,7 +90,7 @@ test("no string reading at all falls back to the aggregate PV node", () => {
 
 test("a metered house load renders a house node", () => {
   const g = graph({ plant: { "load.power": 900, "grid.power": 900 } });
-  expect(g.nodes.map((n) => n.kind)).toContain("load");
+  expect(g.nodes.map((n) => n.kind)).toContain("house");
 });
 
 test("a negative house load reads as feeding in, flowing into the hub", () => {
@@ -111,7 +111,7 @@ test("a positive house load still reads as consuming", () => {
 
 test("no load.power, no house node", () => {
   const g = graph({ plant: { "grid.power": 0 } });
-  expect(g.nodes.map((n) => n.kind)).not.toContain("load");
+  expect(g.nodes.map((n) => n.kind)).not.toContain("house");
 });
 
 test("house = load − ev, the EV is a hub sibling, and they sum to the load", () => {

@@ -15,6 +15,7 @@ import {
   type PvString,
 } from "./groups.ts";
 import type { MeasurementPoint } from "./consumers.ts";
+import { parseFigure } from "./figures.ts";
 import { pointsOf, type LivePoint, type LiveSeries } from "../live-graph/series.ts";
 import { reader, type Group, type Reader, type Readings } from "./rows.ts";
 
@@ -104,16 +105,12 @@ const PLANT_NODES = new Map([
   ["generator", { prefixes: ["generator."], lead: "generator.power", groups: generator }],
 ]);
 
-const STRING = /^string-(?<id>\d+)$/u;
-const LOADPOINT = /^ev-(?<id>\d+)$/u;
-
 function node(id: string, source: Source): Node | null {
-  const sid = STRING.exec(id)?.groups?.id;
-  const loadpoint = LOADPOINT.exec(id)?.groups?.id;
+  const ref = parseFigure(id);
   const flow = PLANT_NODES.get(id);
 
-  if (sid !== undefined) {
-    const n = Number(sid);
+  if (ref?.kind === "string") {
+    const n = ref.id;
     const device = source.strings.find((s) => s.id === n)?.device ?? null;
 
     return {
@@ -123,8 +120,8 @@ function node(id: string, source: Source): Node | null {
     };
   }
 
-  if (loadpoint !== undefined) {
-    const device = Number(loadpoint);
+  if (ref?.kind === "ev") {
+    const device = ref.id;
 
     return { device, lead: [device, "ev.charge.power"], groups: ev };
   }

@@ -2,6 +2,7 @@
 // its heat grid reads per hour, and whether its strings compare. Pure.
 import type { PvString } from "../api/core.ts";
 import { PLANT } from "../dashboard/day.ts";
+import { parseFigure } from "../detail/figures.ts";
 
 export interface Analytics {
   readonly device: number;
@@ -36,10 +37,10 @@ const FORECAST = new Set(["production", "pv"]);
 /** The analytics of figure `id`; null for one without a series in history. */
 export function analyticsOf(id: string, strings: readonly Readonly<PvString>[]): Analytics | null {
   const several = strings.length > 1;
-  const string = /^string-(\d+)$/u.exec(id);
+  const ref = parseFigure(id);
 
-  if (string) {
-    const s = strings.find((x: Readonly<PvString>) => x.id === Number(string[1]));
+  if (ref?.kind === "string") {
+    const s = strings.find((x: Readonly<PvString>) => x.id === ref.id);
 
     return s
       ? {

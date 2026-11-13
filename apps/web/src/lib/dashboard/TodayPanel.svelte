@@ -3,6 +3,7 @@
   self-consumption meters and the day curve, divided by hairlines. Every part opens its detail.
 -->
 <script lang="ts">
+  import { flowColour } from "../energy-colours.ts";
   import * as Card from "#lib/components/ui/card/index.js";
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
@@ -74,28 +75,28 @@
       id: "production",
       label: m.dash_made(),
       value: value("production"),
-      colour: "var(--e-solar)",
+      colour: flowColour("solar"),
       sub: peak("production"),
     },
     {
       id: "consumption",
       label: m.dash_used(),
       value: value("consumption"),
-      colour: "var(--e-house)",
+      colour: flowColour("house"),
       sub: peak("consumption"),
     },
     {
       id: "feedIn",
       label: m.dash_grid_export(),
       value: value("feedIn"),
-      colour: "var(--e-export)",
+      colour: flowColour("export"),
       sub: priced(m.dash_earned, "earned", "price.export"),
     },
     {
       id: "purchase",
       label: m.dash_grid_import(),
       value: value("purchase"),
-      colour: "var(--e-import)",
+      colour: flowColour("import"),
       sub: priced(m.dash_paid, "paid", "price.import"),
     },
   ]);
@@ -155,8 +156,8 @@
     class="grid shrink-0 grid-cols-2 gap-6 border-t border-border/60 px-4 py-3 text-left {press}"
     onclick={() => onopen("autarky")}
   >
-    <Meter label={m.dash_autarky()} value={day?.today.autarky ?? null} colour="var(--e-battery)" />
-    <Meter label={m.dash_self_use()} value={day?.today.selfUse ?? null} colour="var(--e-solar)" />
+    <Meter label={m.dash_autarky()} value={day?.today.autarky ?? null} colour={flowColour("battery")} />
+    <Meter label={m.dash_self_use()} value={day?.today.selfUse ?? null} colour={flowColour("solar")} />
   </button>
 
   <button

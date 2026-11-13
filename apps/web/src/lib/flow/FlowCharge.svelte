@@ -14,7 +14,7 @@
     type ChainHead,
     type RailPulse,
   } from "./flow-pulse.ts";
-  import type { Flow } from "./schematic.ts";
+  import type { Direction } from "./schematic.ts";
 
   let {
     pulse,
@@ -22,7 +22,7 @@
     cable,
   }: {
     pulse: RailPulse;
-    flow: Flow;
+    flow: Direction;
     /** Id of the rail's cable, the motion path. */
     cable: string;
   } = $props();

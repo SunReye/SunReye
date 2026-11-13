@@ -8,7 +8,7 @@
   import { fade } from "svelte/transition";
   import type { MotionTier } from "../motion/tier.ts";
   import type { RailPulse } from "./flow-pulse.ts";
-  import type { Flow, RailLine } from "./schematic.ts";
+  import type { Direction, RailLine } from "./schematic.ts";
   import FlowCharge from "./FlowCharge.svelte";
 
   let {
@@ -31,7 +31,7 @@
   // out while the new one fades in instead of teleporting to the mirrored point.
   const fadeMs = $derived(still ? 0 : 300);
 
-  const overlayClass = (flow: Flow): string => {
+  const overlayClass = (flow: Direction): string => {
     if (still) return "";
 
     return flow === "out" ? "lite-flow lite-flow-out" : "lite-flow";

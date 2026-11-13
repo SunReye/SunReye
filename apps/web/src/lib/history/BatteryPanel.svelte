@@ -1,5 +1,6 @@
 <!-- The battery's usable capacity and cycles, inferred by the core from the state of charge: there is no vendor health register (ADR 4). -->
 <script lang="ts">
+  import { flowColour } from "../energy-colours.ts";
   import type { Core } from "../api/core.ts";
   import type { Capacity } from "../api/records.ts";
   import { m } from "../paraglide/messages.js";
@@ -77,10 +78,10 @@
         {
           key: "kwh",
           label: m.stats_capacity_point(),
-          colour: "var(--e-battery)",
+          colour: flowColour("battery"),
           kind: "points",
         },
-        { key: "trend", label: m.stats_capacity_trend(), colour: "var(--e-battery)", kind: "line" },
+        { key: "trend", label: m.stats_capacity_trend(), colour: flowColour("battery"), kind: "line" },
       ]}
       rules={nameplate === null ? [] : [{ y: nameplate, label: m.stats_capacity_nameplate() }]}
       fmt={kwh}

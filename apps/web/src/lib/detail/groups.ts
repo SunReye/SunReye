@@ -17,6 +17,7 @@
 // counter (ADR 4: days come from rollups).
 import { m } from "../paraglide/messages.js";
 import { consumers, type MeasurementPoint } from "./consumers.ts";
+import { formatFigure } from "./figures.ts";
 import { kept, table, tabled, type Group, type Reader } from "./rows.ts";
 
 /** A layout string: the `pv.string.power` index, its MPPT input and inverter. */
@@ -93,7 +94,7 @@ export function string(read: Reader, strings: readonly PvString[], id: number): 
                 read.num(`pv.string.power[${s.id}]`, {
                   label: s.name,
                   ...KW,
-                  to: `string-${s.id}`,
+                  to: formatFigure({ kind: "string", id: s.id }),
                 }),
               ],
         ),

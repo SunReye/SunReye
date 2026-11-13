@@ -4,19 +4,23 @@
   import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import { formatFigure, type FigureId } from "../detail/figures.ts";
   import { tickGlideMs } from "../live/stream.svelte.ts";
   import { m } from "../paraglide/messages.js";
 
   let {
+    device,
     name,
     values,
     onopen,
   }: {
+    device: number;
     /** The device's name; unknown to a viewer, who may not list devices (ADR 9). */
     name: string | undefined;
     /** Its live values by series name, its `ev` roles (ADR 4). */
     values: Readonly<Record<string, number>>;
-    onopen: () => void;
+    /** Opens the loadpoint's detail. */
+    onopen: (id: FigureId) => void;
   } = $props();
 
   const power = $derived(values["ev.charge.power"]);
@@ -36,7 +40,9 @@
   <button
     type="button"
     class="flex items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08]"
-    onclick={onopen}
+    onclick={() => {
+      onopen(formatFigure({ kind: "ev", id: device }));
+    }}
   >
     <span class="grid size-9 shrink-0 place-items-center rounded-md bg-ev/15 text-ev"
       ><Car class="size-5" /></span

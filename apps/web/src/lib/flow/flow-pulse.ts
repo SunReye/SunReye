@@ -1,11 +1,11 @@
 // The comet charges of the 2D flow (ADR 21). Ported from v3 (dev 780b4e2, lib/inverter/flow-pulse.ts)
 // by way of the prototype.
 import { CEILING_FLOOR_W } from "./ceiling.ts";
-import type { Flow } from "./schematic.ts";
+import type { Direction } from "./schematic.ts";
 
 /** Total power the plant is moving right now: what the ceiling is fed. */
 export function throughputWatts(
-  segments: readonly { readonly flow: Flow; readonly value?: number | undefined }[],
+  segments: readonly { readonly flow: Direction; readonly value?: number | undefined }[],
 ): number {
   return segments.reduce((t, s) => (s.flow === "in" ? t + Math.abs(s.value ?? 0) : t), 0);
 }
@@ -99,7 +99,7 @@ export function railPulse(watts: number | undefined, ceilingW: number): RailPuls
  * means both directions share one `<mpath>` — the rail's own cable — so a
  * resize moves the charges with the wire instead of stranding them.
  */
-export function moverKeyPoints(flow: Flow): string {
+export function moverKeyPoints(flow: Direction): string {
   return flow === "in" ? "0;1" : "1;0";
 }
 

@@ -1,9 +1,10 @@
 // The 2D power flow's schematic (ADR 21): nodes, rails and their anchors in the safe box.
+import type { EquipmentKind } from "../equipment-kinds.ts";
 import type { RailPulse } from "./flow-pulse.ts";
 
-// Flow relative to the inverter: `in` = power arriving (production, discharge, import),
+// Direction relative to the inverter: `in` = power arriving (production, discharge, import),
 // `out` = leaving it (load, charge, export).
-export type Flow = "in" | "out" | "idle";
+export type Direction = "in" | "out" | "idle";
 
 /** Anchor as a fraction (0..1) of the diagram's safe box; node anchors are box centres. */
 export type Pt = { readonly x: number; readonly y: number };
@@ -14,7 +15,10 @@ export type Pt = { readonly x: number; readonly y: number };
  */
 export type Orientation = "landscape" | "portrait";
 
-export type NodeKind = "pv" | "battery" | "load" | "generator" | "grid" | "charger";
+export type NodeKind = Extract<
+  EquipmentKind,
+  "pv" | "battery" | "house" | "generator" | "grid" | "ev"
+>;
 
 /** What a node is doing, worded by the view. */
 export type NodeState =
@@ -39,7 +43,7 @@ export type GraphNode = {
   readonly strings?: number | undefined;
   readonly kind: NodeKind;
   readonly value: number | undefined;
-  readonly flow: Flow;
+  readonly flow: Direction;
   readonly state: NodeState;
   /** The node's energy colour, a CSS colour value. */
   readonly accent: string;
@@ -53,7 +57,7 @@ export type GraphNode = {
 
 export type GraphSegment = {
   readonly id: string;
-  readonly flow: Flow;
+  readonly flow: Direction;
   readonly value: number | undefined;
   /** The rail's energy colour, a CSS colour value. */
   readonly color: string;
@@ -76,7 +80,7 @@ export type PowerGraph = {
 /** One rail as drawn: its cable's path in pixels and its charge. */
 export type RailLine = {
   readonly id: string;
-  readonly flow: Flow;
+  readonly flow: Direction;
   /** CSS colour driving `currentColor`. */
   readonly color: string;
   readonly pulse: RailPulse;

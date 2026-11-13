@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import type { MotionTier } from "../motion/tier.ts";
 import { BEAD_COUNT, railPulse } from "./flow-pulse.ts";
 import FlowRails from "./FlowRails.svelte";
-import type { Flow, RailLine } from "./schematic.ts";
+import type { Direction, RailLine } from "./schematic.ts";
 
 // What the rails DRAW for a reading: which rails carry a charge, which way it
 // flies, how fast, and what each motion tier is left with. The numbers
@@ -12,7 +12,7 @@ import type { Flow, RailLine } from "./schematic.ts";
 
 const CEILING = 9000;
 
-function rail(id: string, flow: Flow, watts: number, y: number): RailLine {
+function rail(id: string, flow: Direction, watts: number, y: number): RailLine {
   return {
     id,
     flow,
