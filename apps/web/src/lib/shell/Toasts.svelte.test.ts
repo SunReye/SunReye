@@ -1,0 +1,56 @@
+import { createRawSnippet } from "svelte";
+import { toast } from "svelte-sonner";
+import { afterEach, expect, test, vi } from "vitest";
+import { page } from "vitest/browser";
+import { render } from "vitest-browser-svelte";
+import { motion } from "../motion/tier.svelte.ts";
+import Shell from "./Shell.svelte";
+import "../../app.css";
+
+/** SvelteKit's `goto`, which the root layout passes: no router runs here. */
+const goto = vi.fn((_url: string) => Promise.resolve());
+
+const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
+
+afterEach(() => {
+  toast.dismiss();
+  motion.lowPower = false;
+  localStorage.clear();
+});
+
+/** The shown toast's box. */
+async function toastBox(text: string): Promise<DOMRect> {
+  toast.success(text);
+  await expect.element(page.getByText(text)).toBeVisible();
+
+  const shown = page.getByText(text).element().closest("[data-sonner-toast]");
+
+  // Its entrance has ended.
+  await expect.poll(() => shown?.getAnimations().length).toBe(0);
+
+  return shown!.getBoundingClientRect();
+}
+
+test("the shell holds the toaster: a toast shows at the bottom right beside the rail", async () => {
+  await page.viewport(1280, 800);
+  motion.lowPower = true;
+  await render(Shell, { shell: "rail", current: "/", admin: false, goto, children });
+
+  const box = await toastBox("Gespeichert");
+
+  expect(box.left).toBeGreaterThan(640);
+  expect(box.top).toBeGreaterThan(400);
+  expect(box.bottom).toBeLessThanOrEqual(800);
+});
+
+test("on the phone a toast sits above the bottom bar", async () => {
+  await page.viewport(390, 844);
+  motion.lowPower = true;
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+  const bar = screen.getByRole("navigation", { name: "Hauptnavigation" }).element();
+
+  const box = await toastBox("Entfernt");
+
+  expect(box.bottom).toBeLessThanOrEqual(bar.getBoundingClientRect().top);
+  expect(box.top).toBeGreaterThan(422);
+});

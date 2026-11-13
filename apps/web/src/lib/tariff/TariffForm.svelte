@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
@@ -30,6 +31,10 @@
       event.submitter?.getAttribute("name") === "reprice" && from !== undefined
         ? await core.reprice(from, change)
         : await core.changeTariff({ ...change, appliesFrom: from ?? null });
+
+    if (!("problem" in answer)) {
+      toast.success(m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) }));
+    }
   }
 </script>
 
@@ -47,12 +52,7 @@
     </Button>
   </div>
 </form>
-{#if answer !== undefined}
-  {#if "problem" in answer}
-    <p role="alert">{problemText(answer.problem)}</p>
-  {:else}
-    <p role="status">
-      {m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) })}
-    </p>
-  {/if}
+<!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
+{#if answer !== undefined && "problem" in answer}
+  <p role="alert">{problemText(answer.problem)}</p>
 {/if}

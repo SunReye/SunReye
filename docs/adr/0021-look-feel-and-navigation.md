@@ -112,6 +112,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
 
+**Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in overlay glass, bottom right beside the rail and above the bottom bar on the phone. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
+
 **Smoothness is measured.** A deliberate e2e journey (outside the gate, ADR 11) runs each signature transition, and a tap during the 3D scene's background load, under 4× CPU throttling and records Long Animation Frames: drill-in, sheet, rail, route change, camera flight, live tick, value-editor fling. It fails if any frame exceeds 50 ms or the 95th percentile exceeds 20 ms. `bun run smoothness` runs every journey against a fake core (`apps/web/e2e/`), at 1× and 4× throttle so software rendering, which the throttle does not scale, shows apart from main-thread work; `bun run smoothness <words>` runs those whose names contain them.
 
 **Haptics.**
