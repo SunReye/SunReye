@@ -108,15 +108,16 @@ function history(q: Query): Response {
   return Response.json({ tier: "hour", points });
 }
 
+/** A plant-local day's bounds, as the core states them. */
+const dayAt = (d: number) => ({ date: iso(d), start: at(d, 0), end: at(d + 1, 0) });
+
 function costs(q: Query): Response {
   const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
 
   const y = TODAY - 1;
 
   const day = {
-    date: YESTERDAY,
-    start: at(y, 0),
-    end: at(y + 1, 0),
+    ...dayAt(y),
     paid: 3.3,
     earned: 0.32,
     saved: 1.2,
@@ -187,11 +188,30 @@ function capacity(): Response {
   });
 }
 
-function statistics(q: Query): Response {
-  const first = TODAY - plant.age;
-  const point = { date: iso(first), start: at(first, 0), end: at(first + 1, 0) };
+/** Each recorded day's energy of a series in Wh, as the core rolls the curves above up. */
+function rollups(name: string, from: number, to: number) {
+  const wh = new Map<number, number>();
 
-  return Response.json({ period: q("period"), points: [point] });
+  for (const p of new Map(Object.entries(series())).get(name) ?? []) {
+    const d = Math.floor(Date.parse(p.start) / DAY);
+    const add = (p.mean * (Date.parse(p.end) - Date.parse(p.start))) / H;
+
+    if (d * DAY >= from && d * DAY < to) wh.set(d, (wh.get(d) ?? 0) + add);
+  }
+
+  return [...wh.keys()].map((d) => Object.assign(dayAt(d), { integral: wh.get(d) }));
+}
+
+function statistics(q: Query): Response {
+  const [name, from, to] = [q("series") ?? "", Date.parse(q("from")!), Date.parse(q("to")!)];
+  const recorded = q("period") === "day" ? rollups(name, from, to) : [];
+
+  asked.push({ series: name, from, to });
+
+  return Response.json({
+    period: q("period"),
+    points: recorded.length > 0 ? recorded : [dayAt(TODAY - plant.age)],
+  });
 }
 
 const READS = new Map<string, (q: Query) => Response>(
@@ -251,9 +271,11 @@ function transport(): Transport {
       const url = new URL(request.url);
       const read = READS.get(url.pathname.split("/").at(-1) ?? "");
 
-      if (plant.broken && url.pathname.endsWith("/history")) throw new TypeError("network");
+      const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
-      if (plant.gate && url.pathname.endsWith("/history")) await plant.gate;
+      if (plant.broken && plantRead) throw new TypeError("network");
+
+      if (plant.gate && plantRead) await plant.gate;
 
       return read
         ? read((name) => url.searchParams.get(name))

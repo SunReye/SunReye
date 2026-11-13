@@ -7,7 +7,7 @@ import { bandsOf, spread } from "../range/fill.ts";
 import { kwh, money, num } from "../range/format.ts";
 import { hourInstant, t0Of } from "../range/range.ts";
 import { costBands, split } from "../tariff/costs.ts";
-import { sumOf, type Sum } from "./flows.ts";
+import { bandSum, type Sum } from "./flows.ts";
 import type { Loaded } from "./stats.svelte.ts";
 import type { Metric } from "./view.ts";
 
@@ -112,11 +112,12 @@ function flows(got: Loaded, metric: "energy" | "autarky"): Chart {
   const upOf = (s: Sum) => (energy ? [s.selfUsed, s.feedIn] : sources(s, battery));
   const downOf = (s: Sum) => (energy ? [s.selfCovered, s.purchase] : []);
 
-  const bands = bandsOf(got.list, (_, i) => {
+  const bands = bandsOf(got.list, (edge, i) => {
     const [a, b] = got.spans[i]!;
-    const s = sumOf(got.plant, a, b);
+    const hours = edge.t1 - edge.t0;
+    const s = bandSum(got.plant, hours, a, b);
     const was = energy ? baseSpan(got, i) : null;
-    const before = was ? sumOf(got.base.plant, was[0], was[1]) : null;
+    const before = was ? bandSum(got.base.plant, hours, was[0], was[1]) : null;
 
     return {
       up: upOf(s),

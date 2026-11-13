@@ -3,7 +3,7 @@ import { dayOf } from "../range/calendar.ts";
 import { edges } from "../range/edges.ts";
 import { hourInstant, rangeFor, type Calendar } from "../range/range.ts";
 import { chartOf } from "./chart.ts";
-import { sumOf, type Plant } from "./flows.ts";
+import { NO_PLANT, sumOf, type Plant } from "./flows.ts";
 import type { Loaded } from "./stats.svelte.ts";
 
 const ZONE = "UTC";
@@ -22,6 +22,15 @@ const PLANT: Plant = {
   selfCovered: [span(10, 12, 1000)],
   battery: [],
   ev: [],
+  days: {
+    ...NO_PLANT.days,
+    pv: [{ start: Date.parse(at(0)), wh: 6000 }],
+    load: [{ start: Date.parse(at(0)), wh: 13_000 }],
+    imported: [{ start: Date.parse(at(0)), wh: 11_000 }],
+    exported: [{ start: Date.parse(at(0)), wh: 4000 }],
+    selfUsed: [{ start: Date.parse(at(0)), wh: 2000 }],
+    selfCovered: [{ start: Date.parse(at(0)), wh: 2000 }],
+  },
 };
 
 /** The day before: 2 kW sun 10–11 h only. */
@@ -33,11 +42,19 @@ const BEFORE: Plant = {
   selfUsed: [span(-14, -13, 500)],
   selfCovered: [span(-14, -13, 500)],
   imported: [],
+  days: {
+    ...NO_PLANT.days,
+    pv: [{ start: Date.parse(at(-24)), wh: 2000 }],
+    load: [{ start: Date.parse(at(-24)), wh: 500 }],
+    exported: [{ start: Date.parse(at(-24)), wh: 1500 }],
+    selfUsed: [{ start: Date.parse(at(-24)), wh: 500 }],
+    selfCovered: [{ start: Date.parse(at(-24)), wh: 500 }],
+  },
 };
 
 /** No readings the day before. */
 const NOTHING_BEFORE = {
-  plant: { ...PLANT, pv: [], load: [], imported: [], exported: [], selfUsed: [], selfCovered: [] },
+  plant: NO_PLANT,
   days: null,
 };
 

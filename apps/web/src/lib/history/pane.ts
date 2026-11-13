@@ -12,6 +12,7 @@ export type PaneCore = Readonly<
   Pick<
     Core,
     | "history"
+    | "statistics"
     | "costs"
     | "forecasts"
     | "tariff"

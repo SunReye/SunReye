@@ -1,9 +1,9 @@
-// The plant's power histories over a range (ADR 9): the core picks the tier, at most 1,498 days a
-// read, so a long range is read in pieces. A range up to a day reads as the dashboard's today.
+// The plant's day rollups and power histories over a range (ADR 3, 9): the core caps a read at
+// 1,498 days, so a long range is read in pieces.
 import type { Core } from "../api/core.ts";
 import type { Interval } from "../dashboard/today.ts";
 import { PLANT } from "../dashboard/day.ts";
-import type { Plant } from "./flows.ts";
+import type { Curves, Plant, Rolled } from "./flows.ts";
 
 const DAY = 86_400_000;
 const PIECE = 1400 * DAY;
@@ -17,7 +17,9 @@ const SERIES = {
   selfCovered: "self.supply.power",
   battery: "battery.power",
   ev: "ev.charge.power",
-} as const satisfies Record<keyof Plant, string>;
+} as const satisfies Record<keyof Curves, string>;
+
+export type PlantCore = Readonly<Pick<Core, "history" | "statistics">>;
 
 function pieces(from: number, to: number): (readonly [number, number])[] {
   const out: (readonly [number, number])[] = [];
@@ -27,12 +29,7 @@ function pieces(from: number, to: number): (readonly [number, number])[] {
   return out;
 }
 
-async function series(
-  core: Readonly<Pick<Core, "history">>,
-  name: string,
-  from: number,
-  to: number,
-): Promise<Interval[]> {
+async function history(core: PlantCore, name: string, from: number, to: number) {
   const out: Interval[] = [];
 
   const reads = await Promise.all(
@@ -46,24 +43,54 @@ async function series(
   return out;
 }
 
-/** The plant's powers from `from` to before `to`, ms since the epoch; a missing one is empty. */
-export async function readPlant(
-  core: Readonly<Pick<Core, "history">>,
-  from: number,
-  to: number,
-): Promise<Plant> {
-  const one = (name: string) => series(core, name, from, to);
+async function rollups(core: PlantCore, name: string, from: number, to: number) {
+  const out: Rolled[] = [];
 
+  const reads = await Promise.all(
+    pieces(from, to).map((piece) =>
+      core.statistics(PLANT, name, "day", new Date(piece[0]), new Date(piece[1])),
+    ),
+  );
+
+  for (const read of reads)
+    if ("points" in read)
+      for (const p of read.points) out.push({ start: Date.parse(p.start), wh: p.integral ?? 0 });
+
+  return out;
+}
+
+async function each<T>(read: (key: keyof Curves) => Promise<T>): Promise<Record<keyof Curves, T>> {
   const [pv, load, imported, exported, selfUsed, selfCovered, battery, ev] = await Promise.all([
-    one(SERIES.pv),
-    one(SERIES.load),
-    one(SERIES.imported),
-    one(SERIES.exported),
-    one(SERIES.selfUsed),
-    one(SERIES.selfCovered),
-    one(SERIES.battery),
-    one(SERIES.ev),
+    read("pv"),
+    read("load"),
+    read("imported"),
+    read("exported"),
+    read("selfUsed"),
+    read("selfCovered"),
+    read("battery"),
+    read("ev"),
   ]);
 
   return { pv, load, imported, exported, selfUsed, selfCovered, battery, ev };
+}
+
+/**
+ * The plant's day rollups from `from` to before `to`, ms since the epoch, with the house load's
+ * history; `hours` also reads every power's history, for bands shorter than a day. A missing
+ * series is empty.
+ */
+export async function readPlant(
+  core: PlantCore,
+  from: number,
+  to: number,
+  hours = false,
+): Promise<Plant> {
+  const [days, curves] = await Promise.all([
+    each((key) => rollups(core, SERIES[key], from, to)),
+    each((key) =>
+      hours || key === "load" ? history(core, SERIES[key], from, to) : Promise.resolve([]),
+    ),
+  ]);
+
+  return { ...curves, days };
 }
