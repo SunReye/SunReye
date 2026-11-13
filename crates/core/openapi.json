@@ -378,6 +378,20 @@
         ],
         "type": "object"
       },
+      "Catalogue": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/Listing"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "profiles"
+        ],
+        "type": "object"
+      },
       "Cell": {
         "additionalProperties": false,
         "description": "A module in one cell: rows count up the slope, columns across it, both from 0.",
@@ -1907,6 +1921,43 @@
         },
         "required": [
           "lines"
+        ],
+        "type": "object"
+      },
+      "Listing": {
+        "description": "A profile served, as an admin picks it for a device.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at the inverter's rating; a family's largest.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The model, or the family it covers.",
+            "type": "string"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "manufacturer",
+          "name",
+          "version",
+          "official"
         ],
         "type": "object"
       },
@@ -5540,6 +5591,32 @@
           }
         },
         "summary": "Applies the update waiting for a profile. Each setting it adds or changes is off until the\nadmin enables it again (ADR 8)."
+      }
+    },
+    "/api/v1/profiles": {
+      "get": {
+        "operationId": "catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalogue"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every profile the core serves, bundled and fetched alike, by id: what a device can be added\nwith."
       }
     },
     "/api/v1/records": {
