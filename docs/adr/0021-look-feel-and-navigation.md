@@ -96,7 +96,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
 - no visible scrollbars, with edges that fade where more content waits;
-- a screen fetches its data when it mounts, not in SvelteKit's `load`. Until the data lands, the screen stands in its final layout: a chart or a sentence holds a placeholder of its own size, a number shows dashes, and the data replaces them in place without moving anything.
+- a screen fetches its data when it mounts; there are no SvelteKit `load` functions. While its data fills in, the screen stands in its final layout: a number shows dashes, as the animated number does, and a chart or a sentence shows a skeleton or its own empty or loading state of the size it will take. A page never shows a blank or unstyled box.
 
 **Motion.**
 - **Source:** kbase's motion vocabulary, from `theme.css`, the motion parts of `app.css`, `animated-number`, and `active-indicator` (kbase `8e6db9e`), plus these curves:
