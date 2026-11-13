@@ -1,10 +1,14 @@
-import { expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { afterEach, expect, test } from "vitest";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { attempt, CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
+
+afterEach(async () => {
+  await page.viewport(414, 896);
+});
 
 /** Settings opened on `group`, as the admin. */
 function opened(transport: Transport, group: string) {
@@ -63,7 +67,33 @@ test("a viewer sees only the display, which is the browser's own, and About", as
   expect(screen.getByRole("button", { name: /^Benutzer & Zugang/u }).query()).toBeNull();
 });
 
-test("the admin sees the write log", async () => {
+test("on a phone the write log is a list of entries, newest first", async () => {
+  const log = {
+    writes: [
+      attempt({ outcome: "verified" }),
+      attempt({ outcome: "mismatch", after: 108, time: "2026-11-09T09:00:00Z" }),
+    ],
+  };
+
+  const screen = await opened(
+    testCore(() => Response.json(log)),
+    "logs",
+  );
+
+  const list = screen.getByRole("list", { name: "Schreibprotokoll" });
+  const first = list.getByRole("listitem").first();
+
+  await expect.element(list).toBeVisible();
+
+  const text = first.element().textContent ?? "";
+
+  expect(text).toMatch(/^\s*Max\. Ladestrom\s+Wechselrichter/u);
+  expect(text).toMatch(/Abweichend.*Zurückgelesen 108\s+108 → 50/u);
+  expect(screen.getByRole("table").query()).toBeNull();
+});
+
+test("with room the write log is a table", async () => {
+  await page.viewport(1280, 800);
   const log = { writes: [attempt({ outcome: "mismatch", after: 108 })] };
 
   const screen = await opened(
@@ -74,8 +104,17 @@ test("the admin sees the write log", async () => {
   const table = screen.getByRole("table", { name: "Schreibprotokoll" });
 
   await expect.element(table).toBeVisible();
-  await expect.element(table.getByRole("cell", { name: CHARGE })).toBeVisible();
+  await expect.element(table.getByRole("cell", { name: "Max. Ladestrom" })).toBeVisible();
   await expect.element(table.getByRole("cell", { name: /^Abweichend/u })).toBeVisible();
+});
+
+test("an empty write log says what will land there", async () => {
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    "logs",
+  );
+
+  await expect.element(screen.getByText("Noch nichts geschrieben")).toBeVisible();
 });
 
 test("without the admin's session the write log is not shown", async () => {
@@ -85,7 +124,8 @@ test("without the admin's session the write log is not shown", async () => {
   );
 
   await expect.element(screen.getByRole("heading", { name: "Protokolle" })).toBeVisible();
-  expect(screen.getByRole("table", { name: "Schreibprotokoll" }).query()).toBeNull();
+  expect(screen.getByRole("list", { name: "Schreibprotokoll" }).query()).toBeNull();
+  expect(screen.getByText("Noch nichts geschrieben").query()).toBeNull();
 });
 
 test("a device whose writes are off says so and is switched on in one click", async () => {
@@ -110,7 +150,7 @@ test("a device whose writes are off says so and is switched on in one click", as
   };
 
   const screen = await opened(transport, "writes");
-  const writes = screen.getByRole("checkbox", { name: /^Schreiben erlaubt: Wechselrichter/u });
+  const writes = screen.getByRole("switch", { name: "Schreiben erlaubt: Wechselrichter" });
 
   await expect.element(writes).not.toBeChecked();
   await expect
@@ -145,17 +185,19 @@ test("a setting that needs the admin's enable shows its bounds and is enabled in
 
   const screen = await opened(transport, "writes");
 
+  // The note is said once for the device, not on each row.
   await expect
     .element(screen.getByText("Nicht auf Hardware geprüft: wird erst nach Freigabe geschrieben."))
     .toBeVisible();
-  await expect.element(screen.getByText("Erlaubt: 0 bis 350, Schritt 1")).toBeVisible();
+  await expect.element(screen.getByText("0 bis 350, Schritt 1")).toBeVisible();
 
-  await userEvent.click(screen.getByRole("button", { name: `${CHARGE} freigeben` }));
+  const enable = screen.getByRole("switch", { name: "Max. Ladestrom freigeben" });
+
+  await expect.element(enable).not.toBeChecked();
+  await userEvent.click(enable);
 
   expect(transport.writes).toEqual([`PUT /api/v1/devices/3/settings/${CHARGE}/enabled `]);
-  await expect
-    .element(screen.getByRole("button", { name: `Freigabe von ${CHARGE} zurücknehmen` }))
-    .toBeVisible();
+  await expect.element(enable).toBeChecked();
 });
 
 test("an update shows what it changes and is applied in one click", async () => {
@@ -191,16 +233,16 @@ test("an update shows what it changes and is applied in one click", async () => 
 
   const diff = screen.getByRole("table", { name: "box: 1.0.0 → 1.1.0" });
   await expect.element(diff).toBeVisible();
-  const charge = diff.getByRole("row", { name: new RegExp(CHARGE, "u") });
+  const charge = diff.getByRole("row", { name: /^Max\. Ladestrom/u });
   await expect
     .element(charge)
-    .toHaveTextContent(`${CHARGE}geändert0 bis 350, Schritt 10 bis 400, Schritt 1`);
+    .toHaveTextContent("Max. Ladestrom geändert 0 bis 350, Schritt 1 0 bis 400, Schritt 1");
   await expect
-    .element(diff.getByRole("row", { name: /work_mode/u }))
-    .toHaveTextContent("work_modeentferntWerte 0, 1, 2–");
+    .element(diff.getByRole("row", { name: /^Betriebsart/u }))
+    .toHaveTextContent("Betriebsart entfernt Werte 0, 1, 2 –");
   await expect
-    .element(diff.getByRole("row", { name: /battery\.power/u }))
-    .toHaveTextContent("battery.powerhinzugefügt");
+    .element(diff.getByRole("row", { name: /^Battery power/u }))
+    .toHaveTextContent("Battery power hinzugefügt");
 
   await userEvent.click(screen.getByRole("button", { name: "Update für box anwenden" }));
 
@@ -215,7 +257,7 @@ test("a setting awaiting its enable lists its values by their labels", async () 
   );
 
   await expect
-    .element(screen.getByText("Erlaubt: Werte off, now, minpv, pv", { exact: false }))
+    .element(screen.getByText("Werte off, now, minpv, pv", { exact: true }))
     .toBeVisible();
 });
 
@@ -297,4 +339,37 @@ test("the forecast page leads to the builder", async () => {
   await expect
     .element(screen.getByRole("link", { name: /^3D-Haus und PV-Module bearbeiten/u }))
     .toHaveAttribute("href", "#/builder");
+});
+
+test("no setting's key shows as a label anywhere in Settings", async () => {
+  const keys = CAPABILITIES.devices["3"].settings.map((s) => s.key);
+  const log = { writes: keys.map((setting) => attempt({ setting })) };
+  const update = {
+    id: "box",
+    from: "1.0.0",
+    to: "1.1.0",
+    settings: keys.map((key) => ({ key, change: "added", before: null, after: { step: 1 } })),
+    quantities: [],
+  };
+  const transport = testCore(
+    () => Response.json(log),
+    () => new Response(null, { status: 204 }),
+    { "/api/v1/profile-updates": () => Response.json({ updates: [update] }) },
+  );
+
+  const loaded = {
+    writes: { role: "switch", name: "Schreiben erlaubt: Wechselrichter" },
+    logs: { role: "list", name: "Schreibprotokoll" },
+    devices: { role: "table", name: "box: 1.0.0 → 1.1.0" },
+  } as const;
+
+  for (const [group, shown] of Object.entries(loaded)) {
+    const screen = await opened(transport, group);
+
+    await expect.element(screen.getByRole(shown.role, { name: shown.name })).toBeVisible();
+
+    for (const key of keys) expect(document.body.innerText).not.toContain(key);
+
+    await screen.unmount();
+  }
 });

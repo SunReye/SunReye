@@ -6,13 +6,20 @@
 
   let { core }: { core: Core } = $props();
 
-  const log = $derived(core.writes());
+  /** The log, and the devices that name its entries; a device list refused leaves them by id. */
+  async function load() {
+    const [log, devices] = await Promise.all([core.writes(), core.devices()]);
+
+    const names = new Map("problem" in devices ? [] : devices.map((d) => [d.id, d.name] as const));
+
+    return { log, names };
+  }
+
+  const answer = $derived(load());
 </script>
 
-{#await log}
+{#await answer}
   <LoadingRows rows={3} />
-{:then answer}
-  <div class="overflow-x-auto p-4">
-    <WriteLog log={answer} />
-  </div>
+{:then { log, names }}
+  <WriteLog {log} devices={names} />
 {/await}

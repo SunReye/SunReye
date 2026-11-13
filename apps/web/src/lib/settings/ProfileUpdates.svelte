@@ -2,7 +2,10 @@
   import type { Core, Declared, Problem, Update } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Table from "#lib/components/ui/table/index.js";
   import { boundsText } from "./bounds";
+  import { settingLabel } from "./setting-label.ts";
 
   let { core, onapplied }: { core: Core; onapplied: () => void } = $props();
 
@@ -33,9 +36,11 @@
 
 {#await updates then answer}
   {#if !("problem" in answer) && answer.length > 0}
-    <section>
-      <h2>{m.updates_title()}</h2>
-      <p>{m.updates_note()}</p>
+    <section aria-labelledby="updates-title" class="flex flex-col gap-3 p-4">
+      <header class="flex flex-col gap-1">
+        <h3 id="updates-title" class="text-[15px] font-medium">{m.updates_title()}</h3>
+        <p class="text-sm text-muted-foreground">{m.updates_note()}</p>
+      </header>
       {#each answer as update (update.id)}
         {@render diff(update)}
       {/each}
@@ -43,56 +48,39 @@
   {/if}
 {/await}
 {#if problem}
-  <p role="alert">{problemText(problem.problem)}</p>
+  <p role="alert" class="px-4 text-sm text-destructive">{problemText(problem.problem)}</p>
 {/if}
 
 {#snippet diff(update: Update)}
   {@const title = m.updates_profile({ id: update.id, from: update.from, to: update.to })}
-  <table aria-label={title}>
-    <caption>{title}</caption>
-    <thead>
-      <tr>
-        <th>{m.updates_key()}</th>
-        <th>{m.updates_change()}</th>
-        <th>{m.updates_before()}</th>
-        <th>{m.updates_after()}</th>
-      </tr>
-    </thead>
-    <tbody>
+  <Table.Root aria-label={title}>
+    <Table.Caption class="mt-0 mb-2 text-start font-medium text-foreground caption-top">{title}</Table.Caption>
+    <Table.Header>
+      <Table.Row>
+        <Table.Head>{m.updates_key()}</Table.Head>
+        <Table.Head>{m.updates_change()}</Table.Head>
+        <Table.Head>{m.updates_before()}</Table.Head>
+        <Table.Head>{m.updates_after()}</Table.Head>
+      </Table.Row>
+    </Table.Header>
+    <Table.Body>
       {#each update.settings as setting (setting.key)}
-        <tr>
-          <th scope="row">{setting.key}</th>
-          <td>{CHANGES[setting.change]()}</td>
-          <td>{bounds(setting.before)}</td>
-          <td>{bounds(setting.after)}</td>
-        </tr>
+        <Table.Row>
+          <Table.Head scope="row">{settingLabel(setting)}</Table.Head>
+          <Table.Cell>{CHANGES[setting.change]()}</Table.Cell>
+          <Table.Cell>{bounds(setting.before)}</Table.Cell>
+          <Table.Cell>{bounds(setting.after)}</Table.Cell>
+        </Table.Row>
       {/each}
       {#each update.quantities as quantity (quantity.key)}
-        <tr>
-          <th scope="row">{quantity.key}</th>
-          <td>{CHANGES[quantity.change]()}</td>
-        </tr>
+        <Table.Row>
+          <Table.Head scope="row">{settingLabel(quantity)}</Table.Head>
+          <Table.Cell>{CHANGES[quantity.change]()}</Table.Cell>
+        </Table.Row>
       {/each}
-    </tbody>
-  </table>
-  <button disabled={pending} onclick={() => apply(update.id)}>
+    </Table.Body>
+  </Table.Root>
+  <Button class="self-start" disabled={pending} onclick={() => apply(update.id)}>
     {m.updates_apply({ id: update.id })}
-  </button>
+  </Button>
 {/snippet}
-
-<style>
-  table {
-    border-collapse: collapse;
-  }
-
-  caption {
-    text-align: start;
-    font-weight: bold;
-  }
-
-  th,
-  td {
-    padding: 0.25rem 0.5rem;
-    text-align: start;
-  }
-</style>
