@@ -42,43 +42,107 @@ export interface Sum {
   readonly covered: number;
 }
 
-/** The intervals' parts inside [from, to); a mean holds over its interval, so a part keeps it. */
-function clip(intervals: readonly Interval[], from: number, to: number): Interval[] {
-  const out: Interval[] = [];
-
-  for (const i of intervals) {
-    const [a, b] = [Math.max(from, Date.parse(i.start)), Math.min(to, Date.parse(i.end))];
-
-    if (b > a)
-      out.push({ start: new Date(a).toISOString(), end: new Date(b).toISOString(), mean: i.mean });
-  }
-
-  return out;
+/** Intervals as instants, sorted by start, read once per history (a range sums hundreds of bands). */
+interface Indexed {
+  readonly start: readonly number[];
+  readonly end: readonly number[];
+  readonly mean: readonly number[];
+  /** The longest interval: no interval starting before `from - longest` reaches `from`. */
+  readonly longest: number;
 }
 
-const length = (intervals: readonly Interval[]) =>
-  intervals.reduce((a, i) => a + Date.parse(i.end) - Date.parse(i.start), 0);
+const INDEXED = new WeakMap<readonly Interval[], Indexed>();
+
+function indexed(intervals: readonly Interval[]): Indexed {
+  const known = INDEXED.get(intervals);
+
+  if (known) return known;
+
+  const parsed = intervals
+    .map((i) => [Date.parse(i.start), Date.parse(i.end), i.mean] as const)
+    .toSorted((a, b) => a[0] - b[0]);
+
+  const index: Indexed = {
+    start: parsed.map((p) => p[0]),
+    end: parsed.map((p) => p[1]),
+    mean: parsed.map((p) => p[2]),
+    longest: parsed.reduce((a, p) => Math.max(a, p[1] - p[0]), 0),
+  };
+
+  INDEXED.set(intervals, index);
+
+  return index;
+}
+
+/** The first interval that may reach into [from, …). */
+function firstFrom(index: Indexed, from: number): number {
+  const at = from - index.longest;
+  let [lo, hi] = [0, index.start.length];
+
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+
+    if (index.start[mid]! < at) lo = mid + 1;
+    else hi = mid;
+  }
+
+  return lo;
+}
+
+/**
+ * Calls `part` with each interval's part inside [from, to) as its start, end and mean; a mean
+ * holds over its interval, so a part keeps it.
+ */
+function eachPart(
+  intervals: readonly Interval[],
+  from: number,
+  to: number,
+  part: (a: number, b: number, mean: number) => void,
+): void {
+  const index = indexed(intervals);
+
+  for (let i = firstFrom(index, from); i < index.start.length && index.start[i]! < to; i++) {
+    const [a, b] = [Math.max(from, index.start[i]!), Math.min(to, index.end[i]!)];
+
+    if (b > a) part(a, b, index.mean[i]!);
+  }
+}
+
+/** How long the intervals cover of [from, to), in ms. */
+function length(intervals: readonly Interval[], from: number, to: number): number {
+  let sum = 0;
+
+  eachPart(intervals, from, to, (a, b) => {
+    sum += b - a;
+  });
+
+  return sum;
+}
 
 const HOUR = 3_600_000;
 
-/** kWh each way over the intervals: while positive, and while negative as a positive number. */
-function energy(intervals: readonly Interval[]): readonly [number, number] {
+/** kWh each way over [from, to): while positive, and while negative as a positive number. */
+function energy(
+  intervals: readonly Interval[],
+  from: number,
+  to: number,
+): readonly [number, number] {
   let [up, down] = [0, 0];
 
-  for (const { start, end, mean } of intervals) {
-    const kwh = (mean * (Date.parse(end) - Date.parse(start))) / HOUR / 1000;
+  eachPart(intervals, from, to, (a, b, mean) => {
+    const kwh = (mean * (b - a)) / HOUR / 1000;
 
     if (kwh > 0) up += kwh;
     else down -= kwh;
-  }
+  });
 
   return [up, down];
 }
 
 /** The plant's flows over [from, to). */
 export function sumOf(plant: Plant, from: number, to: number): Sum {
-  const kwh = (of: readonly Interval[]) => energy(clip(of, from, to))[0];
-  const [charge, discharge] = energy(clip(plant.battery, from, to));
+  const kwh = (of: readonly Interval[]) => energy(of, from, to)[0];
+  const [charge, discharge] = energy(plant.battery, from, to);
 
   const t = today(
     {
@@ -104,7 +168,7 @@ export function sumOf(plant: Plant, from: number, to: number): Sum {
     ev: kwh(plant.ev),
     autarky: t.autarky,
     selfUse: t.selfUse,
-    covered: length(clip(plant.load, from, to)),
+    covered: length(plant.load, from, to),
   };
 }
 
@@ -112,9 +176,11 @@ export function sumOf(plant: Plant, from: number, to: number): Sum {
 export function gapsOf(plant: Plant, from: number, to: number, now: number): Span[] {
   const end = Math.min(to, now);
 
-  const parts = clip(plant.load, from, end)
-    .map((i) => [Date.parse(i.start), Date.parse(i.end)] as const)
-    .toSorted((a, b) => a[0] - b[0]);
+  const parts: (readonly [number, number])[] = [];
+
+  eachPart(plant.load, from, end, (a, b) => {
+    parts.push([a, b]);
+  });
 
   const out: Span[] = [];
   let at = from;
