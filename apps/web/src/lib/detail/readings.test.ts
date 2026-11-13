@@ -42,6 +42,7 @@ function plant(patch: Partial<Source> = {}): Source {
     stale: {},
     estimated: { [INVERTER]: ["pv.string.power[1]", "pv.string.power[2]"] },
     names: { [BATTERY]: "Akku" },
+    points: [],
     now: NOW,
     status: "live",
     series: {
@@ -110,6 +111,45 @@ test("the house lists its phases from the per-phase load", () => {
 
   expect(phases?.rows.map((r) => r.label)).toEqual(["L1", "L2", "L3"]);
   expect(phases?.rows[1]?.cells[0]?.value).toBe(0.4);
+});
+
+/** The grid connection, a wallbox the loadpoint measures, and a heat pump below it. */
+const POINTS: Source["points"] = [
+  { id: 1, name: "Netzanschluss", parent: null, contested: false, claims: [] },
+  {
+    id: 4,
+    name: "Wallbox",
+    parent: 1,
+    contested: false,
+    claims: [{ device: LOADPOINT, role: "ev.charge.power" }],
+  },
+  { id: 6, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
+];
+
+test("the house lists each measured point's consumption, and what none explains", () => {
+  const s = plant();
+
+  const values = {
+    ...s.values,
+    [PLANT]: {
+      ...s.values[PLANT],
+      "point.power[1]": 600,
+      "point.power[4]": 3700,
+      "point.power[6]": 1500,
+    },
+  };
+
+  const consumers = read("house", plant({ values, points: POINTS }))?.groups.find(
+    (g) => g.title === "Verbraucher",
+  );
+
+  expect(consumers?.rows.map((r) => [r.label, r.value, r.to])).toEqual([
+    ["Wallbox", 3.7, `ev-${LOADPOINT}`],
+    ["Wärmepumpe", 1.5, undefined],
+    ["Nicht einzeln gemessen", 0.6, undefined],
+  ]);
+  // Without the topology, which only the admin may read (ADR 9), no point can be named.
+  expect(titles("house", plant({ values }))).not.toContain("Verbraucher");
 });
 
 test("the generator leads with the plant's generator power and counts its energy", () => {

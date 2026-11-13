@@ -30,7 +30,13 @@
     id: string | null;
     core: Pick<
       Core,
-      "layout" | "capabilities" | "timezone" | "history" | "moduleTypes" | "corrections"
+      | "layout"
+      | "capabilities"
+      | "timezone"
+      | "history"
+      | "moduleTypes"
+      | "corrections"
+      | "topology"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
@@ -74,6 +80,10 @@
 
   let strings = $state.raw<readonly PvString[]>([]);
   let estimated = $state.raw<Source["estimated"]>({});
+
+  /** The topology's points, which only the admin may read (ADR 9, 14). */
+  let points = $state.raw<Source["points"]>([]);
+
   let now = $state(Date.now());
 
   // Read once a sheet first opens: the dashboard itself needs neither.
@@ -85,6 +95,14 @@
     read = true;
     void layoutStrings(core).then((next) => (strings = next));
     void estimatedSeries(core).then((next) => (estimated = next));
+    void core
+      .topology()
+      .then((next) => {
+        if ("points" in next) points = next.points;
+
+        return null;
+      })
+      .catch(() => null);
   });
 
   $effect(() => {
@@ -108,6 +126,7 @@
     stale: live !== undefined && "devices" in live ? (live.stale ?? {}) : {},
     estimated,
     names: Object.fromEntries(names),
+    points,
     now,
     status,
     series,
