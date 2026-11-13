@@ -193,12 +193,20 @@ export class Session {
     this.#level = level;
   }
 
-  /** Drills the inspector to what a click in 3D struck, and shows it. */
-  pick(hit: Hit): void {
+  /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
+   * phone keeps the canvas in view, its handles at hand. */
+  pick(hit: Hit, peek = false): void {
     const level = picked(this.draft.scene, hit);
 
     if (level === null) return;
 
+    this.go(level);
+    this.expanded = !peek;
+  }
+
+  /** Adds an object and opens it in the pulled-up inspector. */
+  add(draft: Draft, level: Level): void {
+    this.change(draft);
     this.go(level);
     this.expanded = true;
   }

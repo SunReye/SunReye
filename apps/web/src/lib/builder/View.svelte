@@ -4,15 +4,15 @@
   scene itself (ADR 11).
 -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import type { Core, Device, ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
   import ModelCheck from "./ModelCheck.svelte";
   import { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
   import type { Geometry, Location, Pv } from "./pv.ts";
-  import type { Hit, Panel } from "./scene.ts";
-  import Stage, { type Editing, type Painting } from "./Stage.svelte";
+  import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
+  import StringPowers from "./StringPowers.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
@@ -28,6 +28,7 @@
     onpick,
     editing,
     painting,
+    tools,
   }: {
     pv: Pv;
     core: Core;
@@ -45,32 +46,43 @@
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
     painting?: Painting | undefined;
+    /** Buttons at the lower right, beside the notices. */
+    tools?: Snippet | undefined;
   } = $props();
+
+  /** The tools' height, which the cars' list keeps clear of. */
+  let toolsHeight = $state(0);
+
+  let width = $state(0);
+  let height = $state(0);
 
   const moment = new Moment(() => ({ core, pv, draft, moduleTypes, location }));
 
   const local = $derived(new Date(moment.at));
-
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
-
-  // Only measured history is a reading; the forecast and a clear sky are estimates (ADR 20).
-  const prefix = $derived(moment.production?.source === "measured" ? "" : "≈");
 </script>
 
+<!-- Edge to edge on a phone. -->
 <div
-  class="relative size-full min-h-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1"
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  class="relative size-full min-h-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 max-sm:rounded-none max-sm:ring-0 max-sm:[box-shadow:none]"
 >
-  <Stage
-    {core}
-    {geometry}
-    {panels}
-    sun={moment.sun}
-    places={draft.scene.carPlaces ?? []}
-    {devices}
-    {onpick}
-    {editing}
-    {painting}
-  />
+  <!-- Measured first: the first view fits the canvas, with no flight to it. -->
+  {#if height > 0}
+    <Stage
+      {core}
+      {geometry}
+      {panels}
+      sun={moment.sun}
+      places={draft.scene.carPlaces ?? []}
+      {devices}
+      {onpick}
+      {editing}
+      {painting}
+      clear={clear + toolsHeight}
+      aspect={width / height}
+    />
+  {/if}
 
   <div class="pointer-events-none absolute inset-x-3 top-3 flex">
     <div class="pointer-events-auto w-full max-w-xl">
@@ -82,28 +94,28 @@
     </div>
   </div>
 
+  <!-- The notices stack upward; the tools keep their own column, so nothing overlaps. -->
   <div
-    class="pointer-events-none absolute bottom-3 left-3 flex max-w-[min(28rem,70%)] flex-col gap-1 text-xs text-muted-foreground"
+    class="pointer-events-none absolute inset-x-3 bottom-3 flex items-end gap-2"
     style:margin-bottom="{clear}px"
   >
+    <div class="flex max-w-[min(28rem,70%)] min-w-0 flex-col gap-1 text-xs text-muted-foreground">
     {#if location === undefined}
       <p class="glass-ambient rounded-md px-2.5 py-1.5">{m.builder_no_location()}</p>
     {/if}
     {#if draft.strings.length > 0}
-      <ul
-        aria-label={m.builder_strings_power()}
-        class="glass-ambient flex flex-wrap gap-x-3 gap-y-0.5 rounded-md px-2.5 py-1.5 tabular-nums"
-      >
-        {#each draft.strings as { name }, i (i)}
-          {@const watts = moment.watts[i] ?? null}
-          <li class="text-foreground">
-            {watts === null
-              ? m.builder_string_dark({ name })
-              : m.builder_string_power({ name, power: `${prefix}${format.format(watts)} W` })}
-          </li>
-        {/each}
-      </ul>
+      <StringPowers
+        strings={draft.strings}
+        watts={moment.watts}
+        measured={moment.production?.source === "measured"}
+      />
     {/if}
     <ModelCheck {core} {devices} month={local.getMonth() + 1} hour={local.getHours()} />
+    </div>
+    {#if tools}
+      <div class="pointer-events-auto ml-auto" bind:clientHeight={toolsHeight}>
+        {@render tools()}
+      </div>
+    {/if}
   </div>
 </div>

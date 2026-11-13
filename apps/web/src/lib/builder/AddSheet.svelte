@@ -1,0 +1,72 @@
+<!--
+  Everything the scene can add, on a phone (ADR 20): the inspector groups' add buttons gathered in
+  one bottom sheet, the More sheet's look. A tap adds the object and opens it in the inspector.
+-->
+<script lang="ts">
+  import Plus from "@lucide/svelte/icons/plus";
+  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import * as Item from "#lib/components/ui/item/index.js";
+  import { m } from "../paraglide/messages.js";
+  import { additions, type Addition } from "./additions.ts";
+  import type { Section } from "./levels.ts";
+  import { SECTIONS, type Plan } from "./outline.ts";
+
+  let {
+    open = $bindable(false),
+    plan,
+    moduleType,
+    onadd,
+  }: {
+    open?: boolean;
+    plan: Plan;
+    /** A new string's, when no grid names one. */
+    moduleType: number | undefined;
+    onadd: (addition: Addition) => void;
+  } = $props();
+
+  /** Modules are laid on a face's own level, so they have no row here. */
+  const GROUPS: readonly Section[] = ["buildings", "surroundings", "equipment", "strings"];
+
+  const groups = $derived(
+    GROUPS.flatMap((section) => {
+      const adds = additions(section, plan, moduleType);
+
+      return adds.length > 0 ? [{ section, adds }] : [];
+    }),
+  );
+</script>
+
+<BottomSheet bind:open label={m.builder_add()}>
+  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2"
+    data-no-drag>
+    <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
+    {#each groups as { section, adds } (section)}
+      <section aria-labelledby="add-{section}" class="flex flex-col gap-1.5">
+        <h3 id="add-{section}" class="px-1 text-xs font-medium text-muted-foreground">
+          {SECTIONS[section]()}
+        </h3>
+        <Item.Group
+          class="glass-ambient gap-0 divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
+        >
+          {#each adds as add (add.label)}
+            <Item.Root class="rounded-none border-0">
+              {#snippet child({ props })}
+                <button
+                  {...props}
+                  type="button"
+                  class={[props.class, "min-h-11 text-left active:bg-muted"]}
+                  onclick={() => {
+                    onadd(add);
+                  }}
+                >
+                  <Item.Media variant="icon"><Plus /></Item.Media>
+                  <Item.Content><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content>
+                </button>
+              {/snippet}
+            </Item.Root>
+          {/each}
+        </Item.Group>
+      </section>
+    {/each}
+  </div>
+</BottomSheet>
