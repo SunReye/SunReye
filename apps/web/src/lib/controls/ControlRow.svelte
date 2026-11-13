@@ -26,6 +26,7 @@
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
     <Pressable
+      feedback
       {...props}
       onclick={(e) => {
         if (control.writable) onedit(control, e.currentTarget);
@@ -35,7 +36,7 @@
       class={[
         props.class,
         "text-left",
-        control.writable ? "hover:bg-muted/60 active:bg-muted" : "cursor-default",
+        control.writable ? " " : "cursor-default",
         active && "bg-muted",
       ]}
     >

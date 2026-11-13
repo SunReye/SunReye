@@ -55,7 +55,8 @@
   <div class="flex min-h-14 items-center gap-3 px-4 py-2">{@render body()}</div>
 {:else}
   <Pressable
-    class="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:bg-foreground/[0.06]"
+    feedback
+    class="flex min-h-14 w-full items-center gap-3 px-4 py-2"
     aria-label={m.topology_edit({ name })}
     onclick={onedit}
   >

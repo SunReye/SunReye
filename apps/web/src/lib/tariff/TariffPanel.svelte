@@ -1,19 +1,17 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import TariffForm from "./TariffForm.svelte";
 
   let { core }: { core: Core } = $props();
 
-  const id = $props.id();
-
   const tariff = $derived(core.tariff());
 </script>
 
-<section aria-labelledby="{id}-title" class="flex flex-col gap-3">
-  <h2 id="{id}-title" class="text-[15px] font-medium">{m.tariff_title()}</h2>
+<Section title={m.tariff_title()}>
   {#await tariff}
     <LoadingRows />
   {:then answer}
@@ -23,7 +21,7 @@
       <!-- No tariff yet: the admin enters the first. -->
       <TariffForm {core} tariff={undefined} />
     {:else}
-      <p role="alert">{problemText(answer.problem)}</p>
+      <ProblemAlert problem={answer.problem} />
     {/if}
   {/await}
-</section>
+</Section>

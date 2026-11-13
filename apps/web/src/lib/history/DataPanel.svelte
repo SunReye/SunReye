@@ -1,5 +1,6 @@
 <!-- How complete the record is: coverage of the range and every gap, each opening its day. -->
 <script lang="ts">
+  import StatStrip from "../components/stat-strip.svelte";
   import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
@@ -47,28 +48,19 @@
 </script>
 
 <div class="flex min-h-[300px] flex-col gap-4">
-  <dl class="grid grid-cols-3 divide-x divide-border/60 border-y border-border/60">
-    <div class="flex flex-col gap-0.5 py-2.5 pr-3">
-      <dt class="text-xs text-muted-foreground">{m.stats_coverage({ range: label })}</dt>
-      <dd class="text-base font-semibold tabular-nums">
-        {coverage === null
-          ? "–"
-          : `${num(coverage * 100, coverage < 1 && coverage > 0.99 ? 1 : 0)} %`}
-      </dd>
-    </div>
-    <div class="flex flex-col gap-0.5 px-3 py-2.5">
-      <dt class="text-xs text-muted-foreground">{m.stats_gap_total()}</dt>
-      <dd class="text-base font-semibold tabular-nums">
-        {num(Math.max(0, elapsed - covered) / HOUR)}
-      </dd>
-    </div>
-    <div class="flex flex-col gap-0.5 py-2.5 pl-3">
-      <dt class="text-xs text-muted-foreground">{m.stats_recording_since()}</dt>
-      <dd class="text-base font-semibold tabular-nums">
-        {since === null ? "–" : shortDay(since, true)}
-      </dd>
-    </div>
-  </dl>
+  <StatStrip
+    stats={[
+      {
+        label: m.stats_coverage({ range: label }),
+        value:
+          coverage === null
+            ? "–"
+            : `${num(coverage * 100, coverage < 1 && coverage > 0.99 ? 1 : 0)} %`,
+      },
+      { label: m.stats_gap_total(), value: num(Math.max(0, elapsed - covered) / HOUR) },
+      { label: m.stats_recording_since(), value: since === null ? "–" : shortDay(since, true) },
+    ]}
+  />
 
   <section aria-label={m.stats_gaps()}>
     <h3 class="pb-1 text-xs font-medium text-muted-foreground">{m.stats_gaps()}</h3>
@@ -77,7 +69,8 @@
         {#each rows as g (g.key)}
           <li>
             <Pressable
-              class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+              feedback
+              class="flex w-full items-baseline gap-3 py-2 text-left text-sm"
               onclick={() => {
                 onopen(g.range);
               }}

@@ -112,11 +112,12 @@
     </div>
     {#each rows as r (r.id)}
       <Pressable
+        feedback
         role="row"
         aria-selected={r.id === chosen?.id}
         class={[
           COLS,
-          "w-full border-b border-border/60 py-2 text-left hover:bg-foreground/[0.04]",
+          "w-full border-b border-border/60 py-2 text-left",
           r.id === chosen?.id && "bg-foreground/[0.05]",
         ]}
         onclick={() => {

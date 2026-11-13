@@ -30,7 +30,8 @@
 
 {#if points.length > 0}
   <Pressable
-    class="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 text-[15px] text-muted-foreground hover:bg-foreground/[0.04] active:bg-foreground/[0.06]"
+    feedback
+    class="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-[15px] text-muted-foreground"
     onclick={() => {
       open = true;
     }}
@@ -47,7 +48,8 @@
     <h2 class="px-2 pb-2 text-lg font-semibold">{m.topology_add()}</h2>
     {#each points as point (identity(point))}
       <Pressable
-        class="flex min-h-14 cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-foreground/[0.04] active:bg-foreground/[0.06]"
+        feedback
+        class="flex min-h-14 items-center gap-3 rounded-md px-2 text-left"
         aria-label={point.name}
         onclick={() => {
           haptics.light();

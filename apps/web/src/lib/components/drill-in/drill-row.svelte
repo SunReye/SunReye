@@ -20,13 +20,14 @@
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
     <Pressable
+      feedback
       {...props}
       aria-current={current === true ? "page" : undefined}
       disabled={group.disabled}
       {onclick}
       class={[
         props.class,
-        "group relative text-left hover:bg-muted/60 active:bg-muted disabled:pointer-events-none disabled:opacity-70",
+        "group relative text-left disabled:pointer-events-none disabled:opacity-70",
         current === true && "bg-muted",
       ]}
     >

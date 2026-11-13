@@ -15,9 +15,10 @@
 
 <section class="flex flex-col border-t border-border/60">
   <Pressable
+    feedback
     aria-expanded={open}
     aria-controls={id}
-    class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/60 active:bg-muted"
+    class="flex w-full items-center gap-3 px-4 py-3 text-left"
     onclick={() => {
       open = !open;
       haptics.selection();

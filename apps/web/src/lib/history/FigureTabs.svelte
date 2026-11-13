@@ -41,7 +41,7 @@
 
   /** A figure tab: the pressable gives it its focus ring and fade. */
   const FIGURE =
-    "relative flex min-w-0 flex-col items-start gap-1 px-2 py-3 text-left hover:bg-foreground/[0.04] active:bg-foreground/[0.08] sm:px-4";
+    "relative flex min-w-0 flex-col items-start gap-1 px-2 py-3 text-left sm:px-4";
 </script>
 
 <div
@@ -54,6 +54,7 @@
     <Pressable
       role="tab"
       aria-selected={on}
+      feedback
       class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
       onclick={() => {
         pick(f.id);
@@ -95,7 +96,8 @@
   <Pressable
     role="tab"
     aria-selected={on}
-    class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
+    feedback
+      class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
     onclick={() => {
       pick("plant");
     }}

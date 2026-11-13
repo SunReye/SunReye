@@ -31,8 +31,8 @@
   aria-disabled={!control.writable}
   aria-haspopup={control.writable ? "dialog" : undefined}
   class={[
-    "flex min-w-0 flex-col items-start gap-0.5 rounded-md bg-muted/40 px-2 py-1.5 text-left ring-1 ring-border/60 transition-colors duration-(--motion-fast) ring-inset",
-    control.writable ? "hover:bg-muted/70 active:bg-muted" : "cursor-default",
+    "flex min-w-0 flex-col items-start gap-0.5 rounded-md bg-muted/40 px-2 py-1.5 text-left ring-1 ring-border/60 duration-(--motion-fast) ring-inset",
+    control.writable ? "hover:bg-muted/70 " : "cursor-default",
     active && "bg-muted",
   ]}
 >

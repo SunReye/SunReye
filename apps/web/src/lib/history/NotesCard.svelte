@@ -1,5 +1,6 @@
 <!-- At most three things worth a look, each leading to its cause. -->
 <script lang="ts">
+  import GlassCard from "../components/glass-card.svelte";
   import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Info from "@lucide/svelte/icons/info";
@@ -11,13 +12,14 @@
   let { notes, onnote }: { notes: readonly Note[]; onnote: (note: Note) => void } = $props();
 </script>
 
-<section class="glass-ambient rounded-lg ring-1 ring-foreground/10" aria-label={m.stats_notes()}>
+<GlassCard element="section" aria-label={m.stats_notes()}>
   <h2 class="px-4 pt-3 pb-2 text-sm font-semibold">{m.stats_notes()}</h2>
   <ul class="divide-y divide-border/60 border-t border-border/60">
     {#each notes as n (n.text)}
       <li>
         <Pressable
-          class="flex w-full items-start gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] active:bg-foreground/[0.08]"
+          feedback
+          class="flex w-full items-start gap-2.5 px-4 py-2.5 text-left"
           onclick={() => {
             haptics.soft();
             onnote(n);
@@ -35,4 +37,4 @@
       </li>
     {/each}
   </ul>
-</section>
+</GlassCard>

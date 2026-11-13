@@ -45,6 +45,26 @@ test("the gallery shows every component of the kit", async () => {
   expect(kit.filter((name) => !names.has(name))).toEqual([]);
 });
 
+test("the gallery shows every primitive built on the kit", async () => {
+  await render(Gallery);
+
+  for (const name of [
+    "page-title",
+    "section",
+    "glass-card",
+    "stat-strip",
+    "problem-alert",
+    "status-line",
+    "form-field",
+    "text-field",
+    "select-field",
+    "date-field",
+    "combobox-field",
+  ]) {
+    expect(document.querySelector(`[data-gallery="${name}"]`), name).not.toBeNull();
+  }
+});
+
 test("every corner in the kit follows --radius, but an avatar's", async () => {
   await render(Gallery);
 

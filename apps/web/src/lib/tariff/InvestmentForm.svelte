@@ -1,8 +1,8 @@
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import type { Core, Problem } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
 
   let { core, oninvested }: { core: Core; oninvested: () => void } = $props();
@@ -38,5 +38,5 @@
   <Button type="submit">{m.tariff_save()}</Button>
 </form>
 {#if refused}
-  <p role="alert">{problemText(refused.problem)}</p>
+  <ProblemAlert problem={refused.problem} />
 {/if}

@@ -38,7 +38,8 @@
       {#each years as y (y.year)}
         <li>
           <Pressable
-            class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+            feedback
+            class="flex w-full items-baseline gap-3 py-2 text-left text-sm"
             onclick={() => {
               route.open(y.range);
             }}
@@ -64,7 +65,8 @@
       {#each best as r (r.label)}
         <li>
           <Pressable
-            class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+            feedback
+            class="flex w-full items-baseline gap-3 py-2 text-left text-sm"
             onclick={() => {
               route.open(r.range);
             }}

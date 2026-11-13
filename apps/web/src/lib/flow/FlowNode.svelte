@@ -76,7 +76,7 @@
   style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"
 >
   <Pressable
-    class="relative block size-14 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+    class="relative block size-14 rounded-md active:scale-[0.97] sm:size-16"
     aria-label={m.flow_details({ name: label })}
     onclick={() => {
       onselect(node.id);

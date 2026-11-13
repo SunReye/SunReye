@@ -78,7 +78,7 @@
   const skyWord = $derived(day?.weather.sky ? SKIES[day.weather.sky]() : BLANK);
 
   const cell =
-    "flex min-w-0 flex-col items-start gap-0.5 px-3 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08] sm:px-4";
+    "flex min-w-0 flex-col items-start gap-0.5 px-3 py-3 text-left sm:px-4";
 
   const label = "max-w-full truncate text-xs font-medium text-muted-foreground";
   const figure = "text-xl leading-tight font-semibold tracking-tight whitespace-nowrap";
@@ -92,7 +92,7 @@
   role="group"
   aria-label={m.dash_now()}
 >
-  <Pressable class={cell} onclick={() => onopen("price")}>
+  <Pressable feedback class={cell} onclick={() => onopen("price")}>
     <span class={label}>{priceLabel}</span>
     <!-- A currency subunit symbol, the same in every locale. -->
     <span class={figure}
@@ -101,12 +101,12 @@
     >
     <span class="{sub} {levelClass}">{levelWord}</span>
   </Pressable>
-  <Pressable class={cell} onclick={() => onopen("forecast")}>
+  <Pressable feedback class={cell} onclick={() => onopen("forecast")}>
     <span class={label}>{m.dash_pv_left()}</span>
     <span class={figure}><AnimatedNumber value={remaining} /> <span class={unit}>kWh</span></span>
     <span class={sub}>{pvOf}</span>
   </Pressable>
-  <Pressable class={cell} onclick={() => onopen("weather")}>
+  <Pressable feedback class={cell} onclick={() => onopen("weather")}>
     <span class={label}>{m.dash_weather()}</span>
     <span class={figure}
       ><AnimatedNumber value={celsius} digits={0} />

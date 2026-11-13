@@ -1,10 +1,10 @@
 <!-- A secondary way in: an endpoint the scan does not probe, such as an RTU gateway, entered by hand. -->
 <script lang="ts">
+  import TextField from "../components/text-field.svelte";
   import Plus from "@lucide/svelte/icons/plus";
   import type { Found } from "../api/core.ts";
   import type { Endpoint } from "./choices.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
@@ -48,10 +48,10 @@
 {#if open}
   <div class="flex flex-col gap-3 rounded-md border border-border/60 p-3">
     <p class="text-sm text-muted-foreground">{m.devices_endpoint()}</p>
-    <label class={FIELD}>
-      {m.devices_endpoint_host()}
-      <Input required autocomplete="off" placeholder="192.168.1.40" bind:value={host} />
-    </label>
+    <TextField
+      label={m.devices_endpoint_host()}
+      required autocomplete="off" placeholder="192.168.1.40" bind:value={host}
+    />
     <div class="overflow-hidden rounded-md border border-border/60">
       <ValueRow
         edit={PORT}

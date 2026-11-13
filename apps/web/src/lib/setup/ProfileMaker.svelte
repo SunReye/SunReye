@@ -1,5 +1,6 @@
 <!-- One manufacturer in the picker: its name, then each family as a group of rows. -->
 <script lang="ts">
+  import GlassCard from "../components/glass-card.svelte";
   import type { Listing } from "../api/core.ts";
   import type { Manufacturer } from "./catalogue.ts";
   import ProfileRow from "./ProfileRow.svelte";
@@ -26,9 +27,7 @@
   </h3>
   <div class="flex flex-col gap-2">
     {#each maker.families as family (family[0]?.id)}
-      <ul
-        class="glass-ambient divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60"
-      >
+      <GlassCard element="ul" class="divide-y divide-border/60">
         {#each family as listing (listing.id)}
           <ProfileRow
             {listing}
@@ -37,7 +36,7 @@
             {onpick}
           />
         {/each}
-      </ul>
+      </GlassCard>
     {/each}
   </div>
 </section>

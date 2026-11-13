@@ -1,7 +1,7 @@
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import type { BiddingZone, Core, Problem, SpotPriceZone } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
 
   /** The zone in force, or why it was refused. */
@@ -49,5 +49,5 @@
   </ToggleGroup.Root>
 </div>
 {#if problem}
-  <p role="alert">{problemText(problem.problem)}</p>
+  <ProblemAlert problem={problem.problem} />
 {/if}

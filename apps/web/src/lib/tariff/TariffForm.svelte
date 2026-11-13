@@ -1,10 +1,10 @@
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { untrack } from "svelte";
   import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { changeOf, draftOf, instantOf } from "./draft";
@@ -54,5 +54,5 @@
 </form>
 <!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
 {#if answer !== undefined && "problem" in answer}
-  <p role="alert">{problemText(answer.problem)}</p>
+  <ProblemAlert problem={answer.problem} />
 {/if}

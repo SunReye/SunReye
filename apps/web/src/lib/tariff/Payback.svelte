@@ -1,6 +1,7 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import InvestmentForm from "./InvestmentForm.svelte";
@@ -8,19 +9,16 @@
 
   let { core }: { core: Core } = $props();
 
-  const id = $props.id();
-
   // Read again once the admin enters an investment.
   let payback = $derived(core.payback());
 </script>
 
-<section aria-labelledby="{id}-title" class="flex flex-col gap-3">
-  <h2 id="{id}-title" class="text-[15px] font-medium">{m.tariff_payback()}</h2>
+<Section title={m.tariff_payback()}>
   {#await payback}
     <LoadingRows />
   {:then answer}
     {#if "problem" in answer}
-      <p role="alert">{problemText(answer.problem)}</p>
+      <ProblemAlert problem={answer.problem} />
     {:else}
       <PaybackFigures payback={answer} />
       <InvestmentForm
@@ -31,4 +29,4 @@
       />
     {/if}
   {/await}
-</section>
+</Section>

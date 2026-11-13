@@ -19,7 +19,7 @@
   const exporting = $derived(grid !== undefined && grid < 0);
 
   const figure =
-    "rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+    "rounded-sm hover:text-foreground";
 </script>
 
 <span

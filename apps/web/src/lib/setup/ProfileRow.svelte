@@ -44,9 +44,10 @@
 
 <li>
   <Pressable
+    feedback
     aria-label={spoken}
     aria-current={chosen ? "true" : undefined}
-    class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 active:bg-muted"
+    class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left"
     onclick={() => {
       onpick(listing.id);
     }}

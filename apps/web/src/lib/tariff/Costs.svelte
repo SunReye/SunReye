@@ -3,9 +3,9 @@
   plant-local days (ADR 12): savings above the baseline, the import bill below it.
 -->
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { flowColour } from "../energy-colours.ts";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { bandsOf } from "../range/fill.ts";
@@ -38,27 +38,24 @@
   });
 </script>
 
-<section class="flex flex-col gap-3">
-  <h2 class="text-base font-semibold">{m.tariff_costs()}</h2>
-  {#if view?.problem}
-    <p role="alert">{problemText(view.problem)}</p>
-  {:else}
-    <BandChart
-      bands={view?.bands ?? []}
-      up={[
-        { label: m.tariff_avoided(), colour: flowColour("solar") },
-        { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
-      ]}
-      down={[{ label: m.tariff_import_cost(), colour: flowColour("import") }]}
-      groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
-      via={data.current?.via}
-      summary={{ title: data.title, ...(view?.total ?? split()) }}
-      fmt={money}
-      unit="€"
-      loading={!view}
-      label={m.tariff_chart()}
-      ondrill={data.drill}
-      onbrush={data.brush}
-    />
-  {/if}
-</section>
+{#if view?.problem}
+  <ProblemAlert problem={view.problem} />
+{:else}
+  <BandChart
+    bands={view?.bands ?? []}
+    up={[
+      { label: m.tariff_avoided(), colour: flowColour("solar") },
+      { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
+    ]}
+    down={[{ label: m.tariff_import_cost(), colour: flowColour("import") }]}
+    groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
+    via={data.current?.via}
+    summary={{ title: data.title, ...(view?.total ?? split()) }}
+    fmt={money}
+    unit="€"
+    loading={!view}
+    label={m.tariff_chart()}
+    ondrill={data.drill}
+    onbrush={data.brush}
+  />
+{/if}

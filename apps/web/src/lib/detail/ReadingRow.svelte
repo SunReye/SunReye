@@ -32,7 +32,8 @@
   </div>
 {:else}
   <Pressable
-    class="group -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 text-left outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring"
+    feedback
+    class="group -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 text-left"
     onclick={() => onopen(to)}
   >
     <dt class="flex min-w-0 flex-1 items-baseline gap-2">{@render label()}</dt>
