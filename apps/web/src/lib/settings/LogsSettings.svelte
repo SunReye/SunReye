@@ -7,12 +7,11 @@
   let { core }: { core: Core } = $props();
 
   /** The log, and the devices that name its entries; a device list refused leaves them by id. */
-  async function load() {
-    const [log, devices] = await Promise.all([core.writes(), core.devices()]);
-
-    const names = new Map("problem" in devices ? [] : devices.map((d) => [d.id, d.name] as const));
-
-    return { log, names };
+  function load() {
+    return Promise.all([core.writes(), core.devices()]).then(([log, devices]) => ({
+      log,
+      names: new Map("problem" in devices ? [] : devices.map((d) => [d.id, d.name] as const)),
+    }));
   }
 
   const answer = $derived(load());

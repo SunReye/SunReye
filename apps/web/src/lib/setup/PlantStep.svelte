@@ -45,7 +45,7 @@
   let longitudeText = $state(String(current?.location?.longitude ?? ""));
 
   /** A typed coordinate, with a comma or a point; empty or not a number is none. */
-  function degrees(text: string): number | undefined {
+  function coordinate(text: string): number | undefined {
     const value = Number(text.trim().replace(",", "."));
 
     return text.trim() === "" || Number.isNaN(value) ? undefined : value;
@@ -80,8 +80,8 @@
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
 
-    const latitude = degrees(latitudeText);
-    const longitude = degrees(longitudeText);
+    const latitude = coordinate(latitudeText);
+    const longitude = coordinate(longitudeText);
 
     if (latitude === undefined || longitude === undefined) return;
 

@@ -1,6 +1,7 @@
 <!-- One setting under Settings › Writes: its name, what a write may carry, and the admin's enable (ADR 8). -->
 <script lang="ts">
   import type { Core, Problem, Setting } from "../api/core";
+  import { clock } from "../components/value-editor/editable.ts";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import { boundsText } from "./bounds";
@@ -27,8 +28,15 @@
   // A verified setting writes with no enable (ADR 8): its switch stays on.
   const verified = $derived(setting.enable === "verified");
 
+  // A time of day reads as clock times, its step in minutes.
   const bounds = $derived(
-    boundsText(setting.range, setting.values, setting.step, setting.labels, setting.unit),
+    setting.time === true && setting.range
+      ? m.settings_range({
+          min: clock(setting.range.min),
+          max: clock(setting.range.max),
+          step: `${setting.step} min`,
+        })
+      : boundsText(setting.range, setting.values, setting.step, setting.labels, setting.unit),
   );
 
   async function change(on: boolean): Promise<void> {

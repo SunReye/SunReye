@@ -218,11 +218,11 @@ test("a pushed level hides its parent from the eye, the tab key and assistive te
   await expect.element(screen.getByText("Netz & Einspeisung", { exact: true })).not.toBeVisible();
   expect(screen.getByRole("button", { name: /Netz/u }).elements()).toHaveLength(0);
 
-  // Every tab stop lies outside the parent.
-  for (let i = 0; i < 6; i++) {
-    await userEvent.keyboard("{Tab}");
-    expect(root?.contains(document.activeElement)).toBe(false);
-  }
+  // Inert, and the tab key walks the page alone.
+  expect(root?.hasAttribute("inert")).toBe(true);
+  await userEvent.keyboard("{Tab}".repeat(6));
+  expect(document.activeElement).not.toBeNull();
+  expect(root?.contains(document.activeElement)).toBe(false);
 });
 
 test("the level header keeps the back label and the title apart at 320 px", async () => {

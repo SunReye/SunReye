@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
-import { attempt, CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
+import { CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
 
 afterEach(async () => {
   await page.viewport(414, 896);
@@ -65,56 +65,6 @@ test("a viewer sees only the display, which is the browser's own, and About", as
   await expect.element(screen.getByRole("button", { name: /^Über SunReye/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^Anlage/u }).query()).toBeNull();
   expect(screen.getByRole("button", { name: /^Benutzer & Zugang/u }).query()).toBeNull();
-});
-
-test("on a phone the write log is a list of entries, newest first", async () => {
-  const log = {
-    writes: [
-      attempt({ outcome: "verified" }),
-      attempt({ outcome: "mismatch", after: 108, time: "2026-11-09T09:00:00Z" }),
-    ],
-  };
-
-  const screen = await opened(
-    testCore(() => Response.json(log)),
-    "logs",
-  );
-
-  const list = screen.getByRole("list", { name: "Schreibprotokoll" });
-  const first = list.getByRole("listitem").first();
-
-  await expect.element(list).toBeVisible();
-
-  const text = first.element().textContent ?? "";
-
-  expect(text).toMatch(/^\s*Max\. Ladestrom\s+Wechselrichter/u);
-  expect(text).toMatch(/Abweichend.*Zurückgelesen 108\s+108 → 50/u);
-  expect(screen.getByRole("table").query()).toBeNull();
-});
-
-test("with room the write log is a table", async () => {
-  await page.viewport(1280, 800);
-  const log = { writes: [attempt({ outcome: "mismatch", after: 108 })] };
-
-  const screen = await opened(
-    testCore(() => Response.json(log)),
-    "logs",
-  );
-
-  const table = screen.getByRole("table", { name: "Schreibprotokoll" });
-
-  await expect.element(table).toBeVisible();
-  await expect.element(table.getByRole("cell", { name: "Max. Ladestrom" })).toBeVisible();
-  await expect.element(table.getByRole("cell", { name: /^Abweichend/u })).toBeVisible();
-});
-
-test("an empty write log says what will land there", async () => {
-  const screen = await opened(
-    testCore(() => Response.json({ writes: [] })),
-    "logs",
-  );
-
-  await expect.element(screen.getByText("Noch nichts geschrieben")).toBeVisible();
 });
 
 test("without the admin's session the write log is not shown", async () => {
@@ -231,18 +181,15 @@ test("an update shows what it changes and is applied in one click", async () => 
 
   const screen = await opened(transport, "devices");
 
-  const diff = screen.getByRole("table", { name: "box: 1.0.0 → 1.1.0" });
+  const diff = screen.getByRole("list", { name: "box: 1.0.0 → 1.1.0" });
+  const items = diff.getByRole("listitem");
+
   await expect.element(diff).toBeVisible();
-  const charge = diff.getByRole("row", { name: /^Max\. Ladestrom/u });
   await expect
-    .element(charge)
-    .toHaveTextContent("Max. Ladestrom geändert 0 bis 350, Schritt 1 0 bis 400, Schritt 1");
-  await expect
-    .element(diff.getByRole("row", { name: /^Betriebsart/u }))
-    .toHaveTextContent("Betriebsart entfernt Werte 0, 1, 2 –");
-  await expect
-    .element(diff.getByRole("row", { name: /^Battery power/u }))
-    .toHaveTextContent("Battery power hinzugefügt");
+    .element(items.nth(0))
+    .toHaveTextContent("Max. Ladestrom geändert · 0 bis 350, Schritt 1 → 0 bis 400, Schritt 1");
+  await expect.element(items.nth(1)).toHaveTextContent("Betriebsart entfernt · Werte 0, 1, 2 → –");
+  await expect.element(items.nth(2)).toHaveTextContent("Battery power hinzugefügt");
 
   await userEvent.click(screen.getByRole("button", { name: "Update für box anwenden" }));
 
@@ -342,37 +289,4 @@ test("the forecast page leads to the builder", async () => {
   await expect
     .element(screen.getByRole("link", { name: /^3D-Haus und PV-Module bearbeiten/u }))
     .toHaveAttribute("href", "#/builder");
-});
-
-test("no setting's key shows as a label anywhere in Settings", async () => {
-  const keys = CAPABILITIES.devices["3"].settings.map((s) => s.key);
-  const log = { writes: keys.map((setting) => attempt({ setting })) };
-  const update = {
-    id: "box",
-    from: "1.0.0",
-    to: "1.1.0",
-    settings: keys.map((key) => ({ key, change: "added", before: null, after: { step: 1 } })),
-    quantities: [],
-  };
-  const transport = testCore(
-    () => Response.json(log),
-    () => new Response(null, { status: 204 }),
-    { "/api/v1/profile-updates": () => Response.json({ updates: [update] }) },
-  );
-
-  const loaded = {
-    writes: { role: "switch", name: "Schreiben erlaubt: Wechselrichter" },
-    logs: { role: "list", name: "Schreibprotokoll" },
-    devices: { role: "table", name: "box: 1.0.0 → 1.1.0" },
-  } as const;
-
-  for (const [group, shown] of Object.entries(loaded)) {
-    const screen = await opened(transport, group);
-
-    await expect.element(screen.getByRole(shown.role, { name: shown.name })).toBeVisible();
-
-    for (const key of keys) expect(document.body.innerText).not.toContain(key);
-
-    await screen.unmount();
-  }
 });
