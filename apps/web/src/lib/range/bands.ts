@@ -35,6 +35,8 @@ export interface Readout {
   readonly up: readonly number[];
   readonly down: readonly number[];
   readonly mark?: number | null | undefined;
+  /** What is still expected, where bands have not happened yet. */
+  readonly ghost?: number | null | undefined;
   readonly line?: number | null | undefined;
 }
 

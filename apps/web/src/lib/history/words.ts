@@ -45,7 +45,7 @@ const PHRASES: Readonly<Record<Kind, (cal: Calendar, r: Range) => string>> = {
 };
 
 /** The range at the start of a sentence: "Heute", "Im Oktober", "2025". */
-const phrase = (cal: Calendar, r: Range): string => PHRASES[r.kind](cal, r);
+export const phrase = (cal: Calendar, r: Range): string => PHRASES[r.kind](cal, r);
 
 type Base = "day" | "week" | "month" | "year" | "custom";
 

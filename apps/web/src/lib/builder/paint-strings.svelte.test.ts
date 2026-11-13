@@ -138,6 +138,9 @@ test("a drag across modules wires them in the order it crosses them, and saves t
   const draft = filled([wired("Süd", MODULE.id)]);
 
   await opened(draft, transport);
+
+  await expect.element(inspector().getByText(/^Ziehe auf dem Dach über Module/u)).toBeVisible();
+
   await press("mouse", three(draft).toReversed());
 
   await expect.element(made(3)).toBeVisible();
