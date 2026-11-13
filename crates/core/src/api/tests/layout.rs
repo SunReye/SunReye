@@ -476,3 +476,29 @@ async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_st
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
     );
 }
+
+#[tokio::test]
+async fn the_module_catalogue_serves_each_sheet_with_its_datasheet() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let (status, body) = core
+        .call(&set_cookie, get("/api/v1/module-catalogue"))
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let sheets = body["sheets"].as_array().unwrap();
+    let aiko = sheets
+        .iter()
+        .find(|sheet| sheet["series"] == "Neostar 2S+")
+        .unwrap();
+    assert_eq!(aiko["maker"], "AIKO");
+    assert_eq!(aiko["source"]["revision"], "DS_EN_2405_V1.5");
+    // AIKO-A450-MAH54Db as the datasheet prints it.
+    assert_eq!(
+        aiko["modules"][2],
+        json!({ "name": "AIKO-A450-MAH54Db", "pmax": 450.0, "vmp": 34.5, "imp": 13.05,
+            "voc": 40.94, "isc": 14.12, "powerCoefficient": -0.26, "voltageCoefficient": -0.22,
+            "currentCoefficient": 0.05, "width": 1.134, "height": 1.757, "bypassDiodes": 3 })
+    );
+}

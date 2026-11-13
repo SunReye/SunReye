@@ -537,6 +537,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/module-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["module_catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/module-types": {
         parameters: {
             query?: never;
@@ -546,7 +562,7 @@ export interface paths {
         };
         get: operations["list_module_types"];
         put?: never;
-        /** Adds a module type; the admin enters its datasheet, there is no catalogue. */
+        /** Adds a module type from its datasheet, entered or copied from the module catalogue. */
         post: operations["add_module_type"];
         delete?: never;
         options?: never;
@@ -1775,6 +1791,10 @@ export interface components {
             /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`. */
             subject: string;
         };
+        /** @description The module catalogue's sheets, as the admin picks a datasheet to add as a module type. */
+        ModuleCatalogue: {
+            sheets: components["schemas"]["Sheet"][];
+        };
         /** @description The modules on one roof face. */
         ModuleGrid: {
             /** @description The block's index in the scene. */
@@ -2218,6 +2238,23 @@ export interface components {
             devices: components["schemas"]["ArchiveDevice"][];
             /** @description Its path under `/share`. */
             path: string;
+        };
+        /** @description The power classes one maker's datasheet prints. */
+        Sheet: {
+            maker: string;
+            modules: components["schemas"]["Datasheet"][];
+            series: string;
+            source: components["schemas"]["Source"];
+        };
+        /** @description The maker's datasheet every value of a sheet was copied from. */
+        Source: {
+            /** @description Why this edition was chosen, where it matters. */
+            note?: string | null;
+            /** @description The revision or date printed on the datasheet. */
+            revision: string;
+            /** @description As printed on the datasheet. */
+            title: string;
+            url: string;
         };
         /** @description Whether spot prices are fetched, and for which bidding zone. */
         SpotPriceZone: {
@@ -3651,6 +3688,33 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    module_catalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleCatalogue"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

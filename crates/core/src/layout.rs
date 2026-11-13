@@ -25,6 +25,7 @@ use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
 
+mod catalogue;
 mod scene;
 
 const BODY: Problem = Problem {
@@ -392,6 +393,7 @@ impl Layouts {
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(list_module_types, add_module_type))
+            .routes(routes!(module_catalogue))
             .routes(routes!(layout, change_layout))
             .with_state((self, clock))
     }
@@ -639,7 +641,22 @@ async fn list_module_types(State((layouts, _)): LayoutState) -> Result<Json<Modu
     Ok(Json(ModuleTypes { module_types }))
 }
 
-/// Adds a module type; the admin enters its datasheet, there is no catalogue.
+/// The module catalogue's sheets, as the admin picks a datasheet to add as a module type.
+#[derive(Serialize, ToSchema)]
+struct ModuleCatalogue {
+    sheets: Vec<catalogue::Sheet>,
+}
+
+#[utoipa::path(get, path = "/api/v1/module-catalogue", responses(
+    (status = 200, body = ModuleCatalogue),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn module_catalogue() -> Result<Json<ModuleCatalogue>, Problem> {
+    let sheets = catalogue::bundled().map_err(internal)?;
+    Ok(Json(ModuleCatalogue { sheets }))
+}
+
+/// Adds a module type from its datasheet, entered or copied from the module catalogue.
 #[utoipa::path(post, path = "/api/v1/module-types", request_body = Datasheet, responses(
     (status = 201, body = ModuleType),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),

@@ -2035,6 +2035,21 @@
         ],
         "type": "object"
       },
+      "ModuleCatalogue": {
+        "description": "The module catalogue's sheets, as the admin picks a datasheet to add as a module type.",
+        "properties": {
+          "sheets": {
+            "items": {
+              "$ref": "#/components/schemas/Sheet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sheets"
+        ],
+        "type": "object"
+      },
       "ModuleGrid": {
         "additionalProperties": false,
         "description": "The modules on one roof face.",
@@ -3239,6 +3254,64 @@
         "required": [
           "path",
           "devices"
+        ],
+        "type": "object"
+      },
+      "Sheet": {
+        "additionalProperties": false,
+        "description": "The power classes one maker's datasheet prints.",
+        "properties": {
+          "maker": {
+            "type": "string"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/Datasheet"
+            },
+            "type": "array"
+          },
+          "series": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "required": [
+          "maker",
+          "series",
+          "source",
+          "modules"
+        ],
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "description": "The maker's datasheet every value of a sheet was copied from.",
+        "properties": {
+          "note": {
+            "description": "Why this edition was chosen, where it matters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The revision or date printed on the datasheet.",
+            "type": "string"
+          },
+          "title": {
+            "description": "As printed on the datasheet.",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "revision",
+          "url"
         ],
         "type": "object"
       },
@@ -5335,6 +5408,31 @@
         "summary": "The core's last 2,000 log lines, each at most 1 KiB (ADR 2)."
       }
     },
+    "/api/v1/module-catalogue": {
+      "get": {
+        "operationId": "module_catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleCatalogue"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/module-types": {
       "get": {
         "operationId": "list_module_types",
@@ -5391,7 +5489,7 @@
             }
           }
         },
-        "summary": "Adds a module type; the admin enters its datasheet, there is no catalogue."
+        "summary": "Adds a module type from its datasheet, entered or copied from the module catalogue."
       }
     },
     "/api/v1/payback": {

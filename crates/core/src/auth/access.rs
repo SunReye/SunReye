@@ -52,6 +52,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/car-bodies", Admin),
     (Method::PUT, "/api/v1/layout", Admin),
     (Method::POST, "/api/v1/module-types", Admin),
+    // The admin copies a module type from it (ADR 17).
+    (Method::GET, "/api/v1/module-catalogue", Admin),
     (Method::GET, "/api/v1/connections", Admin),
     (Method::POST, "/api/v1/connections", Admin),
     (Method::PUT, "/api/v1/connections/{id}", Admin),
