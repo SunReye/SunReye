@@ -96,7 +96,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
 - no visible scrollbars, with edges that fade where more content waits;
-- data loads in `load`, so pages never flash a skeleton.
+- a screen fetches its data when it mounts, not in SvelteKit's `load`. Until the data lands, the screen stands in its final layout: a chart or a sentence holds a placeholder of its own size, a number shows dashes, and the data replaces them in place without moving anything.
 
 **Motion.**
 - **Source:** kbase's motion vocabulary, from `theme.css`, the motion parts of `app.css`, `animated-number`, and `active-indicator` (kbase `8e6db9e`), plus these curves:
@@ -105,8 +105,8 @@ The first integration build rendered browser defaults: plain links for navigatio
   - *Exits:* ease-in, about 150 ms, shorter than their entrance.
   - *Presses:* kbase's 80 ms scale press, released with its spring.
 - **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Sheets and back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point.
-- **Jank rules:** animate only `transform` and `opacity`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
-- **Live ticks:** numbers, gauges, flow-line thickness and 3D tints ease to each tick for slightly longer than the tick interval, so values glide. When the stream stalls they stop, and the connection chip shows the stall.
+- **Jank rules:** animate only `transform` and `opacity`. The one exception is the lite tier's dashed flow cable, which moves its SVG `stroke-dashoffset`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
+- **Live ticks:** numbers, gauges and flow-line thickness ease to each tick for slightly longer than the tick interval, so values glide. 3D tints ease over about 400 ms (ADR 20), then rendering stops. When the stream stalls they stop, flow lines go still, and the connection chip shows the stall. The stream counts as stalled after about 30 s without any message, keep-alives included, as the core sends one every 15 s.
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
 
