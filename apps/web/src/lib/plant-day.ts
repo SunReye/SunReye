@@ -23,24 +23,48 @@ function wallOf(zone: string): Intl.DateTimeFormat {
   return wall;
 }
 
+/** Offsets already worked out, per zone and whole second: History asks for the same hours often. */
+const OFFSETS = new Map<string, Map<number, number>>();
+
+/** Bounds each zone's cache; a year of hours, twice over, fits. */
+const KEPT = 20_000;
+
 /** How far `zone`'s wall clock is ahead of UTC at `at`, in ms. */
 function offset(zone: string, at: number): number {
-  const parts = wallOf(zone).formatToParts(at);
+  const second = at - (at % 1000);
+  let known = OFFSETS.get(zone);
 
-  const field = new Map<string, number>();
+  if (!known) {
+    known = new Map();
+    OFFSETS.set(zone, known);
+  }
 
-  for (const { type, value } of parts) field.set(type, Number(value));
+  let ahead = known.get(second);
 
-  const wall = Date.UTC(
-    field.get("year") ?? 0,
-    (field.get("month") ?? 1) - 1,
-    field.get("day") ?? 1,
-    field.get("hour") ?? 0,
-    field.get("minute") ?? 0,
-    field.get("second") ?? 0,
+  if (ahead === undefined) {
+    if (known.size >= KEPT) known.clear();
+
+    ahead = wallAt(zone, second) - second;
+    known.set(second, ahead);
+  }
+
+  return ahead;
+}
+
+/** `zone`'s wall clock at `at`, read as if it were UTC, in ms. */
+function wallAt(zone: string, at: number): number {
+  const field: Record<string, number> = {};
+
+  for (const { type, value } of wallOf(zone).formatToParts(at)) field[type] = Number(value);
+
+  return Date.UTC(
+    field["year"] ?? 0,
+    (field["month"] ?? 1) - 1,
+    field["day"] ?? 1,
+    field["hour"] ?? 0,
+    field["minute"] ?? 0,
+    field["second"] ?? 0,
   );
-
-  return wall - (at - (at % 1000));
 }
 
 /** The instant the plant-local day holding `now` began in `zone`, an IANA name. */
