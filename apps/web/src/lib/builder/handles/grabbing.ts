@@ -16,6 +16,7 @@ import {
   type Target,
   type Triple,
 } from "./grips.ts";
+import { listen } from "../pointer.ts";
 
 /** What the handles edit, and where a drag goes. */
 export interface Editing {
@@ -72,21 +73,14 @@ export class Grabbing {
   readonly #sources: Sources;
   #held: Held | undefined;
 
+  /** Stops listening. */
+  readonly dispose: () => void;
+
   constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, sources: Sources) {
     this.#canvas = canvas;
     this.#camera = camera;
     this.#sources = sources;
-    canvas.addEventListener("pointerdown", this.#press);
-    canvas.addEventListener("pointermove", this.#move);
-    canvas.addEventListener("pointerup", this.#release);
-    canvas.addEventListener("pointercancel", this.#release);
-  }
-
-  dispose(): void {
-    this.#canvas.removeEventListener("pointerdown", this.#press);
-    this.#canvas.removeEventListener("pointermove", this.#move);
-    this.#canvas.removeEventListener("pointerup", this.#release);
-    this.#canvas.removeEventListener("pointercancel", this.#release);
+    this.dispose = listen(canvas, { press: this.#press, move: this.#move, release: this.#release });
   }
 
   #ndc(event: PointerEvent): [number, number] {

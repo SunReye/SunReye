@@ -10,6 +10,7 @@ import {
   panels,
   refuses,
   strokeOf,
+  stroked,
   withoutBlock,
   withoutString,
 } from "./modules.ts";
@@ -237,4 +238,31 @@ test("painting a string into a grid of another module type is refused", () => {
   expect(refuses(draft, 1, { kind: "paint", string: 0 })).toBe(true);
   expect(refuses(draft, 1, { kind: "paint" })).toBe(false);
   expect(refuses(draft, 1, { kind: "place", erase: false })).toBe(false);
+});
+
+test("a stroke leaves each cell with a module or none, keeping what it does not change", () => {
+  const at = { row: 0, column: 0 };
+  const module = { row: 0, column: 0, string: 1, optimized: true };
+
+  expect(stroked(undefined, at, { kind: "place", erase: false })).toEqual({
+    ...at,
+    optimized: false,
+  });
+  expect(stroked(module, at, { kind: "place", erase: false })).toBe(module);
+  expect(stroked(module, at, { kind: "place", erase: true })).toBeUndefined();
+  expect(stroked(undefined, at, { kind: "optimizer", on: true })).toBeUndefined();
+  expect(stroked(module, at, { kind: "optimizer", on: false })).toEqual({
+    ...module,
+    optimized: false,
+  });
+  expect(stroked(undefined, at, { kind: "paint", string: 2, erase: true })).toBeUndefined();
+  expect(stroked(undefined, at, { kind: "paint", string: 2, erase: false })).toEqual({
+    ...at,
+    string: 2,
+    optimized: false,
+  });
+  expect(stroked(module, at, { kind: "paint", string: 1, erase: true })).toEqual({
+    ...at,
+    optimized: true,
+  });
 });
