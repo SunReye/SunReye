@@ -1,6 +1,6 @@
 // The one haptics module (ADR 21). Only these events vibrate.
 import { WebHaptics } from "web-haptics";
-import { LOW_POWER } from "./live/dashboard.ts";
+import { LOW_POWER } from "./motion/tier.ts";
 
 /** Where each browser keeps its haptics switch: "on", "off", or unset for the default. */
 export const HAPTICS = "sunreye.haptics";

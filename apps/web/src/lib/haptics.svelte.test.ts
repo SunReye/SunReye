@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { WebHaptics } from "web-haptics";
 import { HAPTICS, haptics } from "./haptics.ts";
-import { LOW_POWER } from "./live/dashboard.ts";
+import { LOW_POWER } from "./motion/tier.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 

@@ -27,6 +27,9 @@
  * `bun test` reaches it.
  */
 
+/** Where each browser keeps its low-power switch (ADR 21). */
+export const LOW_POWER = "sunreye.low-power";
+
 /** What is actually rendered. */
 export type MotionTier =
   /** Everything: comet chains with their bloom, gliding readouts, the pulsing hub ring. */
