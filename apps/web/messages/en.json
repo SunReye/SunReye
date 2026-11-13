@@ -577,6 +577,7 @@
   "dash_grid_export": "Feed-in",
   "dash_ev": "EV",
   "dash_view": "View",
+  "dash_camera_move": "Move the camera",
   "boot_connecting": "Connecting to SunReye …",
   "dash_scene_loading": "Loading the 3D view …",
   "dash_scene_failed": "3D view not loaded",

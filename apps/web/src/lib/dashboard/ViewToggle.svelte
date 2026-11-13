@@ -35,7 +35,7 @@
     size="sm"
     spacing={1}
     bind:value={() => shows, set}
-    class="glass-ambient absolute top-3 right-3 z-10 rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
+    class="glass-ambient rounded-md p-0.5 ring-1 ring-border/60 elevation-1"
     aria-label={m.dash_view()}
   >
     <ToggleGroup.Item value="3d" class="px-3 text-xs">3D</ToggleGroup.Item>
@@ -45,7 +45,7 @@
   <Button
     variant="outline"
     size="sm"
-    class="glass-ambient absolute top-3 right-3 z-10"
+    class="glass-ambient"
     href="#/builder"
   >
     <Box data-icon="inline-start" />
