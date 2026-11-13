@@ -17,7 +17,7 @@ const BLOCK: Target = { kind: "block", index: 0 };
 /** A three.js point as the pv crate's: east, north, up. */
 const point = ([x, y, z]: Triple): Point => [x, 0 - z, y];
 
-async function stage(scene: Scene) {
+async function stage(scene: Scene, target = BLOCK) {
   const dragged: Scene[] = [];
   const dropped: number[] = [];
   const views: View[] = [];
@@ -40,7 +40,7 @@ async function stage(scene: Scene) {
     },
     editing: {
       scene,
-      target: BLOCK,
+      target,
       ondrag: (next: Scene) => {
         dragged.push(next);
       },
@@ -94,6 +94,44 @@ test.each<Pointer>(["mouse", "pen", "touch"])(
     expect(views).toEqual([]);
   },
 );
+
+test("a fence point drags along the ground: moved, the other points kept, one drop", async () => {
+  const scene: Scene = {
+    ...house().scene,
+    fences: [
+      {
+        points: [
+          { x: 0, z: 10 },
+          { x: 6, z: 10 },
+        ],
+        height: 1.2,
+        finish: "wood",
+      },
+    ],
+  };
+
+  const fence: Target = { kind: "fence", index: 0 };
+  const { dragged, dropped, views, onPage } = await stage(scene, fence);
+  const knob = handles(scene, fence)[1];
+
+  if (knob === undefined) throw new Error("no point handle");
+
+  const [ax, ay, az] = knob.at;
+  const from = onPage(knob.at);
+  const end = onPage([ax + 2, ay, az]);
+  const middle = [(from[0] + end[0]) / 2, (from[1] + end[1]) / 2] as const;
+
+  await press("mouse", [from, middle, end]);
+
+  await expect.poll(() => dropped).toEqual([dragged.length]);
+
+  const [first, moved] = dragged.at(-1)?.fences?.[0]?.points ?? [];
+
+  expect(first).toEqual({ x: 0, z: 10 });
+  expect(moved?.x).toBeGreaterThan(7);
+  expect(moved?.x).toBeLessThan(9);
+  expect(views).toEqual([]);
+});
 
 test("a drag on open ground orbits and drags nothing", async () => {
   const scene = house().scene;

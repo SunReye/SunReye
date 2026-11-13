@@ -183,3 +183,59 @@ test("a ground surface stretches, turns and moves on the ground", () => {
 
   expect(deeper?.scene.surfaces?.[0]).toMatchObject({ depth: 8, finish: "driveway" });
 });
+
+const FENCE: Target = { kind: "fence", index: 0 };
+
+/** A wooden fence from the house's front corner, 1.2 m high, turning once. */
+const fenced = (north = 0): Scene => ({
+  ...scene([HOUSE], north),
+  fences: [
+    {
+      points: [
+        { x: 0, z: 12 },
+        { x: 8, z: 12 },
+        { x: 8, z: 18 },
+      ],
+      height: 1.2,
+      finish: "wood",
+    },
+  ],
+});
+
+test("a fence has a point handle on each of its points, at its height", () => {
+  const found = handles(fenced(), FENCE);
+
+  expect(found.map(({ grip, point }) => [grip, point])).toEqual([
+    ["point", 0],
+    ["point", 1],
+    ["point", 2],
+  ]);
+  expect(found[1]?.at).toEqual([8, 1.2, 12]);
+});
+
+test("a fence point follows the pointer in 10 cm steps; the other points stay", () => {
+  const moved = drag(
+    fenced(90),
+    FENCE,
+    { grip: "point", point: 1, ray: down(8, 12, 90), height: 1.2 },
+    down(9.04, 13.47, 90),
+  );
+
+  expect(moved?.value).toEqual([9, 13.5]);
+  expect(moved?.scene.fences?.[0]?.points).toEqual([
+    { x: 0, z: 12 },
+    { x: 9, z: 13.5 },
+    { x: 8, z: 18 },
+  ]);
+});
+
+test("a fence point snaps to a block's edge within 25 cm", () => {
+  const moved = drag(
+    fenced(),
+    FENCE,
+    { grip: "point", point: 0, ray: down(0, 12, 0), height: 1.2 },
+    down(10.18, 8.2),
+  );
+
+  expect(moved?.value).toEqual([10, 8]);
+});

@@ -12,8 +12,8 @@ export type { Ray, Triple } from "./frame.ts";
 export { drag, type Dragged, type Grab } from "./dragging.ts";
 
 /** What a handle drags: a wall arrow's width, depth or radius, the ridge's pitch, the ring's
- * turn, or the footprint's place. */
-export type Grip = "width" | "depth" | "radius" | "pitch" | "turn" | "move";
+ * turn, the footprint's place, or a fence's point. */
+export type Grip = "width" | "depth" | "radius" | "pitch" | "turn" | "move" | "point";
 
 export interface Handle {
   readonly grip: Grip;
@@ -23,6 +23,8 @@ export interface Handle {
   readonly axis?: Triple;
   readonly radius?: number;
   readonly outline?: readonly Triple[];
+  /** Which of a fence's points it drags. */
+  readonly point?: number;
 }
 
 /** Metres between a wall and its arrow; between the footprint's corners and the ring. */
@@ -87,8 +89,21 @@ function roundHandles(north: number, { x, z, radius, height }: Round): Handle[] 
   ];
 }
 
+/** A knob on each of a fence's points, at its top. */
+function fenceHandles({ north, fences = [] }: Scene, index: number): Handle[] {
+  const fence = fences[index];
+
+  return (fence?.points ?? []).map(({ x, z }, point) => ({
+    grip: "point",
+    at: world(north, [x, fence?.height ?? 0, z]),
+    point,
+  }));
+}
+
 /** The selected object's handles. */
 export function handles(scene: Scene, target: Target): Handle[] {
+  if (target.kind === "fence") return fenceHandles(scene, target.index);
+
   const body = bodyOf(scene, target);
 
   if (body === undefined) return [];
