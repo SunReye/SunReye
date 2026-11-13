@@ -283,8 +283,8 @@ test("the connections page lists each connection and a broker's state", async ()
     "connections",
   );
 
-  await expect.element(screen.getByText("modbus-tcp · 10.0.0.5:8899")).toBeVisible();
-  await expect.element(screen.getByText("mqtt · broker.lan:1883")).toBeVisible();
+  await expect.element(screen.getByText(/^modbus-tcp · 10\.0\.0\.5:8899$/u)).toBeVisible();
+  await expect.element(screen.getByText(/^mqtt · broker\.lan:1883 · /u)).toBeVisible();
   await expect.element(screen.getByText(/Broker.*verbunden/u)).toBeVisible();
 });
 

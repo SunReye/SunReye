@@ -1,6 +1,12 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { connect, type Attempt, type Capabilities, type Transport } from "./core.ts";
+import {
+  connect,
+  type Attempt,
+  type Capabilities,
+  type Connection,
+  type Transport,
+} from "./core.ts";
 import { BASE, problem, scripted } from "./core.harness.ts";
 
 function recording(response: Response): Transport & { readonly asked: string[] } {
@@ -100,7 +106,7 @@ test("a device is removed by its id", async () => {
 });
 
 test("a broker is added with its topic root and secrets, and its secrets are only named back", async () => {
-  const created = {
+  const created: Connection = {
     id: 2,
     name: "EVCC",
     transport: "mqtt",
