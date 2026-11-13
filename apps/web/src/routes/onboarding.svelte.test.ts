@@ -43,8 +43,8 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
     .toBeChecked();
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
-  await expect.element(screen.getByLabelText("Name von Punkt 2")).toHaveValue("Wechselrichter PV");
-  await screen.getByRole("button", { name: "Messpunkte speichern" }).click();
+  await expect.element(screen.getByRole("listitem", { name: "PV" })).toBeVisible();
+  await screen.getByRole("button", { name: "Passt so" }).click();
 
   await expect
     .element(screen.getByRole("complementary", { name: "Szene bearbeiten" }))

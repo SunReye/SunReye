@@ -373,12 +373,14 @@ fn hybrid(kind: u16, watts: u32) -> Registers {
     registers
 }
 
+/// A SUN-15K-SG05LP3 answered device type `0x0005` (read 2026-11-13, gateway, unit 0), not the
+/// protocol's `0x0500`.
 #[test]
 fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() {
     for watts in [
         5000, 6000, 8000, 10_000, 12_000, 14_000, 15_000, 16_000, 18_000, 20_000,
     ] {
-        let device = hybrid(0x0500, watts);
+        let device = hybrid(0x0005, watts);
         let identified: Vec<String> = profiles()
             .filter(|p| p.identifies(&device))
             .map(|p| p.id)
@@ -388,10 +390,12 @@ fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() 
     }
 }
 
-/// Deye's protocol gives the high-voltage range two device types: 6 to 15 kW, and 20 kW up.
+/// Deye's protocol gives the high-voltage range two device types: 6 to 15 kW, and 20 kW up. The
+/// low-voltage range answers its type byte-swapped, so both forms of each are accepted until an
+/// SG01HP3 is read.
 #[test]
 fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_type() {
-    for kind in [0x0600, 0x0601] {
+    for kind in [0x0600, 0x0601, 0x0006, 0x0106] {
         for watts in [5000, 6000, 8000, 10_000, 12_000, 15_000, 20_000, 25_000] {
             let device = hybrid(kind, watts);
             let identified: Vec<String> = profiles()

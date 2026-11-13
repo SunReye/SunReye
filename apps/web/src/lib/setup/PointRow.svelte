@@ -1,73 +1,63 @@
-<!-- One measurement point: its name, and below the root the point it hangs under. -->
+<!-- One measurement point: its tile, name and device, and its live power with what it means. -->
 <script lang="ts">
-  import Trash2 from "@lucide/svelte/icons/trash-2";
-  import type { PointDraft } from "../api/core.ts";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import AnimatedNumber from "../components/animated-number.svelte";
+  import { STATES } from "../flow/node-words.ts";
   import { m } from "../paraglide/messages.js";
-  import { SELECT } from "./fields.ts";
+  import { accentOf, stateOf } from "./point-look.ts";
+  import PointTile from "./PointTile.svelte";
 
   let {
-    point,
-    number,
-    depth,
-    earlier,
-    onchange,
-    onremove,
+    name,
+    role,
+    note,
+    watts,
+    onedit,
   }: {
-    point: PointDraft;
-    /** Counted from 1, the root first. */
-    number: number;
-    /** Levels below the root, for the indent. */
-    depth: number;
-    /** The points before it: only one of them may be its parent, so parents stay first. */
-    earlier: readonly PointDraft[];
-    onchange: (change: Readonly<Partial<PointDraft>>) => void;
-    onremove: () => void;
+    name: string;
+    role: string;
+    /** The devices it reads from. */
+    note: string;
+    /** Its power now; undefined while it is not read. */
+    watts: number | undefined;
+    /** Set while the tree is adjusted: the row opens the point's sheet. */
+    onedit?: (() => void) | undefined;
   } = $props();
+
+  const state = $derived(stateOf(role, watts));
+
+  const active = $derived(state !== undefined && state !== "idle");
 </script>
 
-<li class="flex flex-col gap-2 py-3 pr-4" style:padding-left="{16 + Math.min(depth, 4) * 20}px">
-  <div class="flex items-center gap-2">
+{#snippet body()}
+  <PointTile {role} {active} />
+  <span class="flex min-w-0 flex-1 flex-col text-left">
+    <span class="truncate text-[15px] font-medium">{name}</span>
+    <span class="truncate text-xs text-muted-foreground">{note}</span>
+  </span>
+  <span class="flex shrink-0 flex-col items-end leading-tight">
+    <span class="text-[15px] font-semibold whitespace-nowrap">
+      <AnimatedNumber value={watts === undefined ? null : Math.abs(watts) / 1000} />
+      <span class="text-xs font-normal text-muted-foreground">kW</span>
+    </span>
     <span
-      class="grid size-6 shrink-0 place-items-center rounded-sm bg-foreground/[0.06] text-xs text-muted-foreground tabular-nums"
-      aria-hidden="true">{number}</span
+      class="text-xs whitespace-nowrap"
+      style:color={active ? accentOf(role) : "var(--muted-foreground)"}
+      >{state === undefined ? " " : STATES[state]()}</span
     >
-    <Input
-      required
-      class="flex-1"
-      aria-label={m.topology_name({ number })}
-      value={point.name}
-      oninput={(event) => {
-        onchange({ name: event.currentTarget.value });
-      }}
-    />
-    {#if number > 1}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={m.topology_remove({ number })}
-        onclick={onremove}
-      >
-        <Trash2 />
-      </Button>
-    {/if}
-  </div>
-  {#if number > 1}
-    <label class="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-      {m.topology_under()}
-      <select
-        aria-label={m.topology_parent({ number })}
-        class={[SELECT, "h-8 flex-1"]}
-        value={point.parent}
-        onchange={(event) => {
-          onchange({ parent: Number(event.currentTarget.value) });
-        }}
-      >
-        {#each earlier as parent, at (at)}
-          <option value={at}>{parent.name}</option>
-        {/each}
-      </select>
-    </label>
-  {/if}
-</li>
+  </span>
+{/snippet}
+
+{#if onedit === undefined}
+  <div class="flex min-h-14 items-center gap-3 px-4 py-2">{@render body()}</div>
+{:else}
+  <button
+    type="button"
+    class="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:bg-foreground/[0.06]"
+    aria-label={m.topology_edit({ name })}
+    onclick={onedit}
+  >
+    {@render body()}
+    <ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+  </button>
+{/if}
