@@ -17,11 +17,17 @@
   let {
     current,
     admin,
+    goto,
   }: {
     /** The route id shown. */
     current: string | null;
     /** Whether Controls is listed. */
     admin: boolean;
+    /**
+     * SvelteKit's `goto`. A bare `location.hash` write reads to the hash router as an edit in the
+     * address bar, which it answers with a full reload: a white frame between screens.
+     */
+    goto: (url: string) => Promise<void>;
   } = $props();
 
   const MORE_ID = "more";
@@ -51,7 +57,8 @@
       haptics.soft();
     } else {
       go(route);
-      location.hash = href(route);
+
+      if (route !== current) void goto(href(route));
     }
   }
 </script>
