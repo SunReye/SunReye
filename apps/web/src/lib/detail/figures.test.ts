@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Day } from "../dashboard/day.ts";
-import { facts, figure } from "./figures.ts";
+import { facts, figure, formatFigure, parseFigure } from "./figures.ts";
 
 const at = (time: string) => `2026-11-12T${time}:00Z`;
 
@@ -82,4 +82,22 @@ test("grid figures diverge around zero: import above, export below", () => {
     expect(figure(id)?.diverging).toEqual(["var(--e-import)", "var(--e-export)"]);
 
   expect(figure("pv")?.diverging).toBeUndefined();
+});
+
+test("a figure id reads back as the figure it names", () => {
+  for (const ref of [
+    { kind: "string", id: 4 },
+    { kind: "ev", id: 7 },
+    { kind: "fixed", id: "ev" },
+    { kind: "fixed", id: "feedIn" },
+  ] as const)
+    expect(parseFigure(formatFigure(ref))).toEqual(ref);
+
+  expect(formatFigure({ kind: "string", id: 4 })).toBe("string-4");
+  expect(formatFigure({ kind: "ev", id: 7 })).toBe("ev-7");
+});
+
+test("an id naming no figure parses to none", () => {
+  for (const id of ["nonsense", "string-", "string-x", "ev-1.5", "string-4-1"])
+    expect(parseFigure(id)).toBeNull();
 });

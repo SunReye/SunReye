@@ -124,11 +124,10 @@
     <TodayPanel tariff={values?.[TARIFF]} {day} {onopen} />
     {#each loadpoints as loadpoint (loadpoint.id)}
       <EvCard
+        device={loadpoint.id}
         name={names.get(loadpoint.id)}
         values={loadpoint.values}
-        onopen={() => {
-          onopen(`ev-${loadpoint.id}`);
-        }}
+        {onopen}
       />
     {/each}
   </div>

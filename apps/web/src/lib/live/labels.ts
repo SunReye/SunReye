@@ -4,6 +4,7 @@ import type { PvString, Values } from "../api/core.ts";
 import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
 import { parked, type Parked } from "../cars/parked.ts";
+import { formatFigure } from "../detail/figures.ts";
 
 /** The `plant` computed device's fixed id (ADR 15). */
 export const PLANT = "4294967294";
@@ -92,9 +93,11 @@ export function liveScene(input: Live3d): LiveScene {
     chips: [
       ...input.strings.flatMap((string, at) => stringChip(input, string, at)),
       ...equipment(input),
-      ...cars.map(({ device, at, above, watts, soc }) =>
-        chip(`ev-${device}`, `ev-${device}`, "car", { watts, soc }, above, at),
-      ),
+      ...cars.map(({ device, at, above, watts, soc }) => {
+        const id = formatFigure({ kind: "ev", id: device });
+
+        return chip(id, id, "car", { watts, soc }, above, at);
+      }),
     ],
     shares: input.panels.map(({ string }) =>
       string === null || string === undefined ? null : (shares[string] ?? null),
@@ -122,6 +125,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
   if (corners.length === 0) return [];
 
   const centre = mean(corners);
+  const id = formatFigure({ kind: "string", id: string.id });
 
   const reading = {
     watts: input.values[device]?.[series] ?? null,
@@ -129,17 +133,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
     stale: input.stale?.[device]?.[series] !== undefined,
   };
 
-  return [
-    chip(
-      `string-${string.id}`,
-      `string-${string.id}`,
-      "string",
-      reading,
-      centre,
-      centre,
-      string.name,
-    ),
-  ];
+  return [chip(id, id, "string", reading, centre, centre, string.name)];
 }
 
 /** A device's power series and whether it is stale; null without a value. */

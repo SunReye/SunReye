@@ -1,6 +1,7 @@
 // The house sheet's consumers: each measured point's own consumption (ADR 14, 21).
 import type { Topology } from "../api/setup.ts";
 import { m } from "../paraglide/messages.js";
+import { formatFigure } from "./figures.ts";
 import { kept, type Group, type Reader } from "./rows.ts";
 
 const KW = { unit: "kW", digits: 2, scale: 0.001 };
@@ -21,7 +22,7 @@ export function consumers(plant: Reader, points: readonly MeasurementPoint[]): G
     return plant.num(`point.power[${p.id}]`, {
       label,
       ...KW,
-      ...(charger && { to: `ev-${charger.device}` }),
+      ...(charger && { to: formatFigure({ kind: "ev", id: charger.device }) }),
     });
   };
 

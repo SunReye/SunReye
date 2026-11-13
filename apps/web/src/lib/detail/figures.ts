@@ -24,85 +24,126 @@ const HOUSE = "var(--e-house)";
 const GRID = ["var(--e-import)", "var(--e-export)"] as const;
 const EV: Figure = { colour: "var(--e-ev)", node: "ev", chart: null };
 
-const FIGURES = new Map<string, Figure>([
-  ["production", { colour: SOLAR, node: "pv", today: "production", chart: "pv" }],
-  ["consumption", { colour: HOUSE, node: "house", today: "consumption", chart: null }],
-  [
-    "feedIn",
-    {
-      colour: "var(--e-export)",
-      node: "grid",
-      direction: "grid",
-      diverging: GRID,
-      today: "feedIn",
-      chart: null,
-    },
-  ],
-  [
-    "purchase",
-    {
-      colour: "var(--e-import)",
-      node: "grid",
-      direction: "grid",
-      diverging: GRID,
-      today: "purchase",
-      chart: null,
-    },
-  ],
-  ["autarky", { colour: "var(--e-battery)", node: null, chart: null }],
-  ["saved", { colour: SOLAR, node: null, chart: null }],
-  ["price", { colour: HOUSE, node: null, chart: "price" }],
-  ["forecast", { colour: SOLAR, node: null, chart: "pv" }],
-  ["weather", { colour: SOLAR, node: null, chart: null }],
-  ["pv", { colour: SOLAR, node: "pv", chart: "pv" }],
-  ["inverter", { colour: SOLAR, node: "inverter", chart: null }],
-  [
-    "battery",
-    {
-      colour: "var(--e-battery)",
-      node: "battery",
-      direction: "battery",
-      diverging: ["var(--e-battery)", "var(--e-battery)"],
-      chart: null,
-    },
-  ],
-  [
-    "grid",
-    { colour: "var(--e-export)", node: "grid", direction: "grid", diverging: GRID, chart: null },
-  ],
-  ["house", { colour: HOUSE, node: "house", chart: null }],
-  ["ev", EV],
-  ["generator", { colour: HOUSE, node: "generator", chart: null }],
-]);
+const FIGURES: Readonly<Record<Fixed, Figure>> = {
+  production: { colour: SOLAR, node: "pv", today: "production", chart: "pv" },
+  consumption: { colour: HOUSE, node: "house", today: "consumption", chart: null },
+  feedIn: {
+    colour: "var(--e-export)",
+    node: "grid",
+    direction: "grid",
+    diverging: GRID,
+    today: "feedIn",
+    chart: null,
+  },
+  purchase: {
+    colour: "var(--e-import)",
+    node: "grid",
+    direction: "grid",
+    diverging: GRID,
+    today: "purchase",
+    chart: null,
+  },
+  autarky: { colour: "var(--e-battery)", node: null, chart: null },
+  saved: { colour: SOLAR, node: null, chart: null },
+  price: { colour: HOUSE, node: null, chart: "price" },
+  forecast: { colour: SOLAR, node: null, chart: "pv" },
+  weather: { colour: SOLAR, node: null, chart: null },
+  pv: { colour: SOLAR, node: "pv", chart: "pv" },
+  inverter: { colour: SOLAR, node: "inverter", chart: null },
+  battery: {
+    colour: "var(--e-battery)",
+    node: "battery",
+    direction: "battery",
+    diverging: ["var(--e-battery)", "var(--e-battery)"],
+    chart: null,
+  },
+  grid: {
+    colour: "var(--e-export)",
+    node: "grid",
+    direction: "grid",
+    diverging: GRID,
+    chart: null,
+  },
+  house: { colour: HOUSE, node: "house", chart: null },
+  ev: EV,
+  generator: { colour: HOUSE, node: "generator", chart: null },
+};
+
+/** A figure named by itself rather than by a string or a loadpoint. */
+export type Fixed =
+  | Today
+  | "autarky"
+  | "saved"
+  | "price"
+  | "forecast"
+  | "weather"
+  | "pv"
+  | "inverter"
+  | "battery"
+  | "grid"
+  | "house"
+  | "ev"
+  | "generator";
+
+/** What a figure id names: a fixed figure, a PV string by its id or a loadpoint by its device. */
+export type FigureRef =
+  | { readonly kind: "fixed"; readonly id: Fixed }
+  | { readonly kind: "string"; readonly id: number }
+  | { readonly kind: "ev"; readonly id: number };
+
+/** A detail sheet's figure, as routes and taps carry it. */
+export type FigureId = Fixed | `string-${number}` | `ev-${number}`;
+
+export function formatFigure(ref: FigureRef): FigureId {
+  return ref.kind === "fixed" ? ref.id : `${ref.kind}-${ref.id}`;
+}
+
+const isFixed = (id: string): id is Fixed => Object.hasOwn(FIGURES, id);
+
+const NUMBERED = /^(?<kind>string|ev)-(?<id>\d+)$/u;
+
+/** The figure `id` names; null for none. */
+export function parseFigure(id: string): FigureRef | null {
+  const numbered = NUMBERED.exec(id)?.groups;
+
+  if (numbered !== undefined)
+    return { kind: numbered.kind === "ev" ? "ev" : "string", id: Number(numbered.id) };
+
+  return isFixed(id) ? { kind: "fixed", id } : null;
+}
 
 /** The figure `id` names: a fixed one, `string-<id>` or `ev-<device>`; null for none. */
 export function figure(id: string): Figure | null {
-  if (/^string-\d+$/u.test(id)) return { colour: SOLAR, node: id, chart: null };
+  const ref = parseFigure(id);
 
-  if (/^ev-\d+$/u.test(id)) return { ...EV, node: id };
+  if (ref === null) return null;
 
-  return FIGURES.get(id) ?? null;
+  if (ref.kind === "string") return { colour: SOLAR, node: id, chart: null };
+
+  if (ref.kind === "ev") return { ...EV, node: id };
+
+  return FIGURES[ref.id];
 }
 
 /** The title of a fixed figure; a string's and a loadpoint's are their names. */
-const TITLES = new Map([
-  ["production", m.dash_made],
-  ["consumption", m.dash_used],
-  ["feedIn", m.dash_grid_export],
-  ["purchase", m.dash_grid_import],
-  ["autarky", m.detail_autarky],
-  ["saved", m.detail_saved],
-  ["price", m.dash_spot],
-  ["forecast", m.detail_forecast],
-  ["weather", m.dash_weather],
-  ["pv", m.detail_pv],
-  ["inverter", m.detail_inverter],
-  ["battery", m.dash_battery],
-  ["grid", m.detail_grid],
-  ["house", m.dash_house],
-  ["ev", m.dash_ev],
-  ["generator", m.flow_generator],
-]);
+const TITLES: Readonly<Record<Fixed, () => string>> = {
+  production: m.dash_made,
+  consumption: m.dash_used,
+  feedIn: m.dash_grid_export,
+  purchase: m.dash_grid_import,
+  autarky: m.detail_autarky,
+  saved: m.detail_saved,
+  price: m.dash_spot,
+  forecast: m.detail_forecast,
+  weather: m.dash_weather,
+  pv: m.detail_pv,
+  inverter: m.detail_inverter,
+  battery: m.dash_battery,
+  grid: m.detail_grid,
+  house: m.dash_house,
+  ev: m.dash_ev,
+  generator: m.flow_generator,
+};
 
 /**
  * The sheet title of figure `id`: a string's and a loadpoint's are their names.
@@ -114,14 +155,15 @@ export function titleOf(
   strings: readonly Readonly<{ id: number; name: string }>[],
   device: (id: number) => string | undefined,
 ): string {
-  const string = /^string-(\d+)$/u.exec(id);
-  const loadpoint = /^ev-(\d+)$/u.exec(id);
+  const ref = parseFigure(id);
 
-  if (string) return strings.find((s) => s.id === Number(string[1]))?.name ?? m.detail_pv();
+  if (ref === null) return "";
 
-  if (loadpoint) return device(Number(loadpoint[1])) ?? m.dash_ev();
+  if (ref.kind === "fixed") return TITLES[ref.id]();
 
-  return TITLES.get(id)?.() ?? "";
+  if (ref.kind === "ev") return device(ref.id) ?? m.dash_ev();
+
+  return strings.find((s) => s.id === ref.id)?.name ?? m.detail_pv();
 }
 
 /** One figure: a number in its unit, unknown as null, or words. */
