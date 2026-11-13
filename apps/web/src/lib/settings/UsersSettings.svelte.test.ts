@@ -99,12 +99,16 @@ test("an added viewer joins the list, and a taken name says why", async () => {
   const screen = await opened(accounts([{ id: 1, name: "Oma" }], []));
   const viewers = screen.getByRole("region", { name: "Betrachter" });
 
+  // The form opens from the list's last row.
+  expect(viewers.getByRole("textbox", { name: "Name" }).query()).toBeNull();
+  await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
   await userEvent.fill(viewers.getByRole("textbox", { name: "Name" }), "Opa");
   await userEvent.fill(viewers.getByLabelText("Passwort"), "sonnenschein");
   await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
 
   await expect.element(viewers.getByRole("list").getByText("Opa", { exact: true })).toBeVisible();
 
+  await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
   await userEvent.fill(viewers.getByRole("textbox", { name: "Name" }), "Oma");
   await userEvent.fill(viewers.getByLabelText("Passwort"), "sonnenschein");
   await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
@@ -135,6 +139,7 @@ test("a new token is shown once with a copy button, then only its name stays", a
   const screen = await opened(accounts([], []));
   const tokens = screen.getByRole("region", { name: "Zugangstokens" });
 
+  await userEvent.click(tokens.getByRole("button", { name: "Token erstellen" }));
   await userEvent.fill(tokens.getByRole("textbox", { name: "Name" }), "evcc");
   await userEvent.click(tokens.getByRole("radio", { name: "Admin" }));
   await userEvent.click(tokens.getByRole("button", { name: "Token erstellen" }));
