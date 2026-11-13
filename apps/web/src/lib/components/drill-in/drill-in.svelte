@@ -55,14 +55,16 @@
   // Two panes from 1024 px (ADR 21).
   const split = new MediaQuery("(min-width: 1024px)");
 
-  // The page on screen: it stays while it slides out after the route has left it.
+  // The page on screen: it stays while it slides out after the route has left it, so it is seeded
+  // from the route once and then moved by the slide.
   // svelte-ignore state_referenced_locally
   let shown = $state<string | null>(open);
 
-  // 0 on the root, 1 on the page.
+  // 0 on the root, 1 on the page; seeded from the route at mount.
   // svelte-ignore state_referenced_locally
   let p = $state(open === null ? 0 : 1);
 
+  // The route at mount seeds the slide; the effect below follows every later route.
   // svelte-ignore state_referenced_locally
   let target: 0 | 1 = open === null ? 0 : 1;
 
