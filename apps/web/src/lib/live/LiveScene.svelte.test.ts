@@ -149,6 +149,23 @@ function boxes(names: readonly string[]): Record<string, DOMRect> {
   );
 }
 
+/** The chips' boxes once they rest: each is measured, then placed once more by its own size. */
+async function atRest(names: readonly string[]): Promise<Record<string, DOMRect>> {
+  let last = "";
+
+  await expect
+    .poll(() => {
+      const before = last;
+
+      last = JSON.stringify(boxes(names));
+
+      return last === before;
+    })
+    .toBe(true);
+
+  return boxes(names);
+}
+
 test("on a phone the chips sit in rows around the house and keep their place", async () => {
   await page.viewport(390, 600);
 
@@ -160,25 +177,7 @@ test("on a phone the chips sit in rows around the house and keep their place", a
 
   const names = ["Süd", "Wechselrichter", "Netz", "Haus"];
   const figure = screen.getByRole("figure", { name: "Live-Ansicht des Hauses" }).element();
-
-  // Each chip is measured, then placed once more by its own size.
-  const settle = async () => {
-    let last = "";
-
-    await expect
-      .poll(() => {
-        const before = last;
-
-        last = JSON.stringify(boxes(names));
-
-        return last === before;
-      })
-      .toBe(true);
-
-    return boxes(names);
-  };
-
-  const first = await settle();
+  const first = await atRest(names);
   const within = figure.getBoundingClientRect();
 
   // The string above the house, the inverter under it, grid and house in one row below that.

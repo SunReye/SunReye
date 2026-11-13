@@ -153,14 +153,15 @@ function batteryReading(input: Live3d, device: string): Reading | null {
 const inverterReading = (input: Live3d, device: string): Reading | null =>
   seriesReading(input, device, "inverter.power") ?? seriesReading(input, device, "pv.power");
 
+/** A chip that stands for no marker; none without a reading. */
+const at = (key: string, id: string, kind: ChipKind, read: Reading | null): Chip[] =>
+  read === null ? [] : [chip(key, id, kind, read, null)];
+
 function equipment(input: Live3d): Chip[] {
   const placed = input.mounts === null || input.mounts === undefined ? [] : input.equipment;
 
   const marked = (kind: Equipment["kind"], device: number): boolean =>
     placed.some((marker) => marker.kind === kind && marker.device === device);
-
-  const at = (key: string, id: string, kind: ChipKind, read: Reading | null): Chip[] =>
-    read === null ? [] : [chip(key, id, kind, read, null)];
 
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))

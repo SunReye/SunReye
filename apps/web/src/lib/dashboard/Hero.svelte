@@ -4,15 +4,12 @@
   once the page is idle, behind the studio stand-in or the flow it replaces, and fades in.
 -->
 <script lang="ts">
-  import Lock from "@lucide/svelte/icons/lock";
-  import LockOpen from "@lucide/svelte/icons/lock-open";
-  import { Toggle } from "#lib/components/ui/toggle/index.js";
   import type { Core, Live } from "../api/core.ts";
-  import { haptics } from "../haptics.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
   import Flow2d from "../flow/Flow2d.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
+  import CameraLock from "./CameraLock.svelte";
   import Headline from "./Headline.svelte";
   import HeroScene from "./HeroScene.svelte";
   import { SceneLoad } from "./scene-load.svelte.ts";
@@ -94,21 +91,7 @@
 
   <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
     {#if mode === "3d"}
-      <Toggle
-        size="sm"
-        bind:pressed={
-          () => !locked,
-          (moving) => {
-            haptics.selection();
-            locked = !moving;
-          }
-        }
-        class="glass-ambient size-9 ring-1 ring-border/60 elevation-1"
-        aria-label={m.dash_camera_move()}
-        title={m.dash_camera_move()}
-      >
-        {#if locked}<Lock />{:else}<LockOpen />{/if}
-      </Toggle>
+      <CameraLock bind:locked />
     {/if}
   <ViewToggle
     shows={mode}

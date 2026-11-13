@@ -53,6 +53,9 @@ interface Seat {
   readonly w: number;
 }
 
+/** A label and its position among the labels. */
+type Member = Label & { readonly at: number };
+
 interface Row {
   readonly seats: readonly Seat[];
   readonly y: number;
@@ -91,7 +94,10 @@ export function arrange(labels: readonly Label[], frame: Frame): Box[] {
 
 /** A lane's rows, nearest the house first. */
 function lane(labels: readonly Label[], side: Label["lane"], frame: Frame): Row[] {
-  const members = labels.flatMap((label, at) => (label.lane === side ? [{ ...label, at }] : []));
+  const members = labels.flatMap((label, at): Member[] =>
+    label.lane === side ? [{ ...label, at }] : [],
+  );
+
   const groups = [...new Set(members.map(({ group }) => group))].toSorted((a, b) => a - b);
   const { house } = frame;
   let offset = CLEAR;
@@ -120,9 +126,9 @@ function lane(labels: readonly Label[], side: Label["lane"], frame: Frame): Row[
  * A group in its markers' order, so its leader lines do not cross. Chips without a marker line up
  * beside the marked ones on the canvas's roomier side, or under the house when none is marked.
  */
-function seated(members: readonly (Label & { readonly at: number })[], frame: Frame): Seat[] {
+function seated(members: readonly Member[], frame: Frame): Seat[] {
   const marked = members
-    .flatMap(({ at, x, w }) => (x === null ? [] : [{ at, x, w }]))
+    .flatMap(({ at, x, w }): Seat[] => (x === null ? [] : [{ at, x, w }]))
     .toSorted((a, b) => a.x - b.x);
 
   const loose = members.filter(({ x }) => x === null);
@@ -145,7 +151,7 @@ function seated(members: readonly (Label & { readonly at: number })[], frame: Fr
   if (mean >= frame.width / 2) {
     let next = marked[0]!;
 
-    const before = loose.toReversed().map(({ at, w }) => {
+    const before = loose.toReversed().map(({ at, w }): Seat => {
       next = { at, x: next.x - (next.w + w) / 2 - GAP, w };
 
       return next;
@@ -156,7 +162,7 @@ function seated(members: readonly (Label & { readonly at: number })[], frame: Fr
 
   let last = marked.at(-1)!;
 
-  const after = loose.map(({ at, w }) => {
+  const after = loose.map(({ at, w }): Seat => {
     last = { at, x: last.x + (last.w + w) / 2 + GAP, w };
 
     return last;
@@ -166,11 +172,11 @@ function seated(members: readonly (Label & { readonly at: number })[], frame: Fr
 }
 
 /** The fewest rows of neighbours, evenly filled, that each fit `room`. */
-function wrap(seats: readonly Seat[], room: number): Seat[][] {
+function wrap(seats: readonly Seat[], room: number): (readonly Seat[])[] {
   for (let count = 1; count < seats.length; count++) {
     const size = Math.ceil(seats.length / count);
 
-    const rows = Array.from({ length: count }, (_, row) =>
+    const rows = Array.from({ length: count }, (_, row): readonly Seat[] =>
       seats.slice(row * size, (row + 1) * size),
     ).filter((row) => row.length > 0);
 

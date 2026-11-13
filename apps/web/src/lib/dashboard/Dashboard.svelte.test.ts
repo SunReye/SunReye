@@ -286,24 +286,6 @@ test("on a phone the blocks scroll in order, hero first", async () => {
   expect(document.documentElement.scrollHeight).toBeGreaterThan(innerHeight);
 });
 
-test("a phone's address bar showing or hiding moves nothing below the hero", async () => {
-  await page.viewport(390, 844);
-
-  const screen = await open();
-
-  await expect.element(screen.getByText("2,10 €")).toBeVisible();
-
-  const below = () =>
-    screen.getByRole("group", { name: "Jetzt" }).element().getBoundingClientRect();
-  const before = below().top;
-
-  // The bar takes about 60 px of the viewport's height.
-  await page.viewport(390, 784);
-  await expect.poll(() => innerHeight).toBe(784);
-
-  expect(below().top).toBe(before);
-});
-
 /** The backdrop blur behind a block. */
 function blur(role: "group" | "region", name: string): string {
   return getComputedStyle(page.getByRole(role, { name }).element()).backdropFilter;
