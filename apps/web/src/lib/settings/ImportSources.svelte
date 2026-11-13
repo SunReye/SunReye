@@ -1,8 +1,16 @@
 <script lang="ts">
   import type { Core, SharedArchive } from "../api/core";
+  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import { m } from "../paraglide/messages.js";
+  import ImportUpload from "./ImportUpload.svelte";
 
   type V3Device = SharedArchive["devices"][number];
+
+  interface Archive {
+    readonly path: string;
+    readonly label: string;
+    readonly devices: readonly V3Device[];
+  }
 
   let {
     core,
@@ -22,52 +30,46 @@
     onupload: (file: File) => void;
   } = $props();
 
-  let shared = $derived(core.importFiles());
+  const id = $props.id();
+
+  // The archives under `/share`, then the uploaded one; an upload reads `/share` again.
+  let archives = $derived.by(() => {
+    const upload: readonly Archive[] =
+      uploaded === undefined ? [] : [{ path: "upload", label: m.import_uploaded(), devices: uploaded }];
+
+    return core.importFiles().then((files): readonly Archive[] => [
+      ...("problem" in files ? [] : files.map((file) => ({ ...file, label: file.path }))),
+      ...upload,
+    ]);
+  });
+
+  function pick(options: readonly Archive[], next: string): void {
+    const chosen = options.find((option) => option.path === next);
+
+    if (chosen !== undefined) onchoose(chosen.path, chosen.devices);
+  }
 </script>
 
-<fieldset {disabled}>
-  <legend>{m.import_archive()}</legend>
-  {#await shared then files}
-    {#each "problem" in files ? [] : files as file (file.path)}
-      {@render option(file.path, file.path, file.devices)}
-    {:else}
-      <p>{m.import_none_shared()}</p>
-    {/each}
+<div role="group" aria-labelledby="{id}-archive" class="flex flex-col gap-2 px-4">
+  <span id="{id}-archive" class="text-sm font-medium">{m.import_archive()}</span>
+  {#await archives then options}
+    {#if options.length === 0}
+      <p class="text-sm text-muted-foreground">{m.import_none_shared()}</p>
+    {/if}
+    <ToggleGroup.Root
+      type="single"
+      variant="outline"
+      orientation="vertical"
+      {disabled}
+      class="w-full empty:hidden"
+      bind:value={() => source ?? "", (next) => pick(options, next)}
+    >
+      {#each options as option (option.path)}
+        <ToggleGroup.Item value={option.path} class="w-full justify-start px-3 font-normal">
+          <span class="truncate">{option.label}</span>
+        </ToggleGroup.Item>
+      {/each}
+    </ToggleGroup.Root>
   {/await}
-  {#if uploaded !== undefined}
-    {@render option("upload", m.import_uploaded(), uploaded)}
-  {/if}
-  <label>
-    {m.import_upload()}
-    <input
-      type="file"
-      accept=".tar.gz,application/gzip"
-      onchange={(event) => {
-        const file = event.currentTarget.files?.[0];
-
-        if (file !== undefined) onupload(file);
-      }}
-    />
-  </label>
-</fieldset>
-
-{#snippet option(path: string, label: string, devices: readonly V3Device[])}
-  <label>
-    <input
-      type="radio"
-      name="import-source"
-      checked={source === path}
-      onchange={() => {
-        onchoose(path, devices);
-      }}
-    />{label}
-  </label>
-{/snippet}
-
-<style>
-  fieldset {
-    display: grid;
-    gap: 0.5rem;
-    justify-items: start;
-  }
-</style>
+  <ImportUpload {disabled} {onupload} />
+</div>

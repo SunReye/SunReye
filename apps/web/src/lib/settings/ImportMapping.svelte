@@ -1,13 +1,15 @@
 <script lang="ts">
   import type { Core, SharedArchive } from "../api/core";
+  import * as Item from "#lib/components/ui/item/index.js";
+  import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
+  import ImportDevice from "./ImportDevice.svelte";
 
   let {
     core,
     archive,
     mapping = $bindable(),
     disabled,
-    onstart,
   }: {
     core: Core;
     /** The chosen archive's v3 devices. */
@@ -15,37 +17,40 @@
     /** The v5 device id each v3 slug maps to; empty when it is not imported. */
     mapping: Record<string, string>;
     disabled: boolean;
-    onstart: () => void;
   } = $props();
 
-  // The v5 devices to map them to.
-  let targets = $derived(core.devices());
+  const id = $props.id();
+
+  /** Skipping, then the v5 devices to map them to. */
+  async function read(): Promise<{ value: string; label: string }[]> {
+    const answer = await core.devices();
+
+    return [
+      { value: "", label: m.import_skip() },
+      ...("problem" in answer ? [] : answer).map((target) => ({
+        value: String(target.id),
+        label: m.import_device({ name: target.name, id: target.id }),
+      })),
+    ];
+  }
+
+  let choices = $derived.by(read);
 </script>
 
-<fieldset {disabled}>
-  <legend>{m.import_devices()}</legend>
-  {#each archive as device (device.slug)}
-    <label>
-      {device.slug}
-      <select bind:value={mapping[device.slug]}>
-        <option value="">{m.import_skip()}</option>
-        {#await targets then answer}
-          {#each "problem" in answer ? [] : answer as target (target.id)}
-            <option value={String(target.id)}>
-              {m.import_device({ name: target.name, id: target.id })}
-            </option>
-          {/each}
-        {/await}
-      </select>
-    </label>
-  {/each}
-  <button type="button" onclick={onstart}>{m.import_start()}</button>
-</fieldset>
-
-<style>
-  fieldset {
-    display: grid;
-    gap: 0.5rem;
-    justify-items: start;
-  }
-</style>
+<div role="group" aria-labelledby="{id}-devices" class="flex flex-col">
+  <span id="{id}-devices" class="px-4 text-sm font-medium">{m.import_devices()}</span>
+  {#await choices}
+    <LoadingRows rows={archive.length} />
+  {:then listed}
+    <Item.Group class="gap-0 divide-y divide-border/60">
+      {#each archive as device (device.slug)}
+        <ImportDevice
+          slug={device.slug}
+          choices={listed}
+          bind:value={() => mapping[device.slug] ?? "", (next) => (mapping[device.slug] = next)}
+          {disabled}
+        />
+      {/each}
+    </Item.Group>
+  {/await}
+</div>
