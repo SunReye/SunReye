@@ -94,10 +94,13 @@
   const values = $derived(live !== undefined && "devices" in live ? live.devices : undefined);
   const stale = $derived(live !== undefined && "stale" in live ? live.stale : undefined);
 
-  /** Each EVCC loadpoint, told by its `ev.charge.power` (ADR 10). */
+  /**
+   * Each EVCC loadpoint, told by its `ev.charge.power` (ADR 10). The plant's total is none: the
+   * computed devices hold the top ids, the spot price's lowest (ADR 15).
+   */
   const loadpoints = $derived(
     Object.entries(values ?? {})
-      .filter(([, series]) => "ev.charge.power" in series)
+      .filter(([id, series]) => Number(id) < SPOT && "ev.charge.power" in series)
       .map(([id, series]) => ({ id: Number(id), values: series })),
   );
 </script>
@@ -121,11 +124,10 @@
     <TodayPanel tariff={values?.[TARIFF]} {day} {onopen} />
     {#each loadpoints as loadpoint (loadpoint.id)}
       <EvCard
+        device={loadpoint.id}
         name={names.get(loadpoint.id)}
         values={loadpoint.values}
-        onopen={() => {
-          onopen(`ev-${loadpoint.id}`);
-        }}
+        {onopen}
       />
     {/each}
   </div>

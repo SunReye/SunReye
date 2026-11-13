@@ -12,10 +12,18 @@ export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
 const LIVE = {
-  [PLANT]: { "pv.power": 4200, "load.power": 900, "grid.power": -3300, "battery.power": 0 },
+  [PLANT]: {
+    "pv.power": 4200,
+    "load.power": 900,
+    "grid.power": -3300,
+    "battery.power": 0,
+    "point.power[1]": 300,
+    "point.power[2]": 600,
+  },
   [SPOT]: { "price.spot": 0.061 },
   [INVERTER]: {
     "pv.power": 4200,
+    "load.power": 900,
     "inverter.power": 4100,
     "inverter.status": 1,
     "pv.mppt.power[1]": 2500,
@@ -39,9 +47,11 @@ export interface Served {
   stale: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined;
   /** A second frame, a second after the snapshot: the plant importing. */
   tick: boolean;
+  /** The stream breaks after its snapshot and the core is not heard from again. */
+  breaks: boolean;
 }
 
-export const served: Served = { live: LIVE, stale: undefined, tick: false };
+export const served: Served = { live: LIVE, stale: undefined, tick: false, breaks: false };
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 
@@ -50,20 +60,21 @@ function event(name: string, data: Readonly<{ devices: object; stale?: object }>
   return new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-/** Each history request: device, series and its window. */
+/** Each statistics request: device, series and its window. */
 export const asked: Readonly<{ device: string; series: string; from: string; to: string }>[] = [];
 
-/** String 1 made 12 kWh in the range, string 2 3 kWh: a mean over one hour each. */
-function history(device: string, series: string | null, from: string): Response {
+/** String 1 made 12 kWh in the range, string 2 3 kWh: one rollup each. */
+function statistics(device: string, series: string | null, from: string): Response {
   const watts = { "pv.string.power[1]": 12_000, "pv.string.power[2]": 3000 }[series ?? ""];
   const at = Date.parse(from) + 10 * 3_600_000;
 
   if (device !== INVERTER || watts === undefined)
-    return Response.json({ points: [], tier: "hour" });
+    return Response.json({ points: [], period: "hour" });
 
   const [start, end] = [new Date(at).toISOString(), new Date(at + 3_600_000).toISOString()];
+  const point = { date: from.slice(0, 10), start, end, mean: watts, integral: watts, hours: 1 };
 
-  return Response.json({ points: [{ start, end, mean: watts }], tier: "hour" });
+  return Response.json({ points: [point], period: "hour" });
 }
 
 function stream(): Response {
@@ -73,6 +84,16 @@ function stream(): Response {
     new ReadableStream({
       start: (controller) => {
         controller.enqueue(event("snapshot", frame));
+
+        if (served.breaks) {
+          // The reconnect finds no core.
+          ROUTES.set("/api/v1/live", () => {
+            throw new TypeError("offline");
+          });
+          setTimeout(() => {
+            controller.error(new TypeError("network"));
+          }, 50);
+        }
 
         if (served.tick) {
           setTimeout(() => {
@@ -86,9 +107,9 @@ function stream(): Response {
   );
 }
 
-const slot = (hour: number, value: number) => ({
+const slot = (hour: number, value: number, minute = 0) => ({
   issued: "2026-11-11T13:00:00Z",
-  target: `2026-11-12T${String(hour).padStart(2, "0")}:00:00Z`,
+  target: `2026-11-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
   value,
 });
 
@@ -120,8 +141,18 @@ const CAPABILITIES = {
   },
 };
 
-/** Each path but history's, and what the fake core answers there. */
+/** The grid connection and a heat pump below it, which a viewer reads too (ADR 9). */
+const TOPOLOGY = {
+  appliesFrom: "2026-11-01T00:00:00Z",
+  points: [
+    { id: 1, name: "Netz", parent: null, contested: false, claims: [] },
+    { id: 2, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
+  ],
+};
+
+/** Each path but statistics', and what the fake core answers there. */
 const ROUTES = new Map<string, () => Response>([
+  ["/api/v1/topology", () => Response.json(TOPOLOGY)],
   ["/api/v1/live", stream],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
   [
@@ -131,7 +162,15 @@ const ROUTES = new Map<string, () => Response>([
   ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
   [
     `/api/v1/devices/${SPOT}/forecasts`,
-    () => Response.json({ points: [slot(0, 0.12), slot(12, 0.061), slot(13, -0.01)] }),
+    () =>
+      Response.json({
+        points: [slot(0, 0.12), slot(12, 0.125), slot(12, 0.0625, 30), slot(13, -0.01)],
+      }),
+  ],
+  // The inverter expects 2 kW from 10:00 to 14:00: 8 kWh, half of it still to come.
+  [
+    `/api/v1/devices/${INVERTER}/forecasts`,
+    () => Response.json({ points: [10, 11, 12, 13].map((h) => slot(h, 2000)) }),
   ],
   [
     "/api/v1/devices",
@@ -147,14 +186,14 @@ const ROUTES = new Map<string, () => Response>([
 
 function answer(href: string): Response {
   const { pathname, searchParams: q } = new URL(href);
-  const read = /^\/api\/v1\/devices\/(\d+)\/history$/u.exec(pathname);
+  const read = /^\/api\/v1\/devices\/(\d+)\/statistics$/u.exec(pathname);
 
   if (read) {
     const [device, series] = [read[1]!, q.get("series") ?? ""];
 
     asked.push({ device, series, from: q.get("from") ?? "", to: q.get("to") ?? "" });
 
-    return history(device, series, q.get("from") ?? "");
+    return statistics(device, series, q.get("from") ?? "");
   }
 
   return (ROUTES.get(pathname) ?? (() => Response.json({ points: [] })))();
@@ -171,6 +210,8 @@ export async function prepare(): Promise<void> {
   served.stale = undefined;
   asked.length = 0;
   served.tick = false;
+  served.breaks = false;
+  ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],

@@ -28,6 +28,7 @@
   // svelte-ignore state_referenced_locally
   const orig = edit;
 
+  // The value at open is the one Apply replaces; a tick while editing must not move it.
   // svelte-ignore state_referenced_locally
   const now = current;
 

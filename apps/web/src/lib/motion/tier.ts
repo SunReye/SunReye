@@ -27,20 +27,26 @@
  * `bun test` reaches it.
  */
 
+/** Where each browser keeps its low-power switch (ADR 21). */
+export const LOW_POWER = "sunreye.low-power";
+
 /** What is actually rendered. */
 export type MotionTier =
   /** Everything: comet chains with their bloom, gliding readouts, the pulsing hub ring. */
   | "full"
   /** Motion kept, cost dropped: comets without the filter bloom, fewer beads, no ring pulse. */
   | "lite"
-  /** No motion at all — the `prefers-reduced-motion` picture: still overlays, snapping readouts. */
+  /** No motion at all — reduced motion or the low-power switch: still overlays, snapping readouts. */
   | "still";
 
-/** How many strikes a device can take before it is at the bottom tier. */
-export const MAX_STRAIN = 2;
+/** How many strikes a device can take before it is at the bottom of what strain can reach. */
+export const MAX_STRAIN = 1;
 
-/** The tier rendered at each strain level, worst case last. */
-const TIERS: readonly MotionTier[] = ["full", "lite", "still"];
+/**
+ * The tier rendered at each strain level, worst case last. Strain stops at lite: still is the
+ * off switches' picture, never the frame watch's (ADR 21).
+ */
+const TIERS: readonly MotionTier[] = ["full", "lite"];
 
 /** The tier to render: `reduceMotion` wins over whatever the device manages. */
 export function resolveTier(reduceMotion: boolean, strain: number): MotionTier {

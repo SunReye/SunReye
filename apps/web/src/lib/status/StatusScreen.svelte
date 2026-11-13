@@ -1,4 +1,6 @@
 <script lang="ts">
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import { Button } from "#lib/components/ui/button/index.js";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import Brokers from "./Brokers.svelte";
@@ -20,17 +22,13 @@
 </script>
 
 <main>
-  <button type="button" onclick={refresh}>{m.status_refresh()}</button>
-  {#await problems then answer}
-    <Problems {answer} />
-  {/await}
+  <Button variant="outline" size="sm" onclick={refresh}><RefreshCw />{m.status_refresh()}</Button>
+  <Problems answer={problems} />
   <!-- Connections are admin only; a viewer sees no brokers. -->
   {#await connections then answer}
     {#if !("problem" in answer)}
       <Brokers connections={answer} />
     {/if}
   {/await}
-  {#await logs then answer}
-    <Log {answer} />
-  {/await}
+  <Log answer={logs} />
 </main>

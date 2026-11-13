@@ -1,17 +1,31 @@
 // The plant-local day (ADR 3): "today" starts at the plant's midnight, whatever the viewer's zone.
 
+/** One formatter per zone: building one costs far more than formatting with it. */
+const WALLS = new Map<string, Intl.DateTimeFormat>();
+
+function wallOf(zone: string): Intl.DateTimeFormat {
+  let wall = WALLS.get(zone);
+
+  if (!wall) {
+    wall = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+    });
+    WALLS.set(zone, wall);
+  }
+
+  return wall;
+}
+
 /** How far `zone`'s wall clock is ahead of UTC at `at`, in ms. */
 function offset(zone: string, at: number): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: zone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-  }).formatToParts(at);
+  const parts = wallOf(zone).formatToParts(at);
 
   const field = new Map<string, number>();
 

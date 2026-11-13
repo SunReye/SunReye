@@ -16,7 +16,12 @@ vi.setConfig({ testTimeout: 60_000 });
 let types: "answer" | "hold" | "fail" = "answer";
 let held = Promise.withResolvers<void>();
 
+/** Settles once the scene asks for its module types: its load has started. */
+let loading = Promise.withResolvers<void>();
+
 async function moduleTypes(): Promise<Response> {
+  loading.resolve();
+
   if (types === "fail") throw new TypeError("offline");
 
   if (types === "hold") await held.promise;
@@ -45,10 +50,12 @@ beforeEach(async () => {
   localStorage.clear();
   types = "answer";
   held = Promise.withResolvers();
+  loading = Promise.withResolvers();
   await page.viewport(1000, 800);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   held.resolve();
 });
 
@@ -110,15 +117,17 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
   types = "hold";
 
   await hero();
+  // The load's own clock: its one-second notice is due when the test says so.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   await page.getByRole("radio", { name: "3D" }).click();
-  // Long enough for the load to have started.
-  await new Promise((resolve) => {
-    setTimeout(resolve, 1500);
-  });
+  await loading.promise;
+  vi.advanceTimersByTime(1500);
+  await Promise.resolve();
 
   expect(flowShown()).toBe(true);
   expect(page.getByText("3D-Ansicht lädt …").elements()).toHaveLength(0);
 
+  vi.useRealTimers();
   held.resolve();
 
   await expect.element(sceneFigure(), SLOW).toBeVisible();

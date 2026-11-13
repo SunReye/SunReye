@@ -1,4 +1,5 @@
 // The breakdown beside the chart: what the range's flows were, per question. Pure.
+import { flowColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { kwh, money, num } from "../range/format.ts";
 import type { Sum } from "./flows.ts";
@@ -46,7 +47,7 @@ function battery(s: Sum): Row[] {
       s.charge,
       kwh,
       m.stats_discharged({ energy: kwh(s.discharge) }),
-      "var(--e-battery)",
+      flowColour("battery"),
     ),
   ];
 }
@@ -67,14 +68,14 @@ function cash(t: BreakdownInput): Row[] {
       t.money ? c.paid : null,
       signed("− "),
       kwh(s.purchase),
-      "var(--e-import)",
+      flowColour("import"),
     ),
     row(
       m.stats_feed_in_pay(),
       t.money ? c.earned : null,
       signed("+ "),
       kwh(s.feedIn),
-      "var(--e-export)",
+      flowColour("export"),
     ),
     row(m.stats_savings(), t.money ? c.saved : null, money, m.stats_saved_note()),
   ];
@@ -84,10 +85,10 @@ function shares(t: BreakdownInput): Row[] {
   const s = t.sum;
 
   return [
-    row(m.stats_autarky(), s.autarky, share, m.stats_autarky_note(), "var(--e-battery)"),
-    row(m.stats_self_use(), s.selfUse, share, m.stats_self_use_note(), "var(--e-solar)"),
+    row(m.stats_autarky(), s.autarky, share, m.stats_autarky_note(), flowColour("battery")),
+    row(m.stats_self_use(), s.selfUse, share, m.stats_self_use_note(), flowColour("solar")),
     ...battery(s),
-    row(m.stats_bought(), s.purchase, kwh, money(t.money?.paid ?? 0), "var(--e-import)"),
+    row(m.stats_bought(), s.purchase, kwh, money(t.money?.paid ?? 0), flowColour("import")),
   ];
 }
 
@@ -100,7 +101,7 @@ function plant(t: BreakdownInput): Row[] {
       t.kwp,
       (v) => `${num(v, 1)} kWp`,
       m.stats_strings_count({ count: t.strings }),
-      "var(--e-solar)",
+      flowColour("solar"),
     ),
     row(
       m.stats_specific(),
@@ -124,14 +125,21 @@ function energy(t: BreakdownInput): Row[] {
   const s = t.sum;
 
   return [
-    row(m.stats_production(), s.production, kwh, "", "var(--e-solar)"),
+    row(m.stats_production(), s.production, kwh, "", flowColour("solar")),
     row(m.stats_self_used(), s.selfUsed, kwh, pct(s.selfUse), "", true),
-    row(m.stats_feed_in(), s.feedIn, kwh, priced(t.money?.earned, "+ "), "var(--e-export)", true),
-    row(m.stats_house(), s.consumption, kwh, "", "var(--e-house)"),
+    row(
+      m.stats_feed_in(),
+      s.feedIn,
+      kwh,
+      priced(t.money?.earned, "+ "),
+      flowColour("export"),
+      true,
+    ),
+    row(m.stats_house(), s.consumption, kwh, "", flowColour("house")),
     ...(s.ev > 0.05
-      ? [row(m.stats_ev(), s.ev, kwh, pct((s.ev / s.consumption) * 100), "var(--e-ev)", true)]
+      ? [row(m.stats_ev(), s.ev, kwh, pct((s.ev / s.consumption) * 100), flowColour("ev"), true)]
       : []),
-    row(m.stats_bought(), s.purchase, kwh, priced(t.money?.paid, "− "), "var(--e-import)", true),
+    row(m.stats_bought(), s.purchase, kwh, priced(t.money?.paid, "− "), flowColour("import"), true),
     ...battery(s),
   ];
 }

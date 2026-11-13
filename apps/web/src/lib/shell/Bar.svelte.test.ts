@@ -107,11 +107,16 @@ test("More lists the other screens and opens with a soft tap", async () => {
   await expect.element(links.nth(2)).toHaveTextContent("Status");
 });
 
-test("More lists Controls first for the admin", async () => {
+test("More lists Controls first and Devices after Settings for the admin", async () => {
   await phone("/", true);
   await openMore();
+  const links = sheet().getByRole("link");
 
-  await expect.element(sheet().getByRole("link").first()).toHaveAttribute("href", "#/controls");
+  await expect.element(links.first()).toHaveAttribute("href", "#/controls");
+  await expect
+    .element(sheet().getByRole("link", { name: /Geräte/u }))
+    .toHaveAttribute("href", "#/settings?group=devices");
+  expect(links.elements()[2]?.getAttribute("href")).toBe("#/settings?group=devices");
 });
 
 test("a screen picked in More closes the sheet", async () => {

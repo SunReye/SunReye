@@ -5,14 +5,14 @@
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
-  import { bandFigure, means } from "../history/history.ts";
+  import { bandFigure, periodOf, rollups } from "../history/history.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { bandsOf } from "../range/fill.ts";
   import { kwh } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { planned, plannedEnergy, type Line } from "./forecast.ts";
+  import { measuredBar, planned, plannedEnergy, type Line } from "./forecast.ts";
   import LinePicker from "./LinePicker.svelte";
 
   let {
@@ -34,10 +34,13 @@
     () => route,
     async (from, to, now) => {
       const series = line.series;
+      const period = periodOf(route.range);
       const until = Math.min(to.getTime(), now);
 
       const [measured, forecast] = await Promise.all([
-        from.getTime() < until ? means(core, device, series, from, new Date(until)) : [],
+        from.getTime() < until
+          ? rollups(core, device, series, period, from, new Date(until))
+          : [],
         planned(core, device, series, from, to),
       ]);
 
@@ -85,7 +88,7 @@
   {/if}
   <BandChart
     bands={view?.bands ?? []}
-    up={[{ label: m.forecast_measured(), colour: "var(--e-solar)" }]}
+    up={[measuredBar()]}
     markLabel={m.range_forecast()}
     ghostLabel={m.range_forecast()}
     via={data.current?.via}

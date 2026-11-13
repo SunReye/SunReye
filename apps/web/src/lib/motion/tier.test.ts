@@ -30,15 +30,15 @@ describe("resolveTier", () => {
     }
   });
 
-  test("steps down one tier per strike", () => {
+  test("a strike drops a struggling device to lite", () => {
     expect(resolveTier(false, 0)).toBe("full");
     expect(resolveTier(false, 1)).toBe("lite");
-    expect(resolveTier(false, 2)).toBe("still");
   });
 
-  test("cannot fall past the bottom tier, whatever the count says", () => {
-    for (const strain of [3, 99, Number.POSITIVE_INFINITY]) {
-      expect(resolveTier(false, strain)).toBe("still");
+  test("strain never makes a device still, whatever the count says (ADR 21)", () => {
+    // Still is the off switches' picture: only reduced motion and low power reach it.
+    for (const strain of [2, 3, 99, Number.POSITIVE_INFINITY]) {
+      expect(resolveTier(false, strain)).toBe("lite");
     }
   });
 
@@ -53,7 +53,6 @@ describe("parseStrain", () => {
   test("reads back what the shell wrote", () => {
     expect(parseStrain("0")).toBe(0);
     expect(parseStrain("1")).toBe(1);
-    expect(parseStrain("2")).toBe(2);
   });
 
   test("an absent, empty or corrupt entry starts the device optimistic", () => {
@@ -76,7 +75,7 @@ describe("clampStrain", () => {
   test("holds the count inside the tier ladder", () => {
     expect(clampStrain(-1)).toBe(0);
     expect(clampStrain(0)).toBe(0);
-    expect(clampStrain(2)).toBe(2);
+    expect(clampStrain(1)).toBe(1);
     expect(clampStrain(5)).toBe(MAX_STRAIN);
     expect(clampStrain(Number.NaN)).toBe(0);
   });

@@ -1,6 +1,6 @@
 <!-- One line of the breakdown: its colour, label, note and value. -->
 <script lang="ts">
-  import AnimatedNumber from "../AnimatedNumber.svelte";
+  import AnimatedNumber from "../components/animated-number.svelte";
   import type { Row } from "./breakdown.ts";
 
   let { r, loading }: { r: Row; loading: boolean } = $props();

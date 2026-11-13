@@ -13,7 +13,7 @@ import {
   type Range,
 } from "../range/range.ts";
 import type { Band } from "../range/bands.ts";
-import { sumOf, type Plant } from "./flows.ts";
+import { NO_PLANT, sumOf, type Plant } from "./flows.ts";
 import { readPlant } from "./plant-read.ts";
 import type { CostDay, StatsCore } from "./stats.svelte.ts";
 import type { Metric } from "./view.ts";
@@ -39,16 +39,7 @@ async function readYear(core: StatsCore, zone: string, range: Range, now: number
   if (to <= from)
     return {
       range,
-      plant: {
-        pv: [],
-        load: [],
-        imported: [],
-        exported: [],
-        selfUsed: [],
-        selfCovered: [],
-        battery: [],
-        ev: [],
-      },
+      plant: NO_PLANT,
       days: [],
     };
 

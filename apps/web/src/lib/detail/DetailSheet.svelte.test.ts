@@ -15,20 +15,34 @@ test("a dashboard figure asks to open its detail", async () => {
   expect(onopen).toHaveBeenCalledWith("price");
 });
 
-test("the price sheet charts today's spot prices with their CC BY attribution", async () => {
+/** Each hour bar's price; `undefined` for a gap. */
+function hourPrices(): (string | undefined)[] {
+  return [...document.querySelectorAll("[data-hour]")].map((b) =>
+    b instanceof HTMLElement ? b.dataset.price : undefined,
+  );
+}
+
+test("the price sheet charts today's spot prices hourly with their CC BY attribution", async () => {
   const { screen } = await show("price");
   const sheet = screen.getByRole("dialog", { name: "Spotpreis" });
 
   await expect.element(sheet.getByRole("img", { name: "Spotpreise heute" })).toBeVisible();
+
+  const gap = undefined;
+
+  // One bar per hour, its quarter-hours averaged; an hour without a price is a gap, never 0.
+
   await expect
-    .poll(() =>
-      [...document.querySelectorAll("[data-price]")].map((b) =>
-        b instanceof HTMLElement ? b.dataset.price : null,
-      ),
-    )
-    .toEqual(["0.12", "0.061", "-0.01"]);
-  // The slot in force at 12:20 is noon's.
-  expect(document.querySelector<HTMLElement>("[data-now]")?.dataset.price).toBe("0.061");
+    .poll(hourPrices)
+    .toEqual([
+      "0.12",
+      ...Array.from({ length: 11 }, () => gap),
+      "0.09375",
+      "-0.01",
+      ...Array.from({ length: 10 }, () => gap),
+    ]);
+  // The hour in force at 12:20 is noon's.
+  expect(document.querySelector<HTMLElement>("[data-now]")?.dataset.price).toBe("0.09375");
   await expect.element(sheet.getByText("00:00")).toBeVisible();
   await expect
     .element(sheet.getByRole("link", { name: "CC BY 4.0" }))
@@ -78,6 +92,17 @@ test("an offline device is stated once above its readings", async () => {
   await expect
     .element(screen.getByRole("status"))
     .toHaveTextContent("Gerät antwortet nicht · letzte Werte vor 5 min");
+});
+
+test("a lost stream is stated above the readings and dims them, like a stopped one", async () => {
+  served.breaks = true;
+
+  const { screen } = await show("battery");
+  const readings = screen.getByRole("region", { name: "Messwerte" });
+
+  await expect
+    .element(readings.getByRole("status"))
+    .toHaveTextContent("Angehalten · keine Live-Daten");
 });
 
 test("Escape asks to close the sheet", async () => {
@@ -138,4 +163,12 @@ test("on a desktop it is a side sheet, on a phone a bottom sheet", async () => {
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }
+});
+
+test("a viewer's house sheet names its consumers from the topology", async () => {
+  const { screen } = await show("house");
+  const sheet = screen.getByRole("dialog", { name: "Haus" });
+
+  await expect.element(sheet.getByText("Verbraucher")).toBeVisible();
+  await expect.element(sheet.getByText("Wärmepumpe")).toBeVisible();
 });

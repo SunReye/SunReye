@@ -5,6 +5,7 @@
 <script lang="ts">
   import type { Core } from "../api/core.ts";
   import { num } from "../range/format.ts";
+  import { customRange } from "../range/range.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import HeatGrid from "./HeatGrid.svelte";
@@ -17,7 +18,7 @@
     name,
     colour,
   }: {
-    core: Readonly<Pick<Core, "history">>;
+    core: Readonly<Pick<Core, "statistics">>;
     route: RangeRoute;
     source: HeatSource;
     name: string;
@@ -78,6 +79,11 @@
       const col = heat?.cols[c];
 
       if (col) route.open(col.drill);
+    }}
+    onbrush={(a, b) => {
+      const [first, last] = [heat?.cols[a], heat?.cols[b]];
+
+      if (first && last) route.open(customRange(route.place.cal, first.t0 / 24, last.t1 / 24));
     }}
   />
   <div class="flex items-center gap-2 pl-10 text-xs text-muted-foreground tabular-nums">

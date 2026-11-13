@@ -15,7 +15,7 @@ import {
 import type { Point } from "../builder/pv.ts";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
-import { cssColour } from "./backdrop.ts";
+import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
@@ -143,7 +143,7 @@ export function lit(
 
   $effect(() => {
     studio.light(day, theme(dark()), cssColour("var(--background)"));
-    colour = cssColour("var(--e-solar)").getHex();
+    colour = flowRgb("solar").getHex();
     render();
   });
 

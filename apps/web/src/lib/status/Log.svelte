@@ -1,18 +1,23 @@
 <script lang="ts">
   import type { Core } from "../api/core";
+  import LoadingRows from "../components/loading-rows.svelte";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
 
-  let { answer }: { answer: Awaited<ReturnType<Core["logs"]>> } = $props();
+  let { answer }: { answer: ReturnType<Core["logs"]> } = $props();
 </script>
 
 <section aria-label={m.status_logs()}>
   <h2>{m.status_logs()}</h2>
-  {#if "problem" in answer}
-    <p role="alert">{problemText(answer.problem)}</p>
-  {:else}
-    <pre role="log">{answer.join("\n")}</pre>
-  {/if}
+  {#await answer}
+    <LoadingRows rows={3} />
+  {:then got}
+    {#if "problem" in got}
+      <p role="alert">{problemText(got.problem)}</p>
+    {:else}
+      <pre role="log">{got.join("\n")}</pre>
+    {/if}
+  {/await}
 </section>
 
 <style>

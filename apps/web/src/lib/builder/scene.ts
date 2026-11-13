@@ -229,11 +229,17 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
   ];
 }
 
+/** Adds `parts` to `group`; three.js logs an error for an `add()` of nothing. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds in place.
+function put(group: Group, parts: readonly Object3D[]): void {
+  if (parts.length > 0) group.add(...parts);
+}
+
 /** The scene's meshes: per surface kind, solid, ground, fence, placed module and marker. */
 export function buildScene(geometry: Geometry, panels: readonly Panel[] = []): Group {
   const group = new Group();
 
-  for (const section of sections(geometry, panels)) group.add(...section());
+  for (const section of sections(geometry, panels)) put(group, section());
 
   return group;
 }
@@ -250,13 +256,13 @@ export async function buildSliced(
   const group = new Group();
   const [first, ...rest] = sections(geometry, panels);
 
-  group.add(...(first?.() ?? []));
+  put(group, first?.() ?? []);
 
   for (const section of rest) {
     // One section per task: each waits for the last to be let go.
     // oxlint-disable-next-line eslint/no-await-in-loop -- sequential by design.
     await pause();
-    group.add(...section());
+    put(group, section());
   }
 
   return group;

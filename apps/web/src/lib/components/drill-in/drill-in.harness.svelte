@@ -5,12 +5,14 @@
 
   let { initial = null }: { initial?: string | null } = $props();
 
+  // The harness starts on `initial`, then owns the route as the app's history would.
   // svelte-ignore state_referenced_locally
   let open = $state<string | null>(initial);
 
   // A root entry to go back to, also under a deep link.
   history.pushState({ drill: null }, "");
 
+  // Only the starting route is pushed, as a reload onto it would.
   // svelte-ignore state_referenced_locally
   if (initial !== null) history.pushState({ drill: initial }, "");
 

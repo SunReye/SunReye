@@ -21,7 +21,7 @@
     strings,
     sid,
   }: {
-    core: Readonly<Pick<Core, "history" | "moduleTypes" | "corrections">>;
+    core: Readonly<Pick<Core, "statistics" | "moduleTypes" | "corrections">>;
     route: RangeRoute;
     strings: readonly PvString[];
     /** The string chosen first; else a weak one, else the first. */

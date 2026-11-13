@@ -4,6 +4,8 @@ import type { PvString, Values } from "../api/core.ts";
 import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
 import { parked, type Parked } from "../cars/parked.ts";
+import { formatFigure } from "../detail/figures.ts";
+import type { EquipmentKind } from "../equipment-kinds.ts";
 
 /** The `plant` computed device's fixed id (ADR 15). */
 export const PLANT = "4294967294";
@@ -33,7 +35,10 @@ export interface Live3d {
 }
 
 /** What a chip shows; signs follow ADR 4 (grid positive importing, battery charging). */
-export type ChipKind = "string" | "inverter" | "battery" | "grid" | "house" | "car";
+export type ChipKind = Extract<
+  EquipmentKind,
+  "string" | "inverter" | "battery" | "grid" | "house" | "ev"
+>;
 
 /** One label chip (ADR 20). */
 export interface Chip {
@@ -92,9 +97,11 @@ export function liveScene(input: Live3d): LiveScene {
     chips: [
       ...input.strings.flatMap((string, at) => stringChip(input, string, at)),
       ...equipment(input),
-      ...cars.map(({ device, at, above, watts, soc }) =>
-        chip(`ev-${device}`, `ev-${device}`, "car", { watts, soc }, above, at),
-      ),
+      ...cars.map(({ device, at, above, watts, soc }) => {
+        const id = formatFigure({ kind: "ev", id: device });
+
+        return chip(id, id, "ev", { watts, soc }, above, at);
+      }),
     ],
     shares: input.panels.map(({ string }) =>
       string === null || string === undefined ? null : (shares[string] ?? null),
@@ -122,6 +129,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
   if (corners.length === 0) return [];
 
   const centre = mean(corners);
+  const id = formatFigure({ kind: "string", id: string.id });
 
   const reading = {
     watts: input.values[device]?.[series] ?? null,
@@ -129,17 +137,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
     stale: input.stale?.[device]?.[series] !== undefined,
   };
 
-  return [
-    chip(
-      `string-${string.id}`,
-      `string-${string.id}`,
-      "string",
-      reading,
-      centre,
-      centre,
-      string.name,
-    ),
-  ];
+  return [chip(id, id, "string", reading, centre, centre, string.name)];
 }
 
 /** A device's power series and whether it is stale; null without a value. */
@@ -157,6 +155,10 @@ function batteryReading(input: Live3d, device: string): Reading | null {
   return power === null ? null : { ...power, soc: input.values[device]?.["battery.soc"] ?? null };
 }
 
+/** An inverter's AC power, as its sheet reads it; its PV power while it publishes none. */
+const inverterReading = (input: Live3d, device: string): Reading | null =>
+  seriesReading(input, device, "inverter.power") ?? seriesReading(input, device, "pv.power");
+
 function equipment(input: Live3d): Chip[] {
   const placed = input.mounts === null || input.mounts === undefined ? [] : input.equipment;
 
@@ -171,12 +173,7 @@ function equipment(input: Live3d): Chip[] {
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))
     .flatMap((device) =>
-      at(
-        `inverter-${device}`,
-        "inverter",
-        "inverter",
-        seriesReading(input, String(device), "pv.power"),
-      ),
+      at(`inverter-${device}`, "inverter", "inverter", inverterReading(input, String(device))),
     );
 
   const onMarkers = placed.flatMap((marker, i): Chip[] => {
@@ -184,9 +181,7 @@ function equipment(input: Live3d): Chip[] {
     const device = String(marker.device);
 
     const read =
-      marker.kind === "inverter"
-        ? seriesReading(input, device, "pv.power")
-        : batteryReading(input, device);
+      marker.kind === "inverter" ? inverterReading(input, device) : batteryReading(input, device);
 
     return mount === undefined || read === null
       ? []

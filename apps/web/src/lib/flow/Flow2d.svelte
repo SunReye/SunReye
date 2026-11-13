@@ -40,7 +40,8 @@
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
 
-  // A stalled plant stops the charges with the numbers (ADR 21): the rails stay lit, nothing travels.
+  // A stalled plant or a lost stream stops the charges with the numbers (ADR 21): the rails stay
+  // lit, nothing travels.
   const still = $derived(stalled(live));
 
   // A node shows only when its role exists (ADR 21).

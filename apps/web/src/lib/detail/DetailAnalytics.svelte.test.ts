@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import "../../app.css";
 import { asked, prepare, restore, show } from "./detail.harness.ts";
 
@@ -15,6 +16,25 @@ test("a sheet's range steps, and History opens at it", async () => {
   await expect
     .element(sheet.getByRole("link", { name: /Im Verlauf öffnen · Gestern/u }))
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
+});
+
+test("today's production overlays the inverters' forecast as a dashed curve; another day does not", async () => {
+  const { screen } = await show("production");
+  const sheet = screen.getByRole("dialog", { name: "Produktion" });
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+  const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
+  const curve = () => overview.element().querySelector("path[stroke-dasharray='3 4']");
+
+  await expect.element(forecast).toBeVisible();
+  await expect.element(overview.getByText("8,0 kWh")).toBeVisible();
+  await expect.poll(curve).not.toBeNull();
+  // The curve replaces the marks and the faint bars.
+  expect(overview.element().querySelectorAll(".mark.on, .seg.opacity-30")).toHaveLength(0);
+
+  await sheet.getByRole("button", { name: "Früher" }).click();
+
+  await expect.element(forecast).not.toBeInTheDocument();
+  await expect.poll(curve).toBeNull();
 });
 
 test("the heat tab reads the range's hours and draws them on one canvas", async () => {
@@ -35,6 +55,63 @@ test("the heat tab reads the range's hours and draws them on one canvas", async 
   expect(document.querySelector("[data-heat-scale] span")?.getAttribute("style")).toContain(
     "var(--e-solar)",
   );
+});
+
+/** A mouse press, move and release on `el` from column `a` to column `b` of `n`. */
+function drag(el: Element, n: number, a: number, b: number): void {
+  const box = el.getBoundingClientRect();
+
+  const at = (c: number) => ({
+    clientX: box.left + ((c + 0.5) / n) * box.width,
+    clientY: box.top + box.height / 2,
+    pointerType: "mouse",
+    pointerId: 1,
+    bubbles: true,
+    isPrimary: true,
+  });
+
+  el.dispatchEvent(new PointerEvent("pointerdown", { ...at(a), button: 0, buttons: 1 }));
+  el.dispatchEvent(new PointerEvent("pointermove", { ...at(b), buttons: 1 }));
+  el.dispatchEvent(new PointerEvent("pointerup", { ...at(b), button: 0 }));
+  el.dispatchEvent(new MouseEvent("click", { ...at(b), bubbles: true }));
+}
+
+test("dragging across the heat grid's days narrows the range to them", async () => {
+  const { screen } = await show("production", "range=week");
+  const sheet = screen.getByRole("dialog", { name: "Produktion" });
+
+  await sheet.getByRole("tab", { name: "Heatmap" }).click();
+
+  const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
+
+  await expect.element(grid).toBeVisible();
+  drag(grid.element(), 7, 1, 2);
+
+  await expect
+    .element(sheet.getByRole("link", { name: /Im Verlauf öffnen/u }))
+    .toHaveAttribute("href", "#/history?range=custom&from=2026-11-10&to=2026-11-11");
+});
+
+test("keys select a span of the heat grid's days, which narrows the range", async () => {
+  const { screen } = await show("production", "range=week");
+  const sheet = screen.getByRole("dialog", { name: "Produktion" });
+
+  await sheet.getByRole("tab", { name: "Heatmap" }).click();
+
+  const grid = sheet.getByRole("group", { name: /Produktion nach Tageszeit/u });
+
+  await expect.element(grid).toBeVisible();
+  const el = grid.element();
+
+  if (el instanceof HTMLElement) el.focus();
+  // The first arrow lands on the last day; five more reach Tuesday, Shift and an arrow Wednesday.
+  await userEvent.keyboard(
+    "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{Shift>}{ArrowRight}{/Shift}{Enter}",
+  );
+
+  await expect
+    .element(sheet.getByRole("link", { name: /Im Verlauf öffnen/u }))
+    .toHaveAttribute("href", "#/history?range=custom&from=2026-11-10&to=2026-11-11");
 });
 
 test("the compare tab ranks strings by yield per kWp and flags a weak one", async () => {

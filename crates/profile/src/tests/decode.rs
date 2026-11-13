@@ -211,25 +211,47 @@ fn a_register_reads_the_value_its_enum_maps_and_an_unknown_variant_is_no_value()
     );
 }
 
+/// Why a profile of one quantity is refused.
+fn refused(quantity: &Value) -> &'static str {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test",
+        "version": "1.0.0", "requires": super::all(), "quantities": [quantity],
+    });
+    match Profile::load(&doc.to_string()) {
+        Err(crate::LoadError::Quantity { problem, .. }) => problem,
+        other => panic!("expected a quantity refusal, got {other:?}"),
+    }
+}
+
+/// ADR 4: `inverter.status` is 0 standby, 1 normal or 2 fault; an enum mapping elsewhere is refused.
+#[test]
+fn an_inverter_status_enum_maps_only_standby_normal_or_fault() {
+    let outside = "an `inverter.status` enum maps to 0 standby, 1 normal or 2 fault";
+    assert_eq!(
+        refused(
+            &json!({ "key": "s", "role": "inverter.status", "register": 500,
+            "type": "u16", "enum": { "0": 0, "4": 3 } })
+        ),
+        outside
+    );
+    assert_eq!(
+        refused(
+            &json!({ "key": "s", "role": "inverter.status", "topic": "state",
+            "enum": { "fault": 2.5 } })
+        ),
+        outside
+    );
+}
+
 #[test]
 fn a_registers_enum_maps_only_raw_values_its_type_holds() {
-    let refused = |quantity: Value| {
-        let doc = json!({
-            "schema": 1, "id": "case", "name": "case", "manufacturer": "test",
-            "version": "1.0.0", "requires": super::all(), "quantities": [quantity],
-        });
-        match Profile::load(&doc.to_string()) {
-            Err(crate::LoadError::Quantity { problem, .. }) => problem,
-            other => panic!("expected a quantity refusal, got {other:?}"),
-        }
-    };
     let with = |kind: &str, map: Value| json!({ "key": "a", "role": "extra.a", "register": 1, "type": kind, "enum": map });
     let holds = "an enum maps raw values its register type holds";
-    assert_eq!(refused(with("u16", json!({ "on": 1 }))), holds);
-    assert_eq!(refused(with("u16", json!({ "-1": 1 }))), holds);
-    assert_eq!(refused(with("u16", json!({ "65536": 1 }))), holds);
-    assert_eq!(refused(with("i16", json!({ "40000": 1 }))), holds);
+    assert_eq!(refused(&with("u16", json!({ "on": 1 }))), holds);
+    assert_eq!(refused(&with("u16", json!({ "-1": 1 }))), holds);
+    assert_eq!(refused(&with("u16", json!({ "65536": 1 }))), holds);
+    assert_eq!(refused(&with("i16", json!({ "40000": 1 }))), holds);
     let mut scaled = with("u16", json!({ "1": 1 }));
     scaled["scale"] = json!(0.1);
-    assert_eq!(refused(scaled), "an enum takes no scale or offset");
+    assert_eq!(refused(&scaled), "an enum takes no scale or offset");
 }

@@ -5,6 +5,7 @@
   import StringsPanel from "../analytics/StringsPanel.svelte";
   import HistoryChart from "../history/HistoryChart.svelte";
   import type { AnalyticsInput } from "./Analytics.svelte";
+  import { parseFigure } from "./figures.ts";
 
   let {
     tab,
@@ -22,7 +23,11 @@
     input: AnalyticsInput;
   } = $props();
 
-  const sid = $derived(/^string-(\d+)$/u.exec(id)?.[1]);
+  const sid = $derived.by(() => {
+    const ref = parseFigure(id);
+
+    return ref?.kind === "string" ? ref.id : null;
+  });
 </script>
 
 {#if tab === "overview"}
@@ -31,12 +36,13 @@
     device={analytics.device}
     series={analytics.series}
     route={input.route}
+    forecast={analytics.forecast}
   />
 {:else if tab === "heat" && analytics.heat}
   <PatternPanel
     core={input.core}
     route={input.route}
-    source={{ device: analytics.device, series: analytics.series, pick: analytics.heat }}
+    source={{ device: analytics.device, series: analytics.heat }}
     name={title}
     {colour}
   />
@@ -45,6 +51,6 @@
     core={input.core}
     route={input.route}
     strings={input.strings}
-    sid={sid === undefined ? null : Number(sid)}
+    {sid}
   />
 {/if}

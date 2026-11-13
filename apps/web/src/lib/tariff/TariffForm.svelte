@@ -1,5 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
@@ -31,15 +33,19 @@
   }
 </script>
 
-<form onsubmit={save}>
+<form class="flex flex-col gap-6" onsubmit={save}>
   <ScheduleFields legend={m.tariff_import()} bind:schedule={draft.import} />
   <ScheduleFields legend={m.tariff_export()} bind:schedule={draft.export} />
-  <label for="{id}-from">{m.tariff_applies_from()}</label>
-  <input id="{id}-from" type="datetime-local" bind:value={draft.appliesFrom} />
-  <button type="submit">{m.tariff_save()}</button>
-  <button type="submit" name="reprice" disabled={draft.appliesFrom === ""}>
-    {m.tariff_reprice()}
-  </button>
+  <label class="flex flex-col gap-1.5 text-sm" for="{id}-from">
+    {m.tariff_applies_from()}
+    <Input id="{id}-from" type="datetime-local" class="w-56" bind:value={draft.appliesFrom} />
+  </label>
+  <div class="flex flex-wrap gap-2">
+    <Button type="submit">{m.tariff_save()}</Button>
+    <Button type="submit" variant="outline" name="reprice" disabled={draft.appliesFrom === ""}>
+      {m.tariff_reprice()}
+    </Button>
+  </div>
 </form>
 {#if answer !== undefined}
   {#if "problem" in answer}

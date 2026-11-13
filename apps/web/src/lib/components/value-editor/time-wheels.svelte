@@ -33,14 +33,12 @@
 
   const hours = rows(24, 1);
 
-  // The editor is keyed by its setting, so the step never changes.
-  // svelte-ignore state_referenced_locally
-  const minutes = rows(60 / step, step);
+  const minutes = $derived(rows(60 / step, step));
 
-  let liveHour = hour;
+  // A wheel's motion overrides these until it commits its row.
+  let liveHour = $derived(hour);
 
-  // svelte-ignore state_referenced_locally
-  let liveMinute = minute * step;
+  let liveMinute = $derived(minute * step);
 
   const two = (value: number) => String(value).padStart(2, "0");
 </script>

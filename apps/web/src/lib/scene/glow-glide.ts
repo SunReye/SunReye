@@ -1,5 +1,5 @@
 // The modules' live glow eases to each tick (ADR 20).
-import { easeInOut } from "../animate.ts";
+import { easeInOut } from "../motion/ease.ts";
 
 export type Shares = readonly (number | null)[];
 

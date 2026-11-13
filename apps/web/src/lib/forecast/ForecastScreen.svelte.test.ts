@@ -54,8 +54,8 @@ function testCore(): Transport & { readonly asked: string[] } {
 
       asked.push(`${url.pathname} ${url.searchParams.get("series") ?? ""}`);
 
-      if (url.pathname.endsWith("/history")) {
-        return Promise.resolve(Response.json({ tier: "hour", points: [] }));
+      if (url.pathname.endsWith("/statistics")) {
+        return Promise.resolve(Response.json({ period: "hour", points: [] }));
       }
 
       const issued = "2026-11-09T10:00:00Z";
@@ -82,9 +82,9 @@ test("each inverter's chart reads its total's forecast and measurement over the 
     .poll(() => [...new Set(transport.asked)].toSorted())
     .toEqual([
       "/api/v1/devices/1/forecasts pv.power",
-      "/api/v1/devices/1/history pv.power",
+      "/api/v1/devices/1/statistics pv.power",
       "/api/v1/devices/2/forecasts pv.power",
-      "/api/v1/devices/2/history pv.power",
+      "/api/v1/devices/2/statistics pv.power",
     ]);
   await expect.element(screen.getByText("1,8 kWh").first()).toBeVisible();
 

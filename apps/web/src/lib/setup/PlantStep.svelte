@@ -27,13 +27,16 @@
   // Only a secure page may ask; a core reached over plain HTTP on the LAN is not one.
   const locatable = isSecureContext && "geolocation" in navigator;
 
-  // The browser's zone is most often the plant's.
+  // The browser's zone is most often the plant's. The field starts from it or the stored zone, and
+  // the admin's pick owns it after.
   // svelte-ignore state_referenced_locally
   let zone = $state(current?.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
 
+  // The fields start from the stored plant; the admin's edits own them after.
   // svelte-ignore state_referenced_locally
   let latitude = $state(current?.location?.latitude);
 
+  // As the latitude.
   // svelte-ignore state_referenced_locally
   let longitude = $state(current?.location?.longitude);
 

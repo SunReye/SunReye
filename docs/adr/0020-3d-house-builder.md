@@ -47,11 +47,11 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 - `GET /api/v1/corrections`, read like history, returns each MPPT input's learned factors and its residual: measured against modelled energy in kWh over the whole hours of the last 30 days that are both modelled on archive weather and measured, short of the AC limit, the model uncorrected.
 - The clear sky is Ineichen and Perez's at sea level under a Linke turbidity of 3, with still air at 20 °C: a plant stores no altitude, and a turbidity climatology is a 30 MB table. Golden values come from pvlib.
 
-**Live dashboard.** When a scene exists, the dashboard opens on it, updated by live ticks (ADR 9): each string's power, tinted by its share of its own peak and labelled at its centre (estimates carry "≈"); each inverter's AC power; the battery's power, direction and SOC; the car's charging power and the vehicle's SOC when EVCC reports them; grid import or export and house consumption from the `plant` device. Equipment labels float above their markers on leader lines, readable through walls; without markers they sit beside the house. The 2D power flow serves when there is no scene, no WebGL2 or the low-power switch is on, and a toggle switches between them per browser. Until ADR 4 has a role for an inverter's AC output, its label shows its `pv.power`. The scene's tints and labels come from the live values only; three.js loads when the scene is shown.
+**Live dashboard.** When a scene exists, the dashboard opens on it, updated by live ticks (ADR 9): each string's power, tinted by its share of its own peak and labelled at its centre (estimates carry "≈"); each inverter's AC power; the battery's power, direction and SOC; the car's charging power and the vehicle's SOC when EVCC reports them; grid import or export and house consumption from the `plant` device. Equipment labels float above their markers on leader lines, readable through walls; without markers they sit beside the house. The 2D power flow serves when there is no scene, no WebGL2 or the low-power switch is on, and a toggle switches between them per browser. An inverter's label shows its `inverter.power`, the AC output, and its `pv.power` only when the profile maps no `inverter.power`; the label and the inverter's detail sheet show the same figure. The scene's tints and labels come from the live values only; three.js loads when the scene is shown.
 
 **Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
 - **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
-- **Modules:** full black: black cells, backsheet and frames under anti-reflective glass, which reflects about half as much as plain glass.
+- **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat.
 - **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
 - **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
 - **Theme:** the page background, fog and exposure follow light or dark mode.
@@ -71,7 +71,8 @@ Energy flow shows as tint and label arrows.
   - arrows on its walls drag width and depth;
   - a handle on the ridge or high eave drags the pitch;
   - a ring rotates it;
-  - dragging its footprint moves it.
+  - dragging its footprint moves it;
+  - each point of a fence has its own handle that drags that point.
 - **Snapping.** Lengths snap to 10 cm, angles to 5°, and edges to other blocks' edges and the compass axes. The live value shows beside the handle while dragging.
 - **Modules.** "Fill face" places as many modules as the face's grid holds. A tap toggles one cell, and a drag paints or erases cells.
 - **Strings.** Pick a string, then drag across modules to paint it.

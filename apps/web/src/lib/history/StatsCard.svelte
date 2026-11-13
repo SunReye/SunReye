@@ -2,14 +2,12 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import * as Card from "#lib/components/ui/card/index.js";
-  import { haptics } from "../haptics.ts";
-  import Pager from "../range/Pager.svelte";
   import CardIntro from "./CardIntro.svelte";
+  import CardPane from "./CardPane.svelte";
   import { cardText } from "./card-text.ts";
   import FigureTabs from "./FigureTabs.svelte";
   import LoadError from "./LoadError.svelte";
   import type { Statistics, StatisticsCore, Summary } from "./screen.svelte.ts";
-  import StatsPane from "./StatsPane.svelte";
 
   let {
     core,
@@ -57,36 +55,7 @@
         onchoose={s.choose}
       />
 
-      <div class="min-h-[348px] lg:min-h-[416px]">
-        {#if s.pane}
-          <Pager
-            surface={card}
-            id={s.paneId}
-            data={s.pane}
-            travel={s.travel}
-            peek={s.peek}
-            defer
-            onstep={(dir) => {
-              haptics.selection();
-              s.drag(dir);
-            }}
-          >
-            {#snippet children(d)}
-              <StatsPane
-                {core}
-                got={d.got}
-                view={d.view}
-                route={s.route}
-                facts={s.facts}
-                fresh={s.fresh}
-                loading={d.loading}
-                {height}
-                onview={s.open}
-              />
-            {/snippet}
-          </Pager>
-        {/if}
-      </div>
+      <CardPane {core} {s} {height} {card} />
     </div>
   {/if}
 </Card.Root>

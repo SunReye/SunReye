@@ -1,5 +1,6 @@
 <!-- Payback (ADR 12): savings summed since the first against the investment the admin entered, and when they reach it at the core's pace. -->
 <script lang="ts">
+  import { flowColour } from "../energy-colours.ts";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import type { Payback } from "../api/tariff.ts";
   import { m } from "../paraglide/messages.js";
@@ -43,11 +44,11 @@
       <TrendChart
         {rows}
         series={[
-          { key: "saved", label: m.stats_payback_so_far(), colour: "var(--e-solar)", kind: "area" },
+          { key: "saved", label: m.stats_payback_so_far(), colour: flowColour("solar"), kind: "area" },
           {
             key: "projected",
             label: m.stats_payback_at_pace(),
-            colour: "var(--e-solar)",
+            colour: flowColour("solar"),
             kind: "dashed",
           },
         ]}

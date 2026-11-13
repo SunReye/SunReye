@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import type { BiddingZone, Core, Problem, SpotPriceZone } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
@@ -15,22 +16,38 @@
 
   const problem = $derived(refused ?? ("problem" in answer ? answer : undefined));
 
-  const zone = $derived("zone" in answer ? (answer.zone ?? "") : "");
+  /** The admin's pick, shown at once; "none" is no zone. */
+  let picked = $state<string>();
 
-  async function choose(event: Event & { currentTarget: HTMLSelectElement }): Promise<void> {
-    const { value } = event.currentTarget;
+  const zone = $derived(picked ?? ("zone" in answer ? (answer.zone ?? "none") : "none"));
 
-    refused = await core.setSpotZone(ZONES.find((option) => option === value) ?? null);
+  /** Pressing the zone in force again deselects nothing: it stays. */
+  async function choose(next: string): Promise<void> {
+    if (next === "" || next === zone) return;
+
+    picked = next;
+    refused = await core.setSpotZone(ZONES.find((option) => option === next) ?? null);
+
+    // A refused pick falls back to the zone in force.
+    if (refused) picked = undefined;
   }
 </script>
 
-<label for="{id}-zone">{m.tariff_zone()}</label>
-<select id="{id}-zone" value={zone} onchange={choose}>
-  <option value="">{m.tariff_zone_none()}</option>
-  {#each ZONES as option (option)}
-    <option value={option}>{option}</option>
-  {/each}
-</select>
+<div class="flex flex-col gap-1.5 text-sm">
+  <span id="{id}-zone">{m.tariff_zone()}</span>
+  <ToggleGroup.Root
+    type="single"
+    variant="outline"
+    bind:value={() => zone, (next) => void choose(next)}
+    aria-labelledby="{id}-zone"
+    class="self-start"
+  >
+    <ToggleGroup.Item value="none" class="px-4">{m.tariff_zone_none()}</ToggleGroup.Item>
+    {#each ZONES as option (option)}
+      <ToggleGroup.Item value={option} class="px-4">{option}</ToggleGroup.Item>
+    {/each}
+  </ToggleGroup.Root>
+</div>
 {#if problem}
   <p role="alert">{problemText(problem.problem)}</p>
 {/if}

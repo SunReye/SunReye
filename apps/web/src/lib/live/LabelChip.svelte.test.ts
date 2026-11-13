@@ -34,6 +34,29 @@ test("each string, the inverter, the grid and the house get a chip from the live
   await chip("Haus", "0,5");
 });
 
+/** `colour` as the browser resolves it, through a probe like the chip's dot. */
+function resolved(colour: string): string {
+  const probe = document.createElement("span");
+
+  probe.style.backgroundColor = colour;
+  document.body.append(probe);
+  const value = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+
+  return value;
+}
+
+test("an exporting grid chip's dot takes the export colour", async () => {
+  const { core, tick } = ticking();
+  await show(core);
+
+  await tick(frame(600, -1200));
+
+  const dot = (await chip("Netz", "1,2")).element().querySelector("span");
+
+  expect(dot && getComputedStyle(dot).backgroundColor).toBe(resolved("var(--e-export)"));
+});
+
 test("chips never overlap and stay inside the canvas at phone width", async () => {
   await page.viewport(390, 700);
 

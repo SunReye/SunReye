@@ -105,3 +105,29 @@ test("no reading yet is a dash as wide as a number", async () => {
   expect(number.getBoundingClientRect().width).toBe(dash);
   expect(getComputedStyle(number).fontVariantNumeric).toBe("tabular-nums");
 });
+
+test("a figure that arrives with its content starts at its value and writes its own unit", async () => {
+  const screen = await render(AnimatedNumber, {
+    value: 7,
+    format: (v: number) => `${v.toFixed(0)} %`,
+    appear: false,
+  });
+
+  expect(screen.container.textContent).toBe("7 %");
+});
+
+test("a chosen glide lands on its own clock, not the tick's", async () => {
+  const screen = await render(AnimatedNumber, { value: 5, duration: 320, appear: false });
+  const number = screen.container.querySelector("span")!;
+
+  await screen.rerender({ value: 9 });
+  await vi.advanceTimersByTimeAsync(400);
+
+  expect(shown(number)).toBe(9);
+});
+
+test("a placeholder stands in for the dash", async () => {
+  const screen = await render(AnimatedNumber, { value: null, placeholder: "–" });
+
+  expect(screen.container.textContent?.replaceAll(/\d|,/gu, "")).toBe("–");
+});

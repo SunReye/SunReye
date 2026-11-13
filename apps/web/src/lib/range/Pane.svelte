@@ -8,6 +8,7 @@
 
   let { data, hold = 0, children }: { data: T; hold?: number; children: Snippet<[T]> } = $props();
 
+  // Only the hold at mount counts: a later pane is a new mount.
   // svelte-ignore state_referenced_locally
   let ready = $state(hold <= 0);
 

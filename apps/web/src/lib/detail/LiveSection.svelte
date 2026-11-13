@@ -3,6 +3,7 @@
   right after it and before the readings. A silent device or a halted stream parks and dims it.
 -->
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import LiveArea from "../live-graph/LiveArea.svelte";
   import type { LivePoint } from "../live-graph/series.ts";
   import { stream } from "../live/stream.svelte.ts";
@@ -14,13 +15,11 @@
 
   let {
     spec,
-    title,
     points,
     silent,
     status,
   }: {
     spec: Figure;
-    title: string;
     points: readonly LivePoint[];
     /** Seconds the figure's device has been silent; null while it answers. */
     silent: number | null;
@@ -47,7 +46,9 @@
     </span>
     <span>kW</span>
   </div>
-  {#if points.length === 0 && status !== "loading"}
+  {#if points.length === 0 && status === "loading"}
+    <Skeleton style="height: {height}px" role="status" aria-label={m.loading()} />
+  {:else if points.length === 0}
     <!-- The plot's place is held: nothing below it moves when the device answers again. -->
     <p
       class="flex items-center justify-center text-xs text-muted-foreground"
@@ -62,7 +63,6 @@
       below={spec.diverging?.[1] ?? spec.colour}
       diverging={spec.diverging !== undefined}
       {height}
-      label={title}
       stalled={halt !== null}
       still={motion.still}
     />

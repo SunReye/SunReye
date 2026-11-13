@@ -195,7 +195,7 @@ test("a connected car carries its charge power and its vehicle's SOC above it", 
   expect(chips.at(-1)).toEqual({
     key: "ev-7",
     id: "ev-7",
-    kind: "car",
+    kind: "ev",
     name: null,
     watts: 7360,
     soc: 63,
@@ -204,4 +204,20 @@ test("a connected car carries its charge power and its vehicle's SOC above it", 
     anchor: [14, -3, 2.5],
     leader: [14, -3, 0],
   });
+});
+
+test("an inverter's chip reads its AC power, as its sheet does, and its PV without one", () => {
+  const values = { ...scene.values, "1": { ...scene.values["1"], "inverter.power": 650 } };
+  const inverter = (input: Live3d) => equipment(input).find(({ kind }) => kind === "inverter");
+
+  expect(inverter({ ...scene, values })?.watts).toBe(650);
+  expect(inverter(scene)?.watts).toBe(700);
+  expect(
+    equipment({
+      ...scene,
+      values,
+      equipment: [marker("inverter")],
+      mounts: [{ at: [0, 0, 0], above: [0, 0, 1] }],
+    }).find(({ kind }) => kind === "inverter")?.watts,
+  ).toBe(650);
 });

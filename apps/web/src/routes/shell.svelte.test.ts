@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import App from "./shell.harness.svelte";
@@ -60,9 +60,8 @@ beforeEach(async () => {
   await page.viewport(1280, 900);
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+// The fake core stays in place after the file's last test: that page stays mounted, and its
+// fetches still in flight would otherwise reach the test server. Each file runs in its own frame.
 
 test("the admin's rail lists Controls", async () => {
   const screen = await render(App);

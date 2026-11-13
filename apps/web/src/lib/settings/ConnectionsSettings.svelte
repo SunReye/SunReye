@@ -2,6 +2,7 @@
 <script lang="ts">
   import type { Core } from "../api/core";
   import * as Item from "#lib/components/ui/item/index.js";
+  import LoadingRows from "../components/loading-rows.svelte";
   import ConnectionRow from "./ConnectionRow.svelte";
   import Listing from "./Listing.svelte";
 
@@ -10,7 +11,9 @@
   const connections = $derived(core.connections());
 </script>
 
-{#await connections then answer}
+{#await connections}
+  <LoadingRows />
+{:then answer}
   <Listing {answer}>
     {#snippet items(list)}
       <Item.Group class="gap-0 divide-y divide-border/60">

@@ -9,6 +9,7 @@
   - a drill or a brush (`via.kind === "zoom"`) is a FLIP along the time axis: the old bars spread out
     of the plot from the chosen span, the new ones start inside it;
   - a gridline keeps its value: it travels to that value's place on the new scale.
+  A line layer draws a dashed curve through the bands' `line` points, such as today's forecast.
   The caller keeps it under about 62 bands. The legend is the readout: it shows the range's sums and,
   while a band is active, that band's values, so nothing floats under a finger (`reading.svelte.ts`).
 -->
@@ -17,6 +18,7 @@
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
   import {
+    lineOf,
     place,
     scaleOf,
     stateText,
@@ -44,6 +46,7 @@
     groups = ["", ""],
     markLabel = "",
     ghostLabel = "",
+    lineLabel = "",
     via,
     summary,
     fmt,
@@ -65,6 +68,8 @@
     markLabel?: string;
     /** What the faint bars of bands still to come are. */
     ghostLabel?: string;
+    /** What the dashed line over the bars is. */
+    lineLabel?: string;
     via?: Via | undefined;
     /** The whole range, shown while no band is active. */
     summary: Readout;
@@ -168,6 +173,8 @@
   const hasMarks = $derived(bands.some((b) => (b.mark ?? null) !== null));
   const hasGhosts = $derived(bands.some((b) => (b.ghost ?? null) !== null));
 
+  const linePath = $derived(loading ? null : lineOf(bands, scale, plotW, plotHeight));
+
   const reading = new Reading(() => ({ bands, plot, ondrill, onbrush }));
   const active = $derived(reading.active);
   const sel = $derived(reading.sel);
@@ -180,28 +187,36 @@
           up: shown.up,
           down: shown.down,
           mark: shown.mark ?? (markLabel === ghostLabel ? shown.ghost : null),
+          line: shown.line,
         }
       : summary,
   );
 
-  // What the reference was called, so it fades out in place.
-  let markWas = $state("");
+  // What the reference was last called, so it fades out in place. A plain memory, not state:
+  // only the derived reads it.
+  let markWas = "";
+
+  const markName = $derived.by(() => {
+    if (markLabel) markWas = markLabel;
+
+    return markWas;
+  });
 
   // Where the highlight last was, so it fades out in place.
-  let hlWas = $state(0);
+  let hlWas = 0;
 
-  $effect.pre(() => {
+  const hlAt = $derived.by(() => {
     if (active !== null) hlWas = active;
 
-    if (markLabel) markWas = markLabel;
+    return hlWas;
   });
 
   const markOf = (): Legend["mark"] => {
-    if (loading || !(markLabel || markWas)) return null;
+    if (loading || !markName) return null;
 
     const on = markLabel !== "" && hasMarks;
 
-    return { label: markLabel || markWas, on, value: on ? (readout.mark ?? null) : null };
+    return { label: markName, on, value: on ? (readout.mark ?? null) : null };
   };
 
   const ghostOf = (): Legend["ghost"] => {
@@ -212,7 +227,7 @@
 
   const hl = $derived({
     opacity: active === null ? 0 : 1,
-    transform: `translateX(${((active ?? hlWas) * slot).toFixed(2)}px) scaleX(${(slot / 100).toFixed(4)})`,
+    transform: `translateX(${(hlAt * slot).toFixed(2)}px) scaleX(${(slot / 100).toFixed(4)})`,
   });
 
   const brushBox = $derived(
@@ -243,6 +258,10 @@
     ].filter((row) => row.series.length > 0),
     mark: markOf(),
     ghost: markOf() ? ghostOf() : null,
+    line:
+      lineLabel && linePath
+        ? { label: lineLabel, colour: up[0]?.colour ?? "", value: readout.line ?? null }
+        : null,
     blank: loading || shown?.state === "gap" || shown?.state === "before",
     duration: shown ? 0 : 320,
   });
@@ -316,6 +335,18 @@
         {#each bars.list as k (k.key)}
           <BandBar {k} ghost={ghostColour} {level} delay={delayOf(k)} />
         {/each}
+        {#if linePath}
+          <svg class="line" viewBox="0 0 {plotW} {plotHeight}" aria-hidden="true">
+            <path
+              d={linePath}
+              stroke={ghostColour}
+              fill="none"
+              opacity="0.55"
+              stroke-width="1.5"
+              stroke-dasharray="3 4"
+            />
+          </svg>
+        {/if}
       {/if}
     </div>
 
@@ -356,6 +387,14 @@
     transition:
       transform 100ms var(--motion-ease),
       opacity 100ms var(--motion-ease);
+  }
+  .line {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
   }
   .brush {
     position: absolute;

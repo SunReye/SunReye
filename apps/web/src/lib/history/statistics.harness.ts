@@ -4,39 +4,15 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import { iso } from "../range/calendar.ts";
 import StatisticsScreen from "./StatisticsScreen.svelte";
+import { at, rollups, series, TODAY } from "./statistics.series.ts";
 
 const PLANT = "4294967294";
 const H = 3_600_000;
 const DAY = 24 * H;
 
-/** Today, as a day number in UTC. */
-export const TODAY = Math.floor(Date.now() / DAY);
+export { TODAY } from "./statistics.series.ts";
+
 export const YESTERDAY = iso(TODAY - 1);
-
-const at = (day: number, h: number) => new Date((day * 24 + h) * H).toISOString();
-
-const span = (day: number, h0: number, h1: number, mean: number) => ({
-  start: at(day, h0),
-  end: at(day, h1),
-  mean,
-});
-
-/**
- * Yesterday 10–12 h: 3 kW sun, a 1 kW house, 2 kW out; 12–13 h unread; then 1 kW bought.
- * The day before: 2 kW sun 10–12 h only.
- */
-function series() {
-  const y = TODAY - 1;
-
-  return {
-    "pv.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 3000)],
-    "load.power": [span(y - 1, 0, 24, 500), span(y, 10, 12, 1000), span(y, 13, 24, 1000)],
-    "grid.import.power": [span(y - 1, 0, 24, 500), span(y, 13, 24, 1000)],
-    "grid.export.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 2000)],
-    "self.consumption.power": [span(y, 10, 12, 1000)],
-    "self.supply.power": [span(y, 10, 12, 1000)],
-  };
-}
 
 const WIRING = {
   device: 1,
@@ -108,15 +84,16 @@ function history(q: Query): Response {
   return Response.json({ tier: "hour", points });
 }
 
+/** A plant-local day's bounds, as the core states them. */
+const dayAt = (d: number) => ({ date: iso(d), start: at(d, 0), end: at(d + 1, 0) });
+
 function costs(q: Query): Response {
   const [from, to] = [Date.parse(q("from")!), Date.parse(q("to")!)];
 
   const y = TODAY - 1;
 
   const day = {
-    date: YESTERDAY,
-    start: at(y, 0),
-    end: at(y + 1, 0),
+    ...dayAt(y),
     paid: 3.3,
     earned: 0.32,
     saved: 1.2,
@@ -188,10 +165,16 @@ function capacity(): Response {
 }
 
 function statistics(q: Query): Response {
-  const first = TODAY - plant.age;
-  const point = { date: iso(first), start: at(first, 0), end: at(first + 1, 0) };
+  const [name, from, to] = [q("series") ?? "", Date.parse(q("from")!), Date.parse(q("to")!)];
+  const period = q("period") ?? "";
+  const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
-  return Response.json({ period: q("period"), points: [point] });
+  asked.push({ series: name, from, to });
+
+  return Response.json({
+    period,
+    points: recorded.length > 0 ? recorded : [dayAt(TODAY - plant.age)],
+  });
 }
 
 const READS = new Map<string, (q: Query) => Response>(
@@ -251,9 +234,11 @@ function transport(): Transport {
       const url = new URL(request.url);
       const read = READS.get(url.pathname.split("/").at(-1) ?? "");
 
-      if (plant.broken && url.pathname.endsWith("/history")) throw new TypeError("network");
+      const plantRead = /\/(history|statistics)$/u.test(url.pathname);
 
-      if (plant.gate && url.pathname.endsWith("/history")) await plant.gate;
+      if (plant.broken && plantRead) throw new TypeError("network");
+
+      if (plant.gate && plantRead) await plant.gate;
 
       return read
         ? read((name) => url.searchParams.get(name))

@@ -30,7 +30,14 @@
     id: string | null;
     core: Pick<
       Core,
-      "layout" | "capabilities" | "timezone" | "history" | "moduleTypes" | "corrections"
+      | "layout"
+      | "capabilities"
+      | "timezone"
+      | "statistics"
+      | "forecasts"
+      | "moduleTypes"
+      | "corrections"
+      | "topology"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */
@@ -61,19 +68,25 @@
   /** How often stale ages are recounted while a sheet is open. */
   const TICK_MS = 5000;
 
-  // The body keeps its last figure while the sheet slides out.
-  let last = $state("production");
+  // The body keeps its last figure while the sheet slides out. A plain memory, not state: only the
+  // derived reads it.
+  let last = "production";
 
-  $effect(() => {
+  const shown = $derived.by(() => {
     if (id !== null && figure(id) !== null) last = id;
+
+    return last;
   });
 
-  const shown = $derived(id !== null && figure(id) !== null ? id : last);
   const open = $derived(id !== null);
   const spec = $derived(figure(shown) ?? figure("production")!);
 
   let strings = $state.raw<readonly PvString[]>([]);
   let estimated = $state.raw<Source["estimated"]>({});
+
+  /** The topology's points, which viewers read too (ADR 9, 14). */
+  let points = $state.raw<Source["points"]>([]);
+
   let now = $state(Date.now());
 
   // Read once a sheet first opens: the dashboard itself needs neither.
@@ -85,6 +98,14 @@
     read = true;
     void layoutStrings(core).then((next) => (strings = next));
     void estimatedSeries(core).then((next) => (estimated = next));
+    void core
+      .topology()
+      .then((next) => {
+        if ("points" in next) points = next.points;
+
+        return null;
+      })
+      .catch(() => null);
   });
 
   $effect(() => {
@@ -96,8 +117,13 @@
     return () => clearInterval(timer);
   });
 
+  // A lost stream reads like a refused one: its last values stay, dimmed, under one notice.
   const status = $derived<Source["status"]>(
-    live === undefined ? "loading" : "problem" in live ? "stopped" : "live",
+    live === undefined
+      ? "loading"
+      : "problem" in live || live.lost !== undefined
+        ? "stopped"
+        : "live",
   );
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
@@ -108,6 +134,7 @@
     stale: live !== undefined && "devices" in live ? (live.stale ?? {}) : {},
     estimated,
     names: Object.fromEntries(names),
+    points,
     now,
     status,
     series,

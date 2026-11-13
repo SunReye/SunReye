@@ -54,3 +54,38 @@ test("a drag that changed nothing leaves no undo step", () => {
 
   expect(editing.undoable).toBe(false);
 });
+
+test("a selected fence's point handles drag it; a drag is one undo step", () => {
+  const editing = session();
+
+  const points = [
+    { x: 0, z: 10 },
+    { x: 6, z: 10 },
+  ];
+
+  editing.change({
+    ...editing.draft,
+    scene: { ...editing.draft.scene, fences: [{ points, height: 1.2, finish: "wood" }] },
+  });
+  editing.go({ kind: "fence", index: 0 });
+
+  const fenced = editing.draft;
+  const handled = editing.editing;
+
+  expect(handled?.target).toEqual({ kind: "fence", index: 0 });
+
+  for (const x of [6.5, 7, 8]) {
+    handled?.ondrag({
+      ...fenced.scene,
+      fences: [{ points: points.with(1, { x, z: 10 }), height: 1.2, finish: "wood" }],
+    });
+  }
+
+  handled?.ondrop();
+
+  expect(editing.draft.scene.fences?.[0]?.points[1]).toEqual({ x: 8, z: 10 });
+
+  editing.undo();
+
+  expect(editing.draft).toEqual(fenced);
+});

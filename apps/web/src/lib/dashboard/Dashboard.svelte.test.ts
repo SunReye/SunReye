@@ -214,14 +214,15 @@ test("labels are words, never role keys", async () => {
   expect(document.body.textContent).not.toMatch(/\b(?:pv|grid|load|ev|price)\.[a-z.]+/u);
 });
 
-test("a loadpoint shows on the EV card under its device's name", async () => {
-  served.live = { ...NOON, "7": LOADPOINT };
+test("a loadpoint shows on one EV card under its device's name, the plant's total on none", async () => {
+  served.live = { ...NOON, [PLANT]: { ...NOON[PLANT], "ev.charge.power": 3700 }, "7": LOADPOINT };
   served.devices = [{ id: 7, name: "Wallbox Garage", profile: "evcc", connection: 2, unit: 1 }];
 
   const screen = await open();
 
   await expect.element(screen.getByText("Wallbox Garage")).toBeVisible();
   await expect.element(screen.getByText("Ziel 80 %")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Ladepunkt/u }).query()).toBeNull();
 });
 
 test("without a loadpoint there is no EV card", async () => {

@@ -126,3 +126,36 @@ test("surfaces and fences back out to the surroundings", () => {
     expect(parent({ kind, index: 0 })).toEqual({ kind: "section", section: "surroundings" });
   }
 });
+
+/** One place under the 4 m block at x 20, one on the paving turned 90° about its corner. */
+const PARKED: Scene = {
+  ...GARDEN,
+  carPlaces: [
+    { device: 3, x: 21, z: 0, width: 2.5, length: 4, rotation: 0 },
+    { device: 4, x: 4, z: 9, width: 2.5, length: 5, rotation: 90 },
+  ],
+};
+
+test("a car place drills to its place, a strike above a car to the roof over it", () => {
+  expect(picked(PARKED, { kind: "point", point: [22, -2, 0] })).toEqual({
+    kind: "place",
+    index: 0,
+  });
+  expect(picked(PARKED, { kind: "point", point: [22, -2, 1.4] })).toEqual({
+    kind: "place",
+    index: 0,
+  });
+  expect(picked(PARKED, { kind: "point", point: [22, -2, 3] })).toEqual({
+    kind: "block",
+    index: 1,
+  });
+  // Turned clockwise about its corner, the 5 m length runs along −x.
+  expect(picked(PARKED, { kind: "point", point: [1, -10, 0] })).toEqual({
+    kind: "place",
+    index: 1,
+  });
+  expect(picked(PARKED, { kind: "point", point: [6, -10, 0] })).toEqual({
+    kind: "surface",
+    index: 0,
+  });
+});

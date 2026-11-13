@@ -3,8 +3,9 @@
   nearest one. Off-centre rows shrink and fade. Rendering runs only while it moves.
 -->
 <script lang="ts">
-  import { reducedMotion, spring, VelocityTracker } from "../../animate.ts";
+  import { spring, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
+  import { motion } from "../../motion/tier.svelte.ts";
   import { m } from "../../paraglide/messages.js";
   import type { Rows } from "./editable.ts";
 
@@ -38,9 +39,12 @@
   const ROW = 44;
   const ROWS = 5;
 
+  // The wheel's own position, seeded from the bound row: the wheel writes `index`, never reads it
+  // back, so a parent changes the row by remounting the wheel.
   // svelte-ignore state_referenced_locally
   let pos = $state(index);
 
+  // The row last written to `index`, seeded like `pos`.
   // svelte-ignore state_referenced_locally
   let committed = index;
   let cancel: (() => void) | undefined;
@@ -87,7 +91,7 @@
     const end = clamp(to);
     target = end;
 
-    if (reducedMotion()) {
+    if (motion.still) {
       setPos(end);
       target = undefined;
 

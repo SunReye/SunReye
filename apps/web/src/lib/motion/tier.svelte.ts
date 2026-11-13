@@ -5,10 +5,10 @@
  * The measured strain is kept per device, so a slow wall tablet starts lean the next day.
  */
 import { MediaQuery } from "svelte/reactivity";
-import { LOW_POWER } from "../live/dashboard.ts";
 import {
   clampStrain,
   FrameStrain,
+  LOW_POWER,
   MAX_STRAIN,
   type MotionTier,
   parseStrain,

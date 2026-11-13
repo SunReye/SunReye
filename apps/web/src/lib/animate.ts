@@ -1,33 +1,8 @@
 // rAF-driven springs and tweens that start from the current value and velocity,
 // so every motion is interruptible and renders only while it runs.
 
-const bezier = (a: number, c: number, s: number) =>
-  3 * a * (1 - s) ** 2 * s + 3 * c * (1 - s) * s ** 2 + s ** 3;
-
-/** ADR 21's `--motion-ease-in-out`, cubic-bezier(0.65, 0, 0.35, 1), solved by bisection. */
-export const easeInOut = (t: number): number => {
-  if (t <= 0) return 0;
-
-  if (t >= 1) return 1;
-
-  let lo = 0;
-  let hi = 1;
-
-  for (let i = 0; i < 20; i++) {
-    const mid = (lo + hi) / 2;
-
-    if (bezier(0.65, 0.35, mid) < t) lo = mid;
-    else hi = mid;
-  }
-
-  return bezier(0, 1, (lo + hi) / 2);
-};
-
-export function reducedMotion(): boolean {
-  return (
-    typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
+import { easeInOut } from "./motion/ease.ts";
+import { motion } from "./motion/tier.svelte.ts";
 
 export interface SpringOptions {
   stiffness?: number;
@@ -50,7 +25,7 @@ export function spring(
   let x = from;
   let v = opts.velocity ?? 0;
 
-  if (reducedMotion()) {
+  if (motion.still) {
     onUpdate(to, 0);
     onDone?.();
 
@@ -99,7 +74,7 @@ export function tween(
   onDone?: () => void,
   ease: (t: number) => number = easeInOut,
 ): () => void {
-  if (reducedMotion() || ms <= 0) {
+  if (motion.still || ms <= 0) {
     onUpdate(to);
     onDone?.();
 

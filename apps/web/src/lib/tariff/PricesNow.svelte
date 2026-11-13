@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Core, Values } from "../api/core";
+  import LoadingRows from "../components/loading-rows.svelte";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import SpotPriceCard from "../SpotPriceCard.svelte";
@@ -10,8 +11,14 @@
   let devices = $state.raw<Values["devices"]>({});
   let refused = $state.raw<string>();
 
+  /** No live frame yet: the prices stand in skeleton rows. */
+  let waiting = $state(true);
+
+  const id = $props.id();
+
   $effect(() =>
     core.live((next) => {
+      waiting = false;
       refused = "problem" in next ? next.problem : undefined;
       devices = "devices" in next ? next.devices : {};
     }),
@@ -23,8 +30,11 @@
   const spot = $derived(Object.values(devices).find((values) => "price.spot" in values));
 </script>
 
-<section>
-  <h2>{m.tariff_prices_now()}</h2>
+<section aria-labelledby="{id}-title">
+  <h2 id="{id}-title">{m.tariff_prices_now()}</h2>
+  {#if waiting}
+    <LoadingRows />
+  {/if}
   {#if refused !== undefined}
     <p role="alert">{problemText(refused)}</p>
   {/if}

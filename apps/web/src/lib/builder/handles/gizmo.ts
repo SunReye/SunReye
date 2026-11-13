@@ -1,5 +1,5 @@
-// The handles as three.js objects (ADR 20): arrows on the walls, a knob on the ridge, a ring on
-// the ground and the footprint's outline, drawn over the scene in the brand colour. Each handle
+// The handles as three.js objects (ADR 20): arrows on the walls, a knob on the ridge and on each
+// fence point, a ring on the ground and the footprint's outline, drawn over the scene in the brand colour. Each handle
 // carries a larger, unseen hit body so a finger finds it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
 import {
@@ -22,25 +22,25 @@ import {
   Vector3,
   type Camera,
 } from "three";
-import type { Grip, Handle } from "./grips.ts";
+import type { Handle } from "./grips.ts";
 
 /** Metres: big enough to read on a house, small enough not to hide its walls. */
 const CONE = { radius: 0.22, length: 0.5 };
 const SHAFT = { radius: 0.06, length: 0.45 };
 const KNOB = 0.24;
 const TUBE = 0.06;
-/** A fingertip's reach around each handle, in metres. */
 
+/** A fingertip's reach around each handle, in metres. */
 const REACH = 0.6;
 const RING_REACH = 0.35;
-/** Over everything the scene draws. */
 
+/** Over everything the scene draws. */
 const ON_TOP = 10;
 
 const UP = new Vector3(0, 1, 0);
 
-/** Each handle's group, by what it drags. */
-const GRIPS = new WeakMap<Object3D, Grip>();
+/** Each handle's group, by its handle. */
+const HANDLES = new WeakMap<Object3D, Handle>();
 
 function seen(colour: Color): MeshBasicMaterial {
   return new MeshBasicMaterial({
@@ -120,7 +120,7 @@ function parts(handle: Handle, colour: Color): Object3D[] {
 
   if (handle.grip === "move") return outline(handle, colour);
 
-  if (handle.grip !== "pitch") return arrow(handle, colour);
+  if (handle.grip !== "pitch" && handle.grip !== "point") return arrow(handle, colour);
 
   return [
     new Mesh(new SphereGeometry(KNOB, 20, 14), seen(colour)),
@@ -139,7 +139,7 @@ export function gizmo(found: readonly Handle[], colour: Color): Group {
 
     group.position.set(x, y, z);
     group.add(...parts(handle, colour));
-    GRIPS.set(group, handle.grip);
+    HANDLES.set(group, handle);
     group.traverse((part) => {
       part.renderOrder = ON_TOP;
     });
@@ -149,26 +149,29 @@ export function gizmo(found: readonly Handle[], colour: Color): Group {
   return all;
 }
 
-/** The grip whose handle the ray from `camera` through `at` (−1 to 1, y up) strikes; null for
- * none. */
-export function gripOf(handles: Group, camera: Camera, at: readonly [number, number]): Grip | null {
+/** The handle the ray from `camera` through `at` (−1 to 1, y up) strikes; null for none. */
+export function handleOf(
+  handles: Group,
+  camera: Camera,
+  at: readonly [number, number],
+): Handle | null {
   const ray = new Raycaster();
 
   ray.setFromCamera(new Vector2(...at), camera);
 
-  const meshes = handles.children.filter((group) => GRIPS.get(group) !== "move");
+  const meshes = handles.children.filter((group) => HANDLES.get(group)?.grip !== "move");
   const [first] = ray.intersectObjects(meshes, true);
   let part = first?.object ?? null;
 
   while (part !== null && part.parent !== handles) part = part.parent;
 
-  return (part && GRIPS.get(part)) ?? null;
+  return (part && HANDLES.get(part)) ?? null;
 }
 
 /** Shows the handles `shown` of the way in, 0 to 1: they grow and fade in from the entrance. */
 export function appear(handles: Group, shown: number): void {
   for (const group of handles.children) {
-    group.scale.setScalar(GRIPS.get(group) === "move" ? 1 : 0.6 + 0.4 * shown);
+    group.scale.setScalar(HANDLES.get(group)?.grip === "move" ? 1 : 0.6 + 0.4 * shown);
     group.traverse((part) => {
       const material: unknown =
         part instanceof Mesh || part instanceof LineLoop ? part.material : undefined;

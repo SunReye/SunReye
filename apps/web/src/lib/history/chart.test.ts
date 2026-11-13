@@ -3,7 +3,8 @@ import { dayOf } from "../range/calendar.ts";
 import { edges } from "../range/edges.ts";
 import { hourInstant, rangeFor, type Calendar } from "../range/range.ts";
 import { chartOf } from "./chart.ts";
-import { sumOf, type Plant } from "./flows.ts";
+import { NO_PLANT, sumOf, type Plant } from "./flows.ts";
+import type { Rolled } from "./history.ts";
 import type { Loaded } from "./stats.svelte.ts";
 
 const ZONE = "UTC";
@@ -11,33 +12,78 @@ const DAY = dayOf(2026, 10, 3);
 const CAL: Calendar = { today: DAY + 1, hour: 10, last: DAY + 1 };
 const at = (h: number) => hourInstant(ZONE, DAY * 24 + h).toISOString();
 const span = (h0: number, h1: number, mean: number) => ({ start: at(h0), end: at(h1), mean });
+const H = 3_600_000;
+
+/** Hourly rollups of a mean held from `h0` to before `h1`, read whole. */
+function hourly(...spans: readonly (readonly [number, number, number])[]): Rolled[] {
+  return spans.flatMap(([h0, h1, mean]) =>
+    Array.from({ length: h1 - h0 }, (_, i) => ({
+      start: Date.parse(at(h0 + i)),
+      end: Date.parse(at(h0 + i + 1)),
+      integral: mean,
+      mean,
+      covered: H,
+    })),
+  );
+}
+
+const day = (h: number, wh: number): Rolled[] => [
+  {
+    start: Date.parse(at(h)),
+    end: Date.parse(at(h + 24)),
+    integral: wh,
+    mean: wh / 24,
+    covered: 24 * H,
+  },
+];
 
 /** 10–12 h: 3 kW sun, 1 kW house, 2 kW out; 12–13 h unread; then 1 kW bought. */
 const PLANT: Plant = {
-  pv: [span(10, 12, 3000)],
   load: [span(10, 12, 1000), span(13, 24, 1000)],
-  imported: [span(13, 24, 1000)],
-  exported: [span(10, 12, 2000)],
-  selfUsed: [span(10, 12, 1000)],
-  selfCovered: [span(10, 12, 1000)],
-  battery: [],
-  ev: [],
+  hours: {
+    ...NO_PLANT.hours,
+    pv: hourly([10, 12, 3000]),
+    load: hourly([10, 12, 1000], [13, 24, 1000]),
+    imported: hourly([13, 24, 1000]),
+    exported: hourly([10, 12, 2000]),
+    selfUsed: hourly([10, 12, 1000]),
+    selfCovered: hourly([10, 12, 1000]),
+  },
+  days: {
+    ...NO_PLANT.days,
+    pv: day(0, 6000),
+    load: day(0, 13_000),
+    imported: day(0, 11_000),
+    exported: day(0, 4000),
+    selfUsed: day(0, 2000),
+    selfCovered: day(0, 2000),
+  },
 };
 
 /** The day before: 2 kW sun 10–11 h only. */
 const BEFORE: Plant = {
-  ...PLANT,
-  pv: [span(-14, -13, 2000)],
   load: [span(-14, -13, 500)],
-  exported: [span(-14, -13, 1500)],
-  selfUsed: [span(-14, -13, 500)],
-  selfCovered: [span(-14, -13, 500)],
-  imported: [],
+  hours: {
+    ...NO_PLANT.hours,
+    pv: hourly([-14, -13, 2000]),
+    load: hourly([-14, -13, 500]),
+    exported: hourly([-14, -13, 1500]),
+    selfUsed: hourly([-14, -13, 500]),
+    selfCovered: hourly([-14, -13, 500]),
+  },
+  days: {
+    ...NO_PLANT.days,
+    pv: day(-24, 2000),
+    load: day(-24, 500),
+    exported: day(-24, 1500),
+    selfUsed: day(-24, 500),
+    selfCovered: day(-24, 500),
+  },
 };
 
 /** No readings the day before. */
 const NOTHING_BEFORE = {
-  plant: { ...PLANT, pv: [], load: [], imported: [], exported: [], selfUsed: [], selfCovered: [] },
+  plant: NO_PLANT,
   days: null,
 };
 

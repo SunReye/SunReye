@@ -2,6 +2,7 @@
 // roles (ADR 10) and the layout's strings, signs per ADR 4. Pure.
 import type { Live, PvString, Values } from "../api/core.ts";
 import { PLANT } from "../live/labels.ts";
+import { formatFigure } from "../detail/figures.ts";
 
 /** The layout's strings, as far as the flow needs them. */
 export type FlowStrings = readonly Readonly<Pick<PvString, "id" | "name" | "device">>[];
@@ -52,7 +53,7 @@ export function flowReading(
         ? []
         : [
             {
-              id: `string-${s.id}`,
+              id: formatFigure({ kind: "string", id: s.id }),
               label: s.name,
               watts,
               estimated: estimated[String(s.device)]?.includes(series) ?? false,
@@ -110,9 +111,9 @@ export function hubMetrics(values: Values["devices"]): Hub {
   return { dc, efficiency: (ac / dc) * 100, own: Math.abs(dc - ac) };
 }
 
-/** Whether any of the plant's values is past its gap threshold (ADR 3). */
+/** Whether the stream is lost or any of the plant's values is past its gap threshold (ADR 3). */
 export function stalled(live: Live | undefined): boolean {
-  return (
-    live !== undefined && "devices" in live && Object.keys(live.stale?.[PLANT] ?? {}).length > 0
-  );
+  if (live === undefined || !("devices" in live)) return false;
+
+  return live.lost !== undefined || Object.keys(live.stale?.[PLANT] ?? {}).length > 0;
 }
