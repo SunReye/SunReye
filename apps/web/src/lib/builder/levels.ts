@@ -39,6 +39,9 @@ const EDGE = 0.05;
 /** A click this close to a fence's line, in metres, strikes it. */
 const NEAR = 0.3;
 
+/** A car stands below this, in metres: a strike higher over its place lands on the roof above. */
+const CAR = 2;
+
 /** The pv crate's `turn`: clockwise seen from above, where forward is −z. */
 function turn(x: number, z: number, degrees: number): readonly [number, number] {
   const radians = (degrees * Math.PI) / 180;
@@ -69,9 +72,16 @@ function distance(
   return Math.hypot(px - ax - t * dx, pz - az - t * dz);
 }
 
-/** The object at a point: what stands before the blocks it stands by, the ground last, the
- * latest surface first as it is drawn over the others. */
-function at(scene: Scene, [east, north]: Point): Level | null {
+/** The index of the car place under scene point `x`, `z`; −1 for none. */
+function placed(scene: Scene, point: readonly [number, number]): number {
+  return (scene.carPlaces ?? []).findIndex((item) =>
+    within(point, { ...item, depth: item.length }),
+  );
+}
+
+/** The object at a point: what stands before the blocks it stands by, a car place before the
+ * roof over it, the ground last, the latest surface first as it is drawn over the others. */
+function at(scene: Scene, [east, north, up]: Point): Level | null {
   const point = turn(east, -north, -scene.north);
 
   const obstacle = scene.obstacles.findIndex((item) => {
@@ -89,6 +99,10 @@ function at(scene: Scene, [east, north]: Point): Level | null {
   );
 
   if (fence >= 0) return { kind: "fence", index: fence };
+
+  const place = up < CAR ? placed(scene, point) : -1;
+
+  if (place >= 0) return { kind: "place", index: place };
 
   const block = scene.blocks.findIndex((item) => within(point, item));
 
