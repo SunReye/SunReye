@@ -8,7 +8,7 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import DrawerSheet from "#lib/components/drawer-sheet.svelte";
   import { cn } from "#lib/utils.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
@@ -86,7 +86,7 @@
   </ToggleGroup.Root>
 </nav>
 
-<BottomSheet bind:open={moreOpen} label={m.nav_more()}>
+<DrawerSheet bind:open={moreOpen} label={m.nav_more()}>
   <div class="flex flex-col gap-3 px-4 pt-1 pb-2">
     <h2 class="px-1 text-lg font-semibold">{m.nav_more()}</h2>
     <Item.Group
@@ -118,4 +118,4 @@
       {/each}
     </Item.Group>
   </div>
-</BottomSheet>
+</DrawerSheet>
