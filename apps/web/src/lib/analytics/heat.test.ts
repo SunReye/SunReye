@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import { dayOf } from "../range/calendar.ts";
 import { rangeFor } from "../range/range.ts";
-import { heatCells, heatColumns, hourly } from "./heat.ts";
+import { connect } from "../api/core.ts";
+import { heatCells, heatColumns, readHeat } from "./heat.ts";
 
 const H = 3_600_000;
+
+const hourAt = (day: number, h: number) => new Date((day * 24 + h) * H).toISOString();
 
 // Thursday, 12 November 2026, 12:00.
 const TODAY = dayOf(2026, 10, 12);
@@ -60,12 +63,39 @@ test("a month column averages its days' hours", () => {
   expect(heatCells(cols, (t) => read.get(t) ?? null, TODAY * 24).cells[0]![12]).toBe(3);
 });
 
-test("hourly energy is each hour's time-weighted mean power, in kWh", () => {
-  const points = [
-    { start: 0, end: H / 2, mean: 1000 },
-    { start: H / 2, end: 2 * H, mean: 3000 },
-  ];
+test("each hour's energy is its hourly rollup, read from the core in kWh", async () => {
+  // Thursday, 1 October 2026; ten days later the whole week is past.
+  const day = dayOf(2026, 9, 1);
+  const place = { zone: "UTC", cal: { today: day + 10, hour: 12, last: day + 10 } };
+  const asked: string[] = [];
 
-  expect(hourly(points, [0, H, 2 * H, 3 * H], (w) => w)).toEqual([2, 3, null]);
-  expect(hourly(points, [0, H], (w) => Math.max(0, -w))).toEqual([0]);
+  const core = connect({
+    base: "http://core.test/",
+    fetch: (request) => {
+      const url = new URL(request.url);
+      asked.push(`${url.pathname.split("/").at(-1)}:${url.searchParams.get("period")}`);
+
+      return Promise.resolve(
+        Response.json({
+          period: "hour",
+          points: [
+            {
+              date: "2026-10-01",
+              start: hourAt(day, 10),
+              end: hourAt(day, 11),
+              integral: 2500,
+              hours: 1,
+            },
+          ],
+        }),
+      );
+    },
+  });
+
+  const source = { device: 1, series: "pv.power" };
+  const heat = await readHeat(core, source, place, rangeFor("day", day));
+
+  expect(asked).toEqual(["statistics:hour"]);
+  expect(heat.cells[3]![10]).toBe(2.5);
+  expect(heat.cells[3]![9]).toBeNull();
 });

@@ -113,10 +113,10 @@ export class StatsData {
   };
 }
 
-/** Bands of hours have no rollup to read (ADR 9): their powers' histories are read instead. */
+/** Bands of hours read the plant's hourly rollups (ADR 9). */
 const hoursIn = (list: readonly Edge[]) => list.some((e) => e.t1 - e.t0 < 24);
 
-/** A day's baseline is cut at the hour the range has run to, so it is read from the histories. */
+/** A day's baseline is cut at the hour the range has run to, so it sums hourly rollups. */
 const baseSum = (plant: Plant, from: number, to: number) =>
   (to - from < DAY ? hourSum : sumOf)(plant, from, to);
 

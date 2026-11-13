@@ -4,39 +4,15 @@ import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import { iso } from "../range/calendar.ts";
 import StatisticsScreen from "./StatisticsScreen.svelte";
+import { at, rollups, series, TODAY } from "./statistics.series.ts";
 
 const PLANT = "4294967294";
 const H = 3_600_000;
 const DAY = 24 * H;
 
-/** Today, as a day number in UTC. */
-export const TODAY = Math.floor(Date.now() / DAY);
+export { TODAY } from "./statistics.series.ts";
+
 export const YESTERDAY = iso(TODAY - 1);
-
-const at = (day: number, h: number) => new Date((day * 24 + h) * H).toISOString();
-
-const span = (day: number, h0: number, h1: number, mean: number) => ({
-  start: at(day, h0),
-  end: at(day, h1),
-  mean,
-});
-
-/**
- * Yesterday 10–12 h: 3 kW sun, a 1 kW house, 2 kW out; 12–13 h unread; then 1 kW bought.
- * The day before: 2 kW sun 10–12 h only.
- */
-function series() {
-  const y = TODAY - 1;
-
-  return {
-    "pv.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 3000)],
-    "load.power": [span(y - 1, 0, 24, 500), span(y, 10, 12, 1000), span(y, 13, 24, 1000)],
-    "grid.import.power": [span(y - 1, 0, 24, 500), span(y, 13, 24, 1000)],
-    "grid.export.power": [span(y - 1, 10, 12, 2000), span(y, 10, 12, 2000)],
-    "self.consumption.power": [span(y, 10, 12, 1000)],
-    "self.supply.power": [span(y, 10, 12, 1000)],
-  };
-}
 
 const WIRING = {
   device: 1,
@@ -188,28 +164,15 @@ function capacity(): Response {
   });
 }
 
-/** Each recorded day's energy of a series in Wh, as the core rolls the curves above up. */
-function rollups(name: string, from: number, to: number) {
-  const wh = new Map<number, number>();
-
-  for (const p of new Map(Object.entries(series())).get(name) ?? []) {
-    const d = Math.floor(Date.parse(p.start) / DAY);
-    const add = (p.mean * (Date.parse(p.end) - Date.parse(p.start))) / H;
-
-    if (d * DAY >= from && d * DAY < to) wh.set(d, (wh.get(d) ?? 0) + add);
-  }
-
-  return [...wh.keys()].map((d) => Object.assign(dayAt(d), { integral: wh.get(d) }));
-}
-
 function statistics(q: Query): Response {
   const [name, from, to] = [q("series") ?? "", Date.parse(q("from")!), Date.parse(q("to")!)];
-  const recorded = q("period") === "day" ? rollups(name, from, to) : [];
+  const period = q("period") ?? "";
+  const recorded = period === "day" || period === "hour" ? rollups(name, period, from, to) : [];
 
   asked.push({ series: name, from, to });
 
   return Response.json({
-    period: q("period"),
+    period,
     points: recorded.length > 0 ? recorded : [dayAt(TODAY - plant.age)],
   });
 }

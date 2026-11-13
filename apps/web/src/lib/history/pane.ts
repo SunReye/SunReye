@@ -47,7 +47,6 @@ export function heatOf(metric: Metric): HeatSource & { name: string; colour: str
     return {
       device: PLANT,
       series: "grid.import.power",
-      pick: (w) => w,
       name: m.stats_pattern_grid(),
       colour: "var(--e-import)",
     };
@@ -55,7 +54,6 @@ export function heatOf(metric: Metric): HeatSource & { name: string; colour: str
   return {
     device: PLANT,
     series: "pv.power",
-    pick: (w) => w,
     name: m.stats_pattern_pv(),
     colour: "var(--e-solar)",
   };

@@ -1,37 +1,45 @@
 import { expect, test } from "bun:test";
-import { gapsOf, hourSum, NO_PLANT, sumOf, type Curves, type Plant } from "./flows.ts";
+import type { Rolled } from "./history.ts";
+import { gapsOf, hourSum, NO_PLANT, sumOf, type Plant } from "./flows.ts";
 
 const H = 3_600_000;
-const T0 = Date.parse("2026-11-03T00:00:00Z");
-const at = (h: number) => new Date(T0 + h * H).toISOString();
-const span = (h0: number, h1: number, mean: number) => ({ start: at(h0), end: at(h1), mean });
-
-/** Four hours: sun at 2 kW and a 1 kW house, exporting; then dark, importing. */
-const CURVES: Curves = {
-  pv: [span(0, 2, 2000), span(2, 4, 0)],
-  load: [span(0, 4, 1000)],
-  imported: [span(0, 2, 0), span(2, 4, 1000)],
-  exported: [span(0, 2, 1000), span(2, 4, 0)],
-  selfUsed: [span(0, 2, 1000), span(2, 4, 0)],
-  selfCovered: [span(0, 2, 1000), span(2, 4, 0)],
-  battery: [],
-  ev: [],
-};
-
 const DAY = 24 * H;
-const rolled = (...whs: readonly number[]) => whs.map((wh, d) => ({ start: T0 + d * DAY, wh }));
+const T0 = Date.parse("2026-11-03T00:00:00Z");
 
-/** Two days' rollups, which the curves above do not agree with. */
+/** Rollups of `length` ms from T0 on, one per Wh figure, each read whole. */
+const rolled =
+  (length: number) =>
+  (...whs: readonly number[]): Rolled[] =>
+    whs.map((wh, i) => ({
+      start: T0 + i * length,
+      end: T0 + (i + 1) * length,
+      integral: wh,
+      mean: (wh * H) / length,
+      covered: length,
+    }));
+
+const [days, hours] = [rolled(DAY), rolled(H)];
+
+/** Two days' rollups, and four hours': sun and export, then dark and import. */
 const PLANT: Plant = {
-  ...CURVES,
+  ...NO_PLANT,
   days: {
     ...NO_PLANT.days,
-    pv: rolled(4000, 6000),
-    load: rolled(4000, 5000),
-    imported: rolled(2000, 1000),
-    exported: rolled(2000, 2000),
-    selfUsed: rolled(2000, 4000),
-    selfCovered: rolled(2000, 4000),
+    pv: days(4000, 6000),
+    load: days(4000, 5000),
+    imported: days(2000, 1000),
+    exported: days(2000, 2000),
+    selfUsed: days(2000, 4000),
+    selfCovered: days(2000, 4000),
+  },
+  hours: {
+    ...NO_PLANT.hours,
+    pv: hours(2000, 2000, 0, 0),
+    load: hours(1000, 1000, 1000, 1000),
+    imported: hours(0, 0, 1000, 1000),
+    exported: hours(1000, 1000, 0, 0),
+    selfUsed: hours(1000, 1000, 0, 0),
+    selfCovered: hours(1000, 1000, 0, 0),
   },
 };
 
@@ -53,7 +61,7 @@ test("a span sums the day rollups starting in it, the open day's to its latest r
   });
 });
 
-test("a band of hours counts the part of each interval inside it", () => {
+test("a band of hours sums the hourly rollups starting in it", () => {
   expect(hourSum(PLANT, T0 + 1 * H, T0 + 3 * H)).toMatchObject({
     production: 2,
     consumption: 2,
@@ -62,22 +70,36 @@ test("a band of hours counts the part of each interval inside it", () => {
   });
 });
 
-test("the battery charges while its power is positive (ADR 4), and the car counts apart", () => {
-  const plant = {
+test("the battery's charge and discharge are its own rollups, and the car counts apart", () => {
+  // A day that charged 3 kWh and gave 1.5 kWh nets 1.5 kWh: both ways still show.
+  const plant: Plant = {
     ...PLANT,
-    battery: [span(0, 1, 500), span(2, 3, -1500)],
-    ev: [span(1, 2, 3000)],
-    days: { ...PLANT.days, battery: rolled(500, -1500), ev: rolled(3000) },
+    days: { ...PLANT.days, charge: days(3000), discharge: days(1500), ev: days(3000) },
+    hours: { ...PLANT.hours, charge: hours(500, 0), discharge: hours(0, 1500), ev: hours(0, 3000) },
   };
 
-  expect(sumOf(plant, T0, T0 + 2 * DAY)).toMatchObject({ charge: 0.5, discharge: 1.5, ev: 3 });
+  expect(sumOf(plant, T0, T0 + 2 * DAY)).toMatchObject({ charge: 3, discharge: 1.5, ev: 3 });
   expect(hourSum(plant, T0, T0 + 4 * H)).toMatchObject({ charge: 0.5, discharge: 1.5, ev: 3 });
 });
 
 test("time without a house reading is not covered, and long holes are gaps", () => {
-  const plant = { ...PLANT, load: [span(0, 1, 1000), span(3, 4, 1000)] };
+  const span = (h0: number, h1: number) => ({
+    start: new Date(T0 + h0 * H).toISOString(),
+    end: new Date(T0 + h1 * H).toISOString(),
+    mean: 1000,
+  });
 
-  expect(sumOf(plant, T0, T0 + 4 * H).covered).toBe(2 * H);
+  // Hours 1 and 2 unread.
+  const [first, , , last] = hours(1000, 0, 0, 1000);
+  const load = [first!, last!];
+
+  const plant: Plant = {
+    ...PLANT,
+    load: [span(0, 1), span(3, 4)],
+    hours: { ...PLANT.hours, load },
+  };
+
+  expect(hourSum(plant, T0, T0 + 4 * H).covered).toBe(2 * H);
   expect(gapsOf(plant, T0, T0 + 5 * H, T0 + 5 * H)).toEqual([
     { start: T0 + 1 * H, end: T0 + 3 * H },
     { start: T0 + 4 * H, end: T0 + 5 * H },

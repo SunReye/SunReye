@@ -87,6 +87,8 @@ export function history(
 
 /** The plant-local period after `start`. */
 function next(plant: Plant, start: number, period: Schemas["Period"]): number {
+  if (period === "hour") return start + HOUR;
+
   if (period === "day") return start + DAY;
 
   if (period === "week") return start + 7 * DAY;
@@ -111,6 +113,7 @@ function figures(plant: Plant, device: number, series: string, span: Span) {
     mean: m,
     min: 0,
     max: m * 2,
+    hours: (span.to - from) / HOUR,
   };
 }
 

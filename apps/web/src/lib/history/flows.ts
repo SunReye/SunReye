@@ -1,53 +1,53 @@
-// What the plant's flows sum to over a span, from the `plant` device's day rollups (ADR 3, 4, 14):
-// the dashboard's today reads the same rollups through the same shares (`dashboard/today.ts`).
+// What the plant's flows sum to over a span, from the `plant` device's hourly and day rollups
+// (ADR 3, 4, 14): the dashboard's today reads the same rollups through the same shares
+// (`dashboard/today.ts`). Nothing here integrates a power.
 import { today, type Interval } from "../dashboard/today.ts";
 import type { Span } from "../range/fill.ts";
+import type { Rolled } from "./history.ts";
 
-/** One plant-local day's energy of a power: Wh from `start`, ms since the epoch. */
-export interface Rolled {
-  readonly start: number;
-  readonly wh: number;
-}
+/** The plant's flows, each a power role of the `plant` device (ADR 4). */
+export const FLOWS = {
+  pv: "pv.power",
+  load: "load.power",
+  imported: "grid.import.power",
+  exported: "grid.export.power",
+  /** The PV not fed in. */
+  selfUsed: "self.consumption.power",
+  /** The house load not bought. */
+  selfCovered: "self.supply.power",
+  charge: "battery.charge.power",
+  discharge: "battery.discharge.power",
+  ev: "ev.charge.power",
+} as const;
 
-/** The plant's power histories, each a role of the `plant` device (ADR 4). */
-export interface Curves {
-  /** `pv.power`. */
-  readonly pv: readonly Interval[];
-  /** `load.power`. */
-  readonly load: readonly Interval[];
-  /** `grid.import.power`. */
-  readonly imported: readonly Interval[];
-  /** `grid.export.power`. */
-  readonly exported: readonly Interval[];
-  /** `self.consumption.power`: the PV not fed in. */
-  readonly selfUsed: readonly Interval[];
-  /** `self.supply.power`: the house load not bought. */
-  readonly selfCovered: readonly Interval[];
-  /** `battery.power`, positive while charging. */
-  readonly battery: readonly Interval[];
-  /** `ev.charge.power`. */
-  readonly ev: readonly Interval[];
-}
+export type Flow = keyof typeof FLOWS;
 
-/** The plant's day rollups as the core folds them (ADR 3), and its power histories. */
-export interface Plant extends Curves {
+export type Rollups = Readonly<Record<Flow, readonly Rolled[]>>;
+
+/** The plant's rollups as the core reads them (ADR 3), and its house load's history. */
+export interface Plant {
   /** Today's is rolled up to its latest reading. */
-  readonly days: Readonly<Record<keyof Curves, readonly Rolled[]>>;
+  readonly days: Rollups;
+  /** Read only for bands of hours; this hour's is rolled up to its latest reading. */
+  readonly hours: Rollups;
+  /** `load.power`: where the record has holes. */
+  readonly load: readonly Interval[];
 }
 
-const NONE = {
+const NONE: Rollups = {
   pv: [],
   load: [],
   imported: [],
   exported: [],
   selfUsed: [],
   selfCovered: [],
-  battery: [],
+  charge: [],
+  discharge: [],
   ev: [],
-} as const satisfies Curves;
+};
 
 /** A plant not read. */
-export const NO_PLANT: Plant = { ...NONE, days: NONE };
+export const NO_PLANT: Plant = { days: NONE, hours: NONE, load: [] };
 
 /** kWh, autarky and self-use in %, `covered` in ms. */
 export interface Sum {
@@ -134,25 +134,13 @@ function eachPart(
   }
 }
 
-/** How long the intervals cover of [from, to), in ms. */
-function length(intervals: readonly Interval[], from: number, to: number): number {
-  let sum = 0;
-
-  eachPart(intervals, from, to, (a, b) => {
-    sum += b - a;
-  });
-
-  return sum;
-}
-
 const HOUR = 3_600_000;
 
-/** The figures from each way's kWh, and how long the house load was read. */
-function sum(
-  kwh: (of: keyof Curves) => number,
-  battery: readonly [number, number],
-  covered: number,
-): Sum {
+/** The flows over the rollups starting in [from, to), and how long the house load was read. */
+function sum(rollups: Rollups, from: number, to: number): Sum {
+  const inside = (of: Flow) => rollups[of].filter((r) => r.start >= from && r.start < to);
+  const kwh = (of: Flow) => inside(of).reduce((a, r) => a + r.integral, 0) / 1000;
+
   const t = today(
     {
       "pv.power": kwh("pv"),
@@ -172,53 +160,22 @@ function sum(
     purchase: t.purchase,
     selfUsed: kwh("selfUsed"),
     selfCovered: kwh("selfCovered"),
-    charge: battery[0],
-    discharge: battery[1],
+    charge: kwh("charge"),
+    discharge: kwh("discharge"),
     ev: kwh("ev"),
     autarky: t.autarky,
     selfUse: t.selfUse,
-    covered,
+    covered: inside("load").reduce((a, r) => a + r.covered, 0),
   };
-}
-
-/** kWh each way: positive figures, and negative ones as a positive number. */
-function split(figures: readonly number[]): readonly [number, number] {
-  let [up, down] = [0, 0];
-
-  for (const kwh of figures)
-    if (kwh > 0) up += kwh;
-    else down -= kwh;
-
-  return [up, down];
 }
 
 /** The plant's flows over the days starting in [from, to). */
-export function sumOf(plant: Plant, from: number, to: number): Sum {
-  const days = (of: keyof Curves) =>
-    plant.days[of].filter((d) => d.start >= from && d.start < to).map((d) => d.wh / 1000);
+export const sumOf = (plant: Plant, from: number, to: number): Sum => sum(plant.days, from, to);
 
-  return sum((of) => split(days(of))[0], split(days("battery")), length(plant.load, from, to));
-}
+/** The plant's flows over the hours starting in [from, to). */
+export const hourSum = (plant: Plant, from: number, to: number): Sum => sum(plant.hours, from, to);
 
-/**
- * The plant's flows over a band shorter than a day, from its power histories: the core publishes
- * no rollup finer than a day (ADR 9).
- */
-export function hourSum(plant: Plant, from: number, to: number): Sum {
-  const parts = (of: keyof Curves) => {
-    const out: number[] = [];
-
-    eachPart(plant[of], from, to, (a, b, mean) => {
-      out.push((mean * (b - a)) / HOUR / 1000);
-    });
-
-    return out;
-  };
-
-  return sum((of) => split(parts(of))[0], split(parts("battery")), length(plant.load, from, to));
-}
-
-/** A band of `hours` over [from, to): by its day rollups, or by its histories under a day. */
+/** A band of `hours` over [from, to): by its day rollups, or by its hourly ones under a day. */
 export const bandSum = (plant: Plant, hours: number, from: number, to: number): Sum =>
   (hours < 24 ? hourSum : sumOf)(plant, from, to);
 

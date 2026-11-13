@@ -13,7 +13,7 @@
   import { kwh, num } from "../range/format.ts";
   import { RangeData } from "../range/range-data.svelte.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { bandFigure, isPower, means } from "./history.ts";
+  import { bandFigure, isPower, periodOf, rollups } from "./history.ts";
 
   let {
     core,
@@ -22,7 +22,7 @@
     route,
     forecast = [],
   }: {
-    core: Readonly<Pick<Core, "history" | "forecasts">>;
+    core: Readonly<Pick<Core, "statistics" | "forecasts">>;
     device: number;
     series: string;
     route: RangeRoute;
@@ -34,12 +34,13 @@
     () => route,
     async (from, to, now) => {
       const s = series;
+      const period = periodOf(route.range);
       const until = Math.min(to.getTime(), now);
       const today = route.range.kind === "day" && from.getTime() <= now && now < to.getTime();
       const expects = today ? forecast : [];
 
       const [points, plans] = await Promise.all([
-        from.getTime() < until ? means(core, device, s, from, new Date(until)) : [],
+        from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [],
         Promise.all(expects.map((d) => planned(core, d, s, from, to))),
       ]);
 

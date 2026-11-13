@@ -37,7 +37,7 @@
   <PatternPanel
     core={input.core}
     route={input.route}
-    source={{ device: analytics.device, series: analytics.series, pick: analytics.heat }}
+    source={{ device: analytics.device, series: analytics.heat }}
     name={title}
     {colour}
   />

@@ -33,7 +33,7 @@
       | "layout"
       | "capabilities"
       | "timezone"
-      | "history"
+      | "statistics"
       | "forecasts"
       | "moduleTypes"
       | "corrections"

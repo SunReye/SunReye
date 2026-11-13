@@ -1,7 +1,7 @@
 // What the string comparison reads from the core: each string's energy in a range, its module
 // types' peak power and each MPPT input's learned correction.
 import type { Core, PvString } from "../api/core.ts";
-import { bandFigure, means } from "../history/history.ts";
+import { bandFigure, periodOf, rollups } from "../history/history.ts";
 import { dayOf, fmt } from "../range/calendar.ts";
 import type { Place } from "../range/range-data.svelte.ts";
 import { hourInstant, t0Of, t1Of, type Range } from "../range/range.ts";
@@ -9,7 +9,7 @@ import type { InputCorrection } from "./strings.ts";
 
 /** Each string's energy in kWh from the range's start to its end or now, by string id. */
 export async function stringEnergy(
-  core: Readonly<Pick<Core, "history">>,
+  core: Readonly<Pick<Core, "statistics">>,
   strings: readonly Readonly<PvString>[],
   place: Place,
   r: Range,
@@ -19,7 +19,7 @@ export async function stringEnergy(
 
   const read = async (s: Readonly<PvString>) => {
     const series = `pv.string.power[${s.id}]`;
-    const points = from < to ? await means(core, s.device, series, from, to) : [];
+    const points = from < to ? await rollups(core, s.device, series, periodOf(r), from, to) : [];
 
     return [s.id, bandFigure(series, points, from.getTime(), to.getTime()).value] as const;
   };
