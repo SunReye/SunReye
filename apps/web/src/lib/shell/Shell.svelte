@@ -7,7 +7,7 @@
   import type { Snippet } from "svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import { stream } from "../live/stream.svelte.ts";
-  import { fade } from "../motion.ts";
+  import { fade, leave } from "../motion.ts";
   import Connection from "./Connection.svelte";
   import type { ShellLayout } from "./input.svelte.ts";
   import Bar from "./Bar.svelte";
@@ -56,7 +56,9 @@
     <div class="grid">
       {#key current}
         <!-- No landmark: each screen brings its own `main`. -->
-        <div class="col-start-1 row-start-1 min-w-0" data-screen in:fade out:fade>
+        <div class="col-start-1 row-start-1 min-w-0" data-screen in:fade>
+          <!-- Bears the outro, so the leaving screen fades without going inert. -->
+          <span hidden out:leave></span>
           {@render children()}
         </div>
       {/key}

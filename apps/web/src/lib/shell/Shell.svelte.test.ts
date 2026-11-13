@@ -221,6 +221,22 @@ test("a route change cross-fades the screens", async () => {
   await expect.poll(() => screens()).toHaveLength(1);
 });
 
+test("the leaving screen fades without going inert, which would restyle all of it in the frame", async () => {
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+
+  await screen.rerender({ current: "/history" });
+
+  const [leaving] = screens();
+
+  expect(screens()).toHaveLength(2);
+  expect(leaving?.inert).toBe(false);
+  // Only an empty element may: nothing of the screen's content is restyled.
+  expect([...(leaving?.querySelectorAll("[inert]") ?? [])].map((e) => e.childNodes.length)).toEqual(
+    [0],
+  );
+  await expect.poll(() => screens()).toHaveLength(1);
+});
+
 test("with low power a route change is instant", async () => {
   motion.lowPower = true;
 

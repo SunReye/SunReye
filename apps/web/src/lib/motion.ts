@@ -99,6 +99,25 @@ export function fade(
   };
 }
 
+/**
+ * Fades out the parent of an empty marker, for a screen that leaves. Svelte makes the element that
+ * bears an outro inert, which restyles its whole subtree in the frame the next screen mounts; borne
+ * by the marker, only the marker goes inert. The parent runs `fade` backwards, as an outro of it would.
+ */
+export function leave(node: Element, params: Duration = {}): TransitionConfig {
+  const duration = motionMs(params.duration ?? MOTION_MS.base);
+
+  if (duration > 0)
+    node.parentElement?.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration,
+      easing: MOTION_EASE,
+      direction: "reverse",
+      fill: "forwards",
+    });
+
+  return { duration };
+}
+
 // svelte/transition's own, with our default duration and easing and reduced motion applied.
 
 export function slide(node: Element, params: Omit<SlideParams, "easing"> & Duration = {}) {
