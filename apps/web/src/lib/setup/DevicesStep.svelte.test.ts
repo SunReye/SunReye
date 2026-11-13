@@ -34,6 +34,41 @@ const ADDED = {
   unit: 1,
 };
 
+/** The profiles the test core serves. */
+const PROFILES = [
+  {
+    id: "deye-sg05lp3",
+    manufacturer: "Deye",
+    name: "SG05LP3",
+    version: "1.0.0",
+    official: true,
+    acRating: 20_000,
+  },
+  {
+    id: "shelly-pro-3em",
+    manufacturer: "Shelly",
+    name: "Pro 3EM",
+    version: "1.0.0",
+    official: true,
+    acRating: null,
+  },
+  {
+    id: "sunspec",
+    manufacturer: "SunSpec",
+    name: "SunSpec device",
+    version: "1.0.0",
+    official: false,
+    acRating: null,
+  },
+];
+
+/** Picks the profile named `name` for the device at `at` from the catalogue, by searching for `search`. */
+async function pick(at: string, search: string, name: string): Promise<void> {
+  await page.getByRole("button", { name: `Profil für ${at}` }).click();
+  await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), search);
+  await page.getByRole("button", { name: new RegExp(`^${name}`, "u") }).click();
+}
+
 const REPORT = {
   subnet: "192.168.1.0/24",
   endpoints: [
@@ -57,6 +92,7 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
 
   const answers = new Map<string, () => Response>([
     ["/api/v1/scan", () => Response.json(REPORT)],
+    ["/api/v1/profiles", () => Response.json({ profiles: PROFILES })],
     ["/api/v1/connections", () => Response.json({ id: 5, secrets: [] }, { status: 201 })],
     [
       "/api/v1/devices",
@@ -79,7 +115,7 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
 
-      calls.push(`${path} ${await request.text()}`);
+      if (request.method !== "GET") calls.push(`${path} ${await request.text()}`);
 
       return answers.get(path)?.() ?? Response.error();
     },
@@ -142,7 +178,7 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
     .click();
   await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
   await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
-  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.30:502"), "sunspec-meter");
+  await pick("192.168.1.30:502", "sunspec", "SunSpec device");
   await enter("Adresse für 192.168.1.30:502", "3");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.30:502"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
@@ -150,7 +186,7 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.slice(1)).toEqual([
     '/api/v1/connections {"name":"192.168.1.30","host":"192.168.1.30","port":502,"transport":"modbus-tcp"}',
-    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec-meter","unit":3}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec","unit":3}',
   ]);
 });
 
@@ -164,7 +200,7 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
   await enter("Port", "4196");
   await screen.getByRole("radio", { name: "rtu-over-tcp" }).click();
   await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
-  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.40:4196"), "eastron-sdm630");
+  await pick("192.168.1.40:4196", "3em", "Pro 3EM");
   await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
@@ -172,7 +208,7 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
     '/api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":4196,"transport":"rtu-over-tcp"}',
-    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"eastron-sdm630","unit":2}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"shelly-pro-3em","unit":2}',
   ]);
 });
 

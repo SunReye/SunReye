@@ -119,14 +119,14 @@
   {@render heading(m.devices_entered())}
   <ul class="divide-y divide-border/60 border-y border-border/60">
     {#each entered as choice (choice.key)}
-      <ManualRow {choice} note={m.devices_entered()} />
+      <ManualRow {core} {choice} note={m.devices_entered()} />
     {/each}
   </ul>
 {/if}
 {#if others.length > 0}
   <OtherHosts count={others.length}>
     {#each others as choice (choice.key)}
-      <ManualRow {choice} note={m.devices_unrecognised()} />
+      <ManualRow {core} {choice} note={m.devices_unrecognised()} />
     {/each}
   </OtherHosts>
 {/if}

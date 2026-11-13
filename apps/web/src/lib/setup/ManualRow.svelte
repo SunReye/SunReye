@@ -4,12 +4,14 @@
   import X from "@lucide/svelte/icons/x";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
+  import type { Core } from "../api/core.ts";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
   import type { Choice } from "./choices.ts";
   import { FIELD } from "./fields.ts";
+  import ProfilePicker from "./ProfilePicker.svelte";
 
-  let { choice, note }: { choice: Choice; note: string } = $props();
+  let { core, choice, note }: { core: Core; choice: Choice; note: string } = $props();
 
   const at = $derived({ host: choice.found.host, port: choice.found.port });
 
@@ -58,15 +60,17 @@
     {/if}
   </div>
   {#if choice.chosen}
-    <label class={FIELD}>
-      {m.devices_profile()}
-      <Input
-        required
-        autocomplete="off"
-        aria-label={m.devices_manual_profile(at)}
-        bind:value={choice.profile}
+    <div class={FIELD}>
+      <span>{m.devices_profile()}</span>
+      <ProfilePicker
+        {core}
+        value={choice.profile}
+        label={m.devices_manual_profile(at)}
+        onpick={(id) => {
+          choice.profile = id;
+        }}
       />
-    </label>
+    </div>
     <div class="overflow-hidden rounded-md border border-border/60">
       <ValueRow
         edit={unit}
