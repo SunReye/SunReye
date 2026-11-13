@@ -176,7 +176,7 @@ test("a range still to come says what the forecast expects", async () => {
     go: () => {},
   });
 
-  await expect.element(card(1).getByText(/erwartet die Prognose 12,0 kWh\./u)).toBeVisible();
+  await expect.element(card(1).getByText(/erwartet die Prognose 12,0\skWh\./u)).toBeVisible();
 });
 
 /** Yesterday measured, today forecast and running, tomorrow forecast; the days before unmeasured. */

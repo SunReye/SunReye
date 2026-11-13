@@ -119,7 +119,8 @@ export function headline(
   j: Readonly<Pick<Judged, "made" | "ahead" | "accuracy">>,
 ): string {
   const when = phrase(cal, range);
-  const [made, ahead] = [kwh(j.made), kwh(j.ahead)];
+  // A figure never breaks from its unit.
+  const [made, ahead] = [kwh(j.made), kwh(j.ahead)].map((v) => v.replace(" ", "\u00A0"));
   const still = j.ahead > 0 ? ` ${m.forecast_still({ ahead })}` : "";
 
   if (j.made <= 0)
