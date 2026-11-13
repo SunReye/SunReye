@@ -1,72 +1,42 @@
-<!-- A face's module-grid editor (ADR 20): its settings, the tool, "Fläche füllen" and the cells. -->
+<!--
+  A face's module-grid editor (ADR 20): its settings, "Fläche füllen" and "Fläche leeren". The modules
+  themselves are laid on the roof in 3D while the face is selected.
+-->
 <script lang="ts">
   import Grid2x2Plus from "@lucide/svelte/icons/grid-2x2-plus";
+  import Grid2x2X from "@lucide/svelte/icons/grid-2x2-x";
   import type { ModuleType } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import { Button } from "#lib/components/ui/button/index.js";
-  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import FaceCells, { type Checks } from "./FaceCells.svelte";
+  import type { Checks } from "./checks.ts";
   import GridSettings from "./GridSettings.svelte";
-  import {
-    editGrid,
-    fillGrid,
-    removeGrid,
-    type Draft,
-    type Strokes,
-    type Tool,
-  } from "./modules.ts";
-  import type { CellPlace, ModuleGrid, RoofFace } from "./pv.ts";
-  import { stringCss } from "./scene.ts";
+  import { clearGrid, editGrid, fillGrid, removeGrid, type Draft } from "./modules.ts";
+  import type { CellPlace, ModuleGrid } from "./pv.ts";
 
   let {
     draft,
     index,
     grid,
-    roof,
     cells,
     checks,
     moduleTypes,
-    strokes,
     onchange,
   }: {
     draft: Draft;
     /** The grid's position in the scene. */
     index: number;
     grid: ModuleGrid;
-    roof: RoofFace;
     /** Every cell the setback holds, as the crate lays them out. */
     cells: readonly CellPlace[];
     checks: Checks;
     moduleTypes: readonly ModuleType[];
-    /** Where a drag's steps go: shown at once, recorded once let go. */
-    strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
 
-  const uid = $props.id();
-
-  let tool = $state.raw<Tool>({ kind: "place" });
-
-  const tools = $derived<readonly (readonly [Tool, string])[]>([
-    [{ kind: "place" }, m.tool_place()],
-    [{ kind: "optimizer" }, m.tool_optimizer()],
-    [{ kind: "paint" }, m.tool_unassign()],
-    ...draft.strings.map(
-      (string, i) => [{ kind: "paint", string: i }, m.tool_paint({ name: string.name })] as const,
-    ),
-  ]);
-
-  /** A tool as a toggle's value. */
-  function toolKey(option: Tool): string {
-    return option.kind === "paint" ? `paint:${String(option.string ?? "")}` : option.kind;
-  }
-
-  function choose(key: string): void {
-    const found = tools.find(([option]) => toolKey(option) === key);
-
-    if (found !== undefined) tool = found[0];
-  }
-
+  /** The strings painted here that are too high in the cold. */
+  const coldHere = $derived(
+    checks.cold.filter(({ string }) => grid.modules.some((cell) => cell.string === string)),
+  );
 </script>
 
 <GridSettings
@@ -78,39 +48,38 @@
 />
 
 <div class="flex flex-col gap-2 border-t border-border/60 p-3">
-  <span id="{uid}-tool" class="text-xs font-medium text-muted-foreground">{m.builder_tool()}</span>
-  <ToggleGroup.Root
-    type="single"
-    size="sm"
-    spacing={1}
-    aria-labelledby="{uid}-tool"
-    class="flex-wrap justify-start"
-    bind:value={() => toolKey(tool), choose}
-  >
-    {#each tools as [option, label] (label)}
-      <ToggleGroup.Item value={toolKey(option)} class="px-2.5 text-xs">
-        {#if option.kind === "paint"}
-          <span class="size-2.5 rounded-sm" style:background={stringCss(option.string)}></span>
-        {/if}
-        {label}
-      </ToggleGroup.Item>
-    {/each}
-  </ToggleGroup.Root>
-  <Button
-    variant="outline"
-    size="sm"
-    class="justify-start"
-    disabled={cells.length === 0}
-    onclick={() => {
-      onchange({ ...draft, scene: fillGrid(draft.scene, index, cells) });
-    }}
-  >
-    <Grid2x2Plus data-icon="inline-start" />
-    {m.builder_fill_face()}
-  </Button>
+  <p role="status" class="text-sm tabular-nums">
+    {m.builder_face_count({ placed: grid.modules.length, cells: cells.length })}
+  </p>
+  <p class="text-sm text-muted-foreground">{m.builder_face_hint()}</p>
+  <div class="grid grid-cols-2 gap-2">
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={cells.length === 0}
+      onclick={() => {
+        onchange({ ...draft, scene: fillGrid(draft.scene, index, cells) });
+      }}
+    >
+      <Grid2x2Plus data-icon="inline-start" />
+      {m.builder_fill_face()}
+    </Button>
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={grid.modules.length === 0}
+      onclick={() => {
+        onchange({ ...draft, scene: clearGrid(draft.scene, index) });
+      }}
+    >
+      <Grid2x2X data-icon="inline-start" />
+      {m.builder_clear_face()}
+    </Button>
+  </div>
+  {#each coldHere as warning (warning.string)}
+    <p role="status" class="text-sm text-warning">{warning.text}</p>
+  {/each}
 </div>
-
-<FaceCells {draft} {index} {grid} {roof} {cells} {checks} {tool} {strokes} {onchange} />
 
 <div class="border-t border-border/60 p-3">
   <Button

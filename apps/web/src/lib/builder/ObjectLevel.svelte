@@ -6,7 +6,7 @@
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
-  import { painted, withoutString, type Draft, type Strokes, type TypeSource } from "./modules.ts";
+  import { painted, withoutString, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -16,7 +16,6 @@
     plan,
     moduleTypes,
     types,
-    strokes,
     onchange,
     onlevel,
   }: {
@@ -25,7 +24,6 @@
     moduleTypes: readonly ModuleType[];
     /** Adds module types to the core, and its catalogue to add them from. */
     types: TypeSource;
-    strokes: Strokes;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
   } = $props();
@@ -42,7 +40,7 @@
   const string = $derived(level.kind === "string" ? draft.strings[index] : undefined);
 
   const roof = $derived(
-    level.kind === "face"
+    level.kind === "face" || level.kind === "module"
       ? plan.laid.roofs.find((r) => r.block === level.block && r.face === level.face)
       : undefined,
   );
@@ -72,8 +70,11 @@
 
   /** The draft without this object, back at its group. */
   function remove(next: Draft): void {
+    // Read first: once the object is gone, the level shown is already its parent.
+    const up = parent(level);
+
     onchange(next);
-    onlevel(parent(level));
+    onlevel(up);
   }
 </script>
 
@@ -133,5 +134,13 @@
     }}
   />
 {:else if roof !== undefined}
-  <FaceLevel {roof} {plan} {moduleTypes} {types} {strokes} {onchange} />
+  <FaceLevel
+    {roof}
+    module={level.kind === "module" ? level : undefined}
+    {plan}
+    {moduleTypes}
+    {types}
+    {onchange}
+    onremove={remove}
+  />
 {/if}

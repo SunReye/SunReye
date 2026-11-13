@@ -3,7 +3,7 @@ import type { Device } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 import type { Cold } from "./checks.ts";
-import { parent, type Level, type Section } from "./levels.ts";
+import { moduleOf, parent, type Level, type Section } from "./levels.ts";
 import { painted, type Draft } from "./modules.ts";
 import type { Fence, FenceFinish, GroundFinish, Modules, Obstacle, Roof } from "./pv.ts";
 
@@ -236,6 +236,9 @@ export function title(level: Level, plan: Plan): string {
 
   if (level.kind === "section") return SECTIONS[level.section]();
 
+  if (level.kind === "module")
+    return m.builder_cell({ row: level.row + 1, column: level.column + 1 });
+
   const up = parent(level);
   const key = JSON.stringify(level);
   const rows = up.kind === "section" ? entries(up.section, plan) : [];
@@ -273,6 +276,8 @@ export function exists(level: Level, plan: Plan): boolean {
   if (level.kind === "face") {
     return plan.laid.roofs.some(({ block, face }) => block === level.block && face === level.face);
   }
+
+  if (level.kind === "module") return moduleOf(plan.draft.scene, level) !== undefined;
 
   return level.index < counts(plan)[level.kind];
 }

@@ -13,7 +13,7 @@ import { coldStrings, type Limits } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
-import { painted, panels, type Draft } from "./modules.ts";
+import { painted, panels, wiring, type At, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
 import type { Editing, Hit, Painting, Panel } from "./drawing.svelte.ts";
@@ -187,20 +187,50 @@ export class Session {
     };
   }
 
-  /** The picked string, which a drag across modules in 3D paints (ADR 20). */
+  /** The selected face's grid, whose free cells a drag in 3D lays modules in, or the picked
+   * string, which a drag across modules wires (ADR 20). */
   get painting(): Painting | undefined {
-    const { level } = this;
+    const { level, draft } = this;
 
-    if (level.kind !== "string") return undefined;
-
-    return {
-      draft: this.draft,
-      string: level.index,
-      ondrag: (scene) => {
+    const steps = {
+      draft,
+      ondrag: (scene: Scene) => {
         this.drag(scene);
       },
       ondrop: () => {
         this.drop();
+      },
+    };
+
+    if (level.kind === "string") {
+      const path = wiring(draft.scene, this.laid.grids, level.index);
+
+      return { ...steps, kind: "string", string: level.index, path };
+    }
+
+    if (level.kind !== "face" && level.kind !== "module") return undefined;
+
+    const grid = (draft.scene.grids ?? []).findIndex(
+      (item) => item.block === level.block && item.face === level.face,
+    );
+
+    if (grid < 0) return undefined;
+
+    const modules = draft.scene.grids?.[grid]?.modules ?? [];
+    const cells = this.laid.grids[grid] ?? [];
+    const taken = (cell: At) => modules.some((m) => m.row === cell.row && m.column === cell.column);
+
+    return {
+      ...steps,
+      kind: "modules",
+      grid,
+      free: cells.filter((cell) => !taken(cell)),
+      selected:
+        level.kind === "module"
+          ? cells.find((cell) => cell.row === level.row && cell.column === level.column)
+          : undefined,
+      onselect: ({ row, column }) => {
+        this.go({ kind: "module", block: level.block, face: level.face, row, column });
       },
     };
   }

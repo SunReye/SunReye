@@ -1,5 +1,5 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import type { Block, FencePoint, Point, Scene } from "./pv.ts";
+import type { Block, Cell, FencePoint, Point, Scene } from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -21,7 +21,15 @@ export type Level =
         | "string";
       readonly index: number;
     }
-  | { readonly kind: "face"; readonly block: number; readonly face: number };
+  | { readonly kind: "face"; readonly block: number; readonly face: number }
+  /** One module on a face, by its cell. */
+  | {
+      readonly kind: "module";
+      readonly block: number;
+      readonly face: number;
+      readonly row: number;
+      readonly column: number;
+    };
 
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
@@ -32,12 +40,15 @@ const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Sect
   marker: "equipment",
   place: "equipment",
   face: "modules",
+  module: "modules",
   string: "strings",
 };
 
 /** The level its back button returns to. */
 export function parent(level: Level): Level {
   if (level.kind === "root" || level.kind === "section") return { kind: "root" };
+
+  if (level.kind === "module") return { kind: "face", block: level.block, face: level.face };
 
   return { kind: "section", section: SECTIONS[level.kind] };
 }
@@ -146,9 +157,25 @@ export function picked(scene: Scene, hit: Hit): Level | null {
   return grid === undefined ? null : { kind: "face", block: grid.block, face: grid.face };
 }
 
-/** How deep a level lies: the root 0, a group 1, an object or a face 2. */
+/** How deep a level lies: the root 0, a group 1, an object or a face 2, a face's module 3. */
 export function depth(level: Level): number {
   if (level.kind === "root") return 0;
 
+  if (level.kind === "module") return 3;
+
   return level.kind === "section" ? 1 : 2;
+}
+
+/** The module a module level names, and its grid's position in the scene. */
+export function moduleOf(
+  scene: Scene,
+  { block, face, row, column }: Extract<Level, { kind: "module" }>,
+): { readonly grid: number; readonly cell: Cell } | undefined {
+  const grid = (scene.grids ?? []).findIndex((item) => item.block === block && item.face === face);
+
+  const cell = scene.grids?.[grid]?.modules.find(
+    (item) => item.row === row && item.column === column,
+  );
+
+  return cell === undefined ? undefined : { grid, cell };
 }

@@ -246,3 +246,28 @@ export async function phone(): Promise<void> {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
   });
 }
+
+/** The module type's size, by its id, as the crate lays cells out. */
+export const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
+
+/** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from its first view. */
+export function cellsOnPage(start: Scene, grid: number): (key: string) => [number, number] {
+  const onPage = onCanvas(start);
+
+  const cells = new Map(
+    (pv.modules(start, SIZES).grids[grid] ?? []).map(({ row, column, corners }) => {
+      const sum = corners.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
+
+      // East, north, up to three.js's x, y up, z south.
+      return [`${row}.${column}`, onPage([sum[0] / 4, sum[2] / 4, -sum[1] / 4])];
+    }),
+  );
+
+  return (key) => {
+    const at = cells.get(key);
+
+    if (at === undefined) throw new Error(`no cell ${key}`);
+
+    return at;
+  };
+}

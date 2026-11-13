@@ -5,8 +5,10 @@
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
   import FaceGrid from "./FaceGrid.svelte";
+  import { moduleOf, type Level } from "./levels.ts";
+  import ModuleLevel from "./ModuleLevel.svelte";
   import ModuleCatalogue from "./ModuleCatalogue.svelte";
-  import { addGrid, type Draft, type Strokes, type TypeSource } from "./modules.ts";
+  import { addGrid, type Draft, type TypeSource } from "./modules.ts";
   import ModuleTypeForm from "./ModuleTypeForm.svelte";
   import ModuleTypePicker from "./ModuleTypePicker.svelte";
   import type { Plan } from "./outline.ts";
@@ -14,19 +16,23 @@
 
   let {
     roof,
+    module,
     plan,
     moduleTypes,
     types,
-    strokes,
     onchange,
+    onremove,
   }: {
     roof: RoofFace;
+    /** A module of the face, tapped in 3D: its own level. */
+    module?: Extract<Level, { kind: "module" }> | undefined;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
     /** Adds module types to the core, and its catalogue to add them from. */
     types: TypeSource;
-    strokes: Strokes;
     onchange: (draft: Draft) => void;
+    /** The draft without the module, back at the face. */
+    onremove: (draft: Draft) => void;
   } = $props();
 
   const draft = $derived(plan.draft);
@@ -38,24 +44,26 @@
   /** What shows instead of the types: the module catalogue or the new module type's form. */
   let adding = $state<"catalogue" | "form">();
 
+  const tapped = $derived(module && moduleOf(draft.scene, module));
+
   function lay(moduleType: number): void {
     onchange({ ...draft, scene: addGrid(draft.scene, roof.block, roof.face, moduleType) });
   }
 </script>
 
-{#if draft.scene.grids?.[index] !== undefined}
+{#if tapped !== undefined}
+  <ModuleLevel {draft} grid={tapped.grid} cell={tapped.cell} {onchange} {onremove} />
+{:else if draft.scene.grids?.[index] !== undefined}
   <FaceGrid
     {draft}
     {index}
     grid={draft.scene.grids[index]}
-    {roof}
     cells={plan.laid.grids[index] ?? []}
     checks={{
       misplaced: plan.laid.misplaced?.grid === index ? plan.laid.misplaced : null,
       cold: plan.cold,
     }}
     {moduleTypes}
-    {strokes}
     {onchange}
   />
 {:else if adding === "catalogue"}

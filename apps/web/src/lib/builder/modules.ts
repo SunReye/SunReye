@@ -5,6 +5,8 @@ import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
 import { following, ordered } from "./wiring.ts";
 import type { Panel } from "./scene.ts";
 
+export { wiring } from "./wiring.ts";
+
 /** What the builder edits and saves: the scene and the strings its modules are painted into. */
 export interface Draft {
   readonly scene: Scene;
@@ -69,18 +71,12 @@ export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
 }
 
-/** Where a drag's steps go: each shown at once, the drag recorded as one undo step once let go. */
 /** Where a face's module types come from: the core, or a test's fake. */
 export interface TypeSource {
   /** Adds a module type to the core. */
   addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem>;
   /** The module catalogue's sheets. */
   moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem>;
-}
-
-export interface Strokes {
-  readonly drag: (scene: Scene) => void;
-  readonly drop: () => void;
 }
 
 /** What a drag does to every cell it crosses, as the cell it started on decides (ADR 20). */
