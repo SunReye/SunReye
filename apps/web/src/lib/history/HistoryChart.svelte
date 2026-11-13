@@ -1,7 +1,7 @@
 <!--
   One series over the route's range, a band per hour, day or month: a power series as its energy,
-  any other as its mean. Today, a series with a forecast marks it on each hour and shows the hours
-  still to come faintly. A new range tweens the bars from the figures they showed (ADR 21).
+  any other as its mean. Today, a series with a forecast draws it as a dashed curve over the hours,
+  as the prototype's day chart does. A new range tweens the bars from the figures they showed (ADR 21).
 -->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
@@ -71,13 +71,6 @@
   const total = (figures: readonly { value: number }[], sign: 1 | -1) =>
     figures.reduce((a, f) => a + Math.max(0, sign * f.value), 0);
 
-  /** A past hour marks its forecast against what happened; one still to come shows it faintly. */
-  function forecastOf(past: boolean, energy: number) {
-    const p = energy > 0 ? energy : null;
-
-    return { mark: past ? p : null, ghost: past ? null : p };
-  }
-
   const view = $derived.by(() => {
     const got = data.current;
 
@@ -98,10 +91,10 @@
     return {
       loading: false,
       via: got.via,
-      bands: bandsOf(got.list, (edge, i) => {
+      bands: bandsOf(got.list, (_, i) => {
         const f = figures[i]!;
 
-        return { ...f, ...split(f.value), ...forecastOf(edge.state === "past", f.planned) };
+        return { ...f, ...split(f.value), line: plans ? f.planned : null };
       }),
       expected: plans && figures.reduce((a, f) => a + f.planned, 0),
       down: signed ? meta : [],
@@ -129,9 +122,8 @@
   up={meta}
   down={view.down}
   via={view.via}
-  markLabel={view.expected === null ? "" : m.range_forecast()}
-  ghostLabel={view.expected === null ? "" : m.range_forecast()}
-  summary={{ title: data.title, ...view.sum, mark: view.expected }}
+  lineLabel={view.expected === null ? "" : m.range_forecast()}
+  summary={{ title: data.title, ...view.sum, line: view.expected }}
   fmt={reads.fmt}
   unit={reads.unit}
   loading={view.loading}

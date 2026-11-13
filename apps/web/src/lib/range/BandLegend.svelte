@@ -22,6 +22,8 @@
     mark: { label: string; on: boolean; value: number | null } | null;
     /** The faint bars of bands still to come. */
     ghost: { label: string; colour: string; value: number | null } | null;
+    /** The dashed line over the bars. */
+    line: { label: string; colour: string; value: number | null } | null;
     /** Figures show a dash: still loading, or a band without readings. */
     blank: boolean;
     /** Reading a band is instant; a new range rolls. */
@@ -46,6 +48,7 @@
   type Row = Legend["rows"][number] & {
     reference: Legend["mark"];
     expected: Legend["ghost"];
+    curve: Legend["line"];
   };
 
   const rows = $derived<Row[]>(
@@ -53,6 +56,7 @@
       Object.assign({}, r, {
         reference: r.mark ? legend.mark : null,
         expected: r.mark ? legend.ghost : null,
+        curve: r.mark ? legend.line : null,
       }),
     ),
   );
@@ -91,6 +95,19 @@
   </div>
 {/snippet}
 
+{#snippet dashed(line: NonNullable<Legend["line"]>)}
+  <div class="flex items-baseline gap-1.5">
+    <span
+      class="h-0 w-3 shrink-0 translate-y-[-3px] border-t border-dashed"
+      style:border-color={line.colour}
+    ></span>
+    <dt class="text-muted-foreground">{line.label}</dt>
+    {#if line.value !== null}
+      <dd class="font-semibold whitespace-nowrap tabular-nums">{@render figure(line.value)}</dd>
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet row(r: Row)}
   <!-- Narrow: two columns, the upper side's row above the lower side's, as in the plot. -->
   <dl
@@ -109,6 +126,7 @@
     {/each}
     {#if r.reference}{@render reference(r.reference)}{/if}
     {#if r.expected}{@render expected(r.expected)}{/if}
+    {#if r.curve}{@render dashed(r.curve)}{/if}
   </dl>
 {/snippet}
 

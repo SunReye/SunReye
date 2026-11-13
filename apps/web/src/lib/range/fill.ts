@@ -51,6 +51,7 @@ export interface Fill {
   readonly down: readonly number[];
   readonly mark?: number | null;
   readonly ghost?: number | null;
+  readonly line?: number | null;
   /** In any unit, as long as `elapsed` is in the same. */
   readonly covered: number;
   readonly elapsed: number;
@@ -81,6 +82,7 @@ export function bandsOf(edges: readonly Edge[], fill: (edge: Edge, index: number
       down,
       mark: f.mark ?? null,
       ghost: f.ghost ?? null,
+      line: f.line ?? null,
       drillable: edge.drill !== null && edge.state !== "future",
     };
   });
