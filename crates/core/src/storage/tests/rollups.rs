@@ -97,6 +97,8 @@ async fn hourly_rollups_are_cut_on_utc_hours() {
         [
             (0.0, 1.0, 1500.0, 1000.0, 2000.0, 1500.0),
             (1.0, 1.0, 2000.0, 2000.0, 2000.0, 2000.0),
+            // The open third hour, to the latest reading.
+            (2.0, 0.026, 2000.0, 2000.0, 2000.0, 52.778),
         ]
     );
 }
@@ -115,6 +117,26 @@ async fn todays_rollup_runs_to_the_latest_reading() {
     assert_eq!(
         measured(&day),
         [(-12.0, 1.5, 1000.0, 1000.0, 1000.0, 1500.0)]
+    );
+}
+
+#[tokio::test]
+async fn the_open_hours_rollup_runs_to_the_latest_reading() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = plant.open(&dir.path().join("t.sqlite"), epoch()).await;
+    // 1000 W for an hour and a half; the second hour is still open, its last minute unflushed.
+    let readings = steady(0.0, 1081, 5.0, |_| 1000.0);
+    plant.record(&storage, &readings).await;
+
+    let hours = rollups(&storage, plant.power, Tier::Hour, 0.0, 7200.0).await;
+
+    assert_eq!(
+        measured(&hours),
+        [
+            (0.0, 1.0, 1000.0, 1000.0, 1000.0, 1000.0),
+            (1.0, 0.5, 1000.0, 1000.0, 1000.0, 500.0)
+        ]
     );
 }
 
@@ -302,7 +324,8 @@ async fn a_dropped_rollup_rebuilds_to_the_same_values() {
     plant.record(&storage, &readings).await;
     let hourly = rollups(&storage, plant.power, Tier::Hour, 0.0, 86_400.0).await;
     let daily = rollups(&storage, plant.power, Tier::Day, -86_400.0, 86_400.0).await;
-    assert_eq!(hourly.len(), 3);
+    // Three closed hours and the open one.
+    assert_eq!(hourly.len(), 4);
     assert_eq!(daily.len(), 1);
     storage.shutdown().await.unwrap();
 
