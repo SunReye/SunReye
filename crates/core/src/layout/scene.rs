@@ -23,6 +23,8 @@ pub fn derive(
     scene.stands().map_err(|_| Refusal::Scene)?;
     scene.ground().map_err(|_| Refusal::Scene)?;
     scene.fencing().map_err(|_| Refusal::Scene)?;
+    scene.check_blocks().map_err(|_| Refusal::Scene)?;
+    scene.check_chimneys().map_err(|_| Refusal::Scene)?;
     let placed = scene.modules(size).map_err(|misplaced| match misplaced {
         Misplaced::Face { .. } => Refusal::Scene,
         Misplaced::ModuleType { .. } => Refusal::ModuleType,

@@ -1,12 +1,24 @@
 // Edits of a scene in the builder: new blocks, obstacles and surroundings, roof changes and fence
 // points (ADR 20).
-import type { Block, Fence, GroundSurface, Obstacle, Roof } from "./pv.ts";
+import type {
+  Block,
+  Chimney,
+  Fence,
+  GroundSurface,
+  Obstacle,
+  Overhang,
+  Roof,
+  RoofFace,
+} from "./pv.ts";
 
 /** Metres between a new block and the last one. */
 const GAP = 2;
 /** Degrees: a common pitch for central European roofs. */
 
 const PITCH = 35;
+
+/** Metres: a common overhang at the eaves and at the verges. */
+const OVERHANG: Overhang = { eave: 0.5, verge: 0.3 };
 
 /** A 10 m × 8 m gable house, at the origin or beside the last block. */
 export function nextBlock(blocks: readonly Block[]): Block {
@@ -20,6 +32,7 @@ export function nextBlock(blocks: readonly Block[]): Block {
     eave: 3,
     rotation: 0,
     roof: { kind: "gable", pitch: PITCH },
+    overhang: OVERHANG,
   };
 }
 
@@ -41,6 +54,32 @@ export function obstacle(kind: Obstacle["kind"]): Obstacle {
   return kind === "tree"
     ? { kind, x: -5, z: 10, radius: 2, height: 8, crown: "broadleaf" }
     : { kind, x: 2, z: 2, radius: 0.3, height: 8 };
+}
+
+const tenth = (value: number): number => Math.round(value * 10) / 10;
+
+/** A face's width and height in its outline, in metres. */
+function extent({ outline }: RoofFace): readonly [number, number] {
+  return [Math.max(0, ...outline.map(([u]) => u)), Math.max(0, ...outline.map(([, v]) => v))];
+}
+
+/** A 0.6 m square chimney, 1 m tall, centred across `face` and three fifths up it. */
+export function chimney(face: RoofFace): Chimney {
+  return {
+    block: face.block,
+    face: face.face,
+    ...centred(face),
+    width: 0.6,
+    depth: 0.6,
+    height: 1,
+  };
+}
+
+/** The middle of `face` across, three fifths up it: clear of the eave and the ridge. */
+export function centred(face: RoofFace): Pick<Chimney, "across" | "up"> {
+  const [wide, high] = extent(face);
+
+  return { across: tenth(wide / 2), up: tenth(high * 0.6) };
 }
 
 /** A new patch of paving in front of the first block. */

@@ -168,20 +168,23 @@ export function fillGrid(scene: Scene, index: number, cells: readonly At[]): Sce
   );
 }
 
-/** The scene without block `index`: its grids and equipment go, later blocks' follow it down. */
+/** The scene without block `index`: its grids, chimneys and equipment go, later blocks' follow it down. */
 export function withoutBlock(scene: Scene, index: number): Scene {
   const equipment = scene.equipment
     ?.filter((marker) => marker.block !== index)
     .map((marker) => (marker.block > index ? onBlock(marker, marker.block - 1) : marker));
 
-  const blocks = scene.blocks.toSpliced(index, 1);
+  const chimneys = scene.chimneys
+    ?.filter((item) => item.block !== index)
+    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
 
-  return withGrids(
-    equipment === undefined ? { ...scene, blocks } : { ...scene, blocks, equipment },
-    (grids) =>
-      grids
-        .filter((grid) => grid.block !== index)
-        .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
+  const blocks = scene.blocks.toSpliced(index, 1);
+  const kept = chimneys === undefined ? { ...scene, blocks } : { ...scene, blocks, chimneys };
+
+  return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>
+    grids
+      .filter((grid) => grid.block !== index)
+      .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
   );
 }
 
@@ -220,8 +223,8 @@ export function painted(scene: Scene, index: number): Painted {
   };
 }
 
-function onBlock(marker: Equipment, block: number): Equipment {
-  return { ...marker, block };
+function onBlock<T extends { readonly block: number }>(item: T, block: number): T {
+  return { ...item, block };
 }
 
 function changed(grid: ModuleGrid, fields: Partial<ModuleGrid>): ModuleGrid {

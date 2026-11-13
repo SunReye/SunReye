@@ -1,7 +1,8 @@
-<!-- A block's level in the inspector: its footprint, eave, roof and whether it is a carport. -->
+<!-- A block's level in the inspector: its footprint, eave, roof, overhang, colours and whether it is a carport. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
+  import BlockColours from "./BlockColours.svelte";
   import { withRoof } from "./draft.ts";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import { ROOFS } from "./outline.ts";
@@ -38,6 +39,14 @@
   );
 
   const pitch = degrees(m.field_pitch(), 0, 60);
+
+  const eave = metres(m.field_eave_overhang(), 0, 2, 0.05);
+  const verge = metres(m.field_verge_overhang(), 0, 2, 0.05);
+
+  const overhang = $derived(block.overhang ?? { eave: 0, verge: 0 });
+
+  /** Only a mono-pitch or gable roof has verges; a flat or hip roof has eaves all round. */
+  const verged = $derived(block.roof.kind === "monoPitch" || block.roof.kind === "gable");
 </script>
 
 <Item.Group class="gap-0 divide-y divide-border/60">
@@ -69,6 +78,23 @@
       }}
     />
   {/if}
+  <ValueRow
+    edit={eave}
+    value={overhang.eave}
+    onchange={(value) => {
+      onchange({ ...block, overhang: { ...overhang, eave: value } });
+    }}
+  />
+  {#if verged}
+    <ValueRow
+      edit={verge}
+      value={overhang.verge}
+      onchange={(value) => {
+        onchange({ ...block, overhang: { ...overhang, verge: value } });
+      }}
+    />
+  {/if}
+  <BlockColours {block} {onchange} />
   <SwitchRow
     label={m.block_carport()}
     checked={block.open === true}

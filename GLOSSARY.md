@@ -228,8 +228,16 @@ _Avoid_: Border, margin
 A rectangular building footprint with one roof.
 _Avoid_: Building, house
 
+**Overhang**:
+How far a block's roof reaches past its walls: at the eaves and at the verges.
+_Avoid_: Eave depth, soffit
+
+**Roof chimney**:
+An upright box standing on one roof face of a block; no module may stand on its footprint.
+_Avoid_: Chimney obstacle, stack
+
 **Obstacle**:
-An opaque box, cylinder, tree or hedge in the scene that casts shade on the modules.
+An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
 **Equipment marker**:

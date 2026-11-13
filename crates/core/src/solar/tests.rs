@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sunreye_profile::Profile;
-use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Roof, Scene};
+use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Overhang, Roof, Scene};
 use tokio::sync::watch;
 
 use super::SolarForecast;
@@ -356,6 +356,9 @@ fn walled_house(module_type: u32) -> Scene {
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
             open: false,
+            overhang: Overhang::default(),
+            roof_colour: None,
+            wall_colour: None,
         }],
         obstacles: vec![Obstacle::Box {
             x: -3.0,
@@ -375,6 +378,7 @@ fn walled_house(module_type: u32) -> Scene {
         }],
         equipment: vec![],
         car_places: vec![],
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
     }

@@ -22,6 +22,15 @@ test("a point on a roof drills to its block; east and north are the scene's x an
   expect(picked(SCENE, { kind: "point", point: [22, -2, 3] })).toEqual({ kind: "block", index: 1 });
 });
 
+test("a point on a roof's overhang, past the walls, drills to its block", () => {
+  // The new house's roof reaches 0.5 m past its front wall at z 8.
+  expect(picked(SCENE, { kind: "point", point: [5, -8.4, 2.8] })).toEqual({
+    kind: "block",
+    index: 0,
+  });
+  expect(picked(SCENE, { kind: "point", point: [5, -8.7, 2.8] })).toBeNull();
+});
+
 test("the compass turns the scene: the same block answers where north puts it", () => {
   // Turned 90° clockwise, the house's centre (5, 4) lies 4 m west and 5 m north of the origin.
   expect(picked({ ...SCENE, north: 90 }, { kind: "point", point: [-4, -5, 5] })).toEqual({

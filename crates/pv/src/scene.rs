@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CarPlace, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Point};
+use crate::parking::colour;
+use crate::{CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Point};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
@@ -34,6 +35,9 @@ pub struct Scene {
     pub equipment: Vec<Equipment>,
     #[serde(default, rename = "carPlaces", skip_serializing_if = "Vec::is_empty")]
     pub car_places: Vec<CarPlace>,
+    /// Rectangular chimneys standing on roof faces.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chimneys: Vec<Chimney>,
     /// Drawn in order, each over the last; without any the plot is lawn. They never shade.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub surfaces: Vec<GroundSurface>,
@@ -44,7 +48,7 @@ pub struct Scene {
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its
 /// corner, before it turns.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Block {
@@ -60,6 +64,38 @@ pub struct Block {
     /// A carport: a post at each corner instead of walls.
     #[serde(default, skip_serializing_if = "is_false")]
     pub open: bool,
+    /// How far the roof reaches past the walls; none when stored without it.
+    #[serde(default, skip_serializing_if = "Overhang::is_none")]
+    pub overhang: Overhang,
+    /// `#rrggbb`; the generated finish's own colour without one.
+    #[serde(
+        default,
+        rename = "roofColour",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub roof_colour: Option<String>,
+    #[serde(
+        default,
+        rename = "wallColour",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub wall_colour: Option<String>,
+}
+
+/// Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable
+/// ends or verges (Ortgang). A flat or hip roof has eaves all round.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Overhang {
+    pub eave: f64,
+    pub verge: f64,
+}
+
+impl Overhang {
+    fn is_none(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[expect(clippy::trivially_copy_pass_by_ref, reason = "serde's signature")]
@@ -146,6 +182,7 @@ pub enum Surface {
     Roof,
     Obstacle,
     Hedge,
+    Chimney,
 }
 
 /// A flat convex polygon in the shading frame.
@@ -153,12 +190,14 @@ pub enum Surface {
 pub struct Face {
     pub surface: Surface,
     pub corners: Vec<Point>,
+    /// Its block's wall or roof colour, `#rrggbb`.
+    pub colour: Option<String>,
 }
 
 impl Block {
     /// The height of its roof's highest point.
     pub(crate) fn top(&self) -> f64 {
-        roof(self)
+        sheltering(self)
             .iter()
             .flatten()
             .map(|[_, up, _]| *up)
@@ -170,21 +209,11 @@ impl Block {
 type Local = [f64; 3];
 
 impl Scene {
-    /// Every wall and roof of the blocks, and every side of the boxes and hedges.
+    /// Every wall and roof of the blocks, every side of the boxes and hedges, and every side and
+    /// top of the chimneys that stand on their faces.
     #[must_use]
     pub fn faces(&self) -> Vec<Face> {
-        let blocks = self.blocks.iter().flat_map(|block| {
-            let roofs = roof(block);
-            let mut faces = self.prism(block.x, block.z, block.rotation).faces(
-                [block.width, block.depth],
-                roofs,
-                [Surface::Wall, Surface::Roof],
-            );
-            if block.open {
-                faces.retain(|face| face.surface != Surface::Wall);
-            }
-            faces
-        });
+        let blocks = self.blocks.iter().flat_map(|block| self.shell(block));
         let boxes = self.obstacles.iter().flat_map(|obstacle| match *obstacle {
             Obstacle::Box {
                 x,
@@ -212,7 +241,39 @@ impl Scene {
             ),
             Obstacle::Cylinder { .. } | Obstacle::Tree { .. } => Vec::new(),
         });
-        blocks.chain(boxes).collect()
+        let roofs = self.roofs();
+        let chimneys = self
+            .chimneys
+            .iter()
+            .filter_map(move |chimney| chimney.faces(&roofs))
+            .flatten();
+        blocks.chain(boxes).chain(chimneys).collect()
+    }
+
+    /// A block's walls, unless it is open, and its roof faces, in its colours.
+    fn shell(&self, block: &Block) -> Vec<Face> {
+        let frame = self.prism(block.x, block.z, block.rotation);
+        let walls = if block.open {
+            Vec::new()
+        } else {
+            walls(block.width, block.depth, &roof(block))
+        };
+        let painted = |text: &Option<String>| text.clone().filter(|text| colour(text));
+        let (wall, top) = (painted(&block.wall_colour), painted(&block.roof_colour));
+        walls
+            .into_iter()
+            .map(|corners| (Surface::Wall, corners, wall.clone()))
+            .chain(
+                sheltering(block)
+                    .into_iter()
+                    .map(|corners| (Surface::Roof, corners, top.clone())),
+            )
+            .map(|(surface, corners, colour)| Face {
+                surface,
+                corners: corners.into_iter().map(|p| frame.place(p)).collect(),
+                colour,
+            })
+            .collect()
     }
 
     /// What the scene shades with (ADR 17): each face as a fan of triangles, then the solids.
@@ -287,7 +348,7 @@ impl Scene {
             let [east, north, _] = frame.place([1.0, 0.0, 0.0]);
             let [east0, north0, _] = frame.place([0.0; 3]);
             let width = [east - east0, north - north0, 0.0];
-            roof(block)
+            sheltering(block)
                 .into_iter()
                 .enumerate()
                 .map(move |(f, corners)| {
@@ -375,6 +436,7 @@ impl Frame {
             .map(|(surface, corners)| Face {
                 surface,
                 corners: corners.into_iter().map(|p| self.place(p)).collect(),
+                colour: None,
             })
             .collect()
     }
@@ -410,10 +472,39 @@ fn lid(width: f64, depth: f64, height: f64) -> Vec<Local> {
         .collect()
 }
 
+/// The roof faces as they meet the walls, without the overhang.
 fn roof(block: &Block) -> Vec<Vec<Local>> {
-    let (width, depth, eave) = (block.width, block.depth, block.eave);
+    pitched(block.width, block.depth, block.eave, block.roof)
+}
+
+/// The roof faces with the overhang: the roof of a footprint widened by it, its eaves lowered
+/// down the slope, so the ridge stays where it is.
+fn sheltering(block: &Block) -> Vec<Vec<Local>> {
+    let Overhang { eave, verge } = block.overhang;
+    let (side, pitch) = match block.roof {
+        Roof::Flat => (eave, 0.0),
+        Roof::Hip { pitch } => (eave, pitch),
+        Roof::MonoPitch { pitch } | Roof::Gable { pitch } => (verge, pitch),
+    };
+    let wider = pitched(
+        2.0f64.mul_add(side, block.width),
+        2.0f64.mul_add(eave, block.depth),
+        eave.mul_add(-f64::to_radians(pitch).tan(), block.eave),
+        block.roof,
+    );
+    wider
+        .into_iter()
+        .map(|face| {
+            face.into_iter()
+                .map(|[u, up, w]| [u - side, up, w - eave])
+                .collect()
+        })
+        .collect()
+}
+
+fn pitched(width: f64, depth: f64, eave: f64, kind: Roof) -> Vec<Vec<Local>> {
     let rise = |run: f64, pitch: f64| run.mul_add(pitch.to_radians().tan(), eave);
-    match block.roof {
+    match kind {
         Roof::Flat => vec![lid(width, depth, eave)],
         Roof::MonoPitch { pitch } => {
             let top = rise(depth, pitch);

@@ -159,13 +159,30 @@
             "description": "A carport: a post at each corner instead of walls.",
             "type": "boolean"
           },
+          "overhang": {
+            "$ref": "#/components/schemas/Overhang",
+            "description": "How far the roof reaches past the walls; none when stored without it."
+          },
           "roof": {
             "$ref": "#/components/schemas/Roof"
+          },
+          "roofColour": {
+            "description": "`#rrggbb`; the generated finish's own colour without one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "rotation": {
             "description": "Degrees clockwise about the corner, seen from above.",
             "format": "double",
             "type": "number"
+          },
+          "wallColour": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "width": {
             "format": "double",
@@ -443,6 +460,55 @@
         "required": [
           "appliesFrom",
           "points"
+        ],
+        "type": "object"
+      },
+      "Chimney": {
+        "additionalProperties": false,
+        "description": "An upright box standing on a block's roof face, placed in the face's outline like its module\ngrid: metres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Its level top stands this high over the roof where its upper side meets it.",
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its level size: across the slope, and along the fall line seen from above.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "depth",
+          "height"
         ],
         "type": "object"
       },
@@ -2369,6 +2435,25 @@
         ],
         "type": "string"
       },
+      "Overhang": {
+        "additionalProperties": false,
+        "description": "Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable\nends or verges (Ortgang). A flat or hip roof has eaves all round.",
+        "properties": {
+          "eave": {
+            "format": "double",
+            "type": "number"
+          },
+          "verge": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "eave",
+          "verge"
+        ],
+        "type": "object"
+      },
       "Override": {
         "description": "A deadband override, in the role's unit.",
         "properties": {
@@ -3029,6 +3114,13 @@
           "carPlaces": {
             "items": {
               "$ref": "#/components/schemas/CarPlace"
+            },
+            "type": "array"
+          },
+          "chimneys": {
+            "description": "Rectangular chimneys standing on roof faces.",
+            "items": {
+              "$ref": "#/components/schemas/Chimney"
             },
             "type": "array"
           },
