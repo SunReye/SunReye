@@ -7,6 +7,7 @@
   import { routeGo, routeParams } from "../lib/range/kit-route.ts";
   import { entry, type Entry } from "../lib/setup/entry";
   import { access } from "../lib/shell/access.svelte.ts";
+  import Boot from "../lib/shell/Boot.svelte";
   import SignIn from "../lib/setup/SignIn.svelte";
 
   const core = useCore();
@@ -45,7 +46,9 @@
   }
 </script>
 
-{#await opening then shown}
+{#await opening}
+  <Boot />
+{:then shown}
   {#if shown.screen === "sign-in"}
     <SignIn {core} onsignedin={reopen} />
   {:else if shown.screen === "setup"}

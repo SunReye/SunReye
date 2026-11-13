@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { connect } from "../lib/api/core.ts";
 import { motion } from "../lib/motion/tier.svelte.ts";
+import { coreContext } from "../lib/shell/core.ts";
 import "../app.css";
 import Page from "./+page.svelte";
 import { asked, homeCore, restoreCore, serveCore, served } from "./home.harness.ts";
@@ -15,6 +17,32 @@ afterEach(restoreCore);
 test("the home screen renders its main landmark", async () => {
   const screen = await render(Page, { context: homeCore() });
   await expect.element(screen.getByRole("main")).toBeInTheDocument();
+});
+
+test("while the entry is checked, the brand mark stands alone, then a quiet line says why", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+  try {
+    const held = connect({
+      base: "http://core.test/",
+      fetch: () => Promise.withResolvers<Response>().promise,
+    });
+
+    const screen = await render(Page, { context: coreContext(held) });
+
+    await expect.element(screen.getByRole("img", { name: "SunReye" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Anlage live" }).query()).toBeNull();
+    expect(screen.getByText("Verbinde mit SunReye …").query()).toBeNull();
+
+    vi.advanceTimersByTime(299);
+    await Promise.resolve();
+    expect(screen.getByText("Verbinde mit SunReye …").query()).toBeNull();
+
+    vi.advanceTimersByTime(1);
+    await expect.element(screen.getByText("Verbinde mit SunReye …")).toBeVisible();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("without a scene the dashboard shows the 2D flow and offers no toggle", async () => {
