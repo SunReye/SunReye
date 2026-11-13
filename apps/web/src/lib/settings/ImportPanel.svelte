@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { Button } from "#lib/components/ui/button/index.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import type { Core, ImportStatus, Problem, SharedArchive } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import ImportMapping from "./ImportMapping.svelte";
   import ImportOutcome from "./ImportOutcome.svelte";
   import ImportSources from "./ImportSources.svelte";
+  import Refusal from "../setup/Refusal.svelte";
 
   let { core }: { core: Core } = $props();
 
@@ -29,6 +30,9 @@
   /** The v5 device id each v3 slug maps to; empty when it is not imported. */
   let mapping = $state<Record<string, string>>({});
   let refused = $state.raw<Problem>();
+
+  /** The start waits for a confirm: nothing takes an import back. */
+  let asking = $state(false);
 
   let running = $derived(status !== undefined && "state" in status && status.state === "running");
 
@@ -69,6 +73,8 @@
   }
 
   async function start(): Promise<void> {
+    asking = false;
+
     const chosen = (archive ?? []).flatMap(({ slug }) => {
       const device = mapping[slug] ?? "";
 
@@ -91,9 +97,11 @@
 {#if status === undefined}
   <LoadingRows />
 {:else if "state" in status}
-  <section aria-labelledby="import-title">
-    <h2 id="import-title">{m.import_title()}</h2>
-    <p>{m.import_note()}</p>
+  <section aria-labelledby="import-title" class="flex flex-col gap-4 pb-4">
+    <header class="flex flex-col gap-1 px-4 pt-4">
+      <h2 id="import-title" class="text-[15px] font-medium">{m.import_title()}</h2>
+      <p class="text-sm text-muted-foreground">{m.import_note()}</p>
+    </header>
     <ImportSources
       {core}
       {uploaded}
@@ -103,19 +111,28 @@
       onupload={(file) => void upload(file)}
     />
     {#if archive !== undefined}
-      <ImportMapping {core} {archive} bind:mapping disabled={running} onstart={start} />
+      <ImportMapping {core} {archive} bind:mapping disabled={running} />
     {/if}
-    <ImportOutcome {status} />
-    {#if refused !== undefined}
-      <p role="alert">{problemText(refused.problem)}</p>
+    {#if status.state !== "idle" || refused !== undefined}
+      <div class="flex flex-col gap-3 px-4">
+        <ImportOutcome {status} />
+        <Refusal {refused} />
+      </div>
+    {/if}
+    {#if archive !== undefined}
+      <div class="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 pt-4">
+        {#if asking}
+          <p class="basis-full text-sm">{m.import_confirm_note()}</p>
+          <Button variant="ghost" size="sm" onclick={() => (asking = false)}>
+            {m.import_cancel()}
+          </Button>
+          <Button variant="destructive" size="sm" onclick={start}>{m.import_confirm()}</Button>
+        {:else}
+          <Button variant="destructive" size="sm" disabled={running} onclick={() => (asking = true)}>
+            {m.import_start()}
+          </Button>
+        {/if}
+      </div>
     {/if}
   </section>
 {/if}
-
-<style>
-  section {
-    display: grid;
-    gap: 0.5rem;
-    justify-items: start;
-  }
-</style>
