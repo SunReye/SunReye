@@ -27,7 +27,7 @@ export interface Source extends Readings {
   readonly strings: readonly PvString[];
   /** Device names by id, which only the admin may list (ADR 9). */
   readonly names: Readonly<Record<string, string>>;
-  /** The topology's measurement points, which only the admin may read (ADR 9, 14). */
+  /** The topology's measurement points (ADR 9, 14). */
   readonly points: readonly MeasurementPoint[];
   /** "stopped" while the stream is refused or lost: then no single row is stale on its own. */
   readonly status: "loading" | "live" | "stopped";

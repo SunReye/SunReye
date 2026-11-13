@@ -65,7 +65,7 @@ export interface Setup extends Access {
   addDevice(draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
   /** Changes a device, such as its writes switch (ADR 7); admin only. */
   changeDevice(id: number, draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
-  /** The topology in force now; admin only. */
+  /** The topology in force now; a viewer reads it too. */
   topology(): Promise<Topology | Problem>;
   /** Changes the topology from an instant on; admin only. */
   changeTopology(change: TopologyChange): Promise<Topology | Problem>;

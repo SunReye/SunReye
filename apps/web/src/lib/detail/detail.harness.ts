@@ -12,10 +12,18 @@ export const BATTERY = "2";
 
 /** Midday: the plant's totals, an inverter with two inputs and a battery. */
 const LIVE = {
-  [PLANT]: { "pv.power": 4200, "load.power": 900, "grid.power": -3300, "battery.power": 0 },
+  [PLANT]: {
+    "pv.power": 4200,
+    "load.power": 900,
+    "grid.power": -3300,
+    "battery.power": 0,
+    "point.power[1]": 300,
+    "point.power[2]": 600,
+  },
   [SPOT]: { "price.spot": 0.061 },
   [INVERTER]: {
     "pv.power": 4200,
+    "load.power": 900,
     "inverter.power": 4100,
     "inverter.status": 1,
     "pv.mppt.power[1]": 2500,
@@ -133,8 +141,18 @@ const CAPABILITIES = {
   },
 };
 
+/** The grid connection and a heat pump below it, which a viewer reads too (ADR 9). */
+const TOPOLOGY = {
+  appliesFrom: "2026-11-01T00:00:00Z",
+  points: [
+    { id: 1, name: "Netz", parent: null, contested: false, claims: [] },
+    { id: 2, name: "Wärmepumpe", parent: 1, contested: false, claims: [] },
+  ],
+};
+
 /** Each path but statistics', and what the fake core answers there. */
 const ROUTES = new Map<string, () => Response>([
+  ["/api/v1/topology", () => Response.json(TOPOLOGY)],
   ["/api/v1/live", stream],
   ["/api/v1/timezone", () => Response.json({ name: "UTC" })],
   [
