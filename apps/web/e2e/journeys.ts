@@ -10,6 +10,7 @@ import {
   drag,
   inTurn,
   land,
+  type Pixel,
   sceneShown,
   swipe,
   tap,
@@ -37,17 +38,20 @@ const THREE_D = { "sunreye.dashboard": "3d" };
 /** Six seconds of live ticks, one a second. */
 const ticks = (page: Page) => land(page, 6000);
 
-/** Presses the today card's heading every 150 ms until the 3D scene shows, then waits it out. */
-async function tapUntilShown(page: Page, left = 400): Promise<void> {
+/**
+ * Presses the today card's heading every 150 ms until the 3D scene shows, then waits it out. Raw
+ * presses: an actionability check would wait for the main thread and hide the very delay measured.
+ */
+async function pressUntilShown(page: Page, at: Pixel, left = 400): Promise<void> {
   if (left === 0 || (await page.locator("figure.shown").count()) > 0) {
     await land(page, 3000);
 
     return;
   }
 
-  await page.getByRole("heading", { name: "Heute" }).click();
+  await page.mouse.click(...at);
   await land(page, 150);
-  await tapUntilShown(page, left - 1);
+  await pressUntilShown(page, at, left - 1);
 }
 
 const DESK: readonly Journey[] = [
@@ -113,7 +117,13 @@ const DESK: readonly Journey[] = [
     storage: THREE_D,
     cold: true,
     input: true,
-    act: (page) => tapUntilShown(page),
+    act: async (page) => {
+      const box = await page.getByRole("heading", { name: "Heute" }).boundingBox();
+
+      if (box === null) throw new Error("no today card");
+
+      await pressUntilShown(page, [box.x + box.width / 2, box.y + box.height / 2]);
+    },
   },
   {
     name: "builder: drag a block's width handle",
@@ -204,10 +214,9 @@ const PHONE: readonly Journey[] = [
   {
     phone: true,
     name: "value-editor fling",
-    route: "controls",
+    route: "controls?group=battery",
     ready: async (page) => {
-      await tap(page, "Batterie");
-      await page.getByRole("button", { name: /Lade/u }).first().click();
+      await page.getByRole("button", { name: "battery.max_charge_current" }).click();
       await page.getByRole("spinbutton").first().waitFor();
       await land(page);
     },

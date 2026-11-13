@@ -108,9 +108,13 @@ function report(journey: Journey, rate: number, rec: Recording): boolean {
 }
 
 async function main(words: readonly string[]): Promise<number> {
-  const built = await Bun.spawn(["bun", "run", "build"], { cwd: web, stdout: "ignore" }).exited;
+  const build = Bun.spawn(["bun", "run", "build"], { cwd: web, stdout: "ignore", stderr: "pipe" });
 
-  if (built !== 0) return built;
+  if ((await build.exited) !== 0) {
+    process.stderr.write(await new Response(build.stderr).text());
+
+    return 1;
+  }
 
   const journeys = JOURNEYS.filter(({ name }) => words.every((word) => name.includes(word)));
   const zone = middayZone(Date.now());

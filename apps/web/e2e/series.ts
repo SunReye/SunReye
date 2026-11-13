@@ -52,13 +52,13 @@ function mean(plant: Plant, device: number, series: string, span: Span): number 
   return n === 0 ? undefined : sum / n;
 }
 
-/** The core's tier for a span: five-minute buckets, hours, then days. */
+/** The core's tier for a span (api/history.rs): minute buckets up to a day, then hours, then days. */
 function tier(span: Span) {
   const length = span.to - span.from;
 
-  if (length <= 1.5 * DAY) return { tier: "bucket" as const, width: 300 };
+  if (length <= DAY) return { tier: "bucket" as const, width: 60 };
 
-  return length <= 93 * DAY
+  return length <= 1499 * HOUR
     ? { tier: "hour" as const, width: 3600 }
     : { tier: "day" as const, width: 86_400 };
 }
