@@ -1,7 +1,8 @@
 <!--
   Hour of day (rows) against days or months (columns), on one canvas (ADR 11). One handler reads
   the cell under the pointer; the line above the grid is the readout. Mouse: click opens the
-  column. Touch: tap reads, the button opens. Keys: arrows move, Enter opens.
+  column, a drag across columns narrows the range to them. Touch: tap reads, the button opens; no
+  brushing. Keys: arrows move, Shift and arrows select columns, Enter opens or narrows (ADR 21).
 -->
 <script lang="ts">
   import type { Attachment } from "svelte/attachments";
@@ -20,6 +21,7 @@
     label,
     drillLabel = m.range_open(),
     ondrill,
+    onbrush,
     blank = false,
   }: {
     /** Draw "no value" as nothing instead of a hatch: where it is expected, not missing. */
@@ -35,6 +37,8 @@
     label: string;
     drillLabel?: string;
     ondrill?: ((col: number) => void) | undefined;
+    /** Narrows the range to columns `from` to `to`. */
+    onbrush?: ((from: number, to: number) => void) | undefined;
   } = $props();
 
   let grid = $state<HTMLElement | null>(null);
@@ -48,6 +52,32 @@
   const n = $derived(cols.length);
   const dense = $derived(n >= 12 && cols.every((c) => c.tick));
   const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
+
+  /** The columns being selected, from where the selection began. */
+  let brush = $state<[number, number] | null>(null);
+  const sel = $derived(brush ? ([Math.min(...brush), Math.max(...brush)] as const) : null);
+
+  /** The column a mouse press began on; a drag off it selects. */
+  let dragFrom: number | null = null;
+
+  /** The click that ends a drag opens nothing. */
+  let dragged = false;
+
+  /** Narrows to the selection, if it spans columns. */
+  function narrow(): boolean {
+    const s = sel;
+
+    brush = null;
+
+    if (!s || s[1] <= s[0] || !onbrush) return false;
+
+    // The narrower range has other columns: nothing is being read in it yet.
+    active = null;
+    pinned = false;
+    onbrush(s[0], s[1]);
+
+    return true;
+  }
 
   function at(e: PointerEvent): [number, number] {
     const r = grid!.getBoundingClientRect();
@@ -65,19 +95,36 @@
     ["ArrowDown", [0, 1]],
   ]);
 
+  /** Arrows move; with Shift they select columns from where they began. */
+  function arrow(d: readonly [number, number], shift: boolean): void {
+    const was = active;
+
+    pinned = true;
+    active = was ? [clamp(was[0] + d[0], n - 1), clamp(was[1] + d[1], 23)] : [n - 1, 12];
+    brush = shift && onbrush && was ? [brush?.[0] ?? was[0], active[0]] : null;
+  }
+
+  function clear(): void {
+    active = null;
+    brush = null;
+    pinned = false;
+  }
+
+  /** Whether key `k` did anything. */
+  function act(k: string, shift: boolean): boolean {
+    const d = MOVES.get(k);
+
+    if (d) arrow(d, shift);
+    else if (k === "Enter" && active) {
+      if (!narrow()) ondrill?.(active[0]);
+    } else if (k === "Escape" && (active || brush)) clear();
+    else return false;
+
+    return true;
+  }
+
   function key(e: KeyboardEvent): void {
-    const d = MOVES.get(e.key);
-
-    if (d) {
-      pinned = true;
-      active = active ? [clamp(active[0] + d[0], n - 1), clamp(active[1] + d[1], 23)] : [n - 1, 12];
-    } else if (e.key === "Enter" && active) ondrill?.(active[0]);
-    else if (e.key === "Escape" && active) {
-      active = null;
-      pinned = false;
-    } else return;
-
-    e.preventDefault();
+    if (act(e.key, e.shiftKey)) e.preventDefault();
   }
 </script>
 
@@ -123,24 +170,48 @@
       data-scrub
       aria-label={m.heat_keys({ label })}
       onpointerdown={(e) => {
+        dragged = false;
+
         if (e.pointerType !== "mouse") {
           pinned = true;
           active = at(e);
+        } else if (e.button === 0 && onbrush) {
+          dragFrom = at(e)[0];
+          grid?.setPointerCapture(e.pointerId);
         }
       }}
       onpointermove={(e) => {
         if (e.pointerType === "mouse" || e.pressure > 0) active = at(e);
+
+        if (e.pointerType === "mouse" && dragFrom !== null && (dragged || active![0] !== dragFrom)) {
+          dragged = true;
+          brush = [dragFrom, active![0]];
+        }
+      }}
+      onpointerup={(e) => {
+        if (e.pointerType === "mouse" && dragFrom !== null) {
+          dragFrom = null;
+          if (dragged) narrow();
+        }
       }}
       onpointerleave={(e) => {
-        if (e.pointerType === "mouse") active = null;
+        if (e.pointerType === "mouse" && dragFrom === null) active = null;
       }}
       onclick={() => {
-        if (active && !pinned) ondrill?.(active[0]);
+        if (dragged) dragged = false;
+        else if (active && !pinned) ondrill?.(active[0]);
       }}
       onkeydown={key}
     >
       <!-- One canvas, not a cell per element: a month of hours is 744 of them (ADR 11, 21). -->
       <canvas class="absolute inset-0 size-full" {@attach paint}></canvas>
+      {#if sel}
+        <span
+          class="pointer-events-none absolute inset-y-0 bg-brand-soft ring-1 ring-brand/50 ring-inset"
+          style:left="{(sel[0] / n) * 100}%"
+          style:width="{((sel[1] - sel[0] + 1) / n) * 100}%"
+        ></span>
+      {/if}
       {#if active}
         <span
           class="pointer-events-none absolute ring-2 ring-foreground"
