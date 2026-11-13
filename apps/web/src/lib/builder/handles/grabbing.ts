@@ -6,12 +6,13 @@ import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
 import type { Scene } from "../pv.ts";
 import { strike, type Panel } from "../scene.ts";
-import { gripOf } from "./gizmo.ts";
+import { handleOf } from "./gizmo.ts";
 import {
   drag,
   handles,
   type Dragged,
   type Grab,
+  type Handle,
   type Ray,
   type Target,
   type Triple,
@@ -92,25 +93,25 @@ export class Grabbing {
     ];
   }
 
-  #gripAt(at: readonly [number, number]) {
+  #handleAt(at: readonly [number, number]): Handle | null {
     const shown = this.#sources.handles();
 
     // A press may come before the first draw has placed the camera's matrices.
     this.#camera.updateMatrixWorld();
 
-    return shown === undefined ? null : gripOf(shown, this.#camera, at);
+    return shown === undefined ? null : handleOf(shown, this.#camera, at);
   }
 
   /** A handle, or the selected object's own surface: what the press grabbed. */
   #grabbed(at: readonly [number, number], editing: Editing): Grab | undefined {
-    const grip = this.#gripAt(at);
+    const handle = this.#handleAt(at);
     const ray = rayAt(this.#camera, at);
 
-    if (grip !== null) {
-      const handle = handles(editing.scene, editing.target).find((item) => item.grip === grip);
+    if (handle !== null)
+      return { grip: handle.grip, point: handle.point, ray, height: handle.at[1] };
 
-      return handle && { grip, ray, height: handle.at[1] };
-    }
+    // A fence has no footprint to drag.
+    if (editing.target.kind === "fence") return undefined;
 
     const group = this.#sources.drawn();
     const hit = group && strike(group, this.#sources.panels(), this.#camera, at);
@@ -158,7 +159,7 @@ export class Grabbing {
 
     if (held === undefined) {
       if (event.pointerType === "mouse") {
-        this.#canvas.style.cursor = this.#gripAt(this.#ndc(event)) === null ? "" : "grab";
+        this.#canvas.style.cursor = this.#handleAt(this.#ndc(event)) === null ? "" : "grab";
       }
 
       return;
@@ -177,7 +178,9 @@ export class Grabbing {
 
     if (dragged === null) return;
 
-    const at = handles(dragged.scene, editing.target).find((item) => item.grip === grab.grip)?.at;
+    const at = handles(dragged.scene, editing.target).find(
+      (item) => item.grip === grab.grip && item.point === grab.point,
+    )?.at;
 
     editing.ondrag(dragged.scene);
 

@@ -20,6 +20,8 @@ import { along, edges, pull, snapTurn } from "./snapping.ts";
 /** Where a drag began: its grip, its ray, and the height of the plane it slides in. */
 export interface Grab {
   readonly grip: Grip;
+  /** Which of a fence's points a point grip drags. */
+  readonly point?: number | undefined;
   readonly ray: Ray;
   readonly height: number;
 }
@@ -33,8 +35,8 @@ export interface Dragged {
 
 const LENGTH = 0.1;
 const ANGLE = 5;
-/** The inspector's bounds (BlockFieldset, ObstacleFieldset). */
 
+/** The inspector's bounds (BlockFieldset, ObstacleFieldset). */
 const LONGEST = 60;
 const WIDEST = 20;
 const STEEPEST = 60;
@@ -88,6 +90,27 @@ function place({ scene, target, from, to }: Slide, body: Body): Dragged {
   const [px, pz] = [tidy(x + dx), tidy(z + dz)];
 
   return { scene: body.apply({ x: px, z: pz }), value: [px, pz], unit: "m" };
+}
+
+/** A fence's point follows the pointer; it snaps onto a block's compass-aligned edges. */
+function repoint({ scene, target, from, to }: Slide, point: number): Dragged | null {
+  const fences = scene.fences ?? [];
+  const fence = fences[target.index];
+  const at = fence?.points[point];
+
+  if (fence === undefined || at === undefined) return null;
+
+  const x = snap(at.x + to[0] - from[0], LENGTH);
+  const z = snap(at.z + to[2] - from[2], LENGTH);
+  const [across, deep] = edges(scene, target, 0);
+  const [px, pz] = [tidy(x + pull([x], across)), tidy(z + pull([z], deep))];
+  const points = fence.points.with(point, { x: px, z: pz });
+
+  return {
+    scene: { ...scene, fences: fences.with(target.index, { ...fence, points }) },
+    value: [px, pz],
+    unit: "m",
+  };
 }
 
 const normalised = (angle: number): number => tidy(((angle % 360) + 360) % 360);
@@ -157,10 +180,7 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
  * the drag's plane or the grip has nothing to drag. */
 export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragged | null {
-  const body = bodyOf(scene, target);
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
-
-  if (body === undefined) return null;
 
   if (grab.grip === "pitch") {
     return target.kind === "block" ? tilt(scene, target.index, start, end) : null;
@@ -170,5 +190,11 @@ export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragge
 
   if (from === null || to === null) return null;
 
-  return slid(grab.grip, { scene, target, from, to }, body);
+  const slide = { scene, target, from, to };
+
+  if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
+
+  const body = bodyOf(scene, target);
+
+  return body === undefined ? null : slid(grab.grip, slide, body);
 }

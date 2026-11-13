@@ -1,11 +1,12 @@
 // The object the handles sit on (ADR 20): a block, a box, a hedge or a ground surface as a turned
-// rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene. Pure.
+// rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
+// fence's handles sit on its points instead. Pure.
 import type { Block, Obstacle, Scene } from "../pv.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle" | "surface";
+  readonly kind: "block" | "obstacle" | "surface" | "fence";
   readonly index: number;
 }
 
@@ -63,6 +64,8 @@ function obstacleIn(scene: Scene, index: number, item: Obstacle): Body {
 }
 
 export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
+  if (kind === "fence") return undefined;
+
   if (kind === "obstacle") {
     const item = scene.obstacles[index];
 

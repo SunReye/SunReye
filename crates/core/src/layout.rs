@@ -39,7 +39,6 @@ const NONE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
     code: Code::LayoutNone,
 };
-/// °C: the cell temperature strings are sized for (ADR 20).
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
