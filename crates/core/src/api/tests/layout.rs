@@ -476,3 +476,43 @@ async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_st
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
     );
 }
+
+#[tokio::test]
+async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |eave: f64, colour: &str, across: f64| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        let block = &mut scene["blocks"][0];
+        block["overhang"] = json!({ "eave": eave, "verge": 0.3 });
+        block["roofColour"] = json!(colour);
+        block["wallColour"] = json!("#f2f0eb");
+        scene["chimneys"] = json!([{
+            "block": 0, "face": 1, "across": across, "up": 3.0, "width": 0.6, "depth": 0.6,
+            "height": 1.2,
+        }]);
+        scene
+    };
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with(0.5, "#9c4a32", 5.0))
+        .await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(read["scene"], with(0.5, "#9c4a32", 5.0));
+    // The south face is 10.6 m wide with the verges; a chimney at 10.5 m stands off it.
+    for scene in [
+        with(-0.1, "#9c4a32", 5.0),
+        with(0.5, "red", 5.0),
+        with(0.5, "#9c4a32", 10.5),
+    ] {
+        let (refused, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
+}

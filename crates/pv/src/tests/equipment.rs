@@ -1,6 +1,6 @@
 //! Equipment markers on a block's wall (ADR 20), checked against points worked out by hand.
 
-use crate::{Block, Equipment, EquipmentKind, Mount, Roof, Scene, Wall};
+use crate::{Block, Equipment, EquipmentKind, Mount, Overhang, Roof, Scene, Wall};
 
 /// A 10 m × 8 m block at the origin under a 45° gable: its ridge stands at 3 + 4 = 7 m.
 fn house(equipment: Vec<Equipment>) -> Scene {
@@ -15,11 +15,15 @@ fn house(equipment: Vec<Equipment>) -> Scene {
             rotation: 0.0,
             roof: Roof::Gable { pitch: 45.0 },
             open: false,
+            overhang: Overhang::default(),
+            roof_colour: None,
+            wall_colour: None,
         }],
         obstacles: vec![],
         grids: vec![],
         equipment,
         car_places: vec![],
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
     }

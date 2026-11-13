@@ -23,6 +23,7 @@ fn scene(north: f64, places: Vec<CarPlace>) -> Scene {
         grids: vec![],
         equipment: vec![],
         car_places: places,
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
     }

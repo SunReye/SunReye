@@ -2,6 +2,7 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod chimney;
 mod clear_sky;
 mod diode;
 mod equipment;
@@ -17,6 +18,7 @@ mod sun;
 mod surroundings;
 mod temperature;
 
+pub use chimney::Chimney;
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use equipment::{Equipment, EquipmentKind, Mount, Wall};
 pub use estimate::estimate;
@@ -24,7 +26,7 @@ pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Si
 pub use mppt::{input_output, module_counts_differ};
 pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
-pub use scene::{Block, Crown, Face, Obstacle, Roof, Scene, Surface};
+pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,

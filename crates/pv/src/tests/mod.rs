@@ -8,6 +8,7 @@ mod input;
 mod lint;
 mod parking;
 mod perez;
+mod roofing;
 mod scene;
 mod shade;
 mod string;

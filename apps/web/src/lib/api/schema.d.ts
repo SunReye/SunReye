@@ -1073,12 +1073,17 @@ export interface components {
             eave: number;
             /** @description A carport: a post at each corner instead of walls. */
             open?: boolean;
+            /** @description How far the roof reaches past the walls; none when stored without it. */
+            overhang?: components["schemas"]["Overhang"];
             roof: components["schemas"]["Roof"];
+            /** @description `#rrggbb`; the generated finish's own colour without one. */
+            roofColour?: string | null;
             /**
              * Format: double
              * @description Degrees clockwise about the corner, seen from above.
              */
             rotation: number;
+            wallColour?: string | null;
             /** Format: double */
             width: number;
             /** Format: double */
@@ -1200,6 +1205,35 @@ export interface components {
             appliesFrom: string;
             /** @description The root first, each parent before its children. */
             points: components["schemas"]["PointDraft"][];
+        };
+        /**
+         * @description An upright box standing on a block's roof face, placed in the face's outline like its module
+         *     grid: metres across the slope and up it from the face's lowest corner on the left.
+         */
+        Chimney: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            depth: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /**
+             * Format: double
+             * @description Its level top stands this high over the roof where its upper side meets it.
+             */
+            height: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its level size: across the slope, and along the fall line seen from above.
+             */
+            width: number;
         };
         /** @description A device measuring a point, by the power role it measures there. */
         Claim: {
@@ -1893,6 +1927,16 @@ export interface components {
          * @enum {string}
          */
         Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged" | "refused";
+        /**
+         * @description Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable
+         *     ends or verges (Ortgang). A flat or hip roof has eaves all round.
+         */
+        Overhang: {
+            /** Format: double */
+            eave: number;
+            /** Format: double */
+            verge: number;
+        };
         /** @description A deadband override, in the role's unit. */
         Override: {
             /** Format: double */
@@ -2142,6 +2186,8 @@ export interface components {
         Scene: {
             blocks: components["schemas"]["Block"][];
             carPlaces?: components["schemas"]["CarPlace"][];
+            /** @description Rectangular chimneys standing on roof faces. */
+            chimneys?: components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
             /** @description Drawn only; they never shade. */

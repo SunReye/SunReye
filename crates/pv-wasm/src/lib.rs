@@ -192,8 +192,12 @@ fn face(face: &Face) -> Value {
         Surface::Roof => "roof",
         Surface::Obstacle => "obstacle",
         Surface::Hedge => "hedge",
+        Surface::Chimney => "chimney",
     };
-    json!({ "surface": surface, "corners": face.corners })
+    face.colour.as_ref().map_or_else(
+        || json!({ "surface": surface, "corners": face.corners }),
+        |colour| json!({ "surface": surface, "corners": face.corners, "colour": colour }),
+    )
 }
 
 fn solid(occluder: &Occluder) -> Value {
