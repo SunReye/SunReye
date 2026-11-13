@@ -231,3 +231,18 @@ test("with low power a route change is instant", async () => {
   expect(screens()).toHaveLength(1);
   expect(screens()[0]?.getAnimations()).toHaveLength(0);
 });
+
+test("a screen as tall as the screen less the bar ends above the bar", async () => {
+  await page.viewport(390, 844);
+
+  const full = createRawSnippet(() => ({
+    render: () =>
+      `<main data-testid="full" style="height: calc(100dvh - var(--bar-clear, 0px))"></main>`,
+  }));
+
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children: full });
+  const bar = screen.getByRole("navigation", { name: "Hauptnavigation" }).element();
+  const bottom = screen.getByTestId("full").element().getBoundingClientRect().bottom;
+
+  expect(bottom).toBeLessThanOrEqual(bar.getBoundingClientRect().top);
+});

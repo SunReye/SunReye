@@ -40,9 +40,13 @@
     <Rail touch={shell === "rail-open"} {current} {admin} />
   {/if}
 
-  <!-- The page ends above the bar. -->
+  <!-- The page ends above the bar; a screen as tall as the screen subtracts `--bar-clear`. -->
   <div
-    class={["relative min-h-dvh", shell === "bar" && "pb-[calc(84px+env(safe-area-inset-bottom))]"]}
+    class={[
+      "relative min-h-dvh",
+      shell === "bar" &&
+        "pb-(--bar-clear) [--bar-clear:calc(84px+env(safe-area-inset-bottom))]",
+    ]}
     style:padding-left="{railed ? GUTTER : 0}px"
   >
     {#if strip}
