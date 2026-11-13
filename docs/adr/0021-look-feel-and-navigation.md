@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10), amended (2026-11-12)
+Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -12,7 +12,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 - Mouse or trackpad, any width: a slim floating glass **icon rail** (about 56 px) at the left edge, always visible. Hovering near it, or moving keyboard focus into it, expands it to labels over the content without pushing the content aside. It collapses about 300 ms after the cursor leaves. A pin keeps it open, kept per browser.
 - Touch and at least 768 px wide: the same rail, starting as icons. A tap on the logo opens it with labels, floating over the content like the mouse rail; a pin keeps it open, still floating. A tap outside closes an unpinned rail.
-- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with at most three screens and More: Dashboard · History · Forecast · More. More opens a bottom sheet: Controls (admin only, first), Tariff, Settings, Devices, Builder, Status. The rail lists every screen.
+- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with at most three screens and More: Dashboard · History · Forecast · More. More opens a drawer: Controls (admin only, first), Tariff, Settings, Devices, Builder, Status. The rail lists every screen.
 - Controls has its own rail entry, visible to admins only.
 
 **Dashboard.** Master's layout:
@@ -22,13 +22,15 @@ The first integration build rendered browser defaults: plain links for navigatio
   - the today-energy cards (production, consumption, feed-in, purchase, with € and the autarky and self-consumption meters);
   - a small day chart, actual against forecast;
   - EV.
-- **Phone:** the same blocks scroll in that order, hero first.
-- **3D/2D toggle:** sits in the hero's corner.
+- **Phone:** the same blocks scroll in that order, hero first. The hero's height follows the screen's width, capped by the small viewport (`svh`), never the dynamic one: a browser bar that shows or hides while scrolling moves nothing below it.
+- **3D/2D toggle:** sits in the hero's corner, the 3D scene's camera lock (ADR 20) beside it.
 - **Headline:** the hero's large figure is PV power while PV produces and switches to house consumption while PV is idle.
 
 **Details by drilling down.** The dashboard answers "now and today". Every figure on it opens its detail:
-- **Detail sheets:** a glass side sheet on desktop and tablet, a bottom sheet on the phone. Each has its own hash route, so back closes it, and ends with "Open in history →" at the same range.
+- **Detail sheets:** a glass side sheet on desktop and tablet, a drawer on the phone. Each has its own hash route, so back closes it, and ends with "Open in history →" at the same range.
 - **Scrim:** an open sheet dims the page without blurring it.
+- **Drawers:** a drawer is shadcn-svelte's `Drawer` (vaul-svelte) from the bottom. It is open or closed, with no snap points: a pull down closes it.
+- **Forms and pickers** (adding a point, a profile, a builder object; editing a point; confirms): a `Dialog` where the shell shows its rail (a mouse, or touch from 768 px), a drawer under the bar. They choose on the shell's rule, so every caller agrees.
 - **Readings:** a device's sheet (string, inverter, PV, battery, grid, house, EV) lists its current readings right after the live graph, before the range analytics, grouped (Jetzt, MPPT inputs or phases as small tables, Zustand, Zähler). Only roles the device has appear. A reading older than its device's usual interval shows its age and dims; an offline device or a stalled stream is said once above the list. An estimated value carries "≈", and a string sharing an MPPT input says so in one sentence and links its siblings.
 - **Range control:** detail pages share one: day, week, month, year, custom, with swipe or arrows to step.
 - **Live graph:** a power figure's detail sheet opens with v3's live graph (`live-area`, `live-window`, `live-cursor`), restyled here. It shows a fixed two-minute window anchored to the newest sample, so its data, scales and tooltip index change only when a sample lands. Between samples one transform scrolls the marks, on a cursor that eases linearly across the feed's own sample spacing (clamped to 250 ms–5 s) with a slight overshoot, snapped to quarter pixels. The plot keeps a few samples of buffer past its left edge and is downsampled to its pixel budget. Grid power fills diverging around zero.
@@ -61,7 +63,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Motion and refusals:** the drill-in's slides follow the tiers and land at once on still. A refusal or failed sign-in uses the `error` treatment: the `error` haptic and a destructive alert beside the action, which stays for a fix.
 
 **Value editor.** No sliders in Controls or Settings.
-- **Opening:** tapping a setting row opens the value editor: a bottom drawer on touch at any width, an anchored glass popover with a mouse, beside the row in the drill-in and under the row's value in two panes.
+- **Opening:** tapping a setting row opens the value editor: a drawer on touch at any width, an anchored glass popover with a mouse, beside the row in the drill-in and under the row's value in two panes.
 - **Header:** the setting's name, its limits, and a large value whose digits roll up or down with the motion.
 - **Bounded stepped numbers** use a wheel. Bounds and step come from the profile for inverter settings and from the setting itself in the app.
   - A momentum drum: a fling coasts, then a spring snaps it to the nearest step. Off-centre rows shrink and fade.
@@ -75,7 +77,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Enums** use a list with kbase's sliding `active-indicator`.
 - **Free-form values** (prices, coordinates, names) keep a text field.
 - **Applying:** "Apply 100 A → 80 A" runs ADR 7's write. The editor shows pending until the read-back, then closes with the outcome: confirmed, refused with its reason, or mismatch, linked to the write log. There is no separate confirmation step.
-- **Builder time slider:** stays, because it scrubs time rather than setting a value.
+- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar in a popover; picking a day closes it.
+- **Builder controls** are the registry's components (`components/ui`): no browser-default date, time, range, colour or select control. A colour beyond the swatches is typed as `#rrggbb`, a free-form value.
 
 **Glass.**
 - **Two levels:**
@@ -104,7 +107,7 @@ The first integration build rendered browser defaults: plain links for navigatio
   - *Entrances:* kbase's ease-out, 180–250 ms; a large surface (the 3D scene fading in, a sheet) about 350 ms.
   - *Exits:* ease-in, about 150 ms, shorter than their entrance.
   - *Presses:* kbase's 80 ms scale press, released with its spring.
-- **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Sheets and back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point.
+- **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point. Drawers follow the finger 1:1 and, let go, settle back open or close.
 - **Jank rules:** animate only `transform` and `opacity`. The one exception is the lite tier's dashed flow cable, which moves its SVG `stroke-dashoffset`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
 - **Live ticks:** numbers, gauges and flow-line thickness ease to each tick for slightly longer than the tick interval, so values glide. 3D tints ease over about 400 ms (ADR 20), then rendering stops. When the stream stalls they stop, flow lines go still, and the connection chip shows the stall. The stream counts as stalled after about 30 s without any message, keep-alives included, as the core sends one every 15 s.
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
@@ -118,7 +121,7 @@ The first integration build rendered browser defaults: plain links for navigatio
   | Event | Preset |
   |---|---|
   | Toggle, segment or tab change | `selection` |
-  | Sheet snap, drill-in commit, rail pin | `soft` |
+  | A drawer let go (settling open or closing), drill-in commit, rail pin | `soft` |
   | Press on a primary action | `light` |
   | Write confirmed by read-back | `success` |
   | Refusal, mismatch, failed sign-in | `error` |
@@ -141,6 +144,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **A new 2D flow or new live charts.** Rejected: v3's encode magnitude against a remembered plant peak, glide at sample cadence, and survive slow devices. They took long tuning and are kept.
 - **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override.
 - **Moving particles in the 3D scene.** Rejected: they need a continuous render loop (ADR 20). Particles stay in the 2D flow.
+- **Snap points on drawers** (a peeking half-open drawer). Rejected by the owner: a drawer is open or closed.
+- **Our own draggable bottom sheet.** Rejected for shadcn-svelte's responsive `Drawer`/`Dialog` pattern, which the registry maintains.
 - **Vendoring `web-haptics`.** Rejected for now: nothing to change. The wrapper keeps a later swap to one file.
 
 ## Consequences

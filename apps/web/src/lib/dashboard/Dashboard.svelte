@@ -108,6 +108,8 @@
 <main
   class="mx-auto flex max-w-[1600px] flex-col gap-3 px-3 pt-3 pb-3 lg:grid lg:h-dvh lg:min-h-[640px] lg:grid-cols-[minmax(0,53fr)_minmax(0,47fr)] lg:gap-6 lg:py-6 lg:pr-6 lg:pl-0"
 >
+  <!-- A phone's hero follows the width, capped by the small viewport: a browser bar that shows or
+    hides while scrolling changes neither, so nothing below it moves. -->
   <Hero
     {layout}
     {core}
@@ -116,7 +118,7 @@
     plant={values?.[PLANT]}
     plantStale={stale?.[PLANT]}
     onselect={onopen}
-    class="h-[68dvh] min-h-[480px] min-w-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 lg:h-auto lg:min-h-0"
+    class="h-[min(135vw,85svh)] min-h-[480px] min-w-0 sm:h-[68svh] overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 lg:h-auto lg:min-h-0"
   />
 
   <div class="flex min-h-0 min-w-0 flex-col gap-3">

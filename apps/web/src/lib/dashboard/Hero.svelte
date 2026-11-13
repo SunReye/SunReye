@@ -9,6 +9,7 @@
   import Flow2d from "../flow/Flow2d.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
+  import CameraLock from "./CameraLock.svelte";
   import Headline from "./Headline.svelte";
   import HeroScene from "./HeroScene.svelte";
   import { SceneLoad } from "./scene-load.svelte.ts";
@@ -56,6 +57,9 @@
   const mode = $derived(scene !== null && !failed ? "3d" : "2d");
 
   let height = $state(0);
+
+  /** The scene's camera stays put until asked; leaving the dashboard locks it again (ADR 20). */
+  let locked = $state(true);
 </script>
 
 <section class="relative isolate {className}" aria-label={m.dash_hero()}>
@@ -63,7 +67,7 @@
     <Flow2d {core} {live} top={height + 12} {onselect} />
   {/if}
   {#if mode === "3d" && scene !== null}
-    <HeroScene {core} layout={scene} {load} {onselect} />
+    <HeroScene {core} layout={scene} {load} {locked} top={height} {onselect} />
   {/if}
 
   <Headline {live} {plant} {plantStale} figures={!flowShown} {onselect} bind:height>
@@ -85,6 +89,10 @@
     {/if}
   </Headline>
 
+  <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+    {#if mode === "3d"}
+      <CameraLock bind:locked />
+    {/if}
   <ViewToggle
     shows={mode}
     toggles={shown.toggles}
@@ -98,4 +106,5 @@
       }
     }}
   />
+  </div>
 </section>

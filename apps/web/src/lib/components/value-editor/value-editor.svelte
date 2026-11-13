@@ -2,7 +2,7 @@
 <script lang="ts">
   import { Popover } from "bits-ui";
   import { MediaQuery } from "svelte/reactivity";
-  import BottomSheet from "../bottom-sheet.svelte";
+  import DrawerSheet from "../drawer-sheet.svelte";
   import type { Editable, Outcome } from "./editable.ts";
   import EditorBody from "./editor-body.svelte";
 
@@ -61,11 +61,11 @@
     </Popover.Portal>
   </Popover.Root>
 {:else}
-  <BottomSheet bind:open label={edit.name}>
+  <DrawerSheet bind:open label={edit.name}>
     <div class="px-5 pt-2 pb-2">
       {#key key}
         <EditorBody {edit} {current} onapply={apply} />
       {/key}
     </div>
-  </BottomSheet>
+  </DrawerSheet>
 {/if}

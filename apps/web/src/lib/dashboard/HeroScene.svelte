@@ -10,10 +10,16 @@
     core,
     layout,
     load,
+    locked,
+    top,
     onselect,
   }: {
     core: Core;
     layout: SceneLayout;
+    /** The camera stays put (ADR 20). */
+    locked: boolean;
+    /** Pixels at the top the chips leave free: the headline's. */
+    top: number;
     load: SceneLoad;
     onselect: (id: string) => void;
   } = $props();
@@ -27,6 +33,8 @@
     <Scene3d
       {core}
       {layout}
+      {locked}
+      {top}
       {onselect}
       onready={() => {
         load.ready();

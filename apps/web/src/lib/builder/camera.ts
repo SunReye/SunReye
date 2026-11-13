@@ -1,5 +1,5 @@
 // The orbit camera's preset views and the view each browser keeps (ADR 20).
-import type { Geometry, Point } from "./pv.ts";
+import type { Geometry, Point, RoofFace } from "./pv.ts";
 import { toThree, type Triple } from "./scene.ts";
 
 export const presets = ["north", "east", "south", "west", "top", "isometric"] as const;
@@ -11,6 +11,9 @@ export interface View {
   readonly position: Triple;
   readonly target: Triple;
 }
+
+/** The camera's vertical field of view, in degrees. */
+export const FOV = 40;
 
 /** Scene radii between the camera and the scene's centre. */
 const DISTANCE = 2.5;
@@ -72,6 +75,38 @@ export function presetView(preset: Preset, geometry: Geometry, aspect = 1): View
     position: [x + dx * far, y + dy * far, z + dz * far],
     target: [x, y, z],
   };
+}
+
+/** How much of the canvas a face flown onto takes, across or up, whichever is tighter. */
+const FILL = 0.85;
+
+/** How far the camera leans down the slope, off the face's normal: the orbit controls cannot look
+ * straight down, and the slope's upper edge stays up on screen. */
+const LEAN = 1e-3;
+
+/** The camera straight in front of a roof face, near enough that the face fills a canvas `aspect`
+ * (width over height) wide: its cells are then large enough for a finger (ADR 20). */
+export function faceView({ outline, origin, across, up }: RoofFace, aspect = 1): View {
+  const xs = outline.map(([x]) => x);
+  const ys = outline.map(([, y]) => y);
+  const [left, right] = [Math.min(...xs), Math.max(...xs)];
+  const [low, high] = [Math.min(...ys), Math.max(...ys)];
+  const [cx, cy] = [(left + right) / 2, (low + high) / 2];
+
+  const centre = origin.map((from, axis) => from + (across[axis] ?? 0) * cx + (up[axis] ?? 0) * cy);
+
+  const [ae, an, au] = across;
+  const [ue, un, uu] = up;
+  // Across × up: out of the roof.
+  const normal = [an * uu - au * un, au * ue - ae * uu, ae * un - an * ue];
+  const half = Math.tan((FOV / 2) * (Math.PI / 180));
+  const far = Math.max(high - low, (right - left) / aspect) / (2 * half * FILL);
+  const toward = normal.map((n, axis) => n - LEAN * (up[axis] ?? 0));
+  const length = Math.hypot(...toward);
+  const [e = 0, n = 0, u = 0] = centre;
+  const [de = 0, dn = 0, du = 0] = toward.map((part) => (part / length) * far);
+
+  return { position: toThree([e + de, n + dn, u + du]), target: toThree([e, n, u]) };
 }
 
 function isTriple(value: unknown): value is Triple {

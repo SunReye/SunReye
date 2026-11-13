@@ -5,7 +5,7 @@ import { periodOf, rollups } from "../history/history.ts";
 import { RangeData } from "../range/range-data.svelte.ts";
 import { rangeKey } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
-import { planned } from "./forecast.ts";
+import { planned, type Part } from "./forecast.ts";
 import { headline, judge, summaryOf } from "./judge.ts";
 
 export class ForecastData {
@@ -26,13 +26,22 @@ export class ForecastData {
     };
   });
 
-  constructor(input: () => { core: Core; device: number; series: string; route: RangeRoute }) {
+  constructor(
+    input: () => {
+      core: Core;
+      device: number;
+      series: string;
+      /** The parts stacked in the bars; empty for one bar. */
+      parts: readonly Part[];
+      route: RangeRoute;
+    },
+  ) {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
-        const { core, device, series, route } = input();
+        const { core, device, series, parts, route } = input();
 
-        return read(core, device, series, periodOf(route.range), from, to, now);
+        return read(core, device, series, parts, periodOf(route.range), from, to, now);
       },
     );
   }
@@ -40,6 +49,11 @@ export class ForecastData {
   /** The chart's bands; none while loading. */
   get bands() {
     return this.view?.bands ?? [];
+  }
+
+  /** Which stacked parts show: an optional one only while it holds energy. */
+  get kept(): readonly number[] | null {
+    return this.view?.kept ?? null;
   }
 
   /** The chart's sums while no band is read. */
@@ -64,6 +78,7 @@ async function read(
   core: Readonly<Pick<Core, "statistics" | "forecasts">>,
   device: number,
   series: string,
+  parts: readonly Part[],
   period: ReturnType<typeof periodOf>,
   from: Readonly<Date>,
   to: Readonly<Date>,
@@ -71,10 +86,27 @@ async function read(
 ) {
   const until = Math.min(to.getTime(), now);
 
-  const [measured, forecast] = await Promise.all([
-    from.getTime() < until ? rollups(core, device, series, period, from, new Date(until)) : [],
+  const measuredOf = (s: string) =>
+    from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [];
+
+  const names = [...new Set(parts.flatMap((p) => [p.series, ...p.minus]))];
+
+  const [measured, forecast, ...rolled] = await Promise.all([
+    measuredOf(series),
     planned(core, device, series, from, to),
+    ...names.map((s) => measuredOf(s)),
   ]);
 
-  return { series, measured, forecast };
+  const of = (s: string) => rolled[names.indexOf(s)] ?? [];
+
+  return {
+    series,
+    measured,
+    forecast,
+    parts: parts.map((p) => ({
+      measured: of(p.series),
+      minus: p.minus.map(of),
+      optional: p.optional,
+    })),
+  };
 }

@@ -2,7 +2,7 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import type { Device, PointDraft } from "../api/core.ts";
-  import BottomSheet from "../components/bottom-sheet.svelte";
+  import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";
@@ -42,7 +42,7 @@
     {m.topology_add()}
   </button>
 {/if}
-<BottomSheet bind:open label={m.topology_add()}>
+<ResponsiveSheet bind:open label={m.topology_add()}>
   <div class="flex flex-col px-3 pt-1 pb-2">
     <h2 class="px-2 pb-2 text-lg font-semibold">{m.topology_add()}</h2>
     {#each points as point (identity(point))}
@@ -64,4 +64,4 @@
       </button>
     {/each}
   </div>
-</BottomSheet>
+</ResponsiveSheet>

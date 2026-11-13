@@ -5,7 +5,7 @@
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import type { Core, Live, PvString } from "../api/core.ts";
-  import BottomSheet from "../components/bottom-sheet.svelte";
+  import DrawerSheet from "../components/drawer-sheet.svelte";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
   import { SPOT, type Day } from "../dashboard/day.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
@@ -179,7 +179,7 @@
     </Sheet.Content>
   </Sheet.Root>
 {:else}
-  <BottomSheet
+  <DrawerSheet
     bind:open={
       () => open,
       (v) => {
@@ -191,7 +191,7 @@
     <div class="overflow-y-auto no-scrollbar" data-detail-sheet>
       {@render body()}
     </div>
-  </BottomSheet>
+  </DrawerSheet>
 {/if}
 
 <style>

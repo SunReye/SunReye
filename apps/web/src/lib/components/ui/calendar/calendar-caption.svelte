@@ -41,6 +41,7 @@
 </script>
 
 {#snippet MonthSelect()}
+	<!-- Local: unset props are left out, as this repo's `exactOptionalPropertyTypes` asks (#746). -->
 	<CalendarMonthSelect
 		{...months === undefined ? {} : { months }}
 		{...monthFormat === undefined ? {} : { monthFormat }}

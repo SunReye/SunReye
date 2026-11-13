@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
-import { MODULE } from "../builder/builder.harness.ts";
+import { MODULE, press } from "../builder/builder.harness.ts";
 import { layout, scene } from "../live/live-scene.harness.ts";
 import Hero from "./Hero.svelte";
 
@@ -132,4 +132,52 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
 
   await expect.element(sceneFigure(), SLOW).toBeVisible();
   await expect.poll(flowShown, SLOW).toBe(false);
+});
+
+/** Where each browser keeps the view it orbited to. */
+const KEPT = "sunreye.dashboard.view";
+
+/** One finger down the canvas's middle, upwards: a scroll of the page, or an orbit. */
+async function swipe(): Promise<void> {
+  const { left, top, width, height } = page
+    .getByLabelText("3D-Szene des Hauses")
+    .element()
+    .getBoundingClientRect();
+
+  const x = left + width / 2;
+  const from = top + height * 0.7;
+
+  await press(
+    "touch",
+    Array.from({ length: 9 }, (_, step) => [x, from - step * 30]),
+  );
+}
+
+test("the camera is locked: one finger scrolls the page, until the lock is opened", async () => {
+  const tall = document.createElement("div");
+
+  tall.style.height = "2000px";
+
+  try {
+    await hero();
+    // Below the hero: a page to scroll.
+    document.body.append(tall);
+    await expect.element(sceneFigure(), SLOW).toBeVisible();
+    await expect.poll(() => getComputedStyle(sceneFigure().element()).opacity, SLOW).toBe("1");
+
+    await swipe();
+
+    await expect.poll(() => scrollY).toBeGreaterThan(0);
+    expect(localStorage.getItem(KEPT)).toBeNull();
+
+    scrollTo(0, 0);
+    await page.getByRole("button", { name: "Kamera bewegen" }).click();
+    await swipe();
+
+    await expect.poll(() => localStorage.getItem(KEPT)).not.toBeNull();
+    expect(scrollY).toBe(0);
+  } finally {
+    tall.remove();
+    scrollTo(0, 0);
+  }
 });

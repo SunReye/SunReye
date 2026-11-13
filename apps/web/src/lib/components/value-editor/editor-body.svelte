@@ -140,7 +140,7 @@
     {/if}
   </header>
 
-  <div data-no-drag>
+  <div data-vaul-no-drag>
     {#if numeric}
       <Wheel
         rows={numeric.rows}

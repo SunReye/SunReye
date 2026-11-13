@@ -1,19 +1,13 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
 // string's production. It reads the draft and never writes it: nothing changes the scene.
+import { today } from "./day.ts";
 import { load, wattsAt, type Day, type Reading } from "./moment.ts";
 import { sunAt, type Point } from "./pv.ts";
-
-/** `YYYY-MM-DD` of `date` in the browser's calendar, as a date input holds it. */
-function calendarDay(date: Readonly<Date>): string {
-  return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
-}
 
 const MINUTE = 60_000;
 
 export class Moment {
-  day = $state(calendarDay(new Date()));
+  day = $state(today());
   /** Since the day's midnight. */
   minutes = $state(12 * 60);
 
@@ -30,7 +24,7 @@ export class Moment {
     this.#reading = reading;
 
     $effect(() => {
-      const asked = { ...this.#reading(), day: this.day, today: calendarDay(new Date()) };
+      const asked = { ...this.#reading(), day: this.day, today: today() };
       let current = true;
 
       // A cleared day input keeps the last day's values.

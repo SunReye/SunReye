@@ -59,16 +59,6 @@ const scene: Live3d = {
       string: null,
     },
   ],
-  faces: [
-    {
-      surface: "wall",
-      corners: [
-        [0, 0, 0],
-        [10, 0, 0],
-        [10, -8, 7],
-      ],
-    },
-  ],
   equipment: [],
   mounts: [],
   estimated: { "1": ["pv.string.power[12]"] },
@@ -86,7 +76,7 @@ const scene: Live3d = {
 
 const strings = (input: Live3d) => liveScene(input).chips.filter(({ kind }) => kind === "string");
 
-test("a string's chip sits at its modules' centre and opens the string's sheet", () => {
+test("a string's chip points at its modules' centre and opens the string's sheet", () => {
   const [south, west] = strings(scene);
 
   expect(south).toEqual({
@@ -98,14 +88,13 @@ test("a string's chip sits at its modules' centre and opens the string's sheet",
     soc: null,
     estimated: false,
     stale: false,
-    anchor: [1.5, -5.5, 4],
     leader: [1.5, -5.5, 4],
   });
   expect(west).toMatchObject({
     id: "string-12",
     watts: 100,
     estimated: true,
-    anchor: [8.5, -5.5, 4],
+    leader: [8.5, -5.5, 4],
   });
 });
 
@@ -133,10 +122,8 @@ test("a string without a live value has no share, and never more than its peak",
 
 const equipment = (input: Live3d) => liveScene(input).chips.filter(({ kind }) => kind !== "string");
 
-test("without markers, grid, house, battery and inverter chips sit beside the house", () => {
-  // 2 m east of the house's eastmost point, at its middle and its top.
+test("without markers, grid, house, battery and inverter chips have no leader line", () => {
   const beside = {
-    anchor: [12, -4, 7] as const,
     leader: null,
     name: null,
     estimated: false,
@@ -161,7 +148,7 @@ function marker(kind: Equipment["kind"]): Equipment {
   return { device: 1, kind, block: 0, wall: "front", along: 2, inside: false };
 }
 
-test("a marker carries its device's chip on a leader line; the rest stays beside the house", () => {
+test("a marker carries its device's chip on a leader line; the rest has none", () => {
   const mount: Mount = { at: [2, -8.1, 1.5], above: [2, -8.1, 8] };
 
   const chips = equipment({
@@ -170,16 +157,16 @@ test("a marker carries its device's chip on a leader line; the rest stays beside
     mounts: [mount, mount],
   });
 
-  expect(chips.map(({ key, anchor, leader }) => [key, anchor, leader])).toEqual([
-    ["grid", [12, -4, 7], null],
-    ["house", [12, -4, 7], null],
-    ["inverter-1", [2, -8.1, 8], [2, -8.1, 1.5]],
-    ["battery-1", [2, -8.1, 8], [2, -8.1, 1.5]],
+  expect(chips.map(({ key, leader }) => [key, leader])).toEqual([
+    ["grid", null],
+    ["house", null],
+    ["inverter-1", [2, -8.1, 1.5]],
+    ["battery-1", [2, -8.1, 1.5]],
   ]);
   expect(chips.at(-1)).toMatchObject({ id: "battery", watts: -350, soc: 64 });
 });
 
-test("a connected car carries its charge power and its vehicle's SOC above it", () => {
+test("a connected car carries its charge power and its vehicle's SOC on a line to it", () => {
   const place = { device: 7, x: 13, z: 0.5, width: 2, length: 5, rotation: 0 };
   const stand = { at: [14, -3, 0], forward: [0, 1, 0], above: [14, -3, 2.5] } as const;
 
@@ -201,7 +188,6 @@ test("a connected car carries its charge power and its vehicle's SOC above it", 
     soc: 63,
     estimated: false,
     stale: false,
-    anchor: [14, -3, 2.5],
     leader: [14, -3, 0],
   });
 });

@@ -55,6 +55,7 @@
 <!--
 Discriminated Unions + Destructing (required for bindable) do not
 get along, so we shut typescript up by casting `value` to `never`.
+Local: `placeholder` too, as this repo's `exactOptionalPropertyTypes` refuses its `undefined` (#746).
 -->
 <CalendarPrimitive.Root
 	bind:value={value as never}
@@ -69,7 +70,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	{locale}
 	{monthFormat}
 	{yearFormat}
-	{...restProps as unknown as { type: "single" }}
+	{...restProps}
 >
 	{#snippet children({ months, weekdays })}
 		<CalendarMonths>

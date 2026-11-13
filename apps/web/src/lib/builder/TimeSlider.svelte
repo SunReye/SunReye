@@ -1,27 +1,21 @@
-<!-- The builder's time slider (ADR 20): a day and a time that move the sun; it scrubs, so it stays a slider (ADR 21). -->
+<!--
+  The builder's time slider (ADR 20): a day and a time that move the sun, on one line. The day is
+  picked on a calendar; the time scrubs, so it stays a slider (ADR 21).
+-->
 <script lang="ts">
-  import { Input } from "#lib/components/ui/input/index.js";
+  import { Slider } from "#lib/components/ui/slider/index.js";
   import { m } from "../paraglide/messages.js";
-  import type { Source } from "./moment.ts";
+  import DateField from "./DateField.svelte";
 
   let {
     day = $bindable(),
     minutes = $bindable(),
-    source,
   }: {
     /** `YYYY-MM-DD` in the browser's calendar. */
     day: string;
     /** Since the day's midnight. */
     minutes: number;
-    /** Undefined while the day loads. */
-    source: Source | undefined;
   } = $props();
-
-  const sources: Readonly<Record<Source, () => string>> = {
-    measured: m.builder_source_measured,
-    forecast: m.builder_source_forecast,
-    clearSky: m.builder_source_clear_sky,
-  };
 
   /** The last quarter hour of a day. */
   const LAST = 1425;
@@ -32,76 +26,21 @@
 </script>
 
 <div
-  class="glass-ambient flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2 ring-1 ring-border/60 elevation-1"
+  role="group"
+  aria-label={m.builder_moment()}
+  class="glass-ambient flex h-11 items-center gap-2 rounded-lg pr-3 pl-1.5 ring-1 ring-border/60 elevation-1"
 >
-  <Input type="date" required aria-label={m.builder_day()} class="h-8 w-auto" bind:value={day} />
-  <input
-    type="range"
-    min="0"
+  <DateField bind:value={day} label={m.builder_day()} />
+  <Slider
+    type="single"
+    min={0}
     max={LAST}
-    step="15"
+    step={15}
     aria-label={m.builder_time()}
-    class="time min-w-32 flex-1"
-    style:--filled="{(100 * minutes) / LAST}%"
+    aria-valuetext={clock}
+    class="h-11 min-w-0 flex-1"
     bind:value={minutes}
   />
-  <span class="w-11 text-sm font-medium tabular-nums">{clock}</span>
-  {#if source !== undefined}
-    <span class="basis-full text-xs text-muted-foreground">{sources[source]()}</span>
-  {/if}
+  <span class="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{clock}</span>
 </div>
 
-<style>
-  /* The registry slider's look on a native range, which keyboard, touch and form tests already know. */
-  .time {
-    height: 1rem;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .time:focus-visible {
-    outline: none;
-  }
-
-  .time::-webkit-slider-runnable-track {
-    height: 0.25rem;
-    background: linear-gradient(to right, var(--primary) var(--filled), var(--muted) var(--filled));
-    box-shadow: inset 0 0 0 1px var(--border);
-  }
-
-  .time::-moz-range-track {
-    height: 0.25rem;
-    background: var(--muted);
-    box-shadow: inset 0 0 0 1px var(--border);
-  }
-
-  .time::-moz-range-progress {
-    height: 0.25rem;
-    background: var(--primary);
-  }
-
-  .time::-webkit-slider-thumb {
-    width: 0.625rem;
-    height: 1rem;
-    margin-top: -0.375rem;
-    appearance: none;
-    border: 1px solid color-mix(in oklch, var(--foreground) 70%, transparent);
-    border-radius: 2px;
-    background: var(--card);
-    transition: box-shadow var(--motion-fast) var(--motion-ease);
-  }
-
-  .time::-moz-range-thumb {
-    width: 0.625rem;
-    height: 1rem;
-    border: 1px solid color-mix(in oklch, var(--foreground) 70%, transparent);
-    border-radius: 2px;
-    background: var(--card);
-  }
-
-  .time:hover::-webkit-slider-thumb,
-  .time:focus-visible::-webkit-slider-thumb {
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 50%, transparent);
-  }
-</style>
