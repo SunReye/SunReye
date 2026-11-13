@@ -8,7 +8,7 @@
 <script lang="ts">
   import { Axis, Chart, Layer, Rule } from "layerchart";
   import { VALUE_AXIS } from "../chart-axis.ts";
-  import { getLocale } from "../paraglide/runtime.js";
+  import { formatPower } from "../power.ts";
   import { valueDomain } from "./domain.ts";
   import { downsample, pointBudget } from "./downsample.ts";
   import { liveCursor } from "./live-cursor.svelte.ts";
@@ -42,7 +42,7 @@
 
   // Read once: a dpr change alters the step size, never the position.
   const quantum = pixelQuantum(dpr);
-  const PADDING = { top: 8, bottom: 6, left: 34, right: 0 };
+  const PADDING = { top: 8, bottom: 6, left: 48, right: 0 };
 
   const lastT = $derived(points.at(-1)?.t);
   const interval = $derived(sampleInterval(points.at(-1)?.t, points.at(-2)?.t));
@@ -74,8 +74,6 @@
   // Feather the plot's edges so data glides in and out instead of ending on a hard cut. The mask
   // is pinned to the box, not the moving marks, and keeps the axis gutter opaque.
   const edgeFade = `linear-gradient(to right, #000 0, #000 ${PADDING.left - 2}px, transparent ${PADDING.left}px, #000 ${PADDING.left + 44}px, #000 calc(100% - 48px), transparent 100%)`;
-  const locale = getLocale();
-  const tick = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
 </script>
 
 <div
@@ -96,7 +94,7 @@
       padding={PADDING}
     >
       <Layer type="svg">
-        <Axis {...VALUE_AXIS} format={(v: number) => tick.format(v)} />
+        <Axis {...VALUE_AXIS} format={(kw: number) => formatPower(kw * 1000)} />
         {#if diverging}<Rule y={0} class="stroke-foreground/30" />{/if}
         <LiveMarks
           {lastT}

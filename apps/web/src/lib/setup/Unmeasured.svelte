@@ -1,7 +1,7 @@
 <!-- A point's own consumption, the part no measured child explains (ADR 14): shown, never hidden. -->
 <script lang="ts">
   import CircleDashed from "@lucide/svelte/icons/circle-dashed";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import { m } from "../paraglide/messages.js";
 
   let { watts }: { watts: number } = $props();
@@ -19,7 +19,6 @@
     <span class="truncate text-xs text-muted-foreground">{m.topology_unmeasured_note()}</span>
   </span>
   <span class="shrink-0 text-[15px] whitespace-nowrap text-muted-foreground">
-    <AnimatedNumber value={watts / 1000} />
-    <span class="text-xs">kW</span>
+    <PowerNumber {watts} unitClass="text-xs" />
   </span>
 </div>

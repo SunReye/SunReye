@@ -555,7 +555,7 @@
   "dash_saved": "gespart",
   "dash_made": "Produktion",
   "dash_used": "Verbrauch",
-  "dash_peak": "Spitze {power} kW um {time}",
+  "dash_peak": "Spitze {power} um {time}",
   "dash_earned": "+ {money} · {price} ct",
   "dash_paid": "− {money} · {price} ct",
   "dash_autarky": "Autarkie",

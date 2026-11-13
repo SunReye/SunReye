@@ -40,11 +40,11 @@
   class="flex flex-col gap-1 border-t border-border/60 px-5 pt-3 pb-4 sm:px-6"
   aria-label={m.detail_live_region()}
 >
-  <div class="flex items-baseline justify-between text-xs text-muted-foreground">
+  <!-- The axis writes each tick's unit (lib/power.ts). -->
+  <div class="flex items-baseline text-xs text-muted-foreground">
     <span class={["font-medium", halt !== null && "text-warning"]}>
       {halt ?? m.detail_live()}
     </span>
-    <span>kW</span>
   </div>
   {#if points.length === 0 && status === "loading"}
     <Skeleton style="height: {height}px" role="status" aria-label={m.loading()} />

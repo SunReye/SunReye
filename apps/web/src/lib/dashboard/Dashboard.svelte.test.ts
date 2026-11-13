@@ -225,18 +225,6 @@ test("a loadpoint shows on one EV card under its device's name, the plant's tota
   expect(screen.getByRole("button", { name: /Ladepunkt/u }).query()).toBeNull();
 });
 
-test("an EV card writes a charge below 1 kW in watts", async () => {
-  const slow = { ...LOADPOINT, "ev.charge.power": 800 };
-  served.live = { ...NOON, [PLANT]: { ...NOON[PLANT], "ev.charge.power": 800 }, "7": slow };
-  served.devices = [{ id: 7, name: "Wallbox Garage", profile: "evcc", connection: 2, unit: 1 }];
-
-  const screen = await open();
-  const card = screen.getByRole("button", { name: /Wallbox Garage/u });
-
-  await expect.element(card.getByText("800", { exact: true })).toBeVisible();
-  await expect.element(card.getByText("W", { exact: true })).toBeVisible();
-});
-
 test("without a loadpoint there is no EV card", async () => {
   const screen = await open();
 

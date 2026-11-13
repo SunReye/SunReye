@@ -1,7 +1,7 @@
 <!-- One measurement point: its tile, name and device, and its live power with what it means. -->
 <script lang="ts">
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import { STATES } from "../flow/node-words.ts";
   import { m } from "../paraglide/messages.js";
   import { accentOf, stateOf } from "./point-look.ts";
@@ -37,8 +37,10 @@
   </span>
   <span class="flex shrink-0 flex-col items-end leading-tight">
     <span class="text-[15px] font-semibold whitespace-nowrap">
-      <AnimatedNumber value={watts === undefined ? null : Math.abs(watts) / 1000} />
-      <span class="text-xs font-normal text-muted-foreground">kW</span>
+      <PowerNumber
+        watts={watts === undefined ? null : Math.abs(watts)}
+        unitClass="text-xs font-normal text-muted-foreground"
+      />
     </span>
     <span
       class="text-xs whitespace-nowrap"

@@ -555,7 +555,7 @@
   "dash_saved": "saved",
   "dash_made": "Production",
   "dash_used": "Consumption",
-  "dash_peak": "Peak {power} kW at {time}",
+  "dash_peak": "Peak {power} at {time}",
   "dash_earned": "+ {money} · {price} ct",
   "dash_paid": "− {money} · {price} ct",
   "dash_autarky": "Self-sufficiency",

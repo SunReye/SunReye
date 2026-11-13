@@ -29,7 +29,8 @@ export interface PvString {
   readonly device: number;
 }
 
-const KW = { unit: "kW", digits: 2, scale: 0.001 };
+/** A power in W: the sheet writes it in the shared power format (W below 1 kW). */
+const POWER = { unit: "W", digits: 0 };
 const MWH = { unit: "MWh", scale: 0.001 };
 
 export function inputs(read: Reader): Group {
@@ -38,7 +39,7 @@ export function inputs(read: Reader): Group {
     table(read, (i) => m.rd_input({ n: i }), [
       { role: "pv.mppt.voltage", label: m.rd_voltage(), unit: "V", digits: 0 },
       { role: "pv.mppt.current", label: m.rd_current(), unit: "A", digits: 1 },
-      { role: "pv.mppt.power", label: m.rd_power(), ...KW },
+      { role: "pv.mppt.power", label: m.rd_power(), ...POWER },
     ]),
   );
 }
@@ -80,7 +81,7 @@ export function string(read: Reader, strings: readonly PvString[], id: number): 
       title: m.rd_input_title({ n: i }),
       // A string alone on its input is the input: its power is the sheet's figure already.
       rows: kept([
-        alone ? null : read.num(`pv.mppt.power[${i}]`, { label: m.rd_power(), ...KW }),
+        alone ? null : read.num(`pv.mppt.power[${i}]`, { label: m.rd_power(), ...POWER }),
         read.num(`pv.mppt.voltage[${i}]`, { label: m.rd_voltage(), unit: "V", digits: 0 }),
         read.num(`pv.mppt.current[${i}]`, { label: m.rd_current(), unit: "A", digits: 1 }),
       ]),
@@ -94,7 +95,7 @@ export function string(read: Reader, strings: readonly PvString[], id: number): 
             : [
                 read.num(`pv.string.power[${s.id}]`, {
                   label: s.name,
-                  ...KW,
+                  ...POWER,
                   to: formatFigure({ kind: "string", id: s.id }),
                 }),
               ],
@@ -118,11 +119,11 @@ function conversion(read: Reader): Group {
   return {
     title: m.rd_now(),
     rows: kept([
-      read.num("pv.power", { label: m.rd_dc_in(), ...KW }),
+      read.num("pv.power", { label: m.rd_dc_in(), ...POWER }),
       through
         ? read.num("inverter.efficiency", { label: m.rd_efficiency(), unit: "%", digits: 1 })
         : null,
-      through ? read.num("inverter.loss.power", { label: m.rd_own_use(), ...KW }) : null,
+      through ? read.num("inverter.loss.power", { label: m.rd_own_use(), ...POWER }) : null,
     ]),
   };
 }
@@ -192,7 +193,7 @@ export function grid(read: Reader): Group[] {
       table(read, (p) => `L${p}`, [
         { role: "grid.phase.voltage", label: m.rd_voltage(), unit: "V", digits: 0 },
         { role: "grid.phase.current", label: m.rd_current(), unit: "A", digits: 1 },
-        { role: "grid.phase.power", label: m.rd_power(), ...KW },
+        { role: "grid.phase.power", label: m.rd_power(), ...POWER },
       ]),
     ),
     {
@@ -210,7 +211,7 @@ export function house(read: Reader, plant: Reader, points: readonly MeasurementP
     consumers(plant, points),
     tabled(
       m.rd_phases(),
-      table(read, (p) => `L${p}`, [{ role: "load.phase.power", label: m.rd_power(), ...KW }]),
+      table(read, (p) => `L${p}`, [{ role: "load.phase.power", label: m.rd_power(), ...POWER }]),
     ),
     {
       title: m.rd_counters(),

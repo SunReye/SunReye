@@ -35,3 +35,6 @@ export function powerNumber(watts: number): string {
 
 /** `watts` with its unit, e.g. "10 W" or "1,0 kW". */
 export const formatPower = (watts: number): string => `${powerNumber(watts)} ${powerUnit(watts)}`;
+
+/** Whether a reading in `unit`, a role unit (ADR 4), is a power: it then reads in this format. */
+export const isPower = (unit: string): boolean => unit === "W";

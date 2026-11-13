@@ -9,6 +9,7 @@
   import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
+  import { formatPower } from "../power.ts";
   import type { Day } from "./day.ts";
   import DayChart from "./DayChart.svelte";
   import Meter from "./Meter.svelte";
@@ -48,7 +49,7 @@
 
     return at === null
       ? BLANK
-      : m.dash_peak({ power: tenths.format(at.watts / 1000), time: clock.format(at.at) });
+      : m.dash_peak({ power: formatPower(at.watts), time: clock.format(at.at) });
   }
 
   /** The money a flow earned or cost today, and the price per kWh now. */

@@ -237,9 +237,9 @@ function peak(day: Readonly<Day> | undefined, kind: "production" | "consumption"
 
   return {
     label: m.detail_peak(),
-    value: watts === undefined ? null : watts / 1000,
-    unit: "kW",
-    digits: 1,
+    value: watts ?? null,
+    unit: "W",
+    digits: 0,
   };
 }
 
