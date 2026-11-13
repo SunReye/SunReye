@@ -1,0 +1,72 @@
+// A module type's datasheet as the admin enters it (ADR 17): its rows, bounds and first values.
+import type { Datasheet } from "../api/core.ts";
+import { m } from "../paraglide/messages.js";
+import type { Editable } from "../components/value-editor/editable.ts";
+import { amount } from "./fields.ts";
+
+/** A datasheet's numbers, dimensions in millimetres as datasheets print them. */
+export type Entered = Omit<Datasheet, "name">;
+
+/** One group of the form: its title and a row per number. */
+export interface DatasheetGroup {
+  readonly title: string;
+  readonly rows: readonly (readonly [keyof Entered, Editable])[];
+}
+
+/** The groups in datasheet order. Lower bounds of 0 let the core refuse a value never entered. */
+export function rows(): readonly DatasheetGroup[] {
+  return [
+    {
+      title: m.datasheet_stc(),
+      rows: [
+        ["pmax", amount(m.field_pmax(), 0, 1000)],
+        ["vmp", amount(m.field_vmp(), 0, 150, 0.01)],
+        ["imp", amount(m.field_imp(), 0, 30, 0.01)],
+        ["voc", amount(m.field_voc(), 0, 150, 0.01)],
+        ["isc", amount(m.field_isc(), 0, 30, 0.01)],
+      ],
+    },
+    {
+      title: m.datasheet_coefficients(),
+      rows: [
+        ["powerCoefficient", amount(m.field_power_coefficient(), -1, 0, 0.01)],
+        ["voltageCoefficient", amount(m.field_voltage_coefficient(), -1, 0, 0.01)],
+        ["currentCoefficient", amount(m.field_current_coefficient(), -0.2, 0.2, 0.001)],
+      ],
+    },
+    {
+      title: m.datasheet_size(),
+      rows: [
+        ["height", amount(m.field_module_length(), 0, 3000)],
+        ["width", amount(m.field_module_width(), 0, 3000)],
+        ["bypassDiodes", amount(m.field_bypass_diodes(), 0, 6)],
+      ],
+    },
+  ];
+}
+
+/** A new form: the values every datasheet prints are left at 0; coefficients and bypass diodes
+ * start at a crystalline module's. */
+export const BLANK: Entered = {
+  pmax: 0,
+  vmp: 0,
+  imp: 0,
+  voc: 0,
+  isc: 0,
+  powerCoefficient: -0.35,
+  voltageCoefficient: -0.27,
+  currentCoefficient: 0.05,
+  height: 0,
+  width: 0,
+  bypassDiodes: 3,
+};
+
+/** What the core takes: dimensions in metres. */
+export function datasheet(name: string, entered: Entered): Datasheet {
+  return {
+    name: name.trim(),
+    ...entered,
+    height: entered.height / 1000,
+    width: entered.width / 1000,
+  };
+}

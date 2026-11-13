@@ -134,7 +134,7 @@ export async function gridOnTheSouthFace(transport: Transport) {
     devices: DEVICES,
   });
 
-  await drill("Module", SOUTH, "Modulraster auf diese Fläche legen");
+  await drill("Module", SOUTH, MODULE.name);
 
   return screen;
 }
