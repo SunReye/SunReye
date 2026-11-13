@@ -3,6 +3,7 @@
 // carries a larger, unseen hit body so a finger finds it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
 import {
+  BufferAttribute,
   BufferGeometry,
   type Color,
   ConeGeometry,
@@ -149,11 +150,58 @@ export function gizmo(found: readonly Handle[], colour: Color): Group {
   return all;
 }
 
-/** The handle the ray from `camera` through `at` (−1 to 1, y up) strikes; null for none. */
+/** Half a fingertip, in canvas pixels: every handle is at least 44 px across (ADR 20). */
+const TOUCH = 22;
+
+/** How far a handle's drawn parts come to `at` on `canvas`, in pixels. */
+function reach(
+  group: Object3D,
+  camera: Camera,
+  at: readonly [number, number],
+  canvas: Readonly<Pick<HTMLCanvasElement, "clientWidth" | "clientHeight">>,
+): number {
+  const point = new Vector3();
+  let nearest = Infinity;
+
+  group.traverse((part) => {
+    const material: unknown = part instanceof Mesh ? part.material : undefined;
+
+    if (
+      !(part instanceof Mesh) ||
+      !(material instanceof MeshBasicMaterial) ||
+      !material.colorWrite
+    ) {
+      return;
+    }
+
+    const geometry: unknown = part.geometry;
+
+    if (!(geometry instanceof BufferGeometry)) return;
+
+    const position: unknown = geometry.getAttribute("position");
+
+    if (!(position instanceof BufferAttribute)) return;
+
+    for (let i = 0; i < position.count; i++) {
+      point.fromBufferAttribute(position, i).applyMatrix4(part.matrixWorld).project(camera);
+
+      const across = ((point.x - at[0]) * canvas.clientWidth) / 2;
+      const down = ((point.y - at[1]) * canvas.clientHeight) / 2;
+
+      nearest = Math.min(nearest, Math.hypot(across, down));
+    }
+  });
+
+  return nearest;
+}
+
+/** The handle the ray from `camera` through `at` (−1 to 1, y up) strikes; else the nearest drawn
+ * within half a fingertip on `canvas`; null for none. */
 export function handleOf(
   handles: Group,
   camera: Camera,
   at: readonly [number, number],
+  canvas: Readonly<Pick<HTMLCanvasElement, "clientWidth" | "clientHeight">>,
 ): Handle | null {
   const ray = new Raycaster();
 
@@ -165,7 +213,14 @@ export function handleOf(
 
   while (part !== null && part.parent !== handles) part = part.parent;
 
-  return (part && HANDLES.get(part)) ?? null;
+  if (part !== null) return HANDLES.get(part) ?? null;
+
+  const near = meshes
+    .map((group) => ({ group, pixels: reach(group, camera, at, canvas) }))
+    .filter(({ pixels }) => pixels <= TOUCH)
+    .toSorted((a, b) => a.pixels - b.pixels)[0];
+
+  return (near && HANDLES.get(near.group)) ?? null;
 }
 
 /** Shows the handles `shown` of the way in, 0 to 1: they grow and fade in from the entrance. */
