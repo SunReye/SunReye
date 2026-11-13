@@ -7,7 +7,7 @@ import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_p
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
-import { presetView, type View } from "./camera.ts";
+import { faceView, presetView, type View } from "./camera.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
 
@@ -118,11 +118,6 @@ export async function choose(row: string, option: string): Promise<void> {
     .click();
   await page.getByRole("radiogroup", { name: row }).getByRole("radio", { name: option }).click();
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
-}
-
-export async function saveFrom(day: string): Promise<void> {
-  await userEvent.fill(inspector().getByLabelText("Gilt ab"), day);
-  await inspector().getByRole("button", { name: "Speichern" }).click();
 }
 
 export async function gridOnTheSouthFace(transport: Transport) {
@@ -252,9 +247,29 @@ export async function phone(): Promise<void> {
 /** The module type's size, by its id, as the crate lays cells out. */
 const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
-/** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from its first view. */
-export function cellsOnPage(start: Scene, grid: number): (key: string) => [number, number] {
-  const onPage = onCanvas(start);
+/** The view a phone flies to when grid `grid`'s face is opened for its modules. */
+export function ontoFace(start: Scene, grid: number): View {
+  const at = start.grids?.[grid];
+
+  const roof = pv
+    .modules(start, SIZES)
+    .roofs.find((r) => r.block === at?.block && r.face === at.face);
+
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  if (roof === undefined) throw new Error(`no face under grid ${String(grid)}`);
+
+  return faceView(roof, canvas.width / canvas.height);
+}
+
+/** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from `kept` or else
+ * its first view. */
+export function cellsOnPage(
+  start: Scene,
+  grid: number,
+  kept?: View,
+): (key: string) => [number, number] {
+  const onPage = onCanvas(start, kept);
 
   const cells = new Map(
     (pv.modules(start, SIZES).grids[grid] ?? []).map(({ row, column, corners }) => {

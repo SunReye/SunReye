@@ -15,12 +15,12 @@ import {
   MODULE,
   phone,
   pv,
-  saveFrom,
   starts,
   tap,
   testCore,
   undesk,
 } from "./builder.harness.ts";
+import { saveFrom } from "./moment.harness.ts";
 import type { Scene } from "./pv.ts";
 
 // A block's overhang and colours, and chimneys on its roof (ADR 20), from the inspector.
@@ -56,17 +56,17 @@ test("roof and wall colours are saved with the block, and the crate paints its f
 
   await drill("Gebäude", "Baukörper 1");
   await inspector()
-    .getByRole("radiogroup", { name: "Dachfarbe" })
+    .getByRole("group", { name: "Dachfarbe" })
     .getByRole("radio", { name: "Ziegelrot" })
     .click();
   await inspector()
-    .getByRole("radiogroup", { name: "Wandfarbe" })
+    .getByRole("group", { name: "Wandfarbe" })
     .getByRole("radio", { name: "Creme" })
     .click();
   await expect
     .element(
       inspector()
-        .getByRole("radiogroup", { name: "Dachfarbe" })
+        .getByRole("group", { name: "Dachfarbe" })
         .getByRole("radio", { name: "Ziegelrot" }),
     )
     .toBeChecked();

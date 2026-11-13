@@ -53,7 +53,7 @@ test.each([390, 320])("at %i px the step's title shows in full", async (width) =
   expect(shown.getBoundingClientRect().right).toBeLessThanOrEqual(width);
 });
 
-test("the canvas's notices stack apart from each other, the tools and the inspector", async () => {
+test("the canvas's status line keeps apart from the tools and the inspector", async () => {
   await step();
   await tap(page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }));
   await tap(page.getByRole("button", { name: "Hinzufügen" }));
@@ -61,9 +61,14 @@ test("the canvas's notices stack apart from each other, the tools and the inspec
   // Down again, to look at the canvas.
   await tap(page.getByRole("button", { name: "Szene bearbeiten" }));
 
+  // One status line holds the notices: what does not fit scrolls inside it.
+  const status = page.getByRole("group", { name: "Jetzt in der Szene" });
+
+  await expect.element(status.getByText(/^Ohne den Standort der Anlage/u)).toBeInTheDocument();
+  await expect.element(status.getByRole("list", { name: "Leistung je String" })).toBeVisible();
+
   const notices = [
-    page.getByText(/^Ohne den Standort der Anlage/u),
-    page.getByRole("list", { name: "Leistung je String" }),
+    status,
     page.getByRole("toolbar", { name: "Werkzeuge" }),
     page.getByRole("region", { name: "Szene bearbeiten" }),
   ];

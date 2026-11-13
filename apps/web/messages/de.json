@@ -423,6 +423,8 @@
   "forecast_input": "MPPT {input}",
   "forecast_string_estimated": "{name} (geschätzt)",
   "forecast_none": "Noch keine Strings angelegt.",
+  "builder_moment": "Zeitpunkt",
+  "builder_status": "Jetzt in der Szene",
   "builder_day": "Tag",
   "builder_time": "Uhrzeit",
   "builder_source_measured": "Gemessen oder geschätzt",

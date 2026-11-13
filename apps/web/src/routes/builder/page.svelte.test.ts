@@ -59,7 +59,8 @@ test("a preset view is kept in this browser", async () => {
 
   await gableHouse();
 
-  await screen.getByRole("button", { name: "Norden" }).click();
+  await screen.getByRole("button", { name: "Ansichten" }).click();
+  await page.getByRole("menuitem", { name: "Norden" }).click();
 
   const kept = parseView(localStorage.getItem(KEPT));
 

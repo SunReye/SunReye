@@ -19,10 +19,10 @@ import {
   MODULE,
   press,
   pv,
-  saveFrom,
   testCore,
   undesk,
 } from "./builder.harness.ts";
+import { saveFrom } from "./moment.harness.ts";
 
 const SLOW = { timeout: 15_000 };
 
