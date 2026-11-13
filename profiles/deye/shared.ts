@@ -3,11 +3,18 @@ import type { Frozen, Identify, Quantity, Setting } from "../../packages/sdk/src
 // What Deye's SG05LP3 and SG01HP3 ranges share: the registers of Deye's three-phase protocol
 // (MODBUS RTU 三相储能通信规约 V105, https://download.axilogi.com/DEYE/Other/MODBUS_RTU.pdf).
 
-/** Register 0, the device type, of a three-phase hybrid for a low-voltage battery. */
-export const LOW_VOLTAGE = [0x0500];
+/**
+ * Register 0, the device type, of a three-phase hybrid for a low-voltage battery. The protocol
+ * writes it 0x0500; a SUN-15K-SG05LP3 answered 0x0005 (read 2026-11-13).
+ */
+export const LOW_VOLTAGE = [0x0005];
 
-/** Register 0 of a three-phase hybrid for a high-voltage battery: 6 to 15 kW, then 20 to 50 kW. */
-export const HIGH_VOLTAGE = [0x0600, 0x0601];
+/**
+ * Register 0 of a three-phase hybrid for a high-voltage battery: 6 to 15 kW, then 20 to 50 kW.
+ * Unverified: the protocol's 0x0600 and 0x0601 beside their byte-swapped forms, as the low-voltage
+ * range answers, until an SG01HP3 is read.
+ */
+export const HIGH_VOLTAGE = [0x0600, 0x0601, 0x0006, 0x0106];
 
 /**
  * Register 500, the running state (0 standby, 1 self-check, 2 normal, 3 alarm, 4 fault), as
