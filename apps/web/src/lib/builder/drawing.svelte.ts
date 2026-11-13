@@ -144,17 +144,13 @@ export function picking(
   };
 }
 
-export interface Overlaid {
-  readonly group: () => Group | undefined;
-  readonly dispose: () => void;
-}
-
-/** Keeps the overlay of what `painting` lays or wires in the studio, rebuilt with each step. */
+/** Keeps the overlay of what `painting` lays or wires in the studio, rebuilt with each step;
+ * returns its removal. */
 export function overlaid(
   studio: Studio,
   painting: () => Painting | undefined,
   render: () => void,
-): Overlaid {
+): () => void {
   let group: Group | undefined;
   let brand: { readonly key: string; readonly colour: Color } | undefined;
 
@@ -187,10 +183,7 @@ export function overlaid(
     });
   });
 
-  return {
-    group: () => group,
-    dispose: () => {
-      replace();
-    },
+  return () => {
+    replace();
   };
 }

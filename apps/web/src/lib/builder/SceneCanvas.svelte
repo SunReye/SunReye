@@ -222,12 +222,10 @@
     canvas: HTMLCanvasElement,
     camera: PerspectiveCamera,
     drawn: () => Group | undefined,
-    overlay: () => Group | undefined,
   ): Brush {
     return new Brush(canvas, camera, {
       painting: () => painting,
       drawn,
-      overlay,
       panels: source.panels,
       onrefuse: (reason) => {
         refused = reason;
@@ -250,8 +248,8 @@
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle never reaches them.
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
-    const laid = overlaid(studio.scene, () => painting, render);
-    const brush = brushOn(canvas, camera, kept.drawn, laid.group);
+    const unlay = overlaid(studio.scene, () => painting, render);
+    const brush = brushOn(canvas, camera, kept.drawn);
 
     const unpick = picking(canvas, camera, kept.drawn, {
       panels: source.panels,
@@ -276,7 +274,7 @@
       resize.disconnect();
       unhandle();
       brush.dispose();
-      laid.dispose();
+      unlay();
       unpick();
       controls.dispose();
       parking.dispose();

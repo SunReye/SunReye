@@ -12,8 +12,8 @@ import type {
 import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { parent, picked, type Level } from "./levels.ts";
-import { painted, panels, wiring, type At, type Draft } from "./modules.ts";
+import { faceCells, parent, picked, type Level } from "./levels.ts";
+import { painted, panels, wiring, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
 import type { Editing, Hit, Painting, Panel } from "./drawing.svelte.ts";
@@ -222,25 +222,15 @@ export class Session {
 
     if (level.kind !== "face" && level.kind !== "module") return undefined;
 
-    const grid = (draft.scene.grids ?? []).findIndex(
-      (item) => item.block === level.block && item.face === level.face,
-    );
+    const cells = faceCells(draft.scene, this.laid, level);
 
-    if (grid < 0) return undefined;
-
-    const modules = draft.scene.grids?.[grid]?.modules ?? [];
-    const cells = this.laid.grids[grid] ?? [];
-    const taken = (cell: At) => modules.some((m) => m.row === cell.row && m.column === cell.column);
+    if (cells === null) return undefined;
 
     return {
       ...steps,
+      ...cells,
       kind: "modules",
-      grid,
-      free: cells.filter((cell) => !taken(cell)),
-      selected:
-        level.kind === "module"
-          ? cells.find((cell) => cell.row === level.row && cell.column === level.column)
-          : undefined,
+      laid: this.laid,
       onselect: ({ row, column }) => {
         this.go({ kind: "module", block: level.block, face: level.face, row, column });
       },
@@ -266,7 +256,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit, this.laid.roofs);
+    const level = picked(this.draft.scene, hit, this.laid.roofs, this.laid.grids);
 
     if (level === null) return;
 

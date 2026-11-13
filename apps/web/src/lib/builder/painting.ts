@@ -8,8 +8,8 @@ import type { Group, PerspectiveCamera } from "three";
 import { haptics } from "../haptics.ts";
 import { m } from "../paraglide/messages.js";
 import { paint, refuses, strokeOf, type At, type Draft, type Stroke } from "./modules.ts";
-import { freeCellAt } from "./overlay.ts";
-import type { CellPlace, Point, Scene } from "./pv.ts";
+import { cellAt } from "./cells.ts";
+import type { CellPlace, Modules, Point, Scene } from "./pv.ts";
 import { strike, type Panel } from "./scene.ts";
 import { listen } from "./pointer.ts";
 
@@ -27,6 +27,8 @@ export type Painting =
       readonly kind: "modules";
       /** By position in the scene's grids. */
       readonly grid: number;
+      /** The roofs and every grid's cells, as the crate lays them out. */
+      readonly laid: Pick<Modules, "roofs" | "grids">;
       /** The cells free to place a module in. */
       readonly free: readonly CellPlace[];
       /** The selected module's cell. */
@@ -52,8 +54,6 @@ export interface Refused {
 export interface Brushing {
   readonly painting: () => Painting | undefined;
   readonly drawn: () => Group | undefined;
-  /** The overlay over the roof: the free cells a press may strike. */
-  readonly overlay: () => Group | undefined;
   readonly panels: () => readonly Panel[];
   /** A refusal, or none once the next press starts. */
   readonly onrefuse: (refused?: Refused) => void;
@@ -136,10 +136,11 @@ export class Brush {
       return under(painting.grid, module, true);
     }
 
-    const shown = this.#sources.overlay();
-    const cell = shown && freeCellAt(shown, group, this.#camera, at);
+    // A free cell: the roof under it, found as the inspector's picking finds a face.
+    const cell =
+      hit?.kind === "point" ? cellAt(painting.draft.scene, painting.laid, hit.point) : null;
 
-    return cell === undefined ? null : under(painting.grid, cell, false);
+    return cell?.grid === painting.grid ? under(cell.grid, cell, false) : null;
   }
 
   /** Paints one cell, or answers beside the pointer why its grid refuses the string. */

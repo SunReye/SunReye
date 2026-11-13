@@ -1,6 +1,6 @@
 // What laying modules and wiring strings draw over the roof (ADR 20): a selected face's free cells
 // in the brand colour, the selected module's outline, and the picked string's wiring in its tint
-// from a start marker. Built anew for each step; the free cells are what a press may strike.
+// from a start marker. Built anew for each step; it only shows, a press strikes the roof under it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
 import {
   BufferGeometry,
@@ -14,14 +14,10 @@ import {
   Mesh,
   MeshBasicMaterial,
   type Object3D,
-  type PerspectiveCamera,
-  Raycaster,
   SphereGeometry,
-  Vector2,
   Vector3,
 } from "three";
 import { fan } from "../scene/surfaces.ts";
-import type { At } from "./modules.ts";
 import type { CellPlace, Point } from "./pv.ts";
 import { stringColour, toThree } from "./scene.ts";
 
@@ -48,38 +44,6 @@ const START = 0.14;
 
 /** Over everything the scene draws, as the handles. */
 const ON_TOP = 10;
-
-/** Metres a cell may lie behind what the ray strikes first, by depth rounding. */
-const ON_ROOF = 0.05;
-
-/** Each free cell's mesh, by the cell it stands for. */
-const CELLS = new WeakMap<Object3D, At>();
-
-/** The free cell of `shown` the ray from `camera` through `at` (−1 to 1, y up) strikes, unless
- * something of the scene `drawn` stands before it. */
-export function freeCellAt(
-  shown: Group,
-  drawn: Group,
-  camera: PerspectiveCamera,
-  at: readonly [number, number],
-): At | undefined {
-  const ray = new Raycaster();
-
-  ray.setFromCamera(new Vector2(...at), camera);
-
-  const [cell] = ray.intersectObjects(
-    shown.children.filter((part) => CELLS.has(part)),
-    false,
-  );
-
-  const [nearest] = ray.intersectObject(drawn, true);
-
-  if (cell === undefined || (nearest !== undefined && nearest.distance + ON_ROOF < cell.distance)) {
-    return undefined;
-  }
-
-  return CELLS.get(cell.object);
-}
 
 /** The cell's corners in three.js's frame, lifted off the roof along its normal. */
 function lifted({ corners }: CellPlace): Vector3[] {
@@ -125,7 +89,6 @@ function free(cell: CellPlace, colour: Color): Object3D[] {
   );
 
   fill.material.side = DoubleSide;
-  CELLS.set(fill, { row: cell.row, column: cell.column });
 
   return [fill, outline(cell, colour, 0.55)];
 }
