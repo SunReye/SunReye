@@ -55,11 +55,12 @@
 <!--
 Discriminated Unions + Destructing (required for bindable) do not
 get along, so we shut typescript up by casting `value` to `never`.
+Local: `placeholder` too, as this repo's `exactOptionalPropertyTypes` refuses its `undefined` (#746).
 -->
 <CalendarPrimitive.Root
 	bind:value={value as never}
 	bind:ref
-	bind:placeholder
+	bind:placeholder={placeholder as never}
 	{weekdayFormat}
 	{disableDaysOutsideMonth}
 	class={cn(
