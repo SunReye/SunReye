@@ -21,12 +21,11 @@
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
-  import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import * as Item from "../ui/item/index.js";
-  import { Button } from "../ui/button/index.js";
   import { spring, tween, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
   import { settle, slideMs } from "./drill.ts";
+  import DrillHeader from "./drill-header.svelte";
   import DrillPanes from "./drill-panes.svelte";
   import DrillRow from "./drill-row.svelte";
 
@@ -186,15 +185,16 @@
     <div
       bind:this={box}
       data-drill="box"
-      class="glass-ambient relative grid touch-pan-y overflow-hidden rounded-lg border border-border/60 elevation-2"
+      class="glass-ambient relative grid touch-pan-y grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border border-border/60 elevation-2"
       onpointerdown={down}
       onpointermove={move}
       onpointerup={up}
       onpointercancel={up}
       role="presentation"
     >
+      <!-- Gone once the page covers it: the glass page would show it through, and its rows would stretch a shorter page. -->
       <section
-        class="col-start-1 row-start-1 flex flex-col"
+        class={["col-start-1 row-start-1 flex min-w-0 flex-col", group && p === 1 && "hidden"]}
         style:transform="translateX({-30 * p}%)"
         style:opacity={1 - 0.6 * p}
         aria-hidden={p > 0.5}
@@ -215,19 +215,11 @@
       {#if group}
         <section
           data-drill="page"
-          class="glass-ambient col-start-1 row-start-1 flex flex-col shadow-[-12px_0_32px_-12px_rgb(0_0_0/0.35)]"
+          class="glass-ambient col-start-1 row-start-1 flex min-w-0 flex-col shadow-[-12px_0_32px_-12px_rgb(0_0_0/0.35)]"
           style:transform="translateX({(1 - p) * 100}%)"
           aria-label={group.label}
         >
-          <div class="relative flex items-center border-b border-border/60 p-1.5">
-            <Button variant="ghost" size="sm" onclick={() => onnavigate(null)} class="text-brand">
-              <ChevronLeft data-icon="inline-start" />
-              {back}
-            </Button>
-            <h2 class="absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">
-              {group.label}
-            </h2>
-          </div>
+          <DrillHeader {back} title={group.label} onback={() => onnavigate(null)} />
           {@render page(group)}
         </section>
       {/if}
