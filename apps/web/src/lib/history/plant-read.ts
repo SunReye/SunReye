@@ -3,7 +3,7 @@
 import type { Core } from "../api/core.ts";
 import type { Interval } from "../dashboard/today.ts";
 import { PLANT } from "../dashboard/day.ts";
-import { FLOWS, NO_PLANT, type Flow, type Plant, type Rollups } from "./flows.ts";
+import { PLANT_FLOWS, NO_PLANT, type PlantFlow, type Plant, type Rollups } from "./flows.ts";
 import { rollups, type RollupPeriod } from "./history.ts";
 
 const DAY = 86_400_000;
@@ -19,7 +19,7 @@ async function loadHistory(core: PlantCore, from: number, to: number) {
   for (let a = from; a < to; a += PIECE) pieces.push([a, Math.min(to, a + PIECE)]);
 
   const reads = await Promise.all(
-    pieces.map((p) => core.history(PLANT, FLOWS.load, new Date(p[0]), new Date(p[1]))),
+    pieces.map((p) => core.history(PLANT, PLANT_FLOWS.load, new Date(p[0]), new Date(p[1]))),
   );
 
   for (const read of reads) if ("points" in read) out.push(...read.points);
@@ -34,7 +34,8 @@ async function each(
   from: number,
   to: number,
 ): Promise<Rollups> {
-  const read = (f: Flow) => rollups(core, PLANT, FLOWS[f], period, new Date(from), new Date(to));
+  const read = (f: PlantFlow) =>
+    rollups(core, PLANT, PLANT_FLOWS[f], period, new Date(from), new Date(to));
 
   const [pv, load, imported, exported, selfUsed, selfCovered, charge, discharge, ev] =
     await Promise.all([

@@ -6,7 +6,7 @@ import type { Span } from "../range/fill.ts";
 import type { Rolled } from "./history.ts";
 
 /** The plant's flows, each a power role of the `plant` device (ADR 4). */
-export const FLOWS = {
+export const PLANT_FLOWS = {
   pv: "pv.power",
   load: "load.power",
   imported: "grid.import.power",
@@ -20,9 +20,9 @@ export const FLOWS = {
   ev: "ev.charge.power",
 } as const;
 
-export type Flow = keyof typeof FLOWS;
+export type PlantFlow = keyof typeof PLANT_FLOWS;
 
-export type Rollups = Readonly<Record<Flow, readonly Rolled[]>>;
+export type Rollups = Readonly<Record<PlantFlow, readonly Rolled[]>>;
 
 /** The plant's rollups as the core reads them (ADR 3), and its house load's history. */
 export interface Plant {
@@ -138,8 +138,8 @@ const HOUR = 3_600_000;
 
 /** The flows over the rollups starting in [from, to), and how long the house load was read. */
 function sum(rollups: Rollups, from: number, to: number): Sum {
-  const inside = (of: Flow) => rollups[of].filter((r) => r.start >= from && r.start < to);
-  const kwh = (of: Flow) => inside(of).reduce((a, r) => a + r.integral, 0) / 1000;
+  const inside = (of: PlantFlow) => rollups[of].filter((r) => r.start >= from && r.start < to);
+  const kwh = (of: PlantFlow) => inside(of).reduce((a, r) => a + r.integral, 0) / 1000;
 
   const t = today(
     {
