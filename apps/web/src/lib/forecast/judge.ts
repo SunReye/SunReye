@@ -120,7 +120,8 @@ export function headline(
 ): string {
   const when = phrase(cal, range);
   // A figure never breaks from its unit.
-  const [made, ahead] = [kwh(j.made), kwh(j.ahead)].map((v) => v.replace(" ", "\u00A0"));
+  const made = kwh(j.made).replace(" ", "\u00A0");
+  const ahead = kwh(j.ahead).replace(" ", "\u00A0");
   const still = j.ahead > 0 ? ` ${m.forecast_still({ ahead })}` : "";
 
   if (j.made <= 0)
