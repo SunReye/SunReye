@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Button } from "#lib/components/ui/button/index.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import type { Core, ImportStatus, Problem, SharedArchive } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import ImportMapping from "./ImportMapping.svelte";
   import ImportOutcome from "./ImportOutcome.svelte";
   import ImportSources from "./ImportSources.svelte";
+  import ImportStart from "./ImportStart.svelte";
   import Refusal from "../setup/Refusal.svelte";
 
   let { core }: { core: Core } = $props();
@@ -30,9 +30,6 @@
   /** The v5 device id each v3 slug maps to; empty when it is not imported. */
   let mapping = $state<Record<string, string>>({});
   let refused = $state.raw<Problem>();
-
-  /** The start waits for a confirm: nothing takes an import back. */
-  let asking = $state(false);
 
   let running = $derived(status !== undefined && "state" in status && status.state === "running");
 
@@ -73,8 +70,6 @@
   }
 
   async function start(): Promise<void> {
-    asking = false;
-
     const chosen = (archive ?? []).flatMap(({ slug }) => {
       const device = mapping[slug] ?? "";
 
@@ -120,19 +115,7 @@
       </div>
     {/if}
     {#if archive !== undefined}
-      <div class="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 pt-4">
-        {#if asking}
-          <p class="basis-full text-sm">{m.import_confirm_note()}</p>
-          <Button variant="ghost" size="sm" onclick={() => (asking = false)}>
-            {m.import_cancel()}
-          </Button>
-          <Button variant="destructive" size="sm" onclick={start}>{m.import_confirm()}</Button>
-        {:else}
-          <Button variant="destructive" size="sm" disabled={running} onclick={() => (asking = true)}>
-            {m.import_start()}
-          </Button>
-        {/if}
-      </div>
+      <ImportStart disabled={running} onstart={() => void start()} />
     {/if}
   </section>
 {/if}

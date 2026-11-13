@@ -1,10 +1,8 @@
 <script lang="ts">
-  import Upload from "@lucide/svelte/icons/upload";
   import type { Core, SharedArchive } from "../api/core";
-  import { buttonVariants } from "#lib/components/ui/button/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import { cn } from "#lib/utils.js";
   import { m } from "../paraglide/messages.js";
+  import ImportUpload from "./ImportUpload.svelte";
 
   type V3Device = SharedArchive["devices"][number];
 
@@ -34,67 +32,44 @@
 
   const id = $props.id();
 
-  let shared = $derived(core.importFiles());
+  // The archives under `/share`, then the uploaded one; an upload reads `/share` again.
+  let archives = $derived.by(() => {
+    const upload: readonly Archive[] =
+      uploaded === undefined ? [] : [{ path: "upload", label: m.import_uploaded(), devices: uploaded }];
 
-  function archives(files: Awaited<ReturnType<Core["importFiles"]>>): Archive[] {
-    const listed = "problem" in files ? [] : files.map((file) => ({ ...file, label: file.path }));
+    return core.importFiles().then((files): readonly Archive[] => [
+      ...("problem" in files ? [] : files.map((file) => ({ ...file, label: file.path }))),
+      ...upload,
+    ]);
+  });
 
-    return uploaded === undefined
-      ? listed
-      : [...listed, { path: "upload", label: m.import_uploaded(), devices: uploaded }];
+  function pick(options: readonly Archive[], next: string): void {
+    const chosen = options.find((option) => option.path === next);
+
+    if (chosen !== undefined) onchoose(chosen.path, chosen.devices);
   }
 </script>
 
 <div role="group" aria-labelledby="{id}-archive" class="flex flex-col gap-2 px-4">
   <span id="{id}-archive" class="text-sm font-medium">{m.import_archive()}</span>
-  {#await shared then files}
-    {@const options = archives(files)}
-    {#if options.length > 0}
-      <ToggleGroup.Root
-        type="single"
-        variant="outline"
-        orientation="vertical"
-        {disabled}
-        class="w-full"
-        bind:value={
-          () => source ?? "",
-          (next) => {
-            const chosen = options.find((option) => option.path === next);
-
-            if (chosen !== undefined) onchoose(chosen.path, chosen.devices);
-          }
-        }
-      >
-        {#each options as option (option.path)}
-          <ToggleGroup.Item value={option.path} class="w-full justify-start px-3 font-normal">
-            <span class="truncate">{option.label}</span>
-          </ToggleGroup.Item>
-        {/each}
-      </ToggleGroup.Root>
-    {/if}
-    {#if "problem" in files || files.length === 0}
+  {#await archives then options}
+    {#if options.length === 0}
       <p class="text-sm text-muted-foreground">{m.import_none_shared()}</p>
     {/if}
-  {/await}
-  <!-- The file input is hidden behind the ui button; the label keeps it named and focusable. -->
-  <label
-    class={cn(
-      buttonVariants({ variant: "outline", size: "sm" }),
-      "self-start has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:pointer-events-none has-disabled:opacity-50",
-    )}
-  >
-    <Upload data-icon="inline-start" />
-    {m.import_upload()}
-    <input
-      type="file"
-      class="sr-only"
-      accept=".tar.gz,application/gzip"
+    <ToggleGroup.Root
+      type="single"
+      variant="outline"
+      orientation="vertical"
       {disabled}
-      onchange={(event) => {
-        const file = event.currentTarget.files?.[0];
-
-        if (file !== undefined) onupload(file);
-      }}
-    />
-  </label>
+      class="w-full empty:hidden"
+      bind:value={() => source ?? "", (next) => pick(options, next)}
+    >
+      {#each options as option (option.path)}
+        <ToggleGroup.Item value={option.path} class="w-full justify-start px-3 font-normal">
+          <span class="truncate">{option.label}</span>
+        </ToggleGroup.Item>
+      {/each}
+    </ToggleGroup.Root>
+  {/await}
+  <ImportUpload {disabled} {onupload} />
 </div>
