@@ -4,6 +4,7 @@
   import { Badge } from "./ui/badge/index.js";
   import { Button } from "./ui/button/index.js";
   import * as Card from "./ui/card/index.js";
+  import { Checkbox } from "./ui/checkbox/index.js";
   import { Input } from "./ui/input/index.js";
   import * as Item from "./ui/item/index.js";
   import { Kbd } from "./ui/kbd/index.js";
@@ -15,6 +16,7 @@
 <div data-testid="controls">
   <Button>Button</Button>
   <Card.Root>Card</Card.Root>
+  <Checkbox aria-label="Checkbox" />
   <Input aria-label="Input" />
   <Badge>Badge</Badge>
   <Kbd>K</Kbd>
