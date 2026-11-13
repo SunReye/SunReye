@@ -157,6 +157,10 @@ function batteryReading(input: Live3d, device: string): Reading | null {
   return power === null ? null : { ...power, soc: input.values[device]?.["battery.soc"] ?? null };
 }
 
+/** An inverter's AC power, as its sheet reads it; its PV power while it publishes none. */
+const inverterReading = (input: Live3d, device: string): Reading | null =>
+  seriesReading(input, device, "inverter.power") ?? seriesReading(input, device, "pv.power");
+
 function equipment(input: Live3d): Chip[] {
   const placed = input.mounts === null || input.mounts === undefined ? [] : input.equipment;
 
@@ -171,12 +175,7 @@ function equipment(input: Live3d): Chip[] {
   const inverters = [...new Set(input.strings.map((string) => string.device))]
     .filter((device) => !marked("inverter", device))
     .flatMap((device) =>
-      at(
-        `inverter-${device}`,
-        "inverter",
-        "inverter",
-        seriesReading(input, String(device), "pv.power"),
-      ),
+      at(`inverter-${device}`, "inverter", "inverter", inverterReading(input, String(device))),
     );
 
   const onMarkers = placed.flatMap((marker, i): Chip[] => {
@@ -184,9 +183,7 @@ function equipment(input: Live3d): Chip[] {
     const device = String(marker.device);
 
     const read =
-      marker.kind === "inverter"
-        ? seriesReading(input, device, "pv.power")
-        : batteryReading(input, device);
+      marker.kind === "inverter" ? inverterReading(input, device) : batteryReading(input, device);
 
     return mount === undefined || read === null
       ? []
