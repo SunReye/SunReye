@@ -1,7 +1,8 @@
-// The shell's destinations (ADR 21). Devices has no screen yet; it joins the rail with one.
+// The shell's destinations (ADR 21). Devices has no screen of its own; it opens Settings › Devices.
 import Activity from "@lucide/svelte/icons/activity";
 import ChartLine from "@lucide/svelte/icons/chart-line";
 import CloudSun from "@lucide/svelte/icons/cloud-sun";
+import Cpu from "@lucide/svelte/icons/cpu";
 import House from "@lucide/svelte/icons/house";
 import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
 import Receipt from "@lucide/svelte/icons/receipt";
@@ -37,6 +38,13 @@ const CONTROLS: NavItem = {
 };
 
 const BUILDER: NavItem = { route: "/builder", label: m.nav_builder, icon: House };
+const DEVICES: NavItem = {
+  route: "/settings?group=devices",
+  label: m.settings_devices,
+  icon: Cpu,
+  admin: true,
+};
+
 const STATUS: NavItem = { route: "/status", label: m.nav_status, icon: Activity };
 
 /** The rail's upper list, in order; Controls is the admin's. */
@@ -46,7 +54,7 @@ export const RAIL: readonly NavItem[] = [...BAR, CONTROLS, BUILDER, STATUS];
 export const SETTINGS: NavItem = { route: "/settings", label: m.nav_settings, icon: Settings };
 
 /** The phone's More sheet, in order; Controls is the admin's. */
-export const MORE: readonly NavItem[] = [CONTROLS, SETTINGS, BUILDER, STATUS];
+export const MORE: readonly NavItem[] = [CONTROLS, SETTINGS, DEVICES, BUILDER, STATUS];
 
 /** The hash link to a route. */
 export function href(route: string): string {
