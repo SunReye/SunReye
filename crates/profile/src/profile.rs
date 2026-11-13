@@ -631,6 +631,7 @@ fn compile(
         if positions.contains_key(&doc.key) {
             return Err(refuse("the key is declared twice"));
         }
+        status(&doc).map_err(refuse)?;
         let read = read(&doc, &positions).map_err(refuse)?;
         let first = quantities.iter().find_map(|q: &Quantity| q.read.binding());
         if read
@@ -733,6 +734,15 @@ fn read(doc: &QuantityDoc, positions: &HashMap<String, usize>) -> Result<Read, &
         }
         _ => Err("declare one of `register`, `topic`, `get` or `compute`"),
     }
+}
+
+/// ADR 4: an `inverter.status` is 0 standby, 1 normal or 2 fault.
+fn status(doc: &QuantityDoc) -> Result<(), &'static str> {
+    let outside = |value: &f64| ![0.0, 1.0, 2.0].contains(value);
+    if doc.role == "inverter.status" && doc.texts.iter().flat_map(BTreeMap::values).any(outside) {
+        return Err("an `inverter.status` enum maps to 0 standby, 1 normal or 2 fault");
+    }
+    Ok(())
 }
 
 /// The raw values a register's `enum` maps, each a decimal integer its type holds.
