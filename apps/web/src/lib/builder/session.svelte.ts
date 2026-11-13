@@ -162,7 +162,8 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** A selected block, obstacle, ground surface or fence's handles, and where their drags go. */
+  /** A selected block, obstacle, ground surface, fence or car place's handles, and where their
+   * drags go. */
   get editing(): Editing | undefined {
     const { level } = this;
 
@@ -170,7 +171,8 @@ export class Session {
       level.kind !== "block" &&
       level.kind !== "obstacle" &&
       level.kind !== "surface" &&
-      level.kind !== "fence"
+      level.kind !== "fence" &&
+      level.kind !== "place"
     ) {
       return undefined;
     }

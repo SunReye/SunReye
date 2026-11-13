@@ -111,6 +111,10 @@ export function handles(scene: Scene, target: Target): Handle[] {
   if (body.kind === "round") return roundHandles(scene.north, body);
 
   const block = target.kind === "block" ? scene.blocks[target.index] : undefined;
+  const found = rectHandles(scene.north, body, block === undefined ? null : ridge(block));
 
-  return rectHandles(scene.north, body, block === undefined ? null : ridge(block));
+  // A car place keeps its size: it only moves and turns.
+  return target.kind === "place"
+    ? found.filter(({ grip }) => grip === "turn" || grip === "move")
+    : found;
 }

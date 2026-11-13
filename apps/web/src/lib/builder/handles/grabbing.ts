@@ -102,8 +102,9 @@ export class Grabbing {
   #handleAt(at: readonly [number, number]): Handle | null {
     const shown = this.#sources.handles();
 
-    // A press may come before the first draw has placed the camera's matrices.
+    // A press may come before the next draw has placed the camera's and the handles' matrices.
     this.#camera.updateMatrixWorld();
+    shown?.updateMatrixWorld();
 
     return shown === undefined ? null : handleOf(shown, this.#camera, at, this.#canvas);
   }
