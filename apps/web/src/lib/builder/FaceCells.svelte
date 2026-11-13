@@ -22,7 +22,7 @@
     type Tool,
   } from "./modules.ts";
   import { misplacedText, type Checks } from "./checks.ts";
-  import type { CellPlace, ModuleGrid, RoofFace } from "./pv.ts";
+  import type { Cell, CellPlace, ModuleGrid, RoofFace } from "./pv.ts";
   import { stringCss } from "./scene.ts";
 
   let {
@@ -59,6 +59,38 @@
     return `${(100 * length) / of}%`;
   }
 
+  /** An area of the face's outline, placed on the drawn face. */
+  function placed([[left, bottom], [right, top]]: CellPlace["area"]): string {
+    return [
+      `left: ${percent(left, across)}`,
+      `bottom: ${percent(bottom, up)}`,
+      `width: ${percent(right - left, across)}`,
+      `height: ${percent(top - bottom, up)}`,
+    ].join("; ");
+  }
+
+  /** The module placed in a cell, if any. */
+  function moduleIn({ row, column }: At): Cell | undefined {
+    return grid.modules.find((c) => c.row === row && c.column === column);
+  }
+
+  function cellClass(module: Cell | undefined): (string | false)[] {
+    return ["cell", coldHere.some(({ string }) => module?.string === string) && "cold"];
+  }
+
+  function cellStyle(cell: CellPlace, module: Cell | undefined): string {
+    const fill = module === undefined ? "" : `; background: ${stringCss(module.string)}`;
+
+    return `${placed(cell.area)}${fill}`;
+  }
+
+  /** A pointer's press painted already; the keyboard taps here. */
+  function tap(event: MouseEvent, cell: CellPlace): void {
+    if (event.detail === 0 && !refused()) {
+      onchange({ ...draft, scene: apply(draft.scene, index, cell, tool) });
+    }
+  }
+
   /** The strings painted here that are too high in the cold. */
   const coldHere = $derived(
     checks.cold.filter(({ string }) => grid.modules.some((cell) => cell.string === string)),
@@ -67,7 +99,11 @@
   /** Where the refused module lies, even past the face's edge. */
   const misplaced = $derived(checks.misplaced);
 
-  const stray = $derived(misplaced !== null && "area" in misplaced ? misplaced.area : null);
+  const stray = $derived(
+    misplaced !== null && "area" in misplaced && misplaced.area !== null
+      ? { area: misplaced.area, label: misplacedText(misplaced) }
+      : null,
+  );
 
   /** Why the last press was refused, until the next one. */
   let refusal = $state<string>();
@@ -145,39 +181,22 @@
     <polygon points={roof.outline.map(([u, v]) => `${u},${up - v}`).join(" ")} />
   </svg>
   {#each cells as cell (`${cell.row}.${cell.column}`)}
-    {@const module = grid.modules.find((c) => c.row === cell.row && c.column === cell.column)}
-    {@const [[left, bottom], [right, top]] = cell.area}
+    {@const module = moduleIn(cell)}
     <button
       type="button"
-      class={["cell", coldHere.some(({ string }) => module?.string === string) && "cold"]}
+      class={cellClass(module)}
       aria-label={m.builder_cell({ row: cell.row + 1, column: cell.column + 1 })}
       aria-pressed={module !== undefined}
       data-row={cell.row}
       data-column={cell.column}
-      style:left={percent(left, across)}
-      style:bottom={percent(bottom, up)}
-      style:width={percent(right - left, across)}
-      style:height={percent(top - bottom, up)}
-      style:background={module === undefined ? undefined : stringCss(module.string)}
+      style={cellStyle(cell, module)}
       onclick={(event) => {
-        // A pointer's press painted already; the keyboard taps here.
-        if (event.detail === 0 && !refused()) {
-          onchange({ ...draft, scene: apply(draft.scene, index, cell, tool) });
-        }
-      }}>{module?.optimized === true ? "◆" : ""}</button
+        tap(event, cell);
+      }}>{module?.optimized ? "◆" : ""}</button
     >
   {/each}
-  {#if misplaced !== null && stray !== null}
-    {@const [[left, bottom], [right, top]] = stray}
-    <span
-      class="stray"
-      role="img"
-      aria-label={misplacedText(misplaced)}
-      style:left={percent(left, across)}
-      style:bottom={percent(bottom, up)}
-      style:width={percent(right - left, across)}
-      style:height={percent(top - bottom, up)}
-    ></span>
+  {#if stray !== null}
+    <span class="stray" role="img" aria-label={stray.label} style={placed(stray.area)}></span>
   {/if}
 </div>
 {#each coldHere as warning (warning.string)}

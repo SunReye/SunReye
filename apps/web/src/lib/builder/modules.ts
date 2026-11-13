@@ -108,27 +108,29 @@ export function apply(scene: Scene, index: number, at: At, tool: Tool): Scene {
   return paint(scene, index, at, strokeOf(scene, index, at, tool));
 }
 
-function edit(modules: readonly Cell[], { row, column }: At, stroke: Stroke): Cell[] {
-  const at = modules.findIndex((cell) => cell.row === row && cell.column === column);
-  const cell = modules[at];
+function edit(modules: readonly Cell[], at: At, stroke: Stroke): Cell[] {
+  const index = modules.findIndex((cell) => cell.row === at.row && cell.column === at.column);
+  const next = stroked(modules[index], at, stroke);
 
-  if (stroke.kind === "place") {
-    if (stroke.erase) return cell === undefined ? [...modules] : modules.toSpliced(at, 1);
+  if (index < 0) return next === undefined ? [...modules] : [...modules, next];
 
-    return cell === undefined ? [...modules, { row, column, optimized: false }] : [...modules];
-  }
+  return next === undefined ? modules.toSpliced(index, 1) : modules.with(index, next);
+}
 
-  if (stroke.kind === "optimizer") {
-    return cell === undefined ? [...modules] : modules.with(at, { ...cell, optimized: stroke.on });
-  }
+/** What a stroke leaves in the cell `at`: its module, or none. */
+export function stroked(
+  cell: Cell | undefined,
+  { row, column }: At,
+  stroke: Stroke,
+): Cell | undefined {
+  if (stroke.kind === "place")
+    return stroke.erase ? undefined : (cell ?? { row, column, optimized: false });
 
-  const string = stroke.erase ? undefined : stroke.string;
+  if (stroke.kind === "optimizer") return cell && { ...cell, optimized: stroke.on };
 
-  if (cell === undefined) {
-    return stroke.erase ? [...modules] : [...modules, assigned({ row, column }, string)];
-  }
+  if (cell === undefined && stroke.erase) return undefined;
 
-  return modules.with(at, assigned(cell, string));
+  return assigned(cell ?? { row, column }, stroke.erase ? undefined : stroke.string);
 }
 
 function assigned({ row, column, optimized }: Cell, string?: number): Cell {
