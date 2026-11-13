@@ -24,8 +24,12 @@
     ghost: { label: string; colour: string; value: number | null } | null;
     /** The dashed line over the bars. */
     line: { label: string; colour: string; value: number | null } | null;
+    /** What a hatched band is, while the plot has one. */
+    gap: string | null;
     /** Figures show a dash: still loading, or a band without readings. */
     blank: boolean;
+    /** The series' figures show a dash: a band still to come, read for its forecast only. */
+    unmeasured: boolean;
     /** Reading a band is instant; a new range rolls. */
     duration: number;
   }
@@ -49,6 +53,7 @@
     reference: Legend["mark"];
     expected: Legend["ghost"];
     curve: Legend["line"];
+    gap: Legend["gap"];
   };
 
   const rows = $derived<Row[]>(
@@ -57,14 +62,15 @@
         reference: r.mark ? legend.mark : null,
         expected: r.mark ? legend.ghost : null,
         curve: r.mark ? legend.line : null,
+        gap: r.mark ? legend.gap : null,
       }),
     ),
   );
 </script>
 
-{#snippet figure(v: number | null | undefined)}
+{#snippet figure(v: number | null | undefined, series = false)}
   <AnimatedNumber
-    value={legend.blank ? null : (v ?? 0)}
+    value={legend.blank || (series && legend.unmeasured) ? null : (v ?? 0)}
     format={fmt}
     placeholder="–"
     duration={legend.duration}
@@ -108,6 +114,13 @@
   </div>
 {/snippet}
 
+{#snippet hatched(label: string)}
+  <div class="flex items-baseline gap-1.5">
+    <span class="hatch size-2 shrink-0 translate-y-[-1px]"></span>
+    <dt class="text-muted-foreground">{label}</dt>
+  </div>
+{/snippet}
+
 {#snippet row(r: Row)}
   <!-- Narrow: two columns, the upper side's row above the lower side's, as in the plot. -->
   <dl
@@ -121,12 +134,13 @@
         <span class="size-2 shrink-0 translate-y-[-1px] rounded-[1px]" style:background={s.colour}
         ></span>
         <dt class="truncate text-muted-foreground">{s.label}</dt>
-        <dd class="font-semibold whitespace-nowrap tabular-nums">{@render figure(r.values[i])}</dd>
+        <dd class="font-semibold whitespace-nowrap tabular-nums">{@render figure(r.values[i], true)}</dd>
       </div>
     {/each}
     {#if r.reference}{@render reference(r.reference)}{/if}
     {#if r.expected}{@render expected(r.expected)}{/if}
     {#if r.curve}{@render dashed(r.curve)}{/if}
+    {#if r.gap}{@render hatched(r.gap)}{/if}
   </dl>
 {/snippet}
 
@@ -157,5 +171,13 @@
   }
   .key.off {
     opacity: 0;
+  }
+  /* The plot's hatch for a band without readings, at the swatch's size. */
+  .hatch {
+    background: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--foreground) 45%, transparent) 0 1px,
+      transparent 1px 3px
+    );
   }
 </style>
