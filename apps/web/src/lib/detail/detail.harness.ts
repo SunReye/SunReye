@@ -98,9 +98,9 @@ function stream(): Response {
   );
 }
 
-const slot = (hour: number, value: number) => ({
+const slot = (hour: number, value: number, minute = 0) => ({
   issued: "2026-11-11T13:00:00Z",
-  target: `2026-11-12T${String(hour).padStart(2, "0")}:00:00Z`,
+  target: `2026-11-12T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
   value,
 });
 
@@ -143,7 +143,10 @@ const ROUTES = new Map<string, () => Response>([
   ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
   [
     `/api/v1/devices/${SPOT}/forecasts`,
-    () => Response.json({ points: [slot(0, 0.12), slot(12, 0.061), slot(13, -0.01)] }),
+    () =>
+      Response.json({
+        points: [slot(0, 0.12), slot(12, 0.125), slot(12, 0.0625, 30), slot(13, -0.01)],
+      }),
   ],
   [
     "/api/v1/devices",

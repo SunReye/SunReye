@@ -1,7 +1,8 @@
 <!--
-  Today's spot prices as the prototype's bar chart: one bar per slot, the slot in force solid. A
-  negative price hangs below the zero line (ADR 12). Hours are the plant's, and the source's CC BY
-  attribution sits under the chart it licenses.
+  Today's spot prices as the prototype's bar chart: one bar per plant hour, the mean of its known
+  quarter-hour slots, the hour in force solid. An hour without a slot is a gap, never 0, and a
+  negative price hangs below the zero line (ADR 12). The source's CC BY attribution sits under the
+  chart it licenses.
 -->
 <script lang="ts">
   import type { Day } from "../dashboard/day.ts";
@@ -15,17 +16,42 @@
   const HEIGHT = 190;
 
   const prices = $derived(day?.prices ?? []);
-  const top = $derived(Math.max(0, ...prices.map((p) => p.value)));
-  const bottom = $derived(Math.min(0, ...prices.map((p) => p.value)));
-  const span = $derived(top - bottom || 1);
-  /** The zero line, as a share of the height from the top. */
 
+  /** Each plant hour of the day and its mean price; `undefined` where no slot is known. */
+  const bars = $derived.by(() => {
+    if (day === undefined) return [];
+    const out: { at: number; price: number | undefined }[] = [];
+
+    for (let at = day.start.getTime(); at < day.end.getTime(); at += HOUR) {
+      const known = prices
+        .filter((p) => {
+          const t = Date.parse(p.target);
+
+          return t >= at && t < at + HOUR;
+        })
+        .map((p) => p.value);
+
+      out.push({
+        at,
+        price: known.length === 0 ? undefined : known.reduce((a, b) => a + b, 0) / known.length,
+      });
+    }
+
+    return out;
+  });
+
+  const known = $derived(bars.flatMap((b) => (b.price === undefined ? [] : [b.price])));
+  const top = $derived(Math.max(0, ...known));
+  const bottom = $derived(Math.min(0, ...known));
+  const span = $derived(top - bottom || 1);
+
+  /** The zero line, as a share of the height from the top. */
   const zero = $derived((top / span) * 100);
 
   const now = $derived(day?.now.getTime() ?? 0);
-  /** The slot in force: the last that began. */
 
-  const inForce = $derived(prices.findLastIndex((p) => Date.parse(p.target) <= now));
+  /** The hour in force. */
+  const inForce = $derived(bars.findIndex((b) => b.at <= now && now < b.at + HOUR));
 
   const hours = $derived(
     new Intl.DateTimeFormat(getLocale(), {
@@ -62,16 +88,23 @@
   {:else}
     <div class="relative" style:height="{HEIGHT}px" role="img" aria-label={m.detail_prices()}>
       <div class="absolute inset-0 flex gap-[3px]">
-        {#each prices as p, i (p.target)}
-          <span class="relative flex-1" data-price={p.value} data-now={i === inForce || undefined}>
-            <span
-              class={[
-                "absolute inset-x-0 rounded-sm",
-                i === inForce ? "bg-foreground" : "bg-foreground/25",
-              ]}
-              style:top="{p.value >= 0 ? zero - (p.value / span) * 100 : zero}%"
-              style:height="{(Math.abs(p.value) / span) * 100}%"
-            ></span>
+        {#each bars as bar, i (bar.at)}
+          <span
+            class="relative flex-1"
+            data-hour={bar.at}
+            data-price={bar.price}
+            data-now={(i === inForce && bar.price !== undefined) || undefined}
+          >
+            {#if bar.price !== undefined}
+              <span
+                class={[
+                  "absolute inset-x-0 rounded-sm",
+                  i === inForce ? "bg-foreground" : "bg-foreground/25",
+                ]}
+                style:top="{bar.price >= 0 ? zero - (bar.price / span) * 100 : zero}%"
+                style:height="{(Math.abs(bar.price) / span) * 100}%"
+              ></span>
+            {/if}
           </span>
         {/each}
       </div>
