@@ -1,4 +1,5 @@
 // What every tab's pane is given, and which tabs chart the range.
+import { flowColour } from "../energy-colours.ts";
 import type { Core } from "../api/core.ts";
 import type { HeatSource } from "../analytics/heat.ts";
 import { PLANT } from "../dashboard/day.ts";
@@ -49,7 +50,7 @@ export function heatOf(metric: Metric): HeatSource & { name: string; colour: str
       series: "grid.import.power",
       pick: (w) => w,
       name: m.stats_pattern_grid(),
-      colour: "var(--e-import)",
+      colour: flowColour("import"),
     };
 
   return {
@@ -57,6 +58,6 @@ export function heatOf(metric: Metric): HeatSource & { name: string; colour: str
     series: "pv.power",
     pick: (w) => w,
     name: m.stats_pattern_pv(),
-    colour: "var(--e-solar)",
+    colour: flowColour("solar"),
   };
 }
