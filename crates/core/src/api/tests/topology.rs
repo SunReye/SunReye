@@ -221,3 +221,25 @@ async fn a_topology_that_is_not_a_measured_tree_is_refused() {
     let (status, _) = core.ask(&set_cookie, get("/api/v1/topology")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_viewer_reads_the_topology_but_never_changes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    plant(&core, &admin).await;
+    let (grid, _) = two_versions(&core, &admin).await;
+    core.viewer(&admin, "grandma", "sunny days").await;
+    let viewer = core
+        .sign_in(super::viewers::login("grandma", "sunny days"))
+        .await;
+
+    let (read, topology) = core.topology_at(&viewer, "2026-07-01T00:00:00Z").await;
+    let points = [point(grid.as_u64(), "Grid", None, &[(2, "grid.power")])];
+    let (write, _) = core
+        .put_topology(&viewer, "2026-08-01T00:00:00Z", &points)
+        .await;
+
+    assert_eq!(read, StatusCode::OK, "{topology}");
+    assert_eq!(topology["points"][0]["id"], grid);
+    assert_eq!(write, StatusCode::FORBIDDEN);
+}

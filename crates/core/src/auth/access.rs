@@ -34,6 +34,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/devices/{id}/forecasts", Read),
     // History of the plant's points (ADR 14).
     (Method::GET, "/api/v1/balance", Read),
+    // The points the house sheet names its consumers by (ADR 14, 21).
+    (Method::GET, "/api/v1/topology", Read),
     // History of the `cost.*` rates; no investment (ADR 12).
     (Method::GET, "/api/v1/costs", Read),
     // The zone history's days are cut in, so a viewer's "today" is the plant's (ADR 3).
@@ -87,7 +89,6 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/spot-prices", Admin),
     (Method::PUT, "/api/v1/spot-prices", Admin),
     (Method::GET, "/api/v1/changes", Admin),
-    (Method::GET, "/api/v1/topology", Admin),
     (Method::PUT, "/api/v1/topology", Admin),
     (Method::GET, "/api/v1/tariff", Admin),
     (Method::PUT, "/api/v1/tariff", Admin),
