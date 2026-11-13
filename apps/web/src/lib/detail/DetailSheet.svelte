@@ -30,7 +30,13 @@
     id: string | null;
     core: Pick<
       Core,
-      "layout" | "capabilities" | "timezone" | "history" | "moduleTypes" | "corrections"
+            | "layout"
+      | "capabilities"
+      | "timezone"
+      | "history"
+      | "forecasts"
+      | "moduleTypes"
+      | "corrections"
     >;
     live: Live | undefined;
     /** The live stream's last two minutes, for a sheet's live graph. */

@@ -33,3 +33,12 @@ test("a signed battery has no heat; figures without a series have no analytics",
   expect(analyticsOf("price", STRINGS)).toBeNull();
   expect(analyticsOf("string-9", STRINGS)).toBeNull();
 });
+
+test("production and PV expect what the strings' inverters forecast; others expect nothing", () => {
+  const other = { ...STRINGS[0]!, id: 6, device: 7 };
+
+  expect(analyticsOf("production", [...STRINGS, other])!.forecast).toEqual([3, 7]);
+  expect(analyticsOf("pv", STRINGS)!.forecast).toEqual([3]);
+  expect(analyticsOf("house", STRINGS)!.forecast).toEqual([]);
+  expect(analyticsOf("string-4", STRINGS)!.forecast).toEqual([]);
+});

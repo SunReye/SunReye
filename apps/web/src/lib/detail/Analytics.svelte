@@ -9,7 +9,7 @@
 
   /** What the analytics read: the core, the sheet's range and the layout's strings. */
   export interface AnalyticsInput {
-    readonly core: Readonly<Pick<Core, "history" | "moduleTypes" | "corrections">>;
+    readonly core: Readonly<Pick<Core, "history" | "forecasts" | "moduleTypes" | "corrections">>;
     readonly route: RangeRoute;
     readonly strings: readonly PvString[];
   }

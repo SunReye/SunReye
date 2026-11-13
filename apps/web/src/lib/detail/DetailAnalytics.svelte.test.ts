@@ -17,6 +17,20 @@ test("a sheet's range steps, and History opens at it", async () => {
     .toHaveAttribute("href", "#/history?range=day&at=2026-11-11");
 });
 
+test("today's production overlays the inverters' forecast; another day does not", async () => {
+  const { screen } = await show("production");
+  const sheet = screen.getByRole("dialog", { name: "Produktion" });
+  const overview = sheet.getByRole("tabpanel", { name: "Übersicht" });
+  const forecast = overview.getByRole("term").filter({ hasText: "Prognose" });
+
+  await expect.element(forecast).toBeVisible();
+  await expect.element(overview.getByText("8,0 kWh")).toBeVisible();
+
+  await sheet.getByRole("button", { name: "Früher" }).click();
+
+  await expect.element(forecast).not.toBeInTheDocument();
+});
+
 test("the heat tab reads the range's hours and draws them on one canvas", async () => {
   const { screen } = await show("production", "range=month&at=2026-10-01");
   const sheet = screen.getByRole("dialog", { name: "Produktion" });

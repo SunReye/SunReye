@@ -31,6 +31,7 @@
     device={analytics.device}
     series={analytics.series}
     route={input.route}
+    forecast={analytics.forecast}
   />
 {:else if tab === "heat" && analytics.heat}
   <PatternPanel

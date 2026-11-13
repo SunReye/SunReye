@@ -148,6 +148,11 @@ const ROUTES = new Map<string, () => Response>([
         points: [slot(0, 0.12), slot(12, 0.125), slot(12, 0.0625, 30), slot(13, -0.01)],
       }),
   ],
+  // The inverter expects 2 kW from 10:00 to 14:00: 8 kWh, half of it still to come.
+  [
+    `/api/v1/devices/${INVERTER}/forecasts`,
+    () => Response.json({ points: [10, 11, 12, 13].map((h) => slot(h, 2000)) }),
+  ],
   [
     "/api/v1/devices",
     () => Response.json({ status: 403, code: "auth.forbidden" }, { status: 403 }),
