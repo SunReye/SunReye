@@ -2,7 +2,7 @@
 import type { Device } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import type { Cold } from "./checks.ts";
+import type { Cold, StringRefusal } from "./checks.ts";
 import { parent, type Level, type Section } from "./levels.ts";
 import { painted, type Draft } from "./modules.ts";
 import type { Fence, FenceFinish, GroundFinish, Modules, Obstacle, Roof } from "./pv.ts";
@@ -15,6 +15,8 @@ export interface Plan {
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];
+  /** The string the last save was refused for, until the next edit. */
+  readonly refused: StringRefusal | null;
 }
 
 /** A row that drills to `level`. */

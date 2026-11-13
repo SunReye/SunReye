@@ -16,6 +16,7 @@
     position,
     made,
     warning,
+    refused,
     moduleTypes,
     devices,
     onchange,
@@ -28,6 +29,8 @@
     made: Painted;
     /** Why it is over its inverter's limit in the cold, if it is. */
     warning: string | undefined;
+    /** Why the last save was refused for it, if it was. */
+    refused: string | undefined;
     moduleTypes: readonly ModuleType[];
     /** The inverters it may be wired to. */
     devices: readonly Device[];
@@ -99,6 +102,9 @@
   <Item.Root class="rounded-none border-0">
     <Item.Content>
       <Item.Description>{m.builder_string_modules(made)}</Item.Description>
+      {#if refused !== undefined}
+        <p role="alert" class="text-sm text-destructive">{refused}</p>
+      {/if}
       {#if warning !== undefined}
         <p role="status" class="text-sm text-warning">{warning}</p>
       {/if}
