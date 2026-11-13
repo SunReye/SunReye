@@ -41,3 +41,18 @@ test("a detail sheet's live graph stands in a skeleton until the first reading",
     )
     .toBeVisible();
 });
+
+test("the forecast sheet's day chart stands in a skeleton while the core answers", async () => {
+  await page.viewport(1280, 900);
+
+  const screen = await render(Dashboard, {
+    core: held(),
+    layout: null,
+    admin: true,
+    detail: "forecast",
+  });
+
+  await expect
+    .element(screen.getByRole("dialog").getByRole("status", { name: "Wird geladen …" }))
+    .toBeVisible();
+});
