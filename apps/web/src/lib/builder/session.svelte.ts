@@ -170,7 +170,8 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** A selected block, obstacle, ground surface or fence's handles, and where their drags go. */
+  /** A selected block, obstacle, ground surface, fence, car place or chimney's handles, and where
+   * their drags go. */
   get editing(): Editing | undefined {
     const { level } = this;
 
@@ -178,7 +179,9 @@ export class Session {
       level.kind !== "block" &&
       level.kind !== "obstacle" &&
       level.kind !== "surface" &&
-      level.kind !== "fence"
+      level.kind !== "fence" &&
+      level.kind !== "place" &&
+      level.kind !== "chimney"
     ) {
       return undefined;
     }
@@ -186,6 +189,7 @@ export class Session {
     return {
       scene: this.draft.scene,
       target: { kind: level.kind, index: level.index },
+      roofs: this.laid.roofs,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -232,7 +236,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit);
+    const level = picked(this.draft.scene, hit, this.laid.roofs);
 
     if (level === null) return;
 

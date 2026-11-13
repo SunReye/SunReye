@@ -1,6 +1,7 @@
 // What a handle drag makes of the scene (ADR 20): from the ray that grabbed it to the pointer's
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
-import type { Scene } from "../pv.ts";
+import { glide } from "../chimneys.ts";
+import type { RoofFace, Scene } from "../pv.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
@@ -177,9 +178,43 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
   return grip === "turn" ? spin(slide, body) : null;
 }
 
+/** A chimney follows the pointer's level move along its roof face (chimneys.ts). */
+function climb({ scene, target, from, to }: Slide, roofs: readonly RoofFace[]): Dragged | null {
+  const chimneys = scene.chimneys ?? [];
+  const chimney = chimneys[target.index];
+  // The scene's frame turned back to east and north: `glide` reads the roof's frame.
+  const [east, south] = turn(to[0] - from[0], to[2] - from[2], scene.north);
+  const moved = chimney && glide(chimney, roofs, [east, -south]);
+
+  return moved
+    ? {
+        scene: { ...scene, chimneys: chimneys.with(target.index, moved) },
+        value: [moved.across, moved.up],
+        unit: "m",
+      }
+    : null;
+}
+
+/** A drag in a level plane: a fence's point, a chimney on its face, or a body. */
+function levelled(slide: Slide, grab: Grab, roofs: readonly RoofFace[]): Dragged | null {
+  if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
+
+  if (slide.target.kind === "chimney") return grab.grip === "move" ? climb(slide, roofs) : null;
+
+  const body = bodyOf(slide.scene, slide.target);
+
+  return body === undefined ? null : slid(grab.grip, slide, body);
+}
+
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
- * the drag's plane or the grip has nothing to drag. */
-export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragged | null {
+ * the drag's plane or the grip has nothing to drag. A chimney slides on the laid-out `roofs`. */
+export function drag(
+  scene: Scene,
+  target: Target,
+  grab: Grab,
+  now: Ray,
+  roofs: readonly RoofFace[] = [],
+): Dragged | null {
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
 
   if (grab.grip === "pitch") {
@@ -190,11 +225,5 @@ export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragge
 
   if (from === null || to === null) return null;
 
-  const slide = { scene, target, from, to };
-
-  if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
-
-  const body = bodyOf(scene, target);
-
-  return body === undefined ? null : slid(grab.grip, slide, body);
+  return levelled({ scene, target, from, to }, grab, roofs);
 }
