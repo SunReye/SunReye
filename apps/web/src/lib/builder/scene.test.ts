@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -251,4 +251,18 @@ test("built in slices, the scene waits at each yield between sections and ends a
   expect(await release(0)).toBeGreaterThan(2);
 
   expect(names(await building)).toEqual(names(buildScene(house)));
+});
+
+test("a section with nothing to draw adds nothing and logs nothing", async () => {
+  const logged = spyOn(console, "error").mockImplementation(() => {});
+
+  try {
+    // The house has no hedge, ground, fence, module or marker.
+    buildScene(house);
+    await buildSliced(house, [], async () => {});
+
+    expect(logged).not.toHaveBeenCalled();
+  } finally {
+    logged.mockRestore();
+  }
 });
