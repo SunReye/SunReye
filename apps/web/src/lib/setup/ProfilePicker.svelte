@@ -7,7 +7,7 @@
   import Search from "@lucide/svelte/icons/search";
   import { onMount } from "svelte";
   import type { Core, Listing, Problem } from "../api/core.ts";
-  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
   import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
   import { rated } from "./catalogue.ts";
@@ -72,10 +72,10 @@
   <ChevronDown class="ml-auto size-4 shrink-0 text-muted-foreground" />
 </button>
 
-<BottomSheet bind:open label={m.profile_choose()}>
+<ResponsiveSheet bind:open label={m.profile_choose()}>
   <div class="flex flex-col gap-3 px-4 pt-1">
     <h2 class="px-1 text-lg font-semibold">{m.profile_choose()}</h2>
-    <div class="relative" data-no-drag>
+    <div class="relative" data-vaul-no-drag>
       <Search
         class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
       />
@@ -93,4 +93,4 @@
   <div class="mt-3 h-[min(60dvh,34rem)] overflow-y-auto overscroll-contain px-4 pb-2 no-scrollbar">
     <ProfileList {listings} {refused} {query} {value} onpick={pick} />
   </div>
-</BottomSheet>
+</ResponsiveSheet>
