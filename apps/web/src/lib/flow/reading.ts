@@ -88,27 +88,27 @@ function devices(values: Values["devices"]): Readonly<Record<string, number>>[] 
   return Object.keys(values).flatMap((id) => (id === PLANT ? [] : [values[id] ?? {}]));
 }
 
-/** In watts and percent; efficiency and own use only while the array produces. */
+/** In watts and percent; efficiency and own use only while power goes through the inverter. */
 export interface Hub {
   readonly dc: number | undefined;
   readonly efficiency: number | undefined;
   readonly own: number | undefined;
 }
 
-/** The hub's figures: DC in, and while it produces its efficiency and own use. */
+/**
+ * The hub's figures: DC in, and the inverter's efficiency and own use as its profile computes them
+ * (ADR 4). A ratio has no plant total, so they show only while one inverter reports them.
+ */
 export function hubMetrics(values: Values["devices"]): Hub {
   const dc = values[PLANT]?.["pv.power"];
+  const inverters = devices(values).filter((series) => "inverter.efficiency" in series);
+  const efficiency = inverters.length === 1 ? inverters[0]?.["inverter.efficiency"] : undefined;
 
-  const acs = devices(values).flatMap((series) =>
-    series["inverter.power"] === undefined ? [] : [series["inverter.power"]],
-  );
-
-  if (dc === undefined || acs.length === 0 || dc <= 50)
+  // The profile's ratio reads 0 while nothing goes in.
+  if (efficiency === undefined || efficiency <= 0)
     return { dc, efficiency: undefined, own: undefined };
 
-  const ac = acs.reduce((t, w) => t + w, 0);
-
-  return { dc, efficiency: (ac / dc) * 100, own: Math.abs(dc - ac) };
+  return { dc, efficiency, own: inverters[0]?.["inverter.loss.power"] };
 }
 
 /** Whether the stream is lost or any of the plant's values is past its gap threshold (ADR 3). */

@@ -19,6 +19,8 @@ function plant(patch: Partial<Source> = {}): Source {
       [INVERTER]: {
         "pv.power": 7800,
         "inverter.power": 7600,
+        "inverter.efficiency": 96.5,
+        "inverter.loss.power": 280,
         "inverter.status": 1,
         "inverter.temperature": 41,
         "pv.mppt.power[1]": 4300,
@@ -213,8 +215,18 @@ test("a stopped stream marks no single row stale", () => {
   expect(row("battery", "battery.temperature", s)?.age).toBeUndefined();
 });
 
-test("efficiency is derived from the two powers", () => {
-  expect(row("inverter", "efficiency")?.value).toBeCloseTo(97.44, 1);
+test("the inverter's efficiency and own use are its profile's, not derived", () => {
+  expect(row("inverter", "inverter.efficiency")).toMatchObject({ value: 96.5, unit: "%" });
+  expect(row("inverter", "inverter.loss.power")).toMatchObject({ value: 0.28, unit: "kW" });
+});
+
+test("efficiency hides while nothing goes through the inverter", () => {
+  const s = plant();
+  const idle = { ...s.values[INVERTER], "inverter.efficiency": 0 };
+
+  expect(
+    row("inverter", "inverter.efficiency", plant({ values: { ...s.values, [INVERTER]: idle } })),
+  ).toBeUndefined();
 });
 
 test("the device is named when the core names it", () => {

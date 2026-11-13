@@ -5,7 +5,8 @@
 //   pv.string.power                     pv.string.power, an estimate unless alone on its input (ADR 17)
 //   pv.string.voltage / .current        pv.mppt.voltage / .current: v5 measures the input
 //   production.total                    pv.energy.total
-//   inverter.efficiency                 no role: inverter.power over pv.power
+//   inverter.efficiency                 inverter.efficiency, hidden while it reads 0
+//   inverter.power (self-consumption)   inverter.loss.power
 //   inverter.status, .temperature.*     inverter.status, inverter.temperature (the hottest sensor)
 //   load.phase.*                        load.phase.power
 //   battery.*, grid.*, load.*           same names; battery.cycles is the vendor's count
@@ -109,34 +110,19 @@ const STATUS = new Map([
   [2, m.rd_status_fault],
 ]);
 
-/** DC in, the derived efficiency and the inverter's own use, while it produces. */
+/** DC in, and the inverter's efficiency and own use while power goes through it. */
 function conversion(read: Reader): Group {
-  const dc = read.raw("pv.power");
-  const ac = read.raw("inverter.power");
-  const both = dc !== undefined && ac !== undefined && dc > 50;
+  // The profile's ratio reads 0 while nothing goes in.
+  const through = (read.raw("inverter.efficiency") ?? 0) > 0;
 
   return {
     title: m.rd_now(),
     rows: kept([
       read.num("pv.power", { label: m.rd_dc_in(), ...KW }),
-      both
-        ? {
-            key: "efficiency",
-            label: m.rd_efficiency(),
-            value: (ac / dc) * 100,
-            unit: "%",
-            digits: 1,
-          }
+      through
+        ? read.num("inverter.efficiency", { label: m.rd_efficiency(), unit: "%", digits: 1 })
         : null,
-      both
-        ? {
-            key: "own",
-            label: m.rd_own_use(),
-            value: Math.abs(dc - ac) / 1000,
-            unit: "kW",
-            digits: 2,
-          }
-        : null,
+      through ? read.num("inverter.loss.power", { label: m.rd_own_use(), ...KW }) : null,
     ]),
   };
 }
