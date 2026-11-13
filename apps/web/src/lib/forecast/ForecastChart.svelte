@@ -66,7 +66,7 @@
 
   <BandChart
     bands={data.bands}
-    up={stack.up}
+    up={stack.up.filter((part, i) => (data.kept ? data.kept.includes(i) : !part.optional))}
     markLabel={m.range_forecast()}
     ghostLabel={m.forecast_expected()}
     via={data.via}

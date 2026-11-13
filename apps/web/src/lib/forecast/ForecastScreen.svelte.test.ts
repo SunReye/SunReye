@@ -26,6 +26,7 @@ test("each inverter's chart reads its total's forecast and measurement over the 
     .poll(() => [...new Set(transport.asked)].toSorted())
     .toEqual([
       "/api/v1/devices/1/forecasts pv.power",
+      "/api/v1/devices/1/statistics pv.mppt.power[1]",
       "/api/v1/devices/1/statistics pv.mppt.power[2]",
       "/api/v1/devices/1/statistics pv.power",
       "/api/v1/devices/1/statistics pv.string.power[4]",

@@ -6,7 +6,7 @@ import { phrase } from "../history/words.ts";
 import { m } from "../paraglide/messages.js";
 import type { Band } from "../range/bands.ts";
 import type { Edge } from "../range/edges.ts";
-import { bandsOf } from "../range/fill.ts";
+import { bandsOf, spread } from "../range/fill.ts";
 import { kwh } from "../range/format.ts";
 import type { Calendar, Range } from "../range/range.ts";
 import { plannedEnergy, type Planned } from "./forecast.ts";
@@ -22,6 +22,8 @@ export interface Judged {
   readonly ahead: number;
   /** kWh measured per stacked part (an MPPT input), or the one total when not stacked. */
   readonly shares: readonly number[];
+  /** Which stacked parts show, by their index; an optional part only while it holds energy. */
+  readonly kept: readonly number[];
   readonly accuracy: Accuracy;
 }
 
@@ -34,8 +36,12 @@ export interface Judging {
   readonly now: number;
   readonly measured: readonly Rolled[];
   readonly forecast: readonly Planned[];
-  /** Each MPPT input's measurement, stacked in the bars when there are two or more. */
-  readonly parts?: readonly (readonly Rolled[])[];
+  /** The stacked parts' measurements, each less the parts beside it from the same input. */
+  readonly parts?: readonly Readonly<{
+    measured: readonly Rolled[];
+    minus: readonly (readonly Rolled[])[];
+    optional: boolean;
+  }>[];
 }
 
 /**
@@ -47,11 +53,16 @@ export interface Judging {
 function weigh(j: Readonly<Judging>, a: number, b: number) {
   const f = bandFigure(j.series, j.measured, a, b);
   const measured = f.covered > 0;
+  const until = Math.min(b, j.now);
+  // Compared only where the forecast covers the time measured: a layout laid out mid-day has a
+  // forecast for the rest of that day alone, against the whole day's production.
+  const forecast = spread(j.forecast, a, until, () => 0).covered;
+  const comparable = measured && forecast >= f.covered * 0.95;
 
   return {
     covered: f.covered,
     value: measured ? Math.max(0, f.value) : 0,
-    sofar: measured ? plannedEnergy(j.forecast, a, Math.min(b, j.now)) : 0,
+    sofar: comparable ? plannedEnergy(j.forecast, a, until) : 0,
     whole: plannedEnergy(j.forecast, a, b),
     rest: b > j.now ? plannedEnergy(j.forecast, Math.max(a, j.now), b) : 0,
   };
@@ -70,10 +81,25 @@ function stack(j: Readonly<Judging>, total: number, a: number, b: number): numbe
   if (parts.length < 2) return [total];
 
   return parts.map((p) => {
-    const f = bandFigure(j.series, p, a, b);
+    const f = bandFigure(j.series, p.measured, a, b);
 
-    return f.covered > 0 ? Math.max(0, f.value) : 0;
+    if (f.covered <= 0) return 0;
+
+    const less = p.minus.reduce(
+      (sum, other) => sum + Math.max(0, bandFigure(j.series, other, a, b).value),
+      0,
+    );
+
+    // A few Wh either way is the strings' estimate against the input's own reading.
+    return Math.max(0, f.value - less);
   });
+}
+
+/** The stacked parts that show: an optional one only while it holds energy over the range. */
+function keptOf(j: Readonly<Judging>, shares: readonly number[]): number[] {
+  const parts = j.parts ?? [];
+
+  return shares.flatMap((share, k) => (parts[k]?.optional === true && share < 0.05 ? [] : [k]));
 }
 
 export function judge(j: Readonly<Judging>): Judged {
@@ -107,12 +133,18 @@ export function judge(j: Readonly<Judging>): Judged {
     };
   });
 
+  const kept = keptOf(j, shares);
+
   return {
-    bands,
+    bands:
+      kept.length === shares.length
+        ? bands
+        : bands.map((band) => Object.assign(band, { up: kept.map((k) => band.up[k] ?? 0) })),
     made: sums.made,
     planned: sums.sofar,
     ahead: sums.ahead,
-    shares,
+    shares: kept.map((k) => shares[k] ?? 0),
+    kept,
     accuracy: {
       error: sums.days > 0 ? sums.error / sums.days : null,
       bias: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,

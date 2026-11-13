@@ -1,7 +1,7 @@
 // Shared by the builder's component tests: the crate, a module type, the plant's devices, a core
 // that answers layout changes, and the inspector's moves.
 import { PerspectiveCamera, Vector3 } from "three";
-import { cdp, page, userEvent, type Locator } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
@@ -10,6 +10,8 @@ import { emptyDraft } from "./modules.ts";
 import { faceView, presetView, type View } from "./camera.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
+
+export { press, tap, type Pointer } from "./pointer.harness.ts";
 
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
 
@@ -147,58 +149,6 @@ export async function undesk(): Promise<void> {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 }
 
-export type Pointer = "mouse" | "pen" | "touch";
-
-/** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
-export async function press(
-  kind: Pointer,
-  path: readonly (readonly [number, number])[],
-): Promise<void> {
-  const [first, ...rest] = path;
-
-  if (first === undefined) return;
-
-  if (kind === "touch") {
-    await cdp().send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: first[0], y: first[1] }],
-    });
-
-    for (const [x, y] of rest) {
-      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
-    }
-
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-
-    return;
-  }
-
-  const mouse = { button: "left", pointerType: kind, clickCount: 1 } as const;
-
-  await cdp().send("Input.dispatchMouseEvent", {
-    ...mouse,
-    type: "mousePressed",
-    x: first[0],
-    y: first[1],
-  });
-
-  for (const [x, y] of rest) {
-    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-    await cdp().send("Input.dispatchMouseEvent", {
-      ...mouse,
-      type: "mouseMoved",
-      buttons: 1,
-      x,
-      y,
-    });
-  }
-
-  const [x, y] = rest.at(-1) ?? first;
-
-  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
-}
-
 /** Where a point lands on the builder's canvas, seen from `kept` or else its first view: the
  * isometric preset. */
 export function onCanvas(
@@ -221,19 +171,6 @@ export function onCanvas(
       canvas.top + ((1 - at.y) / 2) * canvas.height,
     ];
   };
-}
-
-/** One finger taps the middle of what `locator` finds, through the browser's touch input. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, read only.
-export async function tap(locator: Locator): Promise<void> {
-  const element = await locator.findElement();
-
-  // A finger scrolls a long sheet to what it taps first.
-  element.scrollIntoView({ block: "nearest" });
-
-  const box = element.getBoundingClientRect();
-
-  await press("touch", [[box.left + box.width / 2, box.top + box.height / 2]]);
 }
 
 /** A phone held upright, its inspector levels landing at once. */
