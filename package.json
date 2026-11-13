@@ -11,6 +11,7 @@
     "gate": "bun scripts/gate.ts",
     "prepare": "husky",
     "image:smoke": "bun scripts/image-smoke.ts",
+    "smoothness": "bun run --cwd apps/web smoothness",
     "build:profiles": "bun packages/sdk/src/cli.ts build profiles",
     "publish:profiles": "bun scripts/publish-profiles.ts",
     "release": "bun scripts/release.ts",

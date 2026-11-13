@@ -81,7 +81,7 @@
           {
             "from": "package",
             "package": "playwright-core",
-            "name": ["Request", "Response"]
+            "name": ["Browser", "CDPSession", "Page", "Request", "Response"]
           }
         ]
       }
