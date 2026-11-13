@@ -4,7 +4,10 @@ import { render } from "vitest-browser-svelte";
 import { motion } from "../lib/motion/tier.svelte.ts";
 import "../app.css";
 import Page from "./+page.svelte";
-import { restoreCore, serveCore, served } from "./home.harness.ts";
+import { homeCore, restoreCore, serveCore, served } from "./home.harness.ts";
+import { keepOffline } from "./route.harness.ts";
+
+keepOffline();
 
 beforeEach(serveCore);
 
@@ -15,7 +18,7 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   served.devices = [];
   served.live = { "1": { "grid.power": -300, "pv.power": 900 } };
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: homeCore() });
 
   await expect.element(screen.getByRole("heading", { name: "Einrichtung" })).toBeVisible();
   await userEvent.fill(
@@ -55,7 +58,7 @@ test("under Home Assistant's ingress setup sets no password", async () => {
   // Ingress signs the request in before any password exists (ADR 9).
   served.devices = [];
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: homeCore() });
 
   await expect.element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" })).toBeVisible();
   expect(screen.getByLabelText("Passwort wiederholen").query()).toBeNull();
@@ -64,7 +67,7 @@ test("under Home Assistant's ingress setup sets no password", async () => {
 test("a signed-out owner signs in to the dashboard", async () => {
   served.session = "auth.required";
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: homeCore() });
 
   await userEvent.fill(screen.getByLabelText("Passwort"), "solar sun");
   await screen.getByRole("button", { name: "Anmelden" }).click();
@@ -75,7 +78,7 @@ test("a signed-out owner signs in to the dashboard", async () => {
 test("a viewer signs in by name to the dashboard", async () => {
   served.session = "auth.required";
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: homeCore() });
 
   await screen.getByRole("radio", { name: "Betrachter" }).click();
   await userEvent.fill(screen.getByLabelText("Name"), "Oma");
@@ -91,7 +94,7 @@ async function backOnAPhone(): Promise<Element | null> {
   served.devices = [];
   await page.viewport(390, 800);
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: homeCore() });
 
   await expect.element(screen.getByLabelText("Passwort wiederholen")).toBeVisible();
   await screen.getByRole("button", { name: "Einrichtung" }).click();

@@ -1,16 +1,15 @@
 <script lang="ts">
+  import { useCore } from "../../lib/shell/core.ts";
   // The glue crate's release build, which the SPA build makes first (ADR 2, 20).
   import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { connect, http } from "../../lib/api/core";
   import Builder from "../../lib/builder/Builder.svelte";
   import { limitsOf } from "../../lib/builder/checks";
   import { emptyDraft } from "../../lib/builder/modules";
   import { loadPv } from "../../lib/builder/pv";
   import { m } from "../../lib/paraglide/messages.js";
 
-  // The page's directory is the core's root, under an ingress prefix too (ADR 11).
-  const core = connect(http(new URL(".", document.baseURI).href));
+  const core = useCore();
 
   const webgl2 = document.createElement("canvas").getContext("webgl2") !== null;
 

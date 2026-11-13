@@ -1,16 +1,23 @@
 import { mode, setMode } from "mode-watcher";
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { language } from "../lib/i18n/language.svelte.ts";
 import { motionMs } from "../lib/motion.ts";
 import { m } from "../lib/paraglide/messages.js";
 import { motion } from "../lib/motion/tier.svelte.ts";
+import { keepOffline, refuseFetch } from "./route.harness.ts";
 import Layout from "./+layout.svelte";
 
 const children = createRawSnippet(() => ({ render: () => "<p>page</p>" }));
 
+keepOffline();
+
+// The layout connects its own core over fetch; this one knows nothing and never reaches the server.
+beforeEach(refuseFetch);
+
 afterEach(async () => {
+  vi.restoreAllMocks();
   await language.choose("de");
   localStorage.clear();
   motion.lowPower = false;
