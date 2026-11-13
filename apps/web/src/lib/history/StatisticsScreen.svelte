@@ -5,6 +5,8 @@
   the breakdown and what stands out beside the chart.
 -->
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import Staged from "../motion/Staged.svelte";
   import type { Go } from "../range/route.svelte.ts";
   import { Statistics, type StatisticsCore } from "./screen.svelte.ts";
   import StatsAside from "./StatsAside.svelte";
@@ -29,9 +31,14 @@
   <StatsHeader {s} />
 
   <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6">
-    <StatsCard {core} {s} {summary} />
+    <!-- The card and the aside each in a frame after the header's (ADR 21). -->
+    <Staged>
+      {#snippet skeleton()}<Skeleton class="h-[520px] rounded-lg" />{/snippet}
+      <StatsCard {core} {s} {summary} />
+    </Staged>
 
     {#if !s.data.failed}
+      <Staged>
       <StatsAside
         label={s.route.label}
         rows={summary?.breakdown ?? []}
@@ -47,6 +54,7 @@
           s.open({ metric: "money", tab: "payback" });
         }}
       />
+      </Staged>
     {/if}
   </div>
 </main>

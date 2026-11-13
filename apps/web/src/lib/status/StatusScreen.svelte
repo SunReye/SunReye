@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Staged from "../motion/Staged.svelte";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core } from "../api/core";
@@ -30,5 +31,6 @@
       <Brokers connections={answer} />
     {/if}
   {/await}
-  <Log answer={logs} />
+  <!-- In a frame after the rest of the screen's (ADR 21). -->
+  <Staged><Log answer={logs} /></Staged>
 </main>

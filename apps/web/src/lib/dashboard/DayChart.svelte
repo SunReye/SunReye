@@ -4,6 +4,7 @@
   import { curveMonotoneX } from "d3-shape";
   import { Area, Axis, Chart, Layer, Rule, Spline } from "layerchart";
   import { VALUE_AXIS } from "../chart-axis.ts";
+  import Staged from "../motion/Staged.svelte";
   import type { DayRow } from "./today.ts";
 
   let {
@@ -41,38 +42,47 @@
           <stop offset="100%" stop-color={colour} stop-opacity="0.02" />
         </linearGradient>
       </defs>
-      <Axis {...VALUE_AXIS} format={(v: number) => (v === 0 ? "" : `${v}`)} />
-      <Axis
-        placement="bottom"
-        ticks={(scale: { domain: () => Date[] }) => {
-          const [a] = scale.domain();
-          return a === undefined
-            ? []
-            : [3, 6, 9, 12, 15, 18, 21].map((h) => new Date(a.getTime() + h * HOUR));
-        }}
-        format={(d: Date) => hours.format(d)}
-        rule={false}
-        tickLength={0}
-        classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
-      />
-      <Spline
-        y="forecast"
-        curve={curveMonotoneX}
-        defined={(d: DayRow) => d.forecast !== null}
-        stroke={colour}
-        fill="none"
-        opacity={0.55}
-        stroke-width={1.5}
-        stroke-dasharray="3 4"
-      />
-      <Area
-        y1="actual"
-        curve={curveMonotoneX}
-        defined={(d: DayRow) => d.actual !== null}
-        fill="url(#fill-{uid})"
-        line={{ stroke: colour, "stroke-width": 2 } as never}
-      />
-      <Rule x={now} class="stroke-foreground/25" stroke-dasharray="2 3" />
+      <!-- Each mark in a frame of its own: the whole chart at once overruns a frame (ADR 21). -->
+      <Staged>
+        <Axis {...VALUE_AXIS} format={(v: number) => (v === 0 ? "" : `${v}`)} />
+      </Staged>
+      <Staged>
+        <Axis
+          placement="bottom"
+          ticks={(scale: { domain: () => Date[] }) => {
+            const [a] = scale.domain();
+            return a === undefined
+              ? []
+              : [3, 6, 9, 12, 15, 18, 21].map((h) => new Date(a.getTime() + h * HOUR));
+          }}
+          format={(d: Date) => hours.format(d)}
+          rule={false}
+          tickLength={0}
+          classes={{ tickLabel: "fill-muted-foreground text-[11px] tabular-nums" }}
+        />
+      </Staged>
+      <Staged>
+        <Spline
+          y="forecast"
+          curve={curveMonotoneX}
+          defined={(d: DayRow) => d.forecast !== null}
+          stroke={colour}
+          fill="none"
+          opacity={0.55}
+          stroke-width={1.5}
+          stroke-dasharray="3 4"
+        />
+      </Staged>
+      <Staged>
+        <Area
+          y1="actual"
+          curve={curveMonotoneX}
+          defined={(d: DayRow) => d.actual !== null}
+          fill="url(#fill-{uid})"
+          line={{ stroke: colour, "stroke-width": 2 } as never}
+        />
+      </Staged>
+      <Staged><Rule x={now} class="stroke-foreground/25" stroke-dasharray="2 3" /></Staged>
     </Layer>
   </Chart>
 </div>

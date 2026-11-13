@@ -3,6 +3,8 @@
   Settings › Tariff; money over time and payback live in History, which this screen links to.
 -->
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import Staged from "../motion/Staged.svelte";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
@@ -21,11 +23,18 @@
   class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
 >
   <h1 class="text-xl font-semibold tracking-tight lg:leading-8">{m.tariff_title()}</h1>
-  <PricesNow {core} />
-  <RangeCard model={route}>
-    <RangeControl model={route} />
-    <Costs {core} {route} />
-  </RangeCard>
+  <!-- Each part in a frame of its own after the title's (ADR 21). -->
+  <Staged>
+    {#snippet skeleton()}<Skeleton class="h-28 rounded-lg" />{/snippet}
+    <PricesNow {core} />
+  </Staged>
+  <Staged>
+    {#snippet skeleton()}<Skeleton class="h-[420px] rounded-lg" />{/snippet}
+    <RangeCard model={route}>
+      <RangeControl model={route} />
+      <Costs {core} {route} />
+    </RangeCard>
+  </Staged>
   <a
     href="#/history?metric=money"
     class="group flex items-center gap-2 self-start text-sm font-medium text-brand outline-none hover:underline focus-visible:underline"

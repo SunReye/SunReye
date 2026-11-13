@@ -5,7 +5,7 @@
   Tiers: full = comet chains, lite = one travelling dashed cable, still = a plain lit rail.
 -->
 <script lang="ts">
-  import { fade } from "svelte/transition";
+  import { fade } from "../motion.ts";
   import type { MotionTier } from "../motion/tier.ts";
   import type { RailPulse } from "./flow-pulse.ts";
   import type { Direction, RailLine } from "./schematic.ts";
