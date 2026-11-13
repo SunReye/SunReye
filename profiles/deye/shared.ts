@@ -77,7 +77,7 @@ export const BATTERY: Frozen<Quantity> = {
   },
 };
 
-/** Power flows derived from grid, battery, PV and load power, as v4 derived them. */
+/** Power flows, and the inverter's loss and efficiency as v3 defined them, from grid, battery, PV and load power. */
 export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.import_power",
@@ -115,7 +115,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "inverter.power",
-    role: "extra.inverter_power",
+    role: "inverter.loss.power",
     compute: {
       combine: {
         add: ["dc.total_power", "ac.total_power"],
@@ -125,7 +125,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "inverter.efficiency",
-    role: "extra.inverter_efficiency",
+    role: "inverter.efficiency",
     compute: {
       ratio: {
         num: ["ac.ups.total_power", "battery.charge_power", "grid.export_power"],

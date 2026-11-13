@@ -3,7 +3,7 @@
   "id": "deye-sun20k-sg05lp3",
   "name": "SUN-20K-SG05LP3-EU-SM2",
   "manufacturer": "Deye",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "requires": [
     "modbus",
     "u16",
@@ -1040,7 +1040,7 @@
     },
     {
       "key": "inverter.power",
-      "role": "extra.inverter_power",
+      "role": "inverter.loss.power",
       "compute": {
         "combine": {
           "add": [
@@ -1056,7 +1056,7 @@
     },
     {
       "key": "inverter.efficiency",
-      "role": "extra.inverter_efficiency",
+      "role": "inverter.efficiency",
       "compute": {
         "ratio": {
           "num": [

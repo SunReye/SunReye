@@ -67,6 +67,7 @@ fn unit(role: &str) -> Option<Unit> {
         | "backup.power"
         | "generator.power"
         | "inverter.power"
+        | "inverter.loss.power"
         | "ev.charge.power"
         | "battery.charge.power"
         | "battery.discharge.power"
@@ -87,7 +88,7 @@ fn unit(role: &str) -> Option<Unit> {
         "pv.mppt.voltage" | "battery.voltage" | "grid.phase.voltage" => Unit::Volt,
         "pv.mppt.current" | "battery.current" | "grid.phase.current" => Unit::Ampere,
         "grid.frequency" => Unit::Hertz,
-        "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" => Unit::Percent,
+        "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" | "inverter.efficiency" => Unit::Percent,
         "battery.temperature" | "inverter.temperature" => Unit::Celsius,
         _ => return None,
     })
