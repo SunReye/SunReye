@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../../app.css";
 import { HAPTICS } from "../../haptics.ts";
+import { motion } from "../../motion/tier.svelte.ts";
 import { editable, type Outcome } from "./editable.ts";
 import ValueEditor from "./value-editor.svelte";
 
@@ -44,6 +45,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
+  motion.lowPower = false;
   localStorage.removeItem(HAPTICS);
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
@@ -278,4 +281,18 @@ test("a finger dragging the hour wheel up moves to a later hour", async () => {
   touch("pointerup", y - 88);
 
   await expect.element(hour).toHaveAttribute("aria-valuetext", "08");
+});
+
+test("with low power on the wheel lands without a frame", async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+  motion.lowPower = true;
+  await editor();
+
+  const wheel = page.getByRole("spinbutton", { name: "Max. Ladestrom" });
+  wheel.element().focus();
+  // No frame ever comes: only a step that does not animate can land.
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  await userEvent.keyboard("{ArrowUp}");
+
+  await expect.element(wheel).toHaveAttribute("aria-valuenow", "101");
 });

@@ -110,9 +110,9 @@ export function hubMetrics(values: Values["devices"]): Hub {
   return { dc, efficiency: (ac / dc) * 100, own: Math.abs(dc - ac) };
 }
 
-/** Whether any of the plant's values is past its gap threshold (ADR 3). */
+/** Whether the stream is lost or any of the plant's values is past its gap threshold (ADR 3). */
 export function stalled(live: Live | undefined): boolean {
-  return (
-    live !== undefined && "devices" in live && Object.keys(live.stale?.[PLANT] ?? {}).length > 0
-  );
+  if (live === undefined || !("devices" in live)) return false;
+
+  return live.lost !== undefined || Object.keys(live.stale?.[PLANT] ?? {}).length > 0;
 }

@@ -1,5 +1,5 @@
 // What the shell shows around a screen: Controls for the admin, nothing around sign-in and setup.
-import { getContext, setContext } from "svelte";
+import { createContext } from "svelte";
 import type { Core } from "../api/core.ts";
 
 export interface ShellAccess {
@@ -20,13 +20,13 @@ class Access implements ShellAccess {
   }
 }
 
-const KEY = Symbol("access");
+const [getAccess, setAccess, hasAccess] = createContext<ShellAccess>();
 
 export function provideAccess(): ShellAccess {
-  return setContext(KEY, new Access());
+  return setAccess(new Access());
 }
 
 /** The shell's access; undefined for a screen rendered without the shell. */
 export function access(): ShellAccess | undefined {
-  return getContext<ShellAccess | undefined>(KEY);
+  return hasAccess() ? getAccess() : undefined;
 }

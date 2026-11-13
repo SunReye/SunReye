@@ -26,7 +26,7 @@
   import { Button } from "../ui/button/index.js";
   import { spring, tween, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
-  import { settle, slideMs, still } from "./drill.ts";
+  import { settle, slideMs } from "./drill.ts";
   import DrillPanes from "./drill-panes.svelte";
   import DrillRow from "./drill-row.svelte";
 
@@ -107,18 +107,12 @@
       haptics.soft();
     };
 
-    if (still()) {
-      p = to;
-      done();
-
-      return;
-    }
-
     const set = (value: number) => {
       p = value;
     };
 
-    // A release keeps its velocity; anything else runs the ease-in-out from where it is.
+    // A release keeps its velocity; anything else runs the ease-in-out from where it is. Both land
+    // at once on the still tier.
     cancel =
       velocity === undefined
         ? tween(p, to, slideMs(p, to), set, done)

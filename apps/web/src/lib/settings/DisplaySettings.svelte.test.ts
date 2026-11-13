@@ -5,7 +5,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { HAPTICS } from "../haptics.ts";
 import { language } from "../i18n/language.svelte.ts";
-import { LOW_POWER } from "../live/dashboard.ts";
+import { LOW_POWER } from "../motion/tier.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import DisplaySettings from "./DisplaySettings.svelte";
 

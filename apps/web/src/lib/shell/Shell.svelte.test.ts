@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { motion } from "../motion/tier.svelte.ts";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
@@ -16,6 +17,7 @@ function offset(): number {
 }
 
 afterEach(() => {
+  motion.lowPower = false;
   vi.restoreAllMocks();
   localStorage.clear();
   // The rail's links move the hash.
@@ -199,4 +201,33 @@ test("pinning taps soft and moving to another screen ticks selection", async () 
   await screen.getByRole("link", { name: "Verlauf" }).click();
 
   expect(selection).toHaveBeenCalledOnce();
+});
+
+/** The screens in the page now: two while one cross-fades into the next. */
+function screens(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("[data-screen]")];
+}
+
+test("a route change cross-fades the screens", async () => {
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+
+  await screen.rerender({ current: "/history" });
+
+  const [leaving, arriving] = screens();
+
+  expect(screens()).toHaveLength(2);
+  expect(leaving?.getAnimations()).not.toHaveLength(0);
+  expect(arriving?.getAnimations()).not.toHaveLength(0);
+  await expect.poll(() => screens()).toHaveLength(1);
+});
+
+test("with low power a route change is instant", async () => {
+  motion.lowPower = true;
+
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, children });
+
+  await screen.rerender({ current: "/history" });
+
+  expect(screens()).toHaveLength(1);
+  expect(screens()[0]?.getAnimations()).toHaveLength(0);
 });

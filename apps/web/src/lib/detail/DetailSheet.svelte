@@ -61,14 +61,16 @@
   /** How often stale ages are recounted while a sheet is open. */
   const TICK_MS = 5000;
 
-  // The body keeps its last figure while the sheet slides out.
-  let last = $state("production");
+  // The body keeps its last figure while the sheet slides out. A plain memory, not state: only the
+  // derived reads it.
+  let last = "production";
 
-  $effect(() => {
+  const shown = $derived.by(() => {
     if (id !== null && figure(id) !== null) last = id;
+
+    return last;
   });
 
-  const shown = $derived(id !== null && figure(id) !== null ? id : last);
   const open = $derived(id !== null);
   const spec = $derived(figure(shown) ?? figure("production")!);
 
@@ -96,8 +98,13 @@
     return () => clearInterval(timer);
   });
 
+  // A lost stream reads like a refused one: its last values stay, dimmed, under one notice.
   const status = $derived<Source["status"]>(
-    live === undefined ? "loading" : "problem" in live ? "stopped" : "live",
+    live === undefined
+      ? "loading"
+      : "problem" in live || live.lost !== undefined
+        ? "stopped"
+        : "live",
   );
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});

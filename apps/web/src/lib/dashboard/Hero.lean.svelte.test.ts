@@ -1,11 +1,12 @@
 // Its own file: no other test may load three.js into this page first.
 import "../../app.css";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import type { SceneLayout } from "../live/dashboard.ts";
 import { motion } from "../motion/tier.svelte.ts";
+import { warm } from "../scene/warm.ts";
 import Hero from "./Hero.svelte";
 
 const layout: SceneLayout = {
@@ -37,11 +38,23 @@ const threeLoaded = () =>
 beforeEach(() => {
   asked.length = 0;
   localStorage.clear();
+  // The main thread is idle at once: a load's idle task runs a frame after it starts.
+  vi.stubGlobal("requestIdleCallback", (task: IdleRequestCallback) => {
+    task({ didTimeout: false, timeRemaining: () => 50 });
+
+    return 1;
+  });
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   motion.lowPower = false;
 });
+
+const frame = () =>
+  new Promise((resolve) => {
+    requestAnimationFrame(resolve);
+  });
 
 test.each([
   [
@@ -79,11 +92,14 @@ test.each([
   await expect
     .element(screen.getByRole("button", { name: "Wechselrichter: Details" }))
     .toBeVisible();
-  // Long enough for an idle load to have started.
-  await new Promise((resolve) => {
-    setTimeout(resolve, 2000);
-  });
+  // A load's idle task has run by the second frame; it mounts the scene once the warm-up worker
+  // answers, and a mounted scene shows in the frame after.
+  await frame();
+  await frame();
+  await warm().webgl2;
+  await frame();
 
+  expect(page.getByRole("figure", { name: "Live-Ansicht des Hauses" }).elements()).toHaveLength(0);
   expect(asked).not.toContain("/api/v1/module-types");
   expect(threeLoaded()).toBe(false);
   expect(page.getByText("3D-Ansicht lädt …").elements()).toHaveLength(0);

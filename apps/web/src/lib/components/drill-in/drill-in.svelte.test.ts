@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { HAPTICS } from "../../haptics.ts";
-import { LOW_POWER } from "../../live/dashboard.ts";
+import { motion } from "../../motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
@@ -15,7 +15,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   localStorage.removeItem(HAPTICS);
-  localStorage.removeItem(LOW_POWER);
+  motion.lowPower = false;
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
   await page.viewport(414, 896);
 });
@@ -115,7 +115,7 @@ test.each([
   [
     "the low-power switch",
     async () => {
-      localStorage.setItem(LOW_POWER, "on");
+      motion.lowPower = true;
       await Promise.resolve();
     },
   ],

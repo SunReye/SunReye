@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
-import { LOW_POWER } from "../live/dashboard.ts";
+import { LOW_POWER } from "./tier.ts";
 import { JANK_FRAME_MS } from "./tier.ts";
 import { MotionStore } from "./tier.svelte.ts";
 

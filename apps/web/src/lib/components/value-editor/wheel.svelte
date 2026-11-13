@@ -3,8 +3,9 @@
   nearest one. Off-centre rows shrink and fade. Rendering runs only while it moves.
 -->
 <script lang="ts">
-  import { reducedMotion, spring, VelocityTracker } from "../../animate.ts";
+  import { spring, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
+  import { motion } from "../../motion/tier.svelte.ts";
   import { m } from "../../paraglide/messages.js";
   import type { Rows } from "./editable.ts";
 
@@ -87,7 +88,7 @@
     const end = clamp(to);
     target = end;
 
-    if (reducedMotion()) {
+    if (motion.still) {
       setPos(end);
       target = undefined;
 

@@ -128,3 +128,10 @@ test("a stalled plant stops the charges", async () => {
   await expect.element(screen.getByRole("button", { name: "Batterie: Details" })).toBeVisible();
   expect(screen.container.querySelectorAll("animateMotion")).toHaveLength(0);
 });
+
+test("a lost stream stops the charges", async () => {
+  const { screen } = await show({ devices: MIDDAY, lost: Date.now() - 1000 });
+
+  await expect.element(screen.getByRole("button", { name: "Batterie: Details" })).toBeVisible();
+  expect(screen.container.querySelectorAll("animateMotion")).toHaveLength(0);
+});
