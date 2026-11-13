@@ -67,9 +67,11 @@ export class Statistics {
       let live = true;
 
       const read = async () => {
-        const next = await readFacts(core);
+        // The facts only refine the screen; a failed read leaves them unread, and the chart's own
+        // read states the failure.
+        const next = await readFacts(core).catch(() => null);
 
-        if (live) this.facts = next;
+        if (live && next !== null) this.facts = next;
       };
 
       void read();
