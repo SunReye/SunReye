@@ -1,9 +1,10 @@
 // The schematic behind the 2D power flow (ADR 21). Ported from v3 (dev 780b4e2,
 // lib/inverter/power-graph.ts) by way of the prototype: routing, anchors and orientation rules are
 // v3's; every node and rail carries its one energy colour.
+import { flowColour } from "../energy-colours.ts";
 import type { FlowReading } from "./reading.ts";
 import type {
-  Flow,
+  Direction,
   GraphNode,
   GraphPart,
   GraphSegment,
@@ -20,14 +21,14 @@ const HUBS: Record<Orientation, Pt> = {
   portrait: { x: 0.5, y: 0.5 },
 };
 
-const SOLAR = "var(--e-solar)";
-const BATTERY = "var(--e-battery)";
-const IMPORT = "var(--e-import)";
-const EXPORT = "var(--e-export)";
-const HOUSE = "var(--e-house)";
-const EV = "var(--e-ev)";
+const SOLAR = flowColour("solar");
+const BATTERY = flowColour("battery");
+const IMPORT = flowColour("import");
+const EXPORT = flowColour("export");
+const HOUSE = flowColour("house");
+const EV = flowColour("ev");
 
-type Sense = { readonly flow: Flow; readonly state: NodeState };
+type Sense = { readonly flow: Direction; readonly state: NodeState };
 
 const IDLE: Sense = { flow: "idle", state: "idle" };
 
@@ -144,7 +145,7 @@ function chargerBottom(r: FlowReading): BottomSpec | null {
   const c = r.charger;
 
   if (!c) return null;
-  const flow: Flow = c.power > 0.5 ? "out" : "idle";
+  const flow: Direction = c.power > 0.5 ? "out" : "idle";
 
   const state: NodeState =
     c.charging || flow === "out" ? "charging" : c.connected ? "plugged" : "idle";

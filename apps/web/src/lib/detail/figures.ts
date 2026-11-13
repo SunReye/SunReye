@@ -1,4 +1,5 @@
 // What each dashboard figure's detail sheet leads with (ADR 21). Pure.
+import { flowColour } from "../energy-colours.ts";
 import type { Day } from "../dashboard/day.ts";
 import { current } from "../dashboard/now.ts";
 import { m } from "../paraglide/messages.js";
@@ -19,16 +20,16 @@ export interface Figure {
   readonly chart: "pv" | "price" | null;
 }
 
-const SOLAR = "var(--e-solar)";
-const HOUSE = "var(--e-house)";
-const GRID = ["var(--e-import)", "var(--e-export)"] as const;
-const EV: Figure = { colour: "var(--e-ev)", node: "ev", chart: null };
+const SOLAR = flowColour("solar");
+const HOUSE = flowColour("house");
+const GRID = [flowColour("import"), flowColour("export")] as const;
+const EV: Figure = { colour: flowColour("ev"), node: "ev", chart: null };
 
 const FIGURES: Readonly<Record<Fixed, Figure>> = {
   production: { colour: SOLAR, node: "pv", today: "production", chart: "pv" },
   consumption: { colour: HOUSE, node: "house", today: "consumption", chart: null },
   feedIn: {
-    colour: "var(--e-export)",
+    colour: flowColour("export"),
     node: "grid",
     direction: "grid",
     diverging: GRID,
@@ -36,14 +37,14 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
     chart: null,
   },
   purchase: {
-    colour: "var(--e-import)",
+    colour: flowColour("import"),
     node: "grid",
     direction: "grid",
     diverging: GRID,
     today: "purchase",
     chart: null,
   },
-  autarky: { colour: "var(--e-battery)", node: null, chart: null },
+  autarky: { colour: flowColour("battery"), node: null, chart: null },
   saved: { colour: SOLAR, node: null, chart: null },
   price: { colour: HOUSE, node: null, chart: "price" },
   forecast: { colour: SOLAR, node: null, chart: "pv" },
@@ -51,14 +52,14 @@ const FIGURES: Readonly<Record<Fixed, Figure>> = {
   pv: { colour: SOLAR, node: "pv", chart: "pv" },
   inverter: { colour: SOLAR, node: "inverter", chart: null },
   battery: {
-    colour: "var(--e-battery)",
+    colour: flowColour("battery"),
     node: "battery",
     direction: "battery",
-    diverging: ["var(--e-battery)", "var(--e-battery)"],
+    diverging: [flowColour("battery"), flowColour("battery")],
     chart: null,
   },
   grid: {
-    colour: "var(--e-export)",
+    colour: flowColour("export"),
     node: "grid",
     direction: "grid",
     diverging: GRID,

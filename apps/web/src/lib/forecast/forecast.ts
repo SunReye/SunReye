@@ -1,8 +1,14 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
 import type { Core, Forecasts, PvString } from "../api/core.ts";
+import { flowColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { intervals, spread, type Span } from "../range/fill.ts";
+
+/** The measured production's bars, in the solar flow. */
+export function measuredBar() {
+  return { label: m.forecast_measured(), colour: flowColour("solar") };
+}
 
 /** One forecast series and its legend label. */
 export interface Line {

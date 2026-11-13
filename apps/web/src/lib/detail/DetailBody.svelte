@@ -55,11 +55,10 @@
     return watts > 0 ? m.detail_importing() : m.detail_exporting();
   });
 
+  /** A signed grid power takes the side of its diverging pair: import above zero, export below. */
   const colour = $derived(
-    spec.direction === "grid"
-      ? (watts ?? 0) >= 0
-        ? "var(--e-import)"
-        : "var(--e-export)"
+    spec.direction === "grid" && spec.diverging !== undefined
+      ? spec.diverging[(watts ?? 0) >= 0 ? 0 : 1]
       : spec.colour,
   );
 

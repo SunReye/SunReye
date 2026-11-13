@@ -1,5 +1,6 @@
 <!-- The day curve: PV actual (filled) against forecast (dashed), with a "now" rule. -->
 <script lang="ts">
+  import { flowColour } from "../energy-colours.ts";
   import { curveMonotoneX } from "d3-shape";
   import { Area, Axis, Chart, Layer, Rule, Spline } from "layerchart";
   import { VALUE_AXIS } from "../chart-axis.ts";
@@ -17,7 +18,7 @@
   } = $props();
 
   const uid = $props.id();
-  const colour = "var(--e-solar)";
+  const colour = flowColour("solar");
   const HOUR = 3_600_000;
 
   const max = $derived(

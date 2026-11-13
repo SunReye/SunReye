@@ -3,6 +3,7 @@
   plant-local days (ADR 12): savings above the baseline, the import bill below it.
 -->
 <script lang="ts">
+  import { flowColour } from "../energy-colours.ts";
   import type { Core } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
@@ -45,10 +46,10 @@
     <BandChart
       bands={view?.bands ?? []}
       up={[
-        { label: m.tariff_avoided(), colour: "var(--e-solar)" },
-        { label: m.tariff_feed_in_pay(), colour: "var(--e-export)" },
+        { label: m.tariff_avoided(), colour: flowColour("solar") },
+        { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
       ]}
-      down={[{ label: m.tariff_import_cost(), colour: "var(--e-import)" }]}
+      down={[{ label: m.tariff_import_cost(), colour: flowColour("import") }]}
       groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
       via={data.current?.via}
       summary={{ title: data.title, ...(view?.total ?? split()) }}
