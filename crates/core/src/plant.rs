@@ -3,8 +3,8 @@
 //!
 //! Each reading of a power role, or of a battery's state of charge or capacity, balances the tree
 //! again over the latest fresh reading of every point. The plant publishes its totals under the
-//! same roles its devices use, the grid split by direction and the PV and house load met on site,
-//! and each measured point's own consumption as `point.power`, indexed by point id.
+//! same roles its devices use, the battery and grid split by direction, the PV and house load met
+//! on site, and each measured point's own consumption as `point.power`, indexed by point id.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
@@ -38,6 +38,8 @@ const ROLES: &[(&str, Unit, f64)] = &[
 ];
 /// The roles only the plant publishes (ADR 4): stored in watts, like the powers they split.
 const SHARES: &[&str] = &[
+    "battery.charge.power",
+    "battery.discharge.power",
     "grid.import.power",
     "grid.export.power",
     "self.consumption.power",

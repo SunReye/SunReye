@@ -68,6 +68,8 @@ fn unit(role: &str) -> Option<Unit> {
         | "generator.power"
         | "inverter.power"
         | "ev.charge.power"
+        | "battery.charge.power"
+        | "battery.discharge.power"
         | "grid.import.power"
         | "grid.export.power"
         | "self.consumption.power"

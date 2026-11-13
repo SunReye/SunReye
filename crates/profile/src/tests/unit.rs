@@ -134,11 +134,13 @@ fn inverter_temperature_and_status_per_phase_load_and_battery_cycles_follow_adr_
 #[test]
 fn the_plants_shares_read_as_watts() {
     let profile = load(&[
+        ("battery.charge.power", None),
+        ("battery.discharge.power", None),
         ("grid.import.power", None),
         ("grid.export.power", None),
         ("self.consumption.power", None),
         ("self.supply.power", None),
     ]);
     let units: Vec<Option<Unit>> = profile.quantities().iter().map(Quantity::unit).collect();
-    assert_eq!(units, [Some(Unit::Watt); 4]);
+    assert_eq!(units, [Some(Unit::Watt); 6]);
 }

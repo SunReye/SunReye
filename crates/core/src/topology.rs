@@ -395,15 +395,20 @@ fn own(points: &[Point], measured: &BTreeMap<u32, Measured<'_>>) -> BTreeMap<u32
         .collect()
 }
 
-/// The grid split by direction, and the PV and house load met on site, from the plant's totals
-/// (ADR 4). Their day energies give self-consumption and autarky as shares.
+/// The battery and the grid split by direction, and the PV and house load met on site, from the
+/// plant's totals (ADR 4). Their day energies give self-consumption and autarky as shares.
 fn shares(totals: &[(&'static str, f64)]) -> Vec<(&'static str, f64)> {
     let total = |role| totals.iter().find(|(r, _)| *r == role).map(|&(_, v)| v);
+    let mut shares = Vec::new();
+    if let Some(battery) = total("battery.power") {
+        shares.push(("battery.charge.power", battery.max(0.0)));
+        shares.push(("battery.discharge.power", (-battery).max(0.0)));
+    }
     let Some(grid) = total("grid.power") else {
-        return Vec::new();
+        return shares;
     };
     let (import, export) = (grid.max(0.0), (-grid).max(0.0));
-    let mut shares = vec![("grid.import.power", import), ("grid.export.power", export)];
+    shares.extend([("grid.import.power", import), ("grid.export.power", export)]);
     if let Some(pv) = total("pv.power") {
         // A battery feeding in can export more than the PV makes.
         shares.push(("self.consumption.power", (pv - export).max(0.0)));
