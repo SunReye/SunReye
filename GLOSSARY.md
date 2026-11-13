@@ -200,6 +200,10 @@ _Avoid_: PV1 (a vendor label), string
 Modules in series, wired to one MPPT input; they may sit on different roof faces. Strings on one input are in parallel.
 _Avoid_: Array, panel group
 
+**Wiring order**:
+The order a string runs through its modules, from its first.
+_Avoid_: Paint order
+
 **Substring**:
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group

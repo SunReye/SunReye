@@ -20,6 +20,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
   - A face's module grid holds one module type. Columns run across the slope and rows up it, from the face's lowest corner on the left seen from the front, starting at the setback; the gap is 2 cm. A flat roof's grid runs along the block's width.
   - The scene is stored with its layout version as one document in the `pv` crate's schema, in which a module names its string by id. Through the API a module names its string by position in the version's strings, so new strings need no id first.
   - The core derives each string's module count, optimizer count and plane, the plane of its first module, with the `pv` crate; the browser's numbers are not trusted. A painted string of another module type than its grid is refused.
+  - A painted module keeps its place along its string's wiring. The string runs through its modules in that order; a module without a place follows them. A module wired into a string takes the place after the string's last; unwired, it loses its place.
 - **Obstacles.** Opaque boxes (a neighbour, a wall), cylinders (a pole), trees (a trunk with a crown, broadleaf or conifer) and hedges (a straight row), each with position, size and height. A tree shades all year; leaf fall is not modelled.
   - A broadleaf's crown is a sphere whose top is the tree's height; a conifer's is a cone of the crown's radius from a fifth of the tree's height to its top. A trunk a tenth of the crown's radius carries either. A tree stored without a kind is broadleaf.
   - A hedge has a corner, a length along x, a depth along z, a height and a rotation, like a block's footprint, and shades as a box. It draws as foliage.
@@ -77,10 +78,10 @@ Energy flow shows as tint and label arrows.
   - dragging its footprint moves it;
   - each point of a fence has its own handle that drags that point.
 - **Snapping.** Lengths snap to 10 cm, angles to 5°, and edges to other blocks' edges and the compass axes. The live value shows beside the handle while dragging.
-- **Modules.** "Fill face" places as many modules as the face's grid holds. A tap toggles one cell, and a drag paints or erases cells.
-- **Strings.** Pick a string, then drag across modules to paint it.
+- **Modules.** Modules are placed on the roof in 3D, not in a separate grid. Selecting a roof face, in the inspector or by striking one of its cells, shows its free cells on the roof; the setback, a chimney and the face's edge leave none. A tap on a free cell places a module and a drag places one in every cell it crosses; a drag that starts on a module removes them. A tap on a module selects it: the inspector shows its string, its optimizer and its removal. "Fill face", "Clear face", the module type, orientation and setback stay in the inspector.
+- **Strings.** Pick a string, or add one, then drag across modules to wire them in the order the drag crosses them. A thin line in the string's tint runs through its modules' centres from a start marker. A tap on a module of the picked string unwires it.
 - **Inspector.** It shows the exact numbers. Editing one moves the handles, and every handle drag is one undo step.
-- **Touch.** One finger on a handle drags it, and on empty space orbits. Two fingers pan and zoom. A handle's touch target is at least 44 px, whatever its drawn size.
+- **Touch.** One finger on a handle drags it, and on empty space orbits. Two fingers pan and zoom. A handle's touch target is at least 44 px, whatever its drawn size. A gesture that starts on a cell of the selected face, or on a module while a string is picked, lays or wires; one that starts anywhere else orbits. A second finger puts a drag back and pans and zooms instead. Every drag is one undo step.
 - **Layout.** The canvas takes the full height on the left. A glass inspector on the right uses the drill-in pattern: Buildings, Surroundings, Equipment, Modules, Strings. Clicking an object in 3D drills the inspector to it. The module-grid editor is its own level. On a portrait tablet the inspector is a bottom sheet that can be pulled up. On a phone the canvas fills the screen and the inspector is that bottom sheet, peeking at its header; "+" opens a sheet of everything that can be added, and an undo button sits on the canvas. The canvas's notices stack and never overlap.
 
 ## Considered options
