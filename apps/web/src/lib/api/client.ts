@@ -11,14 +11,20 @@ export function open(base: string, fetch: (request: Request) => Promise<Response
 
 export type ProblemDetails = components["schemas"]["ProblemDetails"];
 
-/** A refusal's stable code (ADR 9), such as `auth.required`. */
+/** A refusal's stable code (ADR 9), such as `auth.required`, and the request body's member at
+ * fault where the core names it, as a JSON pointer such as `/strings/0/modules`. */
 export interface Problem {
   readonly problem: string;
+  readonly pointer?: string;
 }
 
 /** A proxy in front of the core may refuse with a body that is no JSON; its status stands in. */
 export function refusal(error: Readonly<ProblemDetails> | string, status: number): Problem {
-  return { problem: error instanceof Object ? error.code : `http.${status}` };
+  if (!(error instanceof Object)) return { problem: `http.${status}` };
+
+  const { code, pointer } = error;
+
+  return pointer === undefined || pointer === null ? { problem: code } : { problem: code, pointer };
 }
 
 /** Undefined for a success without a body, else why it was refused. */

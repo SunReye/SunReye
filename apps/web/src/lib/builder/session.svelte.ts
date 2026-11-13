@@ -9,7 +9,7 @@ import type {
   ModuleType,
   Problem,
 } from "../api/core.ts";
-import { coldStrings, type Limits } from "./checks.ts";
+import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
@@ -95,6 +95,7 @@ export class Session {
       laid: this.laid,
       devices: opening().devices,
       cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
+      refused: this.#refused(),
     });
   }
 
@@ -115,6 +116,13 @@ export class Session {
   /** The module catalogue's sheets (ADR 17), read anew each time a face asks. */
   moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem> {
     return this.#opening().core.moduleCatalogue();
+  }
+
+  #refused(): StringRefusal | null {
+    const { saved } = this;
+    const names = this.draft.strings.map(({ name }) => name);
+
+    return saved !== undefined && "problem" in saved ? stringRefusal(saved, names) : null;
   }
 
   get draft(): Draft {
@@ -255,6 +263,10 @@ export class Session {
     });
 
     this.saved = saved;
+
+    const refused = this.#refused();
+
+    if (refused !== null) this.go({ kind: "string", index: refused.string });
 
     if (!("problem" in saved)) {
       this.#history = begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });

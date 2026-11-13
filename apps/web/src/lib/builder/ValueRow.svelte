@@ -4,16 +4,20 @@
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Editable, Outcome } from "../components/value-editor/editable.ts";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
+  import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
 
   let {
     edit,
     value,
+    missing = false,
     onchange,
   }: {
     /** Its name is the row's label. */
     edit: Editable;
     value: number;
+    /** A required value not yet entered: the row says so in place of the value. */
+    missing?: boolean;
     onchange: (value: number) => void;
   } = $props();
 
@@ -52,7 +56,11 @@
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap">{edit.name}</Item.Title>
       </Item.Content>
       <Item.Actions class="gap-2">
-        <span class="text-[15px] font-medium whitespace-nowrap tabular-nums">{text}</span>
+        {#if missing}
+          <span class="text-[15px] whitespace-nowrap text-destructive">{m.builder_required()}</span>
+        {:else}
+          <span class="text-[15px] font-medium whitespace-nowrap tabular-nums">{text}</span>
+        {/if}
         <ChevronRight class="size-4 text-muted-foreground" />
       </Item.Actions>
     </button>
