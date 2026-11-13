@@ -121,12 +121,16 @@ test("a row runs in its markers' order, so its leader lines never cross", () => 
   }
 });
 
-test("a chip without a marker sits beside its row's marked chips, toward the house", () => {
+test("a chip without a marker sits beside its row's marked chips, on the roomier side", () => {
   const at = placed(PLANT);
 
-  // The car stands east of the house's middle: grid and house line up west of it.
+  // The car stands right of the canvas's middle: grid and house line up left of it.
   expect(at.grid!.x).toBeLessThan(at.house!.x);
   expect(at.house!.x).toBeLessThan(at.car!.x);
+
+  const left = placed([...PLANT.slice(0, 7), label("car", "below", 1, 60, 120)]);
+
+  expect(left.car!.x).toBeLessThan(left.grid!.x);
 });
 
 test("a lone chip sits at its marker", () => {

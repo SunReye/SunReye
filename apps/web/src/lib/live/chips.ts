@@ -101,7 +101,7 @@ function lane(labels: readonly Label[], side: Label["lane"], frame: Frame): Row[
       wrap(
         seated(
           members.filter((member) => member.group === group),
-          (house.left + house.right) / 2,
+          frame,
         ),
         frame.width - 2 * EDGE,
       ),
@@ -118,9 +118,9 @@ function lane(labels: readonly Label[], side: Label["lane"], frame: Frame): Row[
 
 /**
  * A group in its markers' order, so its leader lines do not cross. Chips without a marker line up
- * beside the marked ones on the side of the house's middle, or around it when none is marked.
+ * beside the marked ones on the canvas's roomier side, or under the house when none is marked.
  */
-function seated(members: readonly (Label & { readonly at: number })[], middle: number): Seat[] {
+function seated(members: readonly (Label & { readonly at: number })[], frame: Frame): Seat[] {
   const marked = members
     .flatMap(({ at, x, w }) => (x === null ? [] : [{ at, x, w }]))
     .toSorted((a, b) => a.x - b.x);
@@ -129,7 +129,7 @@ function seated(members: readonly (Label & { readonly at: number })[], middle: n
 
   if (marked.length === 0) {
     const total = loose.reduce((sum, { w }) => sum + w + GAP, -GAP);
-    let left = middle - total / 2;
+    let left = (frame.house.left + frame.house.right) / 2 - total / 2;
 
     return loose.map(({ at, w }) => {
       const seat = { at, x: left + w / 2, w };
@@ -142,7 +142,7 @@ function seated(members: readonly (Label & { readonly at: number })[], middle: n
 
   const mean = marked.reduce((sum, { x }) => sum + x, 0) / marked.length;
 
-  if (mean >= middle) {
+  if (mean >= frame.width / 2) {
     let next = marked[0]!;
 
     const before = loose.toReversed().map(({ at, w }) => {
