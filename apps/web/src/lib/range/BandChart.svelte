@@ -47,6 +47,7 @@
     markLabel = "",
     ghostLabel = "",
     lineLabel = "",
+    gapLabel = m.range_no_data(),
     via,
     summary,
     fmt,
@@ -70,6 +71,8 @@
     ghostLabel?: string;
     /** What the dashed line over the bars is. */
     lineLabel?: string;
+    /** What a hatched band is. */
+    gapLabel?: string;
     via?: Via | undefined;
     /** The whole range, shown while no band is active. */
     summary: Readout;
@@ -187,6 +190,7 @@
           up: shown.up,
           down: shown.down,
           mark: shown.mark ?? (markLabel === ghostLabel ? shown.ghost : null),
+          ghost: shown.ghost,
           line: shown.line,
         }
       : summary,
@@ -222,7 +226,7 @@
   const ghostOf = (): Legend["ghost"] => {
     if (!ghostLabel || !hasGhosts || (markLabel === ghostLabel && hasMarks)) return null;
 
-    return { label: ghostLabel, colour: up[0]?.colour ?? "", value: shown?.ghost ?? null };
+    return { label: ghostLabel, colour: up[0]?.colour ?? "", value: readout.ghost ?? null };
   };
 
   const hl = $derived({
@@ -262,7 +266,10 @@
       lineLabel && linePath
         ? { label: lineLabel, colour: up[0]?.colour ?? "", value: readout.line ?? null }
         : null,
+    gap: !loading && bands.some((b) => b.state === "gap") ? gapLabel : null,
     blank: loading || shown?.state === "gap" || shown?.state === "before",
+    // A band still to come has its forecast, but nothing measured yet.
+    unmeasured: shown?.state === "future",
     duration: shown ? 0 : 320,
   });
 </script>
@@ -296,13 +303,17 @@
   <BandLegend {legend} {fmt} {drillLabel} onopen={reading.open} />
 
   <div class={["grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-1", motion.still && "still"]}>
+    <!-- Above the top gridline's figure, which sits half above the plot. -->
+    <span class="mb-2.5 text-right text-[11px] leading-none text-muted-foreground opacity-70"
+      >{unit}</span
+    >
+    <span></span>
     <div
       class="axis relative text-[11px] text-muted-foreground tabular-nums"
       style:height="{height}px"
       aria-hidden="true"
     >
       <BandTicks list={ticks.list} axis />
-      <span class="absolute top-3 right-0 leading-none opacity-70">{unit}</span>
     </div>
 
     <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
@@ -383,7 +394,7 @@
     width: 100px;
     transform-origin: 0 0;
     pointer-events: none;
-    background: color-mix(in oklab, var(--foreground) 7%, transparent);
+    background: color-mix(in oklab, var(--foreground) 11%, transparent);
     transition:
       transform 100ms var(--motion-ease),
       opacity 100ms var(--motion-ease);

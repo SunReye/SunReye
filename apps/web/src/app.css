@@ -190,6 +190,24 @@
   --motion-exit: 0ms;
 }
 
+/* A drawer enters like a sheet and leaves faster, easing in (ADR 21). Unlayered, as vaul's own 0.5 s. */
+[data-slot="drawer-content"][data-state="open"],
+[data-slot="drawer-overlay"][data-state="open"] {
+  animation-duration: var(--motion-enter);
+  animation-timing-function: var(--motion-ease);
+}
+[data-slot="drawer-content"][data-state="closed"],
+[data-slot="drawer-overlay"][data-state="closed"] {
+  animation-duration: var(--motion-exit);
+  animation-timing-function: var(--motion-ease-exit);
+}
+
+/* An overlay on the still tier: no keyframes, and no transition left inline by a drag (vaul). */
+[data-still] {
+  animation: none !important;
+  transition: none !important;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --ambient-opacity: 100%;

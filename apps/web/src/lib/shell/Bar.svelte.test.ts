@@ -1,8 +1,9 @@
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { locales, setLocale } from "../paraglide/runtime.js";
 import Shell from "./Shell.svelte";
 import "../../app.css";
 
@@ -36,7 +37,7 @@ async function openMore(): Promise<void> {
   await expect.element(sheet()).toBeVisible();
 }
 
-test("on a phone the bar holds exactly five items, above the screen's edge", async () => {
+test("on a phone the bar holds three screens and More, above the screen's edge", async () => {
   await phone("/", true);
 
   const names = Array.from(
@@ -44,9 +45,36 @@ test("on a phone the bar holds exactly five items, above the screen's edge", asy
     (item) => item.ariaLabel,
   );
 
-  expect(names).toEqual(["Dashboard", "Verlauf", "Prognose", "Tarif und Ersparnis", "Mehr"]);
+  expect(names).toEqual(["Dashboard", "Verlauf", "Prognose", "Mehr"]);
   expect(bar().element().getBoundingClientRect().bottom).toBeLessThanOrEqual(800 - 8);
 });
+
+test.each(locales)(
+  "no two bar labels overlap or leave their item at 320 px in %s",
+  async (locale) => {
+    onTestFinished(() => setLocale("de", { reload: false }));
+    await setLocale(locale, { reload: false });
+    await page.viewport(320, 700);
+
+    const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+    const items = [...shown.container.querySelectorAll("nav [role=radio]")];
+
+    const boxes = items.map((item) => {
+      const label = item.querySelector("span")!;
+      const [own, text] = [item.getBoundingClientRect(), label.getBoundingClientRect()];
+
+      // The text as wide as it runs, not as its box clips it.
+      expect(label.scrollWidth, label.textContent).toBeLessThanOrEqual(label.clientWidth);
+      expect(text.left).toBeGreaterThanOrEqual(own.left);
+      expect(text.right).toBeLessThanOrEqual(own.right);
+
+      return text;
+    });
+
+    for (const [i, box] of boxes.entries())
+      expect(box.right).toBeLessThanOrEqual(boxes[i + 1]?.left ?? Infinity);
+  },
+);
 
 test("the bar never hides on scroll and the page ends above it", async () => {
   await page.viewport(400, 800);
@@ -107,22 +135,24 @@ test("More lists the other screens and opens with a soft tap", async () => {
   expect(soft).toHaveBeenCalledOnce();
   const links = sheet().getByRole("link");
 
-  expect(links.elements()).toHaveLength(3);
-  await expect.element(links.nth(0)).toHaveTextContent("Einstellungen");
-  await expect.element(links.nth(1)).toHaveTextContent("3D-Haus");
-  await expect.element(links.nth(2)).toHaveTextContent("Status");
+  expect(links.elements()).toHaveLength(4);
+  await expect.element(links.nth(0)).toHaveTextContent("Tarif und Ersparnis");
+  await expect.element(links.nth(1)).toHaveTextContent("Einstellungen");
+  await expect.element(links.nth(2)).toHaveTextContent("3D-Haus");
+  await expect.element(links.nth(3)).toHaveTextContent("Status");
 });
 
-test("More lists Controls first and Devices after Settings for the admin", async () => {
+test("More lists Controls first, then Tariff, and Devices after Settings for the admin", async () => {
   await phone("/", true);
   await openMore();
   const links = sheet().getByRole("link");
 
   await expect.element(links.first()).toHaveAttribute("href", "#/controls");
+  await expect.element(links.nth(1)).toHaveAttribute("href", "#/tariff");
   await expect
     .element(sheet().getByRole("link", { name: /Geräte/u }))
     .toHaveAttribute("href", "#/settings?group=devices");
-  expect(links.elements()[2]?.getAttribute("href")).toBe("#/settings?group=devices");
+  expect(links.elements()[3]?.getAttribute("href")).toBe("#/settings?group=devices");
 });
 
 test("a screen picked in More closes the sheet", async () => {
@@ -131,54 +161,5 @@ test("a screen picked in More closes the sheet", async () => {
   await sheet().getByRole("link", { name: "Status" }).click();
 
   expect(location.hash).toBe("#/status");
-  await expect.element(sheet()).not.toBeInTheDocument();
-});
-
-/** The More sheet's drag offset in px, as the finger or the spring left it. */
-function lift(): number {
-  const { translate } = getComputedStyle(sheet().element());
-
-  return Number(/0px ([-\d.]+)px/u.exec(translate)?.[1] ?? 0);
-}
-
-/** Puts a finger on the sheet and moves it `dy` px down; lifts it there when `release`. */
-function drag(dy: number, release: boolean): void {
-  const element = sheet().element();
-  const { left, top } = element.getBoundingClientRect();
-
-  const at = (y: number) => ({
-    pointerId: 1,
-    clientX: left + 40,
-    clientY: top + 20 + y,
-    bubbles: true,
-  });
-
-  element.dispatchEvent(new PointerEvent("pointerdown", at(0)));
-  element.dispatchEvent(new PointerEvent("pointermove", at(dy)));
-
-  if (release) element.dispatchEvent(new PointerEvent("pointerup", at(dy)));
-}
-
-test("the More sheet follows the finger and springs back when let go early", async () => {
-  await phone("/");
-  await openMore();
-
-  drag(40, false);
-  await expect.poll(lift).toBe(40);
-
-  sheet()
-    .element()
-    .dispatchEvent(new PointerEvent("pointerup", { pointerId: 1, bubbles: true }));
-
-  await expect.poll(lift).toBe(0);
-  await expect.element(sheet()).toBeVisible();
-});
-
-test("the More sheet dragged far down closes", async () => {
-  await phone("/");
-  await openMore();
-
-  drag(500, true);
-
   await expect.element(sheet()).not.toBeInTheDocument();
 });

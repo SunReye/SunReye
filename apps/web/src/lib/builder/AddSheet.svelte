@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
-  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
   import { additions, type Addition } from "./additions.ts";
@@ -36,9 +36,9 @@
   );
 </script>
 
-<BottomSheet bind:open label={m.builder_add()}>
+<ResponsiveSheet bind:open label={m.builder_add()}>
   <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2"
-    data-no-drag>
+    data-vaul-no-drag>
     <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
     {#each groups as { section, adds } (section)}
       <section aria-labelledby="add-{section}" class="flex flex-col gap-1.5">
@@ -69,4 +69,4 @@
       </section>
     {/each}
   </div>
-</BottomSheet>
+</ResponsiveSheet>

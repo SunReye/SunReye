@@ -1,5 +1,5 @@
 <!--
-  The phone's floating bottom bar (ADR 21): four screens and More, which opens a draggable sheet
+  The phone's floating bottom bar (ADR 21): three screens and More, which opens a draggable sheet
   with the rest. Sticky: it never hides on scroll.
 -->
 <script lang="ts">
@@ -8,7 +8,7 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import DrawerSheet from "#lib/components/drawer-sheet.svelte";
   import { cn } from "#lib/utils.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
@@ -70,7 +70,7 @@
   <ToggleGroup.Root
     type="single"
     spacing={1}
-    class="grid w-full grid-cols-5"
+    class="grid w-full grid-cols-4"
     bind:value={() => active, pick}
   >
     {#each items as item (item.route)}
@@ -80,13 +80,16 @@
         class="h-14 w-full min-w-0 flex-col gap-1.5 px-0 text-muted-foreground data-[state=on]:text-foreground"
       >
         <item.icon class={cn("size-5", active === item.route && "text-brand")} />
-        <span class="text-[11px] leading-none font-medium">{item.label()}</span>
+        <!-- Truncated as a last resort; every locale's labels fit 320 px (tested). -->
+        <span class="max-w-full truncate text-[11px] leading-none font-medium"
+          >{item.label()}</span
+        >
       </ToggleGroup.Item>
     {/each}
   </ToggleGroup.Root>
 </nav>
 
-<BottomSheet bind:open={moreOpen} label={m.nav_more()}>
+<DrawerSheet bind:open={moreOpen} label={m.nav_more()}>
   <div class="flex flex-col gap-3 px-4 pt-1 pb-2">
     <h2 class="px-1 text-lg font-semibold">{m.nav_more()}</h2>
     <Item.Group
@@ -118,4 +121,4 @@
       {/each}
     </Item.Group>
   </div>
-</BottomSheet>
+</DrawerSheet>
