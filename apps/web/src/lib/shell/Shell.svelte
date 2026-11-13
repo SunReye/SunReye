@@ -1,11 +1,13 @@
 <!--
   The shell by input and width (ADR 21): the rail with a mouse, or on touch from 768 px; the
-  bottom bar below that; nothing around sign-in and setup. Route changes cross-fade.
+  bottom bar below that; nothing around sign-in and setup. Route changes cross-fade, at once on
+  the still tier.
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import { stream } from "../live/stream.svelte.ts";
+  import { fade } from "../motion.ts";
   import Connection from "./Connection.svelte";
   import type { ShellLayout } from "./input.svelte.ts";
   import Bar from "./Bar.svelte";
@@ -46,14 +48,15 @@
     {#if strip}
       <Connection strip />
     {/if}
-    {#key current}
-      <!-- No landmark: each screen brings its own `main`. -->
-      <div
-        class="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200"
-      >
-        {@render children()}
-      </div>
-    {/key}
+    <!-- One grid cell: the leaving and the arriving screen overlap while they cross-fade. -->
+    <div class="grid">
+      {#key current}
+        <!-- No landmark: each screen brings its own `main`. -->
+        <div class="col-start-1 row-start-1 min-w-0" data-screen in:fade out:fade>
+          {@render children()}
+        </div>
+      {/key}
+    </div>
   </div>
 
   {#if shell === "bar"}
