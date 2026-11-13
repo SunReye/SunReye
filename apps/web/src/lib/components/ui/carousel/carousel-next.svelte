@@ -23,7 +23,8 @@
 	aria-disabled={!emblaCtx.canScrollNext}
 	disabled={!emblaCtx.canScrollNext}
 	class={cn(
-		"rounded-full absolute touch-manipulation",
+		// Local: boxy: the button's own --radius corners, not upstream's circle; a 44 px hit area on touch (ADR 21, #750).
+		"absolute touch-manipulation touch-hit",
 		emblaCtx.orientation === "horizontal"
 			? "inset-y-0 -end-12 my-auto"
 			: "start-1/2 -bottom-12 -translate-x-1/2 rotate-90",

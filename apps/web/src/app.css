@@ -279,6 +279,8 @@
   --color-export: var(--e-export);
   --color-house: var(--e-house);
   --color-ev: var(--e-ev);
+  --color-under: var(--d-under);
+  --color-over: var(--d-over);
 
   --ease-in-out-move: var(--motion-ease-in-out);
 
@@ -331,6 +333,25 @@
   background-image: var(--noise);
   backdrop-filter: var(--glass-filter-strong) saturate(140%);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
+}
+
+/* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.
+   `:where` keeps the position below any utility, so an absolute or fixed control stays where it is. */
+@utility touch-hit {
+  @media not ((hover: hover) and (pointer: fine)) {
+    :where(&) {
+      position: relative;
+    }
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      translate: -50% -50%;
+    }
+  }
 }
 
 @utility bg-spotlight {

@@ -13,7 +13,8 @@
 <AccordionPrimitive.Content
 	bind:ref
 	data-slot="accordion-content"
-	class="data-open:animate-accordion-down data-closed:animate-accordion-up text-sm overflow-hidden"
+	// Local: the height keyframes run on the motion tokens, so the still tier lands at once (ADR 21, #750).
+	class="data-open:animate-accordion-down data-closed:animate-accordion-up text-sm overflow-hidden duration-(--motion-base) ease-(--motion-ease)"
 	{...restProps}
 >
 	<div

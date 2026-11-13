@@ -26,5 +26,6 @@
 			{heading}
 		</CommandPrimitive.GroupHeading>
 	{/if}
-	<CommandPrimitive.GroupItems {children} />
+	<!-- Local: unset props are left out, as this repo's `exactOptionalPropertyTypes` asks (#750). -->
+	<CommandPrimitive.GroupItems {...children === undefined ? {} : { children }} />
 </CommandPrimitive.Group>

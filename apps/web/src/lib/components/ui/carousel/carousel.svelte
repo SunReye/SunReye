@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { cn, type WithElementRef } from "#lib/utils.js";
+	// Local: the still tier (ADR 21, #750).
+	import { motion } from "#lib/motion/tier.svelte.ts";
 	import {
 		type CarouselAPI,
 		type CarouselProps,
@@ -38,15 +40,16 @@
 	setEmblaContext(carouselState);
 
 	function scrollPrev() {
-		carouselState.api?.scrollPrev();
+		// Local: on the still tier a slide lands at once (ADR 21, #750).
+		carouselState.api?.scrollPrev(motion.still);
 	}
 
 	function scrollNext() {
-		carouselState.api?.scrollNext();
+		carouselState.api?.scrollNext(motion.still);
 	}
 
 	function scrollTo(index: number, jump?: boolean) {
-		carouselState.api?.scrollTo(index, jump);
+		carouselState.api?.scrollTo(index, jump ?? motion.still);
 	}
 
 	function onSelect() {

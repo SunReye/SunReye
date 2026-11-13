@@ -12,6 +12,7 @@
 <MenubarPrimitive.Trigger
 	bind:ref
 	data-slot="menubar-trigger"
-	class={cn("hover:bg-muted aria-expanded:bg-muted rounded-sm px-2 py-1 text-sm font-medium flex items-center outline-hidden select-none", className)}
+	// Local: the highlight fades; full height on touch (ADR 21, #750).
+	class={cn("hover:bg-muted aria-expanded:bg-muted rounded-sm px-2 py-1 touch:h-full text-sm font-medium transition-colors flex items-center outline-hidden select-none", className)}
 	{...restProps}
 />

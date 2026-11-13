@@ -52,14 +52,16 @@
 	});
 </script>
 
+<!-- Local: `value` and `placeholder` are cast, as this repo's `exactOptionalPropertyTypes` refuses their `undefined` (#750). -->
 <RangeCalendarPrimitive.Root
 	bind:ref
-	bind:value
-	bind:placeholder
+	bind:value={value as never}
+	bind:placeholder={placeholder as never}
 	{weekdayFormat}
 	{disableDaysOutsideMonth}
 	class={cn(
-		"p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(8)] group/calendar bg-background p-3 [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+		// Local: 44 px day cells on touch and tabular figures (ADR 21, #750).
+		"p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(8)] touch:[--cell-size:--spacing(11)] tabular-nums group/calendar bg-background p-3 [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
 		className
 	)}
 	{locale}

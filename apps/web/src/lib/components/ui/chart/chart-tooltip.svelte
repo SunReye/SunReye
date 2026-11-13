@@ -60,6 +60,8 @@
 		if (hideLabel || !visibleSeries?.length) return null;
 
 		const [item] = visibleSeries;
+		// Local: `noUncheckedIndexedAccess` leaves the first series possibly unset (#750).
+		if (item === undefined) return null;
 		const tooltipData = chartCtx.tooltip.data;
 
 		// Get the x-axis label value from the raw tooltip data (e.g. a Date or month string)
@@ -106,7 +108,8 @@
 	<div
 		bind:this={ref}
 		class={cn(
-			"grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+			// Local: overlay glass and elevation step 3 instead of bg-background and shadow-xl (ADR 21, #750).
+			"grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 glass px-2.5 py-1.5 text-xs elevation-3",
 			className
 		)}
 		{...restProps}

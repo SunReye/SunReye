@@ -27,7 +27,8 @@
 		{side}
 		{sideOffset}
 		class={cn(
-			"bg-popover text-popover-foreground data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 min-w-36 rounded-md p-1 shadow-md ring-1 duration-100 z-50 origin-(--bits-menubar-content-transform-origin) overflow-hidden",
+			// Local: the app's overlay glass, spring-in and elevation, timed by the motion tokens, instead of upstream's bg-popover, zoom, shadow and duration-100 (ADR 21, #750).
+			"glass text-popover-foreground data-open:animate-spring-in data-open:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 min-w-36 rounded-md p-1 elevation-3 ring-1 duration-(--motion-base) ease-(--motion-ease) z-50 origin-(--bits-menubar-content-transform-origin) overflow-hidden",
 			className
 		)}
 		{...restProps}

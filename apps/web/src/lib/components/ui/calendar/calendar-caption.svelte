@@ -41,9 +41,10 @@
 </script>
 
 {#snippet MonthSelect()}
+	<!-- Local: unset props are left out, as this repo's `exactOptionalPropertyTypes` asks (#746). -->
 	<CalendarMonthSelect
-		{months}
-		{monthFormat}
+		{...months === undefined ? {} : { months }}
+		{...monthFormat === undefined ? {} : { monthFormat }}
 		value={month.month}
 		onchange={(e) => {
 			if (!placeholder) return;
@@ -55,7 +56,11 @@
 {/snippet}
 
 {#snippet YearSelect()}
-	<CalendarYearSelect {years} {yearFormat} value={month.year} />
+	<CalendarYearSelect
+		{...years === undefined ? {} : { years }}
+		{...yearFormat === undefined ? {} : { yearFormat }}
+		value={month.year}
+	/>
 {/snippet}
 
 {#if captionLayout === "dropdown"}

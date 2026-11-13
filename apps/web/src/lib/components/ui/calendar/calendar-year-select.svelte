@@ -13,7 +13,8 @@
 
 <span
 	class={cn(
-		"relative flex rounded-md border border-input shadow-xs has-focus:border-ring has-focus:ring-[3px] has-focus:ring-ring/50",
+		// Local: a shallow well instead of shadow-xs (ADR 21, #750).
+		"relative flex rounded-md border border-input bevel-well has-focus:border-ring has-focus:ring-[3px] has-focus:ring-ring/50",
 		className
 	)}
 >

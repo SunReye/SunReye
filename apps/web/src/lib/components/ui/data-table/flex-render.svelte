@@ -7,11 +7,14 @@
 	import type { Attachment } from "svelte/attachments";
 	type Props = {
 		/** The cell or header field of the current cell's column definition. */
-		content?: TContext extends HeaderContext<TData, TValue>
-			? ColumnDefTemplate<HeaderContext<TData, TValue>>
-			: TContext extends CellContext<TData, TValue>
-				? ColumnDefTemplate<CellContext<TData, TValue>>
-				: never;
+		// Local: `| undefined`, as a column definition leaves either unset and this repo's `exactOptionalPropertyTypes` asks (#750).
+		content?:
+			| (TContext extends HeaderContext<TData, TValue>
+					? ColumnDefTemplate<HeaderContext<TData, TValue>>
+					: TContext extends CellContext<TData, TValue>
+						? ColumnDefTemplate<CellContext<TData, TValue>>
+						: never)
+			| undefined;
 		/** The result of the `getContext()` function of the header or cell */
 		context: TContext;
 

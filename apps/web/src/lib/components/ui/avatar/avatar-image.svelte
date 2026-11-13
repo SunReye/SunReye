@@ -12,6 +12,7 @@
 <AvatarPrimitive.Image
 	bind:ref
 	data-slot="avatar-image"
-	class={cn("rounded-full aspect-square size-full object-cover", className)}
+	// Local: fades in when it finishes loading (bits-ui shows it then, with an animation starting at that moment), on the motion item's duration and easing (#38).
+	class={cn("rounded-full aspect-square size-full object-cover animate-in fade-in-0 duration-(--motion-base) ease-(--motion-ease)", className)}
 	{...restProps}
 />

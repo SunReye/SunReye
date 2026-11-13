@@ -16,10 +16,12 @@
 <SelectPrimitive.Item
 	bind:ref
 	{value}
-	{label}
+	// Local: unset props are left out, as this repo's `exactOptionalPropertyTypes` asks (#750).
+	{...label === undefined ? {} : { label }}
 	data-slot="select-item"
 	class={cn(
-		"focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 relative flex w-full cursor-default items-center outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		// Local: highlight fades, and the pointer is the theme's (`cursor-default` would override it), #37. 44 px rows on touch (ADR 21, #750).
+		"touch:min-h-11 focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 relative flex w-full items-center outline-hidden select-none transition-colors data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		"data-highlighted:bg-accent data-highlighted:text-accent-foreground",
 		className
 	)}

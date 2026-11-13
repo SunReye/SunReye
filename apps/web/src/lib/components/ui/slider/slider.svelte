@@ -31,7 +31,8 @@ get along, so we shut typescript up by casting `value` to `never`.
 			data-slot="slider-track"
 			data-orientation={orientation}
 			class={cn(
-				"bg-muted rounded-full data-horizontal:h-1.5 data-horizontal:w-full data-vertical:h-full data-vertical:w-1.5 relative grow overflow-hidden data-horizontal:w-full data-vertical:h-full"
+				// Local: kbase's boxy hairline track (ADR 21).
+				"bg-muted ring-1 ring-inset ring-border data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1 relative grow overflow-hidden data-horizontal:w-full data-vertical:h-full"
 			)}
 		>
 			<SliderPrimitive.Range
@@ -41,11 +42,15 @@ get along, so we shut typescript up by casting `value` to `never`.
 				)}
 			/>
 		</span>
+		<!-- Local: the thumb is the `slider` a screen reader meets, so it takes the root's name and value text (#746). -->
 		{#each thumbItems as thumb (thumb.index)}
 			<SliderPrimitive.Thumb
 				data-slot="slider-thumb"
 				index={thumb.index}
-				class="border-primary ring-ring/50 size-4 rounded-full border bg-white shadow-sm transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50"
+				aria-label={restProps["aria-label"]}
+				aria-valuetext={restProps["aria-valuetext"]}
+				// Local: kbase's boxy thumb (ADR 21); a 44 px hit area on touch (#750).
+				class="border-foreground/70 ring-ring/50 h-4 w-2.5 rounded-lg border bg-card shadow-sm touch:after:absolute touch:after:-inset-x-5 touch:after:-inset-y-4 transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50"
 			/>
 		{/each}
 	{/snippet}

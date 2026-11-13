@@ -20,6 +20,7 @@
 	bind:value
 	bind:ref
 	data-slot="command"
-	class={cn("bg-popover text-popover-foreground rounded-xl! p-1 flex size-full flex-col overflow-hidden", className)}
+	// Local: inside a dialog or popover the overlay's glass shows through (ADR 21, #750).
+	class={cn("bg-popover in-data-[slot=dialog-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent text-popover-foreground rounded-xl! p-1 flex size-full flex-col overflow-hidden", className)}
 	{...restProps}
 />

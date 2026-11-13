@@ -55,15 +55,17 @@
 <!--
 Discriminated Unions + Destructing (required for bindable) do not
 get along, so we shut typescript up by casting `value` to `never`.
+Local: `placeholder` too, as this repo's `exactOptionalPropertyTypes` refuses its `undefined` (#746).
 -->
 <CalendarPrimitive.Root
 	bind:value={value as never}
 	bind:ref
-	bind:placeholder
+	bind:placeholder={placeholder as never}
 	{weekdayFormat}
 	{disableDaysOutsideMonth}
 	class={cn(
-		"p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(8)] group/calendar bg-background in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+		// Local: 44 px day cells on touch and tabular figures (ADR 21, #750).
+		"p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(8)] touch:[--cell-size:--spacing(11)] tabular-nums group/calendar bg-background in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
 		className
 	)}
 	{locale}
