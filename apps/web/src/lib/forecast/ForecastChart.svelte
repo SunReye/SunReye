@@ -11,7 +11,7 @@
   import BandChart from "../range/BandChart.svelte";
   import { kwh } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
-  import { measuredBar, type Line } from "./forecast.ts";
+  import { stackOf, type Line } from "./forecast.ts";
   import { ForecastData } from "./forecast-data.svelte.ts";
   import ForecastFigures from "./ForecastFigures.svelte";
   import LinePicker from "./LinePicker.svelte";
@@ -33,7 +33,16 @@
   let chosen = $state<string | undefined>();
   const line = $derived(lines.find((l) => l.series === chosen) ?? lines[0]!);
 
-  const data = new ForecastData(() => ({ core, device, series: line.series, route }));
+  const stack = $derived(stackOf(line, lines));
+
+  const data = new ForecastData(() => ({
+    core,
+    device,
+    series: line.series,
+    parts: stack.parts,
+    route,
+  }));
+
   const view = $derived(data.view);
 
   const note = $derived(
@@ -57,7 +66,7 @@
 
   <BandChart
     bands={data.bands}
-    up={[measuredBar()]}
+    up={stack.up}
     markLabel={m.range_forecast()}
     ghostLabel={m.forecast_expected()}
     via={data.via}

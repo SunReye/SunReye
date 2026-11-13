@@ -26,13 +26,22 @@ export class ForecastData {
     };
   });
 
-  constructor(input: () => { core: Core; device: number; series: string; route: RangeRoute }) {
+  constructor(
+    input: () => {
+      core: Core;
+      device: number;
+      series: string;
+      /** MPPT input series stacked in the bars; empty for one bar. */
+      parts: readonly string[];
+      route: RangeRoute;
+    },
+  ) {
     this.#data = new RangeData(
       () => input().route,
       (from, to, now) => {
-        const { core, device, series, route } = input();
+        const { core, device, series, parts, route } = input();
 
-        return read(core, device, series, periodOf(route.range), from, to, now);
+        return read(core, device, series, parts, periodOf(route.range), from, to, now);
       },
     );
   }
@@ -64,6 +73,7 @@ async function read(
   core: Readonly<Pick<Core, "statistics" | "forecasts">>,
   device: number,
   series: string,
+  parts: readonly string[],
   period: ReturnType<typeof periodOf>,
   from: Readonly<Date>,
   to: Readonly<Date>,
@@ -71,10 +81,14 @@ async function read(
 ) {
   const until = Math.min(to.getTime(), now);
 
-  const [measured, forecast] = await Promise.all([
-    from.getTime() < until ? rollups(core, device, series, period, from, new Date(until)) : [],
+  const measuredOf = (s: string) =>
+    from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [];
+
+  const [measured, forecast, ...split] = await Promise.all([
+    measuredOf(series),
     planned(core, device, series, from, to),
+    ...parts.map((s) => measuredOf(s)),
   ]);
 
-  return { series, measured, forecast };
+  return { series, measured, forecast, parts: split };
 }
