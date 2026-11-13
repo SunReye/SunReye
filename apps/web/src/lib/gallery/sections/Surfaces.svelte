@@ -7,6 +7,7 @@
   import * as Card from "../../components/ui/card/index.js";
   import * as Empty from "../../components/ui/empty/index.js";
   import * as Item from "../../components/ui/item/index.js";
+  import { Pressable } from "../../components/ui/pressable/index.js";
   import Demo from "../Demo.svelte";
 </script>
 
@@ -65,4 +66,11 @@
   <Empty.Root size="dense" class="w-64 border">
     <Empty.Description>No devices.</Empty.Description>
   </Empty.Root>
+</Demo>
+
+<Demo name="pressable">
+  <Pressable class="flex w-64 items-baseline justify-between border px-4 py-3 hover:bg-foreground/[0.04]">
+    <span class="text-sm text-muted-foreground">Battery</span>
+    <span class="font-semibold tabular-nums">1.2 kW</span>
+  </Pressable>
 </Demo>

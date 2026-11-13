@@ -1,5 +1,6 @@
 <!-- One setting and its current value; a writable row opens the value editor (ADR 21). -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Control } from "./groups.ts";
@@ -24,9 +25,8 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <button
+    <Pressable
       {...props}
-      type="button"
       onclick={(e) => {
         if (control.writable) onedit(control, e.currentTarget);
       }}
@@ -49,6 +49,6 @@
         <span class="text-[15px] font-medium whitespace-nowrap tabular-nums">{value}</span>
         {#if control.writable}<ChevronRight class="size-4 text-muted-foreground" />{/if}
       </Item.Actions>
-    </button>
+    </Pressable>
   {/snippet}
 </Item.Root>

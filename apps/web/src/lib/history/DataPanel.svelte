@@ -1,5 +1,6 @@
 <!-- How complete the record is: coverage of the range and every gap, each opening its day. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import { m } from "../paraglide/messages.js";
@@ -75,8 +76,7 @@
       <ul class="divide-y divide-border/60 border-y border-border/60">
         {#each rows as g (g.key)}
           <li>
-            <button
-              type="button"
+            <Pressable
               class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
               onclick={() => {
                 onopen(g.range);
@@ -89,7 +89,7 @@
               >
               <span class="font-semibold tabular-nums">{g.hours} h</span>
               <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
-            </button>
+            </Pressable>
           </li>
         {/each}
       </ul>

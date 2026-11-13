@@ -241,7 +241,7 @@ test("the plant page shows the plant's timezone and location and saves them", as
 
   const screen = await opened(transport, "plant");
 
-  await expect.element(screen.getByRole("combobox")).toHaveValue("Europe/Vienna");
+  await expect.element(screen.getByRole("combobox")).toHaveTextContent("Europe/Vienna");
   await expect.element(screen.getByRole("spinbutton", { name: "Breitengrad" })).toHaveValue(48.1);
 
   await userEvent.click(screen.getByRole("button", { name: "Speichern" }));

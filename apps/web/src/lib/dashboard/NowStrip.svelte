@@ -1,5 +1,6 @@
 <!-- The "now" strip (ADR 21): price, PV still to come and the weather, one surface divided by hairlines. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import * as Card from "#lib/components/ui/card/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
@@ -91,7 +92,7 @@
   role="group"
   aria-label={m.dash_now()}
 >
-  <button type="button" class={cell} onclick={() => onopen("price")}>
+  <Pressable class={cell} onclick={() => onopen("price")}>
     <span class={label}>{priceLabel}</span>
     <!-- A currency subunit symbol, the same in every locale. -->
     <span class={figure}
@@ -99,18 +100,18 @@
       <span class={unit}>ct/kWh</span></span
     >
     <span class="{sub} {levelClass}">{levelWord}</span>
-  </button>
-  <button type="button" class={cell} onclick={() => onopen("forecast")}>
+  </Pressable>
+  <Pressable class={cell} onclick={() => onopen("forecast")}>
     <span class={label}>{m.dash_pv_left()}</span>
     <span class={figure}><AnimatedNumber value={remaining} /> <span class={unit}>kWh</span></span>
     <span class={sub}>{pvOf}</span>
-  </button>
-  <button type="button" class={cell} onclick={() => onopen("weather")}>
+  </Pressable>
+  <Pressable class={cell} onclick={() => onopen("weather")}>
     <span class={label}>{m.dash_weather()}</span>
     <span class={figure}
       ><AnimatedNumber value={celsius} digits={0} />
       <span class={unit}>°C</span></span
     >
     <span class={sub}>{skyWord}</span>
-  </button>
+  </Pressable>
 </Card.Root>

@@ -1,5 +1,6 @@
 <!-- One value of a time-of-use slot: its field above, its value below; it opens the value editor. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Control } from "./groups.ts";
 
   let {
@@ -24,8 +25,7 @@
   }
 </script>
 
-<button
-  type="button"
+<Pressable
   onclick={open}
   aria-label={`${control.setting.name ?? control.setting.key} ${value}`}
   aria-disabled={!control.writable}
@@ -38,4 +38,4 @@
 >
   <span class="w-full truncate text-xs text-muted-foreground">{caption}</span>
   <span class="text-[15px] font-medium whitespace-nowrap tabular-nums">{value}</span>
-</button>
+</Pressable>

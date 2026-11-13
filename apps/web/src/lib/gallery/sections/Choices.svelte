@@ -57,9 +57,9 @@
     <Select.Content>
       <Select.Group>
         <Select.Label>Timezone</Select.Label>
-        {#each ZONES as option (option.value)}
-          <Select.Item value={option.value} label={option.label} />
-        {/each}
+        <Select.Item value="berlin" label="Europe/Berlin" />
+        <Select.Item value="vienna" label="Europe/Vienna" />
+        <Select.Item value="zurich" label="Europe/Zurich" disabled />
       </Select.Group>
     </Select.Content>
   </Select.Root>

@@ -7,8 +7,11 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "./fields.ts";
+  import ComboboxField from "../components/combobox-field.svelte";
+  import { FIELD } from "./fields.ts";
   import Refusal from "./Refusal.svelte";
+
+  const uid = $props.id();
 
   let {
     core,
@@ -83,14 +86,16 @@
 
 <form onsubmit={submit} class="flex flex-col gap-4 p-4">
   {#if current === undefined}<p class="text-sm text-muted-foreground">{m.plant_hint()}</p>{/if}
-  <label class={FIELD}>
-    {m.plant_timezone()}
-    <select bind:value={zone} class={SELECT}>
-      {#each zones as option (option)}
-        <option value={option}>{option}</option>
-      {/each}
-    </select>
-  </label>
+  <div class={FIELD}>
+    <label for="{uid}-zone">{m.plant_timezone()}</label>
+    <ComboboxField
+      id="{uid}-zone"
+      bind:value={zone}
+      options={zones}
+      search={m.plant_timezone_search()}
+      none={m.plant_timezone_none()}
+    />
+  </div>
   <div class="grid grid-cols-2 gap-3">
     <label class={FIELD}>
       {m.plant_latitude()}

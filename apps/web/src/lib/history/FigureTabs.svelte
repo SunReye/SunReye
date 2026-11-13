@@ -1,5 +1,6 @@
 <!-- The range's answer: four figures, each the door to its own view (ADR 21). -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import AnimatedNumber from "../components/animated-number.svelte";
@@ -37,6 +38,10 @@
 
   const unitClass =
     "text-[10px] font-medium tracking-normal text-muted-foreground @[640px]:text-sm";
+
+  /** A figure tab: the pressable gives it its focus ring and fade. */
+  const FIGURE =
+    "relative flex min-w-0 flex-col items-start gap-1 px-2 py-3 text-left hover:bg-foreground/[0.04] active:bg-foreground/[0.08] sm:px-4";
 </script>
 
 <div
@@ -46,11 +51,10 @@
 >
   {#each figures as f (f.id)}
     {@const on = metric === f.id}
-    <button
-      type="button"
+    <Pressable
       role="tab"
       aria-selected={on}
-      class={["figure", on && "on"]}
+      class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
       onclick={() => {
         pick(f.id);
       }}
@@ -78,7 +82,7 @@
           ><span class="hidden @[640px]:inline">{" "}{against}</span>
         {:else}&nbsp;{/if}
       </span>
-    </button>
+    </Pressable>
   {/each}
   {@render plantFigure()}
   <!-- Which view is open: the brand marks the control, never the data. -->
@@ -88,11 +92,10 @@
 {#snippet plantFigure()}
   {@const on = metric === "plant"}
   {@const shown = !quiet && !plant.learning}
-  <button
-    type="button"
+  <Pressable
     role="tab"
     aria-selected={on}
-    class={["figure", on && "on"]}
+    class={[FIGURE, on && "bg-foreground/[0.05] hover:bg-foreground/[0.07]"]}
     onclick={() => {
       pick("plant");
     }}
@@ -118,27 +121,10 @@
         >{plant.battery ? m.stats_plant_sub_battery() : m.stats_plant_sub()}</span
       >
     </span>
-  </button>
+  </Pressable>
 {/snippet}
 
 <style>
-  .figure {
-    position: relative;
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-    padding: 0.75rem 0.5rem;
-    text-align: left;
-    outline: none;
-    transition: background-color 120ms var(--motion-ease);
-  }
-  @media (width >= 40rem) {
-    .figure {
-      padding-inline: 1rem;
-    }
-  }
   .label {
     max-width: 100%;
     overflow: hidden;
@@ -163,23 +149,5 @@
     .value {
       font-size: 1.875rem;
     }
-  }
-  .figure.on {
-    background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
-  }
-  .figure:hover {
-    background-color: color-mix(in oklab, var(--foreground) 4%, transparent);
-  }
-  .figure.on:hover {
-    background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
-  }
-  .figure:active {
-    background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
-  }
-  .figure:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--ring);
-  }
-  :global([data-motion="still"]) .figure {
-    transition: none;
   }
 </style>

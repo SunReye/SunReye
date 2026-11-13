@@ -3,6 +3,7 @@
   sheet that lists the catalogue by manufacturer and family, filtered as the admin types.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Search from "@lucide/svelte/icons/search";
   import { onMount } from "svelte";
@@ -49,8 +50,7 @@
   }
 </script>
 
-<button
-  type="button"
+<Pressable
   aria-label={label}
   aria-haspopup="dialog"
   class="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-transparent px-2.5 text-left text-base bevel-well outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
@@ -70,7 +70,7 @@
     <span class="truncate text-muted-foreground">{m.profile_choose()}</span>
   {/if}
   <ChevronDown class="ml-auto size-4 shrink-0 text-muted-foreground" />
-</button>
+</Pressable>
 
 <ResponsiveSheet bind:open label={m.profile_choose()}>
   <div class="flex flex-col gap-3 px-4 pt-1">

@@ -1,5 +1,6 @@
 <!-- At most three things worth a look, each leading to its cause. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import Info from "@lucide/svelte/icons/info";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -15,9 +16,8 @@
   <ul class="divide-y divide-border/60 border-t border-border/60">
     {#each notes as n (n.text)}
       <li>
-        <button
-          type="button"
-          class="row flex w-full items-start gap-2.5 px-4 py-2.5 text-left"
+        <Pressable
+          class="flex w-full items-start gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] active:bg-foreground/[0.08]"
           onclick={() => {
             haptics.soft();
             onnote(n);
@@ -31,27 +31,8 @@
             ></span
           >
           <ChevronRight class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        </button>
+        </Pressable>
       </li>
     {/each}
   </ul>
 </section>
-
-<style>
-  .row {
-    outline: none;
-    transition: background-color 120ms var(--motion-ease);
-  }
-  .row:hover {
-    background-color: color-mix(in oklab, var(--foreground) 4%, transparent);
-  }
-  .row:active {
-    background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
-  }
-  .row:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--ring);
-  }
-  :global([data-motion="still"]) .row {
-    transition: none;
-  }
-</style>

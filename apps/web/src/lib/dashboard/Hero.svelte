@@ -4,6 +4,7 @@
   once the page is idle, behind the studio stand-in or the flow it replaces, and fades in.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, Live } from "../api/core.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
   import Flow2d from "../flow/Flow2d.svelte";
@@ -74,12 +75,11 @@
         role="status"
       >
         {m.dash_scene_failed()}
-        <button
-          type="button"
+        <Pressable
           class="rounded-sm font-medium text-brand outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
           onclick={() => {
             load.retry();
-          }}>{m.dash_scene_retry()}</button
+          }}>{m.dash_scene_retry()}</Pressable
         >
       </span>
     {/if}

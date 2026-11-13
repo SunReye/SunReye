@@ -1,7 +1,7 @@
 <!-- How well the solar forecast held: measured production against what was forecast, and what is still expected. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core } from "../api/core.ts";
-  import type { Target } from "../dashboard/today.ts";
   import { m } from "../paraglide/messages.js";
   import BandChart from "../range/BandChart.svelte";
   import { kwh } from "../range/format.ts";
@@ -29,7 +29,7 @@
     onstrings: () => void;
   } = $props();
 
-  let targets = $state.raw<readonly Target[]>([]);
+  let targets = $state.raw<Awaited<ReturnType<typeof readForecast>>>([]);
 
   $effect(() => {
     const [from, to] = [got.spans[0]?.[0] ?? 0, got.spans.at(-1)?.[1] ?? 0];
@@ -93,10 +93,9 @@
   </dl>
   <p class="max-w-[68ch] text-xs text-muted-foreground">
     {m.stats_forecast_note()}
-    <button
-      type="button"
+    <Pressable
       class="font-medium text-brand underline-offset-2 outline-none hover:underline focus-visible:underline"
-      onclick={onstrings}>{m.stats_forecast_correction()}</button
+      onclick={onstrings}>{m.stats_forecast_correction()}</Pressable
     >
   </p>
 </div>

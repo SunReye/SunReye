@@ -4,14 +4,14 @@
   hour. A table, because strings are compared across the same attributes.
 -->
 <script lang="ts">
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import Info from "@lucide/svelte/icons/info";
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, PvString } from "../api/core.ts";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { kwh as energy, num } from "../range/format.ts";
   import type { RangeRoute } from "../range/route.svelte.ts";
   import HeatGrid from "./HeatGrid.svelte";
+  import StringFlag from "./StringFlag.svelte";
   import { inputCorrections, modulePeaks, MONTHS, stringEnergy } from "./string-energy.ts";
   import { correctionGrid, stringRows, type InputCorrection, type StringRow } from "./strings.ts";
 
@@ -97,32 +97,26 @@
   };
 
   const SCALE = [0.8, 0.84, 0.88, 0.92, 0.96, 1, 1.04, 1.08, 1.12, 1.16, 1.2];
-</script>
 
-{#snippet flagIcon(r: StringRow, label: boolean)}
-  {#if r.flag === "weak"}<TriangleAlert
-      class="mt-0.5 size-4 shrink-0 text-warning"
-      aria-label={label ? m.strings_warning() : undefined}
-    />{:else if r.flag === "face"}<Info
-      class="mt-0.5 size-4 shrink-0 text-muted-foreground"
-      aria-label={label ? m.strings_hint() : undefined}
-    />{/if}
-{/snippet}
+  /** The table's columns, shared by its head and its rows. */
+  const COLS =
+    "grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-1 @[520px]:grid-cols-[minmax(0,1fr)_7rem_6.5rem] @[520px]:gap-x-5";
+</script>
 
 <div class="@container flex flex-col gap-4">
   <div role="table" aria-label={m.strings_table()} class="text-sm">
-    <div role="row" class="cols border-b border-border/60 pb-1.5 text-xs text-muted-foreground">
+    <div role="row" class={[COLS, "border-b border-border/60 pb-1.5 text-xs text-muted-foreground"]}>
       <span role="columnheader">{m.strings_string()}</span>
       <span role="columnheader" class="text-right">{m.strings_yield()}</span>
       <span role="columnheader" class="text-right">{m.strings_ratio()}</span>
     </div>
     {#each rows as r (r.id)}
-      <button
-        type="button"
+      <Pressable
         role="row"
         aria-selected={r.id === chosen?.id}
         class={[
-          "cols line w-full border-b border-border/60 py-2 text-left",
+          COLS,
+          "w-full border-b border-border/60 py-2 text-left hover:bg-foreground/[0.04]",
           r.id === chosen?.id && "bg-foreground/[0.05]",
         ]}
         onclick={() => {
@@ -131,7 +125,7 @@
         }}
       >
         <span role="cell" class="flex min-w-0 items-start gap-1.5">
-          {@render flagIcon(r, true)}
+          <StringFlag flag={r.flag} label />
           <span class="min-w-0">
             <span class="line-clamp-2 font-medium">{r.name}</span>
             <span class="block truncate text-xs text-muted-foreground tabular-nums"
@@ -151,7 +145,7 @@
           >
         </span>
         <span role="cell" class="text-right font-semibold tabular-nums">{ratioText(r.ratio)}</span>
-      </button>
+      </Pressable>
     {/each}
     <p class="pt-2 text-xs text-muted-foreground">{m.strings_foot({ range: route.label })}</p>
   </div>
@@ -167,7 +161,7 @@
       </h3>
       {#if note(chosen)}
         <p class="flex max-w-[68ch] items-start gap-2 text-sm text-pretty">
-          {@render flagIcon(chosen, false)}
+          <StringFlag flag={chosen.flag} label={false} />
           {note(chosen)}
         </p>
       {/if}
@@ -198,32 +192,3 @@
     </section>
   {/if}
 </div>
-
-<style>
-  .cols {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 5.5rem 5.5rem;
-    column-gap: 0.75rem;
-    align-items: center;
-    padding-inline: 0.25rem;
-  }
-
-  @container (min-width: 520px) {
-    .cols {
-      grid-template-columns: minmax(0, 1fr) 7rem 6.5rem;
-      column-gap: 1.25rem;
-    }
-  }
-
-  .line {
-    outline: none;
-  }
-
-  .line:hover {
-    background-color: color-mix(in oklab, var(--foreground) 4%, transparent);
-  }
-
-  .line:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--ring);
-  }
-</style>

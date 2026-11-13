@@ -1,5 +1,6 @@
 <!-- Hosts that answer but match no profile: folded away under one row, as a network may hold many. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import type { Snippet } from "svelte";
   import { haptics } from "../haptics.ts";
@@ -13,8 +14,7 @@
 </script>
 
 <section class="flex flex-col border-t border-border/60">
-  <button
-    type="button"
+  <Pressable
     aria-expanded={open}
     aria-controls={id}
     class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/60 active:bg-muted"
@@ -35,7 +35,7 @@
         open && "rotate-180",
       ]}
     />
-  </button>
+  </Pressable>
   {#if open}
     <ul {id} class="divide-y divide-border/60 border-t border-border/60">
       {@render children()}

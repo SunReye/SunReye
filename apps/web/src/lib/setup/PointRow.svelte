@@ -1,5 +1,6 @@
 <!-- One measurement point: its tile, name and device, and its live power with what it means. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import PowerNumber from "../components/power-number.svelte";
   import { STATES } from "../flow/node-words.ts";
@@ -53,13 +54,12 @@
 {#if onedit === undefined}
   <div class="flex min-h-14 items-center gap-3 px-4 py-2">{@render body()}</div>
 {:else}
-  <button
-    type="button"
+  <Pressable
     class="flex min-h-14 w-full cursor-pointer items-center gap-3 px-4 py-2 outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:bg-foreground/[0.06]"
     aria-label={m.topology_edit({ name })}
     onclick={onedit}
   >
     {@render body()}
     <ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-  </button>
+  </Pressable>
 {/if}

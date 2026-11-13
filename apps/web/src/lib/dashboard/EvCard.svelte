@@ -1,5 +1,6 @@
 <!-- One EVCC loadpoint (ADR 10): what it charges, the vehicle's state of charge and its target. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Car from "@lucide/svelte/icons/car";
   import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
@@ -38,8 +39,7 @@
 </script>
 
 <Card.Root size="sm" class="glass-ambient shrink-0 gap-0 py-0">
-  <button
-    type="button"
+  <Pressable
     class="flex items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08]"
     onclick={() => {
       onopen(formatFigure({ kind: "ev", id: device }));
@@ -66,7 +66,7 @@
         ></span
       >
     </span>
-  </button>
+  </Pressable>
 </Card.Root>
 
 <style>
