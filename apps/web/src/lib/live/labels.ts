@@ -5,6 +5,7 @@ import type { CarPlace, Equipment, Face, Geometry, Mount, Point } from "../build
 import type { Panel } from "../builder/scene.ts";
 import { parked, type Parked } from "../cars/parked.ts";
 import { formatFigure } from "../detail/figures.ts";
+import type { EquipmentKind } from "../equipment-kinds.ts";
 
 /** The `plant` computed device's fixed id (ADR 15). */
 export const PLANT = "4294967294";
@@ -34,7 +35,10 @@ export interface Live3d {
 }
 
 /** What a chip shows; signs follow ADR 4 (grid positive importing, battery charging). */
-export type ChipKind = "string" | "inverter" | "battery" | "grid" | "house" | "car";
+export type ChipKind = Extract<
+  EquipmentKind,
+  "string" | "inverter" | "battery" | "grid" | "house" | "ev"
+>;
 
 /** One label chip (ADR 20). */
 export interface Chip {
@@ -96,7 +100,7 @@ export function liveScene(input: Live3d): LiveScene {
       ...cars.map(({ device, at, above, watts, soc }) => {
         const id = formatFigure({ kind: "ev", id: device });
 
-        return chip(id, id, "car", { watts, soc }, above, at);
+        return chip(id, id, "ev", { watts, soc }, above, at);
       }),
     ],
     shares: input.panels.map(({ string }) =>

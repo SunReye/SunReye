@@ -3,35 +3,13 @@
   Ported from the prototype's Scene3d chips. Tapping opens the equipment's detail sheet.
 -->
 <script lang="ts">
-  import BatteryCharging from "@lucide/svelte/icons/battery-charging";
-  import Car from "@lucide/svelte/icons/car";
-  import Cpu from "@lucide/svelte/icons/cpu";
-  import House from "@lucide/svelte/icons/house";
-  import Sun from "@lucide/svelte/icons/sun";
-  import UtilityPole from "@lucide/svelte/icons/utility-pole";
   import AnimatedNumber from "../components/animated-number.svelte";
   import { Button } from "../components/ui/button/index.js";
+  import { KIND_ICONS, KIND_NAMES } from "../equipment-kinds.ts";
   import { m } from "../paraglide/messages.js";
-  import type { Chip, ChipKind } from "./labels.ts";
+  import type { Chip } from "./labels.ts";
 
   let { chip, onselect }: { chip: Chip; onselect: (id: string) => void } = $props();
-
-  const NAMES: Readonly<Record<Exclude<ChipKind, "string">, () => string>> = {
-    inverter: m.detail_inverter,
-    battery: m.dash_battery,
-    grid: m.detail_grid,
-    house: m.dash_house,
-    car: m.dash_ev,
-  };
-
-  const ICONS = {
-    string: Sun,
-    inverter: Cpu,
-    battery: BatteryCharging,
-    grid: UtilityPole,
-    house: House,
-    car: Car,
-  } satisfies Record<ChipKind, typeof Sun>;
 
   // Whole class names, so Tailwind finds them.
   const DOTS = {
@@ -60,8 +38,6 @@
       case "string":
       case "inverter":
         return "solar";
-      case "car":
-        return "ev";
       default:
         return chip.kind;
     }
@@ -76,9 +52,9 @@
     return (chip.kind === "battery") === watts > 0 ? "↑" : "↓";
   });
 
-  const name = $derived(chip.kind === "string" ? (chip.name ?? "") : NAMES[chip.kind]());
+  const name = $derived(chip.name ?? KIND_NAMES[chip.kind]());
 
-  const Icon = $derived(ICONS[chip.kind]);
+  const Icon = $derived(KIND_ICONS[chip.kind]);
 </script>
 
 <Button

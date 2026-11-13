@@ -5,11 +5,12 @@
   the node's detail sheet.
 -->
 <script lang="ts">
+  import { KIND_ICONS } from "../equipment-kinds.ts";
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import { nodeGlow } from "./flow-pulse.ts";
-  import { ARROWS, ICONS, nodeLabel, STATES } from "./node-words.ts";
+  import { ARROWS, nodeLabel, STATES } from "./node-words.ts";
   import type { GraphNode } from "./schematic.ts";
 
   let {
@@ -30,7 +31,7 @@
 
   const label = $derived(nodeLabel(node));
 
-  const Icon = $derived(ICONS[node.kind]);
+  const Icon = $derived(KIND_ICONS[node.kind]);
 
   const active = $derived(node.flow !== "idle");
 

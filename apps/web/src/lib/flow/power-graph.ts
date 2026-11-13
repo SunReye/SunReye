@@ -123,7 +123,7 @@ function loadBottom(r: FlowReading): BottomSpec | null {
   // Negative when an unmetered producer on the house net outweighs consumption.
   const s = sense(value, { flow: "out", state: "consuming" }, { flow: "in", state: "feeding" });
 
-  return { id: "house", kind: "load", value, accent: HOUSE, estimated: false, ...s };
+  return { id: "house", kind: "house", value, accent: HOUSE, estimated: false, ...s };
 }
 
 function generatorBottom(r: FlowReading): BottomSpec | null {
@@ -151,7 +151,7 @@ function chargerBottom(r: FlowReading): BottomSpec | null {
 
   return {
     id: "ev",
-    kind: "charger",
+    kind: "ev",
     value: c.power,
     flow,
     state,

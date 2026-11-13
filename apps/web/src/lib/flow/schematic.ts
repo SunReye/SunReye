@@ -1,4 +1,5 @@
 // The 2D power flow's schematic (ADR 21): nodes, rails and their anchors in the safe box.
+import type { EquipmentKind } from "../equipment-kinds.ts";
 import type { RailPulse } from "./flow-pulse.ts";
 
 // Flow relative to the inverter: `in` = power arriving (production, discharge, import),
@@ -14,7 +15,10 @@ export type Pt = { readonly x: number; readonly y: number };
  */
 export type Orientation = "landscape" | "portrait";
 
-export type NodeKind = "pv" | "battery" | "load" | "generator" | "grid" | "charger";
+export type NodeKind = Extract<
+  EquipmentKind,
+  "pv" | "battery" | "house" | "generator" | "grid" | "ev"
+>;
 
 /** What a node is doing, worded by the view. */
 export type NodeState =

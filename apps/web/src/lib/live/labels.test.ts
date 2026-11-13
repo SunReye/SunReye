@@ -195,7 +195,7 @@ test("a connected car carries its charge power and its vehicle's SOC above it", 
   expect(chips.at(-1)).toEqual({
     key: "ev-7",
     id: "ev-7",
-    kind: "car",
+    kind: "ev",
     name: null,
     watts: 7360,
     soc: 63,
