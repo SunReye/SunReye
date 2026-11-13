@@ -63,6 +63,8 @@ export class SceneLoad {
   /** The flow shows instead: the next 3D fades in over it. */
   #leave(): () => void {
     this.#first = false;
+    // Already, so a switch back to 3D never drops the flow for a frame before the load begins.
+    this.under = "flow";
 
     return () => {};
   }

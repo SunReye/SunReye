@@ -103,7 +103,8 @@ test("a failed load leaves the 2D flow with a retry that loads the scene", async
   await hero();
 
   await expect.element(page.getByText(/^3D-Ansicht nicht geladen/u), SLOW).toBeVisible();
-  expect(flowShown()).toBe(true);
+  // The flow's nodes fill in the frames after the hero mounts.
+  await expect.poll(flowShown).toBe(true);
 
   types = "answer";
   await page.getByRole("button", { name: "Erneut versuchen" }).click();
@@ -117,6 +118,7 @@ test("the first switch from 2D keeps the flow until the scene fades in over it",
   types = "hold";
 
   await hero();
+  await expect.poll(flowShown).toBe(true);
   // The load's own clock: its one-second notice is due when the test says so.
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   await page.getByRole("radio", { name: "3D" }).click();
