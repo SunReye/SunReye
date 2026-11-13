@@ -156,21 +156,21 @@ test("many bars arrive a share per frame, so no one frame restyles them all", as
     flushSync();
   };
 
-  const many = Array.from({ length: 40 }, (_, i) => band(`b${i}`, 1 + (i % 5)));
+  const many = Array.from({ length: 80 }, (_, i) => band(`b${i}`, 1 + (i % 5)));
   const screen = await render(BandChart, props(many));
 
   await expect.poll(() => bars(screen.container).length).toBeGreaterThan(0);
 
   const first = bars(screen.container).length;
 
-  expect(first).toBeLessThan(40);
+  expect(first).toBeLessThan(80);
   // The next share waits for the frame after the one that drew the first.
   frame();
   expect(bars(screen.container)).toHaveLength(first);
   frame();
-  expect(bars(screen.container)).toHaveLength(Math.min(40, 2 * first));
+  expect(bars(screen.container)).toHaveLength(Math.min(80, 2 * first));
   frame();
   frame();
   frame();
-  expect(bars(screen.container)).toHaveLength(40);
+  expect(bars(screen.container)).toHaveLength(80);
 });

@@ -102,11 +102,11 @@
 
   const bars = new Presence<View>();
   const ticks = new Presence<Tick>();
-  /** Bars drawn: about 100 elements take a change per frame, so no frame restyles them all. */
+  /** Bars drawn: a month's take a change in one frame, longer ranges a share per frame. */
   const drawn = new Stagger(
     () => bars.list,
     (k) => k.key,
-    16,
+    32,
   );
   let arrivals = $state(1);
   let seen = -1;
