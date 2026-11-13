@@ -35,3 +35,16 @@ export function roleFlow(role: string): Flow {
 
   return match?.[1] ?? "house";
 }
+
+/** MPPT inputs stacked in one bar: the solar colour first, then neighbours on the warm side. */
+const MPPT = [
+  "var(--e-solar)",
+  "oklch(0.62 0.17 35)",
+  "oklch(0.8 0.13 100)",
+  "oklch(0.55 0.13 15)",
+] as const;
+
+/** The colour MPPT input `input` (from 1) is stacked in. */
+export function mpptColour(input: number): string {
+  return MPPT[(Math.max(1, input) - 1) % MPPT.length]!;
+}

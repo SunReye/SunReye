@@ -3,129 +3,19 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out by the SPA's utilities.
 import "../../app.css";
-import { connect, type Transport } from "../api/core.ts";
+import { connect } from "../api/core.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import ForecastScreen from "./ForecastScreen.svelte";
 
-const WIRING = { moduleType: 1, modules: 16, optimized: 0, tilt: 35, loss: 2 };
-
-/** The owner's layout: south and north in parallel on device 1's input 1, garage alone on device 2. */
-const LAYOUT = {
-  appliesFrom: "2026-11-01T00:00:00Z",
-  strings: [
-    { ...WIRING, id: 4, name: "south", device: 1, input: 1, azimuth: 0 },
-    { ...WIRING, id: 5, name: "north", device: 1, input: 1, azimuth: 180 },
-    { ...WIRING, id: 7, name: "east", device: 1, input: 2, azimuth: -90 },
-    { ...WIRING, id: 6, name: "garage", device: 2, input: 1, azimuth: 0 },
-  ],
-};
-
-/** South and north share their input, so the core estimates them. */
-const CAPABILITIES = {
-  version: "5.0.0",
-  schema: { min: 1, max: 1 },
-  capabilities: [],
-  transports: [],
-  devices: {
-    "1": {
-      estimated: ["pv.string.power[4]", "pv.string.power[5]"],
-      series: [],
-      settings: [],
-      writes: false,
-    },
-    "2": { estimated: [], series: [], settings: [], writes: false },
-  },
-};
-
-const H = 3_600_000;
-const DAY = 24 * H;
-
-/** A day rollup of `kwh` measured over all of it. */
-const rolled = (start: number, kwh: number) => ({
-  date: new Date(start).toISOString().slice(0, 10),
-  start: new Date(start).toISOString(),
-  end: new Date(start + DAY).toISOString(),
-  integral: kwh * 1000,
-  mean: (kwh * 1000) / 24,
-  hours: 24,
-});
-
-interface Plant {
-  /** Day rollups by their UTC midnight. */
-  readonly days: readonly (readonly [number, number])[];
-  /** The forecast's power, held on every hour of [from, to). */
-  readonly forecast: { readonly from: number; readonly to: number; readonly watts: number };
-}
-
-/** A test core: the layout, the capabilities, the plant's day rollups and its hourly forecast. */
-function testCore(plant: Plant): Transport & { readonly asked: string[] } {
-  const asked: string[] = [];
-
-  return {
-    base: "http://core.test/",
-    asked,
-    fetch: (request) => {
-      const url = new URL(request.url);
-
-      if (url.pathname.endsWith("/layout")) return Promise.resolve(Response.json(LAYOUT));
-
-      if (url.pathname.endsWith("/capabilities"))
-        return Promise.resolve(Response.json(CAPABILITIES));
-
-      if (url.pathname.endsWith("/timezone"))
-        return Promise.resolve(Response.json({ name: "UTC" }));
-
-      asked.push(`${url.pathname} ${url.searchParams.get("series") ?? ""}`);
-
-      const from = Date.parse(url.searchParams.get("from") ?? "");
-      const to = Date.parse(url.searchParams.get("to") ?? "");
-
-      if (url.pathname.endsWith("/statistics")) {
-        const points = plant.days
-          .filter(([start]) => start >= from && start < to)
-          .map(([start, kwh]) => rolled(start, kwh));
-
-        return Promise.resolve(Response.json({ period: "day", points }));
-      }
-
-      const issued = new Date(plant.forecast.from - DAY).toISOString();
-      const points = [];
-
-      for (let t = Math.max(from, plant.forecast.from); t < Math.min(to, plant.forecast.to); t += H)
-        points.push({ target: new Date(t).toISOString(), issued, value: plant.forecast.watts });
-
-      return Promise.resolve(Response.json({ points }));
-    },
-  };
-}
-
-/** Week 45 of 2026: Monday to Wednesday measured, Thursday forecast but unmeasured. */
-const MONDAY = Date.UTC(2026, 10, 2);
-
-const WEEK: Plant = {
-  days: [
-    [MONDAY, 10],
-    [MONDAY + DAY, 12],
-    [MONDAY + 2 * DAY, 8],
-  ],
-  // 500 W around the clock: 12 kWh a day.
-  forecast: { from: MONDAY, to: MONDAY + 4 * DAY, watts: 500 },
-};
-
-const PAST_WEEK = { params: new URLSearchParams("range=week&at=2026-11-02"), go: () => {} };
-
-const card = (device: number) =>
-  page.getByRole("region", { name: device === 1 ? "Wechselrichter 1" : "Wechselrichter 2" });
-
-/** The figure the legend gives a term, as it shows. */
-function legendValue(device: number, term: string): string | undefined {
-  const dd = card(device)
-    .getByRole("term")
-    .filter({ hasText: new RegExp(`^${term}$`, "u") })
-    .element().nextElementSibling;
-
-  return dd instanceof HTMLElement ? dd.innerText.trim() : undefined;
-}
+import {
+  card,
+  DAY,
+  legendValue,
+  PAST_WEEK,
+  testCore,
+  WEEK,
+  type Plant,
+} from "./forecast.harness.ts";
 
 test("each inverter's chart reads its total's forecast and measurement over the range", async () => {
   const transport = testCore(WEEK);
@@ -136,6 +26,8 @@ test("each inverter's chart reads its total's forecast and measurement over the 
     .poll(() => [...new Set(transport.asked)].toSorted())
     .toEqual([
       "/api/v1/devices/1/forecasts pv.power",
+      "/api/v1/devices/1/statistics pv.mppt.power[1]",
+      "/api/v1/devices/1/statistics pv.mppt.power[2]",
       "/api/v1/devices/1/statistics pv.power",
       "/api/v1/devices/2/forecasts pv.power",
       "/api/v1/devices/2/statistics pv.power",
@@ -149,8 +41,9 @@ test("the headline answers the range: produced against the forecast, and how clo
     .element(card(1).getByText("In KW 45 wurden 30,0 kWh erzeugt, 17 % weniger als vorhergesagt."))
     .toBeVisible();
   // The same sums as the chart's legend: measured days against their forecast, not Thursday's.
-  await expect.poll(() => legendValue(1, "gemessen")).toBe("30,0 kWh");
-  await expect.poll(() => legendValue(1, "Prognose")).toBe("36,0 kWh");
+  // Device 2 has one MPPT input, so its total is one measured bar.
+  await expect.poll(() => legendValue(2, "gemessen")).toBe("30,0 kWh");
+  await expect.poll(() => legendValue(2, "Prognose")).toBe("36,0 kWh");
 
   const figures = card(1).getByRole("definition");
 
@@ -196,7 +89,8 @@ test("every state of the month is named on screen", async () => {
 
   await render(ForecastScreen, { core: connect(testCore(thisMonth())), ...THIS_MONTH });
 
-  const terms = card(1).getByRole("term");
+  // Device 2 has one MPPT input, so its total is one measured bar.
+  const terms = card(2).getByRole("term");
 
   await Promise.all(
     ["gemessen", "Prognose", "noch erwartet"].map((name) =>
@@ -208,7 +102,26 @@ test("every state of the month is named on screen", async () => {
   if (new Date(today - DAY).getUTCDate() > 1)
     await expect.element(terms.filter({ hasText: "keine Daten" })).toBeVisible();
 
-  await expect.element(card(1).getByText(/Die Prognose reicht zwei Tage voraus/u)).toBeVisible();
+  await expect.element(card(2).getByText(/Die Prognose reicht zwei Tage voraus/u)).toBeVisible();
+});
+
+test("an inverter's total stacks its measured bars by MPPT input, each in its own colour", async () => {
+  await render(ForecastScreen, { core: connect(testCore(WEEK)), ...PAST_WEEK });
+
+  const terms = card(1).getByRole("term");
+
+  await expect.element(terms.filter({ hasText: /^MPPT 1$/u })).toBeVisible();
+  await expect.element(terms.filter({ hasText: /^MPPT 2$/u })).toBeVisible();
+  await expect.element(terms.filter({ hasText: /^gemessen$/u })).not.toBeInTheDocument();
+
+  const swatch = (input: number) =>
+    getComputedStyle(
+      terms.filter({ hasText: new RegExp(`^MPPT ${input}$`, "u") }).element()
+        .previousElementSibling ??
+        terms.filter({ hasText: new RegExp(`^MPPT ${input}$`, "u") }).element(),
+    ).backgroundColor;
+
+  expect(swatch(1)).not.toBe(swatch(2));
 });
 
 test("lines are picked inverter first, then MPPT input, then string, with estimates marked once", async () => {

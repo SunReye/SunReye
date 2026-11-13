@@ -20,6 +20,8 @@ export interface Judged {
   readonly planned: number;
   /** kWh still expected from now to the range's end. */
   readonly ahead: number;
+  /** kWh measured per stacked part (an MPPT input), or the one total when not stacked. */
+  readonly shares: readonly number[];
   readonly accuracy: Accuracy;
 }
 
@@ -32,6 +34,8 @@ export interface Judging {
   readonly now: number;
   readonly measured: readonly Rolled[];
   readonly forecast: readonly Planned[];
+  /** Each MPPT input's measurement, stacked in the bars when there are two or more. */
+  readonly parts?: readonly (readonly Rolled[])[];
 }
 
 /**
@@ -59,8 +63,22 @@ const deviation = (edge: Readonly<Edge>, value: number, sofar: number): number |
     ? Math.abs(value / sofar - 1)
     : null;
 
+/** One band's measured kWh per stacked part; the total alone without two or more parts. */
+function stack(j: Readonly<Judging>, total: number, a: number, b: number): number[] {
+  const parts = j.parts ?? [];
+
+  if (parts.length < 2) return [total];
+
+  return parts.map((p) => {
+    const f = bandFigure(j.series, p, a, b);
+
+    return f.covered > 0 ? Math.max(0, f.value) : 0;
+  });
+}
+
 export function judge(j: Readonly<Judging>): Judged {
   const sums = { made: 0, compared: 0, sofar: 0, ahead: 0, error: 0, days: 0 };
+  const shares: number[] = [];
 
   const bands = bandsOf(j.list, (edge, i) => {
     const [a, b] = j.spans[i]!;
@@ -75,8 +93,12 @@ export function judge(j: Readonly<Judging>): Judged {
 
     if (dev !== null) [sums.error, sums.days] = [sums.error + dev, sums.days + 1];
 
+    const up = stack(j, w.value, a, b);
+
+    for (const [k, v] of up.entries()) shares[k] = (shares[k] ?? 0) + v;
+
     return {
-      up: [w.value],
+      up,
       down: [],
       mark: compared ? w.sofar : null,
       ghost: edge.state !== "past" && w.whole > 0 ? w.whole : null,
@@ -90,6 +112,7 @@ export function judge(j: Readonly<Judging>): Judged {
     made: sums.made,
     planned: sums.sofar,
     ahead: sums.ahead,
+    shares,
     accuracy: {
       error: sums.days > 0 ? sums.error / sums.days : null,
       bias: sums.sofar > 0 ? sums.compared / sums.sofar - 1 : null,
@@ -101,11 +124,11 @@ export function judge(j: Readonly<Judging>): Judged {
 /** The chart's sums while no band is read: measured, its forecast, and what is still expected. */
 export function summaryOf(
   title: string,
-  j: Readonly<Pick<Judged, "made" | "planned" | "ahead">> | null,
+  j: Readonly<Pick<Judged, "made" | "planned" | "ahead" | "shares">> | null,
 ) {
   return {
     title,
-    up: [j?.made ?? 0],
+    up: j && j.shares.length > 0 ? [...j.shares] : [j?.made ?? 0],
     down: [],
     mark: j && j.planned > 0 ? j.planned : null,
     ghost: j && j.ahead > 0 ? j.ahead : null,

@@ -1,13 +1,28 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
 import type { Core, Forecasts, PvString } from "../api/core.ts";
-import { flowColour } from "../energy-colours.ts";
+import { flowColour, mpptColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { intervals, spread, type Span } from "../range/fill.ts";
 
 /** The measured production's bars, in the solar flow. */
-export function measuredBar() {
+function measuredBar() {
   return { label: m.forecast_measured(), colour: flowColour("solar") };
+}
+
+/**
+ * What `line`'s bars stack: an inverter's total with two or more MPPT inputs stacks them, each in
+ * its own colour; anything else is one measured bar.
+ */
+export function stackOf(line: Readonly<Line>, lines: readonly Readonly<Line>[]) {
+  const inputs = line.kind === "total" ? lines.filter((l) => l.kind === "input") : [];
+
+  if (inputs.length < 2) return { parts: [], up: [measuredBar()] };
+
+  return {
+    parts: inputs.map((l) => l.series),
+    up: inputs.map((l) => ({ label: l.label, colour: mpptColour(l.input ?? 1) })),
+  };
 }
 
 /** One forecast series: the inverter's total, an MPPT input or a string on one. */
