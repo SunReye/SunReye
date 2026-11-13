@@ -6,9 +6,11 @@ const DAY = 86_400_000;
 const T0 = Date.parse("2016-01-01T00:00:00Z");
 
 /** A core whose history answers `answer(series)`, recording each read. */
-type Answer = { tier: string; points: object[] } | { problem: { code: string; status: number } };
+type Answer =
+  | { tier?: string; period?: string; points: object[] }
+  | { problem: { code: string; status: number } };
 
-function fake(answer: (series: string) => Answer = () => ({ tier: "day", points: [] })) {
+function fake(answer: (series: string, kind: string) => Answer = () => ({ points: [] })) {
   const asked: Readonly<{ series: string; from: number; to: number }>[] = [];
 
   const core = connect({
@@ -16,10 +18,11 @@ function fake(answer: (series: string) => Answer = () => ({ tier: "day", points:
     fetch: (request) => {
       const url = new URL(request.url);
       const series = url.searchParams.get("series") ?? "";
-      const body = answer(series);
+      const kind = url.pathname.split("/")[5] ?? "";
+      const body = answer(series, kind);
 
       asked.push({
-        series: `${url.pathname.split("/")[4]}:${series}`,
+        series: `${kind}:${url.pathname.split("/")[4]}:${series}`,
         from: Date.parse(url.searchParams.get("from") ?? ""),
         to: Date.parse(url.searchParams.get("to") ?? ""),
       });
@@ -38,22 +41,31 @@ function fake(answer: (series: string) => Answer = () => ({ tier: "day", points:
   return { asked, core };
 }
 
-test("a month reads each plant power once", async () => {
+test("a month reads each plant power's rollups once, and the house load's history", async () => {
   const { core, asked } = fake();
 
   await readPlant(core, T0, T0 + 31 * DAY);
 
   expect(asked.map((a) => a.series).toSorted()).toEqual([
-    "4294967294:battery.power",
-    "4294967294:ev.charge.power",
-    "4294967294:grid.export.power",
-    "4294967294:grid.import.power",
-    "4294967294:load.power",
-    "4294967294:pv.power",
-    "4294967294:self.consumption.power",
-    "4294967294:self.supply.power",
+    "history:4294967294:load.power",
+    "statistics:4294967294:battery.power",
+    "statistics:4294967294:ev.charge.power",
+    "statistics:4294967294:grid.export.power",
+    "statistics:4294967294:grid.import.power",
+    "statistics:4294967294:load.power",
+    "statistics:4294967294:pv.power",
+    "statistics:4294967294:self.consumption.power",
+    "statistics:4294967294:self.supply.power",
   ]);
   expect(asked.every((a) => a.to === T0 + 31 * DAY)).toBe(true);
+});
+
+test("a range of hour bands also reads every power's history", async () => {
+  const { core, asked } = fake();
+
+  await readPlant(core, T0, T0 + DAY, true);
+
+  expect(asked.filter((a) => a.series.startsWith("history:"))).toHaveLength(8);
 });
 
 test("ten years read in pieces the day tier serves, end to end", async () => {
@@ -61,7 +73,7 @@ test("ten years read in pieces the day tier serves, end to end", async () => {
 
   await readPlant(core, T0, T0 + 3653 * DAY);
 
-  const pv = asked.filter((a) => a.series.endsWith(":pv.power"));
+  const pv = asked.filter((a) => a.series === "statistics:4294967294:pv.power");
 
   expect(pv.length).toBeGreaterThan(1);
   expect(pv.every((a) => a.to - a.from <= 1498 * DAY)).toBe(true);
@@ -72,15 +84,18 @@ test("ten years read in pieces the day tier serves, end to end", async () => {
 
 test("a series the plant lacks reads as none", async () => {
   const point = { start: "2016-01-01T10:00:00Z", end: "2016-01-01T11:00:00Z", mean: 900 };
+  const day = { date: "2016-01-01", start: "2016-01-01T00:00:00Z", end: "2016-01-02T00:00:00Z" };
 
-  const { core } = fake((s) =>
-    s === "battery.power"
-      ? { problem: { code: "history.series", status: 404 } }
-      : { tier: "hour", points: [point] },
-  );
+  const { core } = fake((s, kind) => {
+    if (s === "battery.power") return { problem: { code: "history.series", status: 404 } };
 
-  const plant = await readPlant(core, T0, T0 + DAY);
+    return kind === "history" ? { points: [point] } : { points: [{ ...day, integral: 900 }] };
+  });
+
+  const plant = await readPlant(core, T0, T0 + DAY, true);
 
   expect(plant.battery).toEqual([]);
+  expect(plant.days.battery).toEqual([]);
   expect(plant.pv).toEqual([point]);
+  expect(plant.days.pv).toEqual([{ start: T0, wh: 900 }]);
 });

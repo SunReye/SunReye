@@ -14,6 +14,7 @@ import {
   string,
   type PvString,
 } from "./groups.ts";
+import type { MeasurementPoint } from "./consumers.ts";
 import { pointsOf, type LivePoint, type LiveSeries } from "../live-graph/series.ts";
 import { reader, type Group, type Reader, type Readings } from "./rows.ts";
 
@@ -26,6 +27,8 @@ export interface Source extends Readings {
   readonly strings: readonly PvString[];
   /** Device names by id, which only the admin may list (ADR 9). */
   readonly names: Readonly<Record<string, string>>;
+  /** The topology's measurement points, which only the admin may read (ADR 9, 14). */
+  readonly points: readonly MeasurementPoint[];
   /** "stopped" while the stream is refused or lost: then no single row is stale on its own. */
   readonly status: "loading" | "live" | "stopped";
   /** The live stream's last two minutes of every power. */
@@ -68,7 +71,13 @@ interface Node {
   readonly device: number | null;
   /** Where the sheet's own figure is read: the plant's total for a plant flow (ADR 14). */
   readonly lead: readonly [number | null, string];
-  readonly groups: (read: Reader) => Group[];
+  readonly groups: (read: Reader, around: Around) => Group[];
+}
+
+/** What a sheet reads beside its own device: the plant's values and its topology. */
+interface Around {
+  readonly plant: Reader;
+  readonly points: readonly MeasurementPoint[];
 }
 
 /** A plant flow's node: the plant's total, and the readings of the device that measures it. */
@@ -83,7 +92,14 @@ const PLANT_NODES = new Map([
   ],
   ["battery", { prefixes: ["battery."], lead: "battery.power", groups: battery }],
   ["grid", { prefixes: ["grid."], lead: "grid.power", groups: grid }],
-  ["house", { prefixes: ["load."], lead: "load.power", groups: house }],
+  [
+    "house",
+    {
+      prefixes: ["load."],
+      lead: "load.power",
+      groups: (r: Reader, a: Around) => house(r, a.plant, a.points),
+    },
+  ],
   ["ev", { prefixes: ["ev."], lead: "ev.charge.power", groups: ev }],
   ["generator", { prefixes: ["generator."], lead: "generator.power", groups: generator }],
 ]);
@@ -165,8 +181,10 @@ export function nodeReadings(id: string, source: Source): NodeReadings | null {
   // One notice covers a silent device or a stopped stream; a row's own age is for the exception.
   const read = reader(source, found.device, silent !== null || source.status !== "live");
 
+  const plant = reader(source, PLANT, source.status !== "live");
+
   const groups = found
-    .groups(read)
+    .groups(read, { plant, points: source.points })
     .filter((g) => g.rows.length > 0 || g.table !== undefined || g.note !== undefined);
 
   return {

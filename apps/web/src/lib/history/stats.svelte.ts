@@ -7,11 +7,11 @@ import { edges, type Edge } from "../range/edges.ts";
 import { hourInstant, t0Of, t1Of, type Calendar, type Range, type Via } from "../range/range.ts";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import { baselineOf } from "./compare.ts";
-import { sumOf, type Plant, type Sum } from "./flows.ts";
+import { hourSum, NO_PLANT, sumOf, type Plant, type Sum } from "./flows.ts";
 import { readPlant } from "./plant-read.ts";
 import type { Compare } from "./view.ts";
 
-export type StatsCore = Readonly<Pick<Core, "history" | "costs">>;
+export type StatsCore = Readonly<Pick<Core, "history" | "statistics" | "costs">>;
 
 export type Money = Readonly<CostDays["total"]>;
 
@@ -44,6 +44,7 @@ export interface Loaded {
 }
 
 const TIMEOUT_MS = 10_000;
+const DAY = 86_400_000;
 
 async function money(core: StatsCore, from: number, to: number) {
   if (to <= from) return { days: [], total: { paid: 0, earned: 0, saved: 0 } };
@@ -112,6 +113,13 @@ export class StatsData {
   };
 }
 
+/** Bands of hours have no rollup to read (ADR 9): their powers' histories are read instead. */
+const hoursIn = (list: readonly Edge[]) => list.some((e) => e.t1 - e.t0 < 24);
+
+/** A day's baseline is cut at the hour the range has run to, so it is read from the histories. */
+const baseSum = (plant: Plant, from: number, to: number) =>
+  (to - from < DAY ? hourSum : sumOf)(plant, from, to);
+
 async function load(
   core: StatsCore,
   at: Readonly<{ range: Range; via: Via; zone: string; cal: Calendar; cmp: Compare }>,
@@ -125,10 +133,12 @@ async function load(
   const base = baselineOf(cal, range, at.cmp);
   const [b0, b1] = [ms(base.hours[0]), Math.min(ms(base.hours[1]), now)];
 
+  const hours = hoursIn(list);
+
   const [plant, costs, basePlant, baseCosts] = await Promise.all([
-    readPlant(core, from, Math.max(from, to)),
+    readPlant(core, from, Math.max(from, to), hours),
     money(core, from, ms(t1Of(range))),
-    readPlant(core, b0, Math.max(b0, b1)),
+    readPlant(core, b0, Math.max(b0, b1), hours),
     money(core, b0, b1),
   ]);
 
@@ -144,7 +154,7 @@ async function load(
     base: {
       range: base.range,
       hours: base.hours,
-      sum: sumOf(basePlant, b0, b1),
+      sum: baseSum(basePlant, b0, b1),
       money: baseCosts?.total ?? null,
       plant: basePlant,
       days: baseCosts?.days ?? null,
@@ -152,32 +162,21 @@ async function load(
   };
 }
 
-const NOTHING: Plant = {
-  pv: [],
-  load: [],
-  imported: [],
-  exported: [],
-  selfUsed: [],
-  selfCovered: [],
-  battery: [],
-  ev: [],
-};
-
 /** A range not read yet, cut into its bands: what a pane a finger uncovers draws while it loads. */
 export function pending(got: Loaded, range: Range): Loaded {
   const ms = (t: number) => hourInstant(got.zone, t).getTime();
   const list = edges(got.cal, range);
-  const sum = sumOf(NOTHING, 0, 0);
+  const sum = sumOf(NO_PLANT, 0, 0);
 
   return {
     ...got,
     range,
     list,
     spans: list.map((e) => [ms(e.t0), ms(e.t1)] as const),
-    plant: NOTHING,
+    plant: NO_PLANT,
     sum,
     days: null,
     money: null,
-    base: { ...got.base, plant: NOTHING, sum, days: null, money: null },
+    base: { ...got.base, plant: NO_PLANT, sum, days: null, money: null },
   };
 }

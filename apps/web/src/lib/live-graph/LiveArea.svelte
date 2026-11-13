@@ -1,12 +1,12 @@
 <!--
   v3's live gliding graph (dev 780b4e2, components/inverter/live-area.svelte), restyled for ADR 21.
-  A fixed two-minute window anchored to the newest sample: data, scales and the tooltip index change
-  only when a sample lands. Between samples one transform scrolls the marks on a cursor that eases
-  linearly across the feed's own spacing. The plot keeps a few samples past its left edge and is
+  A fixed two-minute window anchored to the newest sample: data and scales change only when a
+  sample lands, and no tooltip floats (ADR 21). Between samples one transform scrolls the marks on
+  a cursor that eases linearly across the feed's own spacing. The plot keeps a few samples past its left edge and is
   downsampled to its pixel budget. `diverging` fills around zero.
 -->
 <script lang="ts">
-  import { Axis, Chart, Layer, Rule, Tooltip } from "layerchart";
+  import { Axis, Chart, Layer, Rule } from "layerchart";
   import { VALUE_AXIS } from "../chart-axis.ts";
   import { getLocale } from "../paraglide/runtime.js";
   import { valueDomain } from "./domain.ts";
@@ -22,7 +22,6 @@
     below = accent,
     diverging = false,
     height = 160,
-    label,
     stalled = false,
     still,
   }: {
@@ -33,8 +32,6 @@
     below?: string;
     diverging?: boolean;
     height?: number;
-    /** Series name shown in the hover tooltip. */
-    label: string;
     /** The stream stopped: the marks park and the plot dims. */
     stalled?: boolean;
     /** The still motion tier: a step per sample, no glide. */
@@ -78,14 +75,7 @@
   // is pinned to the box, not the moving marks, and keeps the axis gutter opaque.
   const edgeFade = `linear-gradient(to right, #000 0, #000 ${PADDING.left - 2}px, transparent ${PADDING.left}px, #000 ${PADDING.left + 44}px, #000 calc(100% - 48px), transparent 100%)`;
   const locale = getLocale();
-  const kw = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const tick = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
-
-  const clock = new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 </script>
 
 <div
@@ -104,7 +94,6 @@
       y="v"
       {yDomain}
       padding={PADDING}
-      tooltipContext={{ mode: "bisect-x" }}
     >
       <Layer type="svg">
         <Axis {...VALUE_AXIS} format={(v: number) => tick.format(v)} />
@@ -120,18 +109,6 @@
           glide={!stalled && !still}
         />
       </Layer>
-      <Tooltip.Root>
-        {#snippet children({ data: d }: { data: { t: number; v: number } })}
-          <Tooltip.Header>{clock.format(new Date(d.t))}</Tooltip.Header>
-          <Tooltip.List>
-            <Tooltip.Item
-              {label}
-              value="{kw.format(d.v)} kW"
-              color={diverging && d.v < 0 ? below : accent}
-            />
-          </Tooltip.List>
-        {/snippet}
-      </Tooltip.Root>
     </Chart>
   {/if}
 </div>

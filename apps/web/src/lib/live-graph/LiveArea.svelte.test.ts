@@ -1,6 +1,7 @@
 import "../../app.css";
 import { afterEach, expect, test, vi } from "vitest";
 import { tick } from "svelte";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import LiveArea from "./LiveArea.svelte";
 import type { LivePoint } from "./series.ts";
@@ -33,7 +34,6 @@ async function mount(props: Partial<{ still: boolean; stalled: boolean; divergin
     points: feed(T0),
     accent: IMPORT,
     below: EXPORT,
-    label: "Netz",
     still: false,
     stalled: false,
     diverging: false,
@@ -135,4 +135,14 @@ test("a diverging fill splits at zero: import above, export below", async () => 
   expect(colours.indexOf(IMPORT)).toBeLessThan(colours.indexOf(EXPORT));
   expect(offsets.size).toBe(1);
   expect([...offsets][0]).toBeCloseTo(0.5, 1);
+});
+
+test("pointing at the plot floats no tooltip: the legend is the readout (ADR 21)", async () => {
+  const graph = await mount({});
+  const plot = graph.screen.container.querySelector<HTMLElement>(".lc-tooltip-context")!;
+
+  await userEvent.hover(plot);
+  await frames(64);
+
+  expect(document.querySelector(".lc-tooltip-root")).toBeNull();
 });

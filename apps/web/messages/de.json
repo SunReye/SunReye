@@ -582,6 +582,8 @@
   "rd_imported_total": "Bezug gesamt",
   "rd_exported_total": "Einspeisung gesamt",
   "rd_load_total": "Verbrauch gesamt",
+  "rd_consumers": "Verbraucher",
+  "rd_unmeasured": "Nicht einzeln gemessen",
   "rd_ev_state": "Status",
   "rd_ev_unplugged": "Nicht verbunden",
   "rd_ev_charging": "Lädt",

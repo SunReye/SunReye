@@ -14,13 +14,11 @@
 
   let {
     spec,
-    title,
     points,
     silent,
     status,
   }: {
     spec: Figure;
-    title: string;
     points: readonly LivePoint[];
     /** Seconds the figure's device has been silent; null while it answers. */
     silent: number | null;
@@ -62,7 +60,6 @@
       below={spec.diverging?.[1] ?? spec.colour}
       diverging={spec.diverging !== undefined}
       {height}
-      label={title}
       stalled={halt !== null}
       still={motion.still}
     />

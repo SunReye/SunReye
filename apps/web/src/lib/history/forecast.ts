@@ -5,7 +5,7 @@ import { combined, type Target } from "../dashboard/today.ts";
 import type { Band } from "../range/bands.ts";
 import { bandsOf, intervals, spread } from "../range/fill.ts";
 import { num } from "../range/format.ts";
-import { sumOf } from "./flows.ts";
+import { bandSum } from "./flows.ts";
 import { delta } from "./words.ts";
 import type { Loaded } from "./stats.svelte.ts";
 
@@ -54,7 +54,7 @@ export function forecastView(got: Loaded, targets: readonly Target[]): ForecastV
 
   const bands = bandsOf(got.list, (edge, i) => {
     const [a, b] = got.spans[i]!;
-    const s = sumOf(got.plant, a, b);
+    const s = bandSum(got.plant, edge.t1 - edge.t0, a, b);
     const fc = expected(targets, a, b);
     const past = edge.state === "past" && s.covered > 0 && fc > 0;
 

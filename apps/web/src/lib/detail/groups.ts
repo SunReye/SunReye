@@ -16,6 +16,7 @@
 // Not shown: battery.mode, a raw vendor code ADR 4 gives no values for, and every "*.today"
 // counter (ADR 4: days come from rollups).
 import { m } from "../paraglide/messages.js";
+import { consumers, type MeasurementPoint } from "./consumers.ts";
 import { kept, table, tabled, type Group, type Reader } from "./rows.ts";
 
 /** A layout string: the `pv.string.power` index, its MPPT input and inverter. */
@@ -217,8 +218,9 @@ export function grid(read: Reader): Group[] {
   ];
 }
 
-export function house(read: Reader): Group[] {
+export function house(read: Reader, plant: Reader, points: readonly MeasurementPoint[]): Group[] {
   return [
+    consumers(plant, points),
     tabled(
       m.rd_phases(),
       table(read, (p) => `L${p}`, [{ role: "load.phase.power", label: m.rd_power(), ...KW }]),

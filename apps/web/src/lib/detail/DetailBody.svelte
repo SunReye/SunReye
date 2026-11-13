@@ -136,7 +136,7 @@
   </header>
 
   {#if power}
-    <LiveSection {spec} {title} points={node?.points ?? []} {silent} {status} />
+    <LiveSection {spec} points={node?.points ?? []} {silent} {status} />
   {/if}
 
   <Readings {node} {status} {onopen} />

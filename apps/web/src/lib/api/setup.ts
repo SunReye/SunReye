@@ -65,6 +65,8 @@ export interface Setup extends Access {
   addDevice(draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
   /** Changes a device, such as its writes switch (ADR 7); admin only. */
   changeDevice(id: number, draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
+  /** The topology in force now; admin only. */
+  topology(): Promise<Topology | Problem>;
   /** Changes the topology from an instant on; admin only. */
   changeTopology(change: TopologyChange): Promise<Topology | Problem>;
 }
@@ -90,6 +92,7 @@ export function setup(client: Client): Setup {
     },
     ...zone(client),
     ...plant(client),
+    ...topology(client),
     ...devices(client),
     ...access(client),
   };
@@ -130,6 +133,32 @@ function devices(client: Client): Pick<Setup, "addDevice" | "changeDevice"> {
   };
 }
 
+/** The plant's measurement points (ADR 14). */
+function topology(client: Client): Pick<Setup, "topology" | "changeTopology"> {
+  return {
+    topology: async () => {
+      const { data, error, response } = await client.GET("/api/v1/topology");
+
+      return data ?? refusal(error, response.status);
+    },
+    changeTopology: async ({ appliesFrom, points }) => {
+      const { data, error, response } = await client.PUT("/api/v1/topology", {
+        body: {
+          appliesFrom,
+          points: points.map(({ id, name, parent, claims }) => ({
+            id: id ?? null,
+            name,
+            parent: parent ?? null,
+            claims: [...claims],
+          })),
+        },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+  };
+}
+
 /** The plant's configuration. */
 function plant(
   client: Client,
@@ -143,6 +172,8 @@ function plant(
   | "setTimezone"
   | "addDevice"
   | "changeDevice"
+  | "topology"
+  | "changeTopology"
 > {
   return {
     setLocation: async (location) => {
@@ -159,21 +190,6 @@ function plant(
     },
     addConnection: async (reach) => {
       const { data, error, response } = await client.POST("/api/v1/connections", { body: reach });
-
-      return data ?? refusal(error, response.status);
-    },
-    changeTopology: async ({ appliesFrom, points }) => {
-      const { data, error, response } = await client.PUT("/api/v1/topology", {
-        body: {
-          appliesFrom,
-          points: points.map(({ id, name, parent, claims }) => ({
-            id: id ?? null,
-            name,
-            parent: parent ?? null,
-            claims: [...claims],
-          })),
-        },
-      });
 
       return data ?? refusal(error, response.status);
     },
