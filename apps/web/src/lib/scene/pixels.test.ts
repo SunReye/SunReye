@@ -25,7 +25,10 @@ function mean({ data }: { readonly data: ArrayLike<number> }): [number, number, 
   return [sum[0]! / n, sum[1]! / n, sum[2]! / n];
 }
 
-test("every material's maps are generated, the same on every run", () => {
+// Generating every map twice takes seconds; the app does it once, in a worker (ADR 21).
+const GENERATES_ALL = { timeout: 30_000 };
+
+test("every material's maps are generated, the same on every run", GENERATES_ALL, () => {
   for (const make of Object.values(GROUPS)) {
     const [first, second]: Maps[] = [make(), make()];
 
