@@ -1,7 +1,7 @@
 // Module placement on the roof faces' grids and string painting (ADR 20). Pure: each edit
 // returns a new scene; the pv crate decides what fits.
 import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
-import type { Cell, CellPlace, Equipment, ModuleGrid, Scene } from "./pv.ts";
+import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
 import type { Panel } from "./scene.ts";
 
 /** What the builder edits and saves: the scene and the strings its modules are painted into. */
