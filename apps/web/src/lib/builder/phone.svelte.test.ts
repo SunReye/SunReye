@@ -122,7 +122,7 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await tap(handle());
   await row("Module");
   await row(SOUTH);
-  await row("Modulraster auf diese Fläche legen");
+  await row(MODULE.name);
   await row("Fläche füllen");
 
   // Down to reach "+", which adds a string and opens it.

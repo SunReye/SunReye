@@ -1,6 +1,6 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
-import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
+import type { Core, Datasheet, Device, Layout, ModuleType, Problem } from "../api/core.ts";
 import { coldStrings, type Limits } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
@@ -64,6 +64,9 @@ export class Session {
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
 
+  /** Module types added in this session; the core keeps them, no undo takes them back. */
+  #added = $state.raw<readonly ModuleType[]>([]);
+
   /** A handle drag's scene, shown but not yet recorded. */
   #dragged = $state.raw<Draft>();
 
@@ -73,9 +76,7 @@ export class Session {
     this.#history = $state.raw(begin(opening().start));
 
     const sizes = $derived(
-      Object.fromEntries(
-        opening().moduleTypes.map(({ id, width, height }) => [id, { width, height }]),
-      ),
+      Object.fromEntries(this.moduleTypes.map(({ id, width, height }) => [id, { width, height }])),
     );
 
     this.geometry = $derived(opening().pv.geometry(this.draft.scene));
@@ -85,8 +86,22 @@ export class Session {
       draft: this.draft,
       laid: this.laid,
       devices: opening().devices,
-      cold: coldStrings(opening().pv, this.draft, opening().moduleTypes, opening().limits),
+      cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
     });
+  }
+
+  /** The plant's module types, the ones added here last. */
+  get moduleTypes(): readonly Readonly<ModuleType>[] {
+    return [...this.#opening().moduleTypes, ...this.#added];
+  }
+
+  /** Adds a module type to the core (ADR 17); the core's answer, a refusal kept for its text. */
+  async addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem> {
+    const added = await this.#opening().core.addModuleType(datasheet);
+
+    if (!("problem" in added)) this.#added = [...this.#added, added];
+
+    return added;
   }
 
   get draft(): Draft {

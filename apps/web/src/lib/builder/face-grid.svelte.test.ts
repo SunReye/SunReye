@@ -16,6 +16,7 @@ import {
   press,
   pv,
   SOUTH,
+  starts,
   testCore,
   undesk,
   type Pointer,
@@ -101,7 +102,7 @@ test("a string of another module type is refused in place, and nothing is painte
     devices: DEVICES,
   });
 
-  await drill("Module", SOUTH, "Modulraster auf diese Fläche legen");
+  await drill("Module", SOUTH, MODULE.name);
   await inspector().getByRole("radio", { name: "Ost malen" }).click();
   await cell(1, 1).click();
 
@@ -113,7 +114,7 @@ test("a string of another module type is refused in place, and nothing is painte
   // Laying the grid is the only step to undo.
   await undo();
   await expect
-    .element(inspector().getByRole("button", { name: "Modulraster auf diese Fläche legen" }))
+    .element(inspector().getByRole("button", { name: starts(MODULE.name) }))
     .toBeVisible();
 });
 

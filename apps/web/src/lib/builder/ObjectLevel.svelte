@@ -1,6 +1,6 @@
 <!-- One object's level in the inspector; a face's level is its module-grid editor (ADR 20). -->
 <script lang="ts">
-  import type { ModuleType } from "../api/core.ts";
+  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
@@ -15,7 +15,7 @@
     level,
     plan,
     moduleTypes,
-    moduleType,
+    addType,
     strokes,
     onchange,
     onlevel,
@@ -23,8 +23,8 @@
     level: Exclude<Level, { kind: "root" | "section" }>;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** A new grid's module type; without one no grid is laid. */
-    moduleType: number | undefined;
+    /** Adds a module type to the core. */
+    addType: (datasheet: Readonly<Datasheet>) => Promise<ModuleType | Problem>;
     strokes: Strokes;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
@@ -129,5 +129,5 @@
     }}
   />
 {:else if roof !== undefined}
-  <FaceLevel {roof} {plan} {moduleTypes} {moduleType} {strokes} {onchange} />
+  <FaceLevel {roof} {plan} {moduleTypes} {addType} {strokes} {onchange} />
 {/if}

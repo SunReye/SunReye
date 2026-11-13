@@ -6,7 +6,6 @@
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import { cubicInOut } from "svelte/easing";
   import { Button } from "#lib/components/ui/button/index.js";
-  import type { ModuleType } from "../api/core.ts";
   import { motionMs } from "../motion.ts";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
@@ -14,7 +13,7 @@
   import SaveBar from "./SaveBar.svelte";
   import type { Session } from "./session.svelte.ts";
 
-  let { session, moduleTypes }: { session: Session; moduleTypes: readonly ModuleType[] } = $props();
+  let { session }: { session: Session } = $props();
 
   const level = $derived(session.level);
 
@@ -89,7 +88,8 @@
       >
         <Editor
           plan={session.plan}
-          {moduleTypes}
+          moduleTypes={session.moduleTypes}
+          addType={(datasheet) => session.addModuleType(datasheet)}
           {level}
           onlevel={go}
           strokes={session}

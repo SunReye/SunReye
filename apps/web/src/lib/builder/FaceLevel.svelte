@@ -1,11 +1,13 @@
-<!-- A roof face's level (ADR 20): its module-grid editor, or the button that lays a grid on it. -->
+<!--
+  A roof face's level (ADR 20): its module-grid editor or, before one, its module type. A type picked
+  or entered here lays the grid at once.
+-->
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import type { ModuleType } from "../api/core.ts";
-  import { m } from "../paraglide/messages.js";
+  import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import FaceGrid from "./FaceGrid.svelte";
   import { addGrid, type Draft, type Strokes } from "./modules.ts";
+  import ModuleTypeForm from "./ModuleTypeForm.svelte";
+  import ModuleTypePicker from "./ModuleTypePicker.svelte";
   import type { Plan } from "./outline.ts";
   import type { RoofFace } from "./pv.ts";
 
@@ -13,15 +15,15 @@
     roof,
     plan,
     moduleTypes,
-    moduleType,
+    addType,
     strokes,
     onchange,
   }: {
     roof: RoofFace;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** A new grid's module type; without one no grid is laid. */
-    moduleType: number | undefined;
+    /** Adds a module type to the core. */
+    addType: (datasheet: Readonly<Datasheet>) => Promise<ModuleType | Problem>;
     strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
@@ -31,6 +33,13 @@
   const index = $derived(
     (draft.scene.grids ?? []).findIndex((g) => g.block === roof.block && g.face === roof.face),
   );
+
+  /** Whether the new module type's form shows instead of the types. */
+  let entering = $state(false);
+
+  function lay(moduleType: number): void {
+    onchange({ ...draft, scene: addGrid(draft.scene, roof.block, roof.face, moduleType) });
+  }
 </script>
 
 {#if draft.scene.grids?.[index] !== undefined}
@@ -48,19 +57,23 @@
     {strokes}
     {onchange}
   />
-{:else if moduleType !== undefined}
-  <div class="p-3">
-    <Button
-      variant="outline"
-      class="w-full justify-start"
-      onclick={() => {
-        onchange({ ...draft, scene: addGrid(draft.scene, roof.block, roof.face, moduleType) });
-      }}
-    >
-      <Plus data-icon="inline-start" />
-      {m.builder_add_grid()}
-    </Button>
-  </div>
+{:else if entering}
+  <ModuleTypeForm
+    add={addType}
+    onadded={({ id }) => {
+      entering = false;
+      lay(id);
+    }}
+    oncancel={() => {
+      entering = false;
+    }}
+  />
 {:else}
-  <p class="px-4 py-3 text-sm text-muted-foreground">{m.builder_no_module_types()}</p>
+  <ModuleTypePicker
+    {moduleTypes}
+    onpick={lay}
+    onnew={() => {
+      entering = true;
+    }}
+  />
 {/if}

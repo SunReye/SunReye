@@ -2,7 +2,7 @@ import { carBodies, type CarBodies } from "./car-bodies";
 import { open, refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { follow, type Live } from "./live";
-import { body, type LayoutChange } from "./layout-change";
+import { layouts, type Layouts } from "./layouts";
 import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
 import type { components } from "./schema";
@@ -18,13 +18,9 @@ export type Statistics = components["schemas"]["Statistics"];
 /** A UTC hour or a plant-local calendar period statistics are cut in (ADR 3, 9). */
 export type Period = components["schemas"]["Period"];
 
-export type Layout = components["schemas"]["Layout"];
-
 export type StringDraft = components["schemas"]["StringDraft"];
 
 export type PvString = components["schemas"]["PvString"];
-
-export type ModuleType = components["schemas"]["ModuleType"];
 
 export type Capabilities = components["schemas"]["Support"];
 
@@ -44,6 +40,8 @@ export type Attempt = components["schemas"]["Entry"];
 export type WriteLog = components["schemas"]["WriteLog"];
 
 export type { Problem } from "./client";
+
+export type { Datasheet, Layout, ModuleType } from "./layouts";
 
 export type { ImportStatus, SharedArchive } from "./imports";
 
@@ -81,7 +79,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords, Layouts {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -96,12 +94,6 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, Plant
   ): Promise<Statistics | Problem>;
   /** The latest forecast of each target of one series from `from` to before `to`. */
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
-  /** The PV layout in force now. */
-  layout(): Promise<Layout | Problem>;
-  /** Every module type. */
-  moduleTypes(): Promise<readonly ModuleType[] | Problem>;
-  /** Changes the PV layout from an instant on; admin only. */
-  changeLayout(change: LayoutChange): Promise<Layout | Problem>;
   /** Every registered device; admin only. */
   devices(): Promise<readonly Device[] | Problem>;
   /** What the core supports, and each device's settings. */
@@ -172,27 +164,6 @@ export function connect(transport: Transport): Core {
     ...status(client),
     ...tariffs(client),
     ...plantRecords(client),
-  };
-}
-
-/** The PV layout and its module types (ADR 17, 20). */
-function layouts(client: Client): Pick<Core, "layout" | "moduleTypes" | "changeLayout"> {
-  return {
-    layout: async () => {
-      const { data, error, response } = await client.GET("/api/v1/layout");
-
-      return data ?? refusal(error, response.status);
-    },
-    moduleTypes: async () => {
-      const { data, error, response } = await client.GET("/api/v1/module-types");
-
-      return data ? data.moduleTypes : refusal(error, response.status);
-    },
-    changeLayout: async (change) => {
-      const { data, error, response } = await client.PUT("/api/v1/layout", { body: body(change) });
-
-      return data ?? refusal(error, response.status);
-    },
   };
 }
 

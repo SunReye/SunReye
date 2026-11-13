@@ -63,7 +63,7 @@
       draft={session.draft}
       geometry={session.geometry}
       panels={session.panels}
-      {moduleTypes}
+      moduleTypes={session.moduleTypes}
       {devices}
       {location}
       clear={sheet ? PEEK : 0}
@@ -84,9 +84,9 @@
       />
     {/if}
   </div>
-  <InspectorPane {session} {moduleTypes} {sheet} />
+  <InspectorPane {session} {sheet} />
 </div>
 
 {#snippet tools()}
-  <PhoneTools {session} moduleType={moduleTypes[0]?.id} />
+  <PhoneTools {session} moduleType={session.moduleTypes[0]?.id} />
 {/snippet}
