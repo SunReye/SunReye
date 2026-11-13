@@ -11,6 +11,17 @@ export function following(scene: Readonly<Scene>, string: number | undefined): n
   return Math.max(-1, ...orders) + 1;
 }
 
+/** The string a module is wired into, if any. */
+const stringOf = (cell: Readonly<Cell> | undefined): number | undefined =>
+  cell?.string ?? undefined;
+
+/** `cell` at place `order` along its string; as it is without one. */
+function placed(cell: Readonly<Cell>, order: number | null | undefined): Cell {
+  const place = order ?? undefined;
+
+  return place === undefined ? cell : { ...cell, order: place };
+}
+
 /** `after`, wired: in its place along its string, kept while it stays in the string `before` was;
  * else at `order`. */
 export function ordered(
@@ -18,13 +29,11 @@ export function ordered(
   after: Readonly<Cell> | undefined,
   order: number,
 ): Cell | undefined {
-  const string = after?.string ?? undefined;
+  const string = stringOf(after);
 
   if (after === undefined || string === undefined) return after;
 
-  const kept = (before?.string ?? undefined) === string ? before?.order : order;
-
-  return kept === undefined || kept === null ? after : { ...after, order: kept };
+  return placed(after, stringOf(before) === string ? before?.order : order);
 }
 
 /** The mean of a cell's corners. */

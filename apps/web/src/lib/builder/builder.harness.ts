@@ -250,7 +250,7 @@ export async function phone(): Promise<void> {
 }
 
 /** The module type's size, by its id, as the crate lays cells out. */
-export const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
+const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
 /** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from its first view. */
 export function cellsOnPage(start: Scene, grid: number): (key: string) => [number, number] {

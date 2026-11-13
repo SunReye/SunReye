@@ -7,13 +7,21 @@
 import type { Group, PerspectiveCamera } from "three";
 import { haptics } from "../haptics.ts";
 import { m } from "../paraglide/messages.js";
-import { paint, refuses, strokeOf, type At, type Draft, type Stroke } from "./modules.ts";
+import {
+  paint,
+  refuses,
+  strokeOf,
+  type At,
+  type Draft,
+  type Stroke,
+  type Tool,
+} from "./modules.ts";
 import { cellAt } from "./cells.ts";
 import type { CellPlace, Modules, Point, Scene } from "./pv.ts";
-import { strike, type Panel } from "./scene.ts";
-import { listen } from "./pointer.ts";
+import { strike, type Hit, type Panel } from "./scene.ts";
+import { Handover, listen, ndc } from "./pointer.ts";
 
-interface Steps {
+export interface Steps {
   readonly draft: Draft;
   /** Each step, shown at once. */
   readonly ondrag: (scene: Scene) => void;
@@ -86,6 +94,32 @@ const under = (grid: number, at: At, module: boolean): Under => ({
   key: `${grid}.${at.row}.${at.column}`,
 });
 
+/** A module the strike landed on, on any face. */
+function moduleUnder(hit: Hit): Under | null {
+  return hit.kind === "grid" && hit.cell !== undefined ? under(hit.grid, hit.cell, true) : null;
+}
+
+/** A module of the selected face's grid, or the free cell of it whose roof the strike landed on,
+ * found as the inspector's picking finds a face. */
+function laidUnder(painting: Extract<Painting, { kind: "modules" }>, hit: Hit): Under | null {
+  if (hit.kind === "grid") {
+    const module = moduleUnder(hit);
+
+    return module?.grid === painting.grid ? module : null;
+  }
+
+  const cell = hit.kind === "point" ? cellAt(painting.draft.scene, painting.laid, hit.point) : null;
+
+  return cell?.grid === painting.grid ? under(cell.grid, cell, false) : null;
+}
+
+/** What a stroke does: wire the picked string, or place and remove modules. */
+function toolOf(painting: Painting): Tool {
+  return painting.kind === "string"
+    ? { kind: "paint", string: painting.string }
+    : { kind: "place" };
+}
+
 /** Listens on a canvas, before the orbit controls and the click picking. */
 export class Brush {
   readonly #canvas: HTMLCanvasElement;
@@ -93,8 +127,7 @@ export class Brush {
   readonly #sources: Brushing;
   #held: Held | undefined;
 
-  /** The first finger's press, given again to the orbit controls once a second one comes. */
-  #handed: PointerEvent | undefined;
+  readonly #handover = new Handover();
 
   /** Stops listening. */
   readonly dispose: () => void;
@@ -106,15 +139,6 @@ export class Brush {
     this.dispose = listen(canvas, { press: this.#press, move: this.#move, release: this.#release });
   }
 
-  #ndc(event: PointerEvent): [number, number] {
-    const box = this.#canvas.getBoundingClientRect();
-
-    return [
-      ((event.clientX - box.left) / box.width) * 2 - 1,
-      1 - ((event.clientY - box.top) / box.height) * 2,
-    ];
-  }
-
   /** The module, or for a selected face the free cell, under the pointer. */
   #under(event: PointerEvent, painting: Painting): Under | null {
     const group = this.#sources.drawn();
@@ -124,23 +148,11 @@ export class Brush {
     // A press may come before the first draw has placed the camera's matrices.
     this.#camera.updateMatrixWorld();
 
-    const at = this.#ndc(event);
-    const hit = strike(group, this.#sources.panels(), this.#camera, at);
-    const module = hit?.kind === "grid" ? hit.cell : undefined;
+    const hit = strike(group, this.#sources.panels(), this.#camera, ndc(this.#canvas, event));
 
-    if (painting.kind === "string") {
-      return hit?.kind === "grid" && module !== undefined ? under(hit.grid, module, true) : null;
-    }
+    if (hit === null) return null;
 
-    if (hit?.kind === "grid" && module !== undefined && hit.grid === painting.grid) {
-      return under(painting.grid, module, true);
-    }
-
-    // A free cell: the roof under it, found as the inspector's picking finds a face.
-    const cell =
-      hit?.kind === "point" ? cellAt(painting.draft.scene, painting.laid, hit.point) : null;
-
-    return cell?.grid === painting.grid ? under(cell.grid, cell, false) : null;
+    return painting.kind === "string" ? moduleUnder(hit) : laidUnder(painting, hit);
   }
 
   /** Paints one cell, or answers beside the pointer why its grid refuses the string. */
@@ -164,38 +176,35 @@ export class Brush {
   }
 
   readonly #press = (event: PointerEvent): void => {
-    if (event === this.#handed) return;
+    if (this.#handover.handed(event)) return;
 
-    const held = this.#held;
-
-    if (held !== undefined) {
-      if (event.pointerType === "touch") this.#handOver(held);
-      else event.stopImmediatePropagation();
+    if (this.#held !== undefined) {
+      this.#another(event, this.#held);
 
       return;
     }
 
     const painting = this.#sources.painting();
+    const cell = painting && event.button === 0 ? this.#under(event, painting) : null;
 
-    if (painting === undefined || event.button !== 0) return;
+    if (painting !== undefined && cell !== null) this.#start(event, painting, cell);
+  };
 
-    const cell = this.#under(event, painting);
+  /** Another pointer during a drag: a second finger hands both to the orbit controls; anything
+   * else is kept from them. */
+  #another(event: PointerEvent, held: Held): void {
+    if (event.pointerType === "touch") this.#handOver(held);
+    else event.stopImmediatePropagation();
+  }
 
-    if (cell === null) return;
-
+  /** A press on `cell` starts a stroke; one on a module of the face waits, as a tap selects it. */
+  #start(event: PointerEvent, painting: Painting, cell: Under): void {
     // The orbit controls and the click picking never see it.
     event.stopImmediatePropagation();
     this.#canvas.setPointerCapture(event.pointerId);
     this.#sources.onrefuse();
 
-    const stroke = strokeOf(
-      painting.draft.scene,
-      cell.grid,
-      cell.at,
-      painting.kind === "string" ? { kind: "paint", string: painting.string } : { kind: "place" },
-    );
-
-    // A press on a module of the face waits: a tap selects it.
+    const stroke = strokeOf(painting.draft.scene, cell.grid, cell.at, toolOf(painting));
     const pending = painting.kind === "modules" && cell.module ? cell : undefined;
 
     this.#held = {
@@ -208,7 +217,7 @@ export class Brush {
     };
 
     if (pending === undefined) this.#paint(painting, stroke, event, cell);
-  };
+  }
 
   readonly #move = (event: PointerEvent): void => {
     const held = this.#held;
@@ -242,26 +251,15 @@ export class Brush {
     painting?.ondrag(held.from);
     painting?.ondrop();
 
-    const [clientX, clientY] = held.at;
-
-    this.#handed = new PointerEvent("pointerdown", {
-      pointerId: held.pointer,
-      pointerType: "touch",
-      isPrimary: true,
-      button: 0,
-      buttons: 1,
-      clientX,
-      clientY,
-    });
-    this.#canvas.dispatchEvent(this.#handed);
-    this.#handed = undefined;
+    this.#handover.give(this.#canvas, held.pointer, held.at);
   }
 
   readonly #release = (event: PointerEvent): void => {
-    const held = this.#held;
+    if (this.#held?.pointer === event.pointerId) this.#letGo(event, this.#held);
+  };
 
-    if (held?.pointer !== event.pointerId) return;
-
+  /** Let go: a tap on a module selects it, a stroke is one undo step. */
+  #letGo(event: PointerEvent, held: Held): void {
     event.stopImmediatePropagation();
     this.#held = undefined;
 
@@ -275,5 +273,5 @@ export class Brush {
     }
 
     painting?.ondrop();
-  };
+  }
 }

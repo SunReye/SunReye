@@ -18,7 +18,7 @@ import {
   type Target,
   type Triple,
 } from "./grips.ts";
-import { listen } from "../pointer.ts";
+import { Handover, listen, ndc } from "../pointer.ts";
 
 /** What the handles edit, and where a drag goes. */
 export interface Editing {
@@ -79,8 +79,7 @@ export class Grabbing {
   readonly #sources: Sources;
   #held: Held | undefined;
 
-  /** The first finger's press, given again to the orbit controls once a second one comes. */
-  #handed: PointerEvent | undefined;
+  readonly #handover = new Handover();
 
   /** Stops listening. */
   readonly dispose: () => void;
@@ -90,15 +89,6 @@ export class Grabbing {
     this.#camera = camera;
     this.#sources = sources;
     this.dispose = listen(canvas, { press: this.#press, move: this.#move, release: this.#release });
-  }
-
-  #ndc(event: PointerEvent): [number, number] {
-    const box = this.#canvas.getBoundingClientRect();
-
-    return [
-      ((event.clientX - box.left) / box.width) * 2 - 1,
-      1 - ((event.clientY - box.top) / box.height) * 2,
-    ];
   }
 
   #handleAt(at: readonly [number, number]): Handle | null {
@@ -135,7 +125,7 @@ export class Grabbing {
   }
 
   readonly #press = (event: PointerEvent): void => {
-    if (event === this.#handed) return;
+    if (this.#handover.handed(event)) return;
 
     if (this.#held !== undefined) {
       if (event.pointerType === "touch") this.#handOver(this.#held);
@@ -149,7 +139,7 @@ export class Grabbing {
     const grab =
       editing === undefined || event.button !== 0
         ? undefined
-        : this.#grabbed(this.#ndc(event), editing);
+        : this.#grabbed(ndc(this.#canvas, event), editing);
 
     if (editing === undefined || grab === undefined) return;
 
@@ -172,7 +162,7 @@ export class Grabbing {
 
     if (held === undefined) {
       if (event.pointerType === "mouse") {
-        this.#canvas.style.cursor = this.#handleAt(this.#ndc(event)) === null ? "" : "grab";
+        this.#canvas.style.cursor = this.#handleAt(ndc(this.#canvas, event)) === null ? "" : "grab";
       }
 
       return;
@@ -184,7 +174,7 @@ export class Grabbing {
     held.at = [event.clientX, event.clientY];
     held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= CLICK;
 
-    if (held.moving) this.#step(held, rayAt(this.#camera, this.#ndc(event)));
+    if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
   };
 
   #step({ editing, grab }: Held, ray: Ray): void {
@@ -213,19 +203,7 @@ export class Grabbing {
     this.#sources.onreading();
     this.#canvas.style.cursor = "";
 
-    const [clientX, clientY] = held.at;
-
-    this.#handed = new PointerEvent("pointerdown", {
-      pointerId: held.pointer,
-      pointerType: "touch",
-      isPrimary: true,
-      button: 0,
-      buttons: 1,
-      clientX,
-      clientY,
-    });
-    this.#canvas.dispatchEvent(this.#handed);
-    this.#handed = undefined;
+    this.#handover.give(this.#canvas, held.pointer, held.at);
   }
 
   readonly #release = (event: PointerEvent): void => {
