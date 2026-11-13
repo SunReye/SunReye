@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
@@ -56,7 +56,7 @@ test("the admin changes the tariff in force from now on", async () => {
     .toHaveValue(30);
   await expect.element(bought.getByRole("checkbox", { name: "Fr" })).toBeChecked();
   await expect.element(bought.getByRole("checkbox", { name: "Sa" })).not.toBeChecked();
-  await expect.element(bought.getByRole("textbox", { name: "Bis" })).toHaveValue("24:00");
+  await expect.element(bought.getByRole("button", { name: "Bis 24:00" })).toBeVisible();
 
   await userEvent.fill(bought.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" }), "31.5");
   await userEvent.click(bought.getByRole("checkbox", { name: "Sa" }));
@@ -76,6 +76,24 @@ test("the admin changes the tariff in force from now on", async () => {
     });
 });
 
+/** Opens a band time on the value editor's wheels, turns the hour up and applies. */
+async function wheelTo(group: string, field: string, hours: number, shows: string): Promise<void> {
+  const fields = page.getByRole("group", { name: group });
+
+  await userEvent.click(fields.getByRole("button", { name: field }));
+  page.getByRole("spinbutton", { name: "Stunde" }).element().focus();
+
+  await userEvent.keyboard("{ArrowUp}".repeat(hours));
+
+  const apply = page.getByRole("button", { name: /^Übernehmen/u });
+  // The wheel settles on the hour before apply takes it.
+  await expect
+    .poll(() => apply.element().textContent)
+    .toContain(`${String(hours).padStart(2, "0")}:00`);
+  await userEvent.click(apply);
+  await expect.element(fields.getByRole("button", { name: shows })).toBeVisible();
+}
+
 test("the admin adds a band and reprices from a past date", async () => {
   const core = testCore({
     "GET /api/v1/tariff": () => Response.json(WEEKNIGHTS),
@@ -89,8 +107,9 @@ test("the admin adds a band and reprices from a past date", async () => {
 
   await userEvent.click(fed.getByRole("button", { name: "Zeitfenster hinzufügen" }));
   await userEvent.click(fed.getByRole("checkbox", { name: "So" }));
-  await userEvent.fill(fed.getByRole("textbox", { name: "Von" }), "10:00");
-  await userEvent.fill(fed.getByRole("textbox", { name: "Bis" }), "14:00");
+  await wheelTo("Einspeisung", "Von 00:00", 10, "Von 10:00");
+  // The end of the day reads 00:00 on the wheels, 24:00 in the band.
+  await wheelTo("Einspeisung", "Bis 24:00", 14, "Bis 14:00");
   await userEvent.fill(fed.getByRole("spinbutton", { name: "Preis (ct/kWh)" }), "0");
   await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-10-01T00:00");
   await userEvent.click(screen.getByRole("button", { name: "Rückwirkend neu berechnen" }));
@@ -137,11 +156,11 @@ test("the admin chooses the bidding zone spot prices are fetched for", async () 
   });
 
   const screen = await render(TariffSettings, { core: connect(core) });
-  const zone = screen.getByRole("combobox", { name: "Gebotszone" });
+  const zone = screen.getByRole("group", { name: "Gebotszone" });
 
-  await expect.element(zone).toHaveValue("");
+  await expect.element(zone.getByRole("radio", { name: "Keine" })).toBeChecked();
 
-  await userEvent.selectOptions(zone, "DE-LU");
+  await userEvent.click(zone.getByRole("radio", { name: "DE-LU" }));
 
   await expect
     .poll(() => core.sent.find(({ route }) => route === "PUT /api/v1/spot-prices")?.body)

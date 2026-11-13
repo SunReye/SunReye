@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Problem, Setting } from "../api/core";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
@@ -31,21 +32,21 @@
 </script>
 
 {#if setting.enable === "off" || setting.enable === "community"}
-  <div>
+  <div class="flex flex-col gap-2 text-sm">
     <p>{NOTES[setting.enable]()}</p>
     <p>
       {m.settings_allowed({
         bounds: boundsText(setting.range, setting.values, setting.step, setting.labels),
       })}
     </p>
-    <button disabled={pending} onclick={() => change(true)}>
+    <Button size="sm" class="self-start" disabled={pending} onclick={() => change(true)}>
       {m.settings_enable({ key: setting.key })}
-    </button>
+    </Button>
   </div>
 {:else if setting.enable === "on"}
-  <button disabled={pending} onclick={() => change(false)}>
+  <Button variant="outline" size="sm" disabled={pending} onclick={() => change(false)}>
     {m.settings_disable({ key: setting.key })}
-  </button>
+  </Button>
 {/if}
 {#if problem}
   <p role="alert">{problemText(problem.problem)}</p>

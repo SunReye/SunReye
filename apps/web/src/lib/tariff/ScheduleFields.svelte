@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Plus from "@lucide/svelte/icons/plus";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
   import BandFields from "./BandFields.svelte";
   import { newBand, type ScheduleDraft } from "./draft";
@@ -8,10 +11,19 @@
   const id = $props.id();
 </script>
 
-<fieldset>
-  <legend>{legend}</legend>
-  <label for="{id}-price">{m.tariff_base_price()}</label>
-  <input id="{id}-price" type="number" step="0.001" required bind:value={schedule.price} />
+<fieldset class="flex flex-col gap-3">
+  <legend class="float-left mb-1 text-sm font-semibold">{legend}</legend>
+  <label class="clear-left flex flex-col gap-1.5 text-sm" for="{id}-price">
+    {m.tariff_base_price()}
+    <Input
+      id="{id}-price"
+      type="number"
+      step="0.001"
+      required
+      class="w-32"
+      bind:value={schedule.price}
+    />
+  </label>
   {#each schedule.bands as band, index (band.key)}
     <BandFields
       bind:band={schedule.bands[index]!}
@@ -20,7 +32,7 @@
       }}
     />
   {/each}
-  <button type="button" onclick={() => schedule.bands.push(newBand())}>
-    {m.tariff_band_add()}
-  </button>
+  <Button variant="outline" class="self-start" onclick={() => schedule.bands.push(newBand())}>
+    <Plus />{m.tariff_band_add()}
+  </Button>
 </fieldset>
