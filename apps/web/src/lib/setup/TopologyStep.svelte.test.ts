@@ -97,12 +97,12 @@ test("each point shows its live power and the root its unmeasured remainder", as
 
   const row = (name: string) => screen.getByRole("listitem", { name, exact: true });
 
-  await expect.element(row("Netz").getByText("0,3", { exact: true }).first()).toBeVisible();
+  await expect.element(row("Netz").getByText("300", { exact: true }).first()).toBeVisible();
   await expect.element(row("PV").getByText("2,0", { exact: true })).toBeVisible();
   await expect.element(row("Batterie").getByText("1,2", { exact: true })).toBeVisible();
   await expect.element(row("Haus").getByText("1,0", { exact: true })).toBeVisible();
   // 300 bought + 2000 PV − 1200 charging − 1000 house.
-  await expect.element(row("Nicht gemessen").getByText("0,1", { exact: true })).toBeVisible();
+  await expect.element(row("Nicht gemessen").getByText("100", { exact: true })).toBeVisible();
   expect(screen.getByRole("listitem", { name: "Generator" }).query()).toBeNull();
 });
 

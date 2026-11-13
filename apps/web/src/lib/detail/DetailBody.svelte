@@ -4,13 +4,13 @@
   sheet is the one surface, divided by hairlines. It ends with the one way onward.
 -->
 <script lang="ts">
-  import AnimatedNumber from "../components/animated-number.svelte";
   import type { Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
   import Analytics, { type AnalyticsInput } from "./Analytics.svelte";
   import { facts, type Fact, type Figure } from "./figures.ts";
   import HistoryLink from "./HistoryLink.svelte";
   import LiveSection from "./LiveSection.svelte";
+  import Quantity from "./Quantity.svelte";
   import Readings from "./Readings.svelte";
   import { ago, type NodeReadings } from "./readings.ts";
   import TodayChart from "./TodayChart.svelte";
@@ -75,9 +75,12 @@
   {:else}
     <span
       class={big ? "text-4xl leading-none font-semibold tracking-tight" : "text-sm font-semibold"}
-      ><AnimatedNumber value={f.value} digits={f.digits} />
-      <span class={[big ? "text-lg" : "", "font-medium text-muted-foreground"]}>{f.unit}</span
-      ></span
+      ><Quantity
+        value={f.value}
+        unit={f.unit}
+        digits={f.digits}
+        unitClass={[big ? "text-lg" : "", "font-medium text-muted-foreground"]}
+      /></span
     >
   {/if}
 {/snippet}
@@ -92,8 +95,11 @@
       {#if spec.today}
         <p class="flex flex-col">
           <span class="text-4xl leading-none font-semibold tracking-tight"
-            ><AnimatedNumber value={day?.today[spec.today] ?? null} />
-            <span class="text-lg font-medium text-muted-foreground">kWh</span></span
+            ><Quantity
+              value={day?.today[spec.today] ?? null}
+              unit="kWh"
+              unitClass="text-lg font-medium text-muted-foreground"
+            /></span
           >
           <span class="mt-1 text-xs text-muted-foreground">{m.detail_today()}</span>
         </p>
@@ -111,12 +117,11 @@
                 class="me-1 font-normal text-muted-foreground"
                 title={m.detail_estimated()}
                 aria-label={m.detail_estimated()}>≈</span
-              >{/if}<AnimatedNumber
-              value={loading || watts === null ? null : Math.abs(watts) / 1000}
+              >{/if}<Quantity
+              value={loading || watts === null ? null : Math.abs(watts)}
+              unit="W"
+              unitClass={[spec.today ? "text-sm" : "text-lg", "font-medium text-muted-foreground"]}
             />
-            <span class={[spec.today ? "text-sm" : "text-lg", "font-medium text-muted-foreground"]}
-              >kW</span
-            >
           </span>
           <!-- The label stops claiming "now" the moment the readings do. -->
           {#if silent !== null}

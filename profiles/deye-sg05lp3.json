@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.10",
+  "version": "2.2.11",
   "requires": [
     "modbus",
     "u16",
@@ -1033,7 +1033,7 @@
     },
     {
       "key": "inverter.power",
-      "role": "extra.inverter_power",
+      "role": "inverter.loss.power",
       "compute": {
         "combine": {
           "add": [
@@ -1049,7 +1049,7 @@
     },
     {
       "key": "inverter.efficiency",
-      "role": "extra.inverter_efficiency",
+      "role": "inverter.efficiency",
       "compute": {
         "ratio": {
           "num": [

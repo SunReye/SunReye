@@ -4,7 +4,8 @@ import { m } from "../paraglide/messages.js";
 import { formatFigure } from "./figures.ts";
 import { kept, type Group, type Reader } from "./rows.ts";
 
-const KW = { unit: "kW", digits: 2, scale: 0.001 };
+/** A power in W: the sheet writes it in the shared power format (W below 1 kW). */
+const POWER = { unit: "W", digits: 0 };
 
 /** A measurement point of the plant's topology (ADR 14). */
 export type MeasurementPoint = Readonly<Omit<Topology["points"][number], "claims">> & {
@@ -21,7 +22,7 @@ export function consumers(plant: Reader, points: readonly MeasurementPoint[]): G
 
     return plant.num(`point.power[${p.id}]`, {
       label,
-      ...KW,
+      ...POWER,
       ...(charger && { to: formatFigure({ kind: "ev", id: charger.device }) }),
     });
   };

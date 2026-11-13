@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3",
   "name": "SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "requires": [
     "modbus",
     "u16",
@@ -534,7 +534,7 @@
     },
     {
       "key": "inverter.power",
-      "role": "extra.inverter_power",
+      "role": "inverter.loss.power",
       "compute": {
         "combine": {
           "add": [
@@ -550,7 +550,7 @@
     },
     {
       "key": "inverter.efficiency",
-      "role": "extra.inverter_efficiency",
+      "role": "inverter.efficiency",
       "compute": {
         "ratio": {
           "num": [

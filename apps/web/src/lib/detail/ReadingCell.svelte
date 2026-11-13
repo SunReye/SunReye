@@ -1,6 +1,7 @@
 <!-- One cell of a readings table: the number, dimmed with its age as a title once stale. -->
 <script lang="ts">
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import { isPower } from "../power.ts";
+  import Quantity from "./Quantity.svelte";
   import { ago } from "./readings.ts";
   import type { Row } from "./rows.ts";
 
@@ -17,7 +18,13 @@
   ]}
   title={age === undefined ? undefined : ago(age)}
 >
-  {#if cell}<AnimatedNumber {value} digits={cell.digits} />{:else}<span
+  <!-- The head carries every unit but a power's. -->
+  {#if cell}<Quantity
+      {value}
+      unit={isPower(cell.unit) ? cell.unit : ""}
+      digits={cell.digits}
+      unitClass="font-normal text-muted-foreground"
+    />{:else}<span
       class="font-normal text-muted-foreground">–</span
     >{/if}
 </td>

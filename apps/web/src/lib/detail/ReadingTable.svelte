@@ -1,5 +1,7 @@
-<!-- Indexed readings compared side by side: a line per MPPT input or phase, the unit in the head. -->
+<!-- Indexed readings compared side by side: a line per MPPT input or phase, the unit in the head
+  but a power's, which each cell writes as W or kW. -->
 <script lang="ts">
+  import { isPower } from "../power.ts";
   import ReadingCell from "./ReadingCell.svelte";
   import type { Table } from "./rows.ts";
 
@@ -12,7 +14,8 @@
       <td></td>
       {#each table.cols as col (col.label)}
         <th scope="col" class="py-1.5 pl-3 text-right font-normal"
-          >{col.label} <span class="opacity-70">{col.unit}</span></th
+          >{col.label}
+          {#if !isPower(col.unit)}<span class="opacity-70">{col.unit}</span>{/if}</th
         >
       {/each}
     </tr>

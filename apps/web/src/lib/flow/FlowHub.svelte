@@ -6,6 +6,7 @@
   import Cpu from "@lucide/svelte/icons/cpu";
   import Gauge from "@lucide/svelte/icons/gauge";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import type { Hub } from "./reading.ts";
@@ -41,8 +42,7 @@
     >
       <div class="flex flex-col items-center">
         <dd class="text-sm font-semibold text-solar">
-          <AnimatedNumber value={hub.dc / 1000} />
-          <span class="text-xs font-normal text-muted-foreground">kW</span>
+          <PowerNumber watts={hub.dc} unitClass="text-xs font-normal text-muted-foreground" />
         </dd>
         <dt class="text-xs text-muted-foreground">{m.flow_dc()}</dt>
       </div>
@@ -58,8 +58,7 @@
       {#if hub.own !== undefined}
         <div class="flex flex-col items-center max-sm:hidden">
           <dd class="text-sm font-medium">
-            <AnimatedNumber value={hub.own} digits={0} />
-            <span class="text-xs font-normal text-muted-foreground">W</span>
+            <PowerNumber watts={hub.own} unitClass="text-xs font-normal text-muted-foreground" />
           </dd>
           <dt class="text-xs text-muted-foreground">{m.rd_own_use()}</dt>
         </div>

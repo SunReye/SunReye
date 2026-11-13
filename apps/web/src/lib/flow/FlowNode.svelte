@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { KIND_ICONS } from "../equipment-kinds.ts";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import { nodeGlow } from "./flow-pulse.ts";
@@ -136,8 +136,10 @@
           class="me-0.5 font-normal text-muted-foreground"
           title={m.detail_estimated()}
           aria-label={m.detail_estimated()}>≈</span
-        >{/if}<AnimatedNumber value={watts === null ? null : Math.abs(watts) / 1000} />
-      <span class="text-xs font-normal text-muted-foreground">kW</span>
+        >{/if}<PowerNumber
+        watts={watts === null ? null : Math.abs(watts)}
+        unitClass="text-xs font-normal text-muted-foreground"
+      />
     </span>
     <span
       class="flex items-center gap-0.5 text-xs whitespace-nowrap"

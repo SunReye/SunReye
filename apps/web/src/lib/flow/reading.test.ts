@@ -176,14 +176,22 @@ test("a signed reading within ±0.5 W reads as idle", () => {
   expect(batteryAt(0.6)?.flow).toBe("out");
 });
 
-test("the hub shows DC in, and while it produces its efficiency and own use", () => {
-  const values = { [PLANT]: { "pv.power": 4000 }, [INVERTER]: { "inverter.power": 3800 } };
+test("the hub shows DC in and the inverter's efficiency and own use", () => {
+  const inverter = { "inverter.efficiency": 95, "inverter.loss.power": 200 };
+  const values = { [PLANT]: { "pv.power": 4000 }, [INVERTER]: inverter };
   expect(hubMetrics(values)).toEqual({ dc: 4000, efficiency: 95, own: 200 });
 });
 
-test("an idle array or no AC reading leaves only DC in", () => {
-  expect(hubMetrics({ [PLANT]: { "pv.power": 20 }, [INVERTER]: { "inverter.power": 0 } })).toEqual({
-    dc: 20,
+test("the battery discharging at night keeps the efficiency", () => {
+  const inverter = { "inverter.efficiency": 95, "inverter.loss.power": 100 };
+  const values = { [PLANT]: { "pv.power": 0 }, [INVERTER]: inverter };
+  expect(hubMetrics(values)).toEqual({ dc: 0, efficiency: 95, own: 100 });
+});
+
+test("nothing going through the inverter, or no inverter reporting it, leaves only DC in", () => {
+  const idle = { "inverter.efficiency": 0, "inverter.loss.power": 0 };
+  expect(hubMetrics({ [PLANT]: { "pv.power": 0 }, [INVERTER]: idle })).toEqual({
+    dc: 0,
     efficiency: undefined,
     own: undefined,
   });

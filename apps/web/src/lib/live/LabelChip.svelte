@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
   import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { flowColour, type Flow } from "../energy-colours.ts";
   import { KIND_ICONS, KIND_NAMES } from "../equipment-kinds.ts";
@@ -61,8 +62,11 @@
   <span
     >{#if arrow}<span class="me-1">{arrow}</span>{/if}{#if chip.estimated}<span
         class="me-0.5 text-muted-foreground">≈</span
-      >{/if}<AnimatedNumber value={chip.watts === null ? null : Math.abs(chip.watts) / 1000} />
-    <span class="text-muted-foreground">{chip.kind === "inverter" ? "kW AC" : "kW"}</span></span
+      >{/if}<PowerNumber
+      watts={chip.watts === null ? null : Math.abs(chip.watts)}
+      unitClass="text-muted-foreground"
+      suffix={chip.kind === "inverter" ? " AC" : ""}
+    /></span
   >
   {#if chip.soc !== null}
     <span class="text-muted-foreground"><AnimatedNumber value={chip.soc} digits={0} /> %</span>

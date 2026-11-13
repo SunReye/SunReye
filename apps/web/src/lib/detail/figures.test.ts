@@ -101,3 +101,9 @@ test("an id naming no figure parses to none", () => {
   for (const id of ["nonsense", "string-", "string-x", "ev-1.5", "string-4-1"])
     expect(parseFigure(id)).toBeNull();
 });
+
+test("the day's peak is a power in watts, written by the shared power format", () => {
+  const peak = facts("production", DAY).stats.find((f) => f.label === "Spitze");
+
+  expect(peak).toMatchObject({ value: 8600, unit: "W" });
+});
