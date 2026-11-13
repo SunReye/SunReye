@@ -171,7 +171,7 @@ function connections(
   return {
     addConnection: async (draft) => {
       const { data, error, response } = await client.POST("/api/v1/connections", {
-        body: wire(draft),
+        body: draft,
       });
 
       return data ?? refusal(error, response.status);
@@ -179,7 +179,7 @@ function connections(
     changeConnection: async (id, draft) => {
       const { data, error, response } = await client.PUT("/api/v1/connections/{id}", {
         params: { path: { id } },
-        body: wire(draft),
+        body: draft,
       });
 
       return data ?? refusal(error, response.status);
@@ -191,15 +191,6 @@ function connections(
 
       return done(error, response);
     },
-  };
-}
-
-/** A draft as the generated client takes it: mutable copies of its parts. */
-function wire({ publish, secrets, ...reach }: ConnectionDraft) {
-  return {
-    ...reach,
-    ...(publish === undefined ? {} : { publish: publish === null ? null : { ...publish } }),
-    ...(secrets === undefined ? {} : { secrets: { ...secrets } }),
   };
 }
 
