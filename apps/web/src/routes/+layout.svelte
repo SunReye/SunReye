@@ -19,6 +19,11 @@
 
   void access.check(core);
 
+  // After the first screen mounted: the root's check went bare at once only if it came first.
+  $effect(() => {
+    if (!access.bare) access.framed = true;
+  });
+
   // One stream for the connection chip and the glide's stall; none around sign-in and setup.
   $effect(() => (access.bare ? undefined : stream.follow(core)));
 </script>

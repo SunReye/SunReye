@@ -94,3 +94,24 @@ test("sign-in shows no rail, and the admin signed in gets Controls", async () =>
 
   await expect.element(screen.getByRole("link", { name: /Steuerung/u })).toBeInTheDocument();
 });
+
+test("coming back to the dashboard from another screen keeps the rail", async () => {
+  const screen = await render(App, { home: false });
+  const rail = screen.getByRole("navigation", { name: "Hauptnavigation" });
+
+  await expect.element(rail).toBeInTheDocument();
+
+  const shown = rail.element();
+  let dropped = false;
+
+  const watch = new MutationObserver(() => {
+    dropped ||= !shown.isConnected;
+  });
+
+  watch.observe(document.body, { childList: true, subtree: true });
+  await screen.rerender({ home: true });
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
+  watch.disconnect();
+
+  expect(dropped).toBe(false);
+});

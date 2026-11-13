@@ -6,6 +6,8 @@ export interface ShellAccess {
   admin: boolean;
   /** Sign-in or setup: no shell. */
   bare: boolean;
+  /** A screen has shown in the shell, so the session was checked: the dashboard keeps the shell. */
+  framed: boolean;
   /** Checks whether this session is the admin's. */
   check(core: Readonly<Pick<Core, "devices">>): Promise<void>;
 }
@@ -13,6 +15,7 @@ export interface ShellAccess {
 class Access implements ShellAccess {
   admin = $state(false);
   bare = $state(false);
+  framed = false;
 
   // The admin alone lists the devices (ADR 9).
   async check(core: Readonly<Pick<Core, "devices">>): Promise<void> {

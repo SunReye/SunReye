@@ -22,14 +22,15 @@
 
   /** The entry, with the shell told whether to frame it and whether Controls is listed. */
   async function open(): Promise<Entry> {
-    if (shell) shell.bare = true;
+    // Bare while it checks, unless a screen already showed in the shell: dropping the rail on the
+    // way back to the dashboard would flash it and mount it again.
+    if (shell && !shell.framed) shell.bare = true;
 
     const shown = await entry(core);
 
-    if (shell && shown.screen === "dashboard") {
-      shell.admin = shown.admin;
-      shell.bare = false;
-    }
+    if (shell) shell.bare = shown.screen !== "dashboard";
+
+    if (shell && shown.screen === "dashboard") shell.admin = shown.admin;
 
     return shown;
   }
