@@ -5,6 +5,7 @@
   chart it licenses.
 -->
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import type { Day } from "../dashboard/day.ts";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
@@ -77,13 +78,15 @@
 </script>
 
 <figure class="flex flex-col gap-1.5">
-  {#if prices.length === 0}
+  {#if day === undefined}
+    <Skeleton style="height: {HEIGHT}px" role="status" aria-label={m.loading()} />
+  {:else if prices.length === 0}
     <!-- The chart's place is held: nothing below it moves when the prices land. -->
     <p
       class="flex items-center justify-center text-xs text-muted-foreground"
       style:height="{HEIGHT}px"
     >
-      {day === undefined ? "" : m.detail_no_prices()}
+      {m.detail_no_prices()}
     </p>
   {:else}
     <div class="relative" style:height="{HEIGHT}px" role="img" aria-label={m.detail_prices()}>

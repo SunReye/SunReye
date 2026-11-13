@@ -23,16 +23,12 @@
 
 <main>
   <Button variant="outline" size="sm" onclick={refresh}><RefreshCw />{m.status_refresh()}</Button>
-  {#await problems then answer}
-    <Problems {answer} />
-  {/await}
+  <Problems answer={problems} />
   <!-- Connections are admin only; a viewer sees no brokers. -->
   {#await connections then answer}
     {#if !("problem" in answer)}
       <Brokers connections={answer} />
     {/if}
   {/await}
-  {#await logs then answer}
-    <Log {answer} />
-  {/await}
+  <Log answer={logs} />
 </main>
