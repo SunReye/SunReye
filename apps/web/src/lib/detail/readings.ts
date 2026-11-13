@@ -26,7 +26,7 @@ export interface Source extends Readings {
   readonly strings: readonly PvString[];
   /** Device names by id, which only the admin may list (ADR 9). */
   readonly names: Readonly<Record<string, string>>;
-  /** "stopped" while the stream is refused: then no single row is stale on its own. */
+  /** "stopped" while the stream is refused or lost: then no single row is stale on its own. */
   readonly status: "loading" | "live" | "stopped";
   /** The live stream's last two minutes of every power. */
   readonly series: LiveSeries;

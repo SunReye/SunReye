@@ -39,9 +39,11 @@ export interface Served {
   stale: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined;
   /** A second frame, a second after the snapshot: the plant importing. */
   tick: boolean;
+  /** The stream breaks after its snapshot and the core is not heard from again. */
+  breaks: boolean;
 }
 
-export const served: Served = { live: LIVE, stale: undefined, tick: false };
+export const served: Served = { live: LIVE, stale: undefined, tick: false, breaks: false };
 
 const IMPORTING = { [PLANT]: { "grid.power": 800 } };
 
@@ -73,6 +75,16 @@ function stream(): Response {
     new ReadableStream({
       start: (controller) => {
         controller.enqueue(event("snapshot", frame));
+
+        if (served.breaks) {
+          // The reconnect finds no core.
+          ROUTES.set("/api/v1/live", () => {
+            throw new TypeError("offline");
+          });
+          setTimeout(() => {
+            controller.error(new TypeError("network"));
+          }, 50);
+        }
 
         if (served.tick) {
           setTimeout(() => {
@@ -171,6 +183,8 @@ export async function prepare(): Promise<void> {
   served.stale = undefined;
   asked.length = 0;
   served.tick = false;
+  served.breaks = false;
+  ROUTES.set("/api/v1/live", stream);
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-12T12:20:00Z") });
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],

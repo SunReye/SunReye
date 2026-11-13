@@ -80,6 +80,17 @@ test("an offline device is stated once above its readings", async () => {
     .toHaveTextContent("Gerät antwortet nicht · letzte Werte vor 5 min");
 });
 
+test("a lost stream is stated above the readings and dims them, like a stopped one", async () => {
+  served.breaks = true;
+
+  const { screen } = await show("battery");
+  const readings = screen.getByRole("region", { name: "Messwerte" });
+
+  await expect
+    .element(readings.getByRole("status"))
+    .toHaveTextContent("Angehalten · keine Live-Daten");
+});
+
 test("Escape asks to close the sheet", async () => {
   const { screen, onclose } = await show("price");
 

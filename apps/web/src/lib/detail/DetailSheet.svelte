@@ -96,8 +96,13 @@
     return () => clearInterval(timer);
   });
 
+  // A lost stream reads like a refused one: its last values stay, dimmed, under one notice.
   const status = $derived<Source["status"]>(
-    live === undefined ? "loading" : "problem" in live ? "stopped" : "live",
+    live === undefined
+      ? "loading"
+      : "problem" in live || live.lost !== undefined
+        ? "stopped"
+        : "live",
   );
 
   const values = $derived(live !== undefined && "devices" in live ? live.devices : {});
