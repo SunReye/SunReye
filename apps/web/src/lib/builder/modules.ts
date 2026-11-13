@@ -2,6 +2,7 @@
 // returns a new scene; the pv crate decides what fits.
 import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
 import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
+import { following, ordered } from "./wiring.ts";
 import type { Panel } from "./scene.ts";
 
 /** What the builder edits and saves: the scene and the strings its modules are painted into. */
@@ -57,6 +58,13 @@ export function editGrid(
   );
 }
 
+/** Grid `index` without its modules. */
+export function clearGrid(scene: Scene, index: number): Scene {
+  return withGrids(scene, (grids) =>
+    grids.map((grid, i) => (i === index ? changed(grid, { modules: [] }) : grid)),
+  );
+}
+
 export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
 }
@@ -104,9 +112,11 @@ export function strokeOf(scene: Scene, index: number, at: At, tool: Tool): Strok
 
 /** The stroke's effect on one cell of grid `index`; crossing a cell twice changes nothing more. */
 export function paint(scene: Scene, index: number, at: At, stroke: Stroke): Scene {
+  const next = stroke.kind === "paint" ? following(scene, stroke.string) : 0;
+
   return withGrids(scene, (grids) =>
     grids.map((grid, i) =>
-      i === index ? changed(grid, { modules: edit(grid.modules, at, stroke) }) : grid,
+      i === index ? changed(grid, { modules: edit(grid.modules, at, stroke, next) }) : grid,
     ),
   );
 }
@@ -116,9 +126,10 @@ export function apply(scene: Scene, index: number, at: At, tool: Tool): Scene {
   return paint(scene, index, at, strokeOf(scene, index, at, tool));
 }
 
-function edit(modules: readonly Cell[], at: At, stroke: Stroke): Cell[] {
+/** The cells after `stroke` crossed `at`; a module newly wired takes place `order` in its string. */
+function edit(modules: readonly Cell[], at: At, stroke: Stroke, order: number): Cell[] {
   const index = modules.findIndex((cell) => cell.row === at.row && cell.column === at.column);
-  const next = stroked(modules[index], at, stroke);
+  const next = ordered(modules[index], stroked(modules[index], at, stroke), order);
 
   if (index < 0) return next === undefined ? [...modules] : [...modules, next];
 
@@ -198,7 +209,7 @@ export function withoutString(scene: Scene, index: number): Scene {
 
           if (string === index) return assigned(cell);
 
-          return string !== undefined && string > index ? assigned(cell, string - 1) : cell;
+          return string !== undefined && string > index ? { ...cell, string: string - 1 } : cell;
         }),
       }),
     ),
