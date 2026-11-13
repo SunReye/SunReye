@@ -8,6 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's elements.
 const texts = (root: Element) => [...root.querySelectorAll("p")].map((p) => p.textContent);
 
 /** One frame: its animation callbacks, then the work they let Svelte do. */

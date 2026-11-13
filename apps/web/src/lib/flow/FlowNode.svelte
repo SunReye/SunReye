@@ -5,6 +5,7 @@
   the node's detail sheet.
 -->
 <script lang="ts">
+  import Staged from "../motion/Staged.svelte";
   import { KIND_ICONS } from "../equipment-kinds.ts";
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
@@ -66,85 +67,88 @@
   const PERIMETER = SIZE * 4;
 </script>
 
-<div
-  class={[
-    "absolute -translate-x-1/2 -translate-y-1/2",
-    tier === "full" && "transition-opacity duration-500",
-    !active && "opacity-70",
-  ]}
-  style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"
->
-  <button
-    type="button"
-    class="relative block size-14 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
-    aria-label={m.flow_details({ name: label })}
-    onclick={() => {
-      onselect(node.id);
-    }}
-  >
-    <span
-      class="flex size-full flex-col items-center justify-center rounded-md border-2 leading-none {boxTransition}"
-      style={boxStyle}
-    >
-      <span style:color={active ? node.accent : "var(--muted-foreground)"}>
-        <Icon class={hasSoc ? "size-4" : "size-6 sm:size-7"} />
-      </span>
-      {#if soc !== undefined}
-        <span class="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl"
-          >{Math.round(soc)}<span class="text-[0.68em] font-medium">%</span></span
-        >
-      {/if}
-    </span>
-    {#if soc !== undefined}
-      <svg class="absolute inset-0 size-full" viewBox="0 0 56 56" aria-hidden="true">
-        <rect
-          class="text-foreground/15"
-          x={INSET}
-          y={INSET}
-          width={SIZE}
-          height={SIZE}
-          rx="1"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-        />
-        <rect
-          x={INSET}
-          y={INSET}
-          width={SIZE}
-          height={SIZE}
-          rx="1"
-          fill="none"
-          stroke={node.accent}
-          stroke-width="2.5"
-          stroke-dasharray={PERIMETER}
-          stroke-dashoffset={PERIMETER * (1 - Math.min(100, Math.max(0, soc)) / 100)}
-          style={gaugeEase}
-        />
-      </svg>
-    {/if}
-  </button>
+<!-- Fills in a frame after the screen mounts (ADR 21). -->
+<Staged>
   <div
     class={[
-      "pointer-events-none absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight",
-      node.labelSide === "above" ? "bottom-full mb-2 flex-col-reverse" : "top-full mt-2",
+      "absolute -translate-x-1/2 -translate-y-1/2",
+      tier === "full" && "transition-opacity duration-500",
+      !active && "opacity-70",
     ]}
+    style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"
   >
-    <span class="max-w-full truncate text-xs font-medium text-muted-foreground">{label}</span>
-    <span class="text-sm font-semibold whitespace-nowrap sm:text-base">
-      {#if node.estimated}<span
-          class="me-0.5 font-normal text-muted-foreground"
-          title={m.detail_estimated()}
-          aria-label={m.detail_estimated()}>≈</span
-        >{/if}<AnimatedNumber value={watts === null ? null : Math.abs(watts) / 1000} />
-      <span class="text-xs font-normal text-muted-foreground">kW</span>
-    </span>
-    <span
-      class="flex items-center gap-0.5 text-xs whitespace-nowrap"
-      style:color={active ? node.accent : "var(--muted-foreground)"}
+    <button
+      type="button"
+      class="relative block size-14 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+      aria-label={m.flow_details({ name: label })}
+      onclick={() => {
+        onselect(node.id);
+      }}
     >
-      {#if FlowIcon}<FlowIcon class="size-3" />{/if}
-      {watts === null ? "\u00a0" : STATES[node.state]()}
-    </span>
+      <span
+        class="flex size-full flex-col items-center justify-center rounded-md border-2 leading-none {boxTransition}"
+        style={boxStyle}
+      >
+        <span style:color={active ? node.accent : "var(--muted-foreground)"}>
+          <Icon class={hasSoc ? "size-4" : "size-6 sm:size-7"} />
+        </span>
+        {#if soc !== undefined}
+          <span class="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl"
+            >{Math.round(soc)}<span class="text-[0.68em] font-medium">%</span></span
+          >
+        {/if}
+      </span>
+      {#if soc !== undefined}
+        <svg class="absolute inset-0 size-full" viewBox="0 0 56 56" aria-hidden="true">
+          <rect
+            class="text-foreground/15"
+            x={INSET}
+            y={INSET}
+            width={SIZE}
+            height={SIZE}
+            rx="1"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          />
+          <rect
+            x={INSET}
+            y={INSET}
+            width={SIZE}
+            height={SIZE}
+            rx="1"
+            fill="none"
+            stroke={node.accent}
+            stroke-width="2.5"
+            stroke-dasharray={PERIMETER}
+            stroke-dashoffset={PERIMETER * (1 - Math.min(100, Math.max(0, soc)) / 100)}
+            style={gaugeEase}
+          />
+        </svg>
+      {/if}
+    </button>
+    <div
+      class={[
+        "pointer-events-none absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight",
+        node.labelSide === "above" ? "bottom-full mb-2 flex-col-reverse" : "top-full mt-2",
+      ]}
+    >
+      <span class="max-w-full truncate text-xs font-medium text-muted-foreground">{label}</span>
+      <span class="text-sm font-semibold whitespace-nowrap sm:text-base">
+        {#if node.estimated}<span
+            class="me-0.5 font-normal text-muted-foreground"
+            title={m.detail_estimated()}
+            aria-label={m.detail_estimated()}>≈</span
+          >{/if}<AnimatedNumber value={watts === null ? null : Math.abs(watts) / 1000} />
+        <span class="text-xs font-normal text-muted-foreground">kW</span>
+      </span>
+      <span
+        class="flex items-center gap-0.5 text-xs whitespace-nowrap"
+        style:color={active ? node.accent : "var(--muted-foreground)"}
+      >
+        {#if FlowIcon}<FlowIcon class="size-3" />{/if}
+        {watts === null ? "\u00a0" : STATES[node.state]()}
+      </span>
+    </div>
   </div>
-</div>
+</Staged>

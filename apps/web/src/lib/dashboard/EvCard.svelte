@@ -1,5 +1,6 @@
 <!-- One EVCC loadpoint (ADR 10): what it charges, the vehicle's state of charge and its target. -->
 <script lang="ts">
+  import Staged from "../motion/Staged.svelte";
   import Car from "@lucide/svelte/icons/car";
   import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
@@ -36,35 +37,38 @@
   );
 </script>
 
-<Card.Root size="sm" class="glass-ambient shrink-0 gap-0 py-0">
-  <button
-    type="button"
-    class="flex items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08]"
-    onclick={() => {
-      onopen(formatFigure({ kind: "ev", id: device }));
-    }}
-  >
-    <span class="grid size-9 shrink-0 place-items-center rounded-md bg-ev/15 text-ev"
-      ><Car class="size-5" /></span
+<!-- Fills in a frame after the screen mounts (ADR 21). -->
+<Staged>
+  <Card.Root size="sm" class="glass-ambient shrink-0 gap-0 py-0">
+    <button
+      type="button"
+      class="flex items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08]"
+      onclick={() => {
+        onopen(formatFigure({ kind: "ev", id: device }));
+      }}
     >
-    <span class="flex min-w-0 flex-1 flex-col gap-1.5" style:--glide="{tickGlideMs()}ms">
-      <span class="flex items-baseline gap-2">
-        <span class="min-w-0 truncate text-sm font-semibold">{name ?? m.evcc_title()}</span>
-        <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{state}</span>
-        <span class="text-base font-semibold whitespace-nowrap"
-          ><AnimatedNumber value={power === undefined ? null : power / 1000} />
-          <span class="text-xs font-medium text-muted-foreground">kW</span></span
+      <span class="grid size-9 shrink-0 place-items-center rounded-md bg-ev/15 text-ev"
+        ><Car class="size-5" /></span
+      >
+      <span class="flex min-w-0 flex-1 flex-col gap-1.5" style:--glide="{tickGlideMs()}ms">
+        <span class="flex items-baseline gap-2">
+          <span class="min-w-0 truncate text-sm font-semibold">{name ?? m.evcc_title()}</span>
+          <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{state}</span>
+          <span class="text-base font-semibold whitespace-nowrap"
+            ><AnimatedNumber value={power === undefined ? null : power / 1000} />
+            <span class="text-xs font-medium text-muted-foreground">kW</span></span
+          >
+        </span>
+        <Progress value={soc ?? 0} size="square" class="ev" aria-label={m.dash_ev_soc()} />
+        <span class="flex justify-between text-xs text-muted-foreground tabular-nums"
+          ><span><AnimatedNumber value={soc ?? null} digits={0} /> %</span><span
+            >{limit === undefined ? " " : m.dash_ev_target({ soc: Math.round(limit) })}</span
+          ></span
         >
       </span>
-      <Progress value={soc ?? 0} size="square" class="ev" aria-label={m.dash_ev_soc()} />
-      <span class="flex justify-between text-xs text-muted-foreground tabular-nums"
-        ><span><AnimatedNumber value={soc ?? null} digits={0} /> %</span><span
-          >{limit === undefined ? " " : m.dash_ev_target({ soc: Math.round(limit) })}</span
-        ></span
-      >
-    </span>
-  </button>
-</Card.Root>
+    </button>
+  </Card.Root>
+</Staged>
 
 <style>
   :global(.ev > [data-slot="progress-indicator"]) {

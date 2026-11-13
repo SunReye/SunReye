@@ -15,6 +15,7 @@ const SLICE_MS = 24;
 /** Frames counted by the loop; it stands still while nothing waits. */
 let frame = 0;
 let jobs: Job[] = [];
+
 /** Staged parts in the order asked, each with the first frame it may fill in. */
 let parts: Job[] = [];
 let looping = false;

@@ -37,6 +37,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** One frame: its animation callbacks, then the work they let Svelte do. */
+function frame(): void {
+  vi.advanceTimersByTime(16);
+  flushSync();
+}
+
 const bars = (root: Element) => [...root.querySelectorAll<HTMLElement>(".bar")];
 
 test("a new range moves the bars it has to their new values instead of redrawing them", async () => {
@@ -150,11 +156,6 @@ test("a line layer draws a dashed curve over the bands, and the legend reads it"
 
 test("many bars arrive a share per frame, so no one frame restyles them all", async () => {
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
-
-  const frame = () => {
-    vi.advanceTimersByTime(16);
-    flushSync();
-  };
 
   const many = Array.from({ length: 80 }, (_, i) => band(`b${i}`, 1 + (i % 5)));
   const screen = await render(BandChart, props(many));

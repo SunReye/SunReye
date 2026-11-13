@@ -2,6 +2,7 @@
 // set stays rendered as `out` for its exit, a key that returns mid-exit simply stops being `out`,
 // so the transition reverses from where it is. Nothing here animates: it only decides what is drawn.
 import { untrack } from "svelte";
+import { after } from "../motion/frames.ts";
 
 export interface Kept<T> {
   readonly key: string;
@@ -80,4 +81,65 @@ export class Presence<T> {
     for (const t of this.#timers.values()) clearTimeout(t);
     this.#timers.clear();
   }
+}
+
+/** What `stagger` draws. */
+export interface Staggered<T> {
+  readonly list: T[];
+}
+
+const done = (): void => {};
+
+/**
+ * A long keyed list that takes each change a share per frame (ADR 21): a chart's bars restyle as
+ * they move, and too many at once overrun a frame at 4× throttle. `list` is what to draw: the first
+ * shares of the newest list, the rest as they were. Call during a component's set-up.
+ *
+ * @param share how many items take a change per frame
+ */
+export function stagger<T>(
+  source: () => readonly T[],
+  key: (item: T) => string,
+  share: number,
+): Staggered<T> {
+  let list = $state.raw<T[]>([]);
+  let cancel = done;
+
+  /** Takes `n` items of `next`; `wait` frames on, `share` more. */
+  const take = (next: readonly T[], n: number, wait: number): void => {
+    const was = new Map(list.map((item) => [key(item), item]));
+
+    list = next.flatMap((item, i) => {
+      if (i < n) return [item];
+
+      const old = was.get(key(item));
+
+      return old === undefined ? [] : [old];
+    });
+
+    cancel =
+      n < next.length
+        ? after(wait, () => {
+            take(next, n + share, 1);
+          })
+        : done;
+  };
+
+  $effect.pre(() => {
+    const next = source();
+
+    untrack(() => {
+      take(next, share, 2);
+    });
+
+    return () => {
+      cancel();
+    };
+  });
+
+  return {
+    get list() {
+      return list;
+    },
+  };
 }

@@ -4,8 +4,6 @@
   first.
 -->
 <script lang="ts">
-  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
-  import Staged from "../motion/Staged.svelte";
   import type { Core, Live } from "../api/core.ts";
   import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
@@ -123,35 +121,27 @@
 
   <div class="flex min-h-0 min-w-0 flex-col gap-3">
     <NowStrip spot={values?.[SPOT]} tariff={values?.[TARIFF]} {day} {onopen} />
-    <Staged>
-      {#snippet skeleton()}<Skeleton class="min-h-[420px] rounded-lg lg:flex-1" />{/snippet}
-      <TodayPanel tariff={values?.[TARIFF]} {day} {onopen} />
-    </Staged>
+    <TodayPanel tariff={values?.[TARIFF]} {day} {onopen} />
     {#each loadpoints as loadpoint (loadpoint.id)}
-      <Staged>
-        <EvCard
-          device={loadpoint.id}
-          name={names.get(loadpoint.id)}
-          values={loadpoint.values}
-          {onopen}
-        />
-      </Staged>
+      <EvCard
+        device={loadpoint.id}
+        name={names.get(loadpoint.id)}
+        values={loadpoint.values}
+        {onopen}
+      />
     {/each}
   </div>
 </main>
 
-<!-- Closed, or opening, a frame after the screen (ADR 21). -->
-<Staged>
-  <DetailSheet
-    id={detail}
-    {core}
-    {live}
-    series={recent}
-    {day}
-    {names}
-    {params}
-    {go}
-    {onopen}
-    {onclose}
-  />
-</Staged>
+<DetailSheet
+  id={detail}
+  {core}
+  {live}
+  series={recent}
+  {day}
+  {names}
+  {params}
+  {go}
+  {onopen}
+  {onclose}
+/>

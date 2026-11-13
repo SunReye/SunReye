@@ -36,9 +36,8 @@
   import BandLabel from "./BandLabel.svelte";
   import BandLegend, { type Legend } from "./BandLegend.svelte";
   import BandTicks from "./BandTicks.svelte";
-  import { Presence, type Kept } from "./presence.svelte.ts";
+  import { Presence, stagger, type Kept } from "./presence.svelte.ts";
   import { Reading } from "./reading.svelte.ts";
-  import { Stagger } from "./stagger.svelte.ts";
 
   let {
     bands,
@@ -102,12 +101,14 @@
 
   const bars = new Presence<View>();
   const ticks = new Presence<Tick>();
+
   /** Bars drawn: a month's take a change in one frame, longer ranges a share per frame. */
-  const drawn = new Stagger(
+  const drawn = stagger(
     () => bars.list,
     (k) => k.key,
     32,
   );
+
   let arrivals = $state(1);
   let seen = -1;
   let started = false;
