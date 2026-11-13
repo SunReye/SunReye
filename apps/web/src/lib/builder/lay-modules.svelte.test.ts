@@ -13,6 +13,7 @@ import {
   house,
   inspector,
   MODULE,
+  ontoFace,
   phone,
   press,
   pv,
@@ -218,7 +219,8 @@ test("on a phone a finger lays a run on the selected face and a tap selects one;
   await tap(handle());
   await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
 
-  const at = cellsOnPage(draft.scene, 0);
+  // The camera flew onto the face when it was opened.
+  const at = cellsOnPage(draft.scene, 0, ontoFace(draft.scene, 0));
 
   await press("touch", [at("0.0"), at("0.1"), at("0.2")]);
   await press("touch", [at("0.1")]);

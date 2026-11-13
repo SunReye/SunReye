@@ -5,6 +5,7 @@
   import { PLAIN } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import CarModelField from "./CarModelField.svelte";
+  import HexField from "./HexField.svelte";
   import { choices, degrees, metres, REACH } from "./fields.ts";
   import type { CarPlace } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
@@ -63,28 +64,18 @@
     />
   {/each}
   <Item.Root class="rounded-none border-0">
-    {#snippet child({ props })}
-      <label {...props} class={[props.class, "cursor-pointer hover:bg-muted/60"]}>
-        <Item.Content>
-          <Item.Title class="text-[15px] font-normal">{m.car_colour()}</Item.Title>
-        </Item.Content>
-        <Item.Actions>
-          <span
-            class="size-6 rounded-sm ring-1 ring-border ring-inset"
-            style:background={colour}
-          ></span>
-          <!-- The swatch is the control; the system picker opens from the label. -->
-          <input
-            type="color"
-            class="sr-only"
-            value={colour}
-            onchange={(event) => {
-              onchange({ ...place, colour: event.currentTarget.value });
-            }}
-          />
-        </Item.Actions>
-      </label>
-    {/snippet}
+    <Item.Content>
+      <Item.Title class="text-[15px] font-normal">{m.car_colour()}</Item.Title>
+    </Item.Content>
+    <Item.Actions>
+      <HexField
+        label={m.car_colour()}
+        value={colour}
+        onchange={(picked) => {
+          onchange({ ...place, colour: picked });
+        }}
+      />
+    </Item.Actions>
   </Item.Root>
   <CarModelField
     model={place.model}

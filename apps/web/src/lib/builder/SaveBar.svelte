@@ -3,8 +3,8 @@
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
+  import DateField from "./DateField.svelte";
   import Outcome from "./Outcome.svelte";
   import type { Session } from "./session.svelte.ts";
 
@@ -35,13 +35,12 @@
       session.redo();
     }}><Redo2 /></Button
   >
-  <label class="ml-auto flex items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground">
+  <span class="ml-auto text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true">
     {m.builder_applies_from()}
-    <Input type="date" required class="h-8 w-auto" bind:value={session.appliesFrom} />
-  </label>
+  </span>
+  <DateField bind:value={session.appliesFrom} label={m.builder_applies_from()} />
   <Button
     size="sm"
-    disabled={session.appliesFrom === ""}
     onclick={() => {
       void session.save();
     }}>{m.builder_save()}</Button

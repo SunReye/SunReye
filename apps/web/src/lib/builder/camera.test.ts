@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { parseView, presetView, type View } from "./camera.ts";
-import type { Geometry } from "./pv.ts";
+import { faceView, FOV, parseView, presetView, type View } from "./camera.ts";
+import type { Geometry, RoofFace } from "./pv.ts";
 
 // A 10 m × 8 m footprint, 4 m high, its corner at the origin: centred at (5, 2, 4) in three.js.
 const house: Geometry = {
@@ -81,4 +81,69 @@ test("a canvas narrower than tall stands the camera back until the scene fits ac
   // Twice as narrow, twice as far: the same width of the scene across the canvas.
   expect(phone / square).toBeCloseTo(2, 6);
   expect(wide).toBeCloseTo(square, 6);
+});
+
+// A south roof 10 m along the eave and 4 m up a 30° slope, its eave 3 m up.
+const SLOPE = Math.PI / 6;
+
+const roof: RoofFace = {
+  block: 0,
+  face: 1,
+  tilt: 30,
+  azimuth: 0,
+  outline: [
+    [0, 0],
+    [10, 0],
+    [10, 4],
+    [0, 4],
+  ],
+  origin: [0, 0, 3],
+  across: [1, 0, 0],
+  up: [0, Math.cos(SLOPE), Math.sin(SLOPE)],
+};
+
+/** Metres across a canvas `aspect` wide that the camera sees at the view's target. */
+function seenAcross(view: View, aspect: number): number {
+  return 2 * Math.hypot(...offset(view)) * Math.tan((FOV / 2) * (Math.PI / 180)) * aspect;
+}
+
+test("a face's view looks straight at its middle, from outside the roof", () => {
+  const view = faceView(roof, 1);
+  const [x = 0, y = 0, z = 0] = offset(view);
+  const far = Math.hypot(x, y, z);
+
+  // Halfway along the eave and halfway up the slope; three.js has y up and z south.
+  expect(view.target[0]).toBeCloseTo(5, 6);
+  expect(view.target[1]).toBeCloseTo(3 + 2 * Math.sin(SLOPE), 6);
+  expect(view.target[2]).toBeCloseTo(-2 * Math.cos(SLOPE), 6);
+  // Along the face's normal, which leans south and up, within a fraction of a degree.
+  expect(x / far).toBeCloseTo(0, 2);
+  expect(y / far).toBeCloseTo(Math.cos(SLOPE), 2);
+  expect(z / far).toBeCloseTo(Math.sin(SLOPE), 2);
+});
+
+test("on a phone's canvas a face fills the width: a metre of roof is a finger wide", () => {
+  const phone = 390 / 760;
+  const across = seenAcross(faceView(roof, phone), phone);
+
+  // All 10 m of eave are in view, and a metre takes at least 30 of the 390 px.
+  expect(across).toBeGreaterThanOrEqual(10);
+  expect(390 / across).toBeGreaterThanOrEqual(30);
+});
+
+test("a low wide canvas fits the face's height instead", () => {
+  const wide = 3;
+  const high = seenAcross(faceView(roof, wide), wide) / wide;
+
+  expect(high).toBeGreaterThanOrEqual(4);
+  expect(high).toBeLessThan(6);
+});
+
+test("a flat roof is seen from a hair off vertical, as the orbit camera needs", () => {
+  const flat: RoofFace = { ...roof, tilt: 0, up: [0, 1, 0] };
+  const [x = 0, y = 0, z = 0] = offset(faceView(flat, 1));
+
+  expect(y).toBeGreaterThan(0);
+  expect(Math.hypot(x, z)).toBeGreaterThan(0);
+  expect(Math.hypot(x, z) / y).toBeLessThan(0.01);
 });

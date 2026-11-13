@@ -15,11 +15,11 @@ import {
   onCanvas,
   press,
   pv,
-  saveFrom,
   testCore,
   undesk,
   type Pointer,
 } from "./builder.harness.ts";
+import { saveFrom } from "./moment.harness.ts";
 import { connect, type Transport } from "../api/core.ts";
 import { addGrid, fillGrid, panels, type Draft } from "./modules.ts";
 import { toThree } from "./scene.ts";

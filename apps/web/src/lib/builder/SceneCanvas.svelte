@@ -10,7 +10,7 @@
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
-  import type { View } from "./camera.ts";
+  import { FOV, type View } from "./camera.ts";
   import {
     Brush,
     Handled,
@@ -236,7 +236,7 @@
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
-    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
+    const camera = new PerspectiveCamera(FOV, 1, 0.1, 5000);
     const scene = studioOn(canvas, camera);
 
     if (scene === null) return () => {};

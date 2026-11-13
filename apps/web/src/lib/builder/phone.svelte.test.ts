@@ -6,10 +6,12 @@ import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
+  cellsOnPage,
   DEVICES,
   house,
   MODULE,
   onCanvas,
+  ontoFace,
   phone,
   press,
   pv,
@@ -151,6 +153,41 @@ test("by touch alone an admin builds a house from a template, lays modules on a 
   await tap(handle());
   await expect.element(sheet().getByText(/^0 Module, davon 0 mit Optimierer$/u)).toBeVisible();
 }, 60_000);
+
+test("opening a face for its modules flies the camera onto it: a tap lands in the cell under it", async () => {
+  const draws = vi.spyOn(EffectComposer.prototype, "render");
+  const start = house();
+  const scene = addGrid(start.scene, 0, 1, MODULE.id);
+
+  await render(Builder, {
+    pv,
+    core: connect(testCore()),
+    start: { ...start, scene },
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+  });
+  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+
+  await tap(handle());
+  await row("Module");
+  await row(SOUTH);
+  await tap(handle());
+  await expect.element(handle()).toHaveAttribute("aria-expanded", "false");
+
+  const cells = cellsOnPage(scene, 0, ontoFace(scene, 0));
+  const [left] = cells("0.0");
+  const [right] = cells("0.1");
+
+  // From the first view a cell is about 10 px across; here it is a finger's.
+  expect(right - left).toBeGreaterThan(30);
+
+  await press("touch", [cells("1.2")]);
+  await expect.element(sheet().getByText("1 von 16 Modulen gesetzt")).toBeInTheDocument();
+  await press("touch", [cells("1.2")]);
+  await expect
+    .element(sheet().getByRole("heading", { name: "Reihe 2, Spalte 3" }))
+    .toBeInTheDocument();
+});
 
 test("a finger picks a chimney and slides it along its roof, still peeking", async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");

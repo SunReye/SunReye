@@ -6,8 +6,8 @@
 <script lang="ts">
   import { MediaQuery } from "svelte/reactivity";
   import type { Core, Device, ModuleType } from "../api/core.ts";
-  import { PEEK } from "./InspectorSheet.svelte";
-  import InspectorPane from "./InspectorPane.svelte";
+  import InspectorPane, { PEEK } from "./InspectorPane.svelte";
+  import { Moment } from "./moment.svelte.ts";
   import type { Location, Pv } from "./pv.ts";
   import PhoneTools from "./PhoneTools.svelte";
   import { Session, type Opening } from "./session.svelte.ts";
@@ -43,32 +43,44 @@
 
   const session = new Session(() => ({ pv, core, start, moduleTypes, devices, limits }));
 
+  /** The time slider's instant: it reads the draft, never writes it. */
+  const moment = new Moment(() => ({
+    core,
+    pv,
+    location,
+    draft: session.draft,
+    moduleTypes: session.moduleTypes,
+  }));
+
   provideUploader((glb) => core.uploadCarBody(glb));
 
   const sheet = $derived(phone.current || portrait.current);
 </script>
 
-<!-- A phone's canvas runs edge to edge; the shell's bottom bar, if any, sets `--bar-clear`. -->
+<!-- A phone's canvas runs edge to edge; the shell's bottom bar, if any, sets `--bar-clear`. Clipped:
+  the peeking sheet's rest must not show behind that bar. -->
 <div
   class={[
-    "relative grid h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]",
+    "relative grid overflow-clip h-[calc(100dvh-var(--bar-clear,0px))] min-h-[480px]",
     !phone.current && "gap-3 p-3",
     !sheet && "grid-cols-[minmax(0,1fr)_minmax(320px,380px)]",
   ]}
 >
   <div class="relative min-h-0">
     <View
-      {pv}
       {core}
       draft={session.draft}
       geometry={session.geometry}
       panels={session.panels}
-      moduleTypes={session.moduleTypes}
       {devices}
       {location}
+      {moment}
       clear={sheet ? PEEK : 0}
+      covered={sheet && session.expanded}
       editing={session.editing}
       painting={session.painting}
+      roofs={session.laid.roofs}
+      facing={phone.current ? session.level : undefined}
       tools={phone.current ? tools : undefined}
       onpick={(hit) => {
         session.pick(hit, phone.current);
@@ -84,7 +96,7 @@
       />
     {/if}
   </div>
-  <InspectorPane {session} {sheet} />
+  <InspectorPane {session} {sheet} {core} {devices} at={moment.at} />
 </div>
 
 {#snippet tools()}

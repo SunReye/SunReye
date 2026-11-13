@@ -422,6 +422,8 @@
   "forecast_total": "Total",
   "forecast_input": "MPPT {input}",
   "forecast_none": "No strings yet.",
+  "builder_moment": "Moment",
+  "builder_status": "In the scene now",
   "forecast_expected": "still expected",
   "forecast_input_total": "Whole input",
   "forecast_estimated_note": "≈ estimated: strings sharing an MPPT input are measured together and split by modelled current.",
