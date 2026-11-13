@@ -1,20 +1,19 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { page } from "$app/state";
-  import { connect, http } from "../lib/api/core";
   import { language } from "../lib/i18n/language.svelte.ts";
   import Backdrop from "../lib/shell/Backdrop.svelte";
   import Document from "../lib/shell/Document.svelte";
   import { provideAccess } from "../lib/shell/access.svelte.ts";
   import { stream } from "../lib/live/stream.svelte.ts";
   import { input } from "../lib/shell/input.svelte.ts";
+  import { connectCore } from "../lib/shell/core.ts";
   import Shell from "../lib/shell/Shell.svelte";
   import "../app.css";
 
   let { children }: { children: Snippet } = $props();
 
-  // The page's directory is the core's root, under an ingress prefix too (ADR 11).
-  const core = connect(http(new URL(".", document.baseURI).href));
+  const core = connectCore();
 
   const access = provideAccess();
 

@@ -1,10 +1,12 @@
-// What the home route's tests serve: a fake core behind fetch, and the browser state they reset.
+// What the home route's tests serve: a fake core, and the browser state they reset.
 
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 import { page } from "vitest/browser";
-import type { Layout } from "../lib/api/core.ts";
+import { connect, type Layout } from "../lib/api/core.ts";
+import { problem } from "../lib/api/core.harness.ts";
 import { motion } from "../lib/motion/tier.svelte.ts";
 import { setLocale } from "../lib/paraglide/runtime.js";
+import { coreContext } from "../lib/shell/core.ts";
 
 const DASHBOARD = "sunreye.dashboard";
 
@@ -26,8 +28,6 @@ const withScene: Layout = {
   },
 };
 
-const pass = globalThis.fetch.bind(globalThis);
-
 /** The paths the page asked the core for, in order. */
 const paths: string[] = [];
 
@@ -43,13 +43,6 @@ interface Served {
 
 /** What the core serves: the layout with a scene once a test says so, the session and devices. */
 export const served: Served = { scene: false, session: undefined, devices: [INVERTER], live: {} };
-
-function problem(status: number, code: string): Response {
-  return Response.json(
-    { status, code },
-    { status, headers: { "content-type": "application/problem+json" } },
-  );
-}
 
 const SCAN = {
   subnet: "192.168.1.0/24",
@@ -141,23 +134,31 @@ export async function serveCore(): Promise<void> {
   served.session = undefined;
   served.devices = [INVERTER];
   served.live = {};
-  // The core answers the API; everything else, the WASM too, passes through.
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- fetch's own parameters are mutable.
-  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-    const url = new URL(input instanceof Request ? input.url : String(input), location.href);
-    const method = input instanceof Request ? input.method : "GET";
-
-    paths.push(url.pathname);
-
-    return Promise.resolve(
-      configure(`${method} ${url.pathname}`) ?? answer(url.pathname) ?? pass(input, init),
-    );
-  });
   await page.viewport(1280, 900);
 }
 
+/** The fake core, handed to the home page in place of the root layout's. */
+export function homeCore(): Map<symbol, unknown> {
+  return coreContext(
+    connect({
+      // Paths as the page asks them; the fake answers without the network.
+      base: `${location.origin}/`,
+      fetch: (request) => {
+        const { pathname } = new URL(request.url);
+
+        paths.push(pathname);
+
+        return Promise.resolve(
+          configure(`${request.method} ${pathname}`) ??
+            answer(pathname) ??
+            problem(404, "not.found"),
+        );
+      },
+    }),
+  );
+}
+
 export async function restoreCore(): Promise<void> {
-  vi.restoreAllMocks();
   motion.lowPower = false;
   await setLocale("de", { reload: false });
 }

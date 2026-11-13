@@ -8,6 +8,7 @@ test("the messages load as a module per locale, not one per message", () => {
 
   const modules = performance
     .getEntriesByType("resource")
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own type.
     .filter(({ name }) => new URL(name).pathname.startsWith("/src/lib/paraglide/"));
 
   expect(modules.length).toBeGreaterThan(0);

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import App from "./shell.harness.svelte";
+import { keepOffline } from "./route.harness.ts";
 
 const pass = globalThis.fetch.bind(globalThis);
 
@@ -44,6 +45,8 @@ function answer(pathname: string): Response | undefined {
       return pathname.startsWith("/api/") ? problem(404, "request.route") : undefined;
   }
 }
+
+keepOffline();
 
 beforeEach(async () => {
   served.session = undefined;

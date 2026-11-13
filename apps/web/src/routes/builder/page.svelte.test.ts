@@ -3,9 +3,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { parseView } from "../../lib/builder/camera.ts";
+import { emptyCore, keepOffline } from "../route.harness.ts";
 import Page from "./+page.svelte";
 
 const KEPT = "sunreye.builder.view";
+
+keepOffline();
 
 beforeEach(async () => {
   localStorage.removeItem(KEPT);
@@ -25,7 +28,7 @@ test("without WebGL2 the route points to the form", async () => {
   // No context at all: the route asks only for WebGL2.
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: emptyCore() });
 
   await expect
     .element(screen.getByRole("link", { name: "Die PV-Anlage im Formular beschreiben" }))
@@ -36,7 +39,7 @@ test("without WebGL2 the route points to the form", async () => {
 test("on a phone the scene opens view-only", async () => {
   await page.viewport(390, 800);
 
-  const screen = await render(Page);
+  const screen = await render(Page, { context: emptyCore() });
 
   await expect.element(screen.getByLabelText("3D-Szene des Hauses")).toBeVisible();
   await expect.element(screen.getByText(/nur ansehen/u)).toBeVisible();
@@ -50,7 +53,7 @@ async function gableHouse(): Promise<void> {
 }
 
 test("a preset view is kept in this browser", async () => {
-  const screen = await render(Page);
+  const screen = await render(Page, { context: emptyCore() });
 
   await gableHouse();
 
@@ -74,7 +77,7 @@ async function press(label: string): Promise<void> {
 }
 
 test("the admin adds a block, a tree and a box, and turns a roof flat", async () => {
-  await render(Page);
+  await render(Page, { context: emptyCore() });
   await gableHouse();
 
   await press("Gebäude");
@@ -108,7 +111,7 @@ test("the admin adds a block, a tree and a box, and turns a roof flat", async ()
 });
 
 test("the compass dial turns the scene to north", async () => {
-  await render(Page);
+  await render(Page, { context: emptyCore() });
   await gableHouse();
 
   await press("Umgebung");
