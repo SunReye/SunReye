@@ -45,6 +45,9 @@
       : undefined,
   );
 
+  /** A module of the face, tapped in 3D. */
+  const tapped = $derived(level.kind === "module" ? level : undefined);
+
   const loadpoints = $derived(plan.devices.filter(({ profile }) => profile === "evcc"));
 
   function sceneChange(next: Partial<Draft["scene"]>): void {
@@ -137,7 +140,7 @@
 {:else if roof !== undefined}
   <FaceLevel
     {roof}
-    module={level.kind === "module" ? level : undefined}
+    module={tapped}
     {plan}
     {moduleTypes}
     {types}
