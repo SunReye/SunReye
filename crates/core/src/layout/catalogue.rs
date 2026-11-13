@@ -91,7 +91,7 @@ pub fn parse(json: &str) -> Result<Sheet, Invalid> {
 fn plausible(d: &Datasheet) -> bool {
     let point = d.vmp * d.imp;
     let module = (0.2..=3.0).contains(&d.width) && (0.2..=3.0).contains(&d.height);
-    super::physical(d)
+    super::unphysical(d).is_none()
         && d.vmp < d.voc
         && d.imp < d.isc
         // Datasheets print Vmp and Imp rounded, so their product strays from Pmax a little.
