@@ -38,6 +38,7 @@
   import BandTicks from "./BandTicks.svelte";
   import { Presence, type Kept } from "./presence.svelte.ts";
   import { Reading } from "./reading.svelte.ts";
+  import { Stagger } from "./stagger.svelte.ts";
 
   let {
     bands,
@@ -101,6 +102,12 @@
 
   const bars = new Presence<View>();
   const ticks = new Presence<Tick>();
+  /** Bars drawn: about 100 elements take a change per frame, so no frame restyles them all. */
+  const drawn = new Stagger(
+    () => bars.list,
+    (k) => k.key,
+    16,
+  );
   let arrivals = $state(1);
   let seen = -1;
   let started = false;
@@ -332,7 +339,7 @@
         {@render skeleton()}
       {:else}
         {@render overlays()}
-        {#each bars.list as k (k.key)}
+        {#each drawn.list as k (k.key)}
           <BandBar {k} ghost={ghostColour} {level} delay={delayOf(k)} />
         {/each}
         {#if linePath}
@@ -355,7 +362,7 @@
       class="labels relative h-4 text-[11px] leading-4 text-muted-foreground tabular-nums"
       aria-hidden="true"
     >
-      {#each bars.list as k (k.key)}
+      {#each drawn.list as k (k.key)}
         <BandLabel {k} strong={strong(k)} />
       {/each}
     </div>

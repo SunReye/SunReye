@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { flushSync } from "svelte";
+import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out and moved by the SPA's utilities and motion tokens.
@@ -31,6 +32,10 @@ function props(bands: readonly Band[], id = 1) {
     label: "Produktion",
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const bars = (root: Element) => [...root.querySelectorAll<HTMLElement>(".bar")];
 
@@ -141,4 +146,31 @@ test("a line layer draws a dashed curve over the bands, and the legend reads it"
   await userEvent.hover(plot, { position: { x: box.width * 0.75, y: box.height / 2 } });
 
   await expect.element(screen.getByText("3.5 kWh")).toBeVisible();
+});
+
+test("many bars arrive a share per frame, so no one frame restyles them all", async () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+
+  const frame = () => {
+    vi.advanceTimersByTime(16);
+    flushSync();
+  };
+
+  const many = Array.from({ length: 40 }, (_, i) => band(`b${i}`, 1 + (i % 5)));
+  const screen = await render(BandChart, props(many));
+
+  await expect.poll(() => bars(screen.container).length).toBeGreaterThan(0);
+
+  const first = bars(screen.container).length;
+
+  expect(first).toBeLessThan(40);
+  // The next share waits for the frame after the one that drew the first.
+  frame();
+  expect(bars(screen.container)).toHaveLength(first);
+  frame();
+  expect(bars(screen.container)).toHaveLength(Math.min(40, 2 * first));
+  frame();
+  frame();
+  frame();
+  expect(bars(screen.container)).toHaveLength(40);
 });
