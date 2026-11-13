@@ -12,7 +12,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 - Mouse or trackpad, any width: a slim floating glass **icon rail** (about 56 px) at the left edge, always visible. Hovering near it, or moving keyboard focus into it, expands it to labels over the content without pushing the content aside. It collapses about 300 ms after the cursor leaves. A pin keeps it open, kept per browser.
 - Touch and at least 768 px wide: the same rail, starting as icons. A tap on the logo opens it with labels, floating over the content like the mouse rail; a pin keeps it open, still floating. A tap outside closes an unpinned rail.
-- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with exactly five items: Dashboard · History · Forecast · Tariff · More. More opens a bottom sheet: Controls (admin only, first), Settings, Devices, Builder, Status.
+- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with at most three screens and More: Dashboard · History · Forecast · More. More opens a bottom sheet: Controls (admin only, first), Tariff, Settings, Devices, Builder, Status. The rail lists every screen.
 - Controls has its own rail entry, visible to admins only.
 
 **Dashboard.** Master's layout:
@@ -131,6 +131,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 ## Considered options
 
 - **An always-expanded rail on touch tablets.** Rejected: it costs the hero about 180 px for labels a tap on the logo shows.
+- **Five bar items, Tariff among them.** Rejected: at 320 px a fifth of the bar cannot hold "Tarif und Ersparnis", and labels collided; four items give each label room in every locale.
 - **Floating chart tooltips.** Rejected: on touch they hide what the finger points at; the legend is the readout.
 - **A fully hidden desktop sidebar.** Rejected: it can't be found, and it can't be reached by keyboard or by touch.
 - **KPI cards floating over a full-screen 3D scene.** Rejected for master's two-column layout, which the owner prefers.

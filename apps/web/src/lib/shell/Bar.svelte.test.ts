@@ -37,7 +37,7 @@ async function openMore(): Promise<void> {
   await expect.element(sheet()).toBeVisible();
 }
 
-test("on a phone the bar holds exactly five items, above the screen's edge", async () => {
+test("on a phone the bar holds three screens and More, above the screen's edge", async () => {
   await phone("/", true);
 
   const names = Array.from(
@@ -45,7 +45,7 @@ test("on a phone the bar holds exactly five items, above the screen's edge", asy
     (item) => item.ariaLabel,
   );
 
-  expect(names).toEqual(["Dashboard", "Verlauf", "Prognose", "Tarif und Ersparnis", "Mehr"]);
+  expect(names).toEqual(["Dashboard", "Verlauf", "Prognose", "Mehr"]);
   expect(bar().element().getBoundingClientRect().bottom).toBeLessThanOrEqual(800 - 8);
 });
 
@@ -75,14 +75,6 @@ test.each(locales)(
       expect(box.right).toBeLessThanOrEqual(boxes[i + 1]?.left ?? Infinity);
   },
 );
-
-test("the bar names Tariff short and keeps its full name for assistive tech", async () => {
-  await phone("/");
-
-  const tariff = bar().getByRole("radio", { name: "Tarif und Ersparnis" });
-
-  await expect.element(tariff.getByText("Tarif", { exact: true })).toBeVisible();
-});
 
 test("the bar never hides on scroll and the page ends above it", async () => {
   await page.viewport(400, 800);
@@ -143,22 +135,24 @@ test("More lists the other screens and opens with a soft tap", async () => {
   expect(soft).toHaveBeenCalledOnce();
   const links = sheet().getByRole("link");
 
-  expect(links.elements()).toHaveLength(3);
-  await expect.element(links.nth(0)).toHaveTextContent("Einstellungen");
-  await expect.element(links.nth(1)).toHaveTextContent("3D-Haus");
-  await expect.element(links.nth(2)).toHaveTextContent("Status");
+  expect(links.elements()).toHaveLength(4);
+  await expect.element(links.nth(0)).toHaveTextContent("Tarif und Ersparnis");
+  await expect.element(links.nth(1)).toHaveTextContent("Einstellungen");
+  await expect.element(links.nth(2)).toHaveTextContent("3D-Haus");
+  await expect.element(links.nth(3)).toHaveTextContent("Status");
 });
 
-test("More lists Controls first and Devices after Settings for the admin", async () => {
+test("More lists Controls first, then Tariff, and Devices after Settings for the admin", async () => {
   await phone("/", true);
   await openMore();
   const links = sheet().getByRole("link");
 
   await expect.element(links.first()).toHaveAttribute("href", "#/controls");
+  await expect.element(links.nth(1)).toHaveAttribute("href", "#/tariff");
   await expect
     .element(sheet().getByRole("link", { name: /Geräte/u }))
     .toHaveAttribute("href", "#/settings?group=devices");
-  expect(links.elements()[2]?.getAttribute("href")).toBe("#/settings?group=devices");
+  expect(links.elements()[3]?.getAttribute("href")).toBe("#/settings?group=devices");
 });
 
 test("a screen picked in More closes the sheet", async () => {

@@ -14,8 +14,6 @@ export interface NavItem {
   /** The route id, as `page.route.id` reports it. */
   readonly route: string;
   readonly label: () => string;
-  /** The bar's label, where the full one would not fit its fifth of a phone. */
-  readonly short?: () => string;
   readonly icon: Component<{ class?: string }>;
   /** Shown to the admin only. */
   readonly admin?: true;
@@ -23,13 +21,14 @@ export interface NavItem {
 
 export const DASHBOARD: NavItem = { route: "/", label: m.nav_dashboard, icon: LayoutDashboard };
 
-/** The phone bar's four screens; More holds the rest. */
+/** The phone bar's three screens (ADR 21); More holds the rest. */
 export const BAR: readonly NavItem[] = [
   DASHBOARD,
   { route: "/history", label: m.nav_history, icon: ChartLine },
   { route: "/forecast", label: m.nav_forecast, icon: ICONS.forecast },
-  { route: "/tariff", label: m.nav_tariff, short: m.nav_tariff_short, icon: ICONS.tariff },
 ];
+
+const TARIFF: NavItem = { route: "/tariff", label: m.nav_tariff, icon: ICONS.tariff };
 
 const CONTROLS: NavItem = {
   route: "/controls",
@@ -50,13 +49,13 @@ const DEVICES: NavItem = {
 const STATUS: NavItem = { route: "/status", label: m.nav_status, icon: Activity };
 
 /** The rail's upper list, in order; Controls is the admin's. */
-export const RAIL: readonly NavItem[] = [...BAR, CONTROLS, BUILDER, STATUS];
+export const RAIL: readonly NavItem[] = [...BAR, TARIFF, CONTROLS, BUILDER, STATUS];
 
 /** Pinned to the rail's foot. */
 export const SETTINGS: NavItem = { route: "/settings", label: m.nav_settings, icon: Settings };
 
 /** The phone's More sheet, in order; Controls is the admin's. */
-export const MORE: readonly NavItem[] = [CONTROLS, SETTINGS, DEVICES, BUILDER, STATUS];
+export const MORE: readonly NavItem[] = [CONTROLS, TARIFF, SETTINGS, DEVICES, BUILDER, STATUS];
 
 /** The hash link to a route. */
 export function href(route: string): string {

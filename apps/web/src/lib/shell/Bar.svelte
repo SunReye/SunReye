@@ -1,5 +1,5 @@
 <!--
-  The phone's floating bottom bar (ADR 21): four screens and More, which opens a draggable sheet
+  The phone's floating bottom bar (ADR 21): three screens and More, which opens a draggable sheet
   with the rest. Sticky: it never hides on scroll.
 -->
 <script lang="ts">
@@ -69,8 +69,8 @@
 >
   <ToggleGroup.Root
     type="single"
-    spacing={0.5}
-    class="grid w-full grid-cols-5"
+    spacing={1}
+    class="grid w-full grid-cols-4"
     bind:value={() => active, pick}
   >
     {#each items as item (item.route)}
@@ -81,8 +81,8 @@
       >
         <item.icon class={cn("size-5", active === item.route && "text-brand")} />
         <!-- Truncated as a last resort; every locale's labels fit 320 px (tested). -->
-        <span class="max-w-full truncate text-[11px] leading-none font-medium tracking-tight"
-          >{(item.short ?? item.label)()}</span
+        <span class="max-w-full truncate text-[11px] leading-none font-medium"
+          >{item.label()}</span
         >
       </ToggleGroup.Item>
     {/each}
