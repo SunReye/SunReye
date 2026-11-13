@@ -136,13 +136,13 @@ function eachPart(
 
 /** How long the intervals cover of [from, to), in ms. */
 function length(intervals: readonly Interval[], from: number, to: number): number {
-  let sum = 0;
+  let ms = 0;
 
   eachPart(intervals, from, to, (a, b) => {
-    sum += b - a;
+    ms += b - a;
   });
 
-  return sum;
+  return ms;
 }
 
 const HOUR = 3_600_000;
