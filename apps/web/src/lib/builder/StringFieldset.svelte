@@ -102,6 +102,7 @@
   <Item.Root class="rounded-none border-0">
     <Item.Content>
       <Item.Description>{m.builder_string_modules(made)}</Item.Description>
+      <p class="text-sm text-muted-foreground">{m.builder_string_hint()}</p>
       {#if refused !== undefined}
         <p role="alert" class="text-sm text-destructive">{refused}</p>
       {/if}
