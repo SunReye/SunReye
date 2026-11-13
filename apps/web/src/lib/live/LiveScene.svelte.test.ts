@@ -54,14 +54,14 @@ test("a live tick and a camera move draw a short tween, then drawing stops (ADR 
   const screen = await show(core);
 
   await tick(frame(600, -1200));
-  await chip("Süd", "0,6");
+  await chip("Süd", "600");
 
   const first = await settled(() => draws.mock.calls.length);
 
   expect(first).toBeGreaterThan(0);
 
   await tick(frame(700, -1100));
-  await chip("Süd", "0,7");
+  await chip("Süd", "700");
 
   const ticked = await settled(() => draws.mock.calls.length);
 
@@ -97,7 +97,7 @@ test("a car appears at its place while connected, with its charge power and SOC"
 
   await tick({ devices: { ...frame(600, 0).devices, "2": { "ev.connected": 0 } } });
 
-  await chip("Süd", "0,6");
+  await chip("Süd", "600");
   expect(screen.getByRole("button", { name: "E-Auto: Details" }).elements()).toHaveLength(0);
 
   await tick({

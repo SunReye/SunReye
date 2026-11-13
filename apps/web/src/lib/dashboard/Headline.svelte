@@ -8,7 +8,7 @@
   import type { Snippet } from "svelte";
   import Unplug from "@lucide/svelte/icons/unplug";
   import type { Live } from "../api/core.ts";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import { problemText } from "../i18n/problems.ts";
   import { age } from "../live/stream.ts";
   import { m } from "../paraglide/messages.js";
@@ -47,7 +47,6 @@
   /** When the headline's series was last read, while it is stale. */
   const staleSince = $derived(plantStale?.[producing ? "pv.power" : "load.power"]);
 
-  const kw = (watts: number | undefined) => (watts === undefined ? null : watts / 1000);
   const grid = $derived(plant?.["grid.power"]);
   const battery = $derived(plant?.["battery.power"]);
   const exporting = $derived(grid !== undefined && grid < 0);
@@ -91,8 +90,7 @@
       (staleSince !== undefined || lost || refused !== null) && "opacity-60",
     ]}
   >
-    <AnimatedNumber value={lead.watts === null ? null : lead.watts / 1000} />
-    <span class="text-2xl text-muted-foreground">kW</span>
+    <PowerNumber watts={lead.watts} unitClass="text-2xl text-muted-foreground" />
   </span>
   {#if figures && plant !== undefined}
     <span
@@ -102,23 +100,23 @@
         <button type="button" class={figure} onclick={() => onselect("house")}
           >{m.dash_house()}
           <span class="font-semibold text-foreground"
-            ><AnimatedNumber value={kw(plant["load.power"])} /></span
-          > kW</button
+            ><PowerNumber watts={plant["load.power"] ?? null} unitClass="font-normal text-muted-foreground" /></span
+          ></button
         >
       {:else if battery !== undefined}
         <button type="button" class={figure} onclick={() => onselect("battery")}
           >{m.dash_battery()}
           <span class="font-semibold text-battery"
-            ><AnimatedNumber value={Math.abs(battery) / 1000} /></span
-          > kW</button
+            ><PowerNumber watts={Math.abs(battery)} unitClass="font-normal text-muted-foreground" /></span
+          ></button
         >
       {/if}
       {#if grid !== undefined}
         <button type="button" class={figure} onclick={() => onselect("grid")}>
           {exporting ? m.dash_grid_export() : m.dash_grid_import()}
           <span class={["font-semibold", exporting ? "text-export" : "text-import"]}
-            ><AnimatedNumber value={Math.abs(grid) / 1000} /></span
-          > kW
+            ><PowerNumber watts={Math.abs(grid)} unitClass="font-normal text-muted-foreground" /></span
+          >
         </button>
       {/if}
     </span>

@@ -159,7 +159,7 @@ test("while PV is idle the hero leads with house consumption", async () => {
   const screen = await open();
 
   await expect.element(screen.getByText("Verbrauch jetzt")).toBeVisible();
-  await expect.poll(lead).toBe("0,9 kW");
+  await expect.poll(lead).toBe("900 W");
 });
 
 test("without a scene the hero shows the power flow, whose nodes open their details", async () => {
@@ -223,6 +223,18 @@ test("a loadpoint shows on one EV card under its device's name, the plant's tota
   await expect.element(screen.getByText("Wallbox Garage")).toBeVisible();
   await expect.element(screen.getByText("Ziel 80 %")).toBeVisible();
   expect(screen.getByRole("button", { name: /Ladepunkt/u }).query()).toBeNull();
+});
+
+test("an EV card writes a charge below 1 kW in watts", async () => {
+  const slow = { ...LOADPOINT, "ev.charge.power": 800 };
+  served.live = { ...NOON, [PLANT]: { ...NOON[PLANT], "ev.charge.power": 800 }, "7": slow };
+  served.devices = [{ id: 7, name: "Wallbox Garage", profile: "evcc", connection: 2, unit: 1 }];
+
+  const screen = await open();
+  const card = screen.getByRole("button", { name: /Wallbox Garage/u });
+
+  await expect.element(card.getByText("800", { exact: true })).toBeVisible();
+  await expect.element(card.getByText("W", { exact: true })).toBeVisible();
 });
 
 test("without a loadpoint there is no EV card", async () => {
