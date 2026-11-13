@@ -19,6 +19,7 @@
     capabilities,
     model,
     location,
+    locked = false,
     onselect,
     onready,
     onerror,
@@ -34,6 +35,8 @@
     model?: Parameters<typeof SceneCanvas>[1]["model"];
     /** The plant's; unknown to a viewer, whose sun then stays put (ADR 20). */
     location?: Location | undefined;
+    /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
+    locked?: boolean;
     /** Opens a chip's detail sheet. */
     onselect: (id: string) => void;
     /** The first frame is on screen and the scene has started to fade in. */
@@ -181,6 +184,7 @@
     {sun}
     {model}
     view={kept ?? presetView("isometric", geometry)}
+    {locked}
     onview={(view) => {
       kept = view;
       localStorage.setItem(KEPT, JSON.stringify(view));

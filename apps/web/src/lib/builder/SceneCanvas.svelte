@@ -35,6 +35,7 @@
     sun = null,
     model,
     view,
+    locked = false,
     onview,
     onrender,
     onpick,
@@ -55,6 +56,8 @@
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
+    /** The camera stays put and a finger on the canvas scrolls the page (ADR 20). */
+    locked?: boolean;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
     /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
@@ -150,9 +153,18 @@
       flight.stop();
     });
     controls.addEventListener("end", () => {
+      // A scroll the browser takes from a locked canvas cancels the pointer, which also ends here.
+      if (!controls.enabled) return;
+
       onview({ position: camera.position.toArray(), target: controls.target.toArray() });
     });
     follow(camera, controls, flight, render);
+
+    $effect(() => {
+      controls.enabled = !locked;
+      // Over the controls' own inline "none".
+      canvas.style.touchAction = locked ? "pan-y" : "none";
+    });
 
     return controls;
   }

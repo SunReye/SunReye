@@ -9,12 +9,14 @@
   let {
     core,
     layout,
+    locked,
     onselect,
     onready,
     onerror,
   }: {
     core: Core;
     layout: SceneLayout;
+    locked: boolean;
     onselect: (id: string) => void;
     /** The first frame is on screen and the scene has started to fade in. */
     onready: () => void;
@@ -73,6 +75,7 @@
         {capabilities}
         {model}
         {location}
+        {locked}
         {onselect}
         {onready}
         {onerror}

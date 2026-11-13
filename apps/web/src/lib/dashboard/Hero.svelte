@@ -4,7 +4,11 @@
   once the page is idle, behind the studio stand-in or the flow it replaces, and fades in.
 -->
 <script lang="ts">
+  import Lock from "@lucide/svelte/icons/lock";
+  import LockOpen from "@lucide/svelte/icons/lock-open";
+  import { Toggle } from "#lib/components/ui/toggle/index.js";
   import type { Core, Live } from "../api/core.ts";
+  import { haptics } from "../haptics.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
   import Flow2d from "../flow/Flow2d.svelte";
   import { motion } from "../motion/tier.svelte.ts";
@@ -56,6 +60,9 @@
   const mode = $derived(scene !== null && !failed ? "3d" : "2d");
 
   let height = $state(0);
+
+  /** The scene's camera stays put until asked; leaving the dashboard locks it again (ADR 20). */
+  let locked = $state(true);
 </script>
 
 <section class="relative isolate {className}" aria-label={m.dash_hero()}>
@@ -63,7 +70,7 @@
     <Flow2d {core} {live} top={height + 12} {onselect} />
   {/if}
   {#if mode === "3d" && scene !== null}
-    <HeroScene {core} layout={scene} {load} {onselect} />
+    <HeroScene {core} layout={scene} {load} {locked} {onselect} />
   {/if}
 
   <Headline {live} {plant} {plantStale} figures={!flowShown} {onselect} bind:height>
@@ -85,6 +92,24 @@
     {/if}
   </Headline>
 
+  <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+    {#if mode === "3d"}
+      <Toggle
+        size="sm"
+        bind:pressed={
+          () => !locked,
+          (moving) => {
+            haptics.selection();
+            locked = !moving;
+          }
+        }
+        class="glass-ambient size-9 ring-1 ring-border/60 elevation-1"
+        aria-label={m.dash_camera_move()}
+        title={m.dash_camera_move()}
+      >
+        {#if locked}<Lock />{:else}<LockOpen />{/if}
+      </Toggle>
+    {/if}
   <ViewToggle
     shows={mode}
     toggles={shown.toggles}
@@ -98,4 +123,5 @@
       }
     }}
   />
+  </div>
 </section>
