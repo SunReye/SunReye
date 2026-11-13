@@ -12,7 +12,6 @@ test("About credits the default car under CC BY: title, author, source, licence 
       "https://sketchfab.com/3d-models/61ddcbdbd3854c239e0c95bf60b00022",
     ],
     ["tonielpro520", "https://sketchfab.com/tonielpro520"],
-    ["CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"],
   ] as const;
 
   await Promise.all(
@@ -21,4 +20,20 @@ test("About credits the default car under CC BY: title, author, source, licence 
     ),
   );
   await expect.element(screen.getByText(/ohne Innenraum, Embleme und Texturen/u)).toBeVisible();
+  await expect
+    .element(screen.getByRole("link", { name: "CC BY 4.0" }).first())
+    .toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/");
+});
+
+test("About also credits the spot prices, as shown beside them", async () => {
+  const screen = await render(AboutSettings);
+
+  await expect.element(screen.getByText("Börsenstrompreis")).toBeVisible();
+  await expect
+    .element(screen.getByRole("link", { name: "energy-charts.info" }))
+    .toHaveAttribute("href", "https://energy-charts.info");
+  await expect
+    .element(screen.getByRole("link", { name: "Bundesnetzagentur | SMARD.de" }))
+    .toHaveAttribute("href", "https://www.smard.de");
+  expect(screen.getByRole("link", { name: "CC BY 4.0" }).elements()).toHaveLength(2);
 });
