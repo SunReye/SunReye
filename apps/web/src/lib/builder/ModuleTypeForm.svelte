@@ -10,7 +10,8 @@
   import type { Datasheet, ModuleType, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
-  import { BLANK, datasheet, rows, type Entered } from "./datasheet.ts";
+  import { BLANK, datasheet, missing, REQUIRED, rows, type Entered } from "./datasheet.ts";
+  import { valueRefusal } from "./checks.ts";
   import ValueRow from "./ValueRow.svelte";
 
   let {
@@ -30,6 +31,15 @@
   let entered = $state.raw<Entered>(BLANK);
   let refused = $state.raw<Problem>();
   let adding = $state(false);
+
+  const labels = Object.fromEntries(
+    groups.flatMap((group) => group.rows.map(([key, edit]) => [key, edit.name])),
+  );
+
+  const complete = $derived([...REQUIRED].every((key) => !missing(entered, key)));
+
+  /** The refusal worded by the value it points at, else by its code alone. */
+  const pointed = $derived(refused === undefined ? undefined : valueRefusal(refused, labels));
 
   async function submit(): Promise<void> {
     adding = true;
@@ -64,6 +74,7 @@
         <ValueRow
           {edit}
           value={entered[key]}
+          missing={missing(entered, key)}
           onchange={(value) => {
             entered = { ...entered, [key]: value };
           }}
@@ -73,8 +84,8 @@
   {/each}
 
   <div class="flex flex-col gap-2 border-t border-border/60 p-3">
-    <Refusal {refused} />
-    <Button type="submit" disabled={adding || name.trim() === ""}>
+    <Refusal {refused} text={pointed} />
+    <Button type="submit" disabled={adding || name.trim() === "" || !complete}>
       {m.builder_create_module_type()}
     </Button>
     <Button type="button" variant="ghost" onclick={oncancel}>{m.builder_cancel()}</Button>

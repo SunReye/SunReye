@@ -11,7 +11,11 @@
   let { session }: { session: Session } = $props();
 </script>
 
-<Outcome misplaced={session.laid.misplaced} saved={session.saved} />
+<!-- A refusal for one string shows on that string's level, where the save opens it. -->
+<Outcome
+  misplaced={session.laid.misplaced}
+  saved={session.plan.refused === null ? session.saved : undefined}
+/>
 <div class="flex items-center gap-1.5">
   <Button
     variant="ghost"

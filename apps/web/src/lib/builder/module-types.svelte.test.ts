@@ -64,8 +64,9 @@ const CATALOGUE = {
   ],
 };
 
-/** A core without module types that keeps each one added, or refuses it with `refusal`. */
-function emptyCore(refusal?: string): Transport & { readonly posts: unknown[] } {
+/** A core without module types that keeps each one added, or refuses it with `refusal` at
+ * `pointer`. */
+function emptyCore(refusal?: string, pointer?: string): Transport & { readonly posts: unknown[] } {
   const posts: unknown[] = [];
 
   return {
@@ -85,7 +86,7 @@ function emptyCore(refusal?: string): Transport & { readonly posts: unknown[] } 
       return refusal === undefined
         ? Response.json(Object.assign({ id: 9 }, sheet), { status: 201 })
         : Response.json(
-            { type: "about:blank", title: "Unprocessable", status: 422, code: refusal },
+            { type: "about:blank", title: "Unprocessable", status: 422, code: refusal, pointer },
             { status: 422, headers: { "content-type": "application/problem+json" } },
           );
     },
@@ -164,19 +165,41 @@ test("an existing module type is offered on the face, and picking it lays the gr
   await expect.element(inspector().getByRole("button", { name: "Fläche füllen" })).toBeVisible();
 });
 
-test("a datasheet the core refuses shows its problem text and keeps what was entered", async () => {
-  const core = emptyCore("layout.value");
+test("a new datasheet marks each value it needs and is not sent before they are entered", async () => {
+  const core = emptyCore();
 
   await opened(core);
   await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
 
   await drill("Module", SOUTH, "Neuer Modultyp");
   await userEvent.fill(inspector().getByLabelText("Name"), MODULE.name);
+
+  await expect
+    .element(inspector().getByRole("button", { name: "Pmax (W) Pflichtangabe" }))
+    .toBeVisible();
+  await expect
+    .element(inspector().getByRole("button", { name: "Modultyp anlegen" }))
+    .toBeDisabled();
+
+  await datasheet();
+
+  expect(inspector().getByText("Pflichtangabe").all()).toHaveLength(0);
+  await expect.element(inspector().getByRole("button", { name: "Modultyp anlegen" })).toBeEnabled();
+});
+
+test("a datasheet the core refuses names the value and keeps what was entered", async () => {
+  const core = emptyCore("layout.value", "/pmax");
+
+  await opened(core);
+  await page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }).click();
+
+  await drill("Module", SOUTH, "Neuer Modultyp");
+  await datasheet();
   await inspector().getByRole("button", { name: "Modultyp anlegen" }).click();
 
   await expect
     .element(inspector().getByRole("alert"))
-    .toHaveTextContent("Ein Wert liegt außerhalb seines physikalischen Bereichs.");
+    .toHaveTextContent("Pmax (W) liegt außerhalb seines physikalischen Bereichs.");
   await expect.element(inspector().getByLabelText("Name")).toHaveValue(MODULE.name);
   expect(core.posts).toHaveLength(1);
 });
