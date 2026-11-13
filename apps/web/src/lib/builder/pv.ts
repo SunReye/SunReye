@@ -137,6 +137,10 @@ export interface RoofFace {
   readonly azimuth: number;
   /** Metres across and up the slope from the lowest corner on the left, seen from the front. */
   readonly outline: readonly (readonly [number, number])[];
+  /** The outline's frame: where it starts, and the unit directions across the slope and up it. */
+  readonly origin: Point;
+  readonly across: Point;
+  readonly up: Point;
 }
 
 /** A cell whose module fits inside the setback. */

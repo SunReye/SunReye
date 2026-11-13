@@ -9,7 +9,7 @@ import type {
   ModuleType,
   Problem,
 } from "../api/core.ts";
-import { coldStrings, type Limits } from "./checks.ts";
+import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
 import { parent, picked, type Level } from "./levels.ts";
@@ -95,6 +95,7 @@ export class Session {
       laid: this.laid,
       devices: opening().devices,
       cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
+      refused: this.#refused(),
     });
   }
 
@@ -115,6 +116,13 @@ export class Session {
   /** The module catalogue's sheets (ADR 17), read anew each time a face asks. */
   moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem> {
     return this.#opening().core.moduleCatalogue();
+  }
+
+  #refused(): StringRefusal | null {
+    const { saved } = this;
+    const names = this.draft.strings.map(({ name }) => name);
+
+    return saved !== undefined && "problem" in saved ? stringRefusal(saved, names) : null;
   }
 
   get draft(): Draft {
@@ -162,7 +170,8 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** A selected block, obstacle, ground surface or fence's handles, and where their drags go. */
+  /** A selected block, obstacle, ground surface, fence, car place or chimney's handles, and where
+   * their drags go. */
   get editing(): Editing | undefined {
     const { level } = this;
 
@@ -170,7 +179,9 @@ export class Session {
       level.kind !== "block" &&
       level.kind !== "obstacle" &&
       level.kind !== "surface" &&
-      level.kind !== "fence"
+      level.kind !== "fence" &&
+      level.kind !== "place" &&
+      level.kind !== "chimney"
     ) {
       return undefined;
     }
@@ -178,6 +189,7 @@ export class Session {
     return {
       scene: this.draft.scene,
       target: { kind: level.kind, index: level.index },
+      roofs: this.laid.roofs,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -254,7 +266,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit);
+    const level = picked(this.draft.scene, hit, this.laid.roofs);
 
     if (level === null) return;
 
@@ -281,6 +293,10 @@ export class Session {
     });
 
     this.saved = saved;
+
+    const refused = this.#refused();
+
+    if (refused !== null) this.go({ kind: "string", index: refused.string });
 
     if (!("problem" in saved)) {
       this.#history = begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });

@@ -239,3 +239,38 @@ test("a fence point snaps to a block's edge within 25 cm", () => {
 
   expect(moved?.value).toEqual([10, 8]);
 });
+
+const PLACE: Target = { kind: "place", index: 0 };
+
+/** A 2.5 m × 5 m car place in front of the house. */
+const parked = (): Scene => ({
+  ...scene(),
+  carPlaces: [{ device: 3, x: 14, z: 12, width: 2.5, length: 5, rotation: 0, colour: "#c0ffee" }],
+});
+
+test("a car place has a turn and a move handle, on the ground", () => {
+  const found = handles(parked(), PLACE);
+
+  expect(found.map(({ grip }) => grip)).toEqual(["turn", "move"]);
+  expect(found.every(({ at }) => at[1] === 0)).toBe(true);
+});
+
+test("a car place moves on the ground in 10 cm steps, keeping its size and colour", () => {
+  const moved = dragged(parked(), "move", 0, [down(15, 14), down(17.04, 10.97)], PLACE);
+
+  expect(moved?.value).toEqual([16, 9]);
+  expect(moved?.scene.carPlaces).toEqual([
+    { device: 3, x: 16, z: 9, width: 2.5, length: 5, rotation: 0, colour: "#c0ffee" },
+  ]);
+});
+
+test("the ring turns a car place about its centre", () => {
+  // From east of its centre (15.25, 14.5) to south of it: a quarter turn clockwise.
+  const moved = dragged(parked(), "turn", 0, [down(19, 14.5), down(15.25, 18)], PLACE);
+  const place = moved?.scene.carPlaces?.[0];
+
+  expect(moved?.value).toEqual([90]);
+  expect(place).toMatchObject({ rotation: 90, width: 2.5, length: 5 });
+  // Its centre stays where it was.
+  expect([place?.x, place?.z]).toEqual([17.75, 13.25]);
+});

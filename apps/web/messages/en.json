@@ -1047,5 +1047,12 @@
   "settings_secret_clear": "Clear {name}",
   "settings_connection_remove": "Remove connection",
   "settings_connection_remove_note": "Only a connection no device uses can be removed.",
-  "devices_known": "SunReye already reads {count} of the devices found."
+  "devices_known": "SunReye already reads {count} of the devices found.",
+  "builder_required": "Required",
+  "refused_string_modules": "No module belongs to {name} yet. Paint modules into it, then save.",
+  "refused_string_value": "{name}: {field} is outside its physical range.",
+  "refused_value": "{field} is outside its physical range.",
+  "field_optimized": "Modules with an optimizer",
+  "field_tilt": "Tilt (°)",
+  "field_azimuth": "Azimuth (°)"
 }

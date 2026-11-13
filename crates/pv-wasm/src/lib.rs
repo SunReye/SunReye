@@ -136,6 +136,7 @@ fn roof(face: &RoofFace) -> Value {
     json!({
         "block": face.block, "face": face.face, "tilt": face.plane.tilt,
         "azimuth": face.plane.azimuth, "outline": face.outline,
+        "origin": face.origin, "across": face.across, "up": face.up,
     })
 }
 

@@ -1,5 +1,6 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import type { Block, Cell, FencePoint, Point, Scene } from "./pv.ts";
+import { chimneyAt } from "./chimneys.ts";
+import type { Block, Cell, FencePoint, Point, RoofFace, Scene } from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -112,45 +113,54 @@ function placed(scene: Scene, point: readonly [number, number]): number {
   );
 }
 
-/** The object at a point: what stands before the blocks it stands by, a car place before the
- * roof over it, the ground last, the latest surface first as it is drawn over the others. */
-function at(scene: Scene, [east, north, up]: Point): Level | null {
-  const point = turn(east, -north, -scene.north);
-
-  const obstacle = scene.obstacles.findIndex((item) => {
+/** The index of the obstacle under scene point `x`, `z`; −1 for none. */
+function obstacleAt(scene: Scene, point: readonly [number, number]): number {
+  return scene.obstacles.findIndex((item) => {
     if (item.kind === "box") return within(point, item);
 
     if (item.kind === "hedge") return within(point, { ...item, width: item.length });
 
     return Math.hypot(point[0] - item.x, point[1] - item.z) <= item.radius + EDGE;
   });
-
-  if (obstacle >= 0) return { kind: "obstacle", index: obstacle };
-
-  const fence = (scene.fences ?? []).findIndex(({ points }) =>
-    points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
-  );
-
-  if (fence >= 0) return { kind: "fence", index: fence };
-
-  const place = up < CAR ? placed(scene, point) : -1;
-
-  if (place >= 0) return { kind: "place", index: place };
-
-  const block = scene.blocks.findIndex((item) => within(point, item, reach(item)));
-
-  if (block >= 0) return { kind: "block", index: block };
-
-  const surface = (scene.surfaces ?? []).findLastIndex((item) => within(point, item));
-
-  return surface >= 0 ? { kind: "surface", index: surface } : null;
 }
 
-/** The level a click in 3D drills the inspector to; null for open ground. */
-export function picked(scene: Scene, hit: Hit): Level | null {
+/** The object at a point: a chimney on its roof, what stands before the blocks it stands by, a car
+ * place before the roof over it, the ground last, the latest surface first as it is drawn over
+ * the others. */
+function at(scene: Scene, roofs: readonly RoofFace[], [east, north, up]: Point): Level | null {
+  const point = turn(east, -north, -scene.north);
+
+  // Each finder answers an index, −1 for none; the first found wins.
+  const finders = [
+    ["chimney", () => chimneyAt(scene, roofs, [east, north, up])],
+    ["obstacle", () => obstacleAt(scene, point)],
+    [
+      "fence",
+      () =>
+        (scene.fences ?? []).findIndex(({ points }) =>
+          points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
+        ),
+    ],
+    ["place", () => (up < CAR ? placed(scene, point) : -1)],
+    ["block", () => scene.blocks.findIndex((item) => within(point, item, reach(item)))],
+    ["surface", () => (scene.surfaces ?? []).findLastIndex((item) => within(point, item))],
+  ] as const;
+
+  for (const [kind, find] of finders) {
+    const index = find();
+
+    if (index >= 0) return { kind, index };
+  }
+
+  return null;
+}
+
+/** The level a click in 3D drills the inspector to; null for open ground. A chimney is found on
+ * the laid-out `roofs`. */
+export function picked(scene: Scene, hit: Hit, roofs: readonly RoofFace[] = []): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
 
-  if (hit.kind === "point") return at(scene, hit.point);
+  if (hit.kind === "point") return at(scene, roofs, hit.point);
 
   const grid = scene.grids?.[hit.grid];
 

@@ -7,7 +7,7 @@ import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_p
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
-import { presetView } from "./camera.ts";
+import { presetView, type View } from "./camera.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
 
@@ -204,12 +204,14 @@ export async function press(
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
 }
 
-/** Where a point lands on the builder's canvas, seen from its first view: the isometric preset. */
+/** Where a point lands on the builder's canvas, seen from `kept` or else its first view: the
+ * isometric preset. */
 export function onCanvas(
   start: Scene,
+  kept?: View,
 ): (at: readonly [number, number, number]) => [number, number] {
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const view = presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
+  const view = kept ?? presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
   const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
 
   camera.position.set(...view.position);

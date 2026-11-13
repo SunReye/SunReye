@@ -3,7 +3,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
+import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { addGrid } from "./modules.ts";
 import {
@@ -116,6 +116,33 @@ test("a module the setback no longer holds is flagged before saving", async () =
   await expect
     .element(inspector().getByText("1 Module gehören zu keinem String und erzeugen nichts."))
     .toBeVisible();
+});
+
+test("a string saved before any module is painted into it is named on its own level", async () => {
+  // The core refuses it as it refused the owner (#743).
+  const refusing: Transport = {
+    base: "http://core.test/",
+    fetch: (request) =>
+      request.method === "GET"
+        ? Promise.withResolvers<Response>().promise
+        : Promise.resolve(
+            Response.json(
+              { status: 422, code: "layout.value", pointer: "/strings/0/modules" },
+              { status: 422, headers: { "content-type": "application/problem+json" } },
+            ),
+          ),
+  };
+
+  const screen = await gridOnTheSouthFace(refusing);
+
+  await drill("Module", "Szene", "Strings", "String hinzufügen", "Strings", "Szene");
+  await saveFrom("2026-11-01");
+
+  await expect.element(inspector().getByLabelText("Name")).toHaveValue("String 1");
+  await expect
+    .element(screen.getByRole("alert"))
+    .toHaveTextContent("Noch kein Modul gehört zu String 1. Male Module hinein, dann speichere.");
+  expect(screen.container.textContent).not.toContain("physikalischen Bereichs");
 });
 
 test("the admin hangs a battery marker inside the right wall and saves it with the scene", async () => {

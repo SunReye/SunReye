@@ -14,7 +14,23 @@ export interface DatasheetGroup {
   readonly rows: readonly (readonly [keyof Entered, Editable])[];
 }
 
-/** The groups in datasheet order. Lower bounds of 0 let the core refuse a value never entered. */
+/** The values every datasheet prints, left at 0 in a new form until entered. */
+export const REQUIRED: ReadonlySet<keyof Entered> = new Set([
+  "pmax",
+  "vmp",
+  "imp",
+  "voc",
+  "isc",
+  "height",
+  "width",
+]);
+
+/** Whether `key` is required and not yet entered. */
+export function missing(entered: Entered, key: keyof Entered): boolean {
+  return REQUIRED.has(key) && entered[key] <= 0;
+}
+
+/** The groups in datasheet order. A lower bound of 0 is the blank form's value, never sent. */
 export function rows(): readonly DatasheetGroup[] {
   return [
     {

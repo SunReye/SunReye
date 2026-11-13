@@ -1,7 +1,8 @@
 // The builder's live checks before saving (ADR 20), worded: a module the core would refuse, and a
 // string whose open-circuit voltage at −10 °C, as the pv crate reckons it, exceeds its inverter's
-// maximum DC input voltage. That one warns, never refuses: the plant may already exist.
-import type { Capabilities, ModuleType } from "../api/core.ts";
+// maximum DC input voltage. That one warns, never refuses: the plant may already exist. And after a
+// save, where the core points its refusal (ADR 9), worded beside the object it names.
+import type { Capabilities, ModuleType, Problem } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { painted, type Draft } from "./modules.ts";
 import type { Misplaced, Pv } from "./pv.ts";
@@ -78,4 +79,52 @@ export function misplacedText(at: Misplaced): string {
   const cell = { grid: at.grid + 1, row: at.row + 1, column: at.column + 1 };
 
   return at.kind === "setback" ? m.misplaced_setback(cell) : m.misplaced_overlap(cell);
+}
+
+/** A string's refusal: its position in the draft and the text shown on its level. */
+export interface StringRefusal {
+  readonly string: number;
+  readonly text: string;
+}
+
+const STRING = /^\/strings\/(?<at>\d+)\/(?<field>\w+)$/u;
+
+const STRING_FIELDS = new Map([
+  ["optimized", m.field_optimized],
+  ["tilt", m.field_tilt],
+  ["azimuth", m.field_azimuth],
+  ["loss", m.field_loss],
+]);
+
+/** The string `problem` points at, worded with its `names`; null for any other refusal. */
+export function stringRefusal(
+  problem: Readonly<Problem>,
+  names: readonly string[],
+): StringRefusal | null {
+  const groups = STRING.exec(problem.pointer ?? "")?.groups;
+
+  if (problem.problem !== "layout.value" || groups === undefined) return null;
+
+  const string = Number(groups.at);
+  const name = names[string] ?? String(string + 1);
+  const field = groups.field ?? "";
+  const label = STRING_FIELDS.get(field);
+
+  if (field === "modules") return { string, text: m.refused_string_modules({ name }) };
+
+  return { string, text: m.refused_string_value({ name, field: label?.() ?? field }) };
+}
+
+/** The datasheet value `problem` points at, worded with its row's `labels`; undefined for any
+ * other refusal. */
+export function valueRefusal(
+  problem: Readonly<Problem>,
+  labels: Readonly<Record<string, string>>,
+): string | undefined {
+  const field = problem.pointer?.slice(1);
+  const label = field === undefined ? undefined : labels[field];
+
+  return problem.problem === "layout.value" && label !== undefined
+    ? m.refused_value({ field: label })
+    : undefined;
 }

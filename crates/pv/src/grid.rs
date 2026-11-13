@@ -68,9 +68,10 @@ pub struct RoofFace {
     pub outline: Vec<[f64; 2]>,
     /// The footprints of the chimneys standing on it, as `CellPlace::area`.
     pub chimneys: Vec<[[f64; 2]; 2]>,
-    origin: Point,
-    across: Point,
-    up: Point,
+    /// The outline's frame: its origin, and the unit directions across the slope and up it.
+    pub origin: Point,
+    pub across: Point,
+    pub up: Point,
 }
 
 /// Where a cell's module sits.

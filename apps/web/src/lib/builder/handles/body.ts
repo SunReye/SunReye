@@ -1,12 +1,12 @@
-// The object the handles sit on (ADR 20): a block, a box, a hedge or a ground surface as a turned
-// rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
-// fence's handles sit on its points instead. Pure.
+// The object the handles sit on (ADR 20): a block, a box, a hedge, a ground surface or a car place
+// as a turned rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
+// fence's handles sit on its points instead, a chimney's on its roof face (chimneys.ts). Pure.
 import type { Block, Obstacle, Scene } from "../pv.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle" | "surface" | "fence";
+  readonly kind: "block" | "obstacle" | "surface" | "fence" | "place" | "chimney";
   readonly index: number;
 }
 
@@ -63,8 +63,30 @@ function obstacleIn(scene: Scene, index: number, item: Obstacle): Body {
   return { ...item, kind: "round", apply: (change) => put({ ...item, ...change }) };
 }
 
+/** A car place: its length is a rectangle's depth; it lies on the ground. */
+function placeIn(scene: Scene, index: number): Body | undefined {
+  const places = scene.carPlaces ?? [];
+  const item = places[index];
+
+  return (
+    item && {
+      ...item,
+      kind: "rect",
+      depth: item.length,
+      height: 0,
+      shortest: 1,
+      apply: ({ depth = item.length, ...change }) => ({
+        ...scene,
+        carPlaces: places.with(index, { ...item, ...change, length: depth }),
+      }),
+    }
+  );
+}
+
 export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
-  if (kind === "fence") return undefined;
+  if (kind === "fence" || kind === "chimney") return undefined;
+
+  if (kind === "place") return placeIn(scene, index);
 
   if (kind === "obstacle") {
     const item = scene.obstacles[index];

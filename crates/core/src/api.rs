@@ -618,20 +618,48 @@ pub struct ProblemDetails {
     status: u16,
     /// A stable machine code, such as `auth.required`.
     code: Code,
+    /// The request body's member at fault, as an RFC 6901 JSON pointer such as
+    /// `/strings/0/modules`, where the core can name it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pointer: Option<String>,
 }
 
-impl IntoResponse for Problem {
+/// A [`Problem`] that names the request body's member at fault.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused {
+    pub problem: Problem,
+    pub pointer: Option<String>,
+}
+
+impl From<Problem> for Refused {
+    fn from(problem: Problem) -> Self {
+        Self {
+            problem,
+            pointer: None,
+        }
+    }
+}
+
+impl IntoResponse for Refused {
     fn into_response(self) -> Response {
+        let Self { problem, pointer } = self;
         let details = ProblemDetails {
-            status: self.status.as_u16(),
-            code: self.code,
+            status: problem.status.as_u16(),
+            code: problem.code,
+            pointer,
         };
-        let mut response = (self.status, axum::Json(details)).into_response();
+        let mut response = (problem.status, axum::Json(details)).into_response();
         response.headers_mut().insert(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/problem+json"),
         );
         response
+    }
+}
+
+impl IntoResponse for Problem {
+    fn into_response(self) -> Response {
+        Refused::from(self).into_response()
     }
 }
 

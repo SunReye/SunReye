@@ -2074,6 +2074,11 @@ export interface components {
             /** @description A stable machine code, such as `auth.required`. */
             code: components["schemas"]["Code"];
             /**
+             * @description The request body's member at fault, as an RFC 6901 JSON pointer such as
+             *     `/strings/0/modules`, where the core can name it.
+             */
+            pointer?: string | null;
+            /**
              * Format: int32
              * @description The HTTP status.
              */

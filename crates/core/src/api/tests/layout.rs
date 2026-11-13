@@ -568,3 +568,53 @@ async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_string_no_module_is_painted_into_is_refused_naming_its_module_count() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    // The owner's save (#743): modules placed, a string added, none painted into it.
+    let scene = house(&module, &[cell(0, 0, None, false), cell(0, 1, None, false)]);
+    let strings = [string(None, "S1", &module, 1, 0.0)];
+
+    let (status, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        (&body["code"], &body["pointer"]),
+        (&json!("layout.value"), &json!("/strings/0/modules"))
+    );
+}
+
+#[tokio::test]
+async fn each_value_refusal_points_at_its_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let pointer = async |method: &str, uri: &str, body: Value| {
+        let (status, body) = core.call(&set_cookie, send(method, uri, &body)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["code"], json!("layout.value"));
+        body["pointer"].as_str().unwrap_or_default().to_owned()
+    };
+    let wired = async |field: &str, value: Value| {
+        let mut second = string(None, "b", &module, 1, 0.0);
+        second[field] = value;
+        let strings = [string(None, "a", &module, 1, 0.0), second];
+        let body = json!({ "appliesFrom": "2026-11-01T00:00:00Z", "strings": strings });
+        pointer("PUT", "/api/v1/layout", body).await
+    };
+
+    assert_eq!(wired("modules", json!(0)).await, "/strings/1/modules");
+    assert_eq!(wired("optimized", json!(17)).await, "/strings/1/optimized");
+    assert_eq!(wired("tilt", json!(91.0)).await, "/strings/1/tilt");
+    assert_eq!(wired("azimuth", json!(-181.0)).await, "/strings/1/azimuth");
+    assert_eq!(wired("loss", json!(100.0)).await, "/strings/1/loss");
+    for field in ["pmax", "vmp", "imp", "voc", "isc", "width", "height"] {
+        let mut sheet = datasheet();
+        sheet[field] = json!(0.0);
+        let at = pointer("POST", "/api/v1/module-types", sheet).await;
+        assert_eq!(at, format!("/{field}"));
+    }
+}

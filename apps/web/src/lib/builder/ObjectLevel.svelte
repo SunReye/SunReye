@@ -124,6 +124,7 @@
     position={index}
     made={painted(scene, index)}
     warning={plan.cold.find((cold) => cold.string === index)?.text}
+    refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}
     onchange={(next) => {

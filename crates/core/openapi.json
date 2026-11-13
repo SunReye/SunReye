@@ -2697,6 +2697,13 @@
             "$ref": "#/components/schemas/Code",
             "description": "A stable machine code, such as `auth.required`."
           },
+          "pointer": {
+            "description": "The request body's member at fault, as an RFC 6901 JSON pointer such as\n`/strings/0/modules`, where the core can name it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "description": "The HTTP status.",
             "format": "int32",
