@@ -323,6 +323,41 @@ async fn devices_behind_one_endpoint_share_one_task_and_their_readings_are_store
 }
 
 #[tokio::test]
+async fn a_quantity_stored_nowhere_is_published_live_and_never_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let device = fake::serve().await;
+    let mut readings = core.bus.subscribe();
+    let gateway = json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
+        "port": device.address.port() });
+    let connection = core.connection(&set_cookie, &gateway).await;
+    let deye = DeviceId(id(&core.deye(&set_cookie, &connection, 0).await));
+    // The Deye profile keeps its internal CT total live only: `grid.power` is the record.
+    let internal = core.bus.intern("extra.ac_total_internal_power", None);
+    let voltage = core.bus.intern("battery.voltage", None);
+
+    let mut live = BTreeSet::new();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while live.len() < 2 {
+            let series = readings.recv().await.unwrap().series;
+            live.extend([internal, voltage].into_iter().filter(|s| *s == series));
+        }
+    })
+    .await
+    .unwrap();
+    let now = SystemTime::now();
+    core.storage
+        .tick(now + Duration::from_secs(120))
+        .await
+        .unwrap();
+    let span = (now - Duration::from_secs(60), now + Duration::from_secs(60));
+    let stored = |series| core.storage.history(deye, series, span.0, span.1);
+
+    assert_ne!(stored(voltage).await.unwrap(), []);
+    assert_eq!(stored(internal).await.unwrap(), []);
+}
+
+#[tokio::test]
 async fn a_device_behind_a_solarman_stick_is_polled_at_its_unit_id() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;

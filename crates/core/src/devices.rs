@@ -1045,7 +1045,7 @@ impl Devices {
         })
     }
 
-    /// Declares every series of `device` in its profile's steps, with its deadbands. A series
+    /// Declares every stored series of `device` in its profile's steps, with its deadbands. A series
     /// storage refuses, such as one stored in another step, is logged and not stored.
     async fn declare(&self, device: DeviceId, profile: &Profile) -> Result<(), storage::Error> {
         let id = device.0;
@@ -1054,8 +1054,10 @@ impl Devices {
             .run(move |db| deadband::overrides(db, id))
             .await?;
         for q in profile.quantities() {
+            let Some(policy) = deadband::policy(q, &overrides) else {
+                continue;
+            };
             let series = self.bus.intern(&q.role, q.index);
-            let policy = deadband::policy(q, &overrides);
             match self.declarer.declare(device, series, policy).await {
                 Ok(()) => {}
                 Err(storage::Error::Stopped) => return Err(storage::Error::Stopped),

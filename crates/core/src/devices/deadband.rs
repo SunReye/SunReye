@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use rusqlite::{Connection, params};
 use serde::Serialize;
-use sunreye_profile::{DeadbandRefusal, Profile, Quantity};
+use sunreye_profile::{DeadbandRefusal, Profile, Quantity, StorageClass};
 use utoipa::ToSchema;
 
 use super::{ChangeRefusal, entry};
@@ -39,12 +39,16 @@ pub struct RoleDeadband {
     pub source: DeadbandSource,
 }
 
-/// How `quantity` is stored, with the deadband `overrides` give its role.
-pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Policy {
+/// How `quantity` is stored, with the deadband `overrides` give its role; `None` when its storage
+/// class is `none`, so it is published live and never written (ADR 3).
+pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Option<Policy> {
+    if quantity.storage() == StorageClass::None {
+        return None;
+    }
     let cadence = quantity.cadence();
     let mut policy = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), cadence);
     policy.deadband = resolve(quantity, overrides).deadband.unwrap_or(0.0);
-    policy
+    Some(policy)
 }
 
 /// Each role of `profile`, in its order, with the deadband it is stored with. A role read at

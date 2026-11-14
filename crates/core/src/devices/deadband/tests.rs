@@ -59,7 +59,7 @@ fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
 
-    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new());
+    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new()).unwrap();
 
     assert_eq!(policy.cadence, std::time::Duration::from_mins(1));
 }
@@ -75,10 +75,31 @@ fn a_counter_extra_is_stored_as_a_counter_with_every_change() {
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
 
-    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new());
+    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new()).unwrap();
 
     assert_eq!(
         (policy.kind, policy.deadband),
         (sunreye_profile::RoleKind::Counter, 0.0)
     );
+}
+
+#[test]
+fn a_quantity_stored_nowhere_has_no_storage_policy() {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "i16", "kind", "storage"], "quantities": [
+            { "key": "grid", "role": "grid.power", "register": 1, "type": "i16" },
+            { "key": "import", "role": "extra.import", "register": 2, "type": "i16",
+              "kind": "measurement", "storage": "none" },
+        ],
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+
+    let stored: Vec<bool> = profile
+        .quantities()
+        .iter()
+        .map(|q| super::policy(q, &BTreeMap::new()).is_some())
+        .collect();
+
+    assert_eq!(stored, [true, false]);
 }
