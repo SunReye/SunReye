@@ -97,6 +97,86 @@ async fn an_archive_under_share_is_imported_into_the_mapped_device_and_its_resul
     assert_eq!(report["unmapped"], json!([]));
 }
 
+/// The fixture with `line` added to its readings: a tar inside gzip with gzipped members (ADR 18).
+fn with_reading(line: &str) -> Vec<u8> {
+    use std::io::{Read as _, Write as _};
+    let gunzip = |bytes: &[u8]| {
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(bytes)
+            .read_to_end(&mut out)
+            .unwrap();
+        out
+    };
+    let gzip = |bytes: &[u8]| {
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(bytes).unwrap();
+        gz.finish().unwrap()
+    };
+    let tar = gunzip(&fixture());
+    let mut out = Vec::new();
+    let mut at = 0;
+    while tar[at] != 0 {
+        let mut header: [u8; 512] = tar[at..at + 512].try_into().unwrap();
+        let size_field = std::str::from_utf8(&header[124..135]).unwrap();
+        let size = usize::from_str_radix(size_field.trim_end_matches('\0'), 8).unwrap();
+        let mut body = tar[at + 512..at + 512 + size].to_vec();
+        if header.starts_with(b"readings.ndjson.gz\0") {
+            let mut readings = gunzip(&body);
+            readings.extend_from_slice(format!("{line}\n").as_bytes());
+            body = gzip(&readings);
+            header[124..135].copy_from_slice(format!("{:011o}", body.len()).as_bytes());
+            header[148..156].fill(b' ');
+            let sum: u32 = header.iter().map(|&b| u32::from(b)).sum();
+            header[148..155].copy_from_slice(format!("{sum:06o}\0").as_bytes());
+        }
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&body);
+        out.resize(out.len().next_multiple_of(512), 0);
+        at += 512 + size.next_multiple_of(512);
+    }
+    out.extend_from_slice(&[0; 1024]);
+    gzip(&out)
+}
+
+/// A device on a family's variant imports through the variant's quantities (ADR 18): the SUN-5K
+/// reads two PV inputs, so a v3 reading of the third is reported, not imported.
+#[tokio::test]
+async fn an_import_maps_through_the_devices_variant() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let path = share(dir.path()).join("v3/export.tar.gz");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        with_reading(&format!(
+            r#"{{"time":"2026-07-01T00:00:00.000Z","device_slug":"{SLUG}","metric_key":"dc.pv3.power","value":300,"dur_ms":86400000,"source_tier":"daily"}}"#
+        )),
+    )
+    .unwrap();
+    let connection = core.connection(&admin, &gateway()).await;
+    let small = json!({
+        "name": "Deye", "connection": connection, "profile": "deye-sg05lp3", "variant": "5k",
+        "unit": 1,
+    });
+    let (_, device) = core
+        .ask(&admin, send("POST", "/api/v1/devices", &small))
+        .await;
+
+    core.ask(&admin, start(Some("v3/export.tar.gz"), &device["id"]))
+        .await;
+    let finished = core.finished(&admin).await;
+
+    assert_eq!(finished["state"], "done", "{finished}");
+    assert_eq!(
+        finished["report"]["unread"],
+        json!([
+            format!("{SLUG}/battery.daily_charge"),
+            format!("{SLUG}/dc.pv3.power")
+        ]),
+        "{finished}"
+    );
+}
+
 #[tokio::test]
 async fn the_core_keeps_polling_while_an_import_runs_and_refuses_a_second() {
     let dir = tempfile::tempdir().unwrap();
