@@ -29,15 +29,15 @@ function glassSurfaces(): Element[] {
   return [...(document.querySelector("[data-testid=glass]")?.children ?? [])];
 }
 
-test("ambient glass is about 72 % opaque in light and 78 % in dark", async () => {
+test("ambient glass is about 64 % opaque in light and 58 % in dark", async () => {
   const screen = await render(Theme);
   const ambient = screen.getByTestId("ambient").element();
 
-  expect(alpha(background(ambient))).toBeCloseTo(0.72, 2);
+  expect(alpha(background(ambient))).toBeCloseTo(0.64, 2);
 
   root.classList.add("dark");
 
-  expect(alpha(background(ambient))).toBeCloseTo(0.78, 2);
+  expect(alpha(background(ambient))).toBeCloseTo(0.58, 2);
 });
 
 test("overlay glass keeps kbase's tokens", async () => {

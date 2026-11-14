@@ -1,18 +1,29 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { afterEach, expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { motion } from "../motion/tier.svelte.ts";
 import Backdrop from "./Backdrop.svelte";
+import {
+  drifts,
+  handBeat,
+  lights,
+  noon,
+  plantStream,
+  RESTING,
+  root,
+  teardown,
+  TINTS,
+} from "./backdrop.harness.ts";
 import "../../app.css";
 
-afterEach(() => {
-  delete document.documentElement.dataset["tod"];
-});
+afterEach(teardown);
 
 test("the backdrop takes the core's tint", async () => {
-  const core = { sunTint: () => Promise.resolve({ tint: "dusk" as const }) };
+  const dusk = { sunTint: () => Promise.resolve({ tint: "dusk" as const }) };
 
-  await render(Backdrop, { core });
+  await render(Backdrop, { core: dusk });
 
-  await expect.poll(() => document.documentElement.dataset["tod"]).toBe("dusk");
+  await expect.poll(() => root.dataset["tod"]).toBe("dusk");
 });
 
 test("a viewer, refused the location, still gets the tint", async () => {
@@ -23,13 +34,13 @@ test("a viewer, refused the location, still gets the tint", async () => {
 
   await render(Backdrop, { core: viewer });
 
-  await expect.poll(() => document.documentElement.dataset["tod"]).toBe("dawn");
+  await expect.poll(() => root.dataset["tod"]).toBe("dawn");
 });
 
 test("without a location the backdrop stays indigo", async () => {
   let asked = false;
 
-  const core = {
+  const nowhere = {
     sunTint: () => {
       asked = true;
 
@@ -37,25 +48,95 @@ test("without a location the backdrop stays indigo", async () => {
     },
   };
 
-  const screen = await render(Backdrop, { core });
+  const screen = await render(Backdrop, { core: nowhere });
 
   await expect.poll(() => asked).toBe(true);
-  expect(document.documentElement.dataset["tod"]).toBeUndefined();
+  expect(root.dataset["tod"]).toBeUndefined();
   // kbase's indigo: hue 277.
   expect(
-    getComputedStyle(screen.container.querySelector(".bg-spotlight")!).backgroundImage,
+    getComputedStyle(screen.container.querySelector("[data-light=sun] > *")!).backgroundImage,
   ).toMatch(/oklch\(0\.6 0\.2 277/u);
 });
 
 test("each tint has its own spotlight", () => {
-  const root = document.documentElement;
-  const spotlight = (): string => getComputedStyle(root).getPropertyValue("--spotlight");
   const seen = new Set<string>();
 
-  for (const tint of ["dawn", "noon", "dusk", "night"]) {
+  for (const tint of TINTS) {
     root.dataset["tod"] = tint;
-    seen.add(spotlight());
+    seen.add(getComputedStyle(root).getPropertyValue("--spotlight"));
   }
 
   expect(seen.size).toBe(4);
+});
+
+test("the lights drift on the full tier and stand still under low power", async () => {
+  const hand = handBeat();
+  const screen = await render(Backdrop, { core: noon, beat: hand.beat });
+
+  expect(lights(screen.container).map((light) => light.dataset["light"])).toEqual([
+    "sun",
+    "pv",
+    "battery",
+    "grid",
+  ]);
+  expect(drifts(screen.container)).toEqual([RESTING, RESTING, RESTING, RESTING]);
+
+  hand.at(20);
+
+  await expect.poll(() => new Set(drifts(screen.container)).size).toBe(4);
+  expect(drifts(screen.container)).not.toContain(RESTING);
+  expect(
+    lights(screen.container).flatMap((light) => light.getAnimations({ subtree: true })),
+  ).toEqual([]);
+
+  motion.lowPower = true;
+
+  await expect.poll(() => drifts(screen.container)).toEqual([RESTING, RESTING, RESTING, RESTING]);
+  expect(hand.listening).toBe(false);
+});
+
+test("the PV light follows production and is out while PV is idle", async () => {
+  const produce = plantStream();
+  const screen = await render(Backdrop, { core: noon });
+  const pv = screen.container.querySelector<HTMLElement>("[data-light=pv]")!;
+  // The target, not the eased value on the way there.
+  const glow = (): number => Number(pv.style.opacity);
+
+  expect(glow()).toBe(0);
+
+  produce(800);
+  await expect.poll(glow).toBeGreaterThan(0);
+
+  const low = glow();
+
+  produce(8000);
+  await expect.poll(glow).toBeGreaterThan(low);
+  expect(glow()).toBeLessThanOrEqual(1);
+
+  produce(20);
+  await expect.poll(glow).toBe(0);
+});
+
+const hue = (colour: string): number => Number(/oklch\([\d.]+ [\d.]+ ([\d.]+)/u.exec(colour)?.[1]);
+
+test("the PV, battery and grid lights take their energy colour's hue", async () => {
+  const screen = await render(Backdrop, { core: noon });
+
+  for (const dark of [false, true]) {
+    root.classList.toggle("dark", dark);
+
+    for (const [light, flow] of [
+      ["pv", "solar"],
+      ["battery", "battery"],
+      ["grid", "export"],
+    ] as const) {
+      const painted = getComputedStyle(
+        screen.container.querySelector(`[data-light=${light}] > *`)!,
+      ).backgroundImage;
+
+      expect(hue(painted), `${light}, dark ${dark}`).toBe(
+        hue(getComputedStyle(root).getPropertyValue(`--e-${flow}`)),
+      );
+    }
+  }
 });

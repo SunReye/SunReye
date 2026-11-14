@@ -129,7 +129,6 @@
   --motion-enter: 350ms;
   --motion-exit: 150ms;
   --motion-ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
-  --ambient-opacity: 72%;
 }
 
 .dark {
@@ -141,11 +140,25 @@
   --e-ev: oklch(0.72 0.17 300);
   --d-under: oklch(0.76 0.15 55);
   --d-over: oklch(0.74 0.06 250);
-
-  --ambient-opacity: 78%;
 }
 
-/* Sun-tinted spotlight: warm at dawn and dusk, clear by day, indigo at night (ADR 21). Never animated. */
+/* ── Backdrop lights and ambient glass (#747) ─────────────────────────────────────────────────────
+   Four lights behind the glass (ADR 21, shell/Backdrop.svelte). The sun light takes the sun's tint:
+   warm at dawn and dusk, clear by day, indigo at night. The others take their energy colour. The
+   ambient glass is thin enough to show them; Backdrop.svelte.test.ts holds its text at AA. */
+:root {
+  --ambient-opacity: 64%;
+  /* The energy hues, pale: on a light page a light must tint without darkening the glass. */
+  --light-pv: oklch(0.9 0.1 67 / 50%);
+  --light-battery: oklch(0.9 0.1 157 / 42%);
+  --light-grid: oklch(0.9 0.08 196 / 42%);
+}
+.dark {
+  --ambient-opacity: 58%;
+  --light-pv: oklch(0.815 0.162 74 / 34%);
+  --light-battery: oklch(0.785 0.16 153 / 28%);
+  --light-grid: oklch(0.81 0.118 198 / 28%);
+}
 :root[data-tod="dawn"] {
   --spotlight: oklch(0.72 0.16 50 / 26%);
 }
@@ -170,6 +183,7 @@
 .dark[data-tod="night"] {
   --spotlight: oklch(0.6 0.2 277 / 28%);
 }
+/* ── end of backdrop lights and ambient glass ───────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -324,7 +338,7 @@
   }
 }
 
-/* Ambient glass (ADR 21): rail, bottom bar, dashboard cards, 3D chips; ~72 % light / 78 % dark with the strong blur.
+/* Ambient glass (ADR 21): rail, bottom bar, dashboard cards, 3D chips; ~64 % light / 58 % dark with the strong blur.
    Only the colour and blur: shape, ring and elevation come from the dy-ui component it sits on. */
 @utility glass-ambient {
   background-color: color-mix(in oklab, var(--card) var(--ambient-opacity), transparent) !important;

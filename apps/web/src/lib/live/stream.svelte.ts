@@ -3,6 +3,7 @@
 import type { Core, Live } from "../api/core.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { glideDurationMs, TICK_MS } from "./glide.ts";
+import { PLANT } from "./labels.ts";
 import { streamState, type StreamState } from "./stream.ts";
 
 class Stream {
@@ -12,6 +13,11 @@ class Stream {
 
   /** Stalled or lost: nothing new is arriving. */
   readonly halted: boolean = $derived(this.state.kind === "stalled" || this.state.kind === "lost");
+
+  /** The `plant` device's values; none before the first frame or while the stream is refused. */
+  readonly plant: Readonly<Record<string, number>> | undefined = $derived(
+    this.#live !== undefined && "devices" in this.#live ? this.#live.devices[PLANT] : undefined,
+  );
 
   /** When the last frame arrived, in epoch milliseconds. */
   #at = $state(0);
