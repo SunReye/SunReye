@@ -74,6 +74,8 @@ export class Studio {
   readonly #composer: EffectComposer;
   readonly #occlusion: GTAOPass;
   readonly #sun = new DirectionalLight(0xffffff, 3);
+  /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
+  readonly #fill = new HemisphereLight();
   readonly #pmrem: PMREMGenerator;
   readonly #sky = sky(1000);
   readonly #skyScene = new Scene();
@@ -108,13 +110,7 @@ export class Studio {
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    // A faint sky and ground bounce on top of the image-based light.
-    this.scene.add(
-      this.#sun,
-      this.#sun.target,
-      new HemisphereLight(0xcfe0ff, 0x4b5b35, 0.15),
-      ground(this.#fade),
-    );
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, ground(this.#fade));
 
     // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
     this.#composer = new EffectComposer(
@@ -159,6 +155,9 @@ export class Studio {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
+    this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
+    this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
+    this.#fill.intensity = day.fill.intensity;
     this.#place();
 
     if (this.#held === undefined) this.#environ(day, look);

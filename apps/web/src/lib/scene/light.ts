@@ -9,6 +9,12 @@ export interface Rgb {
   readonly b: number;
 }
 
+export interface Fill {
+  readonly sky: Rgb;
+  readonly ground: Rgb;
+  readonly intensity: number;
+}
+
 export interface Daylight {
   /** Unit vector toward the sun, for the sky model, even below the horizon. */
   readonly sun: Point;
@@ -18,6 +24,8 @@ export interface Daylight {
   readonly intensity: number;
   /** The sky environment's strength. */
   readonly environment: number;
+  /** A shadowless light from above and below: a faint bounce by day, the night's sky. */
+  readonly fill: Fill;
   /** How far the string glow shows: the light it stands for, off at night. */
   readonly glow: number;
   /** The moon lights the plant. */
@@ -30,7 +38,18 @@ export interface Daylight {
 const LOW = { colour: 0xff9c66, intensity: 2, environment: 0.65, glow: 0.25, elevation: 5 };
 const HIGH = { colour: 0xfff4e5, intensity: 3.4, environment: 1, glow: 1, elevation: 42 };
 
-const MOON = { colour: 0x9fb2ff, intensity: 0.45, environment: 0.35 };
+const MOON = { colour: 0xb4c4ff, intensity: 2.3, environment: 0.35 };
+
+/** The sky's and the ground's bounce by day, and the night's own blue sky: the sky model is
+ * nearly black below the horizon. */
+const BOUNCE = { sky: 0xcfe0ff, ground: 0x4b5b35, intensity: 0.15 };
+const NIGHT_SKY = { sky: 0x93a5d8, ground: 0x4a5475, intensity: 1.5 };
+
+/** Degrees under the horizon where the night is whole: the end of civil twilight. */
+const NIGHT = -6;
+
+/** Degrees over it where the sun's own light starts to fade and the sky to turn. */
+const DUSK = 3;
 
 const DEGREES = Math.PI / 180;
 
@@ -45,7 +64,7 @@ function compass(azimuth: number, elevation: number): Point {
 const FIXED = compass(238, 42);
 
 /** The moon, from the north-west. */
-const MOON_TOWARD = compass(300, 35);
+const MOON_TOWARD = compass(300, 50);
 
 /** One sRGB byte, linear. */
 function channel(byte: number): number {
@@ -74,13 +93,23 @@ export function daylight(sun: Point | null): Daylight {
   const toward = sun ?? FIXED;
   const elevation = Math.asin(Math.max(-1, Math.min(1, toward[2]))) / DEGREES;
 
+  // The sky's light turns to the night's across dusk; its fill is whole by the horizon, where
+  // the sun's own light has gone and the moon's has yet to come.
+  const dusk = smoothstep(DUSK, NIGHT, elevation);
+
+  const ambient = {
+    environment: mix(LOW.environment, MOON.environment, dusk),
+    fill: fill(smoothstep(LOW.elevation, 0, elevation), dusk),
+  };
+
   if (elevation <= 0) {
     return {
       sun: toward,
       toward: MOON_TOWARD,
       colour: linear(MOON.colour),
-      intensity: MOON.intensity,
-      environment: MOON.environment,
+      // The moon comes up as the sun's light has gone: the one light is out as it turns.
+      intensity: MOON.intensity * smoothstep(0, NIGHT, elevation),
+      ...ambient,
       glow: 0,
       night: true,
       elevation,
@@ -88,17 +117,33 @@ export function daylight(sun: Point | null): Daylight {
   }
 
   const k = smoothstep(LOW.elevation, HIGH.elevation, elevation);
-  const [low, high] = [linear(LOW.colour), linear(HIGH.colour)];
+  // The sun's own light fades out toward the horizon.
+  const risen = smoothstep(0, DUSK, elevation);
 
   return {
     sun: toward,
     toward,
-    colour: { r: mix(low.r, high.r, k), g: mix(low.g, high.g, k), b: mix(low.b, high.b, k) },
-    intensity: mix(LOW.intensity, HIGH.intensity, k),
-    environment: mix(LOW.environment, HIGH.environment, k),
-    glow: mix(LOW.glow, HIGH.glow, k),
+    colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
+    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen,
+    environment:
+      elevation < LOW.elevation ? ambient.environment : mix(LOW.environment, HIGH.environment, k),
+    fill: ambient.fill,
+    glow: mix(LOW.glow, HIGH.glow, k) * risen,
     night: false,
     elevation,
+  };
+}
+
+function blend(from: Rgb, to: Rgb, k: number): Rgb {
+  return { r: mix(from.r, to.r, k), g: mix(from.g, to.g, k), b: mix(from.b, to.b, k) };
+}
+
+/** The fill `strength` of the way to the night's, its colours `dusk` of the way. */
+function fill(strength: number, dusk: number): Fill {
+  return {
+    sky: blend(linear(BOUNCE.sky), linear(NIGHT_SKY.sky), dusk),
+    ground: blend(linear(BOUNCE.ground), linear(NIGHT_SKY.ground), dusk),
+    intensity: mix(BOUNCE.intensity, NIGHT_SKY.intensity, strength),
   };
 }
 

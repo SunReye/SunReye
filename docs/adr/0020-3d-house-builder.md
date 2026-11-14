@@ -56,7 +56,7 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 **Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
 - **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
 - **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat.
-- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
+- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it. Nights are moonlit: a cool moon with soft shadows and a blue sky fill keep the plant readable, eased in across dusk with no step at the horizon. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
 - **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
 - **Theme:** the page background, fog and exposure follow light or dark mode.
 - **Rendering quality:** antialiasing is on, and tone mapping is filmic.
