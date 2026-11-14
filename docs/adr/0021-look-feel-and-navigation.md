@@ -51,7 +51,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 **Drill-in navigation for Controls and Settings.**
 - **Pattern:** one component. A root list of groups, each row summarising its current values. Tapping a row slides its page in from the right while the parent shifts left and dims. Each level is a hash route, so browser back and the edge-swipe go back. At most two levels deep.
-- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right. Each group is still a hash route. Below 1024 px the drill-in slides.
+- **Phone layout:** below 1024 px each level is a screen of its own, as wide as the screen, and slides whole. No card holds both levels, so no surface changes size as they trade places. Inside a level the rows sit in inset glass cards, one per section, its label above the card. A page's header (back and title) is a glass bar that stays at the top of the screen. Each level keeps its own scroll position: a page opens at its top, and back returns the root to where it was.
+- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right, each pane one card. Each group is still a hash route. Below 1024 px the drill-in slides.
 - **Control groups:** come from the role namespace (`battery.*` → Battery, `grid.*` → Grid & export), labelled by Paraglide. Settings without a role go into Advanced. Profiles carry no groups.
 - **Writes:** there is no page lock; ADR 7's writes switch is the lock. With writes off, every control is read-only, under a banner explaining why.
 

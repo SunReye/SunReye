@@ -11,7 +11,7 @@
 {#if id === "access"}
   <UsersSettings {core} />
 {:else if id === "logs"}
-  <LogsSettings {core} />
+  <div class="drill-card"><LogsSettings {core} /></div>
 {:else if id === "danger"}
-  <DangerSettings {core} />
+  <div class="drill-card"><DangerSettings {core} /></div>
 {/if}

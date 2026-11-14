@@ -45,7 +45,7 @@
     <Eyebrow {id}>{title}</Eyebrow>
     <p class="text-sm text-muted-foreground">{hint}</p>
   </header>
-  <div class="divide-y divide-border/60 border-y border-border/60">
+  <div class="drill-card divide-y divide-border/60 border-y border-border/60">
     {#if answer === undefined}
       <LoadingRows rows={1} />
     {:else}

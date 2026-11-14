@@ -5,14 +5,16 @@
   import { m } from "../paraglide/messages.js";
 </script>
 
-<Item.Root class="rounded-none border-0">
-  {#snippet child({ props })}
-    <a {...props} href="#/builder" class={[props.class, "hover:bg-muted/60"]}>
-      <Item.Content>
-        <Item.Title class="text-[15px] font-normal">{m.settings_builder()}</Item.Title>
-        <Item.Description>{m.settings_builder_hint()}</Item.Description>
-      </Item.Content>
-      <Item.Actions><ChevronRight class="size-4 text-muted-foreground" /></Item.Actions>
-    </a>
-  {/snippet}
-</Item.Root>
+<div class="drill-card">
+  <Item.Root class="rounded-none border-0">
+    {#snippet child({ props })}
+      <a {...props} href="#/builder" class={[props.class, "hover:bg-muted/60"]}>
+        <Item.Content>
+          <Item.Title class="text-[15px] font-normal">{m.settings_builder()}</Item.Title>
+          <Item.Description>{m.settings_builder_hint()}</Item.Description>
+        </Item.Content>
+        <Item.Actions><ChevronRight class="size-4 text-muted-foreground" /></Item.Actions>
+      </a>
+    {/snippet}
+  </Item.Root>
+</div>

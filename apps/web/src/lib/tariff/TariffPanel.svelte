@@ -15,16 +15,18 @@
 <!-- The page is titled Tarif already: the heading names the region for assistive tech only. -->
 <section aria-labelledby="{id}-title" class="flex flex-col">
   <h2 id="{id}-title" class="sr-only">{m.tariff_title()}</h2>
-  {#await tariff}
-    <LoadingRows />
-  {:then answer}
-    {#if !("problem" in answer)}
-      <TariffForm {core} tariff={answer} />
-    {:else if answer.problem === "tariff.none"}
-      <!-- No tariff yet: the admin enters the first. -->
-      <TariffForm {core} tariff={undefined} />
-    {:else}
-      <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
-    {/if}
-  {/await}
+  <div class="drill-card">
+    {#await tariff}
+      <LoadingRows />
+    {:then answer}
+      {#if !("problem" in answer)}
+        <TariffForm {core} tariff={answer} />
+      {:else if answer.problem === "tariff.none"}
+        <!-- No tariff yet: the admin enters the first. -->
+        <TariffForm {core} tariff={undefined} />
+      {:else}
+        <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
+      {/if}
+    {/await}
+  </div>
 </section>

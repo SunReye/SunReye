@@ -55,21 +55,23 @@
 </script>
 
 {#if listed === undefined}
-  <LoadingRows />
+  <div class="drill-card"><LoadingRows /></div>
 {:else if shown.kind === "add"}
   <Level back={m.settings_connections()} title={m.settings_connection_add()} onback={back}>
     <ConnectionForm {core} onsaved={after} />
   </Level>
 {:else if open === undefined}
-  <ConnectionList
-    answer={listed}
-    onopen={(id) => {
-      shown = { kind: "connection", id };
-    }}
-    onadd={() => {
-      shown = { kind: "add" };
-    }}
-  />
+  <div class="drill-card">
+    <ConnectionList
+      answer={listed}
+      onopen={(id) => {
+        shown = { kind: "connection", id };
+      }}
+      onadd={() => {
+        shown = { kind: "add" };
+      }}
+    />
+  </div>
 {:else}
   <Level back={m.settings_connections()} title={open.name} onback={back}>
     <ConnectionForm {core} connection={open} onsaved={after} />

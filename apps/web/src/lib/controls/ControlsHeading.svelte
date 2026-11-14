@@ -1,4 +1,7 @@
-<!-- Controls' title, and the read-only banner while a device's writes switch is off (ADR 21). -->
+<!--
+  Controls' title, and the read-only banner while a device's writes switch is off (ADR 21). A group's
+  page on the phone has its own header, so there the banner stands alone.
+-->
 <script lang="ts">
   import PageTitle from "../components/page-title.svelte";
   import Lock from "@lucide/svelte/icons/lock";
@@ -6,18 +9,20 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
 
-  let { writes }: { writes: boolean } = $props();
+  let { writes, title = true }: { writes: boolean; title?: boolean } = $props();
 </script>
 
-<header class="flex items-end justify-between gap-4 px-1">
-  <PageTitle title={m.controls_title()} />
-  {#if writes}
-    <!-- The normal state stays quiet; the exception below gets the weight. -->
-    <span class="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground"
-      ><ShieldCheck class="size-3.5 text-success" /> {m.controls_writes_on()}</span
-    >
-  {/if}
-</header>
+{#if title}
+  <header class="flex items-end justify-between gap-4 px-1">
+    <PageTitle title={m.controls_title()} />
+    {#if writes}
+      <!-- The normal state stays quiet; the exception below gets the weight. -->
+      <span class="flex items-center gap-1.5 pb-1 text-xs text-muted-foreground"
+        ><ShieldCheck class="size-3.5 text-success" /> {m.controls_writes_on()}</span
+      >
+    {/if}
+  </header>
+{/if}
 
 {#if !writes}
   <div

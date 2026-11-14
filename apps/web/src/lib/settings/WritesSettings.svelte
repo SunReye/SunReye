@@ -36,7 +36,12 @@
 </script>
 
 {#if answer === undefined}
-  <LoadingRows />
+  <div class="drill-card"><LoadingRows /></div>
+{:else if "problem" in answer || answer.length === 0}
+  <!-- Its refusal, or that there is none: no rows to draw. -->
+  <div class="drill-card">
+    <Listing {answer}>{#snippet items()}{/snippet}</Listing>
+  </div>
 {:else}
   <Listing {answer}>
     {#snippet items(list)}
