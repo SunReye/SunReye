@@ -53,8 +53,28 @@ export async function press(
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
 }
 
-/** Resolves once `element`'s box holds still for a frame, or after a second of frames. */
+/** The finite animations moving `element` or anything around it, such as a sliding sheet. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a DOM element, read only.
+const moving = (element: Element): Promise<Animation>[] =>
+  document
+    .getAnimations()
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
+    .filter((animation) => {
+      const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
+
+      return (
+        target?.contains(element) === true &&
+        Number.isFinite(animation.effect?.getComputedTiming().endTime)
+      );
+    })
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
+    .map((animation) => animation.finished);
+
+/** Resolves once `element` stops moving: its animations end and its box holds still a frame. */
 async function settled(element: Element): Promise<void> {
+  // A transition that has not drawn its first frame yet looks still to the box alone.
+  await Promise.allSettled(moving(element));
+
   let box = "";
 
   for (let i = 0; i < 60; i++) {
