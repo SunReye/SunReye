@@ -42,19 +42,21 @@
 
 <section aria-label={device.name} class="flex flex-col">
   <Eyebrow class="px-4 pt-5 pb-2">{device.name}</Eyebrow>
-  <Item.Group class="gap-0 divide-y divide-border/60 border-y border-border/60">
-    <ToggleRow
-      label={m.settings_writes_allowed()}
-      name={m.settings_device_writes({ name: device.name })}
-      hint={support.writes ? undefined : m.settings_device_writes_hint()}
-      checked={support.writes}
-      onchange={(on) => void writes(on)}
-    />
-    {#if problem}<div class="px-4 py-2"><Refusal refused={problem} /></div>{/if}
-    {#each support.settings as setting (setting.key)}
-      <SettingEnable {core} device={device.id} {setting} {onchanged} />
-    {/each}
-  </Item.Group>
+  <div class="drill-card">
+    <Item.Group class="gap-0 divide-y divide-border/60 border-y border-border/60 drill:border-y-0">
+      <ToggleRow
+        label={m.settings_writes_allowed()}
+        name={m.settings_device_writes({ name: device.name })}
+        hint={support.writes ? undefined : m.settings_device_writes_hint()}
+        checked={support.writes}
+        onchange={(on) => void writes(on)}
+      />
+      {#if problem}<div class="px-4 py-2"><Refusal refused={problem} /></div>{/if}
+      {#each support.settings as setting (setting.key)}
+        <SettingEnable {core} device={device.id} {setting} {onchanged} />
+      {/each}
+    </Item.Group>
+  </div>
   {#each notes as note (note)}
     <p class="px-4 pt-2 text-xs text-muted-foreground">{note}</p>
   {/each}

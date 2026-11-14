@@ -21,12 +21,14 @@
   } = $props();
 </script>
 
-{#if step === "password"}
-  <PasswordStep {core} ondone={() => ondone()} />
-{:else if step === "plant"}
-  <PlantStep {core} ondone={() => ondone()} />
-{:else if step === "devices"}
-  <DevicesStep {core} {ondone} />
-{:else if step === "topology"}
-  <TopologyStep {core} {devices} ondone={() => ondone()} />
-{/if}
+<div class="drill-card">
+  {#if step === "password"}
+    <PasswordStep {core} ondone={() => ondone()} />
+  {:else if step === "plant"}
+    <PlantStep {core} ondone={() => ondone()} />
+  {:else if step === "devices"}
+    <DevicesStep {core} {ondone} />
+  {:else if step === "topology"}
+    <TopologyStep {core} {devices} ondone={() => ondone()} />
+  {/if}
+</div>

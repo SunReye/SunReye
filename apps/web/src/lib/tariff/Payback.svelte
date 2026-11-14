@@ -21,7 +21,7 @@
     {#if "problem" in answer}
       <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
     {:else}
-      <div class="flex flex-col divide-y divide-border/60 border-y border-border/60">
+      <div class="flex flex-col divide-y divide-border/60 border-y border-border/60 drill:border-y-0">
         <InvestmentForm
           {core}
           investment={answer.investment ?? null}

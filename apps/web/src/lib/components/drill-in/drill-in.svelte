@@ -1,8 +1,9 @@
 <!--
   ADR 21's drill-in for Controls and Settings: a root list of groups, each row summarising its values.
-  A row slides its page in from the right while the root shifts left and dims; an edge-swipe follows
-  the finger back. From 1024 px the two levels sit side by side instead and nothing slides. The open
-  group is the caller's hash route: `open` follows it, `onnavigate` asks to change it.
+  Below 1024 px each level is a screen of its own, with no card around both: a row slides its page in
+  from the right while the root shifts left and dims; an edge-swipe follows the finger back. From
+  1024 px the two levels sit side by side instead and nothing slides. The open group is the caller's
+  hash route: `open` follows it, `onnavigate` asks to change it.
 -->
 <script lang="ts" module>
   import type { Component } from "svelte";
@@ -16,11 +17,15 @@
     /** Listed but not open, such as a setup step not yet reached. */
     readonly disabled?: boolean;
   }
+
+  /** The screen a heading is drawn on: the root list, or an open group's page on the phone. */
+  export type DrillLevel = "root" | "page";
 </script>
 
 <script lang="ts">
-  import { untrack, type Snippet } from "svelte";
+  import { tick, untrack, type Snippet } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
+  import GlassCard from "../glass-card.svelte";
   import * as Item from "../ui/item/index.js";
   import { spring, tween, VelocityTracker } from "../../animate.ts";
   import { haptics } from "../../haptics.ts";
@@ -47,7 +52,8 @@
     back: string;
     /** The group list's name for assistive tech in two panes. */
     label?: string;
-    heading?: Snippet;
+    /** Above the root's list, and above a page's header for what must stay in sight there. */
+    heading?: Snippet<[DrillLevel]>;
     page: Snippet<[DrillGroup]>;
   } = $props();
 
@@ -67,6 +73,68 @@
   // svelte-ignore state_referenced_locally
   let target: 0 | 1 = open === null ? 0 : 1;
 
+  // The page covers the root, which is then left out of the layout.
+  // svelte-ignore state_referenced_locally
+  let covered = $state(open !== null);
+
+  // Both levels scroll with the window, yet each keeps a place of its own: the level the slide
+  // heads for owns the window's scroll, and the other is drawn `lift` px off so it stays where it
+  // was. The router scrolls too (a pushed level to its top, back to the root's place), at a time
+  // of its own, so the places follow the window's scroll events rather than being read at a turn.
+  let rootY = 0;
+  let pageY = 0;
+  let rootLift = $state(0);
+  let pageLift = $state(0);
+
+  // The page's header sticks to the screen's top, which the window's scroll decides: while the
+  // page is drawn off its place the header is too, back to where the page's own scroll had it.
+  const STUCK = 12;
+  const GAP = 16;
+  let head: HTMLDivElement | undefined = $state();
+  let level: HTMLDivElement | undefined = $state();
+  let headAt = 0;
+  let headLift = $state(0);
+
+  /** The header's top on the screen with the window scrolled to `y`. */
+  const headTop = (y: number) => Math.max(headAt - y, STUCK);
+
+  const scrollToY = (y: number) => {
+    scrollTo({ top: y, behavior: "instant" });
+  };
+
+  function follow(): void {
+    if (split.current) return;
+
+    if (target === 1) {
+      pageY = scrollY;
+      pageLift = 0;
+      headLift = 0;
+      rootLift = scrollY - rootY;
+    } else {
+      rootY = scrollY;
+      rootLift = 0;
+      pageLift = scrollY - pageY;
+      headLift = headTop(pageY) - headTop(scrollY) - pageLift;
+    }
+  }
+
+  /** Hands the window's scroll to the level the slide now heads for. */
+  async function turn(to: 0 | 1): Promise<void> {
+    // A page newly opened starts at its top.
+    if (to === 1 && p === 0) pageY = 0;
+
+    // Where the header lies in the document, read while the page is still in its place.
+    if (to === 0 && head && level)
+      headAt = level.getBoundingClientRect().top + scrollY - head.offsetHeight - GAP;
+
+    target = to;
+    covered = false;
+    // Once the root is laid out again, so its place can be reached, and before the next frame.
+    await tick();
+    scrollToY(to === 1 ? pageY : rootY);
+    follow();
+  }
+
   let cancel: (() => void) | undefined;
   let box: HTMLDivElement | undefined = $state();
 
@@ -77,6 +145,10 @@
   $effect(() => {
     const want = open === null ? 0 : 1;
 
+    // Another page in the open one's place, as setup's next step, starts at its top.
+    if (open !== null && untrack(() => shown !== null && shown !== open) && !split.current)
+      scrollToY(0);
+
     if (open !== null) shown = open;
 
     if (want === target) return;
@@ -85,6 +157,7 @@
     if (split.current) {
       target = want;
       p = want;
+      covered = want === 1;
 
       if (want === 0) shown = null;
 
@@ -98,12 +171,14 @@
 
   function slide(to: 0 | 1, velocity?: number): void {
     cancel?.();
-    target = to;
+
+    if (to !== target) void turn(to);
 
     const done = () => {
       cancel = undefined;
 
       if (to === 0) shown = null;
+      else covered = true;
 
       haptics.soft();
     };
@@ -149,6 +224,9 @@
     if (!swipe.active && dx > 6) {
       swipe.active = true;
       cancel?.();
+      // The root shows under the page again, where it was left.
+      covered = false;
+      follow();
       box.setPointerCapture(e.pointerId);
     }
 
@@ -176,53 +254,70 @@
   }
 </script>
 
+<svelte:window onscroll={follow} />
+
 {#if split.current}
   <DrillPanes {groups} {pane} onpick={pick} {label} {heading} {page} />
 {:else}
-  <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
-    {@render heading?.()}
-    <!-- One divided surface; the levels slide inside it. -->
-    <div
-      bind:this={box}
-      data-drill="box"
-      class="glass-ambient relative grid touch-pan-y grid-cols-[minmax(0,1fr)] overflow-clip rounded-lg border border-border/60 elevation-2"
-      onpointerdown={down}
-      onpointermove={move}
-      onpointerup={up}
-      onpointercancel={up}
-      role="presentation"
+  <!-- No surface holds both levels, so none changes size as they trade places. -->
+  <div
+    bind:this={box}
+    data-drill="box"
+    class="mx-auto grid w-full max-w-2xl touch-pan-y grid-cols-[minmax(0,1fr)] overflow-x-clip"
+    onpointerdown={down}
+    onpointermove={move}
+    onpointerup={up}
+    onpointercancel={up}
+    role="presentation"
+  >
+    <!-- Gone once the page covers it: the page alone gives the window its height. -->
+    <section
+      class={[
+        "col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6",
+        covered && "hidden",
+      ]}
+      style:transform="translateX({-30 * p}%) translateY({rootLift}px)"
+      style:opacity={1 - 0.6 * p}
+      aria-hidden={p > 0.5}
+      inert={p > 0.5}
     >
-      <!-- Gone once the page covers it: the glass page would show it through, and its rows would stretch a shorter page. -->
-      <section
-        class={["col-start-1 row-start-1 flex min-w-0 flex-col", group && p === 1 && "hidden"]}
-        style:transform="translateX({-30 * p}%)"
-        style:opacity={1 - 0.6 * p}
-        aria-hidden={p > 0.5}
-        inert={p > 0.5}
-      >
+      <!-- Once only while the page covers the root: the page draws it too. -->
+      {#if !covered}{@render heading?.("root")}{/if}
+      <GlassCard>
         <Item.Group class="gap-0 divide-y divide-border/60">
           {#each groups as g (g.id)}
             <DrillRow group={g} onclick={() => onnavigate(g.id)} />
           {/each}
         </Item.Group>
-      </section>
-      <!-- Dim over the root. -->
-      <div
-        class="pointer-events-none col-start-1 row-start-1 bg-black"
-        style:opacity={p * 0.28}
-      ></div>
+      </GlassCard>
+    </section>
 
-      {#if group}
-        <section
-          data-drill="page"
-          class="glass-ambient col-start-1 row-start-1 flex min-w-0 flex-col shadow-[-12px_0_32px_-12px_rgb(0_0_0/0.35)]"
-          style:transform="translateX({(1 - p) * 100}%)"
-          aria-label={group.label}
+    {#if group}
+      <section
+        data-drill="page"
+        class="col-start-1 row-start-1 flex min-w-0 flex-col gap-4 self-start px-4 py-6"
+        style:transform="translateX({(1 - p) * 100}%) translateY({pageLift}px)"
+        aria-label={group.label}
+      >
+        {@render heading?.("page")}
+        <!-- At the top of the screen however far the page scrolls; backed, so the rows passing under it stay out of its title. -->
+        <div
+          bind:this={head}
+          class="sticky top-3 z-10 rounded-lg bg-background/60"
+          style:transform="translateY({headLift}px)"
         >
-          <DrillHeader {back} title={group.label} onback={() => onnavigate(null)} />
+          <DrillHeader
+            {back}
+            title={group.label}
+            onback={() => onnavigate(null)}
+            class="glass-ambient rounded-lg border elevation-1"
+          />
+        </div>
+        <!-- Its sections are cards of their own: the `drill-card` utility. -->
+        <div bind:this={level} data-drill="level" class="flex min-w-0 flex-col">
           {@render page(group)}
-        </section>
-      {/if}
-    </div>
+        </div>
+      </section>
+    {/if}
   </div>
 {/if}

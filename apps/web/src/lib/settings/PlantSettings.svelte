@@ -20,7 +20,7 @@
   const current = $derived.by(() => load());
 </script>
 
-<div class="flex flex-col">
+<div class="drill-card flex flex-col">
   {#await current}
     <LoadingRows rows={3} />
   {:then plant}
