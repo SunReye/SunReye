@@ -15,7 +15,7 @@ fn doc(settings: &Value) -> Value {
             { "key": "power", "role": "ev.charge.power", "topic": "loadpoints/{address}/chargePower" },
             { "key": "mode", "role": "ev.mode", "topic": "loadpoints/{address}/mode",
               "enum": { "off": 0, "pv": 1, "minpv": 2, "now": 3 } },
-            { "key": "limit", "role": "extra.limit", "topic": "loadpoints/{address}/limitSoc" },
+            { "key": "limit", "role": "extra.limit", "kind": "measurement", "topic": "loadpoints/{address}/limitSoc" },
         ],
         "settings": settings,
     })

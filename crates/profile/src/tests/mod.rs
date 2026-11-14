@@ -5,6 +5,7 @@ mod decode;
 mod deye;
 mod http;
 mod identify;
+mod kind;
 mod lint;
 mod live_control;
 mod load;

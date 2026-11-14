@@ -310,6 +310,11 @@ pub struct RegisterDoc {
 pub struct QuantityDoc {
     pub key: String,
     pub role: String,
+    /// What an extra's values are; a named role's kind is fixed (ADR 4).
+    #[serde(rename = "kind")]
+    pub role_kind: Option<crate::RoleKind>,
+    /// Where its readings go; `series` when left out.
+    pub storage: Option<crate::StorageClass>,
     pub index: Option<u32>,
     /// The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
     /// then counts from the model's ID register, as the SunSpec model definitions lay it out.
@@ -339,7 +344,7 @@ pub struct QuantityDoc {
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub texts: Option<BTreeMap<String, f64>>,
     /// The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
-    /// the quantisation step, and none for a counter or enum.
+    /// the quantisation step, and only on a measurement.
     pub deadband: Option<f64>,
     /// The poll group it is read in; the default cadence when left out.
     #[serde(rename = "pollGroup")]
@@ -364,6 +369,8 @@ impl QuantityDoc {
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
             self.poll_group.as_ref().map(|_| "poll-group"),
+            self.role_kind.map(|_| "kind"),
+            self.storage.map(|_| "storage"),
         ]
         .into_iter()
         .flatten()

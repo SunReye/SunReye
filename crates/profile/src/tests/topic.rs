@@ -36,7 +36,7 @@ fn power() -> Value {
 #[test]
 fn a_topic_names_the_device_address() {
     let p = profile(&json!([
-        { "key": "id", "role": "extra.id", "topic": "site/id" },
+        { "key": "id", "role": "extra.id", "kind": "measurement", "topic": "site/id" },
         power(),
     ]));
     assert_eq!(
@@ -75,9 +75,9 @@ fn a_null_empty_or_unreadable_payload_is_no_value() {
 #[test]
 fn a_computed_quantity_follows_its_topic_inputs() {
     let p = profile(&json!([
-        { "key": "a", "role": "extra.a", "topic": "a" },
-        { "key": "b", "role": "extra.b", "topic": "b" },
-        { "key": "sum", "role": "extra.sum", "compute": { "sum": ["a", "b"] } },
+        { "key": "a", "role": "extra.a", "kind": "measurement", "topic": "a" },
+        { "key": "b", "role": "extra.b", "kind": "measurement", "topic": "b" },
+        { "key": "sum", "role": "extra.sum", "kind": "measurement", "compute": { "sum": ["a", "b"] } },
     ]));
     let mut values = vec![None; 3];
     p.receive(0, b"2", &mut values);
@@ -87,15 +87,16 @@ fn a_computed_quantity_follows_its_topic_inputs() {
 
 #[test]
 fn a_topic_takes_no_register_type_or_wildcard() {
-    let with_register = json!([{ "key": "a", "role": "extra.a", "topic": "a", "register": 1 }]);
+    let with_register = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "topic": "a", "register": 1 }]);
     assert_eq!(
         refusal(&with_register).1,
         "declare one of `register`, `topic`, `get` or `compute`"
     );
-    let typed = json!([{ "key": "a", "role": "extra.a", "topic": "a", "type": "u16" }]);
+    let typed = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "topic": "a", "type": "u16" }]);
     assert_eq!(refusal(&typed).1, "a topic takes no type");
     for topic in ["", "a/#", "a/+/b", "/a"] {
-        let wild = json!([{ "key": "a", "role": "extra.a", "topic": topic }]);
+        let wild =
+            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "topic": topic }]);
         assert_eq!(
             refusal(&wild).1,
             "a topic is a path under the root, without wildcards",
@@ -107,8 +108,8 @@ fn a_topic_takes_no_register_type_or_wildcard() {
 #[test]
 fn a_profile_reads_through_one_binding() {
     let mixed = json!([
-        { "key": "a", "role": "extra.a", "register": 1, "type": "u16" },
-        { "key": "b", "role": "extra.b", "topic": "b" },
+        { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
+        { "key": "b", "role": "extra.b", "kind": "measurement", "topic": "b" },
     ]);
     assert_eq!(
         refusal(&mixed),
@@ -146,7 +147,7 @@ fn a_text_payload_reads_as_the_value_its_enum_maps_it_to() {
 
 #[test]
 fn only_a_topic_maps_texts() {
-    let registered = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16",
+    let registered = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16",
         "enum": { "on": 1 } }]);
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",

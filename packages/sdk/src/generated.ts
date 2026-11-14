@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -13,7 +13,15 @@ identify?: Array<Identify>, settings?: Array<Setting>,
  */
 pollGroups?: Record<string, number>, };
 
-export type Quantity = { key: string, role: string, index?: number, 
+export type Quantity = { key: string, role: string, 
+/**
+ * What an extra's values are; a named role's kind is fixed (ADR 4).
+ */
+kind?: RoleKind, 
+/**
+ * Where its readings go; `series` when left out.
+ */
+storage?: StorageClass, index?: number, 
 /**
  * The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
  * then counts from the model's ID register, as the SunSpec model definitions lay it out.
@@ -47,13 +55,17 @@ resolution?: number, offset?: number, compute?: Expr, range?: Range,
 enum?: Record<string, number>, 
 /**
  * The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
- * the quantisation step, and none for a counter or enum.
+ * the quantisation step, and only on a measurement.
  */
 deadband?: number, 
 /**
  * The poll group it is read in; the default cadence when left out.
  */
 pollGroup?: string, };
+
+export type RoleKind = "measurement" | "counter" | "status" | "setting";
+
+export type StorageClass = "series" | "none";
 
 export type Kind = "u16" | "i16" | "u32" | "acc32";
 

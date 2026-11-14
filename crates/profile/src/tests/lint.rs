@@ -20,9 +20,9 @@ fn a_used_capability_missing_from_requires_is_refused() {
     let doc = case(
         &json!(["modbus", "u16"]),
         &json!([
-            { "key": "a", "role": "extra.a", "register": 1, "type": "u16" },
-            { "key": "b", "role": "extra.b", "register": 2, "type": "u32" },
-            { "key": "c", "role": "extra.c", "compute": { "sum": ["a", "b"] } },
+            { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
+            { "key": "b", "role": "extra.b", "kind": "measurement", "register": 2, "type": "u32" },
+            { "key": "c", "role": "extra.c", "kind": "measurement", "compute": { "sum": ["a", "b"] } },
         ]),
     );
 
@@ -39,7 +39,7 @@ fn a_used_capability_missing_from_requires_is_refused() {
 fn a_required_capability_this_build_lacks_is_named_before_any_field_it_does_not_know() {
     let doc = case(
         &json!(["modbus", "u16", "future"]),
-        &json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16", "future": 1 }]),
+        &json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16", "future": 1 }]),
     );
 
     assert_eq!(
@@ -56,7 +56,7 @@ fn the_owners_profile_requires_all_it_uses() {
 
 #[test]
 fn each_optional_field_of_a_quantity_needs_its_capability() {
-    let register = json!({ "key": "a", "role": "extra.a", "register": 1, "type": "u16" });
+    let register = json!({ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" });
     let with = |field: &str, value: Value| {
         let mut quantity = register.clone();
         quantity[field] = value;
@@ -74,7 +74,7 @@ fn each_optional_field_of_a_quantity_needs_its_capability() {
             "{doc}"
         );
     }
-    let texts = json!([{ "key": "m", "role": "extra.m", "topic": "m", "enum": { "pv": 1 } }]);
+    let texts = json!([{ "key": "m", "role": "extra.m", "kind": "measurement", "topic": "m", "enum": { "pv": 1 } }]);
     assert_eq!(
         unrequired(&case(&json!(["mqtt"]), &texts)),
         LoadError::Unrequired("text-enum".to_owned())
@@ -83,7 +83,7 @@ fn each_optional_field_of_a_quantity_needs_its_capability() {
 
 #[test]
 fn an_identify_probe_and_an_ac_rating_need_their_capabilities() {
-    let quantities = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16" }]);
+    let quantities = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" }]);
     let mut identify = case(&json!(["modbus", "u16"]), &quantities);
     identify["identify"] = json!([{ "register": 0, "values": [5] }]);
     let mut rated = case(&json!(["modbus", "u16"]), &quantities);
@@ -108,7 +108,7 @@ fn a_settings_text_and_verified_flag_need_their_capabilities() {
     let with = |field: &str, value: Value| {
         let mut setting = setting.clone();
         setting[field] = value;
-        let quantities = json!([{ "key": "a", "role": "extra.a", "register": 1, "type": "u16" }]);
+        let quantities = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" }]);
         let mut doc = case(&json!(["modbus", "u16", "write"]), &quantities);
         doc["settings"] = json!([setting]);
         doc

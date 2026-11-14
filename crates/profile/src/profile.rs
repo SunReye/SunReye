@@ -10,10 +10,13 @@ use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::identify::{self, Field as IdentifyField};
 use crate::plan::{self, Block};
-use crate::role::RoleKind;
+use crate::role::{self, RoleKind, StorageClass};
 use crate::setting::{self, Setting};
 use crate::sunspec::Chain;
 use crate::{CADENCE, CAPABILITIES, SCHEMA};
+
+/// The role prefix of a quantity with no role (ADR 4).
+const EXTRA: &str = "extra.";
 
 /// A loaded profile: its quantities in file order and its compiled read plan.
 #[derive(Debug, Clone)]
@@ -69,6 +72,8 @@ pub struct Quantity {
     pub index: Option<u32>,
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
+    kind: RoleKind,
+    storage: StorageClass,
     step: f64,
     deadband: Option<f64>,
     cadence: Duration,
@@ -77,7 +82,7 @@ pub struct Quantity {
 /// Why a deadband does not fit a quantity (ADR 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeadbandRefusal {
-    /// A counter or an enum stores every change.
+    /// Not a measurement: a counter, enum or setting stores every change.
     Kind,
     /// Below the quantisation step, or not a finite number.
     Step,
@@ -86,13 +91,25 @@ pub enum DeadbandRefusal {
 impl DeadbandRefusal {
     const fn problem(self) -> &'static str {
         match self {
-            Self::Kind => "a counter or enum has no deadband",
+            Self::Kind => "only a measurement has a deadband",
             Self::Step => "a deadband is below the quantisation step",
         }
     }
 }
 
 impl Quantity {
+    /// What its values are: its role's kind, or the one an extra declares (ADR 4).
+    #[must_use]
+    pub const fn kind(&self) -> RoleKind {
+        self.kind
+    }
+
+    /// Where its readings go (ADR 3).
+    #[must_use]
+    pub const fn storage(&self) -> StorageClass {
+        self.storage
+    }
+
     /// The quantisation step it is stored in, in its role's unit (ADR 3): a register's scale; for a
     /// computed quantity the finest step of its inputs, and for a ratio a thousandth of its scale.
     #[must_use]
@@ -112,10 +129,10 @@ impl Quantity {
         self.deadband
     }
 
-    /// Whether `deadband` may apply to it: never below its step, and none for a counter or enum.
+    /// Whether `deadband` may apply to it: never below its step, and only on a measurement.
     ///
     /// # Errors
-    /// The quantity is a counter or enum, or `deadband` is below its step.
+    /// The quantity is not a measurement, or `deadband` is below its step.
     pub fn admits(&self, deadband: f64) -> Result<(), DeadbandRefusal> {
         if self.kind() != RoleKind::Measurement {
             return Err(DeadbandRefusal::Kind);
@@ -381,6 +398,12 @@ impl Profile {
             .collect();
         let settings = setting::compile(doc.settings, &quantities)
             .map_err(|(key, problem)| LoadError::Setting { key, problem })?;
+        if let Some(extra) = duplicate(&quantities, &settings) {
+            return Err(LoadError::Quantity {
+                key: extra.key.clone(),
+                problem: "a setting already reads its register",
+            });
+        }
         Ok(Self {
             id: doc.id,
             name: doc.name,
@@ -503,6 +526,24 @@ impl Profile {
             |chain| chain.split(block),
         )
     }
+}
+
+/// The first extra reading a register a setting reads back: the setting is its record.
+fn duplicate<'a>(quantities: &'a [Quantity], settings: &[Setting]) -> Option<&'a Quantity> {
+    let read_back: Vec<u16> = settings
+        .iter()
+        .filter_map(|s| match s.read_back() {
+            Some(setting::Source::Register(field)) => Some(field.register),
+            Some(setting::Source::Quantity(_)) | None => None,
+        })
+        .collect();
+    quantities.iter().find(|q| {
+        let Read::Register(r) = &q.read else {
+            return false;
+        };
+        let words = u32::from(r.address)..u32::from(r.address) + u32::from(r.kind.words());
+        q.role.starts_with(EXTRA) && read_back.iter().any(|&at| words.contains(&u32::from(at)))
+    })
 }
 
 fn check(inverter: &Inverter) -> Result<(), LoadError> {
@@ -640,10 +681,13 @@ fn compile(
         let cadence =
             cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
         positions.insert(doc.key.clone(), quantities.len());
+        let kind = kind(&doc).map_err(refuse)?;
         let quantity = Quantity {
             key: doc.key,
             role: doc.role,
             index: doc.index,
+            kind,
+            storage: doc.storage.unwrap_or_default(),
             read,
             range: doc.range,
             step,
@@ -661,6 +705,16 @@ fn compile(
         quantities.push(quantity);
     }
     Ok(quantities)
+}
+
+/// The kind an extra declares, or its named role's (ADR 4).
+fn kind(doc: &QuantityDoc) -> Result<RoleKind, &'static str> {
+    match (doc.role.starts_with(EXTRA), doc.role_kind) {
+        (true, Some(kind)) => Ok(kind),
+        (true, None) => Err("an extra declares its kind"),
+        (false, None) => Ok(role::kind(&doc.role)),
+        (false, Some(_)) => Err("a named role's kind is fixed by ADR 4"),
+    }
 }
 
 /// `earlier` holds every input of a computed `read`.

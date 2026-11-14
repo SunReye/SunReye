@@ -241,6 +241,29 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
 }
 
 #[tokio::test]
+async fn a_setting_is_stored_as_change_points_and_rolls_up_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = Storage::open(&dir.path().join("s.sqlite"), epoch(), "UTC", &plant.bus).unwrap();
+    let setting = Policy::new(RoleKind::Setting, None, 1.0, Duration::from_secs(5));
+    storage.declare(DEVICE, plant.power, setting).await.unwrap();
+    // 50 until half past the first hour, then 51, into a third hour.
+    let readings = steady(0.0, 1460, 5.0, |t| if t < 1800.0 { 50.0 } else { 51.0 });
+    plant.record(&storage, &readings).await;
+
+    assert_eq!(
+        plant.history(&storage, 0.0, 7200.0).await,
+        [(0.0, Some(50.0)), (1800.0, Some(51.0))]
+    );
+    for tier in [Tier::Hour, Tier::Day] {
+        assert_eq!(
+            rollups(&storage, plant.power, tier, 0.0, 86_400.0).await,
+            []
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_low_reading_at_the_end_of_an_hour_is_not_a_reset_in_the_next() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();

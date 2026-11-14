@@ -10,14 +10,14 @@ use super::{DeadbandSource, RoleDeadband, deadbands};
 fn profile() -> Profile {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "i16", "u16", "u32", "deadband"], "quantities": [
+        "requires": ["modbus", "i16", "u16", "u32", "deadband", "kind"], "quantities": [
             { "key": "battery", "role": "battery.power", "register": 1, "type": "i16",
               "deadband": 20 },
             { "key": "grid", "role": "grid.power", "register": 2, "type": "i16" },
             { "key": "volts", "role": "battery.voltage", "register": 3, "type": "u16",
               "scale": 0.01, "deadband": 0.2 },
             { "key": "energy", "role": "pv.energy.total", "register": 4, "type": "u32" },
-            { "key": "odd", "role": "extra.odd", "register": 6, "type": "u16" },
+            { "key": "odd", "role": "extra.odd", "kind": "measurement", "register": 6, "type": "u16" },
         ],
     });
     Profile::load(&doc.to_string()).unwrap()
@@ -51,9 +51,9 @@ fn an_override_wins_then_the_profile_then_the_role_default_else_none() {
 fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u16", "poll-group"], "pollGroups": { "slow": 60 },
+        "requires": ["modbus", "u16", "poll-group", "kind"], "pollGroups": { "slow": 60 },
         "quantities": [
-            { "key": "temp", "role": "extra.temp", "register": 1, "type": "u16",
+            { "key": "temp", "role": "extra.temp", "kind": "measurement", "register": 1, "type": "u16",
               "pollGroup": "slow" },
         ],
     });
@@ -62,4 +62,23 @@ fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
     let policy = super::policy(&profile.quantities()[0], &BTreeMap::new());
 
     assert_eq!(policy.cadence, std::time::Duration::from_mins(1));
+}
+
+#[test]
+fn a_counter_extra_is_stored_as_a_counter_with_every_change() {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u32", "kind"], "quantities": [
+            { "key": "runtime", "role": "extra.runtime", "register": 1, "type": "u32",
+              "scale": 0.1, "kind": "counter" },
+        ],
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+
+    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new());
+
+    assert_eq!(
+        (policy.kind, policy.deadband),
+        (sunreye_profile::RoleKind::Counter, 0.0)
+    );
 }

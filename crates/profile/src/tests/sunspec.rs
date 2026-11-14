@@ -312,13 +312,13 @@ fn a_sentinel_reads_as_no_value() {
     let device = Device::default().with(40000, &words);
     let model = [64000];
     let profile = points(&json!([
-        { "key": "i16", "role": "extra.a", "model": model, "register": 2, "type": "i16" },
-        { "key": "u16", "role": "extra.b", "model": model, "register": 3, "type": "u16" },
-        { "key": "acc32", "role": "extra.c", "model": model, "register": 4, "type": "acc32" },
-        { "key": "u32", "role": "extra.d", "model": model, "register": 6, "type": "u32" },
-        { "key": "unscaled", "role": "extra.e", "model": model, "register": 9, "type": "u16",
+        { "key": "i16", "role": "extra.a", "kind": "measurement", "model": model, "register": 2, "type": "i16" },
+        { "key": "u16", "role": "extra.b", "kind": "measurement", "model": model, "register": 3, "type": "u16" },
+        { "key": "acc32", "role": "extra.c", "kind": "measurement", "model": model, "register": 4, "type": "acc32" },
+        { "key": "u32", "role": "extra.d", "kind": "measurement", "model": model, "register": 6, "type": "u32" },
+        { "key": "unscaled", "role": "extra.e", "kind": "measurement", "model": model, "register": 9, "type": "u16",
           "scaleFactor": 8, "resolution": 1 },
-        { "key": "read", "role": "extra.f", "model": model, "register": 10, "type": "u16" },
+        { "key": "read", "role": "extra.f", "kind": "measurement", "model": model, "register": 10, "type": "u16" },
     ]));
 
     let values = poll(&profile, &device);

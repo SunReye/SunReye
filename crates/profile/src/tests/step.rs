@@ -19,10 +19,10 @@ fn steps(quantities: &Value) -> Vec<(String, f64)> {
 #[test]
 fn a_register_is_stored_in_steps_of_its_scale() {
     let quantities = json!([
-        { "key": "plain", "role": "extra.plain", "register": 1, "type": "u16" },
-        { "key": "tenths", "role": "extra.tenths", "register": 2, "type": "i16", "scale": 0.1,
+        { "key": "plain", "role": "extra.plain", "kind": "measurement", "register": 1, "type": "u16" },
+        { "key": "tenths", "role": "extra.tenths", "kind": "measurement", "register": 2, "type": "i16", "scale": 0.1,
           "offset": -100 },
-        { "key": "negated", "role": "extra.negated", "register": 3, "type": "i16", "scale": -0.01 },
+        { "key": "negated", "role": "extra.negated", "kind": "measurement", "register": 3, "type": "i16", "scale": -0.01 },
     ]);
 
     assert_eq!(
@@ -38,14 +38,14 @@ fn a_register_is_stored_in_steps_of_its_scale() {
 #[test]
 fn a_computed_quantity_takes_its_finest_input_step_and_a_ratio_a_thousandth_of_its_scale() {
     let quantities = json!([
-        { "key": "a", "role": "extra.a", "register": 1, "type": "u16" },
-        { "key": "b", "role": "extra.b", "register": 2, "type": "u16", "scale": 0.1 },
-        { "key": "sum", "role": "extra.sum", "compute": { "sum": ["a", "b"] } },
-        { "key": "diff", "role": "extra.diff", "compute": { "diff": ["a", "b"] } },
-        { "key": "combine", "role": "extra.combine",
+        { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
+        { "key": "b", "role": "extra.b", "kind": "measurement", "register": 2, "type": "u16", "scale": 0.1 },
+        { "key": "sum", "role": "extra.sum", "kind": "measurement", "compute": { "sum": ["a", "b"] } },
+        { "key": "diff", "role": "extra.diff", "kind": "measurement", "compute": { "diff": ["a", "b"] } },
+        { "key": "combine", "role": "extra.combine", "kind": "measurement",
           "compute": { "combine": { "add": ["a"], "sub": ["b"] } } },
-        { "key": "clamp", "role": "extra.clamp", "compute": { "clamp": { "key": "b", "min": 0 } } },
-        { "key": "ratio", "role": "extra.ratio",
+        { "key": "clamp", "role": "extra.clamp", "kind": "measurement", "compute": { "clamp": { "key": "b", "min": 0 } } },
+        { "key": "ratio", "role": "extra.ratio", "kind": "measurement",
           "compute": { "ratio": { "num": ["a"], "den": ["b"], "scale": 100 } } },
     ]);
 

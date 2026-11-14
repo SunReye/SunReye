@@ -16,8 +16,12 @@ fn load(roles: &[(&str, Option<u32>)]) -> Profile {
         .iter()
         .enumerate()
         .map(|(i, (role, index))| {
-            json!({ "key": format!("q{i}"), "role": role, "index": index,
-                    "register": i, "type": "u16" })
+            let mut quantity = json!({ "key": format!("q{i}"), "role": role, "index": index,
+                                       "register": i, "type": "u16" });
+            if role.starts_with("extra.") {
+                quantity["kind"] = json!("measurement");
+            }
+            quantity
         })
         .collect();
     let doc = json!({
