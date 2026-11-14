@@ -99,3 +99,21 @@ test("a front door's light is its fanlight; a garage door has none", () => {
   );
   expect(lit(garage["garage.glow"]!)).toBe(0);
 });
+
+test("spilt light fades in from the wall's side: its first row is dark, its peak a little way out", () => {
+  const maps: Maps = GROUPS.spill();
+  const { w, h, data } = maps["spill.map"]!;
+  const row = (y: number): number[] => Array.from({ length: w }, (_, x) => data[(y * w + x) * 4]!);
+  const rows = Array.from({ length: h }, (_, y) => Math.max(...row(y)));
+  const peak = rows.indexOf(Math.max(...rows));
+  const wide = (y: number): number => row(y).filter((v) => v > rows[y]! / 2).length;
+
+  // The first row is the edge nearest the wall, the last the furthest.
+  expect(rows[0]).toBe(0);
+  expect(rows.at(-1)).toBeLessThan(8);
+  expect(peak).toBeGreaterThan(h * 0.1);
+  expect(peak).toBeLessThan(h * 0.5);
+  expect(rows[peak]).toBeGreaterThan(200);
+  // It spreads as it leaves.
+  expect(wide(Math.round(h * 0.75))).toBeGreaterThan(wide(peak));
+});
