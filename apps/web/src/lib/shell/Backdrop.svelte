@@ -4,6 +4,10 @@
   production; battery and grid sit low, under the bar and the rail. They drift on the full tier only,
   a step a second: each move makes every glass surface above it blur again, and a running
   animation would do that every frame.
+
+  The layer is as tall as the large viewport and pinned to the top, not `inset-0`: a phone's
+  address bar resizes the box a fixed layer fills on every scroll, and lights placed in it would
+  move and stretch with it.
 -->
 <script lang="ts">
   import type { PvModel } from "../api/model.ts";
@@ -53,7 +57,7 @@
 
 <div
   class={[
-    "pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-background",
+    "pointer-events-none fixed inset-x-0 top-0 -z-10 h-lvh overflow-hidden bg-background",
     { drifting },
   ]}
   aria-hidden="true"

@@ -70,3 +70,26 @@ export function handBeat() {
 /** Each light's drift from its place. */
 export const drifts = (container: Element): string[] =>
   lights(container).map((light) => light.querySelector<HTMLElement>(":scope > *")!.style.transform);
+
+const BOX = ["left", "top", "width", "height"] as const;
+
+/** Where each light sits on the screen, in whole pixels. */
+export const boxes = (container: Element): number[][] =>
+  lights(container).map((light) => {
+    const box = light.getBoundingClientRect();
+
+    return BOX.map((side) => Math.round(box[side]));
+  });
+
+/**
+ * A phone's address bar, by hand: it resizes the box that fixed layers fill and leaves the large
+ * viewport alone. No headless browser has the bar, so `container` stands in for that box.
+ */
+export function addressBar(container: HTMLElement): (height: number) => void {
+  // A transform makes the container the containing block of its fixed descendants.
+  container.style.cssText = "position: fixed; inset: 0 0 auto; transform: translate(0);";
+
+  return (height) => {
+    container.style.height = `${height}px`;
+  };
+}
