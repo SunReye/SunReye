@@ -7,10 +7,11 @@
 
   let { core }: { core: Core } = $props();
 
+
   const zone = $derived(core.spotZone());
 </script>
 
-<Section title={m.spot_title()}>
+<Section eyebrow title={m.spot_title()}>
   {#await zone}
     <LoadingRows rows={1} />
   {:then answer}

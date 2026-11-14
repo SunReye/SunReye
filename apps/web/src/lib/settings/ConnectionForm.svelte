@@ -5,14 +5,14 @@
 <script lang="ts">
   import type { Connection, ConnectionDraft, Core, Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
-  import SwitchRow from "../builder/SwitchRow.svelte";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "../setup/fields.ts";
   import Refusal from "../setup/Refusal.svelte";
   import { portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
+  import ChoiceField from "./ChoiceField.svelte";
   import SecretField from "./SecretField.svelte";
+  import TextField from "./TextField.svelte";
+  import ToggleRow from "./ToggleRow.svelte";
 
   let {
     core,
@@ -85,8 +85,10 @@
       (fields.transport !== "mqtt" || fields.topicRoot.trim() !== ""),
   );
 
-  function pick(event: Event & { currentTarget: HTMLSelectElement }): void {
-    const next = TRANSPORTS.find(([t]) => t === event.currentTarget.value)?.[0];
+  const CHOICES = TRANSPORTS.map(([value]) => ({ value, text: value }));
+
+  function pick(value: string): void {
+    const next = TRANSPORTS.find(([t]) => t === value)?.[0];
 
     if (next === undefined) return;
 
@@ -112,20 +114,14 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-  <label class={FIELD}>
-    {m.settings_connection_name()}
-    <Input required autocomplete="off" bind:value={fields.name} />
-  </label>
-  <label class={FIELD}>
-    {m.devices_endpoint_transport()}
-    <select class={SELECT} value={fields.transport} onchange={pick}>
-      {#each TRANSPORTS as [option] (option)}<option value={option}>{option}</option>{/each}
-    </select>
-  </label>
-  <label class={FIELD}>
-    {m.devices_endpoint_host()}
-    <Input required autocomplete="off" placeholder="192.168.1.40" bind:value={fields.host} />
-  </label>
+  <TextField label={m.settings_connection_name()} bind:value={fields.name} />
+  <ChoiceField
+    label={m.devices_endpoint_transport()}
+    value={fields.transport}
+    options={CHOICES}
+    onpick={pick}
+  />
+  <TextField label={m.devices_endpoint_host()} placeholder="192.168.1.40" bind:value={fields.host} />
   <div class="overflow-hidden rounded-md border border-border/60">
     <ValueRow
       edit={PORT}
@@ -136,12 +132,13 @@
     />
   </div>
   {#if fields.transport === "mqtt"}
-    <label class={FIELD}>
-      {m.settings_connection_topic_root()}
-      <Input required autocomplete="off" placeholder="evcc" bind:value={fields.topicRoot} />
-    </label>
+    <TextField
+      label={m.settings_connection_topic_root()}
+      placeholder="evcc"
+      bind:value={fields.topicRoot}
+    />
     <div class="overflow-hidden rounded-md border border-border/60">
-      <SwitchRow
+      <ToggleRow
         label={m.settings_connection_publish()}
         hint={m.settings_connection_publish_hint()}
         checked={fields.publish}
@@ -150,7 +147,7 @@
         }}
       />
       {#if fields.publish}
-        <SwitchRow
+        <ToggleRow
           label={m.settings_connection_discovery()}
           checked={fields.discovery}
           onchange={(on) => {

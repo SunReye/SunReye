@@ -1,18 +1,16 @@
 <script lang="ts">
-  import ProblemAlert from "../components/problem-alert.svelte";
   import { untrack } from "svelte";
   import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
+  import AppliesFrom from "./AppliesFrom.svelte";
   import { changeOf, draftOf, instantOf } from "./draft";
   import ScheduleFields from "./ScheduleFields.svelte";
 
   let { core, tariff }: { core: Core; tariff: Tariff | undefined } = $props();
-
-  const id = $props.id();
 
   // The admin's edit, seeded once from the tariff in force.
   let draft = $state(draftOf(untrack(() => tariff)));
@@ -38,21 +36,29 @@
   }
 </script>
 
-<form class="flex flex-col gap-6" onsubmit={save}>
+<form class="flex flex-col" onsubmit={save}>
   <ScheduleFields legend={m.tariff_import()} bind:schedule={draft.import} />
   <ScheduleFields legend={m.tariff_export()} bind:schedule={draft.export} />
-  <label class="flex flex-col gap-1.5 text-sm" for="{id}-from">
-    {m.tariff_applies_from()}
-    <Input id="{id}-from" type="datetime-local" class="w-56" bind:value={draft.appliesFrom} />
-  </label>
-  <div class="flex flex-wrap gap-2">
-    <Button type="submit">{m.tariff_save()}</Button>
-    <Button type="submit" variant="outline" name="reprice" disabled={draft.appliesFrom === ""}>
+  <div class="mt-5 border-y border-border/60">
+    <AppliesFrom bind:value={draft.appliesFrom} />
+  </div>
+  <!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
+  {#if answer !== undefined && "problem" in answer}
+    <div class="px-4 pt-3"><ProblemAlert problem={answer.problem} /></div>
+  {/if}
+  <!-- Save stays in reach above the bar however long the bands run. -->
+  <div
+    class="glass-ambient sticky bottom-[calc(var(--bar-clear,0px)+0.75rem)] z-10 mx-2 mt-4 flex items-center gap-2 rounded-lg border border-border/60 p-2 elevation-2"
+  >
+    <Button
+      type="submit"
+      variant="ghost"
+      name="reprice"
+      disabled={draft.appliesFrom === ""}
+      class="h-auto min-h-9 min-w-0 flex-1 justify-start text-left whitespace-normal"
+    >
       {m.tariff_reprice()}
     </Button>
+    <Button type="submit">{m.tariff_save()}</Button>
   </div>
 </form>
-<!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
-{#if answer !== undefined && "problem" in answer}
-  <ProblemAlert problem={answer.problem} />
-{/if}

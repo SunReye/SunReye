@@ -1,14 +1,14 @@
 <!-- The plant timezone and location: setup's second step, and Settings › Plant later. -->
 <script lang="ts">
-  import TextField from "../components/text-field.svelte";
-  import FormField from "../components/form-field.svelte";
   import LocateFixed from "@lucide/svelte/icons/locate-fixed";
   import type { Core, Problem } from "../api/core.ts";
   import type { Location } from "../api/setup.ts";
   import { Button } from "#lib/components/ui/button/index.js";
+  import ComboboxField from "../components/combobox-field.svelte";
+  import FormField from "../components/form-field.svelte";
+  import TextField from "../components/text-field.svelte";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import ComboboxField from "../components/combobox-field.svelte";
   import Refusal from "./Refusal.svelte";
 
   let {
@@ -33,13 +33,23 @@
   // svelte-ignore state_referenced_locally
   let zone = $state(current?.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-  // The fields start from the stored plant; the admin's edits own them after.
+  const id = $props.id();
+
+  // The fields start from the stored plant as text, typed with the locale's decimal key; the
+  // admin's edits own them after.
   // svelte-ignore state_referenced_locally
-  let latitude = $state(current?.location?.latitude);
+  let latitudeText = $state(String(current?.location?.latitude ?? ""));
 
   // As the latitude.
   // svelte-ignore state_referenced_locally
-  let longitude = $state(current?.location?.longitude);
+  let longitudeText = $state(String(current?.location?.longitude ?? ""));
+
+  /** A typed coordinate, with a comma or a point; empty or not a number is none. */
+  function coordinate(text: string): number | undefined {
+    const value = Number(text.trim().replace(",", "."));
+
+    return text.trim() === "" || Number.isNaN(value) ? undefined : value;
+  }
 
   // The zone held or guessed is listed even where the browser's list leaves it out, such as UTC.
   // svelte-ignore state_referenced_locally
@@ -56,8 +66,8 @@
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         kept = undefined;
-        latitude = round(coords.latitude);
-        longitude = round(coords.longitude);
+        latitudeText = String(round(coords.latitude));
+        longitudeText = String(round(coords.longitude));
         haptics.selection();
       },
       () => {
@@ -69,6 +79,9 @@
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+
+    const latitude = coordinate(latitudeText);
+    const longitude = coordinate(longitudeText);
 
     if (latitude === undefined || longitude === undefined) return;
 
@@ -98,11 +111,17 @@
   <div class="grid grid-cols-2 gap-3">
     <TextField
       label={m.plant_latitude()}
-      type="number" inputmode="decimal" step="any" required bind:value={latitude}
+      inputmode="decimal"
+      autocomplete="off"
+      required
+      bind:value={latitudeText}
     />
     <TextField
       label={m.plant_longitude()}
-      type="number" inputmode="decimal" step="any" required bind:value={longitude}
+      inputmode="decimal"
+      autocomplete="off"
+      required
+      bind:value={longitudeText}
     />
   </div>
   {#if locatable}

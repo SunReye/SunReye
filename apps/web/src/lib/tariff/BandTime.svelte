@@ -41,7 +41,7 @@
   bind:ref={anchor}
   variant="outline"
   aria-haspopup="dialog"
-  class="justify-start tabular-nums"
+  class="w-full justify-start tabular-nums"
   onclick={() => {
     open = true;
   }}

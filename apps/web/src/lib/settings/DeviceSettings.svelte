@@ -1,10 +1,12 @@
-<!-- One device under Settings › Writes: its writes switch (ADR 7) and each setting's enable (ADR 8). -->
+<!-- One device under Settings › Writes: its writes switch (ADR 7), each setting's enable (ADR 8), and the note they share. -->
 <script lang="ts">
+  import Eyebrow from "../components/eyebrow.svelte";
+  import * as Item from "#lib/components/ui/item/index.js";
   import type { Capabilities, Core, Device, Problem } from "../api/core";
-  import SwitchRow from "../builder/SwitchRow.svelte";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import SettingEnable from "./SettingEnable.svelte";
+  import ToggleRow from "./ToggleRow.svelte";
 
   let {
     core,
@@ -21,6 +23,14 @@
 
   let problem = $state.raw<Problem>();
 
+  // Said once under the list, not on every row that waits for the admin's enable.
+  const notes = $derived(
+    [
+      support.settings.some((s) => s.enable === "off") && m.settings_off(),
+      support.settings.some((s) => s.enable === "community") && m.settings_community(),
+    ].filter((note) => note !== false),
+  );
+
   async function writes(on: boolean): Promise<void> {
     const { id, ...draft } = device;
     const answer = await core.changeDevice(id, { ...draft, writes: on });
@@ -31,16 +41,23 @@
 </script>
 
 <section aria-label={device.name} class="flex flex-col">
-  <SwitchRow
-    label={m.settings_device_writes({ name: device.name })}
-    hint={support.writes ? undefined : m.settings_device_writes_hint()}
-    checked={support.writes}
-    onchange={writes}
-  />
-  {#if problem}<p role="alert" class="px-4 text-sm">{problemText(problem.problem)}</p>{/if}
-  <div class="flex flex-col gap-2 px-4 pb-4 text-sm empty:hidden">
+  <Eyebrow class="px-4 pt-5 pb-2">{device.name}</Eyebrow>
+  <Item.Group class="gap-0 divide-y divide-border/60 border-y border-border/60">
+    <ToggleRow
+      label={m.settings_writes_allowed()}
+      name={m.settings_device_writes({ name: device.name })}
+      hint={support.writes ? undefined : m.settings_device_writes_hint()}
+      checked={support.writes}
+      onchange={(on) => void writes(on)}
+    />
+    {#if problem}<p role="alert" class="px-4 py-2 text-sm text-destructive">
+        {problemText(problem.problem)}
+      </p>{/if}
     {#each support.settings as setting (setting.key)}
       <SettingEnable {core} device={device.id} {setting} {onchanged} />
     {/each}
-  </div>
+  </Item.Group>
+  {#each notes as note (note)}
+    <p class="px-4 pt-2 text-xs text-muted-foreground">{note}</p>
+  {/each}
 </section>

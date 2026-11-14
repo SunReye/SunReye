@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 // fallow-ignore-file coverage-gaps -- needs a browser; run by hand with `bun run flash`.
-// No flash on a route change (ADR 21): on the phone, a bar tap cross-fades the screens, and no
+// No flash on a route change (ADR 21): on the phone, a bar tap slides the screens, and no
 // frame in between may be brighter than both the screen it leaves and the one it lands on, in
 // the dark theme and in the light. Records every composited frame through the CDP screencast with
 // the page's animations slowed, so the verdict reads frames, not wall-clock time.
@@ -16,7 +16,7 @@ const PORT = 18_210;
 /** A mean luminance (0–1) this far above both ends is a flash a person sees. */
 const FLASH = 0.02;
 
-/** Animations play this many times slower, so the screencast catches the cross-fade's middle. */
+/** Animations play this many times slower, so the screencast catches the slide's middle. */
 const SLOWER = 10;
 
 const ignore = (): void => {
@@ -31,7 +31,7 @@ const SCHEMES = ["dark", "light"] as const;
 /** Bar taps, each from the screen before it. */
 const TAPS = [
   ["history", "Prognose"],
-  ["forecast", "Tarif"],
+  ["forecast", "Verlauf"],
   ["tariff", "Dashboard"],
   ["", "Verlauf"],
 ] as const;
@@ -46,7 +46,8 @@ function luminances(decoder: Page, frames: readonly string[]): Promise<number[]>
             await (await fetch(`data:image/png;base64,${png}`)).blob(),
           );
 
-          const canvas = new OffscreenCanvas(39, 84);
+          // Every pixel: a smaller canvas aliases thin bars as they slide, which reads as flicker.
+          const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
           const context = canvas.getContext("2d", { willReadFrequently: true });
 
           if (context === null) throw new Error("no 2d context");

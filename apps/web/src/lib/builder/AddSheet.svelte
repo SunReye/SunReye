@@ -3,6 +3,7 @@
   one bottom sheet, the More sheet's look. A tap adds the object and opens it in the inspector.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
@@ -51,17 +52,16 @@
           {#each adds as add (add.label)}
             <Item.Root class="rounded-none border-0">
               {#snippet child({ props })}
-                <button
+                <Pressable
                   {...props}
-                  type="button"
-                  class={[props.class, "min-h-11 text-left active:bg-muted"]}
+                  class={[props.class, "min-h-11 text-left"]}
                   onclick={() => {
                     onadd(add);
                   }}
                 >
                   <Item.Media variant="icon"><Plus /></Item.Media>
                   <Item.Content><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content>
-                </button>
+                </Pressable>
               {/snippet}
             </Item.Root>
           {/each}

@@ -94,8 +94,8 @@ test("the browser's own location fills the coordinates, rounded to about ten met
 
   await screen.getByRole("button", { name: "Aktuellen Standort verwenden" }).click();
 
-  await expect.element(screen.getByLabelText("Breitengrad")).toHaveValue(52.52);
-  await expect.element(screen.getByLabelText("Längengrad")).toHaveValue(13.405);
+  await expect.element(screen.getByLabelText("Breitengrad")).toHaveValue("52.52");
+  await expect.element(screen.getByLabelText("Längengrad")).toHaveValue("13.405");
   vi.restoreAllMocks();
 });
 

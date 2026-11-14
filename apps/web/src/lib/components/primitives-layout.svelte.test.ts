@@ -2,6 +2,7 @@ import { createRawSnippet } from "svelte";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import Eyebrow from "./eyebrow.svelte";
 import GlassCard from "./glass-card.svelte";
 import PageTitle from "./page-title.svelte";
 import Section from "./section.svelte";
@@ -84,4 +85,20 @@ test("a page title with the brand shows the sun mark beside it, outside its name
 
   await expect.element(heading).toBeVisible();
   expect(heading.element().parentElement?.querySelector("svg")).not.toBeNull();
+});
+
+test("an eyebrow is a small uppercase heading of the level asked for", async () => {
+  const screen = await render(Eyebrow, { element: "h3", children: body });
+  const heading = screen.getByRole("heading", { level: 3 }).element();
+
+  expect(getComputedStyle(heading).textTransform).toBe("uppercase");
+  expect(px(getComputedStyle(heading).fontSize)).toBe(12);
+});
+
+test("a section under an eyebrow is a region named by it", async () => {
+  const screen = await render(Section, { title: "Amortisation", eyebrow: true, children: body });
+  const region = screen.getByRole("region", { name: "Amortisation" });
+  const heading = region.getByRole("heading", { level: 2, name: "Amortisation" }).element();
+
+  expect(getComputedStyle(heading).textTransform).toBe("uppercase");
 });

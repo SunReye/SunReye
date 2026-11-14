@@ -3,6 +3,7 @@
   what it places. The nearest shape is one tap; "start empty" leaves the scene to the inspector.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
   import type { Pv } from "./pv.ts";
@@ -55,9 +56,8 @@
     <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
       {#each pictures as { template, picture } (template)}
         <li>
-          <button
-            type="button"
-            class="flex w-full cursor-pointer flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press outline-none glow-hover hover:elevation-2 focus-visible:ring-2 focus-visible:ring-ring active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
+          <Pressable
+            class="flex w-full flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press glow-hover hover:elevation-2 active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
             onclick={() => {
               onpick(template);
             }}
@@ -80,7 +80,7 @@
               {/if}
             </span>
             <span class="px-3 py-2.5 text-sm font-medium">{NAMES[template]()}</span>
-          </button>
+          </Pressable>
         </li>
       {/each}
     </ul>

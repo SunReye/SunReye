@@ -38,6 +38,7 @@
   title={m.access_tokens()}
   hint={m.access_tokens_hint()}
   answer={tokens}
+  action={m.access_add_token()}
 >
   {#snippet row(token)}
     <AccessRow
@@ -49,15 +50,24 @@
       onremove={() => remove(token.id)}
     />
   {/snippet}
-  {#if created}
-    <NewToken {created} ondone={() => (created = undefined)} />
-  {:else}
-    <TokenForm
-      add={(name, scope) => core.addToken(name, scope)}
-      oncreated={(answer) => {
-        created = answer;
-        void reload();
-      }}
-    />
-  {/if}
+  {#snippet form(close)}
+    {#if created}
+      <NewToken
+        {created}
+        ondone={() => {
+          created = undefined;
+          close();
+        }}
+      />
+    {:else}
+      <TokenForm
+        add={(name, scope) => core.addToken(name, scope)}
+        oncreated={(answer) => {
+          created = answer;
+          void reload();
+        }}
+        oncancel={close}
+      />
+    {/if}
+  {/snippet}
 </AccessSection>

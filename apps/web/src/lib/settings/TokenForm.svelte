@@ -11,9 +11,11 @@
   let {
     add,
     oncreated,
+    oncancel,
   }: {
     add: (name: string, scope: Scope) => Promise<CreatedToken | Problem>;
     oncreated: (created: CreatedToken) => void;
+    oncancel: () => void;
   } = $props();
 
   let name = $state("");
@@ -39,7 +41,7 @@
   }
 </script>
 
-<AccessForm action={m.access_add_token()} icon={KeyRound} {refused} onsubmit={() => void submit()}>
+<AccessForm action={m.access_add_token()} icon={KeyRound} {refused} onsubmit={() => void submit()} {oncancel}>
   <label class="flex flex-col gap-1.5 text-sm">
     {m.access_name()}
     <Input required autocomplete="off" placeholder="evcc" bind:value={name} />

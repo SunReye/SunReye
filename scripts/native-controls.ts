@@ -8,12 +8,6 @@ const ROOT = "apps/web/src/";
 
 const KIT = "apps/web/src/lib/components/ui/";
 
-/**
- * Not held to the rule yet: #746 (builder) and #749 (settings) are converting these folders on
- * their own branches. Delete each entry when its ticket is merged.
- */
-const PENDING: readonly string[] = ["apps/web/src/lib/builder/", "apps/web/src/lib/settings/"];
-
 const BANNED_INPUTS = new Set(["date", "time", "datetime-local", "range", "color", "file"]);
 
 export interface Finding {
@@ -71,9 +65,7 @@ if (import.meta.main) {
   const root = new URL("..", import.meta.url).pathname;
   const paths = [...new Glob(`${ROOT}**/*.svelte`).scanSync(root)].toSorted();
 
-  const held = paths.filter(
-    (path) => covered(path) && !PENDING.some((folder) => path.startsWith(folder)),
-  );
+  const held = paths.filter((path) => covered(path));
 
   const sources = await Promise.all(held.map((path) => Bun.file(`${root}${path}`).text()));
 

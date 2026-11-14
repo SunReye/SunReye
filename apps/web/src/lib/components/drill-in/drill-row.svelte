@@ -27,7 +27,7 @@
       {onclick}
       class={[
         props.class,
-        "group relative text-left disabled:pointer-events-none disabled:opacity-70",
+        "group relative flex-nowrap text-left disabled:pointer-events-none disabled:opacity-70",
         current === true && "bg-muted",
       ]}
     >
@@ -37,7 +37,7 @@
           <group.icon class="size-[18px]" />
         </Item.Media>
       {/if}
-      <Item.Content>
+      <Item.Content class="min-w-0">
         <Item.Title class="text-[15px]">{group.label}</Item.Title>
         {#if group.summary}
           <Item.Description class="truncate tabular-nums">{group.summary}</Item.Description>
