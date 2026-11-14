@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "vitest";
+import { toast } from "svelte-sonner";
+import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
@@ -235,9 +236,12 @@ test("the plant page shows the plant's timezone and location and saves them", as
     .toHaveTextContent("Europe/Vienna");
   await expect.element(screen.getByRole("textbox", { name: "Breitengrad" })).toHaveValue("48.1");
 
+  const success = vi.spyOn(toast, "success");
+
   await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
+  await expect.poll(() => success.mock.calls.at(-1)?.[0]).toBe("Gespeichert.");
+  expect(screen.getByRole("status").query()).toBeNull();
   expect(transport.writes).toEqual([
     'PUT /api/v1/timezone {"name":"Europe/Vienna"}',
     'PUT /api/v1/location {"latitude":48.1,"longitude":11.6}',

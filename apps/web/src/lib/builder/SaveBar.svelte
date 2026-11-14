@@ -2,6 +2,7 @@
 <script lang="ts">
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
+  import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
   import DateField from "./DateField.svelte";
@@ -9,6 +10,15 @@
   import type { Session } from "./session.svelte.ts";
 
   let { session }: { session: Session } = $props();
+
+  async function save() {
+    await session.save();
+
+    // The confirmation is a toast (ADR 21); a refusal stays here, where it is fixed.
+    if (session.saved !== undefined && !("problem" in session.saved)) {
+      toast.success(m.builder_saved());
+    }
+  }
 </script>
 
 <!-- A refusal for one string shows on that string's level, where the save opens it. -->
@@ -42,7 +52,7 @@
   <Button
     size="sm"
     onclick={() => {
-      void session.save();
+      void save();
     }}>{m.builder_save()}</Button
   >
 </div>

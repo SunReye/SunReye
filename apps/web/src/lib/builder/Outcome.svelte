@@ -27,7 +27,6 @@
   {#if "problem" in saved}
     <p role="alert" class="mb-2 text-sm text-destructive">{problemText(saved.problem)}</p>
   {:else}
-    <p role="status" class="mb-2 text-sm text-success">{m.builder_saved()}</p>
     <!-- A warning, never a refusal: the plant may already exist (ADR 20). -->
     {#each saved.warnings as warning (warning.string)}
       <p role="alert" class="mb-2 text-sm text-warning">
