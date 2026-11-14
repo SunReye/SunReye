@@ -10,14 +10,14 @@ use super::{DeadbandSource, RoleDeadband, deadbands};
 fn profile() -> Profile {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "i16", "u16", "u32", "deadband", "kind"], "quantities": [
+        "requires": ["modbus", "i16", "u16", "u32", "deadband", "kind", "unit"], "quantities": [
             { "key": "battery", "role": "battery.power", "register": 1, "type": "i16",
               "deadband": 20 },
             { "key": "grid", "role": "grid.power", "register": 2, "type": "i16" },
             { "key": "volts", "role": "battery.voltage", "register": 3, "type": "u16",
               "scale": 0.01, "deadband": 0.2 },
             { "key": "energy", "role": "pv.energy.total", "register": 4, "type": "u32" },
-            { "key": "odd", "role": "extra.odd", "kind": "measurement", "register": 6, "type": "u16" },
+            { "key": "odd", "role": "extra.odd", "kind": "measurement", "unit": "none", "register": 6, "type": "u16" },
         ],
     });
     Profile::load(&doc.to_string()).unwrap()
@@ -51,9 +51,9 @@ fn an_override_wins_then_the_profile_then_the_role_default_else_none() {
 fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u16", "poll-group", "kind"], "pollGroups": { "slow": 60 },
+        "requires": ["modbus", "u16", "poll-group", "kind", "unit"], "pollGroups": { "slow": 60 },
         "quantities": [
-            { "key": "temp", "role": "extra.temp", "kind": "measurement", "register": 1, "type": "u16",
+            { "key": "temp", "role": "extra.temp", "kind": "measurement", "unit": "none", "register": 1, "type": "u16",
               "pollGroup": "slow" },
         ],
     });
@@ -68,9 +68,9 @@ fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
 fn a_counter_extra_is_stored_as_a_counter_with_every_change() {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "u32", "kind"], "quantities": [
+        "requires": ["modbus", "u32", "kind", "unit"], "quantities": [
             { "key": "runtime", "role": "extra.runtime", "register": 1, "type": "u32",
-              "scale": 0.1, "kind": "counter" },
+              "scale": 0.1, "kind": "counter", "unit": "h" },
         ],
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
@@ -87,10 +87,10 @@ fn a_counter_extra_is_stored_as_a_counter_with_every_change() {
 fn a_quantity_stored_nowhere_has_no_storage_policy() {
     let doc = json!({
         "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-        "requires": ["modbus", "i16", "kind", "storage"], "quantities": [
+        "requires": ["modbus", "i16", "kind", "storage", "unit"], "quantities": [
             { "key": "grid", "role": "grid.power", "register": 1, "type": "i16" },
             { "key": "import", "role": "extra.import", "register": 2, "type": "i16",
-              "kind": "measurement", "storage": "none" },
+              "kind": "measurement", "unit": "none", "storage": "none" },
         ],
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
@@ -102,4 +102,40 @@ fn a_quantity_stored_nowhere_has_no_storage_policy() {
         .collect();
 
     assert_eq!(stored, [true, false]);
+}
+
+fn stored_deadbands(quantities: &serde_json::Value) -> Vec<f64> {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u16", "kind", "unit"], "quantities": quantities,
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+    profile
+        .quantities()
+        .iter()
+        .map(|q| super::policy(q, &BTreeMap::new()).unwrap().deadband)
+        .collect()
+}
+
+#[test]
+fn an_extra_takes_its_units_default_and_a_unitless_one_stores_every_change() {
+    let deadbands = stored_deadbands(&json!([
+        { "key": "a", "role": "extra.a", "kind": "measurement", "unit": "A", "register": 1,
+          "type": "u16", "scale": 0.01 },
+        { "key": "n", "role": "extra.n", "kind": "measurement", "unit": "none", "register": 2,
+          "type": "u16", "scale": 0.01 },
+    ]));
+
+    assert_eq!(deadbands, [0.1, 0.0]);
+}
+
+#[test]
+fn a_percentage_holds_a_one_percent_deadband() {
+    let deadbands = stored_deadbands(&json!([
+        { "key": "soc", "role": "battery.soc", "register": 1, "type": "u16" },
+        { "key": "e", "role": "extra.e", "kind": "measurement", "unit": "%", "register": 2,
+          "type": "u16", "scale": 0.1 },
+    ]));
+
+    assert_eq!(deadbands, [1.0, 1.0]);
 }

@@ -60,6 +60,7 @@ pub const CAPABILITIES: &[&str] = &[
     "live-control",
     "kind",
     "storage",
+    "unit",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

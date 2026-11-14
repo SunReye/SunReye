@@ -18,8 +18,8 @@ fn load(doc: &Value) -> Result<Profile, LoadError> {
 #[test]
 fn an_extra_is_of_the_kind_it_declares() {
     let doc = case(&json!([
-        { "key": "m", "role": "extra.m", "register": 1, "type": "u16", "kind": "measurement" },
-        { "key": "c", "role": "extra.c", "register": 2, "type": "u32", "kind": "counter" },
+        { "key": "m", "role": "extra.m", "register": 1, "type": "u16", "kind": "measurement", "unit": "none" },
+        { "key": "c", "role": "extra.c", "register": 2, "type": "u32", "kind": "counter", "unit": "none" },
         { "key": "f", "role": "extra.f", "register": 4, "type": "u16", "kind": "status" },
         { "key": "s", "role": "extra.s", "register": 5, "type": "u16", "kind": "setting" },
     ]));
@@ -46,7 +46,7 @@ fn an_extra_is_of_the_kind_it_declares() {
 fn a_kind_and_a_storage_class_need_their_capabilities() {
     let with = |field: &str, value: Value| {
         let mut quantity = json!({ "key": "a", "role": "extra.a", "register": 1, "type": "u16",
-                                   "kind": "measurement" });
+                                   "kind": "measurement", "unit": "none" });
         quantity[field] = value;
         let mut doc = case(&json!([quantity]));
         doc["requires"] = super::all_but(if field == "kind" { "kind" } else { "storage" });
@@ -76,7 +76,7 @@ fn an_extra_without_a_kind_is_refused() {
 #[test]
 fn a_named_role_refuses_a_kind() {
     let doc = case(&json!([
-        { "key": "p", "role": "pv.power", "register": 1, "type": "u16", "kind": "measurement" },
+        { "key": "p", "role": "pv.power", "register": 1, "type": "u16", "kind": "measurement", "unit": "none" },
     ]));
 
     assert_eq!(
@@ -90,7 +90,7 @@ fn a_quantity_is_stored_as_a_series_unless_it_declares_none() {
     let doc = case(&json!([
         { "key": "p", "role": "pv.power", "register": 1, "type": "u16" },
         { "key": "i", "role": "extra.i", "compute": { "clamp": { "key": "p", "min": 0 } },
-          "kind": "measurement", "storage": "none" },
+          "kind": "measurement", "unit": "none", "storage": "none" },
     ]));
 
     let storage: Vec<StorageClass> = load(&doc)

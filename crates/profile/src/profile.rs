@@ -10,7 +10,7 @@ use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::identify::{self, Field as IdentifyField};
 use crate::plan::{self, Block};
-use crate::role::{self, RoleKind, StorageClass};
+use crate::role::{self, RoleKind, StorageClass, Unit};
 use crate::setting::{self, Setting};
 use crate::sunspec::Chain;
 use crate::{CADENCE, CAPABILITIES, SCHEMA};
@@ -73,6 +73,7 @@ pub struct Quantity {
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
     kind: RoleKind,
+    unit: Option<Unit>,
     storage: StorageClass,
     step: f64,
     deadband: Option<f64>,
@@ -102,6 +103,12 @@ impl Quantity {
     #[must_use]
     pub const fn kind(&self) -> RoleKind {
         self.kind
+    }
+
+    /// Its role's unit, or the one an extra declares; none for a status or setting (ADR 4).
+    #[must_use]
+    pub const fn unit(&self) -> Option<Unit> {
+        self.unit
     }
 
     /// Where its readings go (ADR 3).
@@ -682,11 +689,13 @@ fn compile(
             cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
         positions.insert(doc.key.clone(), quantities.len());
         let kind = kind(&doc).map_err(refuse)?;
+        let unit = unit(&doc, kind).map_err(refuse)?;
         let quantity = Quantity {
             key: doc.key,
             role: doc.role,
             index: doc.index,
             kind,
+            unit,
             storage: doc.storage.unwrap_or_default(),
             read,
             range: doc.range,
@@ -714,6 +723,18 @@ fn kind(doc: &QuantityDoc) -> Result<RoleKind, &'static str> {
         (true, None) => Err("an extra declares its kind"),
         (false, None) => Ok(role::kind(&doc.role)),
         (false, Some(_)) => Err("a named role's kind is fixed by ADR 4"),
+    }
+}
+
+/// The unit a measurement or counter extra declares, or its named role's (ADR 4).
+fn unit(doc: &QuantityDoc, kind: RoleKind) -> Result<Option<Unit>, &'static str> {
+    let measured = matches!(kind, RoleKind::Measurement | RoleKind::Counter);
+    match (doc.role.starts_with(EXTRA), doc.unit) {
+        (false, None) => Ok(role::unit(&doc.role)),
+        (false, Some(_)) => Err("a named role's unit is fixed by ADR 4"),
+        (true, Some(_)) if !measured => Err("only a measurement or counter has a unit"),
+        (true, None) if measured => Err("an extra declares its unit"),
+        (true, unit) => Ok(unit),
     }
 }
 
