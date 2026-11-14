@@ -158,6 +158,43 @@ test("a far day runs a clear sky in the browser", async () => {
   await expect.poll(() => list.element().textContent).toMatch(/Süd: ≈[1-9][\d.]* W/u);
 });
 
+test("the scene's sky is the weather of the slider's day", async () => {
+  const asked: string[] = [];
+  const reading = readingCore(() => ({ inputs: [] }));
+
+  await render(Builder, {
+    pv,
+    core: connect({
+      ...reading,
+      fetch: (request) => {
+        asked.push(request.url);
+
+        return reading.fetch(request);
+      },
+    }),
+    start: SAVED,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    location: BERLIN,
+  });
+
+  await pickDay("Tag", "2026-11-01");
+
+  // The day in the browser's calendar, midnight to midnight.
+  const day = new URLSearchParams({
+    from: new Date("2026-11-01T00:00").toISOString(),
+    to: new Date("2026-11-02T00:00").toISOString(),
+  }).toString();
+
+  const weather = (series: string) =>
+    asked.find(
+      (url) => url.includes(`/devices/4294967295/forecasts?series=${series}&`) && url.endsWith(day),
+    );
+
+  await expect.poll(() => weather("weather.ghi")).toBeDefined();
+  await expect.poll(() => weather("weather.dhi")).toBeDefined();
+});
+
 test("each MPPT input shows its learned correction at the slider's hour and its last 30 days", async () => {
   const screen = await render(Builder, {
     pv,

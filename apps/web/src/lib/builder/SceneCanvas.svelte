@@ -33,6 +33,7 @@
     shares,
     cars = [],
     sun = null,
+    diffuse = null,
     model,
     view,
     locked = false,
@@ -53,6 +54,8 @@
     cars?: readonly Parked[];
     /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun. */
     sun?: Point | null | undefined;
+    /** How diffuse the sky's light is, 0 clear to 1 overcast: the weather; null for a clear sky. */
+    diffuse?: number | null | undefined;
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
@@ -214,7 +217,7 @@
       return lit(
         canvas,
         camera,
-        () => sun ?? null,
+        () => ({ sun: sun ?? null, diffuse: diffuse ?? null }),
         () => {
           const project = projector(canvas, camera.clone());
 

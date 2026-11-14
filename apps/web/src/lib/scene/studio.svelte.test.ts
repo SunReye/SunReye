@@ -1,6 +1,20 @@
 import { afterEach, expect, test } from "vitest";
-import { Color, Fog, PerspectiveCamera, Texture } from "three";
+import {
+  Color,
+  CubeCamera,
+  DirectionalLight,
+  FloatType,
+  Fog,
+  PerspectiveCamera,
+  Scene,
+  Texture,
+  Vector3,
+  WebGLCubeRenderTarget,
+  WebGLRenderer,
+} from "three";
+import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
+import { skylight } from "./skylight.ts";
 import { Studio } from "./studio.ts";
 
 let studio: Studio | undefined;
@@ -52,4 +66,100 @@ test("light and dark themes change the background, the fog and the exposure", ()
   expect(opened.scene.fog instanceof Fog ? opened.scene.fog.color.getHex() : null).not.toBe(
     light.fog,
   );
+});
+
+test("an overcast sky blurs the sun's shadow and dims the sun, with the one light", () => {
+  const opened = open();
+  const page = new Color(0.95, 0.95, 0.96);
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+  const suns = () => opened.scene.children.filter((child) => child instanceof DirectionalLight);
+
+  opened.light(daylight([0, -0.5, 0.866]), theme(false), page);
+
+  const [clear] = suns();
+  const before = { radius: clear?.shadow.radius ?? 0, intensity: clear?.intensity ?? 0 };
+
+  opened.light(daylight([0, -0.5, 0.866], 1), theme(false), page);
+
+  expect(suns()).toHaveLength(1);
+  expect(suns()[0]?.shadow.radius).toBeGreaterThan(before.radius);
+  expect(suns()[0]?.intensity).toBeLessThan(before.intensity);
+});
+
+test("the sky model takes the light's clouds", () => {
+  const model = sky(1000);
+  const { clouds } = daylight([0, -0.5, 0.866], 1);
+
+  aim(model, new Vector3(0, 0.866, 0.5), { dark: false, low: 0, clouds });
+
+  expect(model.material.uniforms["cloudCoverage"]?.value).toBe(clouds.coverage);
+  expect(model.material.uniforms["cloudDensity"]?.value).toBe(clouds.density);
+});
+
+const FACE = 32;
+
+/** The sky model's light on a face turned up: pi times its mean radiance, weighted by cosine. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js reads with them.
+function irradiance(renderer: WebGLRenderer, target: WebGLCubeRenderTarget): number {
+  const pixels = new Float32Array(FACE * FACE * 4);
+  let [light, weight] = [0, 0];
+
+  // The cube's top face, from straight up out to 45°, and the upper halves of its sides.
+  for (let face = 0; face < 6; face++) {
+    renderer.readRenderTargetPixels(target, 0, 0, FACE, FACE, pixels, face);
+
+    for (let y = 0; y < FACE; y++)
+      for (let x = 0; x < FACE; x++) {
+        const [u, v] = [((x + 0.5) / FACE) * 2 - 1, ((y + 0.5) / FACE) * 2 - 1];
+        const up = [-v, -v, 1, -1, -v, -v][face] ?? 0;
+        const length = Math.hypot(1, u, v);
+        // The pixel's solid angle and its cosine to straight up.
+        const share = Math.max(0, up / length) / length ** 3;
+        const i = (y * FACE + x) * 4;
+
+        light +=
+          share *
+          (0.2126 * (pixels[i] ?? 0) +
+            0.7152 * (pixels[i + 1] ?? 0) +
+            0.0722 * (pixels[i + 2] ?? 0));
+        weight += share;
+      }
+  }
+
+  return (light / weight) * Math.PI;
+}
+
+test("the light's table of the sky model's light holds for the model, clear and overcast", () => {
+  const renderer = new WebGLRenderer({ canvas: document.createElement("canvas") });
+  const target = new WebGLCubeRenderTarget(FACE, { type: FloatType });
+  const camera = new CubeCamera(0.1, 2000, target);
+  const scene = new Scene();
+  const model = sky(1000);
+
+  scene.add(model);
+
+  try {
+    for (const diffuse of [null, 1])
+      for (const elevation of [1, 4, 7, 14, 21, 33, 45, 70]) {
+        const radians = (elevation * Math.PI) / 180;
+        const day = daylight([0, -Math.cos(radians), Math.sin(radians)], diffuse);
+
+        aim(model, new Vector3(0, Math.sin(radians), Math.cos(radians)), {
+          dark: false,
+          low: day.haze,
+          clouds: day.clouds,
+        });
+        camera.update(renderer, scene);
+
+        const tabled = skylight(elevation, day.clouds.coverage);
+
+        // Within a tenth, or 0.05 at a sun too low to light much.
+        expect(Math.abs(irradiance(renderer, target) - tabled)).toBeLessThan(
+          Math.max(0.05, tabled * 0.1),
+        );
+      }
+  } finally {
+    target.dispose();
+    renderer.dispose();
+  }
 });

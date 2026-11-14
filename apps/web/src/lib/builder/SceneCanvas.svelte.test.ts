@@ -212,7 +212,10 @@ test.each([false, true])(
   },
 );
 
-test("a new sun relights the scene: below the horizon only the moon lights the roof", async () => {
+test.each([
+  ["a new sun: below the horizon only the moon lights the roof", { sun: [0, -0.5, -0.866] }, 15],
+  ["an overcast sky: the sunlit roof dims", { diffuse: 1 }, 1],
+] as const)("%s, and the scene is lit again", async (_, sky, drop) => {
   const { drawn, screen } = await closeUp(false, false);
   const lightness = (): number => lab(drawn() ?? [0, 0, 0]).lightness;
 
@@ -220,8 +223,8 @@ test("a new sun relights the scene: below the horizon only the moon lights the r
 
   const noon = lightness();
 
-  await screen.rerender({ sun: [0, -0.5, -0.866] });
-  await expect.poll(lightness, SLOW).toBeLessThan(noon - 15);
+  await screen.rerender(sky);
+  await expect.poll(lightness, SLOW).toBeLessThan(noon - drop);
 });
 
 /** How far red leads the other channels at the canvas's middle. */
