@@ -6,6 +6,7 @@ import { connect, type Core } from "../api/core.ts";
 import { setLocale } from "../paraglide/runtime.js";
 import Builder from "./Builder.svelte";
 import { DEVICES, house, MODULE, phone, pv, tap, testCore, undesk } from "./builder.harness.ts";
+import { unfaded } from "../scroll-fade.harness.ts";
 
 // The phone builder's zones (ADR 20): the time and the views along the top, one status strip and
 // the tools above the peeking inspector, and the shell's bar under it all. Nothing overlaps.
@@ -270,4 +271,5 @@ test("each string's chip carries the colour its modules glow in", async () => {
 
   // Blue, amber, green: the scene's first three string colours.
   expect(dots).toEqual(["rgb(31, 95, 191)", "rgb(224, 138, 0)", "rgb(42, 157, 92)"]);
+  expect(unfaded()).toEqual([]);
 });

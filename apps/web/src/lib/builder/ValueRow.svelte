@@ -1,5 +1,6 @@
 <!-- An inspector row whose bounded number or choice opens the value editor (ADR 21); applying edits the draft. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Editable, Outcome } from "../components/value-editor/editable.ts";
@@ -42,15 +43,15 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <button
+    <Pressable
+      feedback
       {...props}
-      bind:this={row}
-      type="button"
+      bind:ref={row}
       aria-haspopup="dialog"
       onclick={() => {
         open = true;
       }}
-      class={[props.class, "text-left hover:bg-muted/60 active:bg-muted", open && "bg-muted"]}
+      class={[props.class, "text-left", open && "bg-muted"]}
     >
       <Item.Content>
         <Item.Title class="text-[15px] leading-snug font-normal text-wrap">{edit.name}</Item.Title>
@@ -63,7 +64,7 @@
         {/if}
         <ChevronRight class="size-4 text-muted-foreground" />
       </Item.Actions>
-    </button>
+    </Pressable>
   {/snippet}
 </Item.Root>
 <ValueEditor key={edit.name} {edit} current={value} anchor={row} bind:open onapply={apply} />

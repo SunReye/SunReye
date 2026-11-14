@@ -4,11 +4,11 @@
   import type { Core, Problem } from "../api/core.ts";
   import type { Location } from "../api/setup.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
-  import * as Select from "#lib/components/ui/select/index.js";
+  import ComboboxField from "../components/combobox-field.svelte";
+  import FormField from "../components/form-field.svelte";
+  import TextField from "../components/text-field.svelte";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import { FIELD } from "./fields.ts";
   import Refusal from "./Refusal.svelte";
 
   let {
@@ -97,30 +97,32 @@
 
 <form onsubmit={submit} class="flex flex-col gap-4 p-4">
   {#if current === undefined}<p class="text-sm text-muted-foreground">{m.plant_hint()}</p>{/if}
-  <div class={FIELD}>
-    <label for="{id}-zone">{m.plant_timezone()}</label>
-    <Select.Root type="single" bind:value={zone}>
-      <Select.Trigger id="{id}-zone" class="w-full">
-        <span class="truncate">{zone}</span>
-      </Select.Trigger>
-      <Select.Content class="max-h-80">
-        <Select.Group>
-          {#each zones as option (option)}
-            <Select.Item value={option} label={option} />
-          {/each}
-        </Select.Group>
-      </Select.Content>
-    </Select.Root>
-  </div>
+  <FormField label={m.plant_timezone()}>
+    {#snippet children({ id })}
+      <ComboboxField
+        {id}
+        bind:value={zone}
+        options={zones}
+        search={m.plant_timezone_search()}
+        none={m.plant_timezone_none()}
+      />
+    {/snippet}
+  </FormField>
   <div class="grid grid-cols-2 gap-3">
-    <label class={FIELD}>
-      {m.plant_latitude()}
-      <Input inputmode="decimal" autocomplete="off" required bind:value={latitudeText} />
-    </label>
-    <label class={FIELD}>
-      {m.plant_longitude()}
-      <Input inputmode="decimal" autocomplete="off" required bind:value={longitudeText} />
-    </label>
+    <TextField
+      label={m.plant_latitude()}
+      inputmode="decimal"
+      autocomplete="off"
+      required
+      bind:value={latitudeText}
+    />
+    <TextField
+      label={m.plant_longitude()}
+      inputmode="decimal"
+      autocomplete="off"
+      required
+      bind:value={longitudeText}
+    />
   </div>
   {#if locatable}
     <Button variant="outline" class="self-start" onclick={locate}>

@@ -1,6 +1,6 @@
 <script lang="ts">
+  import Refusal from "../setup/Refusal.svelte";
   import type { Core, Declared, Problem, Update } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import { boundsText } from "./bounds";
@@ -47,7 +47,7 @@
   {/if}
 {/await}
 {#if problem}
-  <p role="alert" class="px-4 text-sm text-destructive">{problemText(problem.problem)}</p>
+  <div class="px-4"><Refusal refused={problem} /></div>
 {/if}
 
 {#snippet diff(update: Update)}

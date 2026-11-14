@@ -1,5 +1,6 @@
 // Shared by the builder's component tests: picking a day, scrubbing the time and saving from a day.
-import { expect } from "vitest";
+import { toast } from "svelte-sonner";
+import { expect, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { starts } from "./builder.harness.ts";
 
@@ -47,4 +48,14 @@ export async function scrub(minutes: number): Promise<void> {
 export async function saveFrom(day: string): Promise<void> {
   await pickDay("Gilt ab", day);
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
+}
+
+/** Saves from `day` and waits for the toast that confirms it (ADR 21). */
+export async function savedFrom(day: string): Promise<void> {
+  const success = vi.spyOn(toast, "success");
+
+  success.mockClear();
+  await saveFrom(day);
+  await expect.poll(() => success.mock.calls.at(-1)?.[0]).toBe("Gespeichert.");
+  expect(page.getByRole("status").query()).toBeNull();
 }

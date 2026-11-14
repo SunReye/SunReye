@@ -29,9 +29,9 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   await screen.getByRole("button", { name: "Passwort festlegen" }).click();
 
   await expect.element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" })).toBeVisible();
-  await userEvent.click(screen.getByRole("combobox", { name: "Zeitzone der Anlage" }));
-  // A long list: typing finds the zone.
-  await userEvent.keyboard("Europe/Berlin{Enter}");
+  await screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).click();
+  await userEvent.fill(page.getByPlaceholder("Zeitzone suchen"), "berlin");
+  await page.getByRole("option", { name: "Europe/Berlin", exact: true }).click();
   await userEvent.fill(screen.getByLabelText("Breitengrad"), "52.52");
   await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
   await screen.getByRole("button", { name: "Weiter" }).click();

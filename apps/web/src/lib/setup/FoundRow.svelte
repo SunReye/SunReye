@@ -1,10 +1,9 @@
 <!-- A device a profile recognised: chosen from the start, named as the admin likes. -->
 <script lang="ts">
+  import TextField from "../components/text-field.svelte";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
   import type { Choice } from "./choices.ts";
-  import { FIELD } from "./fields.ts";
 
   let { choice }: { choice: Choice } = $props();
 
@@ -25,13 +24,12 @@
     </span>
   </label>
   {#if choice.chosen}
-    <label class={[FIELD, "pl-7"]}>
-      {m.devices_device_name()}
-      <Input
-        required
-        aria-label={m.devices_name({ profile: choice.profile })}
-        bind:value={choice.name}
-      />
-    </label>
+    <TextField
+      label={m.devices_device_name()}
+      class="pl-7"
+      required
+      aria-label={m.devices_name({ profile: choice.profile })}
+      bind:value={choice.name}
+    />
   {/if}
 </li>

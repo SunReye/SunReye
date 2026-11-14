@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import GlassCard from "../components/glass-card.svelte";
   import type { Core, Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
   import Inspector from "./Inspector.svelte";
@@ -35,12 +36,9 @@
     <Inspector {session} {check} />
   </InspectorSheet>
 {:else}
-  <aside
-    aria-label={m.builder_edit()}
-    class="glass-ambient min-h-0 overflow-hidden rounded-lg border border-border/60 elevation-1"
-  >
+  <GlassCard element="aside" aria-label={m.builder_edit()} class="min-h-0">
     <Inspector {session} {check} />
-  </aside>
+  </GlassCard>
 {/if}
 
 <!-- Beside the strings it judges, at the slider's month and hour (ADR 20). -->

@@ -1,5 +1,6 @@
 <!-- The investment payback counts against, as a row that opens the value editor; applying saves it. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, Problem } from "../api/core";
   import type { Outcome } from "../components/value-editor/editable.ts";
   import ValueEditor from "../components/value-editor/value-editor.svelte";
@@ -41,15 +42,15 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <button
+    <Pressable
+      feedback
       {...props}
-      bind:this={row}
-      type="button"
+      bind:ref={row}
       aria-haspopup="dialog"
       onclick={() => {
         open = true;
       }}
-      class={[props.class, "flex-nowrap text-left hover:bg-muted/60 active:bg-muted"]}
+      class={[props.class, "flex-nowrap text-left"]}
     >
       <Item.Content class="min-w-0">
         <Item.Title class="text-[15px] font-normal">{m.tariff_investment()}</Item.Title>
@@ -60,7 +61,7 @@
         </span>
         <ChevronRight class="size-4 text-muted-foreground" />
       </Item.Actions>
-    </button>
+    </Pressable>
   {/snippet}
 </Item.Root>
 <ValueEditor key={edit.name} {edit} current={investment} anchor={row} bind:open onapply={apply} />

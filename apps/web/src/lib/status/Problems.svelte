@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import type { Core } from "../api/core";
@@ -7,12 +8,11 @@
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
-  import StatusSection from "./StatusSection.svelte";
 
   let { answer }: { answer: ReturnType<Core["problems"]> } = $props();
 </script>
 
-<StatusSection title={m.status_problems()}>
+<Section card title={m.status_problems()}>
   {#await answer}
     <LoadingRows rows={1} />
   {:then got}
@@ -38,4 +38,4 @@
       </Item.Group>
     {/if}
   {/await}
-</StatusSection>
+</Section>

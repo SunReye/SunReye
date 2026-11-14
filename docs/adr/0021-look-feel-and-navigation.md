@@ -103,7 +103,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - a card must do something;
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
-- no visible scrollbars, with edges that fade where more content waits;
+- no visible scrollbars, with edges that fade where more content waits. The fade is shadcn-svelte's `scroll-fade` utility (a mask on the scroller, driven by its scroll position, static where scroll timelines are missing), on every scroll container: sheets, pickers, menus, lists, tables, chip rows. The background and border sit on a wrapper and the fade on the scroller inside it, so glass keeps its edge. A `ScrollArea` keeps its scrollbar for the mouse; a text area and the page itself take no fade. The still tier and the low-power switch drop the fade, whose mask repaints with every scrolled frame;
 - a screen fetches its data when it mounts; there are no SvelteKit `load` functions. While its data fills in, the screen stands in its final layout: a number shows dashes, as the animated number does, and a chart or a sentence shows a skeleton or its own empty or loading state of the size it will take. A page never shows a blank or unstyled box.
 
 **Motion.**
@@ -118,6 +118,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Live ticks:** numbers, gauges and flow-line thickness ease to each tick for slightly longer than the tick interval, so values glide. 3D tints ease over about 400 ms (ADR 20), then rendering stops. When the stream stalls they stop, flow lines go still, and the connection chip shows the stall. The stream counts as stalled after about 30 s without any message, keep-alives included, as the core sends one every 15 s.
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
+
+**Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in overlay glass, bottom right beside the rail and above the bottom bar on the phone. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
 
 **Smoothness is measured.** A deliberate e2e journey (outside the gate, ADR 11) runs each signature transition, and a tap during the 3D scene's background load, under 4× CPU throttling and records Long Animation Frames: drill-in, sheet, rail, route change, camera flight, live tick, value-editor fling. It fails if any frame exceeds 50 ms or the 95th percentile exceeds 20 ms. `bun run smoothness` runs every journey against a fake core (`apps/web/e2e/`), at 1× and 4× throttle so software rendering, which the throttle does not scale, shows apart from main-thread work; `bun run smoothness <words>` runs those whose names contain them.
 

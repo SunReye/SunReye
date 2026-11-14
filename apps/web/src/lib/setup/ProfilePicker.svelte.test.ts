@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import "../../app.css";
+import { unfaded } from "../scroll-fade.harness.ts";
 import ProfilePicker from "./ProfilePicker.svelte";
 
 /** A phone; the sheet lands at once. */
@@ -54,6 +55,8 @@ test("the admin finds their model by the family on its label and sees its rated 
     .element(sheet.getByRole("button", { name: "SG05LP3 Ganze Baureihe, bis 20 kW" }))
     .toBeVisible();
   expect(sheet.getByRole("button", { name: /SG01HP3/u }).query()).toBeNull();
+  // The list scrolls inside the sheet and fades its edges (ADR 21).
+  expect(unfaded()).toEqual([]);
   await sheet.getByRole("button", { name: "SUN-15K-SG05LP3-EU-SM2 15 kW" }).click();
 
   expect(pick).toHaveBeenCalledWith("deye-sun15k-sg05lp3");

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
   import type { Core } from "../api/core";
   import { Badge, type BadgeVariant } from "#lib/components/ui/badge/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
@@ -7,7 +8,6 @@
   import { getLocale } from "../paraglide/runtime.js";
   import Refusal from "../setup/Refusal.svelte";
   import { keeps, logLine, type Level, type LevelFilter } from "./log-line";
-  import StatusSection from "./StatusSection.svelte";
 
   let { answer }: { answer: ReturnType<Core["logs"]> } = $props();
 
@@ -28,7 +28,7 @@
   const time = new Intl.DateTimeFormat(getLocale(), { dateStyle: "short", timeStyle: "medium" });
 </script>
 
-<StatusSection title={m.status_logs()}>
+<Section card title={m.status_logs()}>
   {#snippet actions()}
     <ToggleGroup.Root
       type="single"
@@ -51,7 +51,7 @@
       {@render lines(got)}
     {/if}
   {/await}
-</StatusSection>
+</Section>
 
 {#snippet lines(logged: readonly string[])}
   <!-- Newest first; a line's place in the buffer is its key, as lines may repeat. -->
@@ -59,7 +59,7 @@
     .map((line, at) => ({ at, ...logLine(line) }))
     .filter((line) => keeps(filter, line.level))
     .toReversed()}
-  <ul role="log" class="max-h-[70vh] divide-y divide-border/60 overflow-y-auto no-scrollbar">
+  <ul role="log" class="max-h-[70vh] divide-y divide-border/60 overflow-y-auto scroll-fade-y no-scrollbar">
     {#each shown as line (line.at)}
       <li class="flex flex-col gap-1 px-4 py-2.5">
         {#if line.time !== undefined}

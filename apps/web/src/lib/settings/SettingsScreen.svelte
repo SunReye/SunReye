@@ -3,6 +3,7 @@
   1024 px. A viewer sees only the display, which is the browser's own.
 -->
 <script lang="ts">
+  import PageTitle from "../components/page-title.svelte";
   import { userPrefersMode } from "mode-watcher";
   import type { Core } from "../api/core";
   import DrillIn from "../components/drill-in/drill-in.svelte";
@@ -45,7 +46,7 @@
     label={m.settings_groups()}
   >
     {#snippet heading()}
-      <h1 class="px-1 text-2xl font-semibold tracking-tight">{m.nav_settings()}</h1>
+      <PageTitle title={m.nav_settings()} class="px-1" />
     {/snippet}
     {#snippet page(group)}
       <SettingsPage {core} id={group.id} />

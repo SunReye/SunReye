@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Snippet } from "svelte";
   import { spring, VelocityTracker } from "../animate.ts";
   import { haptics } from "../haptics.ts";
@@ -102,8 +103,8 @@
   ]}
   style:transform="translateY({y}px)"
 >
-  <button
-    bind:this={handle}
+  <Pressable
+    bind:ref={handle}
     type="button"
     class="flex h-7 shrink-0 touch-none items-center justify-center"
     aria-label={m.builder_edit()}
@@ -125,7 +126,7 @@
     onpointercancel={up}
   >
     <span class="h-1.5 w-10 rounded-sm bg-foreground/20"></span>
-  </button>
+  </Pressable>
   <div class="min-h-0 flex-1" inert={!expanded}>
     {@render children()}
   </div>

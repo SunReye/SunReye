@@ -1,9 +1,9 @@
 <!-- A host no profile recognised, or one entered by hand: its device's profile, unit and name, once the admin adds it. -->
 <script lang="ts">
+  import TextField from "../components/text-field.svelte";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import type { Core } from "../api/core.ts";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
@@ -80,14 +80,12 @@
         }}
       />
     </div>
-    <label class={FIELD}>
-      {m.devices_device_name()}
-      <Input
-        required
-        autocomplete="off"
-        aria-label={m.devices_manual_name(at)}
-        bind:value={choice.name}
-      />
-    </label>
+    <TextField
+      label={m.devices_device_name()}
+      required
+      autocomplete="off"
+      aria-label={m.devices_manual_name(at)}
+      bind:value={choice.name}
+    />
   {/if}
 </li>

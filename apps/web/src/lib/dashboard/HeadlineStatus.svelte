@@ -1,5 +1,6 @@
 <!-- The headline's label. It stops claiming "now" the moment the stream does (ADR 21). -->
 <script lang="ts">
+  import StatusLine from "../components/status-line.svelte";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Unplug from "@lucide/svelte/icons/unplug";
   import { problemText } from "../i18n/problems.ts";
@@ -24,24 +25,17 @@
 </script>
 
 {#if staleSince !== undefined}
-  <span class="flex items-center gap-1.5 text-xs font-medium text-warning" role="status"
-    ><TriangleAlert class="size-3.5 shrink-0" />{m.dash_lead_stalled({
-      subject,
-      age: age(staleSince, Date.now()),
-    })}</span
-  >
+  <StatusLine tone="warning" icon={TriangleAlert}>
+    {m.dash_lead_stalled({ subject, age: age(staleSince, Date.now()) })}
+  </StatusLine>
 {:else if lost}
-  <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
-    ><Unplug class="size-3.5 shrink-0" />{m.dash_lead_offline({ subject })}</span
-  >
+  <StatusLine tone="destructive" icon={Unplug}>{m.dash_lead_offline({ subject })}</StatusLine>
 {:else if refused !== null}
-  <span class="flex items-center gap-1.5 text-xs font-medium text-destructive" role="alert"
-    ><Unplug class="size-3.5 shrink-0" />{m.dash_lead_offline({ subject })} · {problemText(
-      refused,
-    )}</span
-  >
+  <StatusLine tone="destructive" icon={Unplug}>
+    {m.dash_lead_offline({ subject })} · {problemText(refused)}
+  </StatusLine>
 {:else if connecting}
-  <span class="text-xs font-medium text-muted-foreground" role="status">{m.dash_connecting()}</span>
+  <StatusLine tone="muted" role="status">{m.dash_connecting()}</StatusLine>
 {:else}
-  <span class="text-xs font-medium text-muted-foreground">{m.dash_lead_now({ subject })}</span>
+  <StatusLine tone="muted">{m.dash_lead_now({ subject })}</StatusLine>
 {/if}

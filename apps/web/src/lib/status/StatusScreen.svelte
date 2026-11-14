@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageTitle from "../components/page-title.svelte";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core } from "../api/core";
@@ -24,7 +25,7 @@
 <!-- The settings drill-in's column and surfaces (ADR 21). -->
 <main class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
   <header class="flex items-center gap-3 px-1">
-    <h1 class="flex-1 text-2xl font-semibold tracking-tight">{m.nav_status()}</h1>
+    <PageTitle class="flex-1" title={m.nav_status()} />
     <Button variant="ghost" size="sm" class="text-brand" onclick={refresh}>
       <RefreshCw data-icon="inline-start" />{m.status_refresh()}
     </Button>

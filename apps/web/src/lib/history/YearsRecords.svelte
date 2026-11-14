@@ -1,5 +1,6 @@
 <!-- Every recorded year for the question against the same dates before, and the records since the start; each opens its range. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import type { Records } from "../api/records.ts";
   import { m } from "../paraglide/messages.js";
@@ -36,9 +37,9 @@
     <ul class="divide-y divide-border/60 border-y border-border/60">
       {#each years as y (y.year)}
         <li>
-          <button
-            type="button"
-            class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+          <Pressable
+            feedback
+            class="flex w-full items-baseline gap-3 py-2 text-left text-sm"
             onclick={() => {
               route.open(y.range);
             }}
@@ -53,7 +54,7 @@
               >{y.change}</span
             >
             <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
-          </button>
+          </Pressable>
         </li>
       {/each}
     </ul>
@@ -63,9 +64,9 @@
     <ul class="divide-y divide-border/60 border-y border-border/60">
       {#each best as r (r.label)}
         <li>
-          <button
-            type="button"
-            class="flex w-full items-baseline gap-3 py-2 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+          <Pressable
+            feedback
+            class="flex w-full items-baseline gap-3 py-2 text-left text-sm"
             onclick={() => {
               route.open(r.range);
             }}
@@ -75,7 +76,7 @@
             >
             <span class="font-semibold tabular-nums">{r.value}</span>
             <ChevronRight class="size-4 shrink-0 self-center text-muted-foreground" />
-          </button>
+          </Pressable>
         </li>
       {/each}
     </ul>

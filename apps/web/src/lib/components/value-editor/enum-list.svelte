@@ -1,5 +1,6 @@
 <!-- An enumerated setting's values as the registry's list rows (ADR 21). -->
 <script lang="ts">
+  import { Pressable } from "../ui/pressable/index.js";
   import Check from "@lucide/svelte/icons/check";
   import * as Item from "#lib/components/ui/item/index.js";
   import { cn } from "#lib/utils.js";
@@ -29,9 +30,8 @@
   {#each options as o (o.value)}
     <Item.Root variant="list" size="list-sm" aria-current={choice === o.value}>
       {#snippet child({ props })}
-        <button
+        <Pressable
           {...props}
-          type="button"
           role="radio"
           aria-checked={choice === o.value}
           onclick={() => {
@@ -50,7 +50,7 @@
               >{/if}
             {#if choice === o.value}<Check class="size-4 text-primary" />{/if}
           </Item.Actions>
-        </button>
+        </Pressable>
       {/snippet}
     </Item.Root>
   {/each}

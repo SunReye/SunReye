@@ -1,8 +1,10 @@
-import { afterEach, expect, test } from "vitest";
+import { toast } from "svelte-sonner";
+import { afterEach, expect, test, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { unfaded } from "../scroll-fade.harness.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
 
@@ -49,6 +51,7 @@ test("the admin reaches every group from the root", async () => {
         .toBeVisible(),
     ),
   );
+  expect(unfaded()).toEqual([]);
 });
 
 test("a viewer sees only the display, which is the browser's own, and About", async () => {
@@ -235,9 +238,12 @@ test("the plant page shows the plant's timezone and location and saves them", as
     .toHaveTextContent("Europe/Vienna");
   await expect.element(screen.getByRole("textbox", { name: "Breitengrad" })).toHaveValue("48.1");
 
+  const success = vi.spyOn(toast, "success");
+
   await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
+  await expect.poll(() => success.mock.calls.at(-1)?.[0]).toBe("Gespeichert.");
+  expect(screen.getByRole("status").query()).toBeNull();
   expect(transport.writes).toEqual([
     'PUT /api/v1/timezone {"name":"Europe/Vienna"}',
     'PUT /api/v1/location {"latitude":48.1,"longitude":11.6}',

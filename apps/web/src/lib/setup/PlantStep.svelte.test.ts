@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import PlantStep from "./PlantStep.svelte";
@@ -35,9 +35,9 @@ test("the plant timezone and location are set, a location off the globe is refus
   const done = vi.fn<() => void>();
   const screen = await render(PlantStep, { core: connect(transport), ondone: done });
 
-  await userEvent.click(screen.getByRole("combobox", { name: "Zeitzone der Anlage" }));
-  // A long list: typing finds the zone.
-  await userEvent.keyboard("Europe/Berlin{Enter}");
+  await screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).click();
+  await userEvent.fill(page.getByPlaceholder("Zeitzone suchen"), "berlin");
+  await page.getByRole("option", { name: "Europe/Berlin", exact: true }).click();
   await userEvent.fill(screen.getByLabelText("Breitengrad"), "152.5");
   await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
   await screen.getByRole("button", { name: "Weiter" }).click();

@@ -77,7 +77,7 @@ function testCore(
 }
 
 /** No native select, radio, file input, progress or fieldset: every control is a ui component. */
-const BROWSER_DEFAULTS = "select, progress, fieldset, input:not(.sr-only)";
+const BROWSER_DEFAULTS = "select, progress, fieldset, input:not([class*=sr-only])";
 
 test("an archive under /share imports into the chosen device once confirmed, its progress then its result shown", async () => {
   const running: ImportStatus = { state: "running", done: 1, total: 2 };

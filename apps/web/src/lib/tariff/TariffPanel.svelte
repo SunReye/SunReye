@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import LoadingRows from "../components/loading-rows.svelte";
   import TariffForm from "./TariffForm.svelte";
@@ -24,7 +24,7 @@
       <!-- No tariff yet: the admin enters the first. -->
       <TariffForm {core} tariff={undefined} />
     {:else}
-      <p role="alert" class="p-4 text-sm text-destructive">{problemText(answer.problem)}</p>
+      <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
     {/if}
   {/await}
 </section>
