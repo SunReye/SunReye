@@ -1,18 +1,18 @@
 <!--
   The shell by input and width (ADR 21): the rail with a mouse, or on touch from 768 px; the
-  bottom bar below that; nothing around sign-in and setup. Route changes cross-fade, at once on
-  the still tier.
+  bottom bar below that; nothing around sign-in and setup. Route changes slide by navigation
+  order, at once on the still tier.
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import { stream } from "../live/stream.svelte.ts";
-  import { fade } from "../motion.ts";
   import Connection from "./Connection.svelte";
   import type { ShellLayout } from "./input.svelte.ts";
   import Bar from "./Bar.svelte";
   import { DASHBOARD } from "./nav.ts";
   import Rail, { GUTTER } from "./Rail.svelte";
+  import { routeSlide } from "./route-slide.ts";
 
   let {
     shell,
@@ -35,6 +35,10 @@
   const railed = $derived(shell === "rail" || shell === "rail-open");
 
   // Off the dashboard, whose headline says it, a halted stream still has to be seen.
+  // The route at mount is where the first slide starts from; the transitions follow every later one.
+  // svelte-ignore state_referenced_locally
+  const { enter, leave } = routeSlide(current);
+
   const strip = $derived(stream.halted && current !== DASHBOARD.route);
 </script>
 
@@ -55,11 +59,11 @@
     {#if strip}
       <Connection strip />
     {/if}
-    <!-- One grid cell: the leaving and the arriving screen overlap while they cross-fade. -->
-    <div class="grid">
+    <!-- One grid cell, so nothing reflows: the leaving and the arriving screen slide through it. -->
+    <div class="grid overflow-x-clip">
       {#key current}
         <!-- No landmark: each screen brings its own `main`. -->
-        <div class="col-start-1 row-start-1 min-w-0" data-screen in:fade out:fade>
+        <div class="col-start-1 row-start-1 min-w-0" data-screen in:enter={current} out:leave={current}>
           {@render children()}
         </div>
       {/key}
