@@ -7,7 +7,8 @@ use ts_rs::{Config, TS};
 use crate::document::{
     ActivateDoc, BlockDoc, DelayDoc, ExprDoc, HeartbeatDoc, IdentifyDoc, Kind, LiveControlDoc,
     MaskedDoc, PreconditionDoc, ProfileDoc, PublishDoc, QuantityDoc, Range, ReadBackDoc,
-    RegisterDoc, RelockDoc, SettingDoc, StepDoc, ToggleDoc, UnlockDoc,
+    RegisterDoc, RelockDoc, SettingDoc, StepDoc, ToggleDoc, UnlockDoc, VariantDoc,
+    VariantIdentifyDoc,
 };
 use crate::{Block, CAPABILITIES, Inverter, Mppt, RoleKind, Schemas, StorageClass, Support, Unit};
 
@@ -28,6 +29,8 @@ fn declarations() -> String {
         Range::decl(&cfg),
         ExprDoc::decl(&cfg),
         IdentifyDoc::decl(&cfg),
+        VariantDoc::decl(&cfg),
+        VariantIdentifyDoc::decl(&cfg),
         Inverter::decl(&cfg),
         Mppt::decl(&cfg),
         SettingDoc::decl(&cfg),

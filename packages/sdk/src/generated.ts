@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage" | "unit";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage" | "unit" | "variants";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -11,7 +11,12 @@ identify?: Array<Identify>, settings?: Array<Setting>,
 /**
  * Each poll group's cadence in seconds, by name: a whole number of default cycles.
  */
-pollGroups?: Record<string, number>, };
+pollGroups?: Record<string, number>, 
+/**
+ * Device types of the family its identify probe tells apart, each the base with its
+ * overrides; a device that matches none is read as the base.
+ */
+variants?: Array<Variant>, };
 
 export type Quantity = { key: string, role: string, 
 /**
@@ -81,7 +86,36 @@ export type Identify = { register: number,
 /**
  * `u16` when left out.
  */
-type?: Kind, values: Array<number>, };
+type?: Kind, values?: Array<number>, };
+
+export type Variant = { 
+/**
+ * 1 to 16 lowercase letters, digits or hyphens, such as `15k`.
+ */
+id: string, name: string, 
+/**
+ * Values of the base's identify fields, by register; a field left out keeps the base's.
+ */
+identify?: Array<VariantIdentify>, 
+/**
+ * In place of the base's.
+ */
+inverter?: Inverter, 
+/**
+ * Ranges of the base's settings, by key.
+ */
+settings?: Record<string, Range>, 
+/**
+ * Keys of the base's quantities it lacks.
+ */
+drop?: Array<string>, 
+/**
+ * Quantities it adds in full: one under a dropped key takes its place, the rest follow the
+ * base's.
+ */
+add?: Array<Quantity>, };
+
+export type VariantIdentify = { register: number, values: Array<number>, };
 
 export type Inverter = { 
 /**

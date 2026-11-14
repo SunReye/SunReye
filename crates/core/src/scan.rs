@@ -335,7 +335,7 @@ async fn fields(
         };
         registers.answer(block.start, &words);
     }
-    Ok(profile.identifies(&registers).then(|| Proposal {
+    Ok(profile.identify(&registers).map(|_| Proposal {
         profile: profile.id.clone(),
         unit,
         variant: None,

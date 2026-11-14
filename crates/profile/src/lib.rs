@@ -8,6 +8,7 @@ mod profile;
 mod role;
 mod setting;
 pub mod sunspec;
+mod variant;
 
 use std::time::Duration;
 
@@ -61,6 +62,7 @@ pub const CAPABILITIES: &[&str] = &[
     "kind",
     "storage",
     "unit",
+    "variants",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

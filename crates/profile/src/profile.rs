@@ -5,6 +5,7 @@ use std::fmt;
 use std::time::Duration;
 
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
@@ -35,6 +36,10 @@ pub struct Profile {
     warnings: Vec<String>,
     /// The SunSpec chain it is bound to, whose models its plan reads.
     chain: Option<Chain>,
+    /// Which of its family's variants it is; `None` for the base.
+    variant: Option<String>,
+    /// A family's variants, each loaded whole.
+    variants: Vec<Self>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -340,6 +345,11 @@ pub enum LoadError {
         register: u16,
         problem: &'static str,
     },
+    /// A variant, by its id.
+    Variant {
+        id: String,
+        problem: String,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -363,6 +373,7 @@ impl fmt::Display for LoadError {
             Self::Identify { register, problem } => {
                 write!(f, "identify register {register}: {problem}")
             }
+            Self::Variant { id, problem } => write!(f, "variant `{id}`: {problem}"),
         }
     }
 }
@@ -387,12 +398,43 @@ impl Profile {
         {
             return Err(LoadError::MissingCapability(missing));
         }
-        let doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
+        let file: Value = serde_json::from_str(json).map_err(|e| malformed(&e))?;
+        let mut doc = ProfileDoc::deserialize(&file).map_err(|e| malformed(&e))?;
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
+        let Some(variants) = doc.variants.take() else {
+            return Self::compile(doc, false);
+        };
+        if doc.identify.is_none() {
+            return Err(LoadError::Malformed(
+                "variants need an identify probe".into(),
+            ));
+        }
+        let mut family = Self::compile(doc, true)?;
+        family.variants = crate::variant::compile(&file, &variants)?;
+        Ok(family)
+    }
+
+    /// Variant `id` of a family, from the base's file merged with its overrides.
+    pub(crate) fn load_variant(file: &Value, id: &str) -> Result<Self, LoadError> {
+        let doc = ProfileDoc::deserialize(file).map_err(|e| malformed(&e))?;
+        if let Some(name) = unrequired(&doc).next() {
+            return Err(LoadError::Unrequired(name.to_owned()));
+        }
+        let mut variant = Self::compile(doc, true)?;
+        variant.variant = Some(id.to_owned());
+        Ok(variant)
+    }
+
+    /// Whether one device could match both its identify probe and `other`'s.
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
+        identify::overlap(&self.identify, &other.identify)
+    }
+
+    fn compile(doc: ProfileDoc, family: bool) -> Result<Self, LoadError> {
         doc.inverter.as_ref().map_or(Ok(()), check)?;
-        let identify = identify::compile(doc.identify.unwrap_or_default())?;
+        let identify = identify::compile(doc.identify.unwrap_or_default(), family)?;
         let groups = group_cadences(doc.poll_groups.unwrap_or_default())?;
         let quantities = compile(doc.quantities, &groups)?;
         let plan = plan::compile(&quantities, |_| true);
@@ -424,7 +466,30 @@ impl Profile {
             settings,
             warnings: Vec::new(),
             chain: None,
+            variant: None,
+            variants: Vec::new(),
         })
+    }
+
+    /// Which of its family's variants it is; `None` for the base.
+    #[must_use]
+    pub fn variant(&self) -> Option<&str> {
+        self.variant.as_deref()
+    }
+
+    /// A family's variants in file order; empty for any other profile.
+    #[must_use]
+    pub fn variants(&self) -> &[Self] {
+        &self.variants
+    }
+
+    /// Variant `variant`; the base, with the family's largest limits, for `None` or an id it does
+    /// not declare.
+    #[must_use]
+    pub fn resolve(&self, variant: Option<&str>) -> &Self {
+        variant
+            .and_then(|id| self.variants.iter().find(|v| v.variant() == Some(id)))
+            .unwrap_or(self)
     }
 
     /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
@@ -469,11 +534,15 @@ impl Profile {
         identify::plan(&self.identify)
     }
 
-    /// Whether `registers`, read by [`Profile::identify_plan`], identify its device: each field
-    /// holds one of its values. A profile without a probe identifies nothing.
+    /// What `registers`, read by [`Profile::identify_plan`], identify: the variant whose fields
+    /// each hold one of its values, else the base when its fields do. A profile without a probe
+    /// identifies nothing.
     #[must_use]
-    pub fn identifies(&self, registers: &Registers) -> bool {
-        identify::matches(&self.identify, registers)
+    pub fn identify(&self, registers: &Registers) -> Option<&Self> {
+        self.variants
+            .iter()
+            .find(|v| identify::matches(&v.identify, registers))
+            .or_else(|| identify::matches(&self.identify, registers).then_some(self))
     }
 
     /// The inverter's DC side, when the profile declares one.
@@ -587,6 +656,7 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
         .flat_map(QuantityDoc::capabilities)
         .chain(doc.identify.as_ref().map(|_| "identify"))
         .chain(doc.poll_groups.as_ref().map(|_| "poll-group"))
+        .chain(doc.variants.as_ref().map(|_| "variants"))
         .chain(identify.map(|f| f.kind.map_or("u16", Kind::capability)))
         .chain(inverter.and_then(|i| i.ac_rating).map(|_| "ac-rating"))
         .chain(settings.clone().flat_map(SettingDoc::capabilities))

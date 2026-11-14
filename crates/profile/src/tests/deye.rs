@@ -382,7 +382,7 @@ fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() 
     ] {
         let device = hybrid(0x0500, watts);
         let identified: Vec<String> = profiles()
-            .filter(|p| p.identifies(&device))
+            .filter(|p| p.identify(&device).is_some())
             .map(|p| p.id)
             .collect();
         let model = format!("deye-sun{}k-sg05lp3", watts / 1000);
@@ -397,7 +397,7 @@ fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_typ
         for watts in [5000, 6000, 8000, 10_000, 12_000, 15_000, 20_000, 25_000] {
             let device = hybrid(kind, watts);
             let identified: Vec<String> = profiles()
-                .filter(|p| p.identifies(&device))
+                .filter(|p| p.identify(&device).is_some())
                 .map(|p| p.id)
                 .collect();
             let model = format!("deye-sg01hp3-{}k", watts / 1000);
