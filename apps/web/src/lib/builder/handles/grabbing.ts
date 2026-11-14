@@ -110,8 +110,11 @@ export class Grabbing {
       return { grip: handle.grip, point: handle.point, ray, height: handle.at[1] };
 
     // A fence has no footprint to drag.
-    if (editing.target.kind === "fence") return undefined;
+    return editing.target.kind === "fence" ? undefined : this.#bodyGrabbed(at, editing, ray);
+  }
 
+  /** The selected object's own surface under the press, which moves it whole. */
+  #bodyGrabbed(at: readonly [number, number], editing: Editing, ray: Ray): Grab | undefined {
     const group = this.#sources.drawn();
     const hit = group && strike(group, this.#sources.panels(), this.#camera, at);
 

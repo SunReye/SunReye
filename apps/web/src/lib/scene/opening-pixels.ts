@@ -83,6 +83,33 @@ export function glazing() {
 
 const DOOR = { w: 64, h: 128, frame: 5, fanlight: 30 } as const;
 
+/** The glazed fanlight over the door leaf, `border` pixels in from the door's sides. */
+function fanlightAt(y: number, border: number) {
+  const { frame: edge, fanlight } = DOOR;
+  const pane = y > edge + 3 && y < fanlight - 4 && border > edge + 3;
+
+  return pane
+    ? { height: 0, albedo: [18, 22, 28] as const, rough: 20, glow: [255, 214, 150] as const }
+    : frame(0.95);
+}
+
+/** The door leaf: two columns of three raised panels and a lever handle on the right. */
+function leafAt(x: number, y: number) {
+  const { w, h, frame: edge, fanlight } = DOOR;
+  const [px, py] = [(x - edge) % ((w - edge * 2) / 2), (y - fanlight) % ((h - fanlight) / 3)];
+  const raised = px > 6 && px < (w - edge * 2) / 2 - 6 && py > 6 && py < (h - fanlight) / 3 - 6;
+  const handle = x > w - edge - 9 && x < w - edge - 4 && Math.abs(y - h * 0.6) < 5;
+
+  if (handle) return { height: 1.4, albedo: [176, 178, 180] as const, rough: 70, glow: DARK };
+
+  return {
+    height: raised ? 0.9 : 0.6,
+    albedo: raised ? ([52, 66, 78] as const) : ([44, 56, 67] as const),
+    rough: 120,
+    glow: DARK,
+  };
+}
+
 /** A front door: raised panels in a dark door under a glazed fanlight, which is its light. */
 export function door() {
   const { w, h, frame: edge, fanlight } = DOOR;
@@ -92,29 +119,7 @@ export function door() {
 
     if (border < edge) return frame();
 
-    // The fanlight over the door leaf.
-    if (y < fanlight) {
-      const pane = y > edge + 3 && y < fanlight - 4 && border > edge + 3;
-
-      return pane
-        ? { height: 0, albedo: [18, 22, 28], rough: 20, glow: [255, 214, 150] }
-        : frame(0.95);
-    }
-
-    // Two columns of three raised panels.
-    const [px, py] = [(x - edge) % ((w - edge * 2) / 2), (y - fanlight) % ((h - fanlight) / 3)];
-    const raised = px > 6 && px < (w - edge * 2) / 2 - 6 && py > 6 && py < (h - fanlight) / 3 - 6;
-    // A lever handle on the right.
-    const handle = x > w - edge - 9 && x < w - edge - 4 && Math.abs(y - h * 0.6) < 5;
-
-    if (handle) return { height: 1.4, albedo: [176, 178, 180], rough: 70, glow: DARK };
-
-    return {
-      height: raised ? 0.9 : 0.6,
-      albedo: raised ? [52, 66, 78] : [44, 56, 67],
-      rough: 120,
-      glow: DARK,
-    };
+    return y < fanlight ? fanlightAt(y, border) : leafAt(x, y);
   });
 }
 

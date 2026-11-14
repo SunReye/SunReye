@@ -26,7 +26,7 @@ export interface Weather {
   readonly patches?: readonly [number, number, number];
 }
 
-type Shader = WebGLProgramParametersWithUniforms;
+export type Shader = WebGLProgramParametersWithUniforms;
 
 const means = new Map<DataTexture, Color>();
 

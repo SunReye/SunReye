@@ -13,7 +13,7 @@ export const USUAL: Readonly<Record<OpeningKind, Pick<Opening, "width" | "height
   garageDoor: { width: 2.5, height: 2.1, sill: 0 },
 };
 
-export const WALLS: readonly Wall[] = ["front", "right", "back", "left"];
+const WALLS: readonly Wall[] = ["front", "right", "back", "left"];
 
 /** Metres: the handles' step, the smallest opening, and a new one's distance from a corner or
  * from its neighbour. */
@@ -29,7 +29,7 @@ interface Run {
   readonly length: number;
 }
 
-export function run({ width, depth }: Pick<Block, "width" | "depth">, wall: Wall): Run {
+function run({ width, depth }: Pick<Block, "width" | "depth">, wall: Wall): Run {
   const runs: Readonly<Record<Wall, Run>> = {
     front: { left: [0, depth], along: [1, 0], out: [0, 1], length: width },
     right: { left: [width, depth], along: [0, -1], out: [1, 0], length: depth },
@@ -183,6 +183,21 @@ const GRIPS = {
 
 export type OpeningGrip = keyof typeof GRIPS;
 
+/** How far the pointer went from `rays[0]` to `rays[1]` in the plane of `wall` through
+ * `origin`; null where either ray misses it. */
+function travel(
+  scene: Scene,
+  wall: Pick<OnWall, "out">,
+  origin: Triple,
+  rays: readonly [Ray, Ray],
+): Triple | null {
+  const [from, to] = rays.map((ray) => meet(inScene(scene.north, ray), origin, wall.out));
+
+  if (from === undefined || to === undefined || from === null || to === null) return null;
+
+  return [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+}
+
 /**
  * What dragging opening `index` by `grip` from the ray that grabbed it to the pointer's ray now
  * makes of the scene, both in three.js's frame: it slides in its wall's plane, snapped to 10 cm.
@@ -201,12 +216,10 @@ export function slide(
   if (opening === undefined || block === undefined) return null;
 
   const wall = onWall(block, opening.wall);
-  const origin = wall.at(opening.along, sillOf(opening));
-  const [from, to] = [grab, now].map((ray) => meet(inScene(scene.north, ray), origin, wall.out));
+  const moved = travel(scene, wall, wall.at(opening.along, sillOf(opening)), [grab, now]);
 
-  if (from === undefined || to === undefined || from === null || to === null) return null;
+  if (moved === null) return null;
 
-  const moved: Triple = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
   const change = GRIPS[grip](opening, dot(moved, wall.right), moved[1]);
   const next = refit(scene, index, change);
   const value = next?.openings?.[index]?.[grip === "move" ? "along" : grip];

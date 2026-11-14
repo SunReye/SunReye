@@ -83,32 +83,22 @@ function placeIn(scene: Scene, index: number): Body | undefined {
   );
 }
 
-export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
-  if (kind === "fence" || kind === "chimney" || kind === "opening") return undefined;
+function surfaceIn(scene: Scene, index: number): Body | undefined {
+  const surfaces = scene.surfaces ?? [];
+  const item = surfaces[index];
 
-  if (kind === "place") return placeIn(scene, index);
+  return (
+    item && {
+      ...item,
+      kind: "rect",
+      height: 0,
+      shortest: 0.1,
+      apply: (change) => ({ ...scene, surfaces: surfaces.with(index, { ...item, ...change }) }),
+    }
+  );
+}
 
-  if (kind === "obstacle") {
-    const item = scene.obstacles[index];
-
-    return item && obstacleIn(scene, index, item);
-  }
-
-  if (kind === "surface") {
-    const surfaces = scene.surfaces ?? [];
-    const item = surfaces[index];
-
-    return (
-      item && {
-        ...item,
-        kind: "rect",
-        height: 0,
-        shortest: 0.1,
-        apply: (change) => ({ ...scene, surfaces: surfaces.with(index, { ...item, ...change }) }),
-      }
-    );
-  }
-
+function blockIn(scene: Scene, index: number): Body | undefined {
   const block = scene.blocks[index];
 
   return (
@@ -120,6 +110,27 @@ export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined 
       apply: (change) => ({ ...scene, blocks: scene.blocks.with(index, { ...block, ...change }) }),
     }
   );
+}
+
+/** Each kind's footprint the handles drag; fences, chimneys and openings have none. */
+const BODIES: Readonly<
+  Record<Target["kind"], ((scene: Scene, index: number) => Body | undefined) | undefined>
+> = {
+  place: placeIn,
+  obstacle: (scene, index) => {
+    const item = scene.obstacles[index];
+
+    return item && obstacleIn(scene, index, item);
+  },
+  surface: surfaceIn,
+  block: blockIn,
+  fence: undefined,
+  chimney: undefined,
+  opening: undefined,
+};
+
+export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
+  return BODIES[kind]?.(scene, index);
 }
 
 /** The scene-frame point at `u` across, `w` deep in a rectangle, at height `y`. */
