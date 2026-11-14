@@ -1,9 +1,11 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // The ambient glass is thin so the backdrop's lights show through it; its text must stay readable
 // wherever a light is brightest (ADR 21).
+import { toast } from "svelte-sonner";
 import { afterEach, expect, test } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { Toaster } from "../components/ui/sonner/index.js";
 import Backdrop from "./Backdrop.svelte";
 import {
   drifts,
@@ -37,21 +39,24 @@ function computed(property: "color" | "backgroundColor", className: string, valu
   return colour;
 }
 
-/** A token's colour as painted: sRGB, 0 to 255. */
-function token(name: string): Rgb {
+/** A computed colour as painted: sRGB, 0 to 255. */
+function paintedColour(colour: string): Rgb {
   const element = document.createElement("canvas");
 
   element.width = element.height = 1;
 
   const context = element.getContext("2d")!;
 
-  context.fillStyle = computed("color", "", `var(${name})`);
+  context.fillStyle = colour;
   context.fillRect(0, 0, 1, 1);
 
   const [r = 0, g = 0, b = 0] = context.getImageData(0, 0, 1, 1).data;
 
   return [r, g, b];
 }
+
+/** A token's colour as painted. */
+const token = (name: string): Rgb => paintedColour(computed("color", "", `var(${name})`));
 
 /** Every fourth pixel of the page as painted now. */
 async function paintedPixels(): Promise<Rgb[]> {
@@ -135,8 +140,57 @@ const PICTURES = SCREENS.flatMap((size) =>
   ),
 );
 
+const STATUSES = ["success", "warning", "error"] as const;
+
+type Theme = "light" | "dark";
+
+type Ink = (typeof INKS)[number] | (typeof STATUSES)[number];
+
+/** The colour of each status toast's icon, per theme: a toast is ambient glass too (#760). */
+async function statusInks(): Promise<Record<Theme, Record<(typeof STATUSES)[number], Rgb>>> {
+  await render(Toaster);
+
+  const read = async (theme: Theme) => {
+    root.classList.toggle("dark", theme === "dark");
+
+    const inks: Record<(typeof STATUSES)[number], Rgb> = {
+      success: [0, 0, 0],
+      warning: [0, 0, 0],
+      error: [0, 0, 0],
+    };
+
+    for (const status of STATUSES) {
+      const text = `${status} ${theme}`;
+
+      toast[status](text);
+      // oxlint-disable-next-line no-await-in-loop -- one toast at a time.
+      await expect.element(page.getByText(text)).toBeVisible();
+
+      const icon = page
+        .getByText(text)
+        .element()
+        .closest("[data-sonner-toast]")!
+        .querySelector("[data-icon]")!;
+
+      inks[status] = paintedColour(getComputedStyle(icon).color);
+    }
+
+    return inks;
+  };
+
+  const inks = { light: await read("light"), dark: await read("dark") };
+
+  // The toasts are out of the picture before it is measured.
+  toast.dismiss();
+  await expect.poll(() => document.querySelectorAll("[data-sonner-toast]").length).toBe(0);
+
+  return inks;
+}
+
 /** Each ink's lowest contrast on ambient glass anywhere over the page as painted now. */
-async function weakest(): Promise<Record<(typeof INKS)[number], number>> {
+async function weakest(
+  status: Record<(typeof STATUSES)[number], Rgb>,
+): Promise<Record<Ink, number>> {
   const card = token("--card");
 
   const opacity = Number(
@@ -151,15 +205,19 @@ async function weakest(): Promise<Record<(typeof INKS)[number], number>> {
     "--foreground": lowest(token("--foreground")),
     "--card-foreground": lowest(token("--card-foreground")),
     "--muted-foreground": lowest(token("--muted-foreground")),
+    success: lowest(status.success),
+    warning: lowest(status.warning),
+    error: lowest(status.error),
   };
 }
 
 test(
-  "text on ambient glass keeps AA contrast over the brightest light",
+  "text and a toast's status icon on ambient glass keep AA contrast over the brightest light",
   { timeout: 60_000 },
   async () => {
     const produce = plantStream();
     const hand = handBeat();
+    const status = await statusInks();
     const screen = await render(Backdrop, { core: noon, beat: hand.beat });
 
     produce(1_000_000);
@@ -181,14 +239,14 @@ test(
       hand.at(seconds);
       await expect.poll(() => drifts(screen.container).includes(RESTING)).toBe(seconds === 0);
 
-      return weakest();
+      return weakest(status[theme]);
     };
 
     for (const picture of PICTURES) {
       // oxlint-disable-next-line no-await-in-loop -- one picture at a time: each is set, then measured.
       const ratios = await measure(picture);
 
-      for (const ink of INKS)
+      for (const ink of [...INKS, ...STATUSES])
         expect(ratios[ink], `${ink}, ${JSON.stringify(picture)}`).toBeGreaterThanOrEqual(4.5);
     }
   },

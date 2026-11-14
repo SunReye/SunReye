@@ -9,6 +9,21 @@
   import * as Sheet from "../../components/ui/sheet/index.js";
   import { Toaster } from "../../components/ui/sonner/index.js";
   import Demo from "../Demo.svelte";
+
+  const sample = { description: "80 A" };
+  const nothing = (): void => {};
+
+  /** Every toast type, by the name on its button. */
+  const toasts: [name: string, raise: () => void][] = [
+    ["Toast", () => toast("Write confirmed", sample)],
+    ["Success", () => toast.success("Saved", sample)],
+    ["Error", () => toast.error("Write refused", sample)],
+    ["Info", () => toast.info("Tariff changes at 22:00", sample)],
+    ["Warning", () => toast.warning("Battery at reserve", sample)],
+    ["Loading", () => toast.loading("Writing", sample)],
+    ["Action", () => toast("Removed", { action: { label: "Undo", onClick: nothing } })],
+    ["Cancel", () => toast("Update ready", { cancel: { label: "Later", onClick: nothing } })],
+  ];
 </script>
 
 <Demo name="dialog">
@@ -98,7 +113,7 @@
 
 <Toaster />
 <Demo name="sonner">
-  <Button variant="outline" onclick={() => toast("Write confirmed", { description: "80 A" })}>
-    Show toast
-  </Button>
+  {#each toasts as [name, raise] (name)}
+    <Button variant="outline" onclick={raise}>{name}</Button>
+  {/each}
 </Demo>
