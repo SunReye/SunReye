@@ -7,7 +7,7 @@ export type Tint = NonNullable<SunTint["tint"]>;
 
 const MINUTE = 60_000;
 
-/** Reread this often, and never animated. */
+/** Reread this often; a new tint is set at once. */
 const PERIOD = 15 * MINUTE;
 
 export interface Watch {

@@ -1,0 +1,72 @@
+/* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
+// What the backdrop's tests share: a noon core, the plant's PV fed by hand and a beat stepped by hand.
+import type { Live } from "../api/core.ts";
+import { PLANT } from "../live/labels.ts";
+import { stream } from "../live/stream.svelte.ts";
+import { motion } from "../motion/tier.svelte.ts";
+
+export const root = document.documentElement;
+
+export const TINTS = ["dawn", "noon", "dusk", "night"] as const;
+
+export const noon = { sunTint: () => Promise.resolve({ tint: "noon" as const }) };
+
+/** A light's drift at rest, as the browser writes it back. */
+export const RESTING = "translate(0vmax, 0vmax) scale(1)";
+
+let unfollow: (() => void) | undefined;
+
+/** After each test: no tint, light theme, full tier, no stream. */
+export function teardown(): void {
+  delete root.dataset["tod"];
+  root.classList.remove("dark");
+  motion.lowPower = false;
+  unfollow?.();
+  unfollow = undefined;
+}
+
+const nothing = (): void => {};
+
+/** A fake core's live stream, with the plant's PV power fed by hand. */
+export function plantStream(): (watts: number) => void {
+  let tell: (live: Live) => void = nothing;
+
+  unfollow = stream.follow({
+    live: (listener) => {
+      tell = listener;
+
+      return nothing;
+    },
+  });
+
+  return (watts) => {
+    tell({ devices: { [PLANT]: { "pv.power": watts } } });
+  };
+}
+
+export function lights(container: Element): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>("[data-light]")];
+}
+
+/** A beat stepped by hand; `listening` while the backdrop follows it. */
+export function handBeat() {
+  let step: ((seconds: number) => void) | undefined;
+
+  return {
+    beat: (next: (seconds: number) => void) => {
+      step = next;
+
+      return () => {
+        step = undefined;
+      };
+    },
+    at: (seconds: number) => step?.(seconds),
+    get listening() {
+      return step !== undefined;
+    },
+  };
+}
+
+/** Each light's drift from its place. */
+export const drifts = (container: Element): string[] =>
+  lights(container).map((light) => light.querySelector<HTMLElement>(":scope > *")!.style.transform);
