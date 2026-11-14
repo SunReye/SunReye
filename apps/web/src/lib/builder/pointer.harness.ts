@@ -54,9 +54,11 @@ export async function press(
 }
 
 /** The finite animations moving `element` or anything around it, such as a sliding sheet. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a DOM element, read only.
 const moving = (element: Element): Promise<Animation>[] =>
   document
     .getAnimations()
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
     .filter((animation) => {
       const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
 
@@ -65,7 +67,8 @@ const moving = (element: Element): Promise<Animation>[] =>
         Number.isFinite(animation.effect?.getComputedTiming().endTime)
       );
     })
-    .map(async (animation) => animation.finished);
+    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
+    .map((animation) => animation.finished);
 
 /** Resolves once `element` stops moving: its animations end and its box holds still a frame. */
 async function settled(element: Element): Promise<void> {
