@@ -88,7 +88,7 @@ The first integration build rendered browser defaults: plain links for navigatio
   - *Sun:* kbase's `bg-spotlight` at the top, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. The core computes the tint (±6° around the horizon is twilight), so viewers get it without the location (ADR 9). It is recomputed every 15 minutes; without a location it stays indigo.
   - *PV:* solar amber, top right. Its strength follows the plant's live PV power in steps, eased over seconds, and it is out while PV is idle.
   - *Battery and grid:* battery green bottom left, export teal bottom right, so the bottom bar and the rail sit over a light.
-  - *Motion:* on the full tier the lights drift and breathe slowly, by `transform` and `opacity` of layers painted once. On lite and still they rest: a moving light makes every glass surface over it blur again each frame.
+  - *Motion:* on the full tier the lights drift and breathe slowly, a step a second, by `transform` and `opacity` alone; a step is a pixel or two of a very soft edge. On lite and still they rest. Each move makes every glass surface over a light blur again, so no animation runs between the steps: one running there, even stepped, cost the 2D dashboard its smoothness budget.
   - No grid pattern anywhere.
 - **Opaque fallback:** `prefers-reduced-transparency` and the low-power switch turn every glass surface opaque.
 
