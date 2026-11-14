@@ -255,7 +255,8 @@ pub async fn command(options: Options, build: SystemTime) -> Result<Report, Erro
     Ok(report)
 }
 
-/// Each v3 slug mapped to the registered v5 device of id `id`, with its profile.
+/// Each v3 slug mapped to the registered v5 device of id `id`, with its profile as its variant
+/// reads.
 ///
 /// # Errors
 /// A mapping names a device that is not registered or whose profile is not known.
@@ -271,7 +272,7 @@ pub async fn targets(
             let profile = registered
                 .iter()
                 .find(|d| d.id == id)
-                .and_then(|d| catalogue.get(&d.draft.profile))
+                .and_then(|d| catalogue.resolve(&d.draft.profile, d.draft.variant.as_deref()))
                 .ok_or(Error::UnknownTarget(id))?;
             Ok(Target {
                 slug,

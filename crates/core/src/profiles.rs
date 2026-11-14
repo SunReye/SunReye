@@ -43,26 +43,8 @@ pub const OFFICIAL_INDEX: &str = "https://sunreye.github.io/SunReye/index.json";
 
 /// The official profiles, as `profiles/` holds them at build time.
 const BUNDLED: &[&str] = &[
-    include_str!("../../../profiles/deye-sg01hp3-10k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-12k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-15k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-20k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-25k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-5k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-6k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-8k.json"),
     include_str!("../../../profiles/deye-sg01hp3.json"),
     include_str!("../../../profiles/deye-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun10k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun12k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun14k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun15k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun16k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun18k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun20k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun5k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun6k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun8k-sg05lp3.json"),
     include_str!("../../../profiles/evcc.json"),
     include_str!("../../../profiles/shelly-pro-3em.json"),
     include_str!("../../../profiles/sunspec.json"),
@@ -150,6 +132,18 @@ impl Catalogue {
     #[must_use]
     pub fn get(&self, id: &str) -> Option<Arc<Profile>> {
         self.held(id).map(|held| held.profile)
+    }
+
+    /// Profile `id` as its variant `variant` reads (ADR 5); the family's base for `None` or a
+    /// variant it does not declare.
+    #[must_use]
+    pub fn resolve(&self, id: &str, variant: Option<&str>) -> Option<Arc<Profile>> {
+        let family = self.get(id)?;
+        let resolved = family.resolve(variant);
+        if resolved.variant().is_none() {
+            return Some(family);
+        }
+        Some(Arc::new(resolved.clone()))
     }
 
     /// Whether profile `id` is official: bundled, or its signature verifies (ADR 8).

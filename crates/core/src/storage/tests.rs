@@ -491,3 +491,61 @@ async fn a_database_with_a_newer_schema_is_refused() {
         "{opened:?}"
     );
 }
+
+/// A device on a retired per-model profile id moves to its family and variant (ADR 5), keeping
+/// its id, by which its history is stored; no alias of the old id survives.
+#[tokio::test]
+async fn a_device_on_a_per_model_profile_moves_to_its_family_and_variant() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    // The schema before the migration that retired them.
+    let before = 26;
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..26] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", before).unwrap();
+    old.execute_batch(
+        "INSERT INTO connection (id, name, transport, host, port) VALUES (1, 'g', 'modbus-tcp', 'h', 502);
+         INSERT INTO device (id, name, connection, profile, unit) VALUES
+           (7, 'Deye', 1, 'deye-sun15k-sg05lp3', 1),
+           (8, 'Hybrid', 1, 'deye-sg01hp3-25k', 2),
+           (9, 'Family', 1, 'deye-sg05lp3', 3);
+         INSERT INTO fetched_profile (id, document) VALUES ('deye-sun15k-sg05lp3', x'7b7d');
+         INSERT INTO profile_setting_changed (profile, setting) VALUES ('deye-sun15k-sg05lp3', 'work_mode');",
+    )
+    .unwrap();
+    drop(old);
+
+    let storage = Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap();
+    storage.shutdown().await.unwrap();
+
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let devices: Vec<(u32, String, Option<String>)> = db
+        .prepare("SELECT id, profile, variant FROM device ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        devices,
+        [
+            (7, "deye-sg05lp3".to_owned(), Some("15k".to_owned())),
+            (8, "deye-sg01hp3".to_owned(), Some("25k".to_owned())),
+            (9, "deye-sg05lp3".to_owned(), None),
+        ]
+    );
+    let fetched: i64 = db
+        .query_row("SELECT count(*) FROM fetched_profile", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(fetched, 0);
+    let changed: (String, String) = db
+        .query_row(
+            "SELECT profile, setting FROM profile_setting_changed",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(changed, ("deye-sg05lp3".to_owned(), "work_mode".to_owned()));
+}

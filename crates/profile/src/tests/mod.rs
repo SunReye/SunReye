@@ -18,6 +18,7 @@ mod sunspec;
 mod topic;
 mod types;
 mod unit;
+mod variant;
 
 /// Every capability this build loads, for a case that is not about `requires`.
 fn all() -> serde_json::Value {

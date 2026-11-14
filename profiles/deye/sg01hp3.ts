@@ -11,7 +11,7 @@ import { FLOWS, HIGH_VOLTAGE, bounded, identify, inputs, settings, total } from 
 // - 2026-07: https://deye.com/wp-content/uploads/2026/07/【b】datasheet_sun-5-25k-sg01hp3-eu-am2_20260706_en.pdf
 // - https://deye.com/product/sun-5-6-8-10-12-15-20-25k-sg01hp3-eu-am2/
 
-/** One profile of the range: a model, or the whole family. */
+/** One model of the range, or the family's base. */
 export interface Model {
   readonly id: string;
   readonly name: string;
@@ -22,7 +22,7 @@ export interface Model {
   readonly current: number;
   /** From the datasheet, with the rated AC output. */
   readonly inverter: Frozen<Inverter> & { readonly acRating: number };
-  /** Watts, as registers 20 and 21 report it; the family profile identifies by type alone. */
+  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
   readonly rated?: number;
 }
 
@@ -392,6 +392,7 @@ export function sg01hp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "kind",
       "storage",
       "unit",
+      "variants",
     ],
     identify: identify(HIGH_VOLTAGE, model.rated),
     inverter: model.inverter,

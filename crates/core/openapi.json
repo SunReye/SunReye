@@ -899,6 +899,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "variant": {
+            "description": "The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after\nthe common model, such as `103`; none for a family's base. Fixed with the profile.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "writes": {
             "description": "Whether settings may be written (ADR 7); off when left out.",
             "type": "boolean"
@@ -2239,6 +2246,10 @@
       "Proposal": {
         "description": "A device the identify probe of a profile found.",
         "properties": {
+          "name": {
+            "description": "What the homeowner is shown: the variant's name, else the profile's.",
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
@@ -2248,17 +2259,16 @@
             "type": "integer"
           },
           "variant": {
-            "description": "The variant the probe found: for SunSpec, the device model after the common model, such\nas 103 for a three-phase inverter.",
-            "format": "int32",
-            "minimum": 0,
+            "description": "The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after\nthe common model, such as `103` for a three-phase inverter; none for a family's base.",
             "type": [
-              "integer",
+              "string",
               "null"
             ]
           }
         },
         "required": [
           "profile",
+          "name",
           "unit"
         ],
         "type": "object"

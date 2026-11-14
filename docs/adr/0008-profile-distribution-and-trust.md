@@ -1,6 +1,6 @@
 # 8. Profile distribution and trust
 
-Status: accepted (2026-11-08), amended (2026-11-08, 2026-11-09, 2026-11-09, 2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-08, 2026-11-09, 2026-11-09, 2026-11-09, 2026-11-14)
 
 ## Context
 
@@ -10,7 +10,7 @@ A profile can declare writable settings, so a hosted profile is a supply-chain p
 
 **Index.** A static `index.json` lists each profile: id, semver, schema, required capabilities, SHA-256, URL and signature. The CLI builds validated rendered JSON and the index. Anyone can host an index; a custom profile is distributed through a custom index.
 
-**Index format.** `{ "profiles": [...], "revocation"?: {...} }`; unknown fields are ignored. An entry is `id`, `version` (`major.minor.patch`), `schema`, `requires`, `sha256`, `url` and, when signed, `signature`. The hash and signature are lowercase hex; `url` is absolute or relative to the index's. A revocation is `key`, the revoked active key, and `signature`, the backup's signature over that key's 32 bytes. An index can list one id in several schemas.
+**Index format.** `{ "profiles": [...], "revocation"?: {...} }`; unknown fields are ignored. An entry is `id`, `version` (`major.minor.patch`), `schema`, `requires`, `sha256`, `url`, a family's `variants`, each its `id` and `name` (ADR 5), and, when signed, `signature`. A family is one file and one entry with one version: a change to any variant bumps it. The hash and signature are lowercase hex; `url` is absolute or relative to the index's. A revocation is `key`, the revoked active key, and `signature`, the backup's signature over that key's 32 bytes. An index can list one id in several schemas.
 
 **Publishing.** Official profiles live in `profiles/`, written in TypeScript and tested with the shipped WASM. `bun run publish:profiles` builds, validates, signs and pushes only the output to an orphan `profiles-dist` branch served by GitHub Pages. It creates no tag, no release and no npm publish. The build (`bun run build:profiles`) renders each `profiles/<id>.ts` to `profiles/<id>.json` and `profiles/index.json`, both committed: the core embeds the rendered file, and the last build is the baseline the next is compared with. A change to anything but `version` bumps the patch; the source's `version` is a floor an author raises to cut a minor or major. A test fails when the committed output is not the build of its source. The maintainer runs it locally with `SUNREYE_PROFILE_KEY` naming the private key, a PKCS8 PEM file outside the repo. It publishes only a committed build, puts `index.json` and each `<id>.json` at the branch root, and pushes no commit when nothing changed. Before pushing it verifies the fresh bundle, hash and signature, against the active key it reads from `KEYS` in `trust.rs`; while that is `None` it refuses. A test proves this with a generated key injected in place of the compiled one, against a local bare repository; the real key's run waits for the ceremony. Publishing a revocation is not built yet. Hosted CI, when it returns, receives the key as a secret and runs the same command.
 

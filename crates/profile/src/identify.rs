@@ -5,42 +5,55 @@ use crate::document::{IdentifyDoc, Kind};
 use crate::plan::Block;
 use crate::profile::{LoadError, Register};
 
-/// A register, read at scale 1, and the values that identify the device.
+/// A register, read at scale 1, and the values that identify the device; any value when `None`.
 #[derive(Debug, Clone)]
 pub struct Field {
     register: Register,
-    values: Vec<f64>,
+    values: Option<Vec<f64>>,
 }
 
-pub fn compile(docs: Vec<IdentifyDoc>) -> Result<Vec<Field>, LoadError> {
-    docs.into_iter()
-        .map(|doc| {
-            let kind = doc.kind.unwrap_or(Kind::U16);
-            let refuse = |problem| {
-                Err(LoadError::Identify {
-                    register: doc.register,
-                    problem,
-                })
-            };
-            if doc.values.is_empty() {
-                return refuse("a field lists the values it may hold");
-            }
-            if !doc.values.iter().all(|v| fits(kind, *v)) {
-                return refuse("a value does not fit the field's type");
-            }
-            Ok(Field {
-                register: Register {
-                    address: doc.register,
-                    kind,
-                    scale: 1.0,
-                    offset: 0.0,
-                    scale_factor: None,
-                    sunspec: false,
-                },
-                values: doc.values,
-            })
+/// `family`: the profile declares variants, so a field may leave its values to them.
+pub fn compile(docs: Vec<IdentifyDoc>, family: bool) -> Result<Vec<Field>, LoadError> {
+    let fields = docs
+        .into_iter()
+        .map(|doc| field(doc, family))
+        .collect::<Result<Vec<_>, _>>()?;
+    match fields.first() {
+        Some(first) if fields.iter().all(|f| f.values.is_none()) => Err(LoadError::Identify {
+            register: first.register.address,
+            problem: "a probe needs a field that lists values",
+        }),
+        _ => Ok(fields),
+    }
+}
+
+fn field(doc: IdentifyDoc, family: bool) -> Result<Field, LoadError> {
+    let kind = doc.kind.unwrap_or(Kind::U16);
+    let refuse = |problem| {
+        Err(LoadError::Identify {
+            register: doc.register,
+            problem,
         })
-        .collect()
+    };
+    let values = match doc.values {
+        None if family => None,
+        Some(values) if !values.is_empty() => Some(values),
+        None | Some(_) => return refuse("a field lists the values it may hold"),
+    };
+    if !values.iter().flatten().all(|v| fits(kind, *v)) {
+        return refuse("a value does not fit the field's type");
+    }
+    Ok(Field {
+        register: Register {
+            address: doc.register,
+            kind,
+            scale: 1.0,
+            offset: 0.0,
+            scale_factor: None,
+            sunspec: false,
+        },
+        values,
+    })
 }
 
 fn fits(kind: Kind, value: f64) -> bool {
@@ -69,6 +82,16 @@ pub fn plan(fields: &[Field]) -> Vec<Block> {
 pub fn matches(fields: &[Field], registers: &Registers) -> bool {
     !fields.is_empty()
         && fields.iter().all(|f| {
-            decode::read(&f.register, registers).is_some_and(|value| f.values.contains(&value))
+            decode::read(&f.register, registers)
+                .is_some_and(|value| f.values.as_ref().is_none_or(|v| v.contains(&value)))
         })
+}
+
+/// Whether one device could match both probes: every field of one register shares a value. Both
+/// declare the same fields in the same order, as variants of one base do.
+pub fn overlap(a: &[Field], b: &[Field]) -> bool {
+    a.iter().zip(b).all(|(a, b)| match (&a.values, &b.values) {
+        (Some(a), Some(b)) => a.iter().any(|v| b.contains(v)),
+        _ => true,
+    })
 }

@@ -9,6 +9,7 @@ const ADDED = {
   connection: 5,
   name: "Wechselrichter",
   profile: "deye-sg05lp3",
+  variant: "15k",
   unit: 1,
 };
 
@@ -19,7 +20,9 @@ const REPORT = {
       transport: "solarman-v5",
       host: "192.168.1.20",
       port: 8899,
-      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+      devices: [
+        { profile: "deye-sg05lp3", variant: "15k", name: "SUN-15K-SG05LP3-EU-SM2", unit: 1 },
+      ],
     },
     { transport: "modbus-tcp", host: "192.168.1.30", port: 502, devices: [] },
   ],
@@ -75,16 +78,16 @@ test("the admin confirms a scanned device under a name of their own", async () =
     .element(screen.getByText("192.168.1.30:502 antwortet, aber kein Profil erkennt das Gerät."))
     .toBeVisible();
   await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
+    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
     .click();
-  await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
+  await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
     "/api/v1/scan {}",
     '/api/v1/connections {"name":"192.168.1.20","host":"192.168.1.20","port":8899,"transport":"solarman-v5"}',
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
   ]);
   expect(done.mock.calls[0]?.[0]).toEqual([ADDED]);
 });
@@ -96,9 +99,9 @@ test("adding again after a refused device does not add its connection twice", as
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
   await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
+    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
     .click();
-  await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
+  await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
 
   const add = screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" });
 
@@ -109,8 +112,8 @@ test("adding again after a refused device does not add its connection twice", as
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.filter((call) => call.startsWith("/api/v1/connections"))).toHaveLength(1);
   expect(transport.calls.filter((call) => call.startsWith("/api/v1/devices"))).toEqual([
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
   ]);
   expect(done.mock.calls[0]?.[0]).toEqual([ADDED]);
 });

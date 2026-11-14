@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.8",
+  "version": "2.2.9",
   "requires": [
     "modbus",
     "u16",
@@ -17,7 +17,8 @@
     "setting-text",
     "kind",
     "storage",
-    "unit"
+    "unit",
+    "variants"
   ],
   "identify": [
     {
@@ -25,6 +26,10 @@
       "values": [
         1280
       ]
+    },
+    {
+      "register": 20,
+      "type": "u32"
     }
   ],
   "inverter": {
@@ -1275,6 +1280,485 @@
             "target": "battery.max_discharge_current",
             "locked": 0
           }
+        }
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "id": "5k",
+      "name": "SUN-5K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            50000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 5000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 120
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 120
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "6k",
+      "name": "SUN-6K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            60000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 6000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 135
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 135
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "8k",
+      "name": "SUN-8K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            80000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 8000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 190
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 190
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "10k",
+      "name": "SUN-10K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            100000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 10000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 210
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 210
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "12k",
+      "name": "SUN-12K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            120000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 12000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 26,
+            "minVoltage": 200,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 240
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 240
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "14k",
+      "name": "SUN-14K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            140000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 14000,
+        "mppt": [
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 260
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 260
+        }
+      }
+    },
+    {
+      "id": "15k",
+      "name": "SUN-15K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            150000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 15000,
+        "mppt": [
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 280
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 280
+        }
+      }
+    },
+    {
+      "id": "16k",
+      "name": "SUN-16K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            160000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 16000,
+        "mppt": [
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 300
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 300
+        }
+      }
+    },
+    {
+      "id": "18k",
+      "name": "SUN-18K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            180000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 800,
+        "acRating": 18000,
+        "mppt": [
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          },
+          {
+            "maxCurrent": 36,
+            "minVoltage": 160,
+            "maxVoltage": 650,
+            "startVoltage": 160
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 330
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 330
+        }
+      }
+    },
+    {
+      "id": "20k",
+      "name": "SUN-20K-SG05LP3-EU-SM2",
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            200000
+          ]
         }
       ]
     }

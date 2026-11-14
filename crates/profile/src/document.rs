@@ -41,10 +41,52 @@ pub struct ProfileDoc {
     #[serde(rename = "pollGroups")]
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub poll_groups: Option<BTreeMap<String, u64>>,
+    /// Device types of the family its identify probe tells apart, each the base with its
+    /// overrides; a device that matches none is read as the base.
+    #[cfg_attr(test, ts(optional))]
+    pub variants: Option<Vec<VariantDoc>>,
+}
+
+/// One device type of a family (ADR 5): the base with its own identify values, name, inverter
+/// section, setting ranges and quantities. Nothing else differs.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Variant", optional_fields))]
+#[serde(deny_unknown_fields)]
+pub struct VariantDoc {
+    /// 1 to 16 lowercase letters, digits or hyphens, such as `15k`.
+    pub id: String,
+    pub name: String,
+    /// Values of the base's identify fields, by register; a field left out keeps the base's.
+    pub identify: Option<Vec<VariantIdentifyDoc>>,
+    /// In place of the base's.
+    #[expect(dead_code, reason = "checked here, merged from the file")]
+    pub inverter: Option<crate::Inverter>,
+    /// Ranges of the base's settings, by key.
+    #[cfg_attr(test, ts(optional, type = "Record<string, Range>"))]
+    #[expect(dead_code, reason = "checked here, merged from the file")]
+    pub settings: Option<BTreeMap<String, Range>>,
+    /// Keys of the base's quantities it lacks.
+    pub drop: Option<Vec<String>>,
+    /// Quantities it adds in full: one under a dropped key takes its place, the rest follow the
+    /// base's.
+    #[expect(dead_code, reason = "checked here, merged from the file")]
+    pub add: Option<Vec<QuantityDoc>>,
+}
+
+/// A variant's values for one of the base's identify fields.
+#[derive(Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "VariantIdentify"))]
+#[serde(deny_unknown_fields)]
+pub struct VariantIdentifyDoc {
+    pub register: u16,
+    pub values: Vec<f64>,
 }
 
 /// A register the identify probe reads, at scale 1, and the values that identify the device, such
-/// as Deye's device type.
+/// as Deye's device type. Only a family may leave a field's values to its variants: the base then
+/// takes any value.
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Identify", optional_fields))]
@@ -54,7 +96,7 @@ pub struct IdentifyDoc {
     /// `u16` when left out.
     #[serde(rename = "type")]
     pub kind: Option<Kind>,
-    pub values: Vec<f64>,
+    pub values: Option<Vec<f64>>,
 }
 
 #[derive(Deserialize)]

@@ -377,14 +377,16 @@ async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
     assert_eq!(got, expected);
 }
 
-/// The SG05LP3 models of 14 to 20 kW read the family's register map: the owner's capture, of the
-/// family profile's read plan, replays with each. The 5 to 12 kW models read two PV inputs fewer,
+/// The SG05LP3 variants of 14 to 20 kW read the family's register map: the owner's capture, of the
+/// base's read plan, replays with each. The 5 to 12 kW models read two PV inputs fewer,
 /// so it cannot replay with them.
 #[tokio::test(start_paused = true)]
 async fn the_owners_capture_replays_with_each_four_input_sg05lp3_model() {
     let catalogue = crate::profiles::Catalogue::bundled().unwrap();
     for kw in [14, 15, 16, 18, 20] {
-        let profile = catalogue.get(&format!("deye-sun{kw}k-sg05lp3")).unwrap();
+        let family = catalogue.get("deye-sg05lp3").unwrap();
+        let variant = format!("{kw}k");
+        let profile = std::sync::Arc::new(family.resolve(Some(&variant)).clone());
         let recording = Recording::parse(PLANT).unwrap();
         let bus = Bus::default();
         let mut readings = bus.subscribe();
