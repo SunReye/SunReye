@@ -3,14 +3,14 @@
   summarising the values read from the device. Every edit runs the value editor and ADR 7's funnel.
 -->
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core, Problem } from "../api/core";
-  import LoadingRows from "../components/loading-rows.svelte";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import { apply } from "./apply.ts";
   import ControlsDrill from "./ControlsDrill.svelte";
   import ControlsEditor from "./ControlsEditor.svelte";
+  import ControlsLoading from "./ControlsLoading.svelte";
   import { controlGroups, valueOf, type Control, type ControlGroup } from "./groups.ts";
 
   let {
@@ -89,18 +89,12 @@
   }
 </script>
 
-<!-- While the capabilities come, the root's card stands in skeleton rows of its size. -->
 {#await loading}
-  <main class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
-    <h1 class="px-1 text-2xl font-semibold tracking-tight">{m.controls_title()}</h1>
-    <div class="glass-ambient overflow-hidden rounded-lg border border-border/60 elevation-2">
-      <LoadingRows rows={4} />
-    </div>
-  </main>
+  <ControlsLoading />
 {:then loaded}
   {#if "problem" in loaded}
     <main class="mx-auto w-full max-w-2xl px-4 py-6">
-      <p role="alert">{problemText(loaded.problem)}</p>
+      <ProblemAlert problem={loaded.problem} />
     </main>
   {:else}
     <ControlsDrill

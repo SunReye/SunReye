@@ -17,6 +17,8 @@ const steps: readonly Command[] = [
   ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
   ["oxlint", "--deny-warnings"],
   ["fallow", "--quiet"],
+  // The kit is the only source of controls (ADR 11).
+  ["bun", "scripts/native-controls.ts"],
   ["cargo", "deny", "--workspace", "check"],
   [
     "cargo",

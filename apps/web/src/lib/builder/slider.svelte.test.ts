@@ -8,7 +8,7 @@ import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
 import { loadPv } from "./pv.ts";
 import { fill } from "./templates.ts";
-import { pickDay, scrub } from "./moment.harness.ts";
+import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
 // changes the scene.
@@ -134,10 +134,8 @@ test("the slider shows a past day's measured string power and changes nothing in
     .toHaveTextContent("Süd: 812 W");
   await expect.element(screen.getByRole("button", { name: "Rückgängig" })).toBeDisabled();
 
-  await pickDay("Gilt ab", "2026-11-01");
-  await screen.getByRole("button", { name: "Speichern" }).click();
+  await savedFrom("2026-11-01");
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({ scene: SAVED.scene });
 });
 

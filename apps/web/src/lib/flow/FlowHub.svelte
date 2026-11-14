@@ -3,6 +3,7 @@
   so rails pass underneath, and a ring that beats with the plant on `full`. Tapping opens its sheet.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Cpu from "@lucide/svelte/icons/cpu";
   import Gauge from "@lucide/svelte/icons/gauge";
   import AnimatedNumber from "../components/animated-number.svelte";
@@ -65,9 +66,8 @@
       {/if}
     </dl>
   {/if}
-  <button
-    type="button"
-    class="relative flex size-14 cursor-pointer items-center justify-center rounded-md border-2 border-foreground/70 bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+  <Pressable
+    class="relative flex size-14 items-center justify-center rounded-md border-2 border-foreground/70 bg-card active:scale-[0.97] sm:size-16"
     aria-label={m.flow_details({ name: m.detail_inverter() })}
     onclick={() => {
       onselect("inverter");
@@ -81,7 +81,7 @@
       style="--plant-level:{plantLevel}"
     ></span>
     <Cpu class="size-6 sm:size-7" />
-  </button>
+  </Pressable>
 </div>
 
 <style>

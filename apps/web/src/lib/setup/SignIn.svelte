@@ -3,15 +3,15 @@
   a viewer with their name beside it.
 -->
 <script lang="ts">
+  import TextField from "../components/text-field.svelte";
+  import PageTitle from "../components/page-title.svelte";
+  import GlassCard from "../components/glass-card.svelte";
   import type { Core, Problem } from "../api/core.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
-  import SunMark from "../components/sun-mark.svelte";
   import { haptics } from "../haptics.ts";
   import LocaleSwitch from "../LocaleSwitch.svelte";
   import { m } from "../paraglide/messages.js";
   import AccountSwitch from "./AccountSwitch.svelte";
-  import { FIELD } from "./fields.ts";
   import Refusal from "./Refusal.svelte";
 
   let { core, onsignedin }: { core: Core; onsignedin: () => void } = $props();
@@ -35,30 +35,21 @@
 
 <main class="grid min-h-dvh place-items-center px-4 py-10">
   <div class="flex w-full max-w-sm flex-col gap-5">
-    <header class="flex items-center gap-3 px-1">
-      <SunMark class="size-8" />
-      <h1 class="text-2xl font-semibold tracking-tight">{m.signin_title()}</h1>
-    </header>
-    <form
-      onsubmit={submit}
-      class="glass-ambient flex flex-col gap-4 rounded-lg border border-border/60 p-4 elevation-2"
-    >
+    <PageTitle brand class="px-1" title={m.signin_title()} />
+    <GlassCard element="form" raised onsubmit={submit} class="flex flex-col gap-4 p-4">
       <AccountSwitch bind:account />
       {#if account === "viewer"}
-        <label class={FIELD}>
-          {m.signin_name()}
-          <Input autocomplete="username" required bind:value={name} />
-        </label>
+        <TextField label={m.signin_name()} autocomplete="username" required bind:value={name} />
       {/if}
-      <label class={FIELD}>
-        {m.password_label()}
-        <Input type="password" autocomplete="current-password" required bind:value={password} />
-      </label>
+      <TextField
+        label={m.password_label()}
+        type="password" autocomplete="current-password" required bind:value={password}
+      />
       <Refusal {refused} />
       <Button type="submit" class="w-full">
         {m.signin_submit()}
       </Button>
-    </form>
+    </GlassCard>
     <div class="flex justify-center"><LocaleSwitch /></div>
   </div>
 </main>

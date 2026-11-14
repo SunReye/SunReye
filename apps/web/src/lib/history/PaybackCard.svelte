@@ -1,5 +1,6 @@
 <!-- Stored value: every day moves this bar (ADR 12). It opens the payback tab. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
   import type { Payback } from "../api/tariff.ts";
@@ -19,8 +20,7 @@
 </script>
 
 <div class={["tuck", tucked && "tucked"]} inert={tucked}>
-  <button
-    type="button"
+  <Pressable
     class="glass-ambient flex w-full flex-col gap-2 rounded-lg px-4 py-3 text-left ring-1 ring-foreground/10 outline-none transition-shadow hover:ring-foreground/25 focus-visible:ring-2 focus-visible:ring-ring"
     onclick={onopen}
   >
@@ -52,7 +52,7 @@
           : m.stats_payback_saved_until({ ...amounts, year: String(year) })}
       {/if}
     </span>
-  </button>
+  </Pressable>
 </div>
 
 <style>

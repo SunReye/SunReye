@@ -70,24 +70,15 @@
     <HeroScene {core} layout={scene} {load} {locked} top={height} {onselect} />
   {/if}
 
-  <Headline {live} {plant} {plantStale} figures={!flowShown} {onselect} bind:height>
-    {#if failed}
-      <!-- Quiet, beside the figure it does not change: the flow below is the dashboard. -->
-      <span
-        class="pointer-events-auto mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground"
-        role="status"
-      >
-        {m.dash_scene_failed()}
-        <button
-          type="button"
-          class="rounded-sm font-medium text-brand outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onclick={() => {
-            load.retry();
-          }}>{m.dash_scene_retry()}</button
-        >
-      </span>
-    {/if}
-  </Headline>
+  <Headline
+    {live}
+    {plant}
+    {plantStale}
+    figures={!flowShown}
+    {onselect}
+    onretry={failed ? () => load.retry() : undefined}
+    bind:height
+  />
 
   <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
     {#if mode === "3d"}

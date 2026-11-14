@@ -33,10 +33,13 @@
         e.preventDefault();
         dialog?.focus();
       }}
-      class="glass-ambient max-h-[85dvh] gap-0 overflow-y-auto p-0 py-3 no-scrollbar {className}"
+      class="glass-ambient flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 {className}"
     >
       <Dialog.Title class="sr-only">{label}</Dialog.Title>
-      {@render children()}
+      <!-- The glass keeps its edge; the content scrolls and fades inside it (ADR 21). -->
+      <div class="min-h-0 overflow-y-auto py-3 scroll-fade-y no-scrollbar">
+        {@render children()}
+      </div>
     </Dialog.Content>
   </Dialog.Root>
 {/if}

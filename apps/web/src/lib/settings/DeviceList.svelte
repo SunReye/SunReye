@@ -3,12 +3,12 @@
   review after a change, the add action, and the profile updates waiting for the admin.
 -->
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
   import type { Connection, Core, Device } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
+  import AddRow from "./AddRow.svelte";
   import ProfileUpdates from "./ProfileUpdates.svelte";
 
   let {
@@ -64,12 +64,7 @@
     </Button>
   </div>
 {/if}
-<div class="border-t border-border/60 p-4">
-  <Button class="w-full sm:w-auto" onclick={onadd}>
-    <Plus data-icon="inline-start" />
-    {m.settings_device_add()}
-  </Button>
+<div class="border-t border-border/60">
+  <AddRow label={m.settings_device_add()} onclick={onadd} />
 </div>
-<div class="border-t border-border/60 p-4">
-  <ProfileUpdates {core} onapplied={() => undefined} />
-</div>
+<ProfileUpdates {core} onapplied={() => undefined} />

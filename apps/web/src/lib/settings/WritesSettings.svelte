@@ -40,7 +40,7 @@
 {:else}
   <Listing {answer}>
     {#snippet items(list)}
-      <div class="flex flex-col divide-y divide-border/60">
+      <div class="flex flex-col pb-4">
         {#each list as { device, support } (device.id)}
           <DeviceSettings {core} {device} {support} onchanged={reload} />
         {/each}

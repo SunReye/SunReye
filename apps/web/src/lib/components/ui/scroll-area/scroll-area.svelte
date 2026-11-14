@@ -29,7 +29,13 @@
 	<ScrollAreaPrimitive.Viewport
 		bind:ref={viewportRef}
 		data-slot="scroll-area-viewport"
-		class="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+		// Local: the scroll fade (ADR 21, #753), on the axes it scrolls; its scrollbar stays, for a mouse.
+		class={[
+			"size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+			orientation === "vertical" && "scroll-fade-y",
+			orientation === "horizontal" && "scroll-fade-x",
+			orientation === "both" && "scroll-fade",
+		]}
 	>
 		{@render children?.()}
 	</ScrollAreaPrimitive.Viewport>

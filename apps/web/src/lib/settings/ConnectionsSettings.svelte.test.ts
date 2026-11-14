@@ -47,7 +47,8 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
 
   await settings.getByRole("button", { name: "Verbindung hinzufügen" }).click();
   await userEvent.fill(settings.getByRole("textbox", { name: "Name" }), "EVCC");
-  await userEvent.selectOptions(settings.getByRole("combobox", { name: "Übertragung" }), "mqtt");
+  await userEvent.click(settings.getByRole("combobox", { name: "Übertragung" }));
+  await userEvent.click(page.getByRole("option", { name: "mqtt", exact: true }));
   await userEvent.fill(settings.getByRole("textbox", { name: "Host" }), "evcc.lan");
   await userEvent.fill(settings.getByRole("textbox", { name: "Topic-Wurzel" }), "evcc");
   await userEvent.fill(settings.getByRole("textbox", { name: "Benutzername" }), "sunreye");
@@ -61,10 +62,8 @@ test("an admin adds an MQTT connection and an EVCC device; its loadpoint shows o
 
   await devices.getByRole("button", { name: "Gerät hinzufügen" }).click();
   await devices.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }).click();
-  await userEvent.selectOptions(
-    devices.getByRole("combobox", { name: "Verbindung" }),
-    "EVCC · mqtt",
-  );
+  await userEvent.click(devices.getByRole("combobox", { name: "Verbindung" }));
+  await userEvent.click(page.getByRole("option", { name: "EVCC · mqtt", exact: true }));
   await devices.getByRole("button", { name: "Profil", exact: true }).click();
   await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), "evcc");
   await page.getByRole("button", { name: /^Loadpoint/u }).click();

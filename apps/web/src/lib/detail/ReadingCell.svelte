@@ -1,5 +1,6 @@
 <!-- One cell of a readings table: the number, dimmed with its age as a title once stale. -->
 <script lang="ts">
+  import * as Table from "../components/ui/table/index.js";
   import { isPower } from "../power.ts";
   import Quantity from "./Quantity.svelte";
   import { ago } from "./readings.ts";
@@ -11,9 +12,9 @@
   const value = $derived(loading ? null : (cell?.value ?? null));
 </script>
 
-<td
+<Table.Cell
   class={[
-    "py-2 pl-3 text-right font-semibold",
+    "py-2 pr-0 pl-3 text-right font-semibold",
     (silent || cell?.age !== undefined) && "opacity-60",
   ]}
   title={age === undefined ? undefined : ago(age)}
@@ -27,4 +28,4 @@
     />{:else}<span
       class="font-normal text-muted-foreground">–</span
     >{/if}
-</td>
+</Table.Cell>

@@ -1,8 +1,8 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
   import type { Connection } from "../api/core";
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
-  import StatusSection from "./StatusSection.svelte";
 
   /** Every connection; only brokers report a state. */
   let { connections }: { connections: readonly Connection[] } = $props();
@@ -19,7 +19,7 @@
 </script>
 
 {#if brokers.length > 0}
-  <StatusSection title={m.status_brokers()}>
+  <Section card title={m.status_brokers()}>
     <Item.Group class="gap-0 divide-y divide-border/60">
       {#each brokers as broker (broker.id)}
         {@const up = broker.status?.connected === true}
@@ -37,5 +37,5 @@
         </Item.Root>
       {/each}
     </Item.Group>
-  </StatusSection>
+  </Section>
 {/if}

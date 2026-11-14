@@ -5,6 +5,7 @@
   the node's detail sheet.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import { KIND_ICONS } from "../equipment-kinds.ts";
   import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
@@ -74,9 +75,8 @@
   ]}
   style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"
 >
-  <button
-    type="button"
-    class="relative block size-14 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+  <Pressable
+    class="relative block size-14 rounded-md active:scale-[0.97] sm:size-16"
     aria-label={m.flow_details({ name: label })}
     onclick={() => {
       onselect(node.id);
@@ -123,7 +123,7 @@
         />
       </svg>
     {/if}
-  </button>
+  </Pressable>
   <div
     class={[
       "pointer-events-none absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight",

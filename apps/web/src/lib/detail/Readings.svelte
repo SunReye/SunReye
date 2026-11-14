@@ -5,6 +5,7 @@
   single stale reading shows its own age. Estimates carry "≈" (ADR 17, 20).
 -->
 <script lang="ts">
+  import StatusLine from "../components/status-line.svelte";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import { m } from "../paraglide/messages.js";
   import ReadingGroup from "./ReadingGroup.svelte";
@@ -45,9 +46,7 @@
         <p class="line-clamp-2 text-xs break-words text-muted-foreground">{node.device}</p>
       {/if}
       {#if silence}
-        <p class="mt-1 flex items-center gap-1.5 text-xs font-medium text-warning" role="status">
-          <TriangleAlert class="size-3.5 shrink-0" />{silence}
-        </p>
+        <StatusLine tone="warning" icon={TriangleAlert} class="mt-1">{silence}</StatusLine>
       {/if}
     </header>
 

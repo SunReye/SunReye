@@ -7,13 +7,13 @@
   import Plus from "@lucide/svelte/icons/plus";
   import type { Connection, Core, Device, Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
-  import { FIELD, SELECT } from "../setup/fields.ts";
   import ProfilePicker from "../setup/ProfilePicker.svelte";
   import Refusal from "../setup/Refusal.svelte";
+  import ChoiceField from "./ChoiceField.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
+  import TextField from "../components/text-field.svelte";
 
   let {
     core,
@@ -96,7 +96,7 @@
 
 <div class="flex flex-col gap-3 p-4">
   {#if device === undefined}
-    <div class={FIELD}>
+    <div class="flex flex-col gap-1.5 text-sm">
       <span>{m.devices_profile()}</span>
       <ProfilePicker
         {core}
@@ -108,26 +108,20 @@
       />
     </div>
   {:else}
-    <div class={FIELD}>
+    <div class="flex flex-col gap-1.5 text-sm">
       <span>{m.devices_profile()}</span>
       <span class="text-[15px]">{device.profile}</span>
       <span class="text-xs text-muted-foreground">{m.settings_device_profile_fixed()}</span>
     </div>
   {/if}
-  <label class={FIELD}>
-    {m.settings_device_connection()}
-    <select
-      class={SELECT}
-      value={fields.connection}
-      onchange={(event) => {
-        fields.connection = Number(event.currentTarget.value);
-      }}
-    >
-      {#each choices as option (option.id)}
-        <option value={option.id}>{option.name} · {option.transport}</option>
-      {/each}
-    </select>
-  </label>
+  <ChoiceField
+    label={m.settings_device_connection()}
+    value={String(fields.connection)}
+    options={choices.map((c) => ({ value: String(c.id), text: `${c.name} · ${c.transport}` }))}
+    onpick={(next) => {
+      fields.connection = Number(next);
+    }}
+  />
   {#if device === undefined}
     {#if making}
       <div class="rounded-md border border-border/60">
@@ -155,10 +149,7 @@
       }}
     />
   </div>
-  <label class={FIELD}>
-    {m.devices_device_name()}
-    <Input required autocomplete="off" bind:value={fields.name} />
-  </label>
+  <TextField required autocomplete="off" label={m.devices_device_name()} bind:value={fields.name} />
   <Refusal {refused} />
   <Button class="w-full sm:w-auto sm:self-end" disabled={!ready} onclick={save}>
     {device === undefined ? m.settings_device_add() : m.settings_save()}

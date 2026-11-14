@@ -2,6 +2,7 @@
 <script lang="ts">
   import Upload from "@lucide/svelte/icons/upload";
   import { buttonVariants } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import { cn } from "#lib/utils.js";
   import { m } from "../paraglide/messages.js";
 
@@ -16,9 +17,9 @@
 >
   <Upload data-icon="inline-start" />
   {m.import_upload()}
-  <input
+  <Input
     type="file"
-    class="sr-only"
+    class="sr-only!"
     accept=".tar.gz,application/gzip"
     {disabled}
     onchange={(event) => {
