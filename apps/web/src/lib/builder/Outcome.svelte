@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Layout, Problem } from "../api/core.ts";
-  import { problemText } from "../i18n/problems";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { misplacedText } from "./checks.ts";
   import type { Misplaced } from "./pv.ts";
@@ -21,11 +21,11 @@
 </script>
 
 {#if misplaced !== null}
-  <p role="alert" class="mb-2 text-sm text-destructive">{misplacedText(misplaced)}</p>
+  <div class="mb-2"><ProblemAlert text={misplacedText(misplaced)} /></div>
 {/if}
 {#if saved !== undefined}
   {#if "problem" in saved}
-    <p role="alert" class="mb-2 text-sm text-destructive">{problemText(saved.problem)}</p>
+    <div class="mb-2"><ProblemAlert problem={saved.problem} /></div>
   {:else}
     <!-- A warning, never a refusal: the plant may already exist (ADR 20). -->
     {#each saved.warnings as warning (warning.string)}

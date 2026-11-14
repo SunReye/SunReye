@@ -1,8 +1,8 @@
 <!-- One setting under Settings › Writes: its name, what a write may carry, and the admin's enable (ADR 8). -->
 <script lang="ts">
+  import Refusal from "../setup/Refusal.svelte";
   import type { Core, Problem, Setting } from "../api/core";
   import { clock } from "../components/value-editor/editable.ts";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import { boundsText } from "./bounds";
   import { settingLabel } from "./setting-label.ts";
@@ -56,5 +56,5 @@
   onchange={(on) => void change(on)}
 />
 {#if problem}
-  <p role="alert" class="px-4 pb-3 text-sm text-destructive">{problemText(problem.problem)}</p>
+  <div class="px-4 pb-3"><Refusal refused={problem} /></div>
 {/if}

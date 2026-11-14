@@ -11,7 +11,7 @@
   import { portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
   import ChoiceField from "./ChoiceField.svelte";
   import SecretField from "./SecretField.svelte";
-  import TextField from "./TextField.svelte";
+  import TextField from "../components/text-field.svelte";
   import ToggleRow from "./ToggleRow.svelte";
 
   let {
@@ -114,14 +114,14 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-  <TextField label={m.settings_connection_name()} bind:value={fields.name} />
+  <TextField required autocomplete="off" label={m.settings_connection_name()} bind:value={fields.name} />
   <ChoiceField
     label={m.devices_endpoint_transport()}
     value={fields.transport}
     options={CHOICES}
     onpick={pick}
   />
-  <TextField label={m.devices_endpoint_host()} placeholder="192.168.1.40" bind:value={fields.host} />
+  <TextField required autocomplete="off" label={m.devices_endpoint_host()} placeholder="192.168.1.40" bind:value={fields.host} />
   <div class="overflow-hidden rounded-md border border-border/60">
     <ValueRow
       edit={PORT}
@@ -132,7 +132,7 @@
     />
   </div>
   {#if fields.transport === "mqtt"}
-    <TextField
+    <TextField required autocomplete="off"
       label={m.settings_connection_topic_root()}
       placeholder="evcc"
       bind:value={fields.topicRoot}

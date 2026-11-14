@@ -1,6 +1,7 @@
 <!-- The app's own primitives (#751), built on the kit. -->
 <script lang="ts">
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+  import Eyebrow from "../../components/eyebrow.svelte";
   import GlassCard from "../../components/glass-card.svelte";
   import PageTitle from "../../components/page-title.svelte";
   import ProblemAlert from "../../components/problem-alert.svelte";
@@ -41,6 +42,18 @@
 <Demo name="glass-card">
   <GlassCard class="w-64 p-4 text-sm">Ambient glass, first step.</GlassCard>
   <GlassCard raised class="w-64 p-4 text-sm">Raised: the second step.</GlassCard>
+</Demo>
+
+<Demo name="eyebrow">
+  <div class="w-64">
+    <Eyebrow>Feed-in</Eyebrow>
+    <p class="pt-2 text-sm">Over a group of rows or fields.</p>
+  </div>
+  <div class="w-64">
+    <Section eyebrow title="Access">
+      <p class="px-4 text-sm">A section under an eyebrow, as Settings lists them.</p>
+    </Section>
+  </div>
 </Demo>
 
 <Demo name="stat-strip">

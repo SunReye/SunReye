@@ -52,6 +52,7 @@ test("the gallery shows every primitive built on the kit", async () => {
     "page-title",
     "section",
     "glass-card",
+    "eyebrow",
     "stat-strip",
     "problem-alert",
     "status-line",

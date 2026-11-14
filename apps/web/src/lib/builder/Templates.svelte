@@ -3,6 +3,7 @@
   what it places. The nearest shape is one tap; "start empty" leaves the scene to the inspector.
 -->
 <script lang="ts">
+  import GlassCard from "../components/glass-card.svelte";
   import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
   import { m } from "../paraglide/messages.js";
@@ -54,7 +55,7 @@
     class="grid size-full place-items-center overflow-y-auto p-6 scroll-fade-y no-scrollbar"
     style:padding-bottom="{clear + 24}px"
   >
-    <div class="glass-ambient w-full max-w-3xl rounded-lg border border-border/60 p-5 elevation-1">
+    <GlassCard class="w-full max-w-3xl p-5">
       <h2 id="builder-templates" class="text-[15px] font-semibold">{m.builder_templates()}</h2>
       <p class="mt-1 text-sm text-muted-foreground">{m.builder_templates_hint()}</p>
       <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -88,6 +89,6 @@
           </li>
         {/each}
       </ul>
-    </div>
+    </GlassCard>
   </div>
 </section>

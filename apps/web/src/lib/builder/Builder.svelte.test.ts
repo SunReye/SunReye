@@ -146,7 +146,7 @@ test("a string saved before any module is painted into it is named on its own le
 
 test("the admin hangs a battery marker inside the right wall and saves it with the scene", async () => {
   const transport = testCore();
-  const screen = await gridOnTheSouthFace(transport);
+  await gridOnTheSouthFace(transport);
 
   await drill("Module", "Szene", "Geräte", "Batterie platzieren");
   await choose("Gerät", "Speicher");
@@ -165,7 +165,7 @@ test("the admin hangs a battery marker inside the right wall and saves it with t
 
 test("the admin adds a car place under a carport, paints it, uploads a GLB and saves", async () => {
   const transport = testCore();
-  const screen = await gridOnTheSouthFace(transport);
+  await gridOnTheSouthFace(transport);
 
   await drill("Module", "Szene", "Gebäude", "Baukörper hinzufügen");
   await inspector().getByRole("checkbox", { name: "Carport" }).click();

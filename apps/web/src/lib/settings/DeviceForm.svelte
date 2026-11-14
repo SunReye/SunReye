@@ -13,7 +13,7 @@
   import Refusal from "../setup/Refusal.svelte";
   import ChoiceField from "./ChoiceField.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
-  import TextField from "./TextField.svelte";
+  import TextField from "../components/text-field.svelte";
 
   let {
     core,
@@ -149,7 +149,7 @@
       }}
     />
   </div>
-  <TextField label={m.devices_device_name()} bind:value={fields.name} />
+  <TextField required autocomplete="off" label={m.devices_device_name()} bind:value={fields.name} />
   <Refusal {refused} />
   <Button class="w-full sm:w-auto sm:self-end" disabled={!ready} onclick={save}>
     {device === undefined ? m.settings_device_add() : m.settings_save()}

@@ -14,7 +14,7 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
-    element?: "div" | "section" | "nav" | "ul" | "form";
+    element?: "div" | "section" | "nav" | "ul" | "form" | "aside";
     raised?: boolean;
     children: Snippet;
   } = $props();
