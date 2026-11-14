@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3-20k",
   "name": "SUN-20K-SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "requires": [
     "modbus",
     "u16",
@@ -16,7 +16,8 @@
     "ac-rating",
     "setting-text",
     "kind",
-    "storage"
+    "storage",
+    "unit"
   ],
   "identify": [
     {
@@ -243,6 +244,7 @@
       "key": "ac.l1.current",
       "role": "extra.ac_l1_current",
       "kind": "measurement",
+      "unit": "A",
       "register": 630,
       "type": "i16",
       "scale": 0.01
@@ -251,6 +253,7 @@
       "key": "ac.l2.current",
       "role": "extra.ac_l2_current",
       "kind": "measurement",
+      "unit": "A",
       "register": 631,
       "type": "i16",
       "scale": 0.01
@@ -259,6 +262,7 @@
       "key": "ac.l3.current",
       "role": "extra.ac_l3_current",
       "kind": "measurement",
+      "unit": "A",
       "register": 632,
       "type": "i16",
       "scale": 0.01
@@ -267,6 +271,7 @@
       "key": "ac.l1.power",
       "role": "extra.ac_l1_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 633,
       "type": "i16"
     },
@@ -274,6 +279,7 @@
       "key": "ac.l2.power",
       "role": "extra.ac_l2_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 634,
       "type": "i16"
     },
@@ -281,6 +287,7 @@
       "key": "ac.l3.power",
       "role": "extra.ac_l3_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 635,
       "type": "i16"
     },
@@ -308,6 +315,7 @@
       "key": "ac.ups.l1.power",
       "role": "extra.ac_ups_l1_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 650,
       "type": "i16"
     },
@@ -315,6 +323,7 @@
       "key": "ac.ups.l2.power",
       "role": "extra.ac_ups_l2_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 651,
       "type": "i16"
     },
@@ -322,6 +331,7 @@
       "key": "ac.ups.l3.power",
       "role": "extra.ac_ups_l3_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 652,
       "type": "i16"
     },
@@ -329,6 +339,7 @@
       "key": "ac.ups.l1.voltage",
       "role": "extra.ac_ups_l1_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 644,
       "type": "u16",
       "scale": 0.1
@@ -337,6 +348,7 @@
       "key": "ac.ups.l2.voltage",
       "role": "extra.ac_ups_l2_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 645,
       "type": "u16",
       "scale": 0.1
@@ -345,6 +357,7 @@
       "key": "ac.ups.l3.voltage",
       "role": "extra.ac_ups_l3_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 646,
       "type": "u16",
       "scale": 0.1
@@ -366,6 +379,7 @@
       "key": "ac.generator.l1.power",
       "role": "extra.ac_generator_l1_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 664,
       "type": "i16"
     },
@@ -373,6 +387,7 @@
       "key": "ac.generator.l2.power",
       "role": "extra.ac_generator_l2_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 665,
       "type": "i16"
     },
@@ -380,6 +395,7 @@
       "key": "ac.generator.l3.power",
       "role": "extra.ac_generator_l3_power",
       "kind": "measurement",
+      "unit": "W",
       "register": 666,
       "type": "i16"
     },
@@ -387,6 +403,7 @@
       "key": "ac.generator.l1.voltage",
       "role": "extra.ac_generator_l1_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 661,
       "type": "u16",
       "scale": 0.1
@@ -395,6 +412,7 @@
       "key": "ac.generator.l2.voltage",
       "role": "extra.ac_generator_l2_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 662,
       "type": "u16",
       "scale": 0.1
@@ -403,6 +421,7 @@
       "key": "ac.generator.l3.voltage",
       "role": "extra.ac_generator_l3_voltage",
       "kind": "measurement",
+      "unit": "V",
       "register": 663,
       "type": "u16",
       "scale": 0.1
@@ -418,6 +437,7 @@
       "key": "radiator_temp",
       "role": "extra.radiator_temp",
       "kind": "measurement",
+      "unit": "°C",
       "register": 540,
       "type": "i16",
       "scale": 0.1,
@@ -427,6 +447,7 @@
       "key": "ac.temperature",
       "role": "extra.ac_temperature",
       "kind": "measurement",
+      "unit": "°C",
       "register": 541,
       "type": "i16",
       "scale": 0.1,
@@ -484,6 +505,7 @@
       "key": "grid.import_power",
       "role": "extra.grid_import_power",
       "kind": "measurement",
+      "unit": "W",
       "storage": "none",
       "compute": {
         "clamp": {
@@ -496,6 +518,7 @@
       "key": "grid.export_power",
       "role": "extra.grid_export_power",
       "kind": "measurement",
+      "unit": "W",
       "storage": "none",
       "compute": {
         "diff": [
@@ -508,6 +531,7 @@
       "key": "battery.charge_power",
       "role": "extra.battery_charge_power",
       "kind": "measurement",
+      "unit": "W",
       "storage": "none",
       "compute": {
         "clamp": {
@@ -520,6 +544,7 @@
       "key": "battery.discharge_power",
       "role": "extra.battery_discharge_power",
       "kind": "measurement",
+      "unit": "W",
       "storage": "none",
       "compute": {
         "diff": [
@@ -532,6 +557,7 @@
       "key": "inverter.power",
       "role": "extra.inverter_power",
       "kind": "measurement",
+      "unit": "W",
       "compute": {
         "combine": {
           "add": [
@@ -549,6 +575,7 @@
       "key": "inverter.efficiency",
       "role": "extra.inverter_efficiency",
       "kind": "measurement",
+      "unit": "%",
       "compute": {
         "ratio": {
           "num": [

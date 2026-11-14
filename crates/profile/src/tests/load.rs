@@ -58,27 +58,27 @@ fn a_missing_capability_is_refused_by_name() {
 #[test]
 fn a_computed_input_must_be_a_quantity_declared_earlier() {
     let later = json!([
-        { "key": "x", "role": "extra.x", "kind": "measurement", "compute": { "sum": ["a"] } },
-        { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
+        { "key": "x", "role": "extra.x", "kind": "measurement", "unit": "none", "compute": { "sum": ["a"] } },
+        { "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1, "type": "u16" },
     ]);
     assert_eq!(
         refusal(&later),
         ("x".into(), "an input is not a quantity declared earlier")
     );
-    let cycle = json!([{ "key": "x", "role": "extra.x", "kind": "measurement", "compute": { "sum": ["x"] } }]);
+    let cycle = json!([{ "key": "x", "role": "extra.x", "kind": "measurement", "unit": "none", "compute": { "sum": ["x"] } }]);
     assert_eq!(refusal(&cycle).0, "x");
 }
 
 #[test]
 fn a_quantity_reads_a_register_or_computes_never_both() {
-    let both = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16", "compute": { "sum": [] } }]);
+    let both = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1, "type": "u16", "compute": { "sum": [] } }]);
     assert_eq!(
         refusal(&both).1,
         "declare one of `register`, `topic`, `get` or `compute`"
     );
-    let untyped = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1 }]);
+    let untyped = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1 }]);
     assert_eq!(refusal(&untyped).1, "a register needs a type");
-    let scaled = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "compute": { "sum": [] }, "scale": 2 }]);
+    let scaled = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "compute": { "sum": [] }, "scale": 2 }]);
     assert_eq!(
         refusal(&scaled).1,
         "a computed quantity takes no scale or offset"
@@ -88,15 +88,15 @@ fn a_quantity_reads_a_register_or_computes_never_both() {
 #[test]
 fn a_key_is_declared_once() {
     let twice = json!([
-        { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
-        { "key": "a", "role": "extra.b", "kind": "measurement", "register": 2, "type": "u16" },
+        { "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1, "type": "u16" },
+        { "key": "a", "role": "extra.b", "kind": "measurement", "unit": "none", "register": 2, "type": "u16" },
     ]);
     assert_eq!(refusal(&twice), ("a".into(), "the key is declared twice"));
 }
 
 #[test]
 fn a_u32_cannot_start_at_the_last_register() {
-    let edge = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 65535, "type": "u32" }]);
+    let edge = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 65535, "type": "u32" }]);
     assert_eq!(refusal(&edge).1, "a double word needs two registers");
 }
 
@@ -123,21 +123,21 @@ fn a_sunspec_point_is_refused_where_it_cannot_be_read() {
     let model = json!([103]);
     let cases = [
         (
-            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "acc32" }]),
+            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1, "type": "acc32" }]),
             "an acc32 is a SunSpec point",
         ),
         (
-            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "model": model, "register": 1, "type": "u16" }]),
+            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "model": model, "register": 1, "type": "u16" }]),
             "registers 0 and 1 of a SunSpec model are its header",
         ),
         (
-            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "model": [], "register": 2, "type": "u16" }]),
+            json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "model": [], "register": 2, "type": "u16" }]),
             "list at least one SunSpec model",
         ),
         (
             json!([
-                { "key": "a", "role": "extra.a", "kind": "measurement", "register": 2, "type": "u16" },
-                { "key": "b", "role": "extra.b", "kind": "measurement", "model": model, "register": 2, "type": "u16" },
+                { "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 2, "type": "u16" },
+                { "key": "b", "role": "extra.b", "kind": "measurement", "unit": "none", "model": model, "register": 2, "type": "u16" },
             ]),
             "a profile reads through one binding",
         ),

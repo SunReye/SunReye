@@ -38,17 +38,17 @@ fn value(profile: &Profile, key: &str, registers: &Registers) -> Option<f64> {
 }
 
 fn register(key: &str, address: u16, kind: &str) -> Value {
-    json!({ "key": key, "role": format!("extra.{key}"), "kind": "measurement", "register": address, "type": kind })
+    json!({ "key": key, "role": format!("extra.{key}"), "kind": "measurement", "unit": "none", "register": address, "type": kind })
 }
 
 fn computed(key: &str, expr: &Value) -> Value {
-    json!({ "key": key, "role": format!("extra.{key}"), "kind": "measurement", "compute": expr })
+    json!({ "key": key, "role": format!("extra.{key}"), "kind": "measurement", "unit": "none", "compute": expr })
 }
 
 #[test]
 fn u16_applies_scale_then_offset() {
     let p = profile(
-        &json!([{ "key": "t", "role": "extra.t", "kind": "measurement", "register": 1, "type": "u16", "scale": 0.1, "offset": -100 }]),
+        &json!([{ "key": "t", "role": "extra.t", "kind": "measurement", "unit": "none", "register": 1, "type": "u16", "scale": 0.1, "offset": -100 }]),
     );
     assert_eq!(value(&p, "t", &registers(&[(1, 1250)])), Some(25.0));
 }
@@ -106,7 +106,7 @@ fn a_range_clamps_at_both_ends_and_leaves_values_inside_alone() {
 #[test]
 fn a_raw_value_that_scales_to_infinity_is_no_reading() {
     let p = profile(
-        &json!([{ "key": "x", "role": "extra.x", "kind": "measurement", "register": 1, "type": "u16", "scale": 1e308 }]),
+        &json!([{ "key": "x", "role": "extra.x", "kind": "measurement", "unit": "none", "register": 1, "type": "u16", "scale": 1e308 }]),
     );
     assert_eq!(value(&p, "x", &registers(&[(1, 65535)])), None);
 }

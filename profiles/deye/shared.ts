@@ -69,6 +69,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "grid.import_power",
     role: "extra.grid_import_power",
     kind: "measurement",
+    unit: "W",
     storage: "none",
     compute: {
       clamp: {
@@ -81,6 +82,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "grid.export_power",
     role: "extra.grid_export_power",
     kind: "measurement",
+    unit: "W",
     storage: "none",
     compute: {
       diff: ["grid.import_power", "ac.total_power"],
@@ -90,6 +92,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "battery.charge_power",
     role: "extra.battery_charge_power",
     kind: "measurement",
+    unit: "W",
     storage: "none",
     compute: {
       clamp: {
@@ -102,6 +105,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "battery.discharge_power",
     role: "extra.battery_discharge_power",
     kind: "measurement",
+    unit: "W",
     storage: "none",
     compute: {
       diff: ["battery.charge_power", "battery.power"],
@@ -111,6 +115,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "inverter.power",
     role: "extra.inverter_power",
     kind: "measurement",
+    unit: "W",
     compute: {
       combine: {
         add: ["dc.total_power", "ac.total_power"],
@@ -122,6 +127,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
     key: "inverter.efficiency",
     role: "extra.inverter_efficiency",
     kind: "measurement",
+    unit: "%",
     compute: {
       ratio: {
         num: ["ac.ups.total_power", "battery.charge_power", "grid.export_power"],

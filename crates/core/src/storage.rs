@@ -47,6 +47,7 @@ impl Policy {
             (RoleKind::Measurement, Some(Unit::Volt | Unit::Celsius)) => 0.5,
             (RoleKind::Measurement, Some(Unit::Ampere)) => 0.1,
             (RoleKind::Measurement, Some(Unit::Hertz)) => 0.02,
+            (RoleKind::Measurement, Some(Unit::Percent)) => 1.0,
             _ => 0.0,
         };
         Self {

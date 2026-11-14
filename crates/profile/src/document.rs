@@ -315,6 +315,8 @@ pub struct QuantityDoc {
     pub role_kind: Option<crate::RoleKind>,
     /// Where its readings go; `series` when left out.
     pub storage: Option<crate::StorageClass>,
+    /// What a measurement or counter extra is measured in; a named role's unit is fixed (ADR 4).
+    pub unit: Option<crate::Unit>,
     pub index: Option<u32>,
     /// The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
     /// then counts from the model's ID register, as the SunSpec model definitions lay it out.
@@ -371,6 +373,7 @@ impl QuantityDoc {
             self.poll_group.as_ref().map(|_| "poll-group"),
             self.role_kind.map(|_| "kind"),
             self.storage.map(|_| "storage"),
+            self.unit.map(|_| "unit"),
         ]
         .into_iter()
         .flatten()

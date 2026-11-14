@@ -40,6 +40,7 @@ fn point(key: &str, role: &str, json: &str) -> Value {
     let mut point = json!({ "key": key, "role": role, "get": GET, "json": json });
     if role.starts_with("extra.") {
         point["kind"] = json!("measurement");
+        point["unit"] = json!("none");
     }
     point
 }
@@ -49,7 +50,7 @@ fn json_pointers_into_an_answer_decode_to_roles() {
     let p = profile(&json!([
         point("power", "grid.power", "/total_act_power"),
         { "key": "l2", "role": "grid.phase.power", "index": 2, "get": GET, "json": "/b_act_power" },
-        { "key": "kw", "role": "extra.kw", "kind": "measurement", "get": GET, "json": "/c_act_power", "scale": 0.001 },
+        { "key": "kw", "role": "extra.kw", "kind": "measurement", "unit": "none", "get": GET, "json": "/c_act_power", "scale": 0.001 },
     ]));
     assert_eq!(
         answered(&p, "/rpc/EM.GetStatus?id=0", STATUS),
@@ -62,7 +63,7 @@ fn each_get_is_asked_once_at_the_device_address() {
     let p = profile(&json!([
         point("power", "grid.power", "/total_act_power"),
         point("current", "extra.current", "/total_current"),
-        { "key": "on", "role": "extra.on", "kind": "measurement", "get": "/rpc/Switch.GetStatus?id={address}", "json": "/output" },
+        { "key": "on", "role": "extra.on", "kind": "measurement", "unit": "none", "get": "/rpc/Switch.GetStatus?id={address}", "json": "/output" },
     ]));
     assert_eq!(
         p.requests(2),
@@ -87,8 +88,8 @@ fn a_missing_or_unreadable_point_is_no_value_and_a_boolean_one_or_zero() {
 fn an_answer_leaves_the_points_of_other_gets_alone_and_recomputes() {
     let p = profile(&json!([
         point("a", "extra.a", "/a_act_power"),
-        { "key": "on", "role": "extra.on", "kind": "measurement", "get": "/other", "json": "/on" },
-        { "key": "sum", "role": "extra.sum", "kind": "measurement", "compute": { "sum": ["a", "on"] } },
+        { "key": "on", "role": "extra.on", "kind": "measurement", "unit": "none", "get": "/other", "json": "/on" },
+        { "key": "sum", "role": "extra.sum", "kind": "measurement", "unit": "none", "compute": { "sum": ["a", "on"] } },
     ]));
     let mut values = vec![None; 3];
     p.answer(0, "/other", br#"{"on":true}"#, &mut values);
@@ -98,24 +99,23 @@ fn an_answer_leaves_the_points_of_other_gets_alone_and_recomputes() {
 
 #[test]
 fn a_get_is_a_path_with_a_json_pointer_and_no_type() {
-    let alone = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "get": GET }]);
+    let alone = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "get": GET }]);
     assert_eq!(
         refusal(&alone).1,
         "a GET and its JSON Pointer come together"
     );
-    let typed = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "get": GET, "json": "/a", "type": "u16" }]);
+    let typed = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "get": GET, "json": "/a", "type": "u16" }]);
     assert_eq!(refusal(&typed).1, "a JSON Pointer takes no type");
-    let pointer =
-        json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "get": GET, "json": "a" }]);
+    let pointer = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "get": GET, "json": "a" }]);
     assert_eq!(refusal(&pointer).1, "a JSON Pointer starts with `/`");
-    let url = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "get": "http://host/x", "json": "/a" }]);
+    let url = json!([{ "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "get": "http://host/x", "json": "/a" }]);
     assert_eq!(refusal(&url).1, "a GET is a path on the connection's host");
 }
 
 #[test]
 fn a_profile_reads_registers_or_gets_not_both() {
     let mixed = json!([
-        { "key": "a", "role": "extra.a", "kind": "measurement", "register": 1, "type": "u16" },
+        { "key": "a", "role": "extra.a", "kind": "measurement", "unit": "none", "register": 1, "type": "u16" },
         point("b", "extra.b", "/b"),
     ]);
     assert_eq!(
@@ -162,7 +162,7 @@ fn a_point_is_stored_in_its_resolution_or_else_its_scale() {
     let p = profile(&json!([
         { "key": "v", "role": "grid.phase.voltage", "index": 1, "get": GET, "json": "/a_voltage",
           "resolution": 0.1 },
-        { "key": "kw", "role": "extra.kw", "kind": "measurement", "get": GET, "json": "/c_act_power", "scale": 0.001 },
+        { "key": "kw", "role": "extra.kw", "kind": "measurement", "unit": "none", "get": GET, "json": "/c_act_power", "scale": 0.001 },
     ]));
     assert_eq!(p.quantities()[0].step(), 0.1);
     assert_eq!(p.quantities()[1].step(), 0.001);

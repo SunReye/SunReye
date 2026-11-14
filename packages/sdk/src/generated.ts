@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage" | "unit";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -21,7 +21,11 @@ kind?: RoleKind,
 /**
  * Where its readings go; `series` when left out.
  */
-storage?: StorageClass, index?: number, 
+storage?: StorageClass, 
+/**
+ * What a measurement or counter extra is measured in; a named role's unit is fixed (ADR 4).
+ */
+unit?: Unit, index?: number, 
 /**
  * The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
  * then counts from the model's ID register, as the SunSpec model definitions lay it out.
@@ -138,7 +142,7 @@ export type LiveControl = { revert: number, heartbeat?: Heartbeat, fallback?: nu
 
 export type Heartbeat = { register: number, interval: number, };
 
-export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C";
+export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C" | "h" | "none";
 
 export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle } | { "publish": Publish };
 
