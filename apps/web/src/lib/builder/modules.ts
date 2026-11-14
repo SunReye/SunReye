@@ -3,6 +3,7 @@
 import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
 import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
 import { following, ordered } from "./wiring.ts";
+import { withOpenings } from "./wall-openings.ts";
 import type { Panel } from "./scene.ts";
 
 export { wiring } from "./wiring.ts";
@@ -186,7 +187,8 @@ export function withoutBlock(scene: Scene, index: number): Scene {
     .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
 
   const blocks = scene.blocks.toSpliced(index, 1);
-  const kept = chimneys === undefined ? { ...scene, blocks } : { ...scene, blocks, chimneys };
+  const glazed = withOpenings(scene, index);
+  const kept = chimneys === undefined ? { ...glazed, blocks } : { ...glazed, blocks, chimneys };
 
   return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>
     grids

@@ -12,13 +12,13 @@ import {
   type Object3D,
   type PerspectiveCamera,
 } from "three";
-import type { Point } from "../builder/pv.ts";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
+import { lamps } from "./wall-openings.ts";
 import { Studio } from "./studio.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -86,10 +86,16 @@ function free(part: Object3D): void {
 
 /** Draws one group at a time in `studio`, freeing the last. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws in it.
-function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
+function stage(studio: Studio): Pick<Lit, "show" | "dispose"> & { lamp: (level: number) => void } {
   let drawn: Group | undefined;
+  let lamplight = 0;
 
   return {
+    lamp(level) {
+      lamplight = level;
+
+      if (drawn !== undefined) lamps(drawn, level);
+    },
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
     show(group) {
       if (drawn !== undefined) {
@@ -97,6 +103,7 @@ function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
         free(drawn);
       }
 
+      lamps(group, lamplight);
       studio.scene.add(group);
       drawn = group;
 
@@ -119,7 +126,7 @@ export function lit(
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
-  sun: () => Point | null,
+  sun: () => Parameters<typeof daylight>[0],
   drawn: () => void,
 ): Lit {
   const studio = new Studio(canvas, camera);
@@ -132,6 +139,7 @@ export function lit(
 
   $effect(() => {
     studio.light(day, theme(dark()), cssColour("var(--background)"));
+    shown.lamp(day.lamps);
     colour = flowRgb("solar").getHex();
     render();
   });

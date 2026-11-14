@@ -114,3 +114,15 @@ test("the sun's light is whole again at a low sun, the moon's a few degrees unde
   expect(daylight(south(5)).intensity).toBe(2);
   expect(daylight(south(-6)).intensity).toBe(daylight(south(-40)).intensity);
 });
+
+test("the house's lamps are out by day, on at night, and come on across dusk", () => {
+  expect(daylight(south(30)).lamps).toBe(0);
+  expect(daylight(south(4)).lamps).toBe(0);
+  expect(daylight(south(-8)).lamps).toBe(1);
+
+  const dusk = [2, 0, -2, -4].map((elevation) => daylight(south(elevation)).lamps);
+
+  expect(dusk).toEqual(dusk.toSorted((a, b) => a - b));
+  expect(dusk[1]).toBeGreaterThan(0);
+  expect(dusk[1]).toBeLessThan(1);
+});

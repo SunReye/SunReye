@@ -170,8 +170,8 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** A selected block, obstacle, ground surface, fence, car place or chimney's handles, and where
-   * their drags go. */
+  /** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
+   * and where their drags go. */
   get editing(): Editing | undefined {
     const { level } = this;
 
@@ -181,7 +181,8 @@ export class Session {
       level.kind !== "surface" &&
       level.kind !== "fence" &&
       level.kind !== "place" &&
-      level.kind !== "chimney"
+      level.kind !== "chimney" &&
+      level.kind !== "opening"
     ) {
       return undefined;
     }

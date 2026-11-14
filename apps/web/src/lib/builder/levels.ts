@@ -16,6 +16,7 @@ export type Level =
       readonly kind:
         | "block"
         | "chimney"
+        | "opening"
         | "obstacle"
         | "surface"
         | "fence"
@@ -37,6 +38,7 @@ export type Level =
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
   chimney: "buildings",
+  opening: "buildings",
   obstacle: "surroundings",
   surface: "surroundings",
   fence: "surroundings",
@@ -198,6 +200,8 @@ export function picked(
   cells?: Modules["grids"],
 ): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
+
+  if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
   if (hit.kind === "point") return at(scene, roofs, cells, hit.point);
 

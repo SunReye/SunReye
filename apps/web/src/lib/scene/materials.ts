@@ -1,10 +1,12 @@
 // The scene's physically based finishes, every map generated in code (ADR 20 Look). Textures are
 // made once and shared; materials are made per build, so disposing a build keeps the textures.
 import {
+  AdditiveBlending,
   Color,
   DataTexture,
   LinearFilter,
   LinearMipmapLinearFilter,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   NoColorSpace,
@@ -12,19 +14,23 @@ import {
   SRGBColorSpace,
   Vector2,
 } from "three";
-import type { FenceFinish, GroundFinish } from "../builder/pv.ts";
+import type { FenceFinish, GroundFinish, OpeningKind } from "../builder/pv.ts";
 import { GROUPS, type GroupName, type Pixels } from "./pixels.ts";
 import { warmed } from "./warm.ts";
 import { mean, weathered } from "./weather.ts";
 
 const textures = new Map<string, DataTexture>();
 
+/** The glow maps that hold a colour. */
+const WARM: ReadonlySet<string> = new Set(["window.glow", "door.glow"]);
+
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js uploads the pixels as they are.
 function texture(key: string, pixels: Pixels): DataTexture {
   const made = new DataTexture(pixels.data, pixels.w, pixels.h);
 
-  // Only the albedo is colour; normals, roughness and the glow mask are data.
-  made.colorSpace = key.endsWith(".map") ? SRGBColorSpace : NoColorSpace;
+  // The albedo is colour, and so is a lit room's glow; normals, roughness and a module's glow
+  // mask are data.
+  made.colorSpace = key.endsWith(".map") || WARM.has(key) ? SRGBColorSpace : NoColorSpace;
   made.wrapS = made.wrapT = RepeatWrapping;
   made.magFilter = LinearFilter;
   made.minFilter = LinearMipmapLinearFilter;
@@ -235,5 +241,42 @@ export function module(): MeshPhysicalMaterial {
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
+  });
+}
+
+const GLAZING: Readonly<Record<OpeningKind, "window" | "door" | "garage">> = {
+  window: "window",
+  frenchWindow: "window",
+  frontDoor: "door",
+  garageDoor: "garage",
+};
+
+/** A window or a door: its frame and leaf, panes that mirror the sky by day, and the glow of a
+ * lit room or a door's light, dark until the lamps come on. */
+export function glazed(kind: OpeningKind): MeshStandardMaterial {
+  const name = GLAZING[kind];
+
+  return new MeshStandardMaterial({
+    map: map(name, "map"),
+    normalMap: map(name, "normal"),
+    roughnessMap: map(name, "rough"),
+    roughness: 1,
+    emissive: 0xffffff,
+    emissiveMap: map(name, "glow"),
+    emissiveIntensity: 0,
+  });
+}
+
+/** Light on the ground under a lit opening: added to what lies there, and out by day. */
+export function spilled(): MeshBasicMaterial {
+  return new MeshBasicMaterial({
+    map: map("spill", "map"),
+    transparent: true,
+    opacity: 0,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -8,
+    polygonOffsetUnits: -8,
   });
 }

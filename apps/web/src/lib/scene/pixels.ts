@@ -4,6 +4,7 @@
 import { asphalt, flags, gravel, pavers, wood } from "./ground-pixels.ts";
 import { module } from "./module-pixels.ts";
 import { fbm, fromField, normalFrom, rng, type Maps, type Rgb } from "./noise.ts";
+import { door, glazing, sectional, spill } from "./opening-pixels.ts";
 
 export type { Maps, Pixels, Rgb } from "./noise.ts";
 
@@ -138,6 +139,10 @@ export const GROUPS = {
   gravel,
   asphalt,
   wood,
+  window: glazing,
+  door,
+  garage: sectional,
+  spill,
 } satisfies Readonly<Record<string, () => Maps>>;
 
 export type GroupName = keyof typeof GROUPS;

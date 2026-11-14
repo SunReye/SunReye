@@ -28,6 +28,8 @@ export interface Daylight {
   readonly fill: Fill;
   /** How far the string glow shows: the light it stands for, off at night. */
   readonly glow: number;
+  /** How far the house's lamps are on: 0 by day, 1 at night, coming on across dusk. */
+  readonly lamps: number;
   /** The moon lights the plant. */
   readonly night: boolean;
   /** The sun's elevation in degrees. */
@@ -98,6 +100,7 @@ export function daylight(sun: Point | null): Daylight {
   const dusk = smoothstep(DUSK, NIGHT, elevation);
 
   const ambient = {
+    lamps: dusk,
     environment: mix(LOW.environment, MOON.environment, dusk),
     fill: fill(smoothstep(LOW.elevation, 0, elevation), dusk),
   };
@@ -128,6 +131,7 @@ export function daylight(sun: Point | null): Daylight {
     environment:
       elevation < LOW.elevation ? ambient.environment : mix(LOW.environment, HIGH.environment, k),
     fill: ambient.fill,
+    lamps: ambient.lamps,
     glow: mix(LOW.glow, HIGH.glow, k) * risen,
     night: false,
     elevation,

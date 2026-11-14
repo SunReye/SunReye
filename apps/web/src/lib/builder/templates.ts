@@ -1,7 +1,8 @@
 // Templates: the starting scenes an empty scene offers (ADR 20). Nothing remembers which one filled
 // it; the admin then edits as usual.
 import type { Draft } from "./modules.ts";
-import type { Block } from "./pv.ts";
+import type { Block, Opening } from "./pv.ts";
+import { USUAL } from "./wall-openings.ts";
 
 export const TEMPLATES = ["gable", "bungalow", "hip", "lHouse", "terraceEnd", "empty"] as const;
 
@@ -48,7 +49,53 @@ export function blocksOf(template: Template, north: number): Block[] {
   return BLOCKS[template].map(turned);
 }
 
-/** `draft` with the template's blocks; its compass, surroundings and strings stay. */
+const fitted = (kind: Opening["kind"], wall: Opening["wall"], along: number, on = 0): Opening => ({
+  kind,
+  block: on,
+  wall,
+  along,
+  ...USUAL[kind],
+});
+
+/** A front door between two windows on the first block's front, a French window to the garden
+ * at the back and a window in each side wall: a house that reads as lived in from the start. */
+const HOUSE: readonly Opening[] = [
+  fitted("window", "front", 1),
+  fitted("frontDoor", "front", 4),
+  fitted("window", "front", 6.5),
+  fitted("frenchWindow", "back", 2),
+  fitted("window", "left", 2.5),
+  fitted("window", "right", 2.5),
+];
+
+const OPENINGS: Readonly<Record<Template, readonly Opening[]>> = {
+  gable: HOUSE,
+  bungalow: HOUSE,
+  hip: HOUSE,
+  // The wing's own wall carries a window.
+  lHouse: [...HOUSE.filter(({ wall }) => wall !== "right"), fitted("window", "right", 2, 1)],
+  // The shared wall has none; nor has the neighbour.
+  terraceEnd: [
+    fitted("frontDoor", "front", 0.8),
+    fitted("window", "front", 3),
+    fitted("frenchWindow", "back", 2),
+    fitted("window", "right", 4),
+  ],
+  empty: [],
+};
+
+/** `draft` with the template's blocks and their windows and doors; its compass, surroundings and
+ * strings stay. */
 export function fill(draft: Draft, template: Template): Draft {
-  return { ...draft, scene: { ...draft.scene, blocks: blocksOf(template, draft.scene.north) } };
+  const { openings: _, ...scene } = draft.scene;
+  const openings = OPENINGS[template];
+
+  return {
+    ...draft,
+    scene: {
+      ...scene,
+      blocks: blocksOf(template, scene.north),
+      ...(openings.length > 0 && { openings }),
+    },
+  };
 }

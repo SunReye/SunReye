@@ -1,9 +1,11 @@
-<!-- A block's or a roof chimney's level in the inspector (ADR 20 Blocks). -->
+<!-- A block's, a roof chimney's or an opening's level in the inspector (ADR 20 Blocks). -->
 <script lang="ts">
   import BlockFieldset from "./BlockFieldset.svelte";
   import ChimneyFieldset from "./ChimneyFieldset.svelte";
   import { withoutBlock } from "./modules.ts";
+  import OpeningFieldset from "./OpeningFieldset.svelte";
   import type { RoofFace, Scene } from "./pv.ts";
+  import { refit } from "./wall-openings.ts";
 
   let {
     kind,
@@ -13,7 +15,7 @@
     onchange,
     onremove,
   }: {
-    kind: "block" | "chimney";
+    kind: "block" | "chimney" | "opening";
     index: number;
     scene: Scene;
     /** The roof faces a chimney may stand on. */
@@ -26,6 +28,8 @@
   const block = $derived(kind === "block" ? scene.blocks[index] : undefined);
   const chimneys = $derived(scene.chimneys ?? []);
   const chimney = $derived(kind === "chimney" ? chimneys[index] : undefined);
+  const openings = $derived(scene.openings ?? []);
+  const opening = $derived(kind === "opening" ? openings[index] : undefined);
 
   // A scene keeps at least one block.
   const removeBlock = $derived(
@@ -54,6 +58,19 @@
     }}
     onremove={() => {
       onremove({ ...scene, chimneys: chimneys.toSpliced(index, 1) });
+    }}
+  />
+{:else if opening !== undefined}
+  <OpeningFieldset
+    item={opening}
+    blocks={scene.blocks.length}
+    onchange={(change) => {
+      const fitted = refit(scene, index, change);
+
+      if (fitted !== null) onchange(fitted);
+    }}
+    onremove={() => {
+      onremove({ ...scene, openings: openings.toSpliced(index, 1) });
     }}
   />
 {/if}
