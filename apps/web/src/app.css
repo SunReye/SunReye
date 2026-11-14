@@ -354,6 +354,12 @@
   }
 }
 
+/* The scroll fade (ADR 21) repaints its mask on each scrolled frame: the still tier and the
+   low-power switch do without it. Unlayered, so it beats every scroll-fade utility. */
+:root:is([data-low-power], [data-motion="still"]) [class*="scroll-fade"] {
+  --scroll-fade-mask: none;
+}
+
 @utility bg-spotlight {
   background: radial-gradient(ellipse 60% 55% at 50% -10%, var(--spotlight), transparent 70%);
 }

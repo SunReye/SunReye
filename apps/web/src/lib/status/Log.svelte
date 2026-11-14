@@ -59,7 +59,7 @@
     .map((line, at) => ({ at, ...logLine(line) }))
     .filter((line) => keeps(filter, line.level))
     .toReversed()}
-  <ul role="log" class="max-h-[70vh] divide-y divide-border/60 overflow-y-auto no-scrollbar">
+  <ul role="log" class="max-h-[70vh] divide-y divide-border/60 overflow-y-auto scroll-fade-y no-scrollbar">
     {#each shown as line (line.at)}
       <li class="flex flex-col gap-1 px-4 py-2.5">
         {#if line.time !== undefined}

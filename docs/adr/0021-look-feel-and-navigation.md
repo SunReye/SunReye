@@ -97,7 +97,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - a card must do something;
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
-- no visible scrollbars, with edges that fade where more content waits;
+- no visible scrollbars, with edges that fade where more content waits. The fade is shadcn-svelte's `scroll-fade` utility (a mask on the scroller, driven by its scroll position, static where scroll timelines are missing), on every scroll container: sheets, pickers, menus, lists, tables, chip rows. The background and border sit on a wrapper and the fade on the scroller inside it, so glass keeps its edge. A `ScrollArea` keeps its scrollbar for the mouse; a text area and the page itself take no fade. The still tier and the low-power switch drop the fade, whose mask repaints with every scrolled frame;
 - a screen fetches its data when it mounts; there are no SvelteKit `load` functions. While its data fills in, the screen stands in its final layout: a number shows dashes, as the animated number does, and a chart or a sentence shows a skeleton or its own empty or loading state of the size it will take. A page never shows a blank or unstyled box.
 
 **Motion.**

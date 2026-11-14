@@ -10,7 +10,7 @@
 	}: WithElementRef<HTMLTableAttributes> = $props();
 </script>
 
-<div data-slot="table-container" class="relative w-full overflow-x-auto">
+<div data-slot="table-container" class="relative w-full overflow-x-auto scroll-fade-x">
 	<!-- Local: tabular figures (ADR 21, #750). -->
 	<table bind:this={ref} data-slot="table" class={cn("w-full caption-bottom text-sm tabular-nums", className)} {...restProps}>
 		{@render children?.()}

@@ -5,6 +5,7 @@
   import * as Item from "../../components/ui/item/index.js";
   import * as Resizable from "../../components/ui/resizable/index.js";
   import { ScrollArea } from "../../components/ui/scroll-area/index.js";
+  import { Badge } from "../../components/ui/badge/index.js";
   import Demo from "../Demo.svelte";
 
   type Reading = { name: string; volts: number; amps: number };
@@ -51,4 +52,22 @@
     <Resizable.Handle withHandle />
     <Resizable.Pane defaultSize={60} class="grid place-items-center text-sm">Settings</Resizable.Pane>
   </Resizable.PaneGroup>
+</Demo>
+
+<!-- The scroll fade (#753): the border sits on a wrapper, the fade on the scroller inside it. -->
+<Demo name="scroll-fade">
+  <div class="w-56 border">
+    <ul class="flex h-32 flex-col gap-2 overflow-y-auto p-3 text-sm scroll-fade-y no-scrollbar">
+      {#each { length: 14 }, index (index)}
+        <li>Log line {index + 1}</li>
+      {/each}
+    </ul>
+  </div>
+  <div class="w-72 border p-2">
+    <div class="flex gap-2 overflow-x-auto scroll-fade-x no-scrollbar">
+      {#each ["Day", "Week", "Month", "Year", "Custom", "Compare", "Forecast", "Tariff"] as chip (chip)}
+        <Badge variant="outline" class="shrink-0">{chip}</Badge>
+      {/each}
+    </div>
+  </div>
 </Demo>

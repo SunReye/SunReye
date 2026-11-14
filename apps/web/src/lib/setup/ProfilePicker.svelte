@@ -90,7 +90,7 @@
       />
     </div>
   </div>
-  <div class="mt-3 h-[min(60dvh,34rem)] overflow-y-auto overscroll-contain px-4 pb-2 no-scrollbar">
+  <div class="mt-3 h-[min(60dvh,34rem)] overflow-y-auto overscroll-contain px-4 pb-2 scroll-fade-y no-scrollbar">
     <ProfileList {listings} {refused} {query} {value} onpick={pick} />
   </div>
 </ResponsiveSheet>

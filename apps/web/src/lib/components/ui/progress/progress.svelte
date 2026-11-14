@@ -3,7 +3,7 @@
 	import { tv, type VariantProps } from "tailwind-variants";
 
 	export const progressVariants = tv({
-		base: "bg-muted relative flex w-full items-center overflow-x-hidden",
+		base: "bg-muted relative flex w-full items-center overflow-hidden",
 		variants: {
 			size: {
 				default: "h-1.5 rounded-sm",
