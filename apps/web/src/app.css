@@ -345,8 +345,8 @@
 @utility glass-ambient {
   background-color: color-mix(in oklab, var(--card) var(--ambient-opacity), transparent) !important;
   background-image: var(--noise);
-  backdrop-filter: var(--glass-filter-strong) saturate(140%);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
+  backdrop-filter: var(--glass-filter-strong) saturate(140%);
 }
 
 /* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.
