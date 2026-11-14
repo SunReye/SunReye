@@ -347,8 +347,8 @@
 @utility glass-ambient {
   background-color: color-mix(in oklab, var(--card) var(--ambient-opacity), transparent) !important;
   background-image: var(--noise);
-  backdrop-filter: var(--glass-filter-strong) saturate(140%);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
+  backdrop-filter: var(--glass-filter-strong) saturate(140%);
 }
 
 /* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset glass card

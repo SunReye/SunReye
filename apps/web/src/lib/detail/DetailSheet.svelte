@@ -202,7 +202,7 @@
      readable, and no full-screen blur fades in (ADR 21: never animate backdrop-filter). */
   :global(body:has([data-detail-sheet]) [data-slot="sheet-overlay"]) {
     background: color-mix(in oklab, var(--background) 55%, transparent);
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 </style>
