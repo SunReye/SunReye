@@ -11,8 +11,13 @@
   const zone = $derived(core.spotZone());
 </script>
 
-<section aria-labelledby="{id}-title" class="flex flex-col gap-3">
-  <h2 id="{id}-title" class="text-[15px] font-medium">{m.spot_title()}</h2>
+<section aria-labelledby="{id}-title" class="flex flex-col">
+  <h2
+    id="{id}-title"
+    class="px-4 pt-5 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+  >
+    {m.spot_title()}
+  </h2>
   {#await zone}
     <LoadingRows rows={1} />
   {:then answer}

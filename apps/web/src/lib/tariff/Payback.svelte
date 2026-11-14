@@ -14,21 +14,29 @@
   let payback = $derived(core.payback());
 </script>
 
-<section aria-labelledby="{id}-title" class="flex flex-col gap-3">
-  <h2 id="{id}-title" class="text-[15px] font-medium">{m.tariff_payback()}</h2>
+<section aria-labelledby="{id}-title" class="flex flex-col">
+  <h2
+    id="{id}-title"
+    class="px-4 pt-5 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+  >
+    {m.tariff_payback()}
+  </h2>
   {#await payback}
     <LoadingRows />
   {:then answer}
     {#if "problem" in answer}
-      <p role="alert">{problemText(answer.problem)}</p>
+      <p role="alert" class="p-4 text-sm text-destructive">{problemText(answer.problem)}</p>
     {:else}
-      <PaybackFigures payback={answer} />
-      <InvestmentForm
-        {core}
-        oninvested={() => {
-          payback = core.payback();
-        }}
-      />
+      <div class="flex flex-col divide-y divide-border/60 border-y border-border/60">
+        <InvestmentForm
+          {core}
+          investment={answer.investment ?? null}
+          oninvested={() => {
+            payback = core.payback();
+          }}
+        />
+        <PaybackFigures payback={answer} />
+      </div>
     {/if}
   {/await}
 </section>

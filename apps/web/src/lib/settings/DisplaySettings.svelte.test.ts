@@ -46,7 +46,7 @@ test("the language is chosen by its own name", async () => {
 test("the low-power switch forces the still tier and is kept", async () => {
   const screen = await display();
 
-  await userEvent.click(screen.getByRole("checkbox", { name: /^Stromsparen/u }));
+  await userEvent.click(screen.getByRole("switch", { name: /^Stromsparen/u }));
 
   expect(motion.tier).toBe("still");
   expect(localStorage.getItem(LOW_POWER)).toBe("on");
@@ -55,7 +55,7 @@ test("the low-power switch forces the still tier and is kept", async () => {
 test("the haptics switch is kept per browser", async () => {
   localStorage.setItem(HAPTICS, "on");
   const screen = await display();
-  const haptics = screen.getByRole("checkbox", { name: /^Haptisches Feedback/u });
+  const haptics = screen.getByRole("switch", { name: /^Haptisches Feedback/u });
 
   await expect.element(haptics).toBeChecked();
   await userEvent.click(haptics);
@@ -67,15 +67,15 @@ test("the haptics switch is kept per browser", async () => {
 test("low power and reduced motion force haptics off and say why", async () => {
   localStorage.setItem(HAPTICS, "on");
   const screen = await display();
-  const haptics = screen.getByRole("checkbox", { name: /^Haptisches Feedback/u });
+  const haptics = screen.getByRole("switch", { name: /^Haptisches Feedback/u });
 
-  await userEvent.click(screen.getByRole("checkbox", { name: /^Stromsparen/u }));
+  await userEvent.click(screen.getByRole("switch", { name: /^Stromsparen/u }));
 
   await expect.element(haptics).not.toBeChecked();
   await expect.element(haptics).toBeDisabled();
   await expect.element(screen.getByText("Aus, solange Stromsparen an ist.")).toBeVisible();
 
-  await userEvent.click(screen.getByRole("checkbox", { name: /^Stromsparen/u }));
+  await userEvent.click(screen.getByRole("switch", { name: /^Stromsparen/u }));
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
   });

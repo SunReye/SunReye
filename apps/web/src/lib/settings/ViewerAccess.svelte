@@ -25,7 +25,7 @@
   });
 
   // A refused draft stays in the form for a fix.
-  async function add(): Promise<void> {
+  async function add(close: () => void): Promise<void> {
     const answer = await core.addViewer(name.trim(), password);
 
     if ("problem" in answer) {
@@ -37,6 +37,7 @@
     refused = undefined;
     name = "";
     password = "";
+    close();
     await reload();
   }
 
@@ -54,6 +55,7 @@
   title={m.access_viewers()}
   hint={m.access_viewers_hint()}
   answer={viewers}
+  action={m.access_add_viewer()}
 >
   {#snippet row(viewer)}
     <AccessRow
@@ -64,7 +66,17 @@
       onremove={() => remove(viewer.id)}
     />
   {/snippet}
-  <AccessForm action={m.access_add_viewer()} icon={UserPlus} {refused} onsubmit={() => void add()}>
+  {#snippet form(close)}
+    <AccessForm
+      action={m.access_add_viewer()}
+      icon={UserPlus}
+      {refused}
+      onsubmit={() => void add(close)}
+      oncancel={() => {
+        refused = undefined;
+        close();
+      }}
+    >
     <label class="flex flex-col gap-1.5 text-sm">
       {m.access_name()}
       <Input required autocomplete="off" bind:value={name} />
@@ -73,5 +85,6 @@
       {m.access_password()}
       <Input type="password" required autocomplete="new-password" bind:value={password} />
     </label>
-  </AccessForm>
+    </AccessForm>
+  {/snippet}
 </AccessSection>

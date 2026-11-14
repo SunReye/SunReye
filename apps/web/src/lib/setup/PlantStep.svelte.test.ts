@@ -35,10 +35,9 @@ test("the plant timezone and location are set, a location off the globe is refus
   const done = vi.fn<() => void>();
   const screen = await render(PlantStep, { core: connect(transport), ondone: done });
 
-  await userEvent.selectOptions(
-    screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).element(),
-    "Europe/Berlin",
-  );
+  await userEvent.click(screen.getByRole("combobox", { name: "Zeitzone der Anlage" }));
+  // A long list: typing finds the zone.
+  await userEvent.keyboard("Europe/Berlin{Enter}");
   await userEvent.fill(screen.getByLabelText("Breitengrad"), "152.5");
   await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
   await screen.getByRole("button", { name: "Weiter" }).click();
@@ -95,8 +94,8 @@ test("the browser's own location fills the coordinates, rounded to about ten met
 
   await screen.getByRole("button", { name: "Aktuellen Standort verwenden" }).click();
 
-  await expect.element(screen.getByLabelText("Breitengrad")).toHaveValue(52.52);
-  await expect.element(screen.getByLabelText("Längengrad")).toHaveValue(13.405);
+  await expect.element(screen.getByLabelText("Breitengrad")).toHaveValue("52.52");
+  await expect.element(screen.getByLabelText("Längengrad")).toHaveValue("13.405");
   vi.restoreAllMocks();
 });
 

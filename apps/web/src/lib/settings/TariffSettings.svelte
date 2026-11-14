@@ -8,7 +8,7 @@
   let { core }: { core: Core } = $props();
 </script>
 
-<div class="flex flex-col gap-6 p-4">
+<div class="flex flex-col pb-4">
   <TariffPanel {core} />
   <SpotZone {core} />
   <Payback {core} />

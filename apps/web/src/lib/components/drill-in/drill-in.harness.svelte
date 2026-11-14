@@ -3,7 +3,18 @@
   import "../../../app.css";
   import DrillIn from "./drill-in.svelte";
 
-  let { initial = null }: { initial?: string | null } = $props();
+  let {
+    initial = null,
+    width = 400,
+    back = "Steuerung",
+    wide = false,
+  }: {
+    initial?: string | null;
+    width?: number;
+    back?: string;
+    /** Pages hold content wider than the box, such as a table. */
+    wide?: boolean;
+  } = $props();
 
   // The harness starts on `initial`, then owns the route as the app's history would.
   // svelte-ignore state_referenced_locally
@@ -19,6 +30,7 @@
   const groups = [
     { id: "battery", label: "Batterie", summary: "20–100 % · 120 A" },
     { id: "grid", label: "Netz & Einspeisung", summary: "10.000 W" },
+    { id: "long", label: "Benachrichtigungen & Zugangsberechtigungen" },
   ];
 
   function navigate(id: string | null): void {
@@ -32,10 +44,11 @@
 
 <svelte:window onpopstate={(e) => (open = (e.state as { drill?: string } | null)?.drill ?? null)} />
 
-<div style="width: 400px">
-  <DrillIn {groups} {open} onnavigate={navigate} back="Steuerung">
+<div style:width="{width}px">
+  <DrillIn {groups} {open} onnavigate={navigate} {back}>
     {#snippet page(group)}
       <p>Seite {group.label}</p>
+      {#if wide}<div style="width: 900px">breit</div>{/if}
     {/snippet}
   </DrillIn>
 </div>

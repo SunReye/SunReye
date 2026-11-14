@@ -4,7 +4,7 @@
   import { MediaQuery } from "svelte/reactivity";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import SwitchRow from "../builder/SwitchRow.svelte";
+  import ToggleRow from "./ToggleRow.svelte";
   import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
   import { endonym, language } from "../i18n/language.svelte.ts";
   import { motion } from "../motion/tier.svelte.ts";
@@ -96,7 +96,7 @@
     speak,
     locales.map((locale) => [locale, endonym(locale)] as const),
   )}
-  <SwitchRow
+  <ToggleRow
     label={m.display_low_power()}
     hint={m.display_low_power_hint()}
     checked={motion.lowPower}
@@ -104,7 +104,7 @@
       motion.lowPower = on;
     }}
   />
-  <SwitchRow
+  <ToggleRow
     label={m.display_haptics()}
     hint={held ?? m.display_haptics_hint()}
     checked={feel}
