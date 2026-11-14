@@ -40,6 +40,7 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
         chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
+        openings: vec![],
     }
 }
 

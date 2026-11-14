@@ -7,7 +7,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::parking::colour;
-use crate::{CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Point};
+use crate::{
+    CarPlace, Chimney, Equipment, Fence, GroundSurface, ModuleGrid, Occluder, Opening, Point,
+};
 
 /// A trunk's radius as a share of its crown's.
 const TRUNK: f64 = 0.1;
@@ -44,6 +46,9 @@ pub struct Scene {
     /// Drawn only; they never shade.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fences: Vec<Fence>,
+    /// Windows and doors on the blocks' walls. Drawn only; they never shade.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub openings: Vec<Opening>,
 }
 
 /// A rectangular footprint with one roof. Its width runs along x and its depth along z from its

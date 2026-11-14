@@ -2432,6 +2432,59 @@
         ],
         "type": "object"
       },
+      "Opening": {
+        "additionalProperties": false,
+        "description": "A window or a door in a block's wall.",
+        "properties": {
+          "along": {
+            "description": "Metres from the wall's left end to the opening's left edge, seen from outside.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpeningKind"
+          },
+          "sill": {
+            "description": "Metres from the ground to its lower edge; a door's is 0.",
+            "format": "double",
+            "type": "number"
+          },
+          "wall": {
+            "$ref": "#/components/schemas/Wall"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "block",
+          "wall",
+          "along",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "OpeningKind": {
+        "enum": [
+          "window",
+          "frenchWindow",
+          "frontDoor",
+          "garageDoor"
+        ],
+        "type": "string"
+      },
       "Outcome": {
         "description": "How a write ended.",
         "enum": [
@@ -3169,6 +3222,13 @@
           "obstacles": {
             "items": {
               "$ref": "#/components/schemas/Obstacle"
+            },
+            "type": "array"
+          },
+          "openings": {
+            "description": "Windows and doors on the blocks' walls. Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Opening"
             },
             "type": "array"
           },

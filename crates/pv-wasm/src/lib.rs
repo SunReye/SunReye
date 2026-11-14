@@ -15,9 +15,10 @@ use sunreye_pv::{
     Surface, open_circuit_voltage, sun_position,
 };
 
-/// The faces, solids, equipment mounts, car stands, ground surfaces and fences of a scene, in the
-/// shading frame: east, north, up. The mounts are `null` while a marker lies off its wall, the
-/// stands while a car place is refused, the ground and the fences while one of theirs is.
+/// The faces, solids, equipment mounts, car stands, ground surfaces, fences and openings of a
+/// scene, in the shading frame: east, north, up. The mounts are `null` while a marker lies off its
+/// wall, the stands while a car place is refused, the ground, the fences and the openings while
+/// one of theirs is.
 fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
@@ -38,6 +39,10 @@ fn geometry(scene: &[u8]) -> String {
                 fences.iter().map(|f| json!({
                     "finish": f.finish, "height": f.height, "points": f.points,
                 })).collect::<Vec<_>>()
+            }),
+            "openings": scene.fitted().ok().map(|fitted| {
+                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out }))
+                    .collect::<Vec<_>>()
             }),
         }}),
         Err(error) => json!({ "error": error.to_string() }),

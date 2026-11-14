@@ -618,3 +618,50 @@ async fn each_value_refusal_points_at_its_field() {
         assert_eq!(at, format!("/{field}"));
     }
 }
+
+#[tokio::test]
+async fn openings_are_saved_with_the_scene_and_one_off_its_wall_or_overlapping_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let window = |along: f64| {
+        json!({
+            "kind": "window", "block": 0, "wall": "front",
+            "along": along, "width": 1.2, "height": 1.4, "sill": 0.9,
+        })
+    };
+    let with = |second: serde_json::Value| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["openings"] = json!([
+            { "kind": "frontDoor", "block": 0, "wall": "front",
+              "along": 4.0, "width": 1.0, "height": 2.1 },
+            window(1.0),
+            second,
+        ]);
+        scene
+    };
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with(window(6.0)))
+        .await;
+    let (read, layout) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    // The front wall is 10 m long; 1.5 m overlaps the window at 1 m.
+    let (off, off_body) = core
+        .put_scene(&set_cookie, &strings, &with(window(9.5)))
+        .await;
+    let (overlapping, overlapping_body) = core
+        .put_scene(&set_cookie, &strings, &with(window(1.5)))
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], with(window(6.0)));
+    assert_eq!(read, StatusCode::OK);
+    assert_eq!(layout["scene"]["openings"], with(window(6.0))["openings"]);
+    for (refused, body) in [(off, off_body), (overlapping, overlapping_body)] {
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
+}

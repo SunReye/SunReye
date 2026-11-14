@@ -6,6 +6,7 @@ mod fixtures;
 mod grid;
 mod input;
 mod lint;
+mod opening;
 mod parking;
 mod perez;
 mod roofing;
