@@ -58,8 +58,13 @@ test("the canvas's status line keeps apart from the tools and the inspector", as
   await tap(page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }));
   await tap(page.getByRole("button", { name: "Hinzufügen" }));
   await tap(page.getByRole("button", { name: "String hinzufügen" }));
+
+  const handle = page.getByRole("button", { name: "Szene bearbeiten" });
+
+  // The new string's level pulls the sheet up; only then can the finger take it down.
+  await expect.element(handle).toHaveAttribute("aria-expanded", "true");
   // Down again, to look at the canvas.
-  await tap(page.getByRole("button", { name: "Szene bearbeiten" }));
+  await tap(handle);
 
   // One status line holds the notices: what does not fit scrolls inside it.
   const status = page.getByRole("group", { name: "Jetzt in der Szene" });
@@ -78,9 +83,7 @@ test("the canvas's status line keeps apart from the tools and the inspector", as
     await expect.element(notice).toBeVisible();
   }
 
-  await expect
-    .element(page.getByRole("button", { name: "Szene bearbeiten" }))
-    .toHaveAttribute("aria-expanded", "false");
+  await expect.element(handle).toHaveAttribute("aria-expanded", "false");
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locators, read only.
   const boxes = notices.map((notice) => notice.element().getBoundingClientRect());
