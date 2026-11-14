@@ -2,6 +2,7 @@
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
 import { glide } from "../chimneys.ts";
 import type { RoofFace, Scene } from "../pv.ts";
+import { slide as slideOpening } from "../wall-openings.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
@@ -215,6 +216,13 @@ export function drag(
   now: Ray,
   roofs: readonly RoofFace[] = [],
 ): Dragged | null {
+  // An opening slides in its wall's plane, not a level one.
+  if (target.kind === "opening") {
+    return grab.grip === "move" || grab.grip === "width" || grab.grip === "height"
+      ? slideOpening(scene, target.index, grab.grip, grab.ray, now)
+      : null;
+  }
+
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
 
   if (grab.grip === "pitch") {

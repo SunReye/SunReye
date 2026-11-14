@@ -4,6 +4,7 @@
 import { footing } from "../chimneys.ts";
 import type { RoofFace, Scene } from "../pv.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
+import { onWall } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 export type { Target } from "./body.ts";
@@ -12,9 +13,9 @@ export type { Ray, Triple } from "./frame.ts";
 
 export { drag, type Dragged, type Grab } from "./dragging.ts";
 
-/** What a handle drags: a wall arrow's width, depth or radius, the ridge's pitch, the ring's
- * turn, the footprint's place, or a fence's point. */
-export type Grip = "width" | "depth" | "radius" | "pitch" | "turn" | "move" | "point";
+/** What a handle drags: a wall arrow's width, depth or radius, an opening's height, the ridge's
+ * pitch, the ring's turn, the footprint's place, or a fence's point. */
+export type Grip = "width" | "depth" | "height" | "radius" | "pitch" | "turn" | "move" | "point";
 
 export interface Handle {
   readonly grip: Grip;
@@ -118,11 +119,49 @@ function chimneyHandles({ chimneys = [] }: Scene, index: number, roofs: readonly
   return [handle];
 }
 
+/** Metres an opening's outline stands off its wall, clear of its frame. */
+const OFF_WALL = 0.08;
+
+/** An opening outlined on its wall, which a drag slides it along; an arrow at its right edge for
+ * its width and one over it for its height. */
+function openingHandles(scene: Scene, index: number): Handle[] {
+  const opening = scene.openings?.[index];
+  const block = opening && scene.blocks[opening.block];
+
+  if (opening === undefined || block === undefined) return [];
+
+  const { north } = scene;
+  const { along, width, height, sill = 0 } = opening;
+  const wall = onWall(block, opening.wall);
+  const at = (across: number, up: number): Triple => world(north, wall.at(across, up, OFF_WALL));
+
+  return [
+    {
+      grip: "width",
+      at: at(along + width + ARROW, sill + height / 2),
+      axis: world(north, wall.right),
+    },
+    { grip: "height", at: at(along + width / 2, sill + height + ARROW), axis: [0, 1, 0] },
+    {
+      grip: "move",
+      at: at(along + width / 2, sill + height),
+      outline: [
+        at(along, sill),
+        at(along + width, sill),
+        at(along + width, sill + height),
+        at(along, sill + height),
+      ],
+    },
+  ];
+}
+
 /** The selected object's handles; a chimney's stand on the laid-out `roofs`. */
 export function handles(scene: Scene, target: Target, roofs: readonly RoofFace[] = []): Handle[] {
   if (target.kind === "fence") return fenceHandles(scene, target.index);
 
   if (target.kind === "chimney") return chimneyHandles(scene, target.index, roofs);
+
+  if (target.kind === "opening") return openingHandles(scene, target.index);
 
   const body = bodyOf(scene, target);
 

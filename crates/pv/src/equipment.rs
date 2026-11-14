@@ -49,6 +49,39 @@ pub enum Wall {
     Left,
 }
 
+/// A wall in its block's own frame, x across the width and z along the depth.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Run {
+    /// Its left end, seen from outside.
+    pub left: [f64; 2],
+    /// How far a metre along it leads across and deep.
+    pub across: f64,
+    pub deep: f64,
+    /// Its outward normal.
+    pub out: [f64; 2],
+    pub length: f64,
+}
+
+impl Wall {
+    /// This wall of a block `width` across and `depth` deep.
+    #[must_use]
+    pub const fn run(self, width: f64, depth: f64) -> Run {
+        let (left, [across, deep], out, length) = match self {
+            Self::Front => ([0.0, depth], [1.0, 0.0], [0.0, 1.0], width),
+            Self::Right => ([width, depth], [0.0, -1.0], [1.0, 0.0], depth),
+            Self::Back => ([width, 0.0], [-1.0, 0.0], [0.0, -1.0], width),
+            Self::Left => ([0.0, 0.0], [0.0, 1.0], [-1.0, 0.0], depth),
+        };
+        Run {
+            left,
+            across,
+            deep,
+            out,
+            length,
+        }
+    }
+}
+
 /// Where a marker is drawn, in the shading frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mount {
@@ -72,21 +105,17 @@ impl Scene {
 
     fn mount(&self, marker: &Equipment) -> Option<Mount> {
         let block = self.blocks.get(marker.block)?;
-        let (width, depth) = (block.width, block.depth);
-        // Each wall's left end, its run and its outward normal, in the block's own frame.
-        let ([u, w], [du, dw], [nu, nw], length): ([f64; 2], [f64; 2], [f64; 2], f64) =
-            match marker.wall {
-                Wall::Front => ([0.0, depth], [1.0, 0.0], [0.0, 1.0], width),
-                Wall::Right => ([width, depth], [0.0, -1.0], [1.0, 0.0], depth),
-                Wall::Back => ([width, 0.0], [-1.0, 0.0], [0.0, -1.0], width),
-                Wall::Left => ([0.0, 0.0], [0.0, 1.0], [-1.0, 0.0], depth),
-            };
-        if !(0.0..=length).contains(&marker.along) {
+        let run = marker.wall.run(block.width, block.depth);
+        if !(0.0..=run.length).contains(&marker.along) {
             return None;
         }
         let off = if marker.inside { -OFF } else { OFF };
-        let across = du.mul_add(marker.along, nu.mul_add(off, u));
-        let deep = dw.mul_add(marker.along, nw.mul_add(off, w));
+        let across = run
+            .across
+            .mul_add(marker.along, run.out[0].mul_add(off, run.left[0]));
+        let deep = run
+            .deep
+            .mul_add(marker.along, run.out[1].mul_add(off, run.left[1]));
         let frame = self.prism(block.x, block.z, block.rotation);
         let at = frame.place([across, HEAD.min(block.eave / 2.0), deep]);
         let [east, north, _] = at;

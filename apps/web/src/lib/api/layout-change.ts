@@ -43,6 +43,7 @@ export function body({
         height,
         finish,
       })),
+      openings: [...(scene.openings ?? [])],
     },
   };
 }

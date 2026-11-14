@@ -115,6 +115,13 @@ export class Grabbing {
     const group = this.#sources.drawn();
     const hit = group && strike(group, this.#sources.panels(), this.#camera, at);
 
+    // An opening is grabbed by its own leaf.
+    if (hit?.kind === "opening") {
+      return same(editing.target, { kind: "opening", index: hit.index })
+        ? { grip: "move", ray, height: 0 }
+        : undefined;
+    }
+
     if (hit?.kind !== "point") return undefined;
 
     const level = picked(editing.scene, hit, editing.roofs);

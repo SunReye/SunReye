@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14)
 
 ## Context
 
@@ -31,6 +31,11 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
   - The `pv` crate places both on the ground for the browser to draw; a surface without a positive width and depth, or a fence with fewer than two points or no positive height, is refused. Each finish is drawn with generated materials.
 - **Equipment.** Markers for inverters and batteries, each linked to its device and placed on a block's wall, inside or outside.
   - A marker names its device, its kind (inverter or battery, so a hybrid inverter may carry one of each), its block, the wall (front along +z, right along +x, back, left) and its distance from the wall's left end seen from outside. It hangs at 1.5 m, at most half the eave, 10 cm off the wall; its label's anchor floats 1 m above the block's highest point. The `pv` crate places it, so the browser and the core agree; a marker past its wall's ends or on no block is refused. A marker of a removed device shows nothing.
+- **Openings.** Windows and doors in the blocks' walls. They are drawn and never shade; the `pv` crate stores them, fits them on their walls for the browser, and ignores them for shading.
+  - An opening names its kind (window, French window, front door or garage door), its block, the wall like a marker, and the distance from the wall's left end to its own left edge seen from outside; it has a width, a height and a sill height, 0 when left out. One on no block or on a carport, without a positive size, past its wall's ends, reaching above the eave, a door off the ground, or sharing wall with an earlier opening is refused. A scene stored without openings loads unchanged.
+  - *Look:* a frame and leaf 5 cm proud of the wall, from generated maps: a window's two casements with dark panes that mirror the sky, on a sill; a panelled front door under a glazed fanlight and a small canopy; a ribbed sectional garage door. The wall behind is not cut.
+  - *Night:* the front door's fanlight and about three windows in five glow warm, each window chosen by where it sits, so the same ones glow on every draw and the house looks lived in. They come on across dusk with the night's light (Look). The glow is an emissive map, and the light on the ground below is one flat decal for all of them: no light source is added. Nothing animates it, so the still tier shows it as it is.
+  - *Editing:* an opening is added in the first free place on a wall, in its kind's usual size. Selected, it is outlined on its wall: dragging it slides it along the wall, an arrow at its right edge drags its width and one above it its height, in 10 cm steps, kept on the wall and under the eave; a drag onto another opening is not made. The templates start with a front door and windows.
 - **Car places.** A parking footprint, optionally under a carport whose roof carries modules, linked to one EVCC loadpoint device (ADR 10). It shows the car while one is connected.
   - A carport is a block marked open: a post at each corner reaches up to its roof instead of walls, and its roof faces carry module grids and shade like any other. A car place stands under one by position, not by reference.
   - A place names its device, its corner, width, length and rotation like a block's footprint, a colour (`#rrggbb`), and an uploaded body by id. The `pv` crate stands the car at the place's centre, its nose along the place's −z, its label's anchor 2.5 m up; a place without a positive size, with another colour or an id no SHA-256 is refused.
@@ -55,8 +60,11 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
 - **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
-- **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat.
-- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it, and nights use night lighting. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
+  - *Weathering:* on the full motion tier each finish varies in colour and roughness at a scale of metres, from noise computed in its shader that never repeats; loose ground (lawn, gravel, driveway) also blends its map at a second, turned scale, and a wall darkens at its foot. It costs no pass and no texture, only shader arithmetic, which the lite and still tiers drop (ADR 21): they draw each finish as it is. No map holds anything coarser than its grain or its bond, so none shows its repeat as a grid on any tier or at any zoom.
+  - *Roof trim:* a pitched roof carries ridge and hip caps and verge tiles in its colour, and zinc gutters along its eaves. The browser finds them on the crate's roof faces: where two pitched faces meet, a face's sloping outer edges, and its level lowest edge.
+  - *Drawn detail never shades.* Trim, a module's frame and every other detail the browser adds are drawn only; the `pv` crate's faces and solids stay what shades. What lies on a surface that casts the same shadow (modules, ground surfaces, trim) casts none of its own.
+- **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat. A module is a body 3.5 cm proud of its roof, its satin frame round the cells.
+- **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it. Nights are moonlit: a cool moon with soft shadows and a blue sky fill keep the plant readable, eased in across dusk with no step at the horizon. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
 - **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
 - **Theme:** the page background, fog and exposure follow light or dark mode.
 - **Rendering quality:** antialiasing is on, and tone mapping is filmic.
@@ -72,7 +80,7 @@ Energy flow shows as tint and label arrows.
 **Building it.** Anyone should get from nothing to their roof in minutes, on a phone, a tablet or with a mouse.
 - **Templates.** An empty scene offers starting points: detached house with gable roof, bungalow with flat roof, house with hip roof, L-house (two blocks), terrace end, and empty. A template only fills the scene; nothing remembers it.
 - **Handles.** Selecting an object shows handles in 3D:
-  - arrows on its walls drag width and depth;
+  - arrows on its walls drag width and depth; an opening's drag its width and height;
   - a handle on the ridge or high eave drags the pitch;
   - a ring rotates it;
   - dragging its footprint moves it;

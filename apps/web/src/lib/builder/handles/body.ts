@@ -6,7 +6,7 @@ import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle" | "surface" | "fence" | "place" | "chimney";
+  readonly kind: "block" | "obstacle" | "surface" | "fence" | "place" | "chimney" | "opening";
   readonly index: number;
 }
 
@@ -84,7 +84,7 @@ function placeIn(scene: Scene, index: number): Body | undefined {
 }
 
 export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
-  if (kind === "fence" || kind === "chimney") return undefined;
+  if (kind === "fence" || kind === "chimney" || kind === "opening") return undefined;
 
   if (kind === "place") return placeIn(scene, index);
 

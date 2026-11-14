@@ -248,6 +248,10 @@ _Avoid_: Shader, object
 A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
 _Avoid_: Pin, icon
 
+**Opening**:
+A window or a door in a block's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
+_Avoid_: Hole, cutout, aperture
+
 **Car place**:
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
 _Avoid_: Garage, charger

@@ -58,8 +58,19 @@ const SHEET: Readonly<Record<ModuleMode, readonly [number, number]>> = {
   rough: [138, 138],
 };
 
-/** One pixel of a module's map: its backsheet, cell, half-cut seam and busbar wires. */
+/** The frame's width in pixels, and its black anodised aluminium in each map: satin, so its
+ * sides do not glint like glass. */
+const FRAME_PX = 2;
+const FRAME: Readonly<Record<ModuleMode, number>> = { albedo: 15, glow: 0, rough: 235 };
+
+function onFrame(x: number, y: number): boolean {
+  return x < FRAME_PX || y < FRAME_PX || x >= MODULE.w - FRAME_PX || y >= MODULE.h - FRAME_PX;
+}
+
+/** One pixel of a module's map: its frame, backsheet, cell, half-cut seam and busbar wires. */
 function modulePixel(mode: ModuleMode, x: number, y: number): Rgb {
+  if (onFrame(x, y)) return grey(FRAME[mode]);
+
   const at = cellAt(x, y);
   const [sheet, seam] = SHEET[mode];
 
@@ -86,7 +97,8 @@ function moduleMap(mode: ModuleMode): Pixels {
 }
 
 /**
- * A full-black module: 6 × 10 half-cut mono cells on a black backsheet, faint multi-busbar wires.
+ * A full-black module: 6 × 10 half-cut mono cells on a black backsheet in a black frame, faint
+ * multi-busbar wires.
  * `module.glow` is the cells-only mask the string glow lights up.
  */
 export function module() {

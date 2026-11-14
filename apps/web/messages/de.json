@@ -1075,5 +1075,16 @@
   "settings_verified": "auf Hardware geprüft",
   "log_empty": "Noch nichts geschrieben",
   "log_empty_hint": "Jeder Schreibvorgang landet hier, mit seinem Ergebnis.",
-  "tariff_now": "Ab sofort"
+  "tariff_now": "Ab sofort",
+  "opening_window": "Fenster",
+  "opening_french_window": "Fenstertür",
+  "opening_front_door": "Haustür",
+  "opening_garage_door": "Garagentor",
+  "builder_add_window": "Fenster hinzufügen",
+  "builder_add_french_window": "Fenstertür hinzufügen",
+  "builder_add_front_door": "Haustür hinzufügen",
+  "builder_add_garage_door": "Garagentor hinzufügen",
+  "opening_kind": "Art",
+  "opening_sill": "Brüstungshöhe (m)",
+  "builder_opening_summary": "Baukörper {block} · {wall} · {width} × {height} m"
 }

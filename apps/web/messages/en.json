@@ -1075,5 +1075,16 @@
   "settings_verified": "verified on hardware",
   "log_empty": "Nothing written yet",
   "log_empty_hint": "Every write lands here, with its outcome.",
-  "tariff_now": "From now"
+  "tariff_now": "From now",
+  "opening_window": "Window",
+  "opening_french_window": "French window",
+  "opening_front_door": "Front door",
+  "opening_garage_door": "Garage door",
+  "builder_add_window": "Add window",
+  "builder_add_french_window": "Add French window",
+  "builder_add_front_door": "Add front door",
+  "builder_add_garage_door": "Add garage door",
+  "opening_kind": "Kind",
+  "opening_sill": "Sill height (m)",
+  "builder_opening_summary": "Block {block} · {wall} · {width} × {height} m"
 }

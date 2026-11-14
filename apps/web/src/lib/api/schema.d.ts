@@ -1948,6 +1948,29 @@ export interface components {
             status: components["schemas"]["Status"];
             version: string;
         };
+        /** @description A window or a door in a block's wall. */
+        Opening: {
+            /**
+             * Format: double
+             * @description Metres from the wall's left end to the opening's left edge, seen from outside.
+             */
+            along: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            height: number;
+            kind: components["schemas"]["OpeningKind"];
+            /**
+             * Format: double
+             * @description Metres from the ground to its lower edge; a door's is 0.
+             */
+            sill?: number;
+            wall: components["schemas"]["Wall"];
+            /** Format: double */
+            width: number;
+        };
+        /** @enum {string} */
+        OpeningKind: "window" | "frenchWindow" | "frontDoor" | "garageDoor";
         /**
          * @description How a write ended.
          * @enum {string}
@@ -2231,6 +2254,8 @@ export interface components {
              */
             north: number;
             obstacles: components["schemas"]["Obstacle"][];
+            /** @description Windows and doors on the blocks' walls. Drawn only; they never shade. */
+            openings?: components["schemas"]["Opening"][];
             /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
             surfaces?: components["schemas"]["GroundSurface"][];
         };

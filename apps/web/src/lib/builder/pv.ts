@@ -2,6 +2,10 @@
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import type { Chimney, Overhang } from "./roofing.ts";
+import type { Equipment, Fitted, Opening } from "./walls.ts";
+
+export type { Equipment, Fitted, Opening, OpeningKind, Wall } from "./walls.ts";
+
 import {
   isExports,
   isGeometry,
@@ -79,21 +83,6 @@ export interface ModuleGrid {
   readonly modules: readonly Cell[];
 }
 
-/** A side of a block's footprint: the front along +z, the right along +x. */
-export type Wall = "front" | "right" | "back" | "left";
-
-/** A marker for an inverter or a battery, on a block's wall. */
-export interface Equipment {
-  readonly device: number;
-  readonly kind: "inverter" | "battery";
-  readonly block: number;
-  readonly wall: Wall;
-  /** Metres from the wall's left end, seen from outside. */
-  readonly along: number;
-  /** Behind the wall, in the building. */
-  readonly inside: boolean;
-}
-
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
 export interface CarPlace {
   readonly device: number;
@@ -121,6 +110,7 @@ export interface Scene {
   /** Each drawn over the last; without any the plot is lawn. */
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
+  readonly openings?: readonly Opening[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -209,6 +199,8 @@ export interface Geometry {
   /** By ground surface and by fence, placed on the ground; null while one is refused. */
   readonly ground?: readonly Ground[] | null;
   readonly fences?: readonly Fencing[] | null;
+  /** By opening, fitted on its wall; null while one is refused. */
+  readonly openings?: readonly Fitted[] | null;
 }
 
 /** North and east positive, in degrees. */
