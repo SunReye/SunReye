@@ -39,7 +39,7 @@
     aria-label={m.builder_status()}
     class="glass-ambient pointer-events-auto flex h-9 max-w-full min-w-0 rounded-md pl-2.5 text-xs text-muted-foreground ring-1 ring-border/60 elevation-1"
   >
-    <div class="strip flex min-w-0 items-center gap-3 overflow-x-auto pr-5 whitespace-nowrap">
+    <div class="flex min-w-0 items-center gap-3 overflow-x-auto pr-2.5 whitespace-nowrap scroll-fade-x no-scrollbar">
       <StringPowers {strings} {watts} {source} />
       <CarNotes {cars} {devices} />
       {#if !located}
@@ -51,11 +51,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  /* What runs past the right edge fades out, so the line reads as one that goes on. */
-  .strip {
-    scrollbar-width: none;
-    mask-image: linear-gradient(to right, black calc(100% - 1.25rem), transparent);
-  }
-</style>

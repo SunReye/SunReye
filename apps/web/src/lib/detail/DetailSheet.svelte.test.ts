@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import "../../app.css";
 import { pull } from "../components/drawer.harness.ts";
+import { unfaded } from "../scroll-fade.harness.ts";
 import { BATTERY, prepare, restore, served, show } from "./detail.harness.ts";
 
 beforeEach(prepare);
@@ -72,6 +73,8 @@ test("a device's sheet lists its readings by group", async () => {
 
   await expect.element(readings.getByText("Zyklen")).toBeVisible();
   await expect.element(readings.getByText("Zähler")).toBeVisible();
+  // The sheet scrolls inside its glass and fades its edges (ADR 21).
+  expect(unfaded()).toEqual([]);
 });
 
 test("a string sharing its input is estimated and opens its sibling", async () => {

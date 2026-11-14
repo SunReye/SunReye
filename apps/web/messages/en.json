@@ -285,6 +285,8 @@
   "password_set": "Set the password",
   "plant_title": "Plant",
   "plant_timezone": "Plant timezone",
+  "plant_timezone_search": "Search a timezone",
+  "plant_timezone_none": "No timezone found.",
   "plant_latitude": "Latitude",
   "plant_longitude": "Longitude",
   "setup_next": "Next",

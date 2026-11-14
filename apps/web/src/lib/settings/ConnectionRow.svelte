@@ -1,5 +1,6 @@
 <!-- One connection under Settings › Connections: where it reaches and a broker's state, each on its own line; it opens its level. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Connection } from "../api/core";
@@ -28,11 +29,11 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <button
+    <Pressable
+      feedback
       {...props}
-      type="button"
       {onclick}
-      class={[props.class, "group flex-nowrap text-left hover:bg-muted/60 active:bg-muted"]}
+      class={[props.class, "group flex-nowrap text-left"]}
     >
       <Item.Content class="min-w-0">
         <Item.Title class="text-[15px]">{connection.name}</Item.Title>
@@ -49,6 +50,6 @@
           class="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
         />
       </Item.Actions>
-    </button>
+    </Pressable>
   {/snippet}
 </Item.Root>

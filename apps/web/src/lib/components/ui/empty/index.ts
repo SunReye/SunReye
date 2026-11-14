@@ -5,6 +5,9 @@ import Media from "./empty-media.svelte";
 import Title from "./empty-title.svelte";
 import Root from "./empty.svelte";
 
+// Local: export the `dense` size.
+export { emptyVariants, type EmptySize } from "./empty.svelte";
+
 export {
   Root,
   Header,

@@ -285,6 +285,8 @@
   "password_set": "Passwort festlegen",
   "plant_title": "Anlage",
   "plant_timezone": "Zeitzone der Anlage",
+  "plant_timezone_search": "Zeitzone suchen",
+  "plant_timezone_none": "Keine Zeitzone gefunden.",
   "plant_latitude": "Breitengrad",
   "plant_longitude": "Längengrad",
   "setup_next": "Weiter",

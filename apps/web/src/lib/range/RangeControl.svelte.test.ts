@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import type { Bounds, Kind, Ranged } from "./range.ts";
@@ -62,7 +63,31 @@ test("a custom range shows its bounds by date and hour", async () => {
 
   const screen = await render(RangeControl, { model: c.model });
 
-  await screen.getByRole("combobox", { name: "Von Uhrzeit" }).selectOptions("8 Uhr");
+  await screen.getByRole("combobox", { name: "Von Uhrzeit" }).click();
+  await page.getByRole("option", { name: "8 Uhr", exact: true }).click();
 
   expect(changes).toEqual([["2026-11-03", "2026-11-05", 8, 24]]);
+});
+
+test("a custom bound's date is picked from a calendar, between its limits", async () => {
+  const changes: [string, string, number, number][] = [];
+
+  const c = control("custom", {
+    ...BOUNDS,
+    onchange: (from, to, fromHour, toHour) => {
+      changes.push([from, to, fromHour, toHour]);
+    },
+  });
+
+  const screen = await render(RangeControl, { model: c.model });
+
+  await screen.getByRole("button", { name: "Bis Datum" }).click();
+
+  // The end may not come before the start.
+  await expect.element(page.getByRole("button", { name: /, 2\. November 2026/u })).toBeDisabled();
+
+  await page.getByRole("button", { name: /, 10\. November 2026/u }).click();
+
+  expect(changes).toEqual([["2026-11-03", "2026-11-10", 0, 24]]);
+  await expect.element(page.getByRole("grid")).not.toBeInTheDocument();
 });

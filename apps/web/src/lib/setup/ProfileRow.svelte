@@ -1,5 +1,6 @@
 <!-- One profile in the picker: its name, a family or community tag under it, its rating beside it. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Check from "@lucide/svelte/icons/check";
   import type { Listing } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
@@ -42,11 +43,11 @@
 </script>
 
 <li>
-  <button
-    type="button"
+  <Pressable
+    feedback
     aria-label={spoken}
     aria-current={chosen ? "true" : undefined}
-    class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 active:bg-muted"
+    class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left"
     onclick={() => {
       onpick(listing.id);
     }}
@@ -61,5 +62,5 @@
       {/if}
       {#if chosen}<Check class="size-4 text-brand" />{/if}
     </span>
-  </button>
+  </Pressable>
 </li>

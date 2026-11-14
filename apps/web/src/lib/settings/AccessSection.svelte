@@ -3,6 +3,7 @@
   opens the form adding one, in a drawer on the phone and a dialog with the rail.
 -->
 <script lang="ts" generics="T extends { id: number }">
+  import Eyebrow from "../components/eyebrow.svelte";
   import type { Snippet } from "svelte";
   import type { Problem } from "../api/core";
   import * as Item from "#lib/components/ui/item/index.js";
@@ -41,7 +42,7 @@
 
 <section aria-labelledby={id} class="flex flex-col">
   <header class="flex flex-col gap-1 px-4 pt-5 pb-2">
-    <h3 {id} class="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+    <Eyebrow {id}>{title}</Eyebrow>
     <p class="text-sm text-muted-foreground">{hint}</p>
   </header>
   <div class="divide-y divide-border/60 border-y border-border/60">

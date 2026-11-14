@@ -34,7 +34,7 @@
 
 <ResponsiveSheet bind:open label={point?.name ?? ""}>
   {#if point !== undefined}
-    <div class="flex max-h-[80dvh] flex-col gap-5 overflow-y-auto px-5 pt-2 pb-2" data-vaul-no-drag>
+    <div class="flex max-h-[80dvh] flex-col gap-5 overflow-y-auto px-5 pt-2 pb-2 scroll-fade-y no-scrollbar" data-vaul-no-drag>
       <div class="flex items-center gap-3">
         <PointTile role={roleOf(point)} active />
         <h2 class="truncate text-lg font-semibold">{point.name}</h2>

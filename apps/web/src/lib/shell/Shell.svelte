@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { Toaster } from "#lib/components/ui/sonner/index.js";
   import * as Tooltip from "#lib/components/ui/tooltip/index.js";
   import { stream } from "../live/stream.svelte.ts";
   import Connection from "./Connection.svelte";
@@ -40,6 +41,9 @@
   const { enter, leave } = routeSlide(current);
 
   const strip = $derived(stream.halted && current !== DASHBOARD.route);
+
+  /** Clear of the bottom bar: its height and the safe area, as `--bar-clear`, and a gap. */
+  const ABOVE_BAR = { bottom: "calc(92px + env(safe-area-inset-bottom))" };
 </script>
 
 <Tooltip.Provider>
@@ -72,5 +76,12 @@
 
   {#if shell === "bar"}
     <Bar {current} {admin} {goto} />
+  {/if}
+
+  <!-- The one toaster (ADR 21): bottom right beside the rail, above the bar on the phone. -->
+  {#if shell === "bar"}
+    <Toaster position="bottom-center" offset={ABOVE_BAR} mobileOffset={ABOVE_BAR} />
+  {:else}
+    <Toaster position="bottom-right" />
   {/if}
 </Tooltip.Provider>

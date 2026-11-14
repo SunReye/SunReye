@@ -1,5 +1,6 @@
 <!-- A car place's own body: upload a GLB, or drop it for the default. -->
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
   import Upload from "@lucide/svelte/icons/upload";
   import X from "@lucide/svelte/icons/x";
   import * as Item from "#lib/components/ui/item/index.js";
@@ -69,8 +70,6 @@
         {m.car_model_remove()}
       </Button>
     {/if}
-    {#if refused !== undefined}
-      <p role="alert" class="text-sm text-destructive">{refused}</p>
-    {/if}
+    <ProblemAlert text={refused} />
   </Item.Content>
 </Item.Root>

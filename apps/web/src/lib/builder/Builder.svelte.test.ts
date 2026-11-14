@@ -22,7 +22,7 @@ import {
   testCore,
   undesk,
 } from "./builder.harness.ts";
-import { saveFrom } from "./moment.harness.ts";
+import { saveFrom, savedFrom } from "./moment.harness.ts";
 
 const SLOW = { timeout: 15_000 };
 
@@ -66,9 +66,8 @@ test("the admin lays modules, wires one into a string, undoes one and saves from
   await drill("Strings");
   await expect.element(inspector().getByText("1 Module, davon 0 mit Optimierer")).toBeVisible();
 
-  await saveFrom("2026-11-01");
+  await savedFrom("2026-11-01");
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   await expect
     .element(screen.getByRole("alert"))
     .toHaveTextContent(
@@ -147,7 +146,7 @@ test("a string saved before any module is painted into it is named on its own le
 
 test("the admin hangs a battery marker inside the right wall and saves it with the scene", async () => {
   const transport = testCore();
-  const screen = await gridOnTheSouthFace(transport);
+  await gridOnTheSouthFace(transport);
 
   await drill("Module", "Szene", "Geräte", "Batterie platzieren");
   await choose("Gerät", "Speicher");
@@ -155,9 +154,8 @@ test("the admin hangs a battery marker inside the right wall and saves it with t
   await enter("Abstand vom linken Ende (m)", "3");
   await inspector().getByRole("checkbox", { name: "Innen" }).click();
 
-  await saveFrom("2026-11-01");
+  await savedFrom("2026-11-01");
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({
     scene: {
       equipment: [{ device: 2, kind: "battery", block: 0, wall: "right", along: 3, inside: true }],
@@ -167,7 +165,7 @@ test("the admin hangs a battery marker inside the right wall and saves it with t
 
 test("the admin adds a car place under a carport, paints it, uploads a GLB and saves", async () => {
   const transport = testCore();
-  const screen = await gridOnTheSouthFace(transport);
+  await gridOnTheSouthFace(transport);
 
   await drill("Module", "Szene", "Gebäude", "Baukörper hinzufügen");
   await inspector().getByRole("checkbox", { name: "Carport" }).click();
@@ -187,9 +185,8 @@ test("the admin adds a car place under a carport, paints it, uploads a GLB and s
     .element(inspector().getByRole("button", { name: "Eigenes Modell entfernen" }))
     .toBeVisible();
 
-  await saveFrom("2026-11-01");
+  await savedFrom("2026-11-01");
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({
     scene: {
       blocks: [{ x: 0 }, { open: true }],

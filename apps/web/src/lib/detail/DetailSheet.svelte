@@ -172,10 +172,13 @@
         e.preventDefault();
         (document.querySelector("[data-detail-sheet]") as HTMLElement | null)?.focus();
       }}
-      class="glass-ambient w-full gap-0 overflow-y-auto p-0 outline-none no-scrollbar data-[side=right]:sm:max-w-[460px]"
+      class="glass-ambient w-full gap-0 overflow-hidden p-0 outline-none data-[side=right]:sm:max-w-[460px]"
     >
       <Sheet.Title class="sr-only">{title}</Sheet.Title>
-      {@render body()}
+      <!-- The glass keeps its edge; the sheet scrolls and fades inside it (ADR 21). -->
+      <div class="min-h-0 flex-1 overflow-y-auto scroll-fade-y no-scrollbar">
+        {@render body()}
+      </div>
     </Sheet.Content>
   </Sheet.Root>
 {:else}
@@ -188,7 +191,7 @@
     }
     label={title}
   >
-    <div class="overflow-y-auto no-scrollbar" data-detail-sheet>
+    <div class="overflow-y-auto scroll-fade-y no-scrollbar" data-detail-sheet>
       {@render body()}
     </div>
   </DrawerSheet>

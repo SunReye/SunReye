@@ -1,8 +1,9 @@
 <!-- One device under Settings › Writes: its writes switch (ADR 7), each setting's enable (ADR 8), and the note they share. -->
 <script lang="ts">
+  import Refusal from "../setup/Refusal.svelte";
+  import Eyebrow from "../components/eyebrow.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import type { Capabilities, Core, Device, Problem } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import SettingEnable from "./SettingEnable.svelte";
   import ToggleRow from "./ToggleRow.svelte";
@@ -40,9 +41,7 @@
 </script>
 
 <section aria-label={device.name} class="flex flex-col">
-  <h3 class="px-4 pt-5 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-    {device.name}
-  </h3>
+  <Eyebrow class="px-4 pt-5 pb-2">{device.name}</Eyebrow>
   <Item.Group class="gap-0 divide-y divide-border/60 border-y border-border/60">
     <ToggleRow
       label={m.settings_writes_allowed()}
@@ -51,9 +50,7 @@
       checked={support.writes}
       onchange={(on) => void writes(on)}
     />
-    {#if problem}<p role="alert" class="px-4 py-2 text-sm text-destructive">
-        {problemText(problem.problem)}
-      </p>{/if}
+    {#if problem}<div class="px-4 py-2"><Refusal refused={problem} /></div>{/if}
     {#each support.settings as setting (setting.key)}
       <SettingEnable {core} device={device.id} {setting} {onchanged} />
     {/each}

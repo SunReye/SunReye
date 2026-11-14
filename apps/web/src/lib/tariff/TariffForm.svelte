@@ -1,8 +1,9 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
-  import { problemText } from "../i18n/problems";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
   import AppliesFrom from "./AppliesFrom.svelte";
@@ -28,6 +29,10 @@
       event.submitter?.getAttribute("name") === "reprice" && from !== undefined
         ? await core.reprice(from, change)
         : await core.changeTariff({ ...change, appliesFrom: from ?? null });
+
+    if (!("problem" in answer)) {
+      toast.success(m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) }));
+    }
   }
 </script>
 
@@ -37,14 +42,9 @@
   <div class="mt-5 border-y border-border/60">
     <AppliesFrom bind:value={draft.appliesFrom} />
   </div>
-  {#if answer !== undefined}
-    {#if "problem" in answer}
-      <p role="alert" class="px-4 pt-3 text-sm text-destructive">{problemText(answer.problem)}</p>
-    {:else}
-      <p role="status" class="px-4 pt-3 text-sm text-muted-foreground">
-        {m.tariff_saved_from({ from: instant.format(Date.parse(answer.appliesFrom)) })}
-      </p>
-    {/if}
+  <!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
+  {#if answer !== undefined && "problem" in answer}
+    <div class="px-4 pt-3"><ProblemAlert problem={answer.problem} /></div>
   {/if}
   <!-- Save stays in reach above the bar however long the bands run. -->
   <div

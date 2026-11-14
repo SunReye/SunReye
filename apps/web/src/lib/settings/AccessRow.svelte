@@ -1,10 +1,10 @@
 <!-- A viewer or token under Settings › Users & access; nothing brings it back, so removing asks first. -->
 <script lang="ts">
+  import Refusal from "../setup/Refusal.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import type { Problem } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
 
   let {
@@ -42,7 +42,7 @@
     {:else if detail !== undefined}
       <Item.Description>{detail}</Item.Description>
     {/if}
-    {#if problem}<p role="alert" class="text-sm">{problemText(problem.problem)}</p>{/if}
+    <Refusal refused={problem} />
   </Item.Content>
   <Item.Actions>
     {#if asking}

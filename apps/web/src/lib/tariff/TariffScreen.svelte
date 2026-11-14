@@ -3,6 +3,8 @@
   Settings › Tariff; money over time and payback live in History, which this screen links to.
 -->
 <script lang="ts">
+  import Section from "../components/section.svelte";
+  import PageTitle from "../components/page-title.svelte";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
@@ -20,11 +22,13 @@
 <main
   class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
 >
-  <h1 class="text-xl font-semibold tracking-tight lg:leading-8">{m.tariff_title()}</h1>
+  <PageTitle wide title={m.tariff_title()} />
   <PricesNow {core} />
   <RangeCard model={route}>
     <RangeControl model={route} />
-    <Costs {core} {route} />
+    <Section title={m.tariff_costs()}>
+      <Costs {core} {route} />
+    </Section>
   </RangeCard>
   <a
     href="#/history?metric=money"

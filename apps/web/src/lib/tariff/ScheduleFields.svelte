@@ -1,5 +1,6 @@
 <!-- Bought or fed-in prices: the base price, then each band that overrides it on given days and hours. -->
 <script lang="ts">
+  import Eyebrow from "../components/eyebrow.svelte";
   import { m } from "../paraglide/messages.js";
   import AddRow from "../settings/AddRow.svelte";
   import BandFields from "./BandFields.svelte";
@@ -10,9 +11,7 @@
 </script>
 
 <fieldset class="flex min-w-0 flex-col">
-  <legend class="float-left w-full px-4 pt-5 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-    {legend}
-  </legend>
+  <Eyebrow element="legend" class="float-left w-full px-4 pt-5 pb-2">{legend}</Eyebrow>
   <div class="clear-left flex flex-col divide-y divide-border/60 border-y border-border/60">
     <PriceRow
       name={m.tariff_base_price()}

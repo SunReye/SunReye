@@ -1,5 +1,6 @@
 <!-- One group row of the drill-in's root list: icon, label and value summary. -->
 <script lang="ts">
+  import { Pressable } from "../ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import * as Item from "../ui/item/index.js";
   import type { DrillGroup } from "./drill-in.svelte";
@@ -18,15 +19,15 @@
 
 <Item.Root class="rounded-none border-0">
   {#snippet child({ props })}
-    <button
+    <Pressable
+      feedback
       {...props}
-      type="button"
       aria-current={current === true ? "page" : undefined}
       disabled={group.disabled}
       {onclick}
       class={[
         props.class,
-        "group relative flex-nowrap text-left hover:bg-muted/60 active:bg-muted disabled:pointer-events-none disabled:opacity-70",
+        "group relative flex-nowrap text-left disabled:pointer-events-none disabled:opacity-70",
         current === true && "bg-muted",
       ]}
     >
@@ -49,6 +50,6 @@
           />
         </Item.Actions>
       {/if}
-    </button>
+    </Pressable>
   {/snippet}
 </Item.Root>
