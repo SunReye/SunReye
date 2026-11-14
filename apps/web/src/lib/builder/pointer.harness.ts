@@ -53,28 +53,8 @@ export async function press(
   await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
 }
 
-/** The finite animations moving `element` or anything around it, such as a sliding sheet. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- a DOM element, read only.
-const moving = (element: Element): Promise<Animation>[] =>
-  document
-    .getAnimations()
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
-    .filter((animation) => {
-      const target = animation.effect instanceof KeyframeEffect ? animation.effect.target : null;
-
-      return (
-        target?.contains(element) === true &&
-        Number.isFinite(animation.effect?.getComputedTiming().endTime)
-      );
-    })
-    // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, read only.
-    .map((animation) => animation.finished);
-
-/** Resolves once `element` stops moving: its animations end and its box holds still a frame. */
+/** Resolves once `element`'s box holds still for a frame, or after a second of frames. */
 async function settled(element: Element): Promise<void> {
-  // A transition that has not drawn its first frame yet looks still to the box alone.
-  await Promise.allSettled(moving(element));
-
   let box = "";
 
   for (let i = 0; i < 60; i++) {
@@ -92,6 +72,18 @@ async function settled(element: Element): Promise<void> {
   }
 }
 
+/** Resolves once `element` is what the page hits at `x`, `y`, or after two seconds of frames. */
+async function uncovered(element: Element, x: number, y: number): Promise<void> {
+  for (let i = 0; i < 120 && !element.contains(document.elementFromPoint(x, y)); i++) {
+    // oxlint-disable-next-line no-await-in-loop -- one frame at a time.
+    await new Promise<void>((done) => {
+      requestAnimationFrame(() => {
+        done();
+      });
+    });
+  }
+}
+
 /** One finger taps the middle of what `locator` finds, through the browser's touch input. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, read only.
 export async function tap(locator: Locator): Promise<void> {
@@ -104,6 +96,9 @@ export async function tap(locator: Locator): Promise<void> {
   await settled(element);
 
   const { left, top, width, height } = element.getBoundingClientRect();
+  const [x, y] = [left + width / 2, top + height / 2];
 
-  await press("touch", [[left + width / 2, top + height / 2]]);
+  // A closing drawer's scrim still covers the page as it fades: the finger would land on it.
+  await uncovered(element, x, y);
+  await press("touch", [[x, y]]);
 }
