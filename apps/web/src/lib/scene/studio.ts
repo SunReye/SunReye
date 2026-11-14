@@ -28,6 +28,7 @@ import { toThree } from "../builder/scene.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import { aim, backdrop, ground, sky } from "./backdrop.ts";
 import { occlusion, untone, type Daylight, type Theme } from "./light.ts";
+import { extras } from "./weather.ts";
 
 /** Soft shadows: PCF with a radius, as r187 dropped PCFSoftShadowMap. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it up in place.
@@ -128,9 +129,10 @@ export class Studio {
     return this.#occlusion.enabled;
   }
 
-  /** Ambient occlusion runs on the full motion tier only (ADR 21). */
+  /** Ambient occlusion and the finishes' extras run on the full motion tier only (ADR 21). */
   follow(tier: MotionTier): void {
     this.#occlusion.enabled = occlusion(tier);
+    extras.value = tier === "full" ? 1 : 0;
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */

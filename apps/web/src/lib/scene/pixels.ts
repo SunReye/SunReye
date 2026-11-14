@@ -53,7 +53,14 @@ function tile(x: number, y: number, tone: number, grain: number): Rgb {
 function tiles() {
   const { size, columns, rows } = TILES;
   const random = rng(31);
-  const tone = Array.from({ length: columns * rows }, () => 0.86 + random() * 0.22);
+
+  // Fired a shade apart, a few much darker: a roof of one tone reads as a painted sheet.
+  const tone = Array.from({ length: columns * rows }, () => {
+    const fired = random();
+
+    return fired < 0.12 ? 0.66 + random() * 0.1 : 0.84 + fired * 0.3;
+  });
+
   const grain = fbm(size, 16, 4, 32);
 
   const [height, albedo, rough] = [
@@ -79,17 +86,21 @@ function tiles() {
   };
 }
 
-/** Lawn: mottled greens with blade streaks. */
+/** Lawn: blades and fine mottling only. Its patches come from the weathering, which never
+ * repeats: anything coarse here would show the repeat as a grid. */
 function grass() {
   const size = 512;
   const blades = fbm(size, 64, 2, 42);
+  const tufts = fbm(size, 24, 3, 43);
 
   return {
-    "grass.map": fromField(fbm(size, 6, 6, 41), size, (v, i) => {
-      const k = 0.7 + v * 0.5 + ((blades[i] ?? 0) - 0.5) * 0.35;
-      const dry = Math.max(0, v - 0.62) * 1.6;
+    "grass.map": fromField(fbm(size, 40, 3, 41), size, (v, i) => {
+      const k =
+        0.78 + (v - 0.5) * 0.3 + ((blades[i] ?? 0) - 0.5) * 0.4 + ((tufts[i] ?? 0) - 0.5) * 0.25;
 
-      return [(60 + dry * 40) * k, (80 + dry * 12) * k, (34 + dry * 6) * k];
+      const dry = Math.max(0, (tufts[i] ?? 0) - 0.62) * 1.2;
+
+      return [(58 + dry * 40) * k, (84 + dry * 12) * k, (34 + dry * 6) * k];
     }),
     "grass.normal": normalFrom(blades, size, size, 4),
   };

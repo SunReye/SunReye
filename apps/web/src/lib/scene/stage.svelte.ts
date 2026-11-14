@@ -84,15 +84,6 @@ function free(part: Object3D): void {
   for (const child of part.children) free(child);
 }
 
-/** Casts and catches the sun's shadow. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-function shadowed(part: Object3D): void {
-  part.castShadow = true;
-  part.receiveShadow = true;
-
-  for (const child of part.children) shadowed(child);
-}
-
 /** Draws one group at a time in `studio`, freeing the last. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws in it.
 function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
@@ -101,8 +92,6 @@ function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
   return {
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
     show(group) {
-      shadowed(group);
-
       if (drawn !== undefined) {
         studio.scene.remove(drawn);
         free(drawn);

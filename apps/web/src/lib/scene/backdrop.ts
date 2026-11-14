@@ -18,6 +18,7 @@ import { flowColour, type Flow } from "../energy-colours.ts";
 import { untone } from "./light.ts";
 import { lawn } from "./materials.ts";
 import { backdropAt } from "./vignette.ts";
+import { patched } from "./weather.ts";
 
 /** Metres of lawn each way; it fades long before its edge. */
 const LAWN = 400;
@@ -100,7 +101,7 @@ export function ground(fade: Fade): Mesh {
 
   material.transparent = true;
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js patches it in place.
-  material.onBeforeCompile = (shader) => {
+  patched(material, "fade", (shader) => {
     shader.uniforms["uFadeCentre"] = fade.centre;
     shader.uniforms["uFadeRadius"] = fade.radius;
     shader.vertexShader = shader.vertexShader
@@ -118,7 +119,7 @@ export function ground(fade: Fade): Mesh {
         "#include <alphatest_fragment>",
         "#include <alphatest_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(uFadeRadius, uFadeRadius + 10.0, length(vFadeWorld.xz - uFadeCentre));",
       );
-  };
+  });
 
   const mesh = new Mesh(geometry, material);
 

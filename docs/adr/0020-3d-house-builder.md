@@ -1,6 +1,6 @@
 # 20. 3D house builder
 
-Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13)
+Status: accepted (2026-11-09), amended (2026-11-10, 2026-11-12, 2026-11-13, 2026-11-14)
 
 ## Context
 
@@ -55,7 +55,10 @@ The PV layout (ADR 17) is entered as numbers: planes, module counts, MPPT inputs
 
 **Look.** An architectural visualisation that matches the SPA (ADR 21), in studio mode: the plot fades into the page background, with no visible horizon.
 - **Materials:** physically based and generated in code: plaster walls, tiled or flat roofs, grass, paving, bark and leaves. No texture files ship.
-- **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat.
+  - *Weathering:* on the full motion tier each finish varies in colour and roughness at a scale of metres, from noise computed in its shader that never repeats; loose ground (lawn, gravel, driveway) also blends its map at a second, turned scale, and a wall darkens at its foot. It costs no pass and no texture, only shader arithmetic, which the lite and still tiers drop (ADR 21): they draw each finish as it is. No map holds anything coarser than its grain or its bond, so none shows its repeat as a grid on any tier or at any zoom.
+  - *Roof trim:* a pitched roof carries ridge and hip caps and verge tiles in its colour, and zinc gutters along its eaves. The browser finds them on the crate's roof faces: where two pitched faces meet, a face's sloping outer edges, and its level lowest edge.
+  - *Drawn detail never shades.* Trim, a module's frame and every other detail the browser adds are drawn only; the `pv` crate's faces and solids stay what shades. What lies on a surface that casts the same shadow (modules, ground surfaces, trim) casts none of its own.
+- **Modules:** full black: black cells, backsheet and frames under glass with a specular strength of 0.12 and no clear coat. A module is a body 3.5 cm proud of its roof, its satin frame round the cells.
 - **Light:** the sun at its real position for the plant and time, casting soft shadows, with a sky model as the environment. The builder's time slider moves it. Nights are moonlit: a cool moon with soft shadows and a blue sky fill keep the plant readable, eased in across dusk with no step at the horizon. Ambient occlusion runs as one pass and is off on the lite and still motion tiers (ADR 21); the low-power switch shows the 2D flow instead.
 - **Strings:** a faint glow on the solar amber ramp in their cells, by share of peak.
 - **Theme:** the page background, fog and exposure follow light or dark mode.

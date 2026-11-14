@@ -54,3 +54,18 @@ test("only a module's cells glow, not its backsheet between them", () => {
   expect(at(16, 16)).toBeGreaterThan(200);
   expect(at(0, 0)).toBe(0);
 });
+
+/** A pixel's red, green and blue. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only.
+function rgb({ w, data }: Pixels, x: number, y: number): number[] {
+  return [...data.subarray((y * w + x) * 4, (y * w + x) * 4 + 3)];
+}
+
+test("a module's frame runs round its cells: satin beside the glass, and never glowing", () => {
+  const [rough, glow] = [map("module.rough"), map("module.glow")];
+
+  // The frame at the edge, then the middle of the first cell.
+  expect(rgb(rough, 1, 160)[0]).toBeGreaterThan((rgb(rough, 16, 10)[0] ?? 0) * 2);
+  expect(rgb(glow, 1, 160)[0]).toBe(0);
+  expect(rgb(glow, 190, 318)[0]).toBe(0);
+});

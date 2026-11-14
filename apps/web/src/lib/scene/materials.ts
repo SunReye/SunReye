@@ -15,6 +15,7 @@ import {
 import type { FenceFinish, GroundFinish } from "../builder/pv.ts";
 import { GROUPS, type GroupName, type Pixels } from "./pixels.ts";
 import { warmed } from "./warm.ts";
+import { mean, weathered } from "./weather.ts";
 
 const textures = new Map<string, DataTexture>();
 
@@ -66,35 +67,6 @@ export const REPEAT = {
   wood: [1.6, 1.6],
 } as const;
 
-const means = new Map<DataTexture, Color>();
-
-/** A map's mean albedo in linear light. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- read only; three.js's texture.
-function mean(made: DataTexture): Color {
-  const known = means.get(made);
-
-  if (known !== undefined) return known;
-
-  const data: ArrayLike<number> = made.image.data ?? [];
-  const sum = new Color(0, 0, 0);
-  const texel = new Color();
-
-  for (let i = 0; i + 2 < data.length; i += 4) {
-    sum.add(
-      texel
-        .fromArray(data, i)
-        .multiplyScalar(1 / 255)
-        .convertSRGBToLinear(),
-    );
-  }
-
-  const found = sum.multiplyScalar(1 / Math.max(1, data.length / 4));
-
-  means.set(made, found);
-
-  return found;
-}
-
 /** The material with its map's mean albedo turned to `colour`, `#rrggbb`; the grain stays. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- set up, then drawn.
 function painted(material: MeshStandardMaterial, colour: string | undefined): MeshStandardMaterial {
@@ -116,12 +88,16 @@ export function plaster(colour?: string): MeshStandardMaterial {
 }
 
 function plastered(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    map: map("plaster", "map"),
-    normalMap: map("plaster", "normal"),
-    normalScale: new Vector2(0.6, 0.6),
-    roughness: 0.92,
-  });
+  return weathered(
+    new MeshStandardMaterial({
+      map: map("plaster", "map"),
+      normalMap: map("plaster", "normal"),
+      normalScale: new Vector2(0.6, 0.6),
+      roughness: 0.92,
+    }),
+    // Rain streaks, and splashed dirt at the foot.
+    { colour: 0.07, rough: 0.06, foot: 0.8 },
+  );
 }
 
 /** Concrete roof tiles, in a block's roof colour. */
@@ -130,23 +106,30 @@ export function tiles(colour?: string): MeshStandardMaterial {
 }
 
 function tiled(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    map: map("tiles", "map"),
-    normalMap: map("tiles", "normal"),
-    roughnessMap: map("tiles", "rough"),
-    normalScale: new Vector2(1.2, 1.2),
-    roughness: 1,
-  });
+  return weathered(
+    new MeshStandardMaterial({
+      map: map("tiles", "map"),
+      normalMap: map("tiles", "normal"),
+      roughnessMap: map("tiles", "rough"),
+      normalScale: new Vector2(1.6, 1.6),
+      roughness: 1,
+    }),
+    // Patches of older, darker tiles.
+    { colour: 0.16, rough: 0.12 },
+  );
 }
 
 /** Grey render: flat roofs, obstacles, chimneys and poles; a flat roof in its block's colour. */
 export function render(colour?: string): MeshStandardMaterial {
   return painted(
-    new MeshStandardMaterial({
-      map: map("plinth", "map"),
-      normalMap: map("plinth", "normal"),
-      roughness: 0.85,
-    }),
+    weathered(
+      new MeshStandardMaterial({
+        map: map("plinth", "map"),
+        normalMap: map("plinth", "normal"),
+        roughness: 0.85,
+      }),
+      { colour: 0.12, rough: 0.1 },
+    ),
     colour,
   );
 }
@@ -169,11 +152,15 @@ export function leaves(): MeshStandardMaterial {
 }
 
 export function lawn(): MeshStandardMaterial {
-  return new MeshStandardMaterial({
-    map: map("grass", "map"),
-    normalMap: map("grass", "normal"),
-    roughness: 0.95,
-  });
+  return weathered(
+    new MeshStandardMaterial({
+      map: map("grass", "map"),
+      normalMap: map("grass", "normal"),
+      roughness: 0.95,
+    }),
+    // Lusher and thinner stretches, and dry spots.
+    { colour: 0.22, rough: 0.05, loose: true, patches: [1.22, 1.06, 0.72] },
+  );
 }
 
 /** A hedge's body under its leaves: dark, so gaps between the clusters read as depth. */
@@ -189,22 +176,26 @@ export function hedge(): MeshStandardMaterial {
 /** Ground finishes, each from its own generated maps. */
 export const GROUND: Readonly<Record<GroundFinish, () => MeshStandardMaterial>> = {
   lawn,
-  paving: () => paved("pavers", 0.8),
-  driveway: () => paved("asphalt", 1),
-  gravel: () => paved("gravel", 0.95),
-  path: () => paved("flags", 0.85),
+  paving: () => paved("pavers", 0.8, false),
+  driveway: () => paved("asphalt", 1, true),
+  gravel: () => paved("gravel", 0.95, true),
+  path: () => paved("flags", 0.85, false),
 };
 
-function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: number) {
-  return new MeshStandardMaterial({
-    map: map(name, "map"),
-    normalMap: map(name, "normal"),
-    roughness,
-    // Over the lawn and over earlier surfaces, never flickering through them.
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
-  });
+/** Laid stones keep their bond; loose ground also takes a second scale of its map. */
+function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: number, loose: boolean) {
+  return weathered(
+    new MeshStandardMaterial({
+      map: map(name, "map"),
+      normalMap: map(name, "normal"),
+      roughness,
+      // Over the lawn and over earlier surfaces, never flickering through them.
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
+    { colour: 0.14, rough: 0.12, loose },
+  );
 }
 
 /** Fence finishes: painted boards, anthracite powder-coated bars, a rendered wall. */
