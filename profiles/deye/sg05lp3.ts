@@ -14,7 +14,7 @@ import { BATTERY, FLOWS, LOW_VOLTAGE, identify, inputs, settings, total } from "
 //   (the 2024-06 sheet gives 20 A on input 2:
 //   https://www.deyeinverter.com/deyeinverter/2024/06/01/datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf)
 
-/** One profile of the range: a model, or the whole family. */
+/** One model of the range, or the family's base. */
 export interface Model {
   readonly id: string;
   readonly name: string;
@@ -25,7 +25,7 @@ export interface Model {
   readonly current: number;
   /** From the datasheet, with the rated AC output. */
   readonly inverter: Frozen<Inverter> & { readonly acRating: number };
-  /** Watts, as registers 20 and 21 report it; the family profile identifies by type alone. */
+  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
   readonly rated?: number;
 }
 
@@ -967,6 +967,7 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "kind",
       "storage",
       "unit",
+      "variants",
     ],
     identify: identify(LOW_VOLTAGE, model.rated),
     inverter: model.inverter,

@@ -9,11 +9,17 @@ export const LOW_VOLTAGE = [0x0500];
 /** Register 0 of a three-phase hybrid for a high-voltage battery: 6 to 15 kW, then 20 to 50 kW. */
 export const HIGH_VOLTAGE = [0x0600, 0x0601];
 
-/** The device type, and the rated power in registers 20 and 21 (0.1 W, low word first). */
+/**
+ * The device type, and the rated power in registers 20 and 21 (0.1 W, low word first): any rating
+ * when `rated` is left out, for the family's base.
+ */
 export function identify(types: readonly number[], rated?: number): Frozen<Identify>[] {
-  const type = { register: 0, values: types };
+  const power = { register: 20, type: "u32" } as const;
 
-  return rated === undefined ? [type] : [type, { register: 20, type: "u32", values: [rated * 10] }];
+  return [
+    { register: 0, values: types },
+    rated === undefined ? power : { ...power, values: [rated * 10] },
+  ];
 }
 
 /** PV input `n`'s power, voltage and current registers; the high-voltage range scales power by 10. */

@@ -10,6 +10,14 @@ interface Entry {
   readonly requires: readonly string[];
   readonly sha256: string;
   readonly url: string;
+  /** A family's variants, each by id and name. */
+  readonly variants?: readonly Listed[];
+}
+
+/** A variant as the index lists it. */
+interface Listed {
+  readonly id: string;
+  readonly name: string;
 }
 
 /** A profile the build rendered, at its published version, with the loader's warnings. */
@@ -25,6 +33,7 @@ interface Listable {
   readonly version: string;
   readonly schema: number;
   readonly requires: readonly string[];
+  readonly variants?: readonly Listed[];
 }
 
 interface Result {
@@ -137,6 +146,9 @@ async function buildOne(dir: string, name: string, out: string): Promise<Result>
       requires: profile.requires,
       sha256: new Bun.CryptoHasher("sha256").update(text).digest("hex"),
       url: `${profile.id}.json`,
+      ...(profile.variants !== undefined && {
+        variants: profile.variants.map((v) => ({ id: v.id, name: v.name })),
+      }),
     },
   };
 }
