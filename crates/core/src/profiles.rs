@@ -134,6 +134,18 @@ impl Catalogue {
         self.held(id).map(|held| held.profile)
     }
 
+    /// Profile `id` as its variant `variant` reads (ADR 5); the family's base for `None` or a
+    /// variant it does not declare.
+    #[must_use]
+    pub fn resolve(&self, id: &str, variant: Option<&str>) -> Option<Arc<Profile>> {
+        let family = self.get(id)?;
+        let resolved = family.resolve(variant);
+        if resolved.variant().is_none() {
+            return Some(family);
+        }
+        Some(Arc::new(resolved.clone()))
+    }
+
     /// Whether profile `id` is official: bundled, or its signature verifies (ADR 8).
     #[must_use]
     pub fn official(&self, id: &str) -> bool {

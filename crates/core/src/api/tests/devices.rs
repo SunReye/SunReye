@@ -203,6 +203,68 @@ async fn a_device_names_a_known_connection_and_profile_and_a_free_unit_id() {
     assert_eq!(core.ask(&set_cookie, moved).await.0, StatusCode::OK);
 }
 
+/// A device stores its family and the variant the scan proposed (ADR 5); the variant's limits
+/// are the ones that apply, here its battery current.
+#[tokio::test]
+async fn a_device_stores_its_familys_variant_and_reads_with_its_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let mut small = deye(&connection, "deye-sg05lp3", 1);
+    small["variant"] = json!("5k");
+
+    let (status, added) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &small))
+        .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["variant"], "5k");
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/devices")).await;
+    assert_eq!(listed["devices"][0]["variant"], "5k");
+    let (_, capabilities) = core.ask(&set_cookie, get("/api/v1/capabilities")).await;
+    let settings = &capabilities["devices"][added["id"].to_string()]["settings"];
+    assert_eq!(settings[0]["range"], json!({ "min": 0.0, "max": 120.0 }));
+
+    let mut unknown = deye(&connection, "deye-sg05lp3", 2);
+    unknown["variant"] = json!("99k");
+    assert_eq!(
+        core.refused(&set_cookie, send("POST", "/api/v1/devices", &unknown))
+            .await,
+        unprocessable("device.profile")
+    );
+    let mut other = small.clone();
+    other["variant"] = json!("15k");
+    let at = format!("/api/v1/devices/{}", added["id"]);
+    assert_eq!(
+        core.refused(&set_cookie, send("PUT", &at, &other)).await,
+        conflict("device.profile-change")
+    );
+}
+
+/// SunSpec's variant is the model after the common model (ADR 5), by its id.
+#[tokio::test]
+async fn a_sunspec_devices_variant_is_its_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let mut inverter = deye(&connection, "sunspec", 1);
+    inverter["variant"] = json!("103");
+    let mut named = deye(&connection, "sunspec", 2);
+    named["variant"] = json!("three-phase");
+
+    let (status, added) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &inverter))
+        .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["variant"], "103");
+    assert_eq!(
+        core.refused(&set_cookie, send("POST", "/api/v1/devices", &named))
+            .await,
+        unprocessable("device.profile")
+    );
+}
+
 #[tokio::test]
 async fn a_connection_needs_a_host_and_is_removed_only_once_no_device_uses_it() {
     let dir = tempfile::tempdir().unwrap();

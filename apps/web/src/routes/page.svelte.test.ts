@@ -54,7 +54,7 @@ const SCAN = {
       transport: "modbus-tcp",
       host: "192.168.1.20",
       port: 502,
-      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+      devices: [{ profile: "deye-sg05lp3", name: "SG05LP3", unit: 1 }],
     },
   ],
 };
@@ -248,9 +248,7 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   await screen.getByRole("button", { name: "Weiter" }).click();
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:502, Adresse 1" })
-    .click();
+  await screen.getByRole("checkbox", { name: "SG05LP3 an 192.168.1.20:502, Adresse 1" }).click();
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
   await expect.element(screen.getByLabelText("Name von Punkt 2")).toHaveValue("Wechselrichter PV");

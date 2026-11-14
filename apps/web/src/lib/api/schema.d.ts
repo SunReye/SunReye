@@ -1245,6 +1245,11 @@ export interface components {
              *     profile names, such as an EVCC loadpoint's.
              */
             unit: number;
+            /**
+             * @description The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after
+             *     the common model, such as `103`; none for a family's base. Fixed with the profile.
+             */
+            variant?: string | null;
             /** @description Whether settings may be written (ADR 7); off when left out. */
             writes?: boolean;
         };
@@ -1764,15 +1769,16 @@ export interface components {
         };
         /** @description A device the identify probe of a profile found. */
         Proposal: {
+            /** @description What the homeowner is shown: the variant's name, else the profile's. */
+            name: string;
             profile: string;
             /** Format: int32 */
             unit: number;
             /**
-             * Format: int32
-             * @description The variant the probe found: for SunSpec, the device model after the common model, such
-             *     as 103 for a three-phase inverter.
+             * @description The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after
+             *     the common model, such as `103` for a three-phase inverter; none for a family's base.
              */
-            variant?: number | null;
+            variant?: string | null;
         };
         /**
          * @description The publisher of a broker connection: the `plant` device's role values and each device's

@@ -5,9 +5,9 @@
 //! folds each hour of each MPPT input into that input's month × hour grid against its measured
 //! `pv.mppt.power`, else its inverter's `pv.power`.
 //!
-//! An inverter profile declares no AC rating, so an hour is taken to be at the AC limit when the
-//! inverter's measured `pv.power` peaks within 2 % of the highest hourly peak it has stored in the
-//! past year while the model on archive weather expects more than that peak.
+//! An inverter profile need not declare its AC rating, so an hour is taken to be at the AC limit
+//! when the inverter's measured `pv.power` peaks within 2 % of the highest hourly peak it has
+//! stored in the past year while the model on archive weather expects more than that peak.
 //!
 //! The correction module owns the `correction_cell` and `correction_state` tables.
 

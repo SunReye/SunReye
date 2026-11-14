@@ -118,6 +118,11 @@ impl SolarForecast {
             grids.insert(input, corrections.grid(input.0, input.1).await?);
         }
         let zone = storage.zones().watch().borrow().clone();
+        let inverters = self.layouts.inverters();
+        let rating = |device| {
+            let profile = inverters.profile(device)?;
+            profile.inverter()?.ac_rating
+        };
         for (target, modelled) in estimates(&self.layouts, &versions, location, weather).await? {
             let (month, hour) = plant_hour(target, &zone);
             let factor = |input| {
@@ -125,7 +130,7 @@ impl SolarForecast {
                     .get(&input)
                     .map_or(1.0, |g: &Grid| g.factor(month, hour))
             };
-            let values = corrected(modelled, in_force(&versions, target), factor);
+            let values = corrected(modelled, in_force(&versions, target), factor, rating);
             for (key, points) in &mut series {
                 points.push((target, values.get(key).copied().unwrap_or(0.0)));
             }
@@ -214,12 +219,13 @@ const fn input_of(string: &PvString) -> (DeviceId, u32) {
 }
 
 /// The model's values with each MPPT input's learned `factor` applied to it and to its strings
-/// (ADR 17); each inverter's `pv.power` is the sum of its corrected inputs, as no AC rating caps
-/// the model.
+/// (ADR 17); each inverter's `pv.power` is the sum of its corrected inputs, capped at its AC
+/// `rating` when its profile declares one.
 fn corrected(
     mut values: HashMap<Key, f64>,
     version: Option<&Version>,
     factor: impl Fn((DeviceId, u32)) -> f64,
+    rating: impl Fn(DeviceId) -> Option<f64>,
 ) -> HashMap<Key, f64> {
     let inputs: HashMap<u32, (DeviceId, u32)> = version
         .map(|v| v.strings.iter().map(|s| (s.id, input_of(s))).collect())
@@ -240,7 +246,8 @@ fn corrected(
         }
     }
     for (device, power) in inverters {
-        values.insert((device, "pv.power", None), power);
+        let cap = rating(device).unwrap_or(f64::INFINITY);
+        values.insert((device, "pv.power", None), power.min(cap));
     }
     values
 }
@@ -304,11 +311,8 @@ impl Model {
             .into_iter()
             .map(|(device, inputs)| {
                 let profile = inverters.profile(DeviceId(device));
-                let declared = profile
-                    .as_deref()
-                    .and_then(|p| p.inverter())
-                    .map(|i| i.mppt.as_slice())
-                    .unwrap_or_default();
+                let section = profile.as_deref().and_then(|p| p.inverter());
+                let declared = section.map(|i| i.mppt.as_slice()).unwrap_or_default();
                 let (inputs, places) = inputs
                     .into_iter()
                     .map(|(index, strings)| {
@@ -316,7 +320,7 @@ impl Model {
                     })
                     .unzip();
                 let inverter = pv::Inverter {
-                    ac_rating: None,
+                    ac_rating: section.and_then(|i| i.ac_rating),
                     inputs,
                 };
                 let place = InverterPlace {

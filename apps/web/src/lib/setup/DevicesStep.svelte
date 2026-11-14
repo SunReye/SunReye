@@ -17,6 +17,10 @@
     readonly found: Found;
     readonly manual: boolean;
     profile: string;
+    /** The variant the scan found (ADR 5); none for a family's base or a manual entry. */
+    readonly variant?: string;
+    /** What the scan calls the device: the variant's name, else the profile's. */
+    readonly title: string;
     unit: number;
     chosen: boolean;
     name: string;
@@ -65,14 +69,16 @@
 
       if (endpoint.devices.length === 0) return [manual(endpoint, false)];
 
-      return endpoint.devices.map(({ profile, unit }) => ({
+      return endpoint.devices.map(({ profile, variant, name, unit }) => ({
         key: `${at}/${profile}/${unit}`,
         found: endpoint,
         manual: false,
         profile,
+        ...(variant !== undefined && variant !== null && { variant }),
+        title: name,
         unit,
         chosen: false,
-        name: profile,
+        name,
       }));
     });
 
@@ -87,7 +93,16 @@
   function manual(endpoint: Found, chosen: boolean): Choice {
     const key = `${endpoint.host}:${endpoint.port}/manual`;
 
-    return { key, found: endpoint, manual: true, chosen, profile: "", unit: UNIT, name: "" };
+    return {
+      key,
+      found: endpoint,
+      manual: true,
+      chosen,
+      profile: "",
+      title: "",
+      unit: UNIT,
+      name: "",
+    };
   }
 
   /** Lists the endpoint the admin entered, chosen, for its device to be entered by hand. */
@@ -123,8 +138,15 @@
 
           if (before !== undefined) return before;
 
-          const { profile, unit, name } = choice;
-          const device = await core.addDevice({ connection: connection.id, name, profile, unit });
+          const { profile, variant, unit, name } = choice;
+
+          const device = await core.addDevice({
+            connection: connection.id,
+            name,
+            profile,
+            ...(variant !== undefined && { variant }),
+            unit,
+          });
 
           if (!("problem" in device)) added.set(choice.key, device);
 
@@ -204,10 +226,10 @@
         {:else}
           <label>
             <input type="checkbox" bind:checked={choice.chosen} />
-            {m.devices_confirm({ ...at, profile: choice.profile, unit: choice.unit })}
+            {m.devices_confirm({ ...at, profile: choice.title, unit: choice.unit })}
           </label>
           <label>
-            {m.devices_name({ profile: choice.profile })}
+            {m.devices_name({ profile: choice.title })}
             <input required bind:value={choice.name} />
           </label>
         {/if}

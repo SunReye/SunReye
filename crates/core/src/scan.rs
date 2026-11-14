@@ -196,11 +196,24 @@ struct Found {
 #[derive(Debug, Serialize, ToSchema)]
 struct Proposal {
     profile: String,
-    unit: u8,
-    /// The variant the probe found: for SunSpec, the device model after the common model, such
-    /// as 103 for a three-phase inverter.
+    /// The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after
+    /// the common model, such as `103` for a three-phase inverter; none for a family's base.
     #[serde(skip_serializing_if = "Option::is_none")]
-    variant: Option<u16>,
+    variant: Option<String>,
+    /// What the homeowner is shown: the variant's name, else the profile's.
+    name: String,
+    unit: u8,
+}
+
+impl Proposal {
+    fn of(profile: &Profile, unit: u8) -> Self {
+        Self {
+            profile: profile.id.clone(),
+            variant: profile.variant().map(str::to_owned),
+            name: profile.name.clone(),
+            unit,
+        }
+    }
 }
 
 const SUBNET: Problem = Problem {
@@ -286,8 +299,9 @@ async fn sweep(targets: Vec<Endpoint>, profiles: &[Arc<Profile>], limits: Limits
 enum Probe<'a> {
     /// A profile's declared fields (ADR 5).
     Fields(&'a Profile),
-    /// The built-in SunSpec binding's: the `SunS` marker, then the model chain.
-    SunSpec,
+    /// The built-in SunSpec binding's: the `SunS` marker, then the model chain; with the generic
+    /// profile, when served, for its name.
+    SunSpec(Option<&'a Profile>),
 }
 
 /// What one endpoint answered so far, so probes that read the same registers send one request.
@@ -335,11 +349,9 @@ async fn fields(
         };
         registers.answer(block.start, &words);
     }
-    Ok(profile.identify(&registers).map(|_| Proposal {
-        profile: profile.id.clone(),
-        unit,
-        variant: None,
-    }))
+    Ok(profile
+        .identify(&registers)
+        .map(|found| Proposal::of(found, unit)))
 }
 
 impl Probe<'_> {
@@ -352,13 +364,15 @@ impl Probe<'_> {
     ) -> Result<Option<Proposal>, Error> {
         match self {
             Self::Fields(profile) => fields(profile, client, unit, answers).await,
-            Self::SunSpec => Ok(sunspec::discover(client, unit)
-                .await?
-                .map(|chain| Proposal {
+            Self::SunSpec(generic) => Ok(sunspec::discover(client, unit).await?.map(|chain| {
+                let name = generic.map_or(sunspec::PROFILE, |p| p.name.as_str());
+                Proposal {
                     profile: sunspec::PROFILE.to_owned(),
+                    variant: chain.variant().map(|model| model.to_string()),
+                    name: name.to_owned(),
                     unit,
-                    variant: chain.variant(),
-                })),
+                }
+            })),
         }
     }
 }
@@ -370,7 +384,12 @@ async fn identify(endpoint: Endpoint, profiles: &[Arc<Profile>], limits: Limits)
         .iter()
         .filter(|profile| !profile.identify_plan().is_empty())
         .map(|profile| Probe::Fields(profile))
-        .chain([Probe::SunSpec]);
+        .chain([Probe::SunSpec(
+            profiles
+                .iter()
+                .find(|p| p.id == sunspec::PROFILE)
+                .map(AsRef::as_ref),
+        )]);
     let mut devices = Vec::new();
     let mut answers = Answers::default();
     let mut client = None;

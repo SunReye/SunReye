@@ -233,6 +233,10 @@ pub struct DeviceDraft {
     pub connection: u32,
     /// The profile's id, such as `deye-sg05lp3`; fixed once the device is added.
     pub profile: String,
+    /// The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after
+    /// the common model, such as `103`; none for a family's base. Fixed with the profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
     /// The device address behind the connection: a Modbus unit id, or the index a broker's
     /// profile names, such as an EVCC loadpoint's.
     pub unit: u8,
@@ -249,12 +253,19 @@ pub struct Device {
     pub draft: DeviceDraft,
 }
 
+/// A device's profile id and variant, as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Chosen {
+    profile: String,
+    variant: Option<String>,
+}
+
 /// A configured device as its endpoint task polls it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Polled {
     id: u32,
     unit: u8,
-    profile: String,
+    profile: Chosen,
     endpoint: Endpoint,
 }
 
@@ -280,7 +291,7 @@ struct Brokering {
     broker: mqtt::Broker,
     root: String,
     /// Each device's id, address and profile.
-    devices: Vec<(u32, u8, String)>,
+    devices: Vec<(u32, u8, Chosen)>,
     publish: Option<Publish>,
 }
 
@@ -296,7 +307,7 @@ struct Brokered {
 struct Hosting {
     host: http::Host,
     /// Each device's id, address and profile.
-    devices: Vec<(u32, u8, String)>,
+    devices: Vec<(u32, u8, Chosen)>,
 }
 
 /// An endpoint task and the devices it polls.
@@ -420,7 +431,7 @@ impl Devices {
     pub async fn writable(&self) -> Result<Vec<Writable>, storage::Error> {
         let mut writable = Vec::new();
         for device in self.devices().await? {
-            let Some(profile) = self.catalogue.get(&device.draft.profile) else {
+            let Some(profile) = self.resolved(&device.draft) else {
                 continue;
             };
             let mut settings = Vec::new();
@@ -450,7 +461,7 @@ impl Devices {
         changed: SystemTime,
     ) -> Result<(), Problem> {
         let device = self.device(id).await?;
-        let profile = self.profile(&device.draft.profile)?;
+        let profile = self.profile(&device.draft)?;
         let fingerprint = match profile.setting(&key) {
             Some(setting) => enable::fingerprint(setting),
             None if profile.quantities().iter().any(|q| q.key == key) => {
@@ -574,7 +585,7 @@ impl Devices {
     /// The device or its profile is unknown, or the file cannot be read.
     pub async fn deadbands(&self, id: u32) -> Result<Vec<RoleDeadband>, Problem> {
         let device = self.device(id).await?;
-        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        let profile = self.resolved(&device.draft).ok_or(INTERNAL)?;
         let overrides = self
             .database
             .run(move |db| deadband::overrides(db, id))
@@ -598,7 +609,7 @@ impl Devices {
     ) -> Result<(), Problem> {
         let running = self.running.lock().await;
         let device = self.device(id).await?;
-        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        let profile = self.resolved(&device.draft).ok_or(INTERNAL)?;
         match deadband {
             Some(deadband) => deadband::check(&profile, &role, deadband)?,
             None if profile.quantities().iter().any(|q| q.role == role) => {}
@@ -667,7 +678,7 @@ impl Devices {
         request: Request,
         now: SystemTime,
     ) -> Result<log::Entry, Problem> {
-        let profile = self.profile(&device.draft.profile)?;
+        let profile = self.profile(&device.draft)?;
         let writing = Writing {
             running,
             device,
@@ -880,17 +891,30 @@ impl Devices {
         self.database.run(log::entries).await
     }
 
-    /// Profile `id`; a device whose profile is gone has no settings.
-    fn profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
-        Ok(self.catalogue.get(id).ok_or(settings::Refusal::Unknown)?)
+    /// The device's profile as its variant reads; a device whose profile is gone has no settings.
+    fn profile(&self, draft: &DeviceDraft) -> Result<Arc<Profile>, Problem> {
+        Ok(self.resolved(draft).ok_or(settings::Refusal::Unknown)?)
     }
 
-    /// The binding the draft's profile reads through; refused when the profile is unknown.
+    fn resolved(&self, draft: &DeviceDraft) -> Option<Arc<Profile>> {
+        self.catalogue
+            .resolve(&draft.profile, draft.variant.as_deref())
+    }
+
+    /// The binding the draft's profile reads through; refused when the profile or its variant is
+    /// unknown.
     fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, ChangeRefusal> {
         let profile = self
             .catalogue
             .get(&draft.profile)
             .ok_or(ChangeRefusal::Profile)?;
+        if !draft
+            .variant
+            .as_deref()
+            .is_none_or(|v| declares(&profile, v))
+        {
+            return Err(ChangeRefusal::Profile);
+        }
         Ok(if profile.reads_topics() {
             Reads::Topics
         } else if profile.reads_http() {
@@ -1012,7 +1036,7 @@ impl Devices {
     /// The known devices of `devices`, each id, address and profile, declared to storage.
     async fn started(
         &self,
-        devices: &[(u32, u8, String)],
+        devices: &[(u32, u8, Chosen)],
     ) -> Result<Vec<endpoint::Device>, storage::Error> {
         let devices: Vec<endpoint::Device> = devices
             .iter()
@@ -1032,10 +1056,11 @@ impl Devices {
             .collect()
     }
 
-    /// Device `id` with profile `profile`, unless the profile is not known.
-    fn known(&self, id: u32, unit: u8, profile: &str) -> Option<endpoint::Device> {
-        let Some(profile) = self.catalogue.get(profile) else {
-            tracing::warn!(device = id, profile, "unknown profile");
+    /// Device `id` with profile `chosen` as its variant reads, unless the profile is not known.
+    fn known(&self, id: u32, unit: u8, chosen: &Chosen) -> Option<endpoint::Device> {
+        let variant = chosen.variant.as_deref();
+        let Some(profile) = self.catalogue.resolve(&chosen.profile, variant) else {
+            tracing::warn!(device = id, profile = chosen.profile, "unknown profile");
             return None;
         };
         Some(endpoint::Device {
@@ -1092,6 +1117,16 @@ fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
         }
     }
     grouped
+}
+
+/// Whether `variant` is one of the profile's: a variant it declares, or for a SunSpec profile a
+/// model's id (ADR 5).
+fn declares(profile: &Profile, variant: &str) -> bool {
+    profile
+        .variants()
+        .iter()
+        .any(|v| v.variant() == Some(variant))
+        || (profile.reads_sunspec() && variant.parse::<u16>().is_ok())
 }
 
 /// Strings may be wired to a device whose profile declares an inverter's inputs or reads PV.

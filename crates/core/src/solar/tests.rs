@@ -63,6 +63,11 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
 
 /// Berlin, the owner's Deye as device 1, and the fixture's noon weather at `targets`.
 async fn plant(targets: &[u64]) -> Plant {
+    plant_of(targets, None).await
+}
+
+/// [`plant`] with the Deye family's `variant`, or its base.
+async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage = Storage::open(
@@ -73,7 +78,8 @@ async fn plant(targets: &[u64]) -> Plant {
     )
     .unwrap();
     store_weather(&storage, &bus, targets).await;
-    let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
+    let family = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
+    let deye = family.resolve(variant).clone();
     let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
     let layouts = Layouts::new(storage.database(), inverters);
     let module_type = layouts
@@ -192,6 +198,35 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     assert_near(input(2).await, 5005.27, "input 2");
     let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
     assert_near(inverter, 13_444.54, "inverter");
+}
+
+/// The inverter is capped at its variant's AC rating (ADR 5, 17): the SUN-5K's 5 kW, not the
+/// family's 20 kW.
+#[tokio::test]
+async fn the_inverter_forecast_is_capped_at_its_variants_ac_rating() {
+    let plant = plant_of(&[NOON], Some("5k")).await;
+    plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 180.0, 16),
+                plant.string(None, 2, 180.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
+    assert_near(inverter, 5000.0, "inverter");
 }
 
 #[tokio::test]

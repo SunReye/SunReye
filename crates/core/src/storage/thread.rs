@@ -31,7 +31,7 @@ const BATCH: usize = 256;
 /// Expired blocks deleted per tick, so a shortened retention never holds the thread for long.
 const PRUNE: usize = 16 * BATCH;
 /// Forward-only, applied in order; `user_version` counts those applied.
-const MIGRATIONS: &[&str] = &[
+pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
     include_str!("migrations/0002.sql"),
     include_str!("migrations/0003.sql"),
@@ -58,6 +58,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0024.sql"),
     include_str!("migrations/0025.sql"),
     include_str!("migrations/0026.sql"),
+    include_str!("migrations/0027.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
