@@ -84,7 +84,7 @@ test("a moonlit night keeps at least a third of a low sun's light, cool and soft
 });
 
 test("dusk eases into night: no light steps across the horizon", () => {
-  const steps = Array.from({ length: 321 }, (_, i) => daylight(south(8 - i * 0.05)));
+  const steps = Array.from({ length: 441 }, (_, i) => daylight(south(8 - i * 0.05)));
 
   for (const [i, next] of steps.entries()) {
     const last = steps[i - 1];
@@ -103,16 +103,73 @@ test("dusk eases into night: no light steps across the horizon", () => {
   }
 });
 
-test("at the horizon, between sun and moon, the sky's fill is already the night's", () => {
-  const [horizon, night] = [daylight(south(0)), daylight(south(-20))];
-
-  expect(horizon.intensity).toBe(0);
-  expect(horizon.fill.intensity).toBe(night.fill.intensity);
+test("the sun's light is whole again at a low sun, the moon's at the end of nautical twilight", () => {
+  expect(daylight(south(5)).intensity).toBe(2);
+  expect(daylight(south(0)).intensity).toBe(0);
+  // Civil twilight has no light that casts a shadow: the sky alone lights it.
+  expect(daylight(south(-6)).intensity).toBe(0);
+  expect(daylight(south(-12)).intensity).toBe(daylight(south(-40)).intensity);
 });
 
-test("the sun's light is whole again at a low sun, the moon's a few degrees under the horizon", () => {
-  expect(daylight(south(5)).intensity).toBe(2);
-  expect(daylight(south(-6)).intensity).toBe(daylight(south(-40)).intensity);
+test("light never falls as the sun rises, from astronomical twilight to the zenith", () => {
+  let last = lightOf(daylight(south(-18)));
+
+  for (let tenths = -179; tenths <= 900; tenths++) {
+    const next = lightOf(daylight(south(tenths / 10)));
+
+    expect(next).toBeGreaterThanOrEqual(last - 1e-9);
+    last = next;
+  }
+});
+
+test("a sun on the horizon is day: three fifths of noon's light, a third over the moonlit night", () => {
+  // The moonlit night is 45 % of noon; a camera's day at sunrise sits well clear of it.
+  const [noon, night] = [lightOf(daylight(south(90))), lightOf(daylight(south(-20)))];
+
+  for (const elevation of [0, 1, 2, 3, 4, 5]) {
+    const day = lightOf(daylight(south(elevation)));
+
+    expect(day / noon).toBeGreaterThanOrEqual(0.6);
+    expect(day / night).toBeGreaterThanOrEqual(4 / 3);
+  }
+});
+
+test("civil twilight is lit by the sky: more than the night, without the moon", () => {
+  const [civil, night] = [daylight(south(-6)), daylight(south(-20))];
+
+  expect(lightOf(civil)).toBeGreaterThan(lightOf(night));
+  expect(civil.fill.intensity * luma(civil.fill.sky)).toBeGreaterThan(
+    3 * night.fill.intensity * luma(night.fill.sky),
+  );
+});
+
+test("the sky's light is warm at the horizon and blue below it", () => {
+  for (const elevation of [0, 2, 5]) {
+    const { sky } = daylight(south(elevation)).fill;
+
+    expect(sky.r).toBeGreaterThan(sky.b);
+  }
+
+  for (const elevation of [-4, -6, -9, -12]) {
+    const { sky } = daylight(south(elevation)).fill;
+
+    expect(sky.b).toBeGreaterThan(sky.r);
+  }
+});
+
+test("from the end of nautical twilight down, the night is #748's moonlight", () => {
+  for (const elevation of [-12, -15, -30]) {
+    const night = daylight(south(elevation));
+
+    expect(night.intensity).toBeCloseTo(2.3, 10);
+    expect(night.environment).toBeCloseTo(0.35, 10);
+    expect(night.fill.intensity).toBeCloseTo(1.5, 10);
+    // 0x93a5d8 over 0x4a5475, linear.
+    expect(night.fill.sky.r).toBeCloseTo(0.2918, 3);
+    expect(night.fill.sky.b).toBeCloseTo(0.6867, 3);
+    expect(night.fill.ground.g).toBeCloseTo(0.0887, 3);
+    expect(night.lamps).toBe(1);
+  }
 });
 
 test("the house's lamps are out by day, on at night, and come on across dusk", () => {

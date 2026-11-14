@@ -42,13 +42,28 @@ const HIGH = { colour: 0xfff4e5, intensity: 3.4, environment: 1, glow: 1, elevat
 
 const MOON = { colour: 0xb4c4ff, intensity: 2.3, environment: 0.35 };
 
-/** The sky's and the ground's bounce by day, and the night's own blue sky: the sky model is
- * nearly black below the horizon. */
-const BOUNCE = { sky: 0xcfe0ff, ground: 0x4b5b35, intensity: 0.15 };
-const NIGHT_SKY = { sky: 0x93a5d8, ground: 0x4a5475, intensity: 1.5 };
+/** The sky's shadowless light: its colours, and how much lands on a face turned up to it. */
+interface Ambient {
+  readonly sky: number;
+  readonly ground: number;
+  readonly light: number;
+}
 
-/** Degrees under the horizon where the night is whole: the end of civil twilight. */
-const NIGHT = -6;
+/** A faint bounce under a high sun: the sky model lights the day. */
+const BOUNCE: Ambient = { sky: 0xcfe0ff, ground: 0x4b5b35, light: 0.15 * luma(linear(0xcfe0ff)) };
+/** A low sun's warm sky, stronger as the sun's own light goes: the sky model is dim there. */
+const GOLDEN: Ambient = { sky: 0xffdcc0, ground: 0x8a7866, light: 1.65 };
+const HORIZON: Ambient = { ...GOLDEN, light: 2.55 };
+/** The blue hour, at the end of civil twilight: the sky still lights everything. */
+const CIVIL: Ambient = { sky: 0x9fb8f0, ground: 0x56628a, light: 2 };
+/** The night's own blue sky: the sky model is nearly black below the horizon. */
+const NIGHT_SKY: Ambient = { sky: 0x93a5d8, ground: 0x4a5475, light: 1.5 * luma(linear(0x93a5d8)) };
+
+/** Degrees under the horizon where civil twilight ends and the moon starts to show. */
+const CIVIL_END = -6;
+
+/** Degrees under the horizon where the night is whole: the end of nautical twilight. */
+const NIGHT = -12;
 
 /** Degrees over it where the sun's own light starts to fade and the sky to turn. */
 const DUSK = 3;
@@ -94,25 +109,21 @@ function smoothstep(from: number, to: number, x: number): number {
 export function daylight(sun: Point | null): Daylight {
   const toward = sun ?? FIXED;
   const elevation = Math.asin(Math.max(-1, Math.min(1, toward[2]))) / DEGREES;
-
-  // The sky's light turns to the night's across dusk; its fill is whole by the horizon, where
-  // the sun's own light has gone and the moon's has yet to come.
-  const dusk = smoothstep(DUSK, NIGHT, elevation);
-
-  const ambient = {
-    lamps: dusk,
-    environment: mix(LOW.environment, MOON.environment, dusk),
-    fill: fill(smoothstep(LOW.elevation, 0, elevation), dusk),
-  };
+  const dusk = smoothstep(DUSK, CIVIL_END, elevation);
 
   if (elevation <= 0) {
+    const civil = smoothstep(0, CIVIL_END, elevation);
+    // The sky lights civil twilight alone; the moon comes up as that light goes.
+    const moonlit = smoothstep(CIVIL_END, NIGHT, elevation);
+
     return {
       sun: toward,
       toward: MOON_TOWARD,
       colour: linear(MOON.colour),
-      // The moon comes up as the sun's light has gone: the one light is out as it turns.
-      intensity: MOON.intensity * smoothstep(0, NIGHT, elevation),
-      ...ambient,
+      intensity: MOON.intensity * moonlit,
+      environment: mix(LOW.environment, MOON.environment, civil),
+      fill: elevation > CIVIL_END ? fill(HORIZON, CIVIL, civil) : fill(CIVIL, NIGHT_SKY, moonlit),
+      lamps: dusk,
       glow: 0,
       night: true,
       elevation,
@@ -120,7 +131,7 @@ export function daylight(sun: Point | null): Daylight {
   }
 
   const k = smoothstep(LOW.elevation, HIGH.elevation, elevation);
-  // The sun's own light fades out toward the horizon.
+  // The sun's own light fades out toward the horizon, and the sky's makes up for it.
   const risen = smoothstep(0, DUSK, elevation);
 
   return {
@@ -128,10 +139,9 @@ export function daylight(sun: Point | null): Daylight {
     toward,
     colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
     intensity: mix(LOW.intensity, HIGH.intensity, k) * risen,
-    environment:
-      elevation < LOW.elevation ? ambient.environment : mix(LOW.environment, HIGH.environment, k),
-    fill: ambient.fill,
-    lamps: ambient.lamps,
+    environment: mix(LOW.environment, HIGH.environment, k),
+    fill: elevation < DUSK ? fill(HORIZON, GOLDEN, risen) : fill(GOLDEN, BOUNCE, k),
+    lamps: dusk,
     glow: mix(LOW.glow, HIGH.glow, k) * risen,
     night: false,
     elevation,
@@ -142,12 +152,20 @@ function blend(from: Rgb, to: Rgb, k: number): Rgb {
   return { r: mix(from.r, to.r, k), g: mix(from.g, to.g, k), b: mix(from.b, to.b, k) };
 }
 
-/** The fill `strength` of the way to the night's, its colours `dusk` of the way. */
-function fill(strength: number, dusk: number): Fill {
+/** Relative luminance. */
+function luma({ r, g, b }: Rgb): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** The sky's light `k` of the way `from` one `to` the next. Its light blends, not the lamp's
+ * intensity: the light then never dips between two skies of different colours. */
+function fill(from: Ambient, to: Ambient, k: number): Fill {
+  const sky = blend(linear(from.sky), linear(to.sky), k);
+
   return {
-    sky: blend(linear(BOUNCE.sky), linear(NIGHT_SKY.sky), dusk),
-    ground: blend(linear(BOUNCE.ground), linear(NIGHT_SKY.ground), dusk),
-    intensity: mix(BOUNCE.intensity, NIGHT_SKY.intensity, strength),
+    sky,
+    ground: blend(linear(from.ground), linear(to.ground), k),
+    intensity: mix(from.light, to.light, k) / luma(sky),
   };
 }
 
