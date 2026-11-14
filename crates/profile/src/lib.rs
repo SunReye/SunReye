@@ -16,7 +16,7 @@ use serde::Serialize;
 pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{DeadbandRefusal, Inverter, LoadError, Mppt, Profile, Quantity};
-pub use role::{RoleKind, Unit};
+pub use role::{RoleKind, StorageClass, Unit};
 pub use setting::{Field, LiveControl, Relock, Setting, Source, Step, Toggle, Unlock};
 
 /// Where a topic names the device address.
@@ -58,6 +58,8 @@ pub const CAPABILITIES: &[&str] = &[
     "verified",
     "poll-group",
     "live-control",
+    "kind",
+    "storage",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

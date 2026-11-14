@@ -1,15 +1,6 @@
 import type { Frozen, Inverter, Quantity } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
-import {
-  CURRENTS as BATTERY_CURRENTS,
-  FLOWS,
-  HIGH_VOLTAGE,
-  bounded,
-  identify,
-  inputs,
-  settings,
-  total,
-} from "./shared.ts";
+import { FLOWS, HIGH_VOLTAGE, bounded, identify, inputs, settings, total } from "./shared.ts";
 
 // The SUN-5K to SUN-25K-SG01HP3-EU-AM2 range: three-phase hybrids for a high-voltage battery. The
 // register map is v4's official SG01HP3 profiles', which scale PV and battery power by 10; v4 read
@@ -129,6 +120,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l1.current",
     role: "extra.ac_l1_current",
+    kind: "measurement",
     register: 630,
     type: "i16",
     scale: 0.01,
@@ -136,6 +128,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l2.current",
     role: "extra.ac_l2_current",
+    kind: "measurement",
     register: 631,
     type: "i16",
     scale: 0.01,
@@ -143,6 +136,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l3.current",
     role: "extra.ac_l3_current",
+    kind: "measurement",
     register: 632,
     type: "i16",
     scale: 0.01,
@@ -150,18 +144,21 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l1.power",
     role: "extra.ac_l1_power",
+    kind: "measurement",
     register: 633,
     type: "i16",
   },
   {
     key: "ac.l2.power",
     role: "extra.ac_l2_power",
+    kind: "measurement",
     register: 634,
     type: "i16",
   },
   {
     key: "ac.l3.power",
     role: "extra.ac_l3_power",
+    kind: "measurement",
     register: 635,
     type: "i16",
   },
@@ -188,24 +185,28 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l1.power",
     role: "extra.ac_ups_l1_power",
+    kind: "measurement",
     register: 650,
     type: "i16",
   },
   {
     key: "ac.ups.l2.power",
     role: "extra.ac_ups_l2_power",
+    kind: "measurement",
     register: 651,
     type: "i16",
   },
   {
     key: "ac.ups.l3.power",
     role: "extra.ac_ups_l3_power",
+    kind: "measurement",
     register: 652,
     type: "i16",
   },
   {
     key: "ac.ups.l1.voltage",
     role: "extra.ac_ups_l1_voltage",
+    kind: "measurement",
     register: 644,
     type: "u16",
     scale: 0.1,
@@ -213,6 +214,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l2.voltage",
     role: "extra.ac_ups_l2_voltage",
+    kind: "measurement",
     register: 645,
     type: "u16",
     scale: 0.1,
@@ -220,6 +222,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l3.voltage",
     role: "extra.ac_ups_l3_voltage",
+    kind: "measurement",
     register: 646,
     type: "u16",
     scale: 0.1,
@@ -240,24 +243,28 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.l1.power",
     role: "extra.ac_generator_l1_power",
+    kind: "measurement",
     register: 664,
     type: "i16",
   },
   {
     key: "ac.generator.l2.power",
     role: "extra.ac_generator_l2_power",
+    kind: "measurement",
     register: 665,
     type: "i16",
   },
   {
     key: "ac.generator.l3.power",
     role: "extra.ac_generator_l3_power",
+    kind: "measurement",
     register: 666,
     type: "i16",
   },
   {
     key: "ac.generator.l1.voltage",
     role: "extra.ac_generator_l1_voltage",
+    kind: "measurement",
     register: 661,
     type: "u16",
     scale: 0.1,
@@ -265,6 +272,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.l2.voltage",
     role: "extra.ac_generator_l2_voltage",
+    kind: "measurement",
     register: 662,
     type: "u16",
     scale: 0.1,
@@ -272,6 +280,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.l3.voltage",
     role: "extra.ac_generator_l3_voltage",
+    kind: "measurement",
     register: 663,
     type: "u16",
     scale: 0.1,
@@ -279,12 +288,14 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.status",
     role: "extra.inverter_status",
+    kind: "status",
     register: 500,
     type: "u16",
   },
   {
     key: "radiator_temp",
     role: "extra.radiator_temp",
+    kind: "measurement",
     register: 540,
     type: "i16",
     scale: 0.1,
@@ -293,6 +304,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.temperature",
     role: "extra.ac_temperature",
+    kind: "measurement",
     register: 541,
     type: "i16",
     scale: 0.1,
@@ -306,41 +318,20 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   },
 ];
 
-/** The settings registers, read as extras; bounded per model as v4 bounded them. */
+/** The settings registers no declared setting reads back, read as extras; bounded per model as v4
+ * bounded them. */
 const SETTINGS: readonly Frozen<Quantity>[] = [
-  {
-    key: "settings.battery.maximum_charge_current",
-    role: "extra.settings_battery_maximum_charge_current",
-    register: 108,
-    type: "u16",
-  },
-  {
-    key: "settings.battery.maximum_discharge_current",
-    role: "extra.settings_battery_maximum_discharge_current",
-    register: 109,
-    type: "u16",
-  },
   {
     key: "settings.battery.maximum_grid_charge_current",
     role: "extra.settings_battery_maximum_grid_charge_current",
+    kind: "setting",
     register: 128,
-    type: "u16",
-  },
-  {
-    key: "settings.battery.grid_charge",
-    role: "extra.settings_battery_grid_charge",
-    register: 130,
-    type: "u16",
-  },
-  {
-    key: "settings.workmode",
-    role: "extra.settings_workmode",
-    register: 142,
     type: "u16",
   },
   {
     key: "settings.solar_sell_max_power",
     role: "extra.settings_solar_sell_max_power",
+    kind: "setting",
     register: 143,
     type: "u16",
     scale: 10,
@@ -348,13 +339,14 @@ const SETTINGS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.solar_sell",
     role: "extra.settings_solar_sell",
+    kind: "setting",
     register: 145,
     type: "u16",
   },
 ];
 
-/** The battery current registers' extras, bounded by the model's battery current. */
-const CURRENTS = [...BATTERY_CURRENTS, "settings.battery.maximum_grid_charge_current"];
+/** The grid charge current's extra, bounded by the model's battery current. */
+const CURRENTS = ["settings.battery.maximum_grid_charge_current"];
 
 /** The export limit's extra, bounded by the model's rated power. */
 const EXPORT = ["settings.solar_sell_max_power"];
@@ -377,6 +369,8 @@ export function sg01hp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "identify",
       "ac-rating",
       "setting-text",
+      "kind",
+      "storage",
     ],
     identify: identify(HIGH_VOLTAGE, model.rated),
     inverter: model.inverter,

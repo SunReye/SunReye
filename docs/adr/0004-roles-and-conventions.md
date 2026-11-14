@@ -1,6 +1,6 @@
 # 4. Roles and conventions
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-14)
 
 ## Context
 
@@ -8,7 +8,7 @@ Every profile maps its native quantities to roles; storage, the API, the SPA and
 
 ## Decision
 
-Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries an MPPT input, string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total) and `status` (an enum).
+Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries an MPPT input, string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total), `status` (an enum) and `setting` (a held value, stored on every change). A named role's kind is fixed here.
 
 | Role | Unit | Kind | Signed |
 | --- | --- | --- | --- |
@@ -49,8 +49,8 @@ Roles are dotted lowercase names. Each has a kind and a unit, and a sign convent
 - **Reserved namespaces** for the workspace, with roles added by amendment as devices need them: `load.circuit` (indexed sub-meters), `heatpump` (power, thermal energy, SG Ready state), `heat` (thermal energy in kWh), `gas` and `water` (volume counters in m³), `weather` (global, direct and diffuse irradiance in W/m², temperature, wind; ADR 17), `forecast` (future values of any role, ADR 15), `price` (import, export and spot in EUR/kWh), `cost` (signed rates in EUR/h, ADR 12) and `plan` (EMS decisions).
 - **Signs.** `grid.power` is positive when importing. `battery.power` and `battery.current` are positive when charging. `inverter.power` is positive when the inverter delivers AC, negative when it charges the battery from AC. `point.power` is positive when the point consumes. `price.*` and `cost.*` are signed: spot prices go negative (ADR 12). Everything else is non-negative. The decoder converts at read time; no consumer converts. Outbound adapters convert at their own edge (ADR 10).
 - **No day counters.** A device's "today" counters reset on their own schedule; the core derives days from rollups (ADR 3).
-- **Extras.** A quantity with no role is stored as `extra.<name>` and hidden by default.
-- **Deadband defaults,** by unit: W 5, V 0.5, A 0.1, Hz 0.02, °C 0.5, % 0 (state of charge moves in 1 % steps). They sit below the metering accuracy of typical home inverters (about 1 to 2 % of reading) and above last-digit jitter: chosen from known device behaviour, not measured. A profile may declare another per role for its hardware. An admin may override per device and role. Precedence: override, profile, role default, none. An override below the register's quantisation step is refused, counters and enums refuse any, and a deadband is absolute, in the role's unit.
+- **Extras.** A quantity with no role is stored as `extra.<name>` and hidden by default. An extra declares its kind.
+- **Deadband defaults,** by unit: W 5, V 0.5, A 0.1, Hz 0.02, °C 0.5, % 0 (state of charge moves in 1 % steps). They sit below the metering accuracy of typical home inverters (about 1 to 2 % of reading) and above last-digit jitter: chosen from known device behaviour, not measured. A profile may declare another per role for its hardware. An admin may override per device and role. Precedence: override, profile, role default, none. An override below the register's quantisation step is refused, only a measurement takes one, and a deadband is absolute, in the role's unit.
 
 ## Considered options
 

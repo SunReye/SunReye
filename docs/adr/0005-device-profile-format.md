@@ -1,6 +1,6 @@
 # 5. Device profile format
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-14)
 
 ## Context
 
@@ -15,7 +15,7 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 - A new binding, decoder, step kind or optional field is additive: it joins the capability list without a schema bump. `schema` bumps only when an existing field changes meaning or is removed.
 - A core that lacks a required capability refuses the profile with an error naming it. It checks `requires` before any other field, so a field it does not know is never reported as malformed when its capability is listed.
 - A profile that uses a capability without listing it in `requires` is refused: an older core lacking it would refuse the profile as malformed, without naming it.
-- Optional fields admitted after the first settings recipe each need a capability: `identify` (`identify`), an inverter's `acRating` (`ac-rating`), a quantity's `resolution` (`resolution`), `enum` (`text-enum`), `topic` (`mqtt`), `get` and `json` (`http`), `model` (`sunspec`), `scaleFactor` (`scale-factor`) and `deadband` (`deadband`), a setting's `name`, `unit` and `labels` (`setting-text`) and `verified` (`verified`), a `readBack` `mask` (`rmw`), a `readBack` or `precondition` `quantity` (`publish`), and `pollGroups` with a quantity's `pollGroup` (`poll-group`, ADR 6).
+- Optional fields admitted after the first settings recipe each need a capability: `identify` (`identify`), an inverter's `acRating` (`ac-rating`), a quantity's `resolution` (`resolution`), `enum` (`text-enum`), `topic` (`mqtt`), `get` and `json` (`http`), `model` (`sunspec`), `scaleFactor` (`scale-factor`) and `deadband` (`deadband`), a setting's `name`, `unit` and `labels` (`setting-text`) and `verified` (`verified`), a `readBack` `mask` (`rmw`), a `readBack` or `precondition` `quantity` (`publish`), `pollGroups` with a quantity's `pollGroup` (`poll-group`, ADR 6), a quantity's `kind` (`kind`) and `storage` (`storage`).
 - The current and previous schema load. The previous one yields deprecation warnings that name the replacement and the removal version.
 - A removed schema is refused with an error naming the migration. Removal happens only in a major release. `migrate` rewrites an old profile.
 - Warnings are data from the WASM, so the CLI, the core log and the SPA show identical text.
@@ -33,7 +33,8 @@ v4 kept two decoders (a TypeScript codec and a Rust one), a strict zod schema be
 - Variants by device type, chosen by an identify probe (a magic register: `SunS`, `0xE3DC`, or a device-type register). A register profile declares its probe as `identify`: fields, each a `register` read at scale 1 as a `type` (`u16` when left out) and the `values` that identify the device. The device is identified only when every field answers one of its values; a field without values, or with one its type cannot hold, is refused. Deye's fields come from its three-phase protocol (`MODBUS RTU 三相储能通信规约` V105): register 0, the device type (`0x0500` low-voltage, `0x0600` and `0x0601` high-voltage three-phase hybrid), and registers 20 and 21, the rated power in 0.1 W, low word first.
 - The unit id belongs to the device (ADR 6), not the profile.
 - An inverter profile declares its MPPT inputs: count, maximum input current, voltage window and start voltage, and the inverter's maximum DC input voltage, from the datasheet (ADR 17, 20). They sit in an optional `inverter` section, inputs numbered from 1 in order as the `pv.mppt.*` index. The section may declare `acRating`, the rated AC output in watts, for the forecast's cap (ADR 17) and the AC limit. A profile covering a model family declares the family's largest limits until identify-probe variants split it, so a forecast never caps below the hardware.
-- Storage class (`series`, `config`, `none`) and a deadband per quantity (ADR 3, 4). A quantity's `deadband` (capability `deadband`) is absolute, in its role's unit; one below its quantisation step is refused, as is any on a counter or enum.
+- Storage class (`series` by default, or `none`) and a deadband per quantity (ADR 3, 4). A quantity's `deadband` (capability `deadband`) is absolute, in its role's unit; one below its quantisation step is refused, as is any on a quantity that is not a measurement.
+- An extra declares its `kind` (ADR 4); a named role refuses one. An extra reading a register a setting of the profile reads back is refused: the setting is its record.
 - A quantity reads one register or computes over quantities declared before it (sum, difference, add and subtract, ratio, clamp; the owner's Deye). File order is evaluation order, so a cycle cannot be written and decoding is one pass. A missing input reads as 0, as in v4.
 - Unknown fields are refused: a field this core does not know may change what a register means. Absent optional fields keep their schema 1 meaning (holding space, base 0, low word first) so admitting them stays additive.
 

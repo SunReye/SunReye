@@ -8,12 +8,15 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Source, Step};
+use crate::{
+    Field, Framing, Inverter, Mppt, Profile, Registers, RoleKind, Source, Step, StorageClass,
+};
 use serde_json::Value;
 
 /// v4's oracle corpus, one line per profile: battery flows negated to ADR 4's charging-positive
-/// sign, day counters left out, and on the SG05LP3 range register 636, which v4 read but left
-/// unmapped, added as the signed inverter output power.
+/// sign, day counters and the settings registers a declared setting reads back left out, and on
+/// the SG05LP3 range register 636, which v4 read but left unmapped, added as the signed inverter
+/// output power.
 const V4_CASES: &str = include_str!("deye-v4-cases.ndjson");
 
 /// A profile and what Deye's datasheet (cited in `profiles/deye/`) and v4 say of its model.
@@ -402,6 +405,38 @@ fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_typ
                 identified,
                 ["deye-sg01hp3".to_owned(), model],
                 "{kind:#x} {watts} W"
+            );
+        }
+    }
+}
+
+#[test]
+fn settings_registers_are_settings_and_extras_repeating_a_role_are_kept_live_only() {
+    let repeats = [
+        "extra.grid_import_power",
+        "extra.grid_export_power",
+        "extra.battery_charge_power",
+        "extra.battery_discharge_power",
+        "extra.ac_total_internal_power",
+    ];
+    for profile in profiles() {
+        for q in profile.quantities() {
+            let held =
+                q.role.starts_with("extra.settings_") || q.role.starts_with("extra.timeofuse_");
+            assert_eq!(
+                q.kind() == RoleKind::Setting,
+                held,
+                "{} {}",
+                profile.id,
+                q.key
+            );
+            let live = repeats.contains(&q.role.as_str());
+            assert_eq!(
+                q.storage() == StorageClass::None,
+                live,
+                "{} {}",
+                profile.id,
+                q.key
             );
         }
     }

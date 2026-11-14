@@ -64,7 +64,7 @@ impl Store {
         }: Range<Tick>,
         limit: Tick,
     ) -> Result<(), Error> {
-        if from >= to || kind == RoleKind::Status {
+        if from >= to || matches!(kind, RoleKind::Status | RoleKind::Setting) {
             return Ok(());
         }
         let days = rollup::days(&self.zone.1, from, to);

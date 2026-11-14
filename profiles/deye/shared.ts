@@ -68,6 +68,8 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.import_power",
     role: "extra.grid_import_power",
+    kind: "measurement",
+    storage: "none",
     compute: {
       clamp: {
         key: "ac.total_power",
@@ -78,6 +80,8 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.export_power",
     role: "extra.grid_export_power",
+    kind: "measurement",
+    storage: "none",
     compute: {
       diff: ["grid.import_power", "ac.total_power"],
     },
@@ -85,6 +89,8 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "battery.charge_power",
     role: "extra.battery_charge_power",
+    kind: "measurement",
+    storage: "none",
     compute: {
       clamp: {
         key: "battery.power",
@@ -95,6 +101,8 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "battery.discharge_power",
     role: "extra.battery_discharge_power",
+    kind: "measurement",
+    storage: "none",
     compute: {
       diff: ["battery.charge_power", "battery.power"],
     },
@@ -102,6 +110,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.power",
     role: "extra.inverter_power",
+    kind: "measurement",
     compute: {
       combine: {
         add: ["dc.total_power", "ac.total_power"],
@@ -112,6 +121,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.efficiency",
     role: "extra.inverter_efficiency",
+    kind: "measurement",
     compute: {
       ratio: {
         num: ["ac.ups.total_power", "battery.charge_power", "grid.export_power"],
@@ -232,12 +242,6 @@ const SETTINGS: readonly Frozen<Setting>[] = [
       },
     ],
   },
-];
-
-/** The battery current registers' extras, bounded per model. */
-export const CURRENTS: readonly string[] = [
-  "settings.battery.maximum_charge_current",
-  "settings.battery.maximum_discharge_current",
 ];
 
 /** `item` bounded from 0 to `max`. */
