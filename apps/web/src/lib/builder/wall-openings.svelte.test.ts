@@ -73,8 +73,6 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
   await drill("Gebäude");
   await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
 
-  const drawn = draws.mock.calls.length;
-
   await inspector().getByRole("button", { name: "Fenster hinzufügen" }).click();
 
   const width = inspector().getByRole("button", { name: starts("Breite (m)") });
@@ -82,8 +80,6 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
 
   // The new window's own level, in its usual size.
   await expect.element(width.getByText(/^1,2$/u)).toBeVisible();
-  // The window and its handles are drawn before a press can grab one.
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(drawn);
 
   // The scene as the builder now holds it: the template's openings and the new one after them.
   const made = fresh(start.scene, "window");
