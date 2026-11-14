@@ -1,5 +1,5 @@
-import { beforeEach, expect, test, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { beforeEach, expect, onTestFinished, test, vi } from "vitest";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import App from "./shell.harness.svelte";
 import { keepOffline } from "./route.harness.ts";
@@ -93,4 +93,36 @@ test("sign-in shows no rail, and the admin signed in gets Controls", async () =>
   await screen.getByRole("button", { name: "Anmelden" }).click();
 
   await expect.element(screen.getByRole("link", { name: /Steuerung/u })).toBeInTheDocument();
+});
+
+test("the phone's bar stays in place while the dashboard opens from another screen", async () => {
+  await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  onTestFinished(async () => {
+    await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  });
+  await page.viewport(400, 800);
+
+  const screen = await render(App, { away: true });
+  const nav = screen.getByRole("navigation", { name: "Hauptnavigation" });
+
+  await expect.element(nav.getByRole("radio", { name: "Mehr" })).toBeVisible();
+
+  const bar = nav.element();
+  let removed = 0;
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own records.
+  const watch = new MutationObserver((records) => {
+    for (const record of records) if ([...record.removedNodes].includes(bar)) removed += 1;
+  });
+
+  watch.observe(document.body, { childList: true, subtree: true });
+  onTestFinished(() => {
+    watch.disconnect();
+  });
+
+  await screen.rerender({ away: false });
+  await expect.element(screen.getByRole("group", { name: "Heute" })).toBeVisible();
+
+  expect(removed).toBe(0);
+  expect(bar.isConnected).toBe(true);
 });
