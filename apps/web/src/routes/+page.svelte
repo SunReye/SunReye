@@ -15,7 +15,7 @@
   const shell = access();
 
   /** The open detail sheet as `?detail=` on the hash route: back closes it, a link opens it (ADR 21). */
-  const detail = drillRoute({ page, goto }, "detail");
+  const detail = drillRoute({ page, goto }, "detail", { overlay: true });
 
   /** The hash route's query: a sheet's range lives beside `detail`. */
   const params = $derived(routeParams());

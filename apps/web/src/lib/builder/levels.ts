@@ -260,3 +260,10 @@ export function faceCells(
     selected: level.kind === "module" ? cells.find((cell) => same(level, cell)) : undefined,
   };
 }
+
+/** The roof face whose modules `level` lays, if it is a face's or a module's level. */
+export function laying(roofs: readonly RoofFace[], level: Level): RoofFace | undefined {
+  return level.kind === "face" || level.kind === "module"
+    ? roofs.find((roof) => roof.block === level.block && roof.face === level.face)
+    : undefined;
+}

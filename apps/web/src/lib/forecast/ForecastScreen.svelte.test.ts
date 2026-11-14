@@ -29,6 +29,8 @@ test("each inverter's chart reads its total's forecast and measurement over the 
       "/api/v1/devices/1/statistics pv.mppt.power[1]",
       "/api/v1/devices/1/statistics pv.mppt.power[2]",
       "/api/v1/devices/1/statistics pv.power",
+      "/api/v1/devices/1/statistics pv.string.power[4]",
+      "/api/v1/devices/1/statistics pv.string.power[5]",
       "/api/v1/devices/2/forecasts pv.power",
       "/api/v1/devices/2/statistics pv.power",
     ]);
@@ -105,23 +107,24 @@ test("every state of the month is named on screen", async () => {
   await expect.element(card(2).getByText(/Die Prognose reicht zwei Tage voraus/u)).toBeVisible();
 });
 
-test("an inverter's total stacks its measured bars by MPPT input, each in its own colour", async () => {
+test("an inverter's total stacks its MPPT inputs, a shared input split into its estimated strings", async () => {
   await render(ForecastScreen, { core: connect(testCore(WEEK)), ...PAST_WEEK });
 
   const terms = card(1).getByRole("term");
+  const term = (name: string) => terms.filter({ hasText: new RegExp(`^${name}$`, "u") });
 
-  await expect.element(terms.filter({ hasText: /^MPPT 1$/u })).toBeVisible();
-  await expect.element(terms.filter({ hasText: /^MPPT 2$/u })).toBeVisible();
-  await expect.element(terms.filter({ hasText: /^gemessen$/u })).not.toBeInTheDocument();
+  // South and north share input 1, so the core estimates each; east has input 2 alone.
+  await Promise.all(
+    ["south ≈", "north ≈", "MPPT 2"].map((name) => expect.element(term(name)).toBeVisible()),
+  );
+  await expect.element(term("MPPT 1")).not.toBeInTheDocument();
+  await expect.element(term("gemessen")).not.toBeInTheDocument();
 
-  const swatch = (input: number) =>
-    getComputedStyle(
-      terms.filter({ hasText: new RegExp(`^MPPT ${input}$`, "u") }).element()
-        .previousElementSibling ??
-        terms.filter({ hasText: new RegExp(`^MPPT ${input}$`, "u") }).element(),
-    ).backgroundColor;
+  const swatch = (name: string) =>
+    getComputedStyle(term(name).element().previousElementSibling ?? term(name).element())
+      .backgroundColor;
 
-  expect(swatch(1)).not.toBe(swatch(2));
+  expect(new Set(["south ≈", "north ≈", "MPPT 2"].map((name) => swatch(name))).size).toBe(3);
 });
 
 test("lines are picked inverter first, then MPPT input, then string, with estimates marked once", async () => {

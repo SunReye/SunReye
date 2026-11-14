@@ -2,8 +2,10 @@
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
   import * as Item from "#lib/components/ui/item/index.js";
+  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import { m } from "../paraglide/messages.js";
   import type { Swatch } from "./colours.ts";
+  import HexField from "./HexField.svelte";
 
   let {
     label,
@@ -22,66 +24,53 @@
     onchange: (colour: string | null) => void;
   } = $props();
 
+  /** The default swatch's value in the group: no colour is one. */
+  const OWN = "own";
+
   const current = $derived(value ?? null);
   const custom = $derived(current !== null && !swatches.some(([colour]) => colour === current));
 
-  const choices = $derived<readonly (readonly [string | null, string, string])[]>([
-    [null, own, m.colour_default()],
+  const choices = $derived<readonly (readonly [string, string, string])[]>([
+    [OWN, own, m.colour_default()],
     ...swatches.map(([colour, name]) => [colour, colour, name()] as const),
   ]);
 </script>
 
 <Item.Root class="flex-col items-stretch gap-2 rounded-none border-0">
   <Item.Title class="text-[15px] font-normal">{label}</Item.Title>
-  <div role="radiogroup" aria-label={label} class="flex flex-wrap gap-1">
-    {#each choices as [colour, paint, name] (name)}
-      <button
-        type="button"
-        role="radio"
-        aria-checked={current === colour}
-        aria-label={name}
-        title={name}
-        class="grid size-11 place-items-center rounded-sm hover:bg-muted/60"
-        onclick={() => {
-          onchange(colour);
-        }}
-      >
-        <span
-          class={[
-            "grid size-7 place-items-center rounded-sm ring-1 ring-border ring-inset",
-            current === colour && "ring-2 ring-primary",
-          ]}
-          style:background={paint}
-        >
-          {#if current === colour}<Check class="size-4 text-white mix-blend-difference" />{/if}
-        </span>
-      </button>
-    {/each}
-    <!-- The system picker opens from the label; the swatch shows the colour it chose. -->
-    <label
-      class="grid size-11 cursor-pointer place-items-center rounded-sm hover:bg-muted/60"
-      title={m.colour_custom()}
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <!-- No swatch is pressed under a colour of the admin's own; a second tap on one keeps it. -->
+    <ToggleGroup.Root
+      type="single"
+      aria-label={label}
+      spacing={1}
+      class="flex-wrap"
+      bind:value={
+        () => (custom ? "" : (current ?? OWN)),
+        (picked) => {
+          if (picked !== "") onchange(picked === OWN ? null : picked);
+        }
+      }
     >
-      <span
-        class={[
-          "grid size-7 place-items-center rounded-sm ring-1 ring-border ring-inset",
-          custom
-            ? "ring-2 ring-primary"
-            : "bg-[conic-gradient(#e0533d,#e8b23a,#5bb34a,#3a8de0,#9a4fd0,#e0533d)]",
-        ]}
-        style:background={custom ? current : undefined}
-      >
-        {#if custom}<Check class="size-4 text-white mix-blend-difference" />{/if}
-      </span>
-      <input
-        type="color"
-        class="sr-only"
-        aria-label={m.colour_custom()}
-        value={current ?? own}
-        onchange={(event) => {
-          onchange(event.currentTarget.value);
-        }}
-      />
-    </label>
+      {#each choices as [choice, paint, name] (choice)}
+        <ToggleGroup.Item value={choice} aria-label={name} title={name} class="size-11 p-0">
+          <span
+            class="grid size-7 place-items-center rounded-sm ring-1 ring-border ring-inset"
+            style:background-color={paint}
+          >
+            {#if (current ?? OWN) === choice}
+              <Check class="size-4 text-white mix-blend-difference" />
+            {/if}
+          </span>
+        </ToggleGroup.Item>
+      {/each}
+    </ToggleGroup.Root>
+    <HexField
+      label={m.colour_custom()}
+      value={current ?? own}
+      onchange={(colour) => {
+        onchange(colour);
+      }}
+    />
   </div>
 </Item.Root>

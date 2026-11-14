@@ -4,7 +4,7 @@
   grid.
 -->
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import SceneFailed from "./SceneFailed.svelte";
   import type { Live } from "../api/core.ts";
   import PowerNumber from "../components/power-number.svelte";
   import { m } from "../paraglide/messages.js";
@@ -19,7 +19,7 @@
     figures,
     onselect,
     height = $bindable(0),
-    children,
+    onretry,
   }: {
     /** Undefined until the stream first answers. */
     live: Live | undefined;
@@ -32,8 +32,8 @@
     onselect: (id: string) => void;
     /** Pixels it takes, so the flow below starts clear of it. */
     height?: number;
-    /** A quiet note under the figures. */
-    children?: Snippet;
+    /** Loads the 3D scene again, while it has failed: said in a quiet note under the figures. */
+    onretry?: (() => void) | undefined;
   } = $props();
 
   const lead = $derived(headline(plant));
@@ -68,5 +68,5 @@
   {#if figures && plant !== undefined}
     <HeadlineFigures {plant} {producing} {onselect} />
   {/if}
-  {@render children?.()}
+  {#if onretry}<SceneFailed {onretry} />{/if}
 </div>

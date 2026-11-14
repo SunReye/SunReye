@@ -22,8 +22,8 @@ The first integration build rendered browser defaults: plain links for navigatio
   - the today-energy cards (production, consumption, feed-in, purchase, with € and the autarky and self-consumption meters);
   - a small day chart, actual against forecast;
   - EV.
-- **Phone:** the same blocks scroll in that order, hero first.
-- **3D/2D toggle:** sits in the hero's corner.
+- **Phone:** the same blocks scroll in that order, hero first. The hero's height follows the screen's width, capped by the small viewport (`svh`), never the dynamic one: a browser bar that shows or hides while scrolling moves nothing below it.
+- **3D/2D toggle:** sits in the hero's corner, the 3D scene's camera lock (ADR 20) beside it.
 - **Headline:** the hero's large figure is PV power while PV produces and switches to house consumption while PV is idle.
 
 **Details by drilling down.** The dashboard answers "now and today". Every figure on it opens its detail:
@@ -77,7 +77,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Enums** use a list with kbase's sliding `active-indicator`.
 - **Free-form values** (prices, coordinates, names) keep a text field.
 - **Applying:** "Apply 100 A → 80 A" runs ADR 7's write. The editor shows pending until the read-back, then closes with the outcome: confirmed, refused with its reason, or mismatch, linked to the write log. There is no separate confirmation step.
-- **Builder time slider:** stays, because it scrubs time rather than setting a value.
+- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar in a popover; picking a day closes it.
+- **Builder controls** are the registry's components (`components/ui`): no browser-default date, time, range, colour or select control. A colour beyond the swatches is typed as `#rrggbb`, a free-form value.
 
 **Glass.**
 - **Two levels:**

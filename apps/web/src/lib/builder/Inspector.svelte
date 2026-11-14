@@ -3,6 +3,7 @@
   slides in from the right while the one it leaves shifts left and fades; back reverses it.
 -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import { cubicInOut } from "svelte/easing";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -13,7 +14,14 @@
   import SaveBar from "./SaveBar.svelte";
   import type { Session } from "./session.svelte.ts";
 
-  let { session }: { session: Session } = $props();
+  let {
+    session,
+    check,
+  }: {
+    session: Session;
+    /** What the strings' group shows under its rows. */
+    check: Snippet;
+  } = $props();
 
   const level = $derived(session.level);
 
@@ -96,6 +104,9 @@
             session.change(draft);
           }}
         />
+        {#if level.kind === "section" && level.section === "strings"}
+          {@render check()}
+        {/if}
       </section>
     {/key}
   </div>
