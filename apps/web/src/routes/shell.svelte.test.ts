@@ -110,6 +110,7 @@ test("the phone's bar stays in place while the dashboard opens from another scre
   const bar = nav.element();
   let removed = 0;
 
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own records.
   const watch = new MutationObserver((records) => {
     for (const record of records) if ([...record.removedNodes].includes(bar)) removed += 1;
   });

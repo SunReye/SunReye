@@ -9,9 +9,9 @@
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import DrawerSheet from "#lib/components/drawer-sheet.svelte";
-  import { cn } from "#lib/utils.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
+  import { indicator } from "../range/indicator.ts";
   import { BAR, MORE, href, type NavItem } from "./nav.ts";
 
   let {
@@ -70,16 +70,22 @@
   <ToggleGroup.Root
     type="single"
     spacing={1}
-    class="grid w-full grid-cols-4"
+    class="grid w-full grid-cols-4 data-indicator:before:hidden!"
     bind:value={() => active, pick}
   >
+    <!-- kbase's sliding pill, on a transform; the group's own box slides `left` and `width`. -->
+    <span
+      data-selection
+      class="rounded-md bg-foreground/[0.13]"
+      {@attach indicator('[data-state="on"]')}
+    ></span>
     {#each items as item (item.route)}
       <ToggleGroup.Item
         value={item.route}
         aria-label={item.label()}
         class="h-14 w-full min-w-0 flex-col gap-1.5 px-0 text-muted-foreground data-[state=on]:text-foreground"
       >
-        <item.icon class={cn("size-5", active === item.route && "text-brand")} />
+        <item.icon class={active === item.route ? "size-5 text-brand" : "size-5"} />
         <!-- Truncated as a last resort; every locale's labels fit 320 px (tested). -->
         <span class="max-w-full truncate text-[11px] leading-none font-medium"
           >{item.label()}</span
@@ -105,7 +111,7 @@
               onclick={() => {
                 go(item.route);
               }}
-              class={cn(props["class"] as string, "text-left active:bg-muted")}
+              class={[props["class"], "text-left active:bg-muted"]}
             >
               <Item.Media variant="icon"><item.icon /></Item.Media>
               <Item.Content

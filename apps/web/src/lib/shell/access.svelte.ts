@@ -40,14 +40,14 @@ const [getAccess, setAccess, hasAccess] = createContext<ShellAccess>();
 
 /** For the root layout, as it is set up. */
 export function provideAccess(): ShellAccess {
-  const access = new Access();
+  const shell = new Access();
 
   // A first screen other than the home page stands in the shell from the start.
   onMount(() => {
-    if (!access.bare) access.opened(true);
+    if (!shell.bare) shell.opened(true);
   });
 
-  return setAccess(access);
+  return setAccess(shell);
 }
 
 /** The shell's access; undefined for a screen rendered without the shell. */
