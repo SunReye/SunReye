@@ -47,42 +47,47 @@
 
 <section
   aria-labelledby="builder-templates"
-  class="absolute inset-0 grid place-items-center overflow-y-auto rounded-lg bg-background/50 p-6 backdrop-blur-[2px]"
-  style:padding-bottom="{clear + 24}px"
+  class="absolute inset-0 overflow-hidden rounded-lg bg-background/50 backdrop-blur-[2px]"
 >
-  <div class="glass-ambient w-full max-w-3xl rounded-lg border border-border/60 p-5 elevation-1">
-    <h2 id="builder-templates" class="text-[15px] font-semibold">{m.builder_templates()}</h2>
-    <p class="mt-1 text-sm text-muted-foreground">{m.builder_templates_hint()}</p>
-    <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
-      {#each pictures as { template, picture } (template)}
-        <li>
-          <Pressable
-            class="flex w-full flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press glow-hover hover:elevation-2 active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
-            onclick={() => {
-              onpick(template);
-            }}
-          >
-            <span class="flex h-32 items-center justify-center bg-muted/40 p-3" aria-hidden="true">
-              {#if picture === undefined}
-                <Plus class="size-8 text-muted-foreground" />
-              {:else}
-                <svg class="h-full w-full" viewBox={picture.box.join(" ")}>
-                  {#each picture.polygons as polygon, i (i)}
-                    <polygon
-                      points={polygon.points}
-                      fill={polygon.fill}
-                      stroke={polygon.fill}
-                      stroke-width="0.04"
-                      stroke-linejoin="round"
-                    />
-                  {/each}
-                </svg>
-              {/if}
-            </span>
-            <span class="px-3 py-2.5 text-sm font-medium">{NAMES[template]()}</span>
-          </Pressable>
-        </li>
-      {/each}
-    </ul>
+  <!-- The scroller is inside the veil: a mask on the veil would fade its blur too (ADR 21). -->
+  <div
+    class="grid size-full place-items-center overflow-y-auto p-6 scroll-fade-y no-scrollbar"
+    style:padding-bottom="{clear + 24}px"
+  >
+    <div class="glass-ambient w-full max-w-3xl rounded-lg border border-border/60 p-5 elevation-1">
+      <h2 id="builder-templates" class="text-[15px] font-semibold">{m.builder_templates()}</h2>
+      <p class="mt-1 text-sm text-muted-foreground">{m.builder_templates_hint()}</p>
+      <ul class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {#each pictures as { template, picture } (template)}
+          <li>
+            <Pressable
+              class="flex w-full flex-col overflow-hidden rounded-lg bg-card text-left ring-1 ring-foreground/10 transition-press glow-hover hover:elevation-2 active:elevation-press motion-safe:hover:-translate-y-[3px] motion-safe:active:translate-y-0 motion-safe:active:scale-(--press-scale-soft)"
+              onclick={() => {
+                onpick(template);
+              }}
+            >
+              <span class="flex h-32 items-center justify-center bg-muted/40 p-3" aria-hidden="true">
+                {#if picture === undefined}
+                  <Plus class="size-8 text-muted-foreground" />
+                {:else}
+                  <svg class="h-full w-full" viewBox={picture.box.join(" ")}>
+                    {#each picture.polygons as polygon, i (i)}
+                      <polygon
+                        points={polygon.points}
+                        fill={polygon.fill}
+                        stroke={polygon.fill}
+                        stroke-width="0.04"
+                        stroke-linejoin="round"
+                      />
+                    {/each}
+                  </svg>
+                {/if}
+              </span>
+              <span class="px-3 py-2.5 text-sm font-medium">{NAMES[template]()}</span>
+            </Pressable>
+          </li>
+        {/each}
+      </ul>
+    </div>
   </div>
 </section>

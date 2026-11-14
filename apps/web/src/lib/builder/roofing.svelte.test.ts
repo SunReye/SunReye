@@ -4,6 +4,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { unfaded } from "../scroll-fade.harness.ts";
 import {
   choose,
   desk,
@@ -158,6 +159,8 @@ test("on a phone, + adds a chimney and the sheet opens on it", async () => {
   await tap(
     page.getByRole("toolbar", { name: "Werkzeuge" }).getByRole("button", { name: "Hinzufügen" }),
   );
+  await expect.element(page.getByRole("button", { name: "Schornstein hinzufügen" })).toBeVisible();
+  expect(unfaded()).toEqual([]);
   await tap(page.getByRole("button", { name: "Schornstein hinzufügen" }));
 
   const sheet = page.getByRole("region", { name: "Szene bearbeiten" });

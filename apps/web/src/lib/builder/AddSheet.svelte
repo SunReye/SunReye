@@ -38,7 +38,7 @@
 </script>
 
 <ResponsiveSheet bind:open label={m.builder_add()}>
-  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2"
+  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2 scroll-fade-y no-scrollbar"
     data-vaul-no-drag>
     <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
     {#each groups as { section, adds } (section)}

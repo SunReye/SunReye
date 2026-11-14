@@ -5,6 +5,7 @@ import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type Corrections, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { unfaded } from "../scroll-fade.harness.ts";
 import { emptyDraft } from "./modules.ts";
 import { loadPv } from "./pv.ts";
 import { fill } from "./templates.ts";
@@ -129,6 +130,7 @@ test("the slider shows a past day's measured string power and changes nothing in
 
   await expect.element(screen.getByText("12:30")).toBeVisible();
   await expect.element(screen.getByText("Gemessen oder geschätzt")).toBeVisible();
+  expect(unfaded()).toEqual([]);
   await expect
     .element(screen.getByRole("list", { name: "Leistung je String" }))
     .toHaveTextContent("Süd: 812 W");

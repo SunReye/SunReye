@@ -4,6 +4,7 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect } from "../api/core.ts";
 import Builder from "./Builder.svelte";
+import { unfaded } from "../scroll-fade.harness.ts";
 import {
   desk,
   DEVICES,
@@ -52,6 +53,7 @@ test("an empty scene offers the six templates; picking one fills it in one undo 
     ),
   );
   expect(templates().getByRole("button").elements()).toHaveLength(NAMES.length);
+  expect(unfaded()).toEqual([]);
 
   await templates().getByRole("button", { name: "L-Haus aus zwei Baukörpern" }).click();
 

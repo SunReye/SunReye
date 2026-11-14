@@ -4,6 +4,7 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { unfaded } from "../scroll-fade.harness.ts";
 import SettingsScreen from "./SettingsScreen.svelte";
 import { CAPABILITIES, CHARGE, DEVICE, problem, testCore } from "./settings.harness.ts";
 
@@ -50,6 +51,7 @@ test("the admin reaches every group from the root", async () => {
         .toBeVisible(),
     ),
   );
+  expect(unfaded()).toEqual([]);
 });
 
 test("a viewer sees only the display, which is the browser's own, and About", async () => {
