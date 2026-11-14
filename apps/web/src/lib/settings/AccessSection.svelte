@@ -1,13 +1,13 @@
 <!--
   One kind of access under Settings › Users & access: its rows as the core lists them, then a row that
-  opens the form adding one. The form opens in place; it is the seam a drawer on touch and a dialog
-  on desktop (#745) take over.
+  opens the form adding one, in a drawer on the phone and a dialog with the rail.
 -->
 <script lang="ts" generics="T extends { id: number }">
   import type { Snippet } from "svelte";
   import type { Problem } from "../api/core";
   import * as Item from "#lib/components/ui/item/index.js";
   import LoadingRows from "../components/loading-rows.svelte";
+  import ResponsiveSheet from "../components/responsive-sheet.svelte";
   import AddRow from "./AddRow.svelte";
   import Listing from "./Listing.svelte";
 
@@ -56,9 +56,7 @@
         {/snippet}
       </Listing>
     {/if}
-    {#if adding}
-      {@render form(close)}
-    {:else if answer !== undefined && !("problem" in answer)}
+    {#if answer !== undefined && !("problem" in answer)}
       <AddRow
         label={action}
         onclick={() => {
@@ -67,4 +65,5 @@
       />
     {/if}
   </div>
+  <ResponsiveSheet bind:open={adding} label={action}>{@render form(close)}</ResponsiveSheet>
 </section>
