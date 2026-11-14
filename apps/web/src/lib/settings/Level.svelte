@@ -27,7 +27,9 @@
   }
 </script>
 
-<section aria-label={title} class="flex min-w-0 flex-col" in:enter>
-  <DrillHeader {back} {title} {onback} heading="h3" />
-  {@render children()}
+<section aria-label={title} class="min-w-0" in:enter>
+  <div class="drill-card flex min-w-0 flex-col">
+    <DrillHeader {back} {title} {onback} heading="h3" />
+    {@render children()}
+  </div>
 </section>

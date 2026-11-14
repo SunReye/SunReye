@@ -12,18 +12,23 @@
     title,
     onback,
     heading = "h2",
+    class: className,
   }: {
     /** The level above's title. */
     back: string;
     title: string;
     onback: () => void;
     heading?: "h2" | "h3";
+    class?: string;
   } = $props();
 </script>
 
 <div
   data-drill="header"
-  class="@container grid min-h-12 grid-cols-[minmax(2.25rem,1fr)_minmax(0,auto)_minmax(2.25rem,1fr)] items-center gap-1 border-b border-border/60 p-1.5"
+  class={[
+    "@container grid min-h-12 grid-cols-[minmax(2.25rem,1fr)_minmax(0,auto)_minmax(2.25rem,1fr)] items-center gap-1 border-b border-border/60 p-1.5",
+    className,
+  ]}
 >
   <Button
     variant="ghost"

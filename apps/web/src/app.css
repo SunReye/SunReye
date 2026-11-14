@@ -11,6 +11,8 @@
 @custom-variant dark (&:is(.dark *));
 @custom-variant mouse (@media (hover: hover) and (pointer: fine));
 @custom-variant touch (@media not ((hover: hover) and (pointer: fine)));
+/* Inside a drill-in level on the phone, where each section is a card of its own (ADR 21). */
+@custom-variant drill (&:where([data-drill="level"] *));
 
 /* Graphite preset, verbatim from kbase app.css. */
 :root,
@@ -345,8 +347,21 @@
 @utility glass-ambient {
   background-color: color-mix(in oklab, var(--card) var(--ambient-opacity), transparent) !important;
   background-image: var(--noise);
-  backdrop-filter: var(--glass-filter-strong) saturate(140%);
   -webkit-backdrop-filter: var(--glass-filter-strong) saturate(140%);
+  backdrop-filter: var(--glass-filter-strong) saturate(140%);
+}
+
+/* One section's rows on a drill-in page (ADR 21): on the phone's level screens an inset glass card
+   of its own, its label above it; in two panes plain, inside the pane's card. Clipped, not hidden,
+   so a bar inside still sticks to the screen; a section with nothing to show draws no card. */
+@utility drill-card {
+  :where([data-drill="level"]) & {
+    @apply glass-ambient overflow-clip rounded-lg border border-border/60 elevation-1;
+
+    &:empty {
+      display: none;
+    }
+  }
 }
 
 /* 44 px targets on touch (ADR 21) without resizing the control: the hit area grows, the look stays.

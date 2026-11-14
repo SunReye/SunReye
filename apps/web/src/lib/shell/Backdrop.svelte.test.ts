@@ -1,9 +1,12 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { afterEach, expect, test } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { motion } from "../motion/tier.svelte.ts";
 import Backdrop from "./Backdrop.svelte";
 import {
+  addressBar,
+  boxes,
   drifts,
   handBeat,
   lights,
@@ -93,6 +96,29 @@ test("the lights drift on the full tier and stand still under low power", async 
 
   await expect.poll(() => drifts(screen.container)).toEqual([RESTING, RESTING, RESTING, RESTING]);
   expect(hand.listening).toBe(false);
+});
+
+test("the lights hold still while a phone's address bar hides and shows", async () => {
+  await page.viewport(390, 844);
+
+  const hand = handBeat();
+  const screen = await render(Backdrop, { core: noon, beat: hand.beat });
+  const bar = addressBar(screen.container);
+
+  // The bar shown: 84 px of the screen are the browser's.
+  bar(760);
+
+  const shown = boxes(screen.container);
+
+  expect(new Set(shown.map(String)).size).toBe(4);
+
+  bar(844);
+  expect(boxes(screen.container)).toEqual(shown);
+
+  bar(734);
+  expect(boxes(screen.container)).toEqual(shown);
+  // The beat never stepped: the drift moved nothing here.
+  expect(drifts(screen.container)).toEqual([RESTING, RESTING, RESTING, RESTING]);
 });
 
 test("the PV light follows production and is out while PV is idle", async () => {

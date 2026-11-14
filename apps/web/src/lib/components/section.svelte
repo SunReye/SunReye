@@ -1,7 +1,8 @@
 <!--
   A titled part of a screen: a region named by its h2, with actions beside the title. Plain, it
   stacks under its title; as a `card` it is one glass surface whose header is ruled off; under an
-  `eyebrow` it is a group of rows, as Settings lists them.
+  `eyebrow` it is a group of rows, as Settings lists them: a card of their own on a drill-in's
+  phone level.
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
@@ -40,7 +41,7 @@
 {:else if eyebrow}
   <section aria-labelledby={id} class="flex flex-col">
     <Eyebrow element="h2" {id} class="px-4 pt-5 pb-2">{title}</Eyebrow>
-    {@render children()}
+    <div class="drill-card">{@render children()}</div>
   </section>
 {:else}
   <section aria-labelledby={id} class="flex flex-col gap-3">

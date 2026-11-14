@@ -60,7 +60,9 @@
 </script>
 
 {#if listed === undefined}
-  {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
+  <div class="drill-card">
+    {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
+  </div>
 {:else if shown.kind === "add"}
   <Level back={m.settings_devices()} title={m.settings_device_add()} onback={back}>
     <AddDevice {core} known={listed} onadded={after} />

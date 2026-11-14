@@ -22,14 +22,13 @@
 
   /** The entry, with the shell told whether to frame it and whether Controls is listed. */
   async function open(): Promise<Entry> {
-    if (shell) shell.bare = true;
+    shell?.opening();
 
     const shown = await entry(core);
 
-    if (shell && shown.screen === "dashboard") {
-      shell.admin = shown.admin;
-      shell.bare = false;
-    }
+    if (shell && shown.screen === "dashboard") shell.admin = shown.admin;
+
+    shell?.opened(shown.screen === "dashboard");
 
     return shown;
   }

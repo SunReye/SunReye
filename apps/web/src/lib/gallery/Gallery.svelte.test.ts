@@ -1,3 +1,4 @@
+import { toast } from "svelte-sonner";
 import { afterEach, expect, test } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -11,6 +12,7 @@ const kit = Object.keys(import.meta.glob("../components/ui/*/index.ts")).map(
 const root = document.documentElement;
 
 afterEach(async () => {
+  toast.dismiss();
   root.classList.remove("dark");
   root.style.removeProperty("--radius");
   delete root.dataset["lowPower"];
@@ -64,6 +66,23 @@ test("the gallery shows every primitive built on the kit", async () => {
   ]) {
     expect(document.querySelector(`[data-gallery="${name}"]`), name).not.toBeNull();
   }
+});
+
+/** Asks for the raised toast that matches. */
+const raised = (selector: string) => () => document.querySelector(`[data-sonner-toast]${selector}`);
+
+test("the gallery raises a toast of every type", async () => {
+  const screen = await render(Gallery);
+  const demo = screen.container.querySelector('[data-gallery="sonner"]')!;
+
+  for (const button of demo.querySelectorAll("button")) button.click();
+
+  for (const type of ["default", "success", "error", "info", "warning", "loading"])
+    // oxlint-disable-next-line no-await-in-loop -- one expectation at a time.
+    await expect.poll(raised(`[data-type=${type}]`), { message: type }).not.toBeNull();
+
+  await expect.poll(raised(":has([data-button]:not([data-cancel]))")).not.toBeNull();
+  await expect.poll(raised(":has([data-cancel])")).not.toBeNull();
 });
 
 test("every corner in the kit follows --radius, but an avatar's", async () => {

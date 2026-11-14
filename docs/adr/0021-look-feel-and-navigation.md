@@ -51,7 +51,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 **Drill-in navigation for Controls and Settings.**
 - **Pattern:** one component. A root list of groups, each row summarising its current values. Tapping a row slides its page in from the right while the parent shifts left and dims. Each level is a hash route, so browser back and the edge-swipe go back. At most two levels deep.
-- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right. Each group is still a hash route. Below 1024 px the drill-in slides.
+- **Phone layout:** below 1024 px each level is a screen of its own, as wide as the screen, and slides whole. No card holds both levels, so no surface changes size as they trade places. Inside a level the rows sit in inset glass cards, one per section, its label above the card. A page's header (back and title) is a glass bar that stays at the top of the screen. Each level keeps its own scroll position: a page opens at its top, and back returns the root to where it was.
+- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right, each pane one card. Each group is still a hash route. Below 1024 px the drill-in slides.
 - **Control groups:** come from the role namespace (`battery.*` → Battery, `grid.*` → Grid & export), labelled by Paraglide. Settings without a role go into Advanced. Profiles carry no groups.
 - **Writes:** there is no page lock; ADR 7's writes switch is the lock. With writes off, every control is read-only, under a banner explaining why.
 
@@ -83,7 +84,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 **Glass.**
 - **Two levels:**
   - *Overlay glass* (menus, dialogs, sheets) keeps kbase's tokens.
-  - *Ambient glass* (rail, bottom bar, dashboard cards, 3D label chips) is lighter, about 64 % opaque in light and 58 % in dark, with the strong blur: thin enough to show the backdrop's lights, with its text still at WCAG AA over the brightest of them.
+  - *Ambient glass* (rail, bottom bar, dashboard cards, 3D label chips, toasts) is lighter, about 64 % opaque in light and 58 % in dark, with the strong blur: thin enough to show the backdrop's lights, with its text still at WCAG AA over the brightest of them.
 - **Backdrop:** both sit over four large, soft lights:
   - *Sun:* kbase's `bg-spotlight` at the top, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. The core computes the tint (±6° around the horizon is twilight), so viewers get it without the location (ADR 9). It is recomputed every 15 minutes; without a location it stays indigo.
   - *PV:* solar amber, top right. Its strength follows the plant's live PV power in steps, eased over seconds, and it is out while PV is idle.
@@ -119,7 +120,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
 
-**Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in overlay glass, bottom right beside the rail and above the bottom bar on the phone. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
+**Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in the bottom bar's ambient glass, ring and elevation at the radius token, bottom right beside the rail and above the bottom bar on the phone. A toast's status shows in its icon, never in a coloured fill. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
 
 **Smoothness is measured.** A deliberate e2e journey (outside the gate, ADR 11) runs each signature transition, and a tap during the 3D scene's background load, under 4× CPU throttling and records Long Animation Frames: drill-in, sheet, rail, route change, camera flight, live tick, value-editor fling. It fails if any frame exceeds 50 ms or the 95th percentile exceeds 20 ms. `bun run smoothness` runs every journey against a fake core (`apps/web/e2e/`), at 1× and 4× throttle so software rendering, which the throttle does not scale, shows apart from main-thread work; `bun run smoothness <words>` runs those whose names contain them.
 

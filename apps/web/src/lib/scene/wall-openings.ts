@@ -1,6 +1,6 @@
 // Windows and doors as the scene draws them (ADR 20 Openings): fitted on their walls by the pv
 // crate, drawn only, never shading. At night some windows and the front door's light glow, and
-// their light spills on the ground: emissive maps and one decal, no light of their own.
+// their light spills on the ground out from the wall: emissive maps and one decal, no light of their own.
 import {
   BufferGeometry,
   Float32BufferAttribute,
@@ -20,9 +20,21 @@ const PROUD = 0.05;
 const SILL = { past: 0.06, thick: 0.04, deep: 0.12 } as const;
 const CANOPY = { past: 0.25, thick: 0.06, deep: 0.8, over: 0.12 } as const;
 
-/** The spill: how far it reaches past the opening and out from the wall, and its height over the
- * ground, clear of every ground surface. */
-const SPILL = { past: 0.7, out: 2.6, lift: 0.04 } as const;
+/** The spill, in metres and metres per metre of sill height. Light leaves through the opening and
+ * falls at an angle, so its patch begins `start` out from the wall and `slope` further per metre
+ * of sill, is `reach` deep and `past` wider than the opening on each side, deeper by `stretch` and
+ * wider by `spread` per metre, and fainter until none reaches the ground from `ceiling` up.
+ * `lift` holds it clear of every ground surface. */
+const SPILL = {
+  start: 0.15,
+  slope: 0.6,
+  reach: 2.2,
+  stretch: 1,
+  past: 0.5,
+  spread: 0.5,
+  ceiling: 3,
+  lift: 0.04,
+} as const;
 
 /** An emissive map at full strength: a lit room seen from the garden, not a lamp. */
 const GLOW = 1.8;
@@ -157,31 +169,64 @@ function lit(opening: Fitted): boolean {
   return opening.kind === "frontDoor" || chance(opening) < LIT;
 }
 
-/** The ground under the lit openings, lit by them: one mesh. */
-function spill(made: readonly Fitted[]): Mesh {
-  const drawn: Triangles = { position: [], uv: [] };
+/** Where an opening's light lands: from `near` to `far` out from the wall, `past` beyond the
+ * opening on each side, at `strength` of a ground-level opening's. */
+interface Cast {
+  readonly near: number;
+  readonly far: number;
+  readonly past: number;
+  readonly strength: number;
+}
 
-  for (const opening of made) {
+/** The light an opening throws on the ground, or none from too high up. */
+function cast({ corners: [low] }: Fitted): Cast | undefined {
+  const sill = Math.max(0, low[2]);
+  const strength = 1 - sill / SPILL.ceiling;
+
+  if (strength <= 0) return undefined;
+
+  const near = SPILL.start + sill * SPILL.slope;
+
+  return {
+    near,
+    far: near + SPILL.reach + sill * SPILL.stretch,
+    past: SPILL.past + sill * SPILL.spread,
+    strength,
+  };
+}
+
+/** The ground the lit openings light, out from their walls: one mesh. */
+function spill(made: readonly (readonly [Fitted, Cast])[]): Mesh {
+  const drawn: Triangles = { position: [], uv: [] };
+  const colour: number[] = [];
+
+  for (const [opening, { near, far, past, strength }] of made) {
     const { width, along } = span(opening);
     const [low] = opening.corners;
     const foot: Point = [low[0], low[1], SPILL.lift];
-    const [left, right] = [add(foot, along, -SPILL.past), add(foot, along, width + SPILL.past)];
+    const [left, right] = [add(foot, along, -past), add(foot, along, width + past)];
+    const at = (side: Point, out: number): Point => add(side, opening.out, out);
 
-    // Its map's first row lies along the wall.
+    // Its map's first row is the edge nearest the wall.
     drawn.position.push(
       ...[
-        left,
-        add(left, opening.out, SPILL.out),
-        add(right, opening.out, SPILL.out),
-        left,
-        add(right, opening.out, SPILL.out),
-        right,
+        at(left, near),
+        at(left, far),
+        at(right, far),
+        at(left, near),
+        at(right, far),
+        at(right, near),
       ].flatMap((point) => toThree(point)),
     );
     drawn.uv.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
+    colour.push(...Array.from({ length: 18 }, () => strength));
   }
 
-  const mesh = new Mesh(geometry(drawn), spilled());
+  const patches = geometry(drawn);
+
+  patches.setAttribute("color", new Float32BufferAttribute(colour, 3));
+
+  const mesh = new Mesh(patches, spilled());
 
   mesh.name = "spill";
   mesh.visible = false;
@@ -212,9 +257,13 @@ export function openings(fitted: readonly Fitted[]): Object3D[] {
     return mesh;
   });
 
-  const glowing = fitted.filter((opening) => lit(opening));
+  const spilling = fitted.flatMap((opening) => {
+    const thrown = lit(opening) ? cast(opening) : undefined;
 
-  return glowing.length === 0 ? meshes : [...meshes, spill(glowing)];
+    return thrown === undefined ? [] : [[opening, thrown] as const];
+  });
+
+  return spilling.length === 0 ? meshes : [...meshes, spill(spilling)];
 }
 
 /** Turns the lamps of `drawn` on by `level`, 0 by day to 1 at night. */

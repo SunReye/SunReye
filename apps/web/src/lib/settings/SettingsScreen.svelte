@@ -45,8 +45,9 @@
     back={m.nav_settings()}
     label={m.settings_groups()}
   >
-    {#snippet heading()}
-      <PageTitle title={m.nav_settings()} class="px-1" />
+    {#snippet heading(level)}
+      <!-- A page's own header names it. -->
+      {#if level === "root"}<PageTitle title={m.nav_settings()} class="px-1" />{/if}
     {/snippet}
     {#snippet page(group)}
       <SettingsPage {core} id={group.id} />

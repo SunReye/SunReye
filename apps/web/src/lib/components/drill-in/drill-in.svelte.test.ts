@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import { HAPTICS } from "../../haptics.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
+import { child, frame, offset, rect, until } from "./drill-in.probe.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 
@@ -19,29 +20,6 @@ afterEach(async () => {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
   await page.viewport(414, 896);
 });
-
-function frame(): Promise<number> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
-}
-
-function child(): HTMLElement | null {
-  return document.querySelector<HTMLElement>("[data-drill=page]");
-}
-
-/** How far the child page sits right of its place, in % of the width; 100 when it is gone. */
-function offset(): number {
-  const transform = child()?.style.transform;
-
-  return transform === undefined || transform === ""
-    ? 100
-    : Number(/translateX\(([-\d.]+)%\)/u.exec(transform)?.[1]);
-}
-
-async function until(done: () => boolean): Promise<void> {
-  await expect.poll(done, { timeout: 2000 }).toBe(true);
-}
 
 test("tapping a row slides its page in and the commit plays soft", async () => {
   const screen = await render(Harness);
@@ -200,12 +178,6 @@ test("from 1024 px the groups and the chosen group sit side by side", async () =
     .toHaveAttribute("aria-current", "page");
   expect(vibrate).toHaveBeenCalledOnce();
 });
-
-function rect(element: Element | null | undefined): DOMRect {
-  if (!element) throw new Error("missing element");
-
-  return element.getBoundingClientRect();
-}
 
 test("a pushed level hides its parent from the eye, the tab key and assistive tech", async () => {
   await page.viewport(390, 844);

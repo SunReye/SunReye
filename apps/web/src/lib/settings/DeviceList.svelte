@@ -42,29 +42,31 @@
   }
 </script>
 
-<Item.Group class="gap-0 divide-y divide-border/60">
-  {#each devices as device (device.id)}
-    <DrillRow
-      group={{
-        id: String(device.id),
-        label: device.name,
-        summary: summary(device),
-      }}
-      onclick={() => {
-        onopen(device.id);
-      }}
-    />
-  {/each}
-</Item.Group>
-{#if changed}
-  <div class="flex flex-col gap-2 border-t border-border/60 p-4">
-    <p role="status" class="text-sm text-muted-foreground">{m.settings_topology_hint()}</p>
-    <Button variant="outline" class="self-start" onclick={onreview}>
-      {m.settings_topology_review()}
-    </Button>
+<div class="drill-card">
+  <Item.Group class="gap-0 divide-y divide-border/60">
+    {#each devices as device (device.id)}
+      <DrillRow
+        group={{
+          id: String(device.id),
+          label: device.name,
+          summary: summary(device),
+        }}
+        onclick={() => {
+          onopen(device.id);
+        }}
+      />
+    {/each}
+  </Item.Group>
+  {#if changed}
+    <div class="flex flex-col gap-2 border-t border-border/60 p-4">
+      <p role="status" class="text-sm text-muted-foreground">{m.settings_topology_hint()}</p>
+      <Button variant="outline" class="self-start" onclick={onreview}>
+        {m.settings_topology_review()}
+      </Button>
+    </div>
+  {/if}
+  <div class="border-t border-border/60">
+    <AddRow label={m.settings_device_add()} onclick={onadd} />
   </div>
-{/if}
-<div class="border-t border-border/60">
-  <AddRow label={m.settings_device_add()} onclick={onadd} />
 </div>
 <ProfileUpdates {core} onapplied={() => undefined} />

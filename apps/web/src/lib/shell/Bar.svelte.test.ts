@@ -3,6 +3,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { haptics } from "../haptics.ts";
+import { motion } from "../motion/tier.svelte.ts";
 import { locales, setLocale } from "../paraglide/runtime.js";
 import Shell from "./Shell.svelte";
 import "../../app.css";
@@ -14,6 +15,7 @@ const tall = createRawSnippet(() => ({
 }));
 
 afterEach(() => {
+  motion.lowPower = false;
   vi.restoreAllMocks();
   scrollTo(0, 0);
   // The More sheet's links move the hash.
@@ -162,4 +164,64 @@ test("a screen picked in More closes the sheet", async () => {
 
   expect(location.hash).toBe("#/status");
   await expect.element(sheet()).not.toBeInTheDocument();
+});
+
+/** The sliding selection, and how far its left edge is from the named item's. */
+function slidingMark() {
+  const mark = bar().element().querySelector<HTMLElement>("[data-selection]")!;
+
+  return {
+    mark,
+    off: (name: string) =>
+      Math.abs(
+        mark.getBoundingClientRect().left -
+          bar().getByRole("radio", { name }).element().getBoundingClientRect().left,
+      ),
+  };
+}
+
+test("the selection slides to the shown screen on a transform alone", async () => {
+  await page.viewport(400, 800);
+
+  const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+  const { mark, off } = slidingMark();
+
+  await expect.poll(() => off("Dashboard")).toBeLessThan(1);
+
+  const group = bar().element().querySelector("[data-slot=toggle-group]")!;
+
+  // The registry's own pressed box moves on `left` and `width`, which are layout.
+  expect(getComputedStyle(group, "::before").display).toBe("none");
+
+  const moved: string[] = [];
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM's own event.
+  mark.addEventListener("transitionrun", ({ propertyName }) => {
+    moved.push(propertyName);
+  });
+  await shown.rerender({ current: "/forecast" });
+
+  await expect.poll(() => moved).toEqual(["transform"]);
+  await expect.poll(() => off("Prognose")).toBeLessThan(1);
+  expect(mark.style.left).toBe("0px");
+});
+
+test("on the still tier the selection is on the shown screen at once", async () => {
+  motion.lowPower = true;
+  await page.viewport(400, 800);
+
+  const shown = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+  const { mark, off } = slidingMark();
+
+  await expect.poll(() => off("Dashboard")).toBeLessThan(1);
+
+  let runs = 0;
+
+  mark.addEventListener("transitionrun", () => {
+    runs += 1;
+  });
+  await shown.rerender({ current: "/forecast" });
+
+  await expect.poll(() => off("Prognose")).toBeLessThan(1);
+  expect(runs).toBe(0);
 });
