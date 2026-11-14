@@ -267,10 +267,12 @@ export function glazed(kind: OpeningKind): MeshStandardMaterial {
   });
 }
 
-/** Light on the ground under a lit opening: added to what lies there, and out by day. */
+/** Light on the ground from a lit opening: added to what lies there, each patch at the strength
+ * in its vertex colours, and out by day. */
 export function spilled(): MeshBasicMaterial {
   return new MeshBasicMaterial({
     map: map("spill", "map"),
+    vertexColors: true,
     transparent: true,
     opacity: 0,
     blending: AdditiveBlending,

@@ -145,15 +145,25 @@ export function sectional() {
   });
 }
 
-/** Light falling from a lit window onto the ground below: brightest at the wall, fading out. */
+/** Where the spill is brightest, as a share of its depth from the edge nearest the wall. */
+const SPILL_PEAK = 0.25;
+
+/** Light a lit opening throws on the ground: dark at the edge nearest the wall, brightest a
+ * little way out, then fading and spreading. */
 export function spill() {
   const size = 64;
 
   return maps("spill", [size, size], (x, y) => {
-    // The wall is at the top edge.
-    const across = 1 - Math.min(1, Math.abs(x - size / 2 + 0.5) / (size / 2));
-    const away = 1 - y / size;
-    const light = across ** 1.5 * away ** 2;
+    // The first row is the edge nearest the wall; both ends are dark, so no edge shows.
+    const away = y / (size - 1);
+    const tail = Math.min(1, (1 - away) / 0.4);
+
+    const along =
+      (away / SPILL_PEAK) * Math.exp(1 - away / SPILL_PEAK) * tail * tail * (3 - 2 * tail);
+
+    const half = 0.45 + 0.55 * away;
+    const side = Math.max(0, 1 - Math.abs(x - size / 2 + 0.5) / (size / 2) / half);
+    const light = along * side * side * (3 - 2 * side);
 
     return { height: 0, albedo: [255 * light, 196 * light, 120 * light], rough: 255, glow: DARK };
   });
