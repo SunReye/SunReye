@@ -1,18 +1,20 @@
 // The studio's light for a sun and a theme (ADR 20 Look). Pure: the studio applies it.
 import type { Point } from "../builder/pv.ts";
 import type { MotionTier } from "../motion/tier.ts";
+import { blend, linear, luma, mix, smoothstep, type Rgb } from "./colour.ts";
+import { CLEAR, CLOSED, skylight } from "./skylight.ts";
 
-/** Linear RGB, 0 to 1. */
-export interface Rgb {
-  readonly r: number;
-  readonly g: number;
-  readonly b: number;
-}
+export type { Rgb };
 
 export interface Fill {
   readonly sky: Rgb;
   readonly ground: Rgb;
   readonly intensity: number;
+}
+
+export interface Clouds {
+  readonly coverage: number;
+  readonly density: number;
 }
 
 export interface Daylight {
@@ -30,6 +32,12 @@ export interface Daylight {
   readonly glow: number;
   /** How far the house's lamps are on: 0 by day, 1 at night, coming on across dusk. */
   readonly lamps: number;
+  /** The sky model's clouds: how much of the sky they cover and how solid they are, 0 to 1. */
+  readonly clouds: Clouds;
+  /** How hazy the sky model is: 1 at a low sun, 0 at a high one. */
+  readonly haze: number;
+  /** The shadow's blur radius in shadow-map texels: wider under cloud. */
+  readonly shadow: number;
   /** The moon lights the plant. */
   readonly night: boolean;
   /** The sun's elevation in degrees. */
@@ -42,22 +50,61 @@ const HIGH = { colour: 0xfff4e5, intensity: 3.4, environment: 1, glow: 1, elevat
 
 const MOON = { colour: 0xb4c4ff, intensity: 2.3, environment: 0.35 };
 
-/** The sky's shadowless light: its colours, and how much lands on a face turned up to it. */
-interface Ambient {
+/** A sky's shadowless fill: its colours. */
+interface Tint {
   readonly sky: number;
   readonly ground: number;
-  readonly light: number;
 }
 
-/** A faint bounce under a high sun: the sky model lights the day. */
-const BOUNCE: Ambient = { sky: 0xcfe0ff, ground: 0x4b5b35, light: 0.15 * luma(linear(0xcfe0ff)) };
-/** A low sun's warm sky, stronger as the sun's own light goes: the sky model is dim there. */
-const GOLDEN: Ambient = { sky: 0xffdcc0, ground: 0x8a7866, light: 1.65 };
-const HORIZON: Ambient = { ...GOLDEN, light: 2.55 };
-/** The blue hour, at the end of civil twilight: the sky still lights everything. */
-const CIVIL: Ambient = { sky: 0x9fb8f0, ground: 0x56628a, light: 2 };
-/** The night's own blue sky: the sky model is nearly black below the horizon. */
-const NIGHT_SKY: Ambient = { sky: 0x93a5d8, ground: 0x4a5475, light: 1.5 * luma(linear(0x93a5d8)) };
+/** The fill's colours by sky. */
+const TINT = {
+  // A faint bounce under a high sun, where the sky model lights the day.
+  bounce: { sky: 0xcfe0ff, ground: 0x4b5b35 },
+  // A low sun's sky, a little warm, and the horizon's, warmer.
+  golden: { sky: 0xfff0e2, ground: 0x9a9082 },
+  horizon: { sky: 0xffe4cc, ground: 0x8f8070 },
+  // The blue hour, at the end of civil twilight.
+  civil: { sky: 0x9fb8f0, ground: 0x56628a },
+  // The night's own blue sky.
+  night: { sky: 0x93a5d8, ground: 0x4a5475 },
+  // A closed sky: grey.
+  overcast: { sky: 0xd6d9dd, ground: 0x777a7c },
+} satisfies Record<string, Tint>;
+
+/** The fill's least light, by day and by night. */
+const FAINT = {
+  day: 0.15 * luma(linear(TINT.bounce.sky)),
+  night: 1.5 * luma(linear(TINT.night.sky)),
+};
+
+/**
+ * The least light a face gets from the sun or the moon, the sky model and the fill together: the
+ * fill tops the others up to it. Real daylight is mostly the sky's while the sun is low, so the
+ * day's floor, about a November noon's own light, holds from the horizon up; it eases to the
+ * blue hour's at the end of civil twilight and to the night's at the end of nautical.
+ */
+const FLOOR = {
+  night: MOON.intensity * luma(linear(MOON.colour)) + FAINT.night,
+  civil: 3,
+  day: 4.5,
+};
+
+/**
+ * The sky model is dim at a low sun and black under the horizon. Up to `most` times stronger, it
+ * gives a low sun's day the sky light of a November noon, `light`: reflections and all.
+ */
+const SKY = { light: 2.9, most: 10 };
+
+/** The share of the sun's own light that gets through a closed sky, and of the sky model's:
+ * its clouds are twice as bright as its clear sky. */
+const THROUGH = { sun: 0.06, sky: 0.45 };
+
+/** The shadow's blur radius under a clear sky and a closed one. */
+const SHADOW = { clear: 3.5, closed: 9 };
+
+/** The diffuse fractions where cloud starts to show and where the sky is closed: the dashboard
+ * calls 0.45 partly cloudy and 0.8 cloudy. */
+const CLOUD = [0.25, 0.85] as const;
 
 /** Degrees under the horizon where civil twilight ends and the moon starts to show. */
 const CIVIL_END = -6;
@@ -83,90 +130,123 @@ const FIXED = compass(238, 42);
 /** The moon, from the north-west. */
 const MOON_TOWARD = compass(300, 50);
 
-/** One sRGB byte, linear. */
-function channel(byte: number): number {
-  const c = byte / 255;
+/** What the sky is at an instant, whichever light shines. */
+type Sky = Pick<Daylight, "sun" | "elevation" | "clouds" | "haze" | "lamps">;
 
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+/** Under the horizon: the sky lights civil twilight alone; the moon comes up as that light goes. */
+function twilight(sky: Sky): Daylight {
+  const civil = smoothstep(0, CIVIL_END, sky.elevation);
+  const moonlit = smoothstep(CIVIL_END, NIGHT, sky.elevation);
+  const moon = { colour: linear(MOON.colour), intensity: MOON.intensity * moonlit };
+  const environment = mix(SKY.most, MOON.environment, civil);
+
+  const [tint, floor] =
+    sky.elevation > CIVIL_END
+      ? [between(TINT.horizon, TINT.civil, civil), mix(FLOOR.day, FLOOR.civil, civil)]
+      : [between(TINT.civil, TINT.night, moonlit), mix(FLOOR.civil, FLOOR.night, moonlit)];
+
+  return {
+    ...sky,
+    ...moon,
+    toward: MOON_TOWARD,
+    environment,
+    fill: fill(tint, FAINT.night, floor, {
+      ...moon,
+      sky: environment * skylight(sky.elevation, sky.clouds.coverage),
+    }),
+    glow: 0,
+    shadow: SHADOW.clear,
+    night: true,
+  };
 }
 
-/** sRGB hex to linear RGB. */
-function linear(hex: number): Rgb {
-  return { r: channel(hex >> 16), g: channel((hex >> 8) & 0xff), b: channel(hex & 0xff) };
+/** Over the horizon, under `cloud` of a closed sky. */
+function day(sky: Sky, cloud: number): Daylight {
+  const k = 1 - sky.haze;
+  // The sun's own light fades out toward the horizon, and the sky's makes up for it.
+  const risen = smoothstep(0, DUSK, sky.elevation);
+  // Cloud shows as the sun rises: at the horizon every sky is the twilight's.
+  const veil = cloud * risen;
+  const model = skylight(sky.elevation, sky.clouds.coverage);
+
+  const direct = {
+    colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
+    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen * mix(1, THROUGH.sun, veil),
+  };
+
+  const environment = Math.min(
+    SKY.most,
+    Math.max(
+      mix(LOW.environment, HIGH.environment, k) * mix(1, THROUGH.sky, veil),
+      SKY.light / Math.max(model, 1e-6),
+    ),
+  );
+
+  const clear =
+    sky.elevation < DUSK
+      ? between(TINT.horizon, TINT.golden, risen)
+      : between(TINT.golden, TINT.bounce, k);
+
+  const tint = {
+    sky: blend(clear.sky, linear(TINT.overcast.sky), veil),
+    ground: blend(clear.ground, linear(TINT.overcast.ground), veil),
+  };
+
+  return {
+    ...sky,
+    ...direct,
+    toward: sky.sun,
+    environment,
+    fill: fill(tint, FAINT.day, FLOOR.day, { ...direct, sky: environment * model }),
+    glow: mix(LOW.glow, HIGH.glow, k) * risen,
+    shadow: mix(SHADOW.clear, SHADOW.closed, cloud),
+    night: false,
+  };
 }
 
-function mix(from: number, to: number, k: number): number {
-  return from + (to - from) * k;
-}
-
-function smoothstep(from: number, to: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - from) / (to - from)));
-
-  return t * t * (3 - 2 * t);
-}
-
-/** The light for a sun toward `sun`; null keeps a fixed afternoon sun. */
-export function daylight(sun: Point | null): Daylight {
+/**
+ * The light for a sun toward `sun` under a sky whose light is `diffuse` of the way diffuse
+ * (diffuse over global irradiance); a null sun is a fixed afternoon one, a null sky a clear one.
+ */
+export function daylight(sun: Point | null, diffuse: number | null = null): Daylight {
   const toward = sun ?? FIXED;
   const elevation = Math.asin(Math.max(-1, Math.min(1, toward[2]))) / DEGREES;
-  const dusk = smoothstep(DUSK, CIVIL_END, elevation);
+  const cloud = smoothstep(...CLOUD, diffuse ?? 0);
 
-  if (elevation <= 0) {
-    const civil = smoothstep(0, CIVIL_END, elevation);
-    // The sky lights civil twilight alone; the moon comes up as that light goes.
-    const moonlit = smoothstep(CIVIL_END, NIGHT, elevation);
-
-    return {
-      sun: toward,
-      toward: MOON_TOWARD,
-      colour: linear(MOON.colour),
-      intensity: MOON.intensity * moonlit,
-      environment: mix(LOW.environment, MOON.environment, civil),
-      fill: elevation > CIVIL_END ? fill(HORIZON, CIVIL, civil) : fill(CIVIL, NIGHT_SKY, moonlit),
-      lamps: dusk,
-      glow: 0,
-      night: true,
-      elevation,
-    };
-  }
-
-  const k = smoothstep(LOW.elevation, HIGH.elevation, elevation);
-  // The sun's own light fades out toward the horizon, and the sky's makes up for it.
-  const risen = smoothstep(0, DUSK, elevation);
-
-  return {
+  const sky = {
     sun: toward,
-    toward,
-    colour: blend(linear(LOW.colour), linear(HIGH.colour), k),
-    intensity: mix(LOW.intensity, HIGH.intensity, k) * risen,
-    environment: mix(LOW.environment, HIGH.environment, k),
-    fill: elevation < DUSK ? fill(HORIZON, GOLDEN, risen) : fill(GOLDEN, BOUNCE, k),
-    lamps: dusk,
-    glow: mix(LOW.glow, HIGH.glow, k) * risen,
-    night: false,
     elevation,
+    clouds: {
+      coverage: mix(CLEAR.coverage, CLOSED.coverage, cloud),
+      density: mix(CLEAR.density, CLOSED.density, cloud),
+    },
+    haze: 1 - smoothstep(LOW.elevation, HIGH.elevation, elevation),
+    lamps: smoothstep(DUSK, CIVIL_END, elevation),
   };
+
+  return elevation <= 0 ? twilight(sky) : day(sky, cloud);
 }
 
-function blend(from: Rgb, to: Rgb, k: number): Rgb {
-  return { r: mix(from.r, to.r, k), g: mix(from.g, to.g, k), b: mix(from.b, to.b, k) };
-}
-
-/** Relative luminance. */
-function luma({ r, g, b }: Rgb): number {
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/** The sky's light `k` of the way `from` one `to` the next. Its light blends, not the lamp's
- * intensity: the light then never dips between two skies of different colours. */
-function fill(from: Ambient, to: Ambient, k: number): Fill {
-  const sky = blend(linear(from.sky), linear(to.sky), k);
-
+/** The fill's colours `k` of the way `from` one sky `to` the next. */
+function between(from: Tint, to: Tint, k: number): Pick<Fill, "sky" | "ground"> {
   return {
-    sky,
+    sky: blend(linear(from.sky), linear(to.sky), k),
     ground: blend(linear(from.ground), linear(to.ground), k),
-    intensity: mix(from.light, to.light, k) / luma(sky),
   };
+}
+
+/** What already lights a face: the sun or the moon, and the sky model. */
+interface Lit {
+  readonly colour: Rgb;
+  readonly intensity: number;
+  readonly sky: number;
+}
+
+/** The fill in `tint` that tops what is `lit` up to `floor`, and is never under `faint`. */
+function fill(tint: Pick<Fill, "sky" | "ground">, faint: number, floor: number, lit: Lit): Fill {
+  const light = Math.max(faint, floor - lit.intensity * luma(lit.colour) - lit.sky);
+
+  return { ...tint, intensity: light / luma(tint.sky) };
 }
 
 export interface Theme {

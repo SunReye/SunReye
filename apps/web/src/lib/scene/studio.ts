@@ -39,7 +39,6 @@ function soften(sun: DirectionalLight): void {
   shadow.mapSize.set(2048, 2048);
   shadow.bias = -0.00025;
   shadow.normalBias = 0.035;
-  shadow.radius = 3.5;
   shadow.blurSamples = 16;
 }
 
@@ -157,6 +156,7 @@ export class Studio {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
+    this.#sun.shadow.radius = day.shadow;
     this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
     this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
     this.#fill.intensity = day.fill.intensity;
@@ -248,17 +248,26 @@ export class Studio {
 
   /**
    * The sky model at the sun, as the scene's environment. Made again only once the sun has moved
-   * a degree or the theme changed: a dragged time slider moves it by far less per step.
+   * a degree, the clouds have changed or the theme has: a dragged time slider moves it by far
+   * less per step.
    */
   #environ(day: Daylight, { dark, environment }: Theme): void {
-    const environed = JSON.stringify([day.sun.map((v) => Math.round(v * 60)), dark]);
+    const environed = JSON.stringify([
+      day.sun.map((v) => Math.round(v * 60)),
+      dark,
+      Math.round(day.clouds.coverage * 20),
+    ]);
 
     this.scene.environmentIntensity = day.environment * environment;
 
     if (environed === this.#environed) return;
 
     this.#environed = environed;
-    aim(this.#sky, new Vector3(...toThree(day.sun)), dark, day.elevation < 10);
+    aim(this.#sky, new Vector3(...toThree(day.sun)), {
+      dark,
+      low: day.haze,
+      clouds: day.clouds,
+    });
     this.#environment?.dispose();
     this.#environment = this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000);
     this.scene.environment = this.#environment.texture;

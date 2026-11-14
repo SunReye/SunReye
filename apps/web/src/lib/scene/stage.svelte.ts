@@ -119,14 +119,14 @@ function stage(studio: Studio): Pick<Lit, "show" | "dispose"> & { lamp: (level: 
   };
 }
 
-/** A studio on `canvas`, lit by `sun` (null for a fixed one), drawn after each change; `drawn`
- * follows each draw. */
+/** A studio on `canvas`, lit by `sky`, drawn after each change; `drawn` follows each draw. The
+ * sky is the sun (null for a fixed one) and how diffuse its light is (null for a clear sky). */
 export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
-  sun: () => Parameters<typeof daylight>[0],
+  sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
   drawn: () => void,
 ): Lit {
   const studio = new Studio(canvas, camera);
@@ -134,7 +134,7 @@ export function lit(
   const { flight } = opened;
   const { render } = opened;
   const shown = stage(studio);
-  const day = $derived(daylight(sun()));
+  const day = $derived(daylight(sky().sun, sky().diffuse));
   let colour = $state(0);
 
   $effect(() => {

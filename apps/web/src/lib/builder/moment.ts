@@ -62,13 +62,18 @@ export interface Reading {
   readonly today: string;
 }
 
+/** The day `YYYY-MM-DD` in the browser's calendar: its midnight and the next. */
+export function spanOf(day: string): readonly [Date, Date] {
+  return [new Date(`${day}T00:00`), new Date(`${after(day, 1)}T00:00`)];
+}
+
 /** Each saved string's stored series for the day; an unsaved one has none. */
 function stored(
   reading: Reading,
   source: "measured" | "forecast",
 ): Promise<(readonly Interval[])[]> {
   const { core, draft, day } = reading;
-  const [from, to] = [new Date(`${day}T00:00`), new Date(`${after(day, 1)}T00:00`)];
+  const [from, to] = spanOf(day);
 
   return Promise.all(
     draft.strings.map(async ({ id, device }) => {

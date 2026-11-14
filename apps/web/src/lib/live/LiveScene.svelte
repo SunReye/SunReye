@@ -19,6 +19,7 @@
     capabilities,
     model,
     location,
+    diffuse,
     locked = false,
     top = 0,
     onselect,
@@ -36,6 +37,8 @@
     model?: Parameters<typeof SceneCanvas>[1]["model"];
     /** The plant's; unknown to a viewer, whose sun then stays put (ADR 20). */
     location?: Location | undefined;
+    /** How diffuse the sky's light is now, 0 to 1: the weather; null or none for a clear sky. */
+    diffuse?: number | null | undefined;
     /** The camera stays put and a finger on the scene scrolls the page (ADR 20). */
     locked?: boolean;
     /** Pixels at the top the chips leave free: the hero's headline. */
@@ -245,6 +248,7 @@
     shares={live.shares}
     cars={live.cars}
     {sun}
+    {diffuse}
     {model}
     view={kept ?? presetView("isometric", geometry)}
     {locked}

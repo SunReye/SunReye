@@ -1,13 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { daylight, occlusion, theme, type Daylight, type Rgb } from "./light.ts";
-
-/** Toward the sun at `elevation` degrees, due south. */
-function south(elevation: number): [number, number, number] {
-  const radians = (elevation * Math.PI) / 180;
-
-  return [0, -Math.cos(radians), Math.sin(radians)];
-}
+import { ambientOf, lightOf, luma, skyOf, south } from "./light.harness.ts";
+import { daylight, occlusion, theme } from "./light.ts";
+import { skylight } from "./skylight.ts";
 
 test("the light shines from the given sun and lights the day", () => {
   const noon = daylight(south(60));
@@ -22,7 +17,9 @@ test("a low sun is weaker and warmer than a high one, and the cells glow less", 
   const [low, high] = [daylight(south(4)), daylight(south(50))];
 
   expect(low.intensity).toBeLessThan(high.intensity);
-  expect(low.environment).toBeLessThan(high.environment);
+  expect(low.environment * skylight(4, low.clouds.coverage)).toBeLessThan(
+    high.environment * skylight(50, high.clouds.coverage),
+  );
   expect(low.glow).toBeLessThan(high.glow);
   // Warmer: less blue against red.
   expect(low.colour.b / low.colour.r).toBeLessThan(high.colour.b / high.colour.r);
@@ -61,15 +58,6 @@ test("ambient occlusion runs on the full motion tier only", () => {
   expect(occlusion("still")).toBe(false);
 });
 
-const luma = ({ r, g, b }: Rgb): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-/** Direct plus ambient light; below the horizon the sky model is black, so only the fill counts. */
-function lightOf(day: Daylight): number {
-  const ambient = day.fill.intensity * luma(day.fill.sky) + (day.night ? 0 : day.environment);
-
-  return day.intensity * luma(day.colour) + ambient;
-}
-
 test("a moonlit night keeps at least a third of a low sun's light, cool and soft", () => {
   const [night, low, high] = [daylight(south(-20)), daylight(south(5)), daylight(south(50))];
 
@@ -91,8 +79,8 @@ test("dusk eases into night: no light steps across the horizon", () => {
 
     if (last !== undefined) {
       expect(Math.abs(next.intensity - last.intensity)).toBeLessThan(0.1);
-      expect(Math.abs(next.environment - last.environment)).toBeLessThan(0.01);
-      expect(Math.abs(next.fill.intensity - last.fill.intensity)).toBeLessThan(0.05);
+      // The fill and the sky model trade places near the horizon: their sum is what shows.
+      expect(Math.abs(ambientOf(next) - ambientOf(last))).toBeLessThan(0.05);
       expect(Math.abs(luma(next.fill.sky) - luma(last.fill.sky))).toBeLessThan(0.01);
       expect(Math.abs(next.glow - last.glow)).toBeLessThan(0.01);
 
@@ -122,15 +110,43 @@ test("light never falls as the sun rises, from astronomical twilight to the zeni
   }
 });
 
-test("a sun on the horizon is day: three fifths of noon's light, a third over the moonlit night", () => {
-  // The moonlit night is 45 % of noon; a camera's day at sunrise sits well clear of it.
-  const [noon, night] = [lightOf(daylight(south(90))), lightOf(daylight(south(-20)))];
+test("a sun on the horizon is day: twice the moonlit night, two fifths of the zenith's light", () => {
+  // The moonlit night is under a fifth of the zenith's light; sunrise sits well clear of it, as
+  // bright as the rest of a winter morning.
+  const [zenith, night] = [lightOf(daylight(south(90))), lightOf(daylight(south(-20)))];
 
   for (const elevation of [0, 1, 2, 3, 4, 5]) {
     const day = lightOf(daylight(south(elevation)));
 
-    expect(day / noon).toBeGreaterThanOrEqual(0.6);
-    expect(day / night).toBeGreaterThanOrEqual(4 / 3);
+    expect(day / night).toBeGreaterThanOrEqual(2);
+    expect(day / zenith).toBeGreaterThanOrEqual(0.4);
+  }
+});
+
+test("a low morning sun is exposed as a November noon is: from 3° up, nine tenths of the light at 21°", () => {
+  // The owner's photo at 08:30 on 14 November, the sun 7° up: full daylight, a green lawn.
+  const noon = lightOf(daylight(south(21)));
+
+  for (const elevation of [3, 5, 7, 8]) {
+    const morning = daylight(south(elevation));
+
+    expect(lightOf(morning) / noon).toBeGreaterThanOrEqual(0.9);
+    // The sky lights what the low sun cannot reach: the lawn and the faces turned from it.
+    expect(ambientOf(morning)).toBeGreaterThan(2 * morning.intensity * luma(morning.colour));
+    // Most of it from the sky model, whose reflections a fill has none of.
+    expect(skyOf(morning)).toBeGreaterThanOrEqual(0.99 * skyOf(daylight(south(21))));
+  }
+});
+
+test("the sky model's haze follows the sun's height with no switch", () => {
+  expect(daylight(south(3)).haze).toBe(1);
+  expect(daylight(south(60)).haze).toBe(0);
+
+  for (let elevation = 5; elevation < 42; elevation += 0.5) {
+    const [lower, higher] = [daylight(south(elevation)), daylight(south(elevation + 0.5))];
+
+    expect(lower.haze - higher.haze).toBeGreaterThanOrEqual(0);
+    expect(lower.haze - higher.haze).toBeLessThan(0.05);
   }
 });
 

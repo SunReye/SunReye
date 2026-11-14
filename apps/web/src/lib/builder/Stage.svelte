@@ -24,6 +24,7 @@
     geometry,
     panels,
     sun,
+    diffuse,
     cars,
     onpick,
     editing,
@@ -36,6 +37,8 @@
     panels: readonly Panel[];
     /** Toward the sun at the slider's instant; null where it is unknown. */
     sun?: Point | null;
+    /** How diffuse the sky's light is then, 0 to 1; null without weather for the instant. */
+    diffuse?: number | null;
     /** The connected cars. */
     cars: readonly Parked[];
     onpick?: ((hit: Hit) => void) | undefined;
@@ -75,6 +78,7 @@
   {geometry}
   {panels}
   {sun}
+  {diffuse}
   {cars}
   {model}
   {view}
