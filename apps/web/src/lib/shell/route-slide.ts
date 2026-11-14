@@ -12,7 +12,7 @@ const ORDER = [...BAR, ...MORE].map((item) => item.route);
 /** ADR 21's movement between two resting places. */
 const SLIDE_MS = 300;
 
-type Route = string | null;
+export type Route = string | null;
 
 /** 1 towards a later screen, -1 an earlier one, 0 when either is outside the navigation. */
 type Way = -1 | 0 | 1;
