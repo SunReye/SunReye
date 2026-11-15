@@ -12,6 +12,10 @@
 <CommandPrimitive.List
 	bind:ref
 	data-slot="command-list"
-	class={cn("no-scrollbar scroll-fade-y max-h-72 scroll-py-1 outline-none overflow-x-hidden overflow-y-auto", className)}
+	class={cn(
+		// Local: `scroll-fade-y`, the edges fade where more content waits (ADR 21, #753).
+		"no-scrollbar scroll-fade-y max-h-72 scroll-py-1 outline-none overflow-x-hidden overflow-y-auto",
+		className
+	)}
 	{...restProps}
 />
