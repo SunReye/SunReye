@@ -122,7 +122,7 @@ impl Plant {
                     round(duration.as_secs_f64() / 3600.0),
                     round(mean),
                 ),
-                Aggregate::Counter { .. } => panic!("a counter"),
+                Aggregate::Counter { .. } | Aggregate::Held { .. } => panic!("no mean"),
             })
             .collect()
     }
@@ -145,7 +145,7 @@ impl Plant {
                 Aggregate::Counter { first, last, delta } => {
                     (hours(r.start), round(first), round(last), round(delta))
                 }
-                Aggregate::Measurement { .. } => panic!("a measurement"),
+                Aggregate::Measurement { .. } | Aggregate::Held { .. } => panic!("no counter"),
             })
             .collect()
     }

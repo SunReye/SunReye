@@ -42,7 +42,7 @@ pub(super) fn measured(rollups: &[Rollup]) -> Vec<Measured> {
                 round(max),
                 round(integral),
             ),
-            Aggregate::Counter { .. } => panic!("a counter rollup"),
+            Aggregate::Counter { .. } | Aggregate::Held { .. } => panic!("no measurement rollup"),
         })
         .collect()
 }
@@ -55,7 +55,7 @@ pub(super) fn counted(rollups: &[Rollup]) -> Vec<(f64, f64, f64, f64)> {
             Aggregate::Counter { first, last, delta } => {
                 (hours(r.start), round(first), round(last), round(delta))
             }
-            Aggregate::Measurement { .. } => panic!("a measurement rollup"),
+            Aggregate::Measurement { .. } | Aggregate::Held { .. } => panic!("no counter rollup"),
         })
         .collect()
 }
@@ -241,7 +241,7 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
 }
 
 #[tokio::test]
-async fn a_held_value_is_stored_as_change_points_and_rolls_up_nothing() {
+async fn a_held_value_stores_no_rollup_and_reads_as_the_last_value_of_each_window() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();
     let storage = Storage::open(&dir.path().join("s.sqlite"), epoch(), "UTC", &plant.bus).unwrap();
@@ -255,11 +255,27 @@ async fn a_held_value_is_stored_as_change_points_and_rolls_up_nothing() {
         plant.history(&storage, 0.0, 7200.0).await,
         [(0.0, Some(50.0)), (1800.0, Some(51.0))]
     );
+    let stored = |db: &rusqlite::Connection| {
+        db.query_row(
+            "SELECT (SELECT count(*) FROM rollup_hour) + (SELECT count(*) FROM rollup_day)",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+    };
+    assert_eq!(storage.database().run(stored).await.unwrap(), 0);
     for tier in [Tier::Hour, Tier::Day] {
-        assert_eq!(
-            rollups(&storage, plant.power, tier, 0.0, 86_400.0).await,
-            []
-        );
+        let held: Vec<_> = rollups(&storage, plant.power, tier, -86_400.0, 86_400.0)
+            .await
+            .into_iter()
+            .map(|r| (hours(r.start), r.aggregate))
+            .collect();
+        let value = Aggregate::Held { value: 51.0 };
+        let expected = match tier {
+            Tier::Hour => vec![(0.0, value), (1.0, value), (2.0, value)],
+            // The UTC day `T0`'s noon falls in.
+            Tier::Day => vec![(-12.0, value)],
+        };
+        assert_eq!(held, expected, "{tier:?}");
     }
 }
 

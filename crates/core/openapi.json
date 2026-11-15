@@ -2094,7 +2094,7 @@
             "type": "string"
           },
           "mean": {
-            "description": "The value weighted by the time it held between `start` and `end`.",
+            "description": "The value weighted by the time it held between `start` and `end`; for a status or a held\nvalue in an `hour` or a `day`, the last value it held.",
             "format": "double",
             "type": "number"
           },

@@ -183,6 +183,15 @@ impl Store {
             return Ok(Vec::new());
         };
         let (from, to) = (tick(from).unwrap_or(0), tick(to).unwrap_or(0));
+        let declared = self
+            .tracks
+            .iter()
+            .find(|((d, _), s)| *d == device && s.id == series);
+        if let Some((_, stored)) = declared
+            && matches!(stored.kind, RoleKind::Status | RoleKind::Held)
+        {
+            return self.carried(device.0, (series, step), tier, from..to);
+        }
         let (sql, from, to) = match tier {
             Tier::Hour => (
                 "SELECT hour * 36000, hour * 36000 + 36000,
@@ -220,6 +229,60 @@ impl Store {
             }
         }
         Ok(rollups)
+    }
+}
+
+impl Store {
+    /// The windows of `tier` starting within `range`, each as the last value the series held
+    /// in it: a status or held value stores no rollup row (ADR 3). The window in progress is
+    /// the last; nothing is carried past it.
+    fn carried(
+        &self,
+        device: u32,
+        (series, step): (i64, f64),
+        tier: Tier,
+        Range {
+            start: from,
+            end: to,
+        }: Range<Tick>,
+    ) -> Result<Vec<Rollup>, Error> {
+        let windows: Vec<(Tick, Tick)> = match tier {
+            Tier::Hour => (ceil(from)..ceil(to))
+                .map(|hour| (hour * HOUR, (hour + 1) * HOUR))
+                .collect(),
+            Tier::Day => rollup::days(&self.zone.1, from, to)
+                .into_iter()
+                .filter(|day| day.start >= from)
+                .map(|day| (day.start, day.end))
+                .collect(),
+        };
+        let Some(open) = self.rolled else {
+            return Ok(Vec::new());
+        };
+        let windows: Vec<(Tick, Tick)> = windows.into_iter().filter(|w| w.0 <= open).collect();
+        let (Some(first), Some(last)) = (windows.first(), windows.last()) else {
+            return Ok(Vec::new());
+        };
+        let points = points(&self.db, device, series, first.0, last.1)?;
+        let held = |&(start, end): &(Tick, Tick)| {
+            let in_force = points
+                .partition_point(|p| p.time <= start)
+                .saturating_sub(1);
+            let until = points.partition_point(|p| p.time < end);
+            let value = points
+                .get(in_force..until)?
+                .iter()
+                .rev()
+                .find_map(|p| p.value)?;
+            #[expect(clippy::cast_precision_loss, reason = "values are bounded to ±2^53")]
+            let value = value as f64 * step;
+            Some(Rollup {
+                start: time(start),
+                end: time(end),
+                aggregate: Aggregate::Held { value },
+            })
+        };
+        Ok(windows.iter().filter_map(held).collect())
     }
 }
 
