@@ -14,7 +14,7 @@ pub struct Header {
     pub requires: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Profile", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -49,7 +49,7 @@ pub struct ProfileDoc {
 
 /// One device type of a family (ADR 5): the base with its own identify values, name, inverter
 /// section, setting ranges and quantities. Nothing else differs.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Variant", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -60,22 +60,19 @@ pub struct VariantDoc {
     /// Values of the base's identify fields, by register; a field left out keeps the base's.
     pub identify: Option<Vec<VariantIdentifyDoc>>,
     /// In place of the base's.
-    #[expect(dead_code, reason = "checked here, merged from the file")]
     pub inverter: Option<crate::Inverter>,
     /// Ranges of the base's settings, by key.
     #[cfg_attr(test, ts(optional, type = "Record<string, Range>"))]
-    #[expect(dead_code, reason = "checked here, merged from the file")]
     pub settings: Option<BTreeMap<String, Range>>,
     /// Keys of the base's quantities it lacks.
     pub drop: Option<Vec<String>>,
     /// Quantities it adds in full: one under a dropped key takes its place, the rest follow the
     /// base's.
-    #[expect(dead_code, reason = "checked here, merged from the file")]
     pub add: Option<Vec<QuantityDoc>>,
 }
 
 /// A variant's values for one of the base's identify fields.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "VariantIdentify"))]
 #[serde(deny_unknown_fields)]
@@ -87,7 +84,7 @@ pub struct VariantIdentifyDoc {
 /// A register the identify probe reads, at scale 1, and the values that identify the device, such
 /// as Deye's device type. Only a family may leave a field's values to its variants: the base then
 /// takes any value.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Identify", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -99,7 +96,7 @@ pub struct IdentifyDoc {
     pub values: Option<Vec<f64>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Setting", optional_fields))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -135,7 +132,7 @@ pub struct SettingDoc {
 
 /// An expiring setpoint's revert time, a heartbeat register's interval and the device's fallback
 /// value; times in seconds.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "LiveControl", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -147,7 +144,7 @@ pub struct LiveControlDoc {
 }
 
 /// A register written every `interval` seconds to keep a setpoint alive.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Heartbeat"))]
 #[serde(deny_unknown_fields)]
@@ -179,7 +176,7 @@ impl SettingDoc {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Step"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -214,7 +211,7 @@ impl StepDoc {
 
 /// A field, or a quantity read from a topic, that must hold one of `values` before anything is
 /// written.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Precondition", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -228,7 +225,7 @@ pub struct PreconditionDoc {
 
 /// The value published, unretained, to `topic` under the connection's root; `{address}` stands
 /// for the device address.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Publish"))]
 #[serde(deny_unknown_fields)]
@@ -237,7 +234,7 @@ pub struct PublishDoc {
 }
 
 /// A secret of the device's connection, written by name before the value; `finally` relocks.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Unlock"))]
 #[serde(deny_unknown_fields)]
@@ -252,7 +249,7 @@ pub struct UnlockDoc {
 }
 
 /// A switch over `target`: 1 stores its value and writes `locked`, 0 writes the stored value back.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "SnapshotToggle"))]
 #[serde(deny_unknown_fields)]
@@ -263,7 +260,7 @@ pub struct ToggleDoc {
 }
 
 /// Fixed words written from `register` in one request.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Relock"))]
 #[serde(deny_unknown_fields)]
@@ -273,7 +270,7 @@ pub struct RelockDoc {
 }
 
 /// The enable field written last, once the value is in place.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Activate"))]
 #[serde(deny_unknown_fields)]
@@ -283,7 +280,7 @@ pub struct ActivateDoc {
 }
 
 /// The bits `mask` selects of `register`.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Masked"))]
 #[serde(deny_unknown_fields)]
@@ -294,7 +291,7 @@ pub struct MaskedDoc {
 
 /// Where a write is read back: all of `register`, the bits `mask` selects, or a quantity read
 /// from a topic.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "ReadBack", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -306,7 +303,7 @@ pub struct ReadBackDoc {
 }
 
 /// Registers written in one request from `register`, the value's words in place of `"value"`.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "WriteBlock"))]
 #[serde(deny_unknown_fields)]
@@ -316,20 +313,20 @@ pub struct BlockDoc {
     pub words: Vec<BlockWord>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(untagged)]
 pub enum BlockWord {
     Word(u16),
     Value(ValueMark),
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ValueMark {
     Value,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Delay"))]
 #[serde(deny_unknown_fields)]
@@ -337,7 +334,7 @@ pub struct DelayDoc {
     pub ms: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Register"))]
 #[serde(deny_unknown_fields)]
@@ -345,7 +342,7 @@ pub struct RegisterDoc {
     pub register: u16,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Quantity", optional_fields))]
 #[serde(deny_unknown_fields)]
@@ -462,7 +459,7 @@ pub struct Range {
 }
 
 /// A derived value over the keys of quantities declared earlier.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(rename = "Expr", optional_fields))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -2,10 +2,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json::Value;
 
 use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
@@ -39,7 +39,7 @@ pub struct Profile {
     /// Which of its family's variants it is; `None` for the base.
     variant: Option<String>,
     /// A family's variants, each loaded whole.
-    variants: Vec<Self>,
+    variants: Vec<Arc<Self>>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -398,8 +398,7 @@ impl Profile {
         {
             return Err(LoadError::MissingCapability(missing));
         }
-        let file: Value = serde_json::from_str(json).map_err(|e| malformed(&e))?;
-        let mut doc = ProfileDoc::deserialize(&file).map_err(|e| malformed(&e))?;
+        let mut doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
@@ -411,14 +410,13 @@ impl Profile {
                 "variants need an identify probe".into(),
             ));
         }
-        let mut family = Self::compile(doc, true)?;
-        family.variants = crate::variant::compile(&file, &variants)?;
+        let mut family = Self::compile(doc.clone(), true)?;
+        family.variants = crate::variant::compile(&doc, variants)?;
         Ok(family)
     }
 
-    /// Variant `id` of a family, from the base's file merged with its overrides.
-    pub(crate) fn load_variant(file: &Value, id: &str) -> Result<Self, LoadError> {
-        let doc = ProfileDoc::deserialize(file).map_err(|e| malformed(&e))?;
+    /// Variant `id` of a family, from the base merged with its overrides.
+    pub(crate) fn load_variant(doc: ProfileDoc, id: &str) -> Result<Self, LoadError> {
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
@@ -479,7 +477,7 @@ impl Profile {
 
     /// A family's variants in file order; empty for any other profile.
     #[must_use]
-    pub fn variants(&self) -> &[Self] {
+    pub fn variants(&self) -> &[Arc<Self>] {
         &self.variants
     }
 
@@ -489,7 +487,7 @@ impl Profile {
     pub fn resolve(&self, variant: Option<&str>) -> &Self {
         variant
             .and_then(|id| self.variants.iter().find(|v| v.variant() == Some(id)))
-            .unwrap_or(self)
+            .map_or(self, |variant| variant)
     }
 
     /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
@@ -541,6 +539,7 @@ impl Profile {
     pub fn identify(&self, registers: &Registers) -> Option<&Self> {
         self.variants
             .iter()
+            .map(|v| &**v)
             .find(|v| identify::matches(&v.identify, registers))
             .or_else(|| identify::matches(&self.identify, registers).then_some(self))
     }

@@ -159,7 +159,7 @@ fn a_family_reads_one_probe_plan_for_every_variant() {
     let plans: Vec<_> = family
         .variants()
         .iter()
-        .map(Profile::identify_plan)
+        .map(|v| v.identify_plan())
         .collect();
 
     assert!(plans.iter().all(|plan| *plan == family.identify_plan()));
