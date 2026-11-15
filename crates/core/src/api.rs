@@ -476,6 +476,9 @@ pub enum Code {
     LayoutSetback,
     #[serde(rename = "layout.overlap")]
     LayoutOverlap,
+    /// A module overlaps a roof chimney.
+    #[serde(rename = "layout.covered")]
+    LayoutCovered,
     /// An uploaded car body past 20 MB.
     #[serde(rename = "car.size")]
     CarSize,

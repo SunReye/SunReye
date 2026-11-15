@@ -7,6 +7,7 @@ mod fixtures;
 mod grid;
 mod imported;
 mod input;
+mod laying;
 mod lint;
 mod opening;
 mod parking;

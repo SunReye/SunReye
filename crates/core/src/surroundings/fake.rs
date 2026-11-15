@@ -43,12 +43,12 @@ impl Web for Recorded {
 pub struct Fake {
     fetched: pv::Fetched,
     fail: Mutex<Vec<bool>>,
-    asked: Arc<Mutex<Vec<pv::Area>>>,
+    asked: Arc<Mutex<Vec<pv::Vicinity>>>,
 }
 
 impl Fake {
     #[must_use]
-    pub fn new(fetched: pv::Fetched, fail: &[bool]) -> (Self, Arc<Mutex<Vec<pv::Area>>>) {
+    pub fn new(fetched: pv::Fetched, fail: &[bool]) -> (Self, Arc<Mutex<Vec<pv::Vicinity>>>) {
         let asked = Arc::default();
         let source = Self {
             fetched,
@@ -60,7 +60,7 @@ impl Fake {
 }
 
 impl Source for Fake {
-    fn fetch(&self, area: &pv::Area, fetched: &mut pv::Fetched) -> Result<(), String> {
+    fn fetch(&self, area: &pv::Vicinity, fetched: &mut pv::Fetched) -> Result<(), String> {
         crate::lock(&self.asked).push(*area);
         if crate::lock(&self.fail).pop() == Some(true) {
             return Err("offline".to_owned());

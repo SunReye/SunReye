@@ -12,13 +12,7 @@ pub fn derive(
     strings: &mut [StringDraft],
     module_types: &[ModuleType],
 ) -> Result<(), Refusal> {
-    let size = |id| {
-        let datasheet = &module_types.iter().find(|m| m.id == id)?.datasheet;
-        Some(Size {
-            width: datasheet.width,
-            height: datasheet.height,
-        })
-    };
+    let size = sizes(module_types);
     scene.mounts().map_err(|_| Refusal::Scene)?;
     scene.stands().map_err(|_| Refusal::Scene)?;
     scene.ground().map_err(|_| Refusal::Scene)?;
@@ -31,6 +25,7 @@ pub fn derive(
         Misplaced::ModuleType { .. } => Refusal::ModuleType,
         Misplaced::Setback { .. } => Refusal::Setback,
         Misplaced::Overlap { .. } => Refusal::Overlap,
+        Misplaced::Chimney { .. } => Refusal::Covered,
     })?;
     let painted = scene.grids.iter().flat_map(|grid| {
         let module_type = grid.module_type;
@@ -60,6 +55,17 @@ pub fn derive(
         }
     }
     Ok(())
+}
+
+/// Each module type's size, by id.
+pub fn sizes(module_types: &[ModuleType]) -> impl Fn(u32) -> Option<Size> {
+    |id| {
+        let datasheet = &module_types.iter().find(|m| m.id == id)?.datasheet;
+        Some(Size {
+            width: datasheet.width,
+            height: datasheet.height,
+        })
+    }
 }
 
 /// The scene with each module's string mapped; one `map` has no answer for is unassigned.

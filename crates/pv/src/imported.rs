@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::Crown;
 
-pub use fetch::{Area, Coordinate, Element, Fetched, MapData, Member, Tile};
+pub use fetch::{Coordinate, Element, Fetched, MapData, Member, Tile, Vicinity};
 pub use place::{Around, Draped, Relief, Standing};
-pub use shape::Spot;
+pub use shape::EastNorth;
 
 /// "© OpenStreetMap contributors", then the terrain sources' credits as the Terrain Tiles
 /// dataset requires them: shown while the surroundings are drawn, and on the About page.
@@ -67,7 +67,7 @@ pub struct Building {
     /// Counter-clockwise seen from above; under a pitched roof a rectangle whose first side is
     /// a long one.
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Vec<f64>>))]
-    pub outline: Vec<Spot>,
+    pub outline: Vec<EastNorth>,
     /// The walls' height.
     pub eave: f64,
     pub roof: Roofing,
@@ -94,7 +94,7 @@ pub enum Roofing {
 #[serde(deny_unknown_fields)]
 pub struct Tree {
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<f64>))]
-    pub at: Spot,
+    pub at: EastNorth,
     pub height: f64,
     /// Its crown's.
     pub radius: f64,
@@ -107,7 +107,7 @@ pub struct Tree {
 #[serde(deny_unknown_fields)]
 pub struct Hedge {
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Vec<f64>>))]
-    pub points: Vec<Spot>,
+    pub points: Vec<EastNorth>,
     pub height: f64,
     pub width: f64,
 }
@@ -119,7 +119,7 @@ pub struct Hedge {
 pub struct Patch {
     pub finish: PatchFinish,
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Vec<f64>>))]
-    pub outline: Vec<Spot>,
+    pub outline: Vec<EastNorth>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<f64>,
 }

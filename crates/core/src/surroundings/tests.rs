@@ -20,7 +20,7 @@ const MAP: &[u8] = include_bytes!("../../../pv/fixtures/surroundings/overpass.js
 const OVERPASS: &str = "https://overpass-api.de/api/interpreter";
 
 /// The recorded answers' centre: a public square inside tile 17789/11515.
-const SQUARE: pv::Area = pv::Area {
+const SQUARE: pv::Vicinity = pv::Vicinity {
     centre: pv::Location {
         latitude: 47.0739,
         longitude: 15.4413,
@@ -234,7 +234,7 @@ fn module(
     dir: &std::path::Path,
     location: watch::Receiver<Option<Location>>,
     fail: &[bool],
-) -> (Surroundings, Arc<std::sync::Mutex<Vec<pv::Area>>>) {
+) -> (Surroundings, Arc<std::sync::Mutex<Vec<pv::Vicinity>>>) {
     let (source, asked) = Fake::new(recorded(), fail);
     let sources: Vec<Box<dyn Source>> = vec![Box::new(source)];
     (

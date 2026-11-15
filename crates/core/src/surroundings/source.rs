@@ -61,7 +61,7 @@ pub trait Source: Send + Sync + std::fmt::Debug {
     ///
     /// # Errors
     /// The source could not be reached, or its answer is not what it serves.
-    fn fetch(&self, area: &pv::Area, fetched: &mut pv::Fetched) -> Result<(), String>;
+    fn fetch(&self, area: &pv::Vicinity, fetched: &mut pv::Fetched) -> Result<(), String>;
 }
 
 /// The open Terrain Tiles on AWS: keyless, heights in the Terrarium encoding, at zoom 15.
@@ -76,7 +76,7 @@ impl TerrainTiles {
 }
 
 impl Source for TerrainTiles {
-    fn fetch(&self, area: &pv::Area, fetched: &mut pv::Fetched) -> Result<(), String> {
+    fn fetch(&self, area: &pv::Vicinity, fetched: &mut pv::Fetched) -> Result<(), String> {
         let mut tiles = Vec::new();
         for (x, y) in area.tiles() {
             let ask = Ask {
@@ -105,7 +105,7 @@ impl Overpass {
 }
 
 impl Source for Overpass {
-    fn fetch(&self, area: &pv::Area, fetched: &mut pv::Fetched) -> Result<(), String> {
+    fn fetch(&self, area: &pv::Vicinity, fetched: &mut pv::Fetched) -> Result<(), String> {
         let [south, west, north, east] = area.bounds();
         let query = format!(
             "[out:json][timeout:25][bbox:{south:.6},{west:.6},{north:.6},{east:.6}];{WANTED}"

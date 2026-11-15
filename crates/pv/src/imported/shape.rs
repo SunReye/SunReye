@@ -2,24 +2,24 @@
 //! are cut to a square, covered by a rectangle and split into triangles.
 
 /// Metres east and north.
-pub type Spot = [f64; 2];
+pub type EastNorth = [f64; 2];
 
 /// Square metres under which a triangle or an outline is nothing.
 const SLIVER: f64 = 1e-9;
 
 /// Twice the area the corners enclose: positive when they run counter-clockwise seen from above.
-fn doubled(outline: &[Spot]) -> f64 {
+fn doubled(outline: &[EastNorth]) -> f64 {
     edges(outline)
         .map(|([ax, ay], [bx, by])| ax.mul_add(by, -(bx * ay)))
         .sum()
 }
 
-pub fn area(outline: &[Spot]) -> f64 {
+pub fn area(outline: &[EastNorth]) -> f64 {
     doubled(outline).abs() / 2.0
 }
 
 /// Each side, corner to corner, the last back to the first.
-pub fn edges(outline: &[Spot]) -> impl Iterator<Item = (Spot, Spot)> + '_ {
+pub fn edges(outline: &[EastNorth]) -> impl Iterator<Item = (EastNorth, EastNorth)> + '_ {
     outline
         .iter()
         .copied()
@@ -27,7 +27,7 @@ pub fn edges(outline: &[Spot]) -> impl Iterator<Item = (Spot, Spot)> + '_ {
 }
 
 /// The outline running counter-clockwise seen from above.
-pub fn counter_clockwise(mut outline: Vec<Spot>) -> Vec<Spot> {
+pub fn counter_clockwise(mut outline: Vec<EastNorth>) -> Vec<EastNorth> {
     if doubled(&outline) < 0.0 {
         outline.reverse();
     }
@@ -35,7 +35,7 @@ pub fn counter_clockwise(mut outline: Vec<Spot>) -> Vec<Spot> {
 }
 
 /// The mean of the corners.
-pub fn centre(outline: &[Spot]) -> Spot {
+pub fn centre(outline: &[EastNorth]) -> EastNorth {
     let count = f64::from(u32::try_from(outline.len().max(1)).unwrap_or(u32::MAX));
     let [east, north] = outline
         .iter()
@@ -45,7 +45,7 @@ pub fn centre(outline: &[Spot]) -> Spot {
 
 /// Whether the outline encloses the spot: a ray toward the east crosses it an odd number of
 /// times.
-pub fn encloses(outline: &[Spot], [x, y]: Spot) -> bool {
+pub fn encloses(outline: &[EastNorth], [x, y]: EastNorth) -> bool {
     edges(outline)
         .filter(|([ax, ay], [bx, by])| {
             (*ay > y) != (*by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax
@@ -56,14 +56,14 @@ pub fn encloses(outline: &[Spot], [x, y]: Spot) -> bool {
 }
 
 /// Whether two outlines share ground: a corner of one inside the other, or two sides crossing.
-pub fn overlap(a: &[Spot], b: &[Spot]) -> bool {
+pub fn overlap(a: &[EastNorth], b: &[EastNorth]) -> bool {
     a.iter().any(|p| encloses(b, *p))
         || b.iter().any(|p| encloses(a, *p))
         || edges(a).any(|(p, q)| edges(b).any(|(r, s)| crossing(p, q, r, s)))
 }
 
-fn crossing(p: Spot, q: Spot, r: Spot, s: Spot) -> bool {
-    let side = |[ax, ay]: Spot, [bx, by]: Spot, [cx, cy]: Spot| {
+fn crossing(p: EastNorth, q: EastNorth, r: EastNorth, s: EastNorth) -> bool {
+    let side = |[ax, ay]: EastNorth, [bx, by]: EastNorth, [cx, cy]: EastNorth| {
         (bx - ax).mul_add(cy - ay, -((by - ay) * (cx - ax)))
     };
     side(p, q, r) * side(p, q, s) < 0.0 && side(r, s, p) * side(r, s, q) < 0.0
@@ -71,7 +71,7 @@ fn crossing(p: Spot, q: Spot, r: Spot, s: Spot) -> bool {
 
 /// The smallest rectangle on one of the outline's sides that covers it, counter-clockwise, its
 /// first side a long one; `None` for an outline without area.
-pub fn rectangle(outline: &[Spot]) -> Option<[Spot; 4]> {
+pub fn rectangle(outline: &[EastNorth]) -> Option<[EastNorth; 4]> {
     edges(outline)
         .filter_map(|([ax, ay], [bx, by])| {
             let length = (bx - ax).hypot(by - ay);
@@ -80,7 +80,7 @@ pub fn rectangle(outline: &[Spot]) -> Option<[Spot; 4]> {
             }
             let along = [(bx - ax) / length, (by - ay) / length];
             let across = [-along[1], along[0]];
-            let span = |[ux, uy]: Spot| {
+            let span = |[ux, uy]: EastNorth| {
                 let at = outline.iter().map(|[x, y]| x.mul_add(ux, y * uy));
                 at.fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), v| {
                     (low.min(v), high.max(v))
@@ -127,13 +127,13 @@ const fn sides(half: f64) -> [(usize, f64, f64); 4] {
 }
 
 /// How far inside a half-plane a spot lies; negative outside.
-fn inside(spot: Spot, (axis, sign, half): (usize, f64, f64)) -> f64 {
+fn inside(spot: EastNorth, (axis, sign, half): (usize, f64, f64)) -> f64 {
     let at = if axis == 0 { spot[0] } else { spot[1] };
     sign.mul_add(-at, half)
 }
 
 /// Where the side from `a` to `b` leaves the half-plane.
-fn cut(a: Spot, b: Spot, side: (usize, f64, f64)) -> Spot {
+fn cut(a: EastNorth, b: EastNorth, side: (usize, f64, f64)) -> EastNorth {
     let (da, db) = (inside(a, side), inside(b, side));
     let t = da / (da - db);
     [t.mul_add(b[0] - a[0], a[0]), t.mul_add(b[1] - a[1], a[1])]
@@ -141,7 +141,7 @@ fn cut(a: Spot, b: Spot, side: (usize, f64, f64)) -> Spot {
 
 /// The part of a closed outline inside the square reaching `half` from the origin (Sutherland
 /// and Hodgman 1974); empty when none is.
-pub fn clip_area(outline: &[Spot], half: f64) -> Vec<Spot> {
+pub fn clip_area(outline: &[EastNorth], half: f64) -> Vec<EastNorth> {
     sides(half)
         .into_iter()
         .fold(outline.to_vec(), |outline, side| {
@@ -160,7 +160,7 @@ pub fn clip_area(outline: &[Spot], half: f64) -> Vec<Spot> {
 }
 
 /// The stretches of a line inside the square reaching `half` from the origin.
-pub fn clip_line(points: &[Spot], half: f64) -> Vec<Vec<Spot>> {
+pub fn clip_line(points: &[EastNorth], half: f64) -> Vec<Vec<EastNorth>> {
     sides(half)
         .into_iter()
         .fold(vec![points.to_vec()], |lines, side| {
@@ -171,10 +171,10 @@ pub fn clip_line(points: &[Spot], half: f64) -> Vec<Vec<Spot>> {
         })
 }
 
-fn clip_side(line: &[Spot], side: (usize, f64, f64)) -> Vec<Vec<Spot>> {
+fn clip_side(line: &[EastNorth], side: (usize, f64, f64)) -> Vec<Vec<EastNorth>> {
     let mut stretches = Vec::new();
-    let mut open: Vec<Spot> = Vec::new();
-    let mut close = |open: &mut Vec<Spot>| {
+    let mut open: Vec<EastNorth> = Vec::new();
+    let mut close = |open: &mut Vec<EastNorth>| {
         if open.len() > 1 {
             stretches.push(std::mem::take(open));
         }
@@ -204,7 +204,7 @@ fn clip_side(line: &[Spot], side: (usize, f64, f64)) -> Vec<Vec<Spot>> {
 }
 
 /// The outline as triangles of its own corners (ear clipping), for one that need not be convex.
-pub fn triangles(outline: &[Spot]) -> Vec<[Spot; 3]> {
+pub fn triangles(outline: &[EastNorth]) -> Vec<[EastNorth; 3]> {
     let mut left = counter_clockwise(outline.to_vec());
     let mut out = Vec::with_capacity(left.len().saturating_sub(2));
     while left.len() > 3 {
@@ -240,17 +240,17 @@ pub fn triangles(outline: &[Spot]) -> Vec<[Spot; 3]> {
 }
 
 /// The corner at `at` with the ones before and after it.
-fn corner(outline: &[Spot], at: usize) -> [Spot; 3] {
+fn corner(outline: &[EastNorth], at: usize) -> [EastNorth; 3] {
     let count = outline.len();
     let pick = |i: usize| outline.get(i % count).copied().unwrap_or_default();
     [pick(at + count - 1), pick(at), pick(at + 1)]
 }
 
 /// Twice the area of the triangle: positive when it runs counter-clockwise.
-fn turn([ax, ay]: Spot, [bx, by]: Spot, [cx, cy]: Spot) -> f64 {
+fn turn([ax, ay]: EastNorth, [bx, by]: EastNorth, [cx, cy]: EastNorth) -> f64 {
     (bx - ax).mul_add(cy - ay, -((by - ay) * (cx - ax)))
 }
 
-fn within([a, b, c]: [Spot; 3], p: Spot) -> bool {
+fn within([a, b, c]: [EastNorth; 3], p: EastNorth) -> bool {
     turn(a, b, p) >= 0.0 && turn(b, c, p) >= 0.0 && turn(c, a, p) >= 0.0
 }

@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use crate::{Area, Crown, Fetched, Imported, Location, MapData, PatchFinish, Roofing, Tile};
+use crate::{Crown, Fetched, Imported, Location, MapData, PatchFinish, Roofing, Tile, Vicinity};
 
 /// The recorded answer's centre: a public square, tile 17789/11515 at zoom 15.
 const SQUARE: Location = Location {
@@ -13,8 +13,8 @@ const SQUARE: Location = Location {
     longitude: 15.4413,
 };
 
-fn area(centre: Location, radius: f64) -> Area {
-    Area { centre, radius }
+fn area(centre: Location, radius: f64) -> Vicinity {
+    Vicinity { centre, radius }
 }
 
 fn recorded() -> Imported {
@@ -404,9 +404,9 @@ mod placed {
     //! its ray climbs 1.19 m for each metre it runs along the ground.
 
     use crate::{
-        Block, Building, Crown, Hedge, Import, Imported, Input, Module, Occluder, Overhang, Patch,
-        PatchFinish, Place, Plane, PvString, Roof, Roofing, Scene, Sky, Spot, Sun, Surface,
-        Terrain, Tree, input_output,
+        Block, Building, Crown, EastNorth, Hedge, Import, Imported, Input, Module, Occluder,
+        Overhang, Patch, PatchFinish, Place, Plane, PvString, Roof, Roofing, Scene, Sky, Sun,
+        Surface, Terrain, Tree, input_output,
     };
 
     use super::super::fixtures::MODULE;
@@ -480,11 +480,11 @@ mod placed {
     }
 
     /// The unit vectors along the ground toward the sun and across its ray, east and north.
-    const TOWARD: Spot = [0.766, -0.643];
-    const ACROSS: Spot = [0.643, 0.766];
+    const TOWARD: EastNorth = [0.766, -0.643];
+    const ACROSS: EastNorth = [0.643, 0.766];
 
     /// The spot `toward` metres toward the sun and `across` metres beside its ray.
-    fn spot(toward: f64, across: f64) -> Spot {
+    fn spot(toward: f64, across: f64) -> EastNorth {
         [
             toward.mul_add(TOWARD[0], across * ACROSS[0]),
             toward.mul_add(TOWARD[1], across * ACROSS[1]),

@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
 import { addGrid, apply, paint, strokeOf, withoutString } from "./modules.ts";
+import { place } from "./placing.ts";
 import type { Scene } from "./pv.ts";
 import { wiring } from "./wiring.ts";
 
@@ -21,43 +22,49 @@ const gridded = addGrid(
   7,
 );
 
+/** Portrait modules side by side from the setback's corner, 2 cm apart, by their position. */
+const spot = (i: number) => ({ across: 0.3 + i * 1.154, up: 0.3, landscape: false });
+const spots = (count: number) => Array.from({ length: count }, (_, i) => spot(i));
+
+const laid = place(gridded, 0, spots(4));
+const [first, second, third, fourth] = [spot(0), spot(1), spot(2), spot(3)];
+
 test("wiring numbers a string's modules in the order a stroke crosses them, after those it holds", () => {
-  const stroke = strokeOf(gridded, 0, { row: 0, column: 2 }, { kind: "paint", string: 0 });
-  let scene = gridded;
+  const stroke = strokeOf(laid, 0, 2, { kind: "paint", string: 0 });
+  let scene = laid;
 
-  for (const column of [2, 0, 1, 2]) scene = paint(scene, 0, { row: 0, column }, stroke);
+  for (const module of [2, 0, 1, 2]) scene = paint(scene, 0, module, stroke);
 
-  const next = strokeOf(scene, 0, { row: 1, column: 0 }, { kind: "paint", string: 0 });
+  const next = strokeOf(scene, 0, 3, { kind: "paint", string: 0 });
 
-  scene = paint(scene, 0, { row: 1, column: 0 }, next);
+  scene = paint(scene, 0, 3, next);
 
   expect(scene.grids?.[0]?.modules).toEqual([
-    { row: 0, column: 2, string: 0, optimized: false, order: 0 },
-    { row: 0, column: 0, string: 0, optimized: false, order: 1 },
-    { row: 0, column: 1, string: 0, optimized: false, order: 2 },
-    { row: 1, column: 0, string: 0, optimized: false, order: 3 },
+    { ...first, string: 0, optimized: false, order: 1 },
+    { ...second, string: 0, optimized: false, order: 2 },
+    { ...third, string: 0, optimized: false, order: 0 },
+    { ...fourth, string: 0, optimized: false, order: 3 },
   ]);
 });
 
 test("an unwired module loses its place in the wiring; a later string's modules keep theirs", () => {
-  let scene = apply(gridded, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+  let scene = apply(laid, 0, 0, { kind: "paint", string: 0 });
 
-  scene = apply(scene, 0, { row: 0, column: 1 }, { kind: "paint", string: 1 });
+  scene = apply(scene, 0, 1, { kind: "paint", string: 1 });
 
-  expect(
-    apply(scene, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 }).grids?.[0]?.modules[0],
-  ).toEqual({ row: 0, column: 0, optimized: false });
-  expect(withoutString(scene, 0).grids?.[0]?.modules).toEqual([
-    { row: 0, column: 0, optimized: false },
-    { row: 0, column: 1, string: 0, optimized: false, order: 0 },
+  expect(apply(scene, 0, 0, { kind: "paint", string: 0 }).grids?.[0]?.modules[0]).toEqual({
+    ...first,
+    optimized: false,
+  });
+  expect(withoutString(scene, 0).grids?.[0]?.modules.slice(0, 2)).toEqual([
+    { ...first, optimized: false },
+    { ...second, string: 0, optimized: false, order: 0 },
   ]);
 });
 
-/** A 1 m square cell `east` metres along, its centre 1 m up and 0.5 m north. */
+/** A module laid out `east` metres along, its centre 1 m up and 0.5 m north. */
 function square(east: number) {
   return {
-    row: 0,
-    column: east,
     area: [
       [0, 0],
       [1, 1],
@@ -71,8 +78,17 @@ function square(east: number) {
   } as const;
 }
 
+/** A grid as the crate lays it out, its modules `squares`. */
+const onFace = (...modules: readonly ReturnType<typeof square>[]) => ({
+  modules,
+  outline: [],
+  inset: null,
+  blocked: [],
+});
+
 test("a string's wiring runs through its modules' centres in their order, unordered ones last", () => {
   const grid = { block: 0, face: 0, moduleType: 7, landscape: false, setback: 0.3 };
+  const at = { across: 0, up: 0, landscape: false };
 
   const wired: Scene = {
     ...gridded,
@@ -80,18 +96,18 @@ test("a string's wiring runs through its modules' centres in their order, unorde
       {
         ...grid,
         modules: [
-          { row: 0, column: 0, string: 0 },
-          { row: 0, column: 1, string: 0, order: 4 },
-          { row: 0, column: 2, string: 1, order: 0 },
+          { ...at, string: 0 },
+          { ...at, string: 0, order: 4 },
+          { ...at, string: 1, order: 0 },
         ],
       },
-      { ...grid, face: 1, modules: [{ row: 0, column: 3, string: 0, order: 1 }] },
+      { ...grid, face: 1, modules: [{ ...at, string: 0, order: 1 }] },
     ],
   };
 
-  const cells = [[square(0), square(1), square(2)], [square(3)]];
+  const grids = [onFace(square(0), square(1), square(2)), onFace(square(3))];
 
-  expect(wiring(wired, cells, 0)).toEqual([
+  expect(wiring(wired, grids, 0)).toEqual([
     [3.5, 1, 0.5],
     [1.5, 1, 0.5],
     [0.5, 1, 0.5],

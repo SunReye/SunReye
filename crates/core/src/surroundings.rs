@@ -162,7 +162,7 @@ struct Inner {
     documents: Documents,
     location: watch::Receiver<Option<Location>>,
     status: Arc<Mutex<SurroundingsStatus>>,
-    wanted: mpsc::UnboundedSender<pv::Area>,
+    wanted: mpsc::UnboundedSender<pv::Vicinity>,
     task: JoinHandle<()>,
 }
 
@@ -238,7 +238,7 @@ impl Surroundings {
         }
         status.state = Phase::Fetching;
         status.error = None;
-        let area = pv::Area {
+        let area = pv::Vicinity {
             centre: pv::Location {
                 latitude: centre.latitude,
                 longitude: centre.longitude,
@@ -261,7 +261,7 @@ impl Surroundings {
 
 /// Fetches each area asked for, one at a time, and stores what it becomes.
 async fn run(
-    mut areas: mpsc::UnboundedReceiver<pv::Area>,
+    mut areas: mpsc::UnboundedReceiver<pv::Vicinity>,
     sources: Arc<Vec<Box<dyn Source>>>,
     documents: Documents,
     status: Arc<Mutex<SurroundingsStatus>>,

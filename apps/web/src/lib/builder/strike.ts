@@ -15,8 +15,8 @@ export type Hit =
   | {
       readonly kind: "grid";
       readonly grid: number;
-      /** The module's cell, when the panel names it. */
-      readonly cell?: { readonly row: number; readonly column: number };
+      /** The module's position in its grid, when the panel names it. */
+      readonly module?: number;
     }
   | { readonly kind: "equipment"; readonly index: number }
   | { readonly kind: "opening"; readonly index: number }
@@ -59,12 +59,10 @@ export function strike(
     ) ?? nearest;
 
   const index = group.getObjectsByProperty("name", object.name).indexOf(object);
-  const { grid, row, column } = panels[index] ?? {};
+  const { grid, module } = panels[index] ?? {};
 
   if (object.name === "module" && grid !== undefined) {
-    return row === undefined || column === undefined
-      ? { kind: "grid", grid }
-      : { kind: "grid", grid, cell: { row, column } };
+    return module === undefined ? { kind: "grid", grid } : { kind: "grid", grid, module };
   }
 
   if (object.name === "equipment" || object.name === "opening") return { kind: object.name, index };

@@ -136,7 +136,7 @@ async function datasheet(): Promise<void> {
 /** The face level's count of placed modules. */
 /** The face level's count of placed modules, `count` a pattern. */
 const placed = (count: string) =>
-  inspector().getByText(new RegExp(`^${count} von \\d+ Modulen gesetzt$`, "u"));
+  inspector().getByText(new RegExp(`^${count} Module gesetzt$`, "u"));
 
 test("from an empty core an admin creates a module type, fills a roof face and paints a string", async () => {
   const draws = vi.spyOn(EffectComposer.prototype, "render");

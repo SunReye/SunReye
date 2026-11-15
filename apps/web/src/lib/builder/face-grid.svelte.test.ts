@@ -16,6 +16,7 @@ import {
   SOUTH,
   testCore,
   undesk,
+  filledFace,
 } from "./builder.harness.ts";
 
 beforeEach(desk);
@@ -23,11 +24,12 @@ beforeEach(desk);
 afterEach(undesk);
 
 /** The face level's count of placed modules. */
-const count = (placed: number) => inspector().getByText(`${placed} von 16 Modulen gesetzt`);
+const count = (placed: number) =>
+  inspector().getByText(`${placed} Module gesetzt`, { exact: true });
 
 const undo = () => inspector().getByRole("button", { name: "Rückgängig" }).click();
 
-test("fill face places a module in every cell the face holds, and clear takes them, each one undo step", async () => {
+test("fill face lays a module in every free place the face holds, and clear takes them, each one undo step", async () => {
   await gridOnTheSouthFace(testCore());
 
   await inspector().getByRole("button", { name: "Fläche füllen" }).click();
@@ -47,14 +49,13 @@ test("fill face places a module in every cell the face holds, and clear takes th
 /** The template house with both roof faces filled and painted into one string. */
 function overVoltage(): Draft {
   const { scene } = house();
-  const size = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
   let gridded = addGrid(addGrid(scene, 0, 0, MODULE.id), 0, 1, MODULE.id);
-  const laid = pv.modules(gridded, size).grids;
+  gridded = filledFace(filledFace(gridded, 0), 1);
 
   const into = { kind: "paint", string: 0, erase: false } as const;
 
-  for (const [index, cells] of laid.entries()) {
-    for (const at of cells ?? []) gridded = paint(gridded, index, at, into);
+  for (const [index, { modules }] of (gridded.grids ?? []).entries()) {
+    for (const module of modules.keys()) gridded = paint(gridded, index, module, into);
   }
 
   return {

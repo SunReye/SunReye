@@ -2,26 +2,20 @@
 // glow, the first build in slices, and the hits of a click.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { untrack } from "svelte";
-import {
-  type Color,
-  type Group,
-  type PerspectiveCamera,
-  type Scene as Studio,
-  Vector3,
-} from "three";
+import { type Group, type PerspectiveCamera, type Scene as Studio, Vector3 } from "three";
 import { cssColour } from "../scene/backdrop.ts";
 import { pause } from "../scene/prepare.ts";
 import type { Lit } from "../scene/stage.svelte.ts";
-import { freeOverlay, overlay } from "./overlay.ts";
-import type { Painting } from "./painting.ts";
-import type { Geometry, Point } from "./pv.ts";
+import { freeOverlay, overlay, type Tints } from "./overlay.ts";
+import { Brush, type Brushing, type Painting, type Refused } from "./painting.ts";
+import type { Geometry, Ghost, Point } from "./pv.ts";
 import { buildScene, buildSliced, strike, tint, toThree, type Hit, type Panel } from "./scene.ts";
 
 export type { Hit, Panel } from "./scene.ts";
 
 export { Handled, type Editing } from "./handles/handled.svelte.ts";
 
-export { Brush, type Painting, type Refused } from "./painting.ts";
+export { paintingOf, type Painting } from "./gestures.ts";
 
 /** Pixels from the canvas's top left corner. */
 export type Projector = (point: Point) => readonly [number, number] | null;
@@ -152,15 +146,19 @@ export function overlaid(
   render: () => void,
 ): () => void {
   let group: Group | undefined;
-  let brand: { readonly key: string; readonly colour: Color } | undefined;
+  let tints: { readonly key: string; readonly colours: Tints } | undefined;
 
   // Read on a new face or string only, as the handles: a drag rebuilds the overlay every step.
-  const colour = (shown: Painting): Color => {
+  const colours = (shown: Painting): Tints => {
     const key = shown.kind === "string" ? `string ${shown.string}` : `grid ${shown.grid}`;
 
-    if (brand?.key !== key) brand = { key, colour: cssColour("var(--brand)") };
+    if (tints?.key !== key) {
+      const brand = cssColour("var(--brand)");
 
-    return brand.colour;
+      tints = { key, colours: { brand, unfit: cssColour("var(--destructive)") } };
+    }
+
+    return tints.colours;
   };
 
   const replace = (next?: Group): void => {
@@ -178,7 +176,7 @@ export function overlaid(
     const shown = painting();
 
     untrack(() => {
-      replace(shown && overlay(shown, colour(shown)));
+      replace(shown && overlay(shown, colours(shown)));
       render();
     });
   });
@@ -186,4 +184,35 @@ export function overlaid(
   return () => {
     replace();
   };
+}
+
+/** What the brush shows on the canvas besides the scene, and the brush itself (painting.ts). */
+export class Brushwork {
+  /** Why the last module pressed refused the paint, until the next press. */
+  refused = $state.raw<Refused>();
+
+  /** The modules not laid yet, under the pointer on the selected face. */
+  #ghosts = $state.raw<readonly Ghost[]>([]);
+
+  /** `painting` with the ghosts under the pointer, for the overlay. */
+  shown(painting: Painting | undefined): Painting | undefined {
+    return painting?.kind === "modules" ? { ...painting, ghosts: this.#ghosts } : painting;
+  }
+
+  /** Lays modules on the selected face and wires the picked string; before the orbit controls. */
+  attach(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    sources: Pick<Brushing, "painting" | "drawn" | "panels">,
+  ): Brush {
+    return new Brush(canvas, camera, {
+      ...sources,
+      onrefuse: (reason) => {
+        this.refused = reason;
+      },
+      onghost: (lain) => {
+        this.#ghosts = lain;
+      },
+    });
+  }
 }

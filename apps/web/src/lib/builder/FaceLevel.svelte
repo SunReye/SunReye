@@ -52,13 +52,20 @@
 </script>
 
 {#if tapped !== undefined}
-  <ModuleLevel {draft} grid={tapped.grid} cell={tapped.cell} {onchange} {onremove} />
+  <ModuleLevel
+    {draft}
+    grid={tapped.grid}
+    module={tapped.module}
+    laid={tapped.laid}
+    {onchange}
+    {onremove}
+  />
 {:else if draft.scene.grids?.[index] !== undefined}
   <FaceGrid
     {draft}
     {index}
     grid={draft.scene.grids[index]}
-    cells={plan.laid.grids[index] ?? []}
+    free={plan.pv.fillFace({ scene: draft.scene, sizes: plan.sizes, grid: index })}
     checks={{
       misplaced: plan.laid.misplaced?.grid === index ? plan.laid.misplaced : null,
       cold: plan.cold,

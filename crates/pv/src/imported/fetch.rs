@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 
 use serde::Deserialize;
 
-use super::shape::{self, Spot};
+use super::shape::{self, EastNorth};
 use super::{
     Building, CREDITS, Hedge, Imported, Patch, PatchFinish, Roofing, Terrain, Tree, centimetres,
 };
@@ -39,7 +39,7 @@ const HEDGE: (f64, f64) = (1.5, 1.0);
 /// The area surroundings are fetched for: `radius` metres east, west, north and south of
 /// `centre`.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Area {
+pub struct Vicinity {
     pub centre: Location,
     pub radius: f64,
 }
@@ -137,7 +137,7 @@ fn whole(value: f64) -> u32 {
     value.floor().clamp(0.0, most) as u32
 }
 
-impl Area {
+impl Vicinity {
     /// Metres a degree of longitude and one of latitude span at the centre.
     fn degree(&self) -> (f64, f64) {
         let latitude = self.centre.latitude.to_radians();
@@ -182,7 +182,7 @@ impl Area {
     }
 
     /// Metres east and north of the centre.
-    fn spot(&self, at: Coordinate) -> Spot {
+    fn spot(&self, at: Coordinate) -> EastNorth {
         let (east, north) = self.degree();
         [
             (at.lon - self.centre.longitude) * east,
@@ -190,7 +190,7 @@ impl Area {
         ]
     }
 
-    fn coordinate(&self, [x, y]: Spot) -> Coordinate {
+    fn coordinate(&self, [x, y]: EastNorth) -> Coordinate {
         let (east, north) = self.degree();
         Coordinate {
             lat: self.centre.latitude + y / north,
@@ -198,11 +198,11 @@ impl Area {
         }
     }
 
-    fn holds(&self, [east, north]: Spot) -> bool {
+    fn holds(&self, [east, north]: EastNorth) -> bool {
         east.abs() <= self.radius && north.abs() <= self.radius
     }
 
-    fn square(&self) -> [Spot; 4] {
+    fn square(&self) -> [EastNorth; 4] {
         let r = self.radius;
         [[-r, -r], [r, -r], [r, r], [-r, r]]
     }
@@ -215,7 +215,7 @@ impl Imported {
     /// unless `height` or `leaf_type` say otherwise. Everything but a building is cut at the
     /// radius; terrain without a tile is level.
     #[must_use]
-    pub fn new(area: &Area, fetched: &Fetched) -> Self {
+    pub fn new(area: &Vicinity, fetched: &Fetched) -> Self {
         let mut found = Found::default();
         for element in &fetched.map.elements {
             found.take(area, element);
@@ -235,11 +235,11 @@ impl Imported {
 }
 
 /// The terrain's grid over the area, above the centre's height.
-fn terrain(area: &Area, tiles: &[Tile]) -> Terrain {
+fn terrain(area: &Vicinity, tiles: &[Tile]) -> Terrain {
     let tiles: HashMap<(u32, u32), &Tile> = tiles.iter().map(|t| ((t.x, t.y), t)).collect();
     let each = whole((area.radius / STEP).round());
     let side = 2 * each + 1;
-    let height = |spot: Spot| sample(&tiles, area.coordinate(spot)).unwrap_or(0.0);
+    let height = |spot: EastNorth| sample(&tiles, area.coordinate(spot)).unwrap_or(0.0);
     let centre = height([0.0, 0.0]);
     let node = |at: u32| STEP * (f64::from(at) - f64::from(each));
     let heights = (0..side)
@@ -312,7 +312,7 @@ fn measured(tags: &Tags, key: &str) -> Option<f64> {
 }
 
 impl Found {
-    fn take(&mut self, area: &Area, element: &Element) {
+    fn take(&mut self, area: &Vicinity, element: &Element) {
         let tags = &element.tags;
         let lines = lines(area, element);
         if tag(tags, "building").is_some_and(|kind| kind != "no") {
@@ -329,7 +329,7 @@ impl Found {
         }
     }
 
-    fn build(&mut self, area: &Area, tags: &Tags, lines: &[Vec<Spot>]) {
+    fn build(&mut self, area: &Vicinity, tags: &Tags, lines: &[Vec<EastNorth>]) {
         for outline in lines.iter().filter_map(|line| ring(line)) {
             if !shape::overlap(&outline, &area.square()) {
                 continue;
@@ -339,7 +339,7 @@ impl Found {
         }
     }
 
-    fn plant(&mut self, area: &Area, tags: &Tags, spots: &[Spot]) {
+    fn plant(&mut self, area: &Vicinity, tags: &Tags, spots: &[EastNorth]) {
         let height = measured(tags, "height").unwrap_or(TREE);
         let radius = measured(tags, "diameter_crown").map_or(height * CROWN, |d| d / 2.0);
         let crown = match tag(tags, "leaf_type") {
@@ -355,7 +355,7 @@ impl Found {
         }));
     }
 
-    fn hedge(&mut self, area: &Area, tags: &Tags, lines: &[Vec<Spot>]) {
+    fn hedge(&mut self, area: &Vicinity, tags: &Tags, lines: &[Vec<EastNorth>]) {
         let stretches = lines
             .iter()
             .flat_map(|line| shape::clip_line(line, area.radius));
@@ -366,7 +366,7 @@ impl Found {
         }));
     }
 
-    fn ground(&mut self, area: &Area, tags: &Tags, lines: &[Vec<Spot>]) {
+    fn ground(&mut self, area: &Vicinity, tags: &Tags, lines: &[Vec<EastNorth>]) {
         let Some((finish, width)) = finish(tags) else {
             return;
         };
@@ -394,12 +394,12 @@ impl Found {
     }
 }
 
-fn rounded(points: Vec<Spot>) -> Vec<Spot> {
+fn rounded(points: Vec<EastNorth>) -> Vec<EastNorth> {
     points.into_iter().map(|p| p.map(centimetres)).collect()
 }
 
 /// A way's line, or each outer ring of a relation, in metres.
-fn lines(area: &Area, element: &Element) -> Vec<Vec<Spot>> {
+fn lines(area: &Vicinity, element: &Element) -> Vec<Vec<EastNorth>> {
     let line = |geometry: &[Coordinate]| geometry.iter().map(|at| area.spot(*at)).collect();
     if element.members.is_empty() {
         return vec![line(&element.geometry)];
@@ -412,7 +412,7 @@ fn lines(area: &Area, element: &Element) -> Vec<Vec<Spot>> {
         .collect()
 }
 
-fn single(area: &Area, element: &Element) -> Vec<Spot> {
+fn single(area: &Vicinity, element: &Element) -> Vec<EastNorth> {
     let at = element
         .lat
         .zip(element.lon)
@@ -421,19 +421,19 @@ fn single(area: &Area, element: &Element) -> Vec<Spot> {
 }
 
 /// A closed line's corners, counter-clockwise, without the one that closes it.
-fn ring(line: &[Spot]) -> Option<Vec<Spot>> {
+fn ring(line: &[EastNorth]) -> Option<Vec<EastNorth>> {
     let (last, corners) = line.split_last()?;
     let closed = corners.first() == Some(last) && corners.len() >= 3;
     closed.then(|| shape::counter_clockwise(corners.to_vec()))
 }
 
 /// Spots every 8 m or so along each line, from end to end.
-fn spaced(lines: &[Vec<Spot>]) -> Vec<Spot> {
+fn spaced(lines: &[Vec<EastNorth>]) -> Vec<EastNorth> {
     lines.iter().flat_map(|line| along(line)).collect()
 }
 
-fn along(line: &[Spot]) -> Vec<Spot> {
-    let length = |a: Spot, b: Spot| (b[0] - a[0]).hypot(b[1] - a[1]);
+fn along(line: &[EastNorth]) -> Vec<EastNorth> {
+    let length = |a: EastNorth, b: EastNorth| (b[0] - a[0]).hypot(b[1] - a[1]);
     let stretches = || {
         line.windows(2)
             .filter_map(|pair| Some((*pair.first()?, *pair.get(1)?)))
@@ -456,7 +456,7 @@ fn along(line: &[Spot]) -> Vec<Spot> {
         .collect()
 }
 
-fn building(id: u32, tags: &Tags, outline: Vec<Spot>) -> Building {
+fn building(id: u32, tags: &Tags, outline: Vec<EastNorth>) -> Building {
     let top = measured(tags, "height");
     let walls = measured(tags, "building:levels").map(|levels| levels * LEVEL);
     let hipped = match tag(tags, "roof:shape") {

@@ -276,22 +276,24 @@ fn a_chimney_off_its_face_goes_where_it_is_moved() {
 }
 
 #[test]
-fn modules_cannot_stand_where_a_chimney_stands() {
-    let scene = gridded(&json!([chimney(2.0)]), &json!([{ "row": 0, "column": 1 }]));
+fn a_module_that_overlaps_a_chimney_is_refused() {
+    // The chimney spans 1.7 m to 2.3 m across and 1.134 m to 1.866 m up the slope.
+    let under = json!({ "across": 1.0, "up": 0.5, "landscape": false });
+    let beside = json!({ "across": 2.3, "up": 0.5, "landscape": false });
+    let stored = json!({ "row": 0, "column": 1 });
 
-    let roof = scene.roofs().into_iter().find(|r| r.face == 1).unwrap();
-    let cells = roof.cells(&scene.grids[0], SIZE);
-
-    // Row 0 spans 0.3 m to 2.022 m up the slope, column 1 1.454 m to 2.588 m across.
-    assert!(!cells.iter().any(|c| (c.row, c.column) == (0, 1)));
-    assert!(cells.iter().any(|c| (c.row, c.column) == (0, 3)));
+    for module in [under, stored] {
+        let scene = gridded(&json!([chimney(2.0)]), &json!([beside, module]));
+        assert_eq!(
+            scene.modules(|_| Some(SIZE)),
+            Err(Misplaced::Chimney { grid: 0, module: 1 }),
+            "{module}"
+        );
+    }
+    let clear = gridded(&json!([chimney(2.0)]), &json!([beside]));
     assert_eq!(
-        scene.modules(|_| Some(SIZE)),
-        Err(Misplaced::Setback {
-            grid: 0,
-            row: 0,
-            column: 1
-        })
+        clear.modules(|_| Some(SIZE)).map(|placed| placed.len()),
+        Ok(1)
     );
 }
 

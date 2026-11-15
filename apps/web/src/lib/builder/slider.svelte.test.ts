@@ -49,8 +49,8 @@ const SAVED = {
         landscape: false,
         setback: 0.3,
         modules: [
-          { row: 0, column: 0, string: 0, optimized: false },
-          { row: 0, column: 1, string: 0, optimized: false },
+          { across: 0.3, up: 0.3, landscape: false, string: 0, optimized: false },
+          { across: 1.454, up: 0.3, landscape: false, string: 0, optimized: false },
         ],
       },
     ],

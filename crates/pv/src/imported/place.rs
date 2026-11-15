@@ -1,7 +1,7 @@
 //! The document stood in a scene (ADR 20): where the scene puts it, on terrain measured from
 //! the ground under the blocks, as the faces and solids that are drawn and that shade.
 
-use super::shape::{self, Spot};
+use super::shape::{self, EastNorth};
 use super::{Building, Hedge, Import, Imported, PatchFinish, Roofing, Terrain};
 use crate::scene::{Local, fan, pitched, tree, walls};
 use crate::{Face, Occluder, Point, Roof, Scene, Surface};
@@ -55,7 +55,7 @@ pub struct Around {
 
 /// Where the document lies in the shading frame: its centre, and its turn's sine and cosine.
 struct Lie {
-    centre: Spot,
+    centre: EastNorth,
     sin: f64,
     cos: f64,
 }
@@ -72,7 +72,7 @@ impl Lie {
     }
 
     /// A spot of the document, turned clockwise seen from above.
-    fn place(&self, [east, north]: Spot) -> Spot {
+    fn place(&self, [east, north]: EastNorth) -> EastNorth {
         [
             east.mul_add(self.cos, north * self.sin) + self.centre[0],
             north.mul_add(self.cos, -(east * self.sin)) + self.centre[1],
@@ -134,7 +134,7 @@ impl Relief {
         height(&self.heights, self.side, across, along)
     }
 
-    fn on(&self, [east, north]: Spot) -> Point {
+    fn on(&self, [east, north]: EastNorth) -> Point {
         [east, north, self.height(east, north)]
     }
 
@@ -175,7 +175,7 @@ impl Relief {
 }
 
 /// How far a spot lies from a footprint; 0 inside it.
-fn distance(footprint: &[Spot], at: Spot) -> f64 {
+fn distance(footprint: &[EastNorth], at: EastNorth) -> f64 {
     if shape::encloses(footprint, at) {
         return 0.0;
     }
@@ -195,16 +195,16 @@ fn distance(footprint: &[Spot], at: Spot) -> f64 {
 
 /// The terrain as it lies in the scene: above the ground under the blocks' middle, or under the
 /// scene's origin without blocks, and level under each block.
-fn relief(lie: &Lie, terrain: &Terrain, blocks: &[[Spot; 4]]) -> Relief {
+fn relief(lie: &Lie, terrain: &Terrain, blocks: &[[EastNorth; 4]]) -> Relief {
     let half = terrain.half();
-    let corners: Vec<Spot> = blocks.iter().flatten().copied().collect();
+    let corners: Vec<EastNorth> = blocks.iter().flatten().copied().collect();
     let stand = if corners.is_empty() {
         [0.0, 0.0]
     } else {
         shape::centre(&corners)
     };
     let origin = lie.place([-half, -half]);
-    let step = |to: Spot| {
+    let step = |to: EastNorth| {
         let [east, north] = lie.place(to);
         [east - origin[0], north - origin[1], 0.0]
     };
@@ -241,7 +241,7 @@ const fn face(surface: Surface, corners: Vec<Point>) -> Face {
 }
 
 /// The walls from `foot` up to `top` under each side of the outline.
-fn sides(outline: &[Spot], foot: f64, top: f64, surface: Surface) -> Vec<Face> {
+fn sides(outline: &[EastNorth], foot: f64, top: f64, surface: Surface) -> Vec<Face> {
     shape::edges(outline)
         .map(|([ax, ay], [bx, by])| {
             let corners = vec![[ax, ay, foot], [bx, by, foot], [bx, by, top], [ax, ay, top]];
@@ -251,7 +251,7 @@ fn sides(outline: &[Spot], foot: f64, top: f64, surface: Surface) -> Vec<Face> {
 }
 
 /// A building under a flat roof: its walls and its lid as triangles.
-fn extruded(outline: &[Spot], foot: f64, top: f64) -> Vec<Face> {
+fn extruded(outline: &[EastNorth], foot: f64, top: f64) -> Vec<Face> {
     let lid = shape::triangles(outline)
         .into_iter()
         .map(|corners| face(Surface::Roof, corners.map(|[e, n]| [e, n, top]).to_vec()));
@@ -264,12 +264,12 @@ fn extruded(outline: &[Spot], foot: f64, top: f64) -> Vec<Face> {
 /// A rectangle's walls and pitched roof: its width from `a` to `b`, its depth on to `c`, its
 /// walls from `foot` up to `eave` over `ground`, the ridge `rise` over the eaves.
 fn roofed(
-    [start, along, across]: [Spot; 3],
+    [start, along, across]: [EastNorth; 3],
     (foot, ground): (f64, f64),
     (eave, rise): (f64, f64),
     hipped: bool,
 ) -> Vec<Face> {
-    let length = |from: Spot, to: Spot| (to[0] - from[0]).hypot(to[1] - from[1]);
+    let length = |from: EastNorth, to: EastNorth| (to[0] - from[0]).hypot(to[1] - from[1]);
     let (width, depth) = (length(start, along), length(along, across));
     let run = if hipped { width.min(depth) } else { depth } / 2.0;
     let pitch = rise.atan2(run).to_degrees();
@@ -282,7 +282,7 @@ fn roofed(
     let stand = |[wide, up, deep]: Local| {
         let (wide, deep) = (wide / width, deep / depth);
         let at = |axis: usize| {
-            let of = |spot: Spot| if axis == 0 { spot[0] } else { spot[1] };
+            let of = |spot: EastNorth| if axis == 0 { spot[0] } else { spot[1] };
             deep.mul_add(
                 of(across) - of(along),
                 wide.mul_add(of(along) - of(start), of(start)),
@@ -302,7 +302,7 @@ fn roofed(
 }
 
 fn standing(lie: &Lie, relief: &Relief, building: &Building, hidden: bool) -> Standing {
-    let outline: Vec<Spot> = building.outline.iter().map(|at| lie.place(*at)).collect();
+    let outline: Vec<EastNorth> = building.outline.iter().map(|at| lie.place(*at)).collect();
     let [east, north] = shape::centre(&outline);
     let ground = relief.height(east, north);
     let foot = outline
@@ -329,7 +329,7 @@ fn standing(lie: &Lie, relief: &Relief, building: &Building, hidden: bool) -> St
 /// A box along each stretch of the hedge's line, from the lower end's ground to the hedge's
 /// height over the higher end's.
 fn hedge(lie: &Lie, relief: &Relief, hedge: &Hedge) -> Vec<Face> {
-    let points: Vec<Spot> = hedge.points.iter().map(|at| lie.place(*at)).collect();
+    let points: Vec<EastNorth> = hedge.points.iter().map(|at| lie.place(*at)).collect();
     points
         .windows(2)
         .filter_map(|pair| {
@@ -359,7 +359,7 @@ fn hedge(lie: &Lie, relief: &Relief, hedge: &Hedge) -> Vec<Face> {
 
 impl Scene {
     /// Each block's footprint in the shading frame, east and north.
-    fn footprints(&self) -> Vec<[Spot; 4]> {
+    fn footprints(&self) -> Vec<[EastNorth; 4]> {
         self.blocks
             .iter()
             .map(|block| {
@@ -468,7 +468,8 @@ impl Import {
         let lie = Lie::new(scene, &import);
         let blocks = scene.footprints();
         let under = |building: &&Building| {
-            let outline: Vec<Spot> = building.outline.iter().map(|at| lie.place(*at)).collect();
+            let outline: Vec<EastNorth> =
+                building.outline.iter().map(|at| lie.place(*at)).collect();
             blocks.iter().any(|block| {
                 shape::encloses(&outline, shape::centre(block))
                     || shape::encloses(block, shape::centre(&outline))

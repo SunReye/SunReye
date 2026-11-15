@@ -447,48 +447,6 @@
         ],
         "type": "object"
       },
-      "Cell": {
-        "additionalProperties": false,
-        "description": "A module in one cell: rows count up the slope, columns across it, both from 0.",
-        "properties": {
-          "column": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "optimized": {
-            "type": "boolean"
-          },
-          "order": {
-            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "row": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "string": {
-            "description": "The string it is painted into; unassigned, it produces nothing.",
-            "format": "int32",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "row",
-          "column"
-        ],
-        "type": "object"
-      },
       "Change": {
         "description": "A topology change: every point, applying from an instant on.",
         "properties": {
@@ -612,6 +570,7 @@
           "layout.scene",
           "layout.setback",
           "layout.overlap",
+          "layout.covered",
           "car.size",
           "car.file",
           "car.uri",
@@ -1590,6 +1549,52 @@
         ],
         "type": "object"
       },
+      "GridModule": {
+        "additionalProperties": false,
+        "description": "A module on a roof face.",
+        "properties": {
+          "across": {
+            "description": "Its lower left corner across and up the face's outline, in metres, seen from the front.",
+            "format": "double",
+            "type": "number"
+          },
+          "landscape": {
+            "description": "Long side across the slope.",
+            "type": "boolean"
+          },
+          "optimized": {
+            "type": "boolean"
+          },
+          "order": {
+            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "string": {
+            "description": "The string it is painted into; unassigned, it produces nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "across",
+          "up",
+          "landscape"
+        ],
+        "type": "object"
+      },
       "GroundFinish": {
         "enum": [
           "lawn",
@@ -2335,7 +2340,7 @@
       },
       "ModuleGrid": {
         "additionalProperties": false,
-        "description": "The modules on one roof face.",
+        "description": "The modules on one roof face, all of one module type.",
         "properties": {
           "block": {
             "description": "The block's index in the scene.",
@@ -2348,18 +2353,18 @@
             "type": "integer"
           },
           "landscape": {
-            "description": "Long side across the slope.",
+            "description": "The orientation a new module takes: its long side across the slope.",
             "type": "boolean"
           },
           "moduleType": {
-            "description": "The id of the module type, which sizes the cells.",
+            "description": "The id of the module type, which sizes the modules.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
           },
           "modules": {
             "items": {
-              "$ref": "#/components/schemas/Cell"
+              "$ref": "#/components/schemas/GridModule"
             },
             "type": "array"
           },

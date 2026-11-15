@@ -1260,25 +1260,6 @@ export interface components {
         Catalogue: {
             profiles: components["schemas"]["Listing"][];
         };
-        /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
-        Cell: {
-            /** Format: int32 */
-            column: number;
-            optimized?: boolean;
-            /**
-             * Format: int32
-             * @description Its place along its string's wiring, which runs through the string's modules from the
-             *     lowest; a module without one follows them.
-             */
-            order?: number | null;
-            /** Format: int32 */
-            row: number;
-            /**
-             * Format: int32
-             * @description The string it is painted into; unassigned, it produces nothing.
-             */
-            string?: number | null;
-        };
         /** @description A topology change: every point, applying from an instant on. */
         Change: {
             /** @description RFC 3339. */
@@ -1329,7 +1310,7 @@ export interface components {
          * @description Every stable machine code the core answers with; the SPA maps each to text (ADR 11).
          * @enum {string}
          */
-        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "car.size" | "car.file" | "car.uri" | "car.none" | "surroundings.radius" | "surroundings.location" | "surroundings.busy" | "surroundings.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
+        Code: "request.route" | "request.method" | "request.path" | "request.query" | "request.body" | "auth.setup" | "auth.required" | "auth.credentials" | "auth.backoff" | "auth.configured" | "auth.password" | "auth.forbidden" | "viewer.none" | "viewer.name" | "viewer.value" | "token.none" | "token.value" | "history.range" | "history.counter" | "forecast.range" | "role.none" | "layout.none" | "layout.device" | "layout.input" | "layout.string" | "layout.module-type" | "layout.value" | "layout.scene" | "layout.setback" | "layout.overlap" | "layout.covered" | "car.size" | "car.file" | "car.uri" | "car.none" | "surroundings.radius" | "surroundings.location" | "surroundings.busy" | "surroundings.none" | "topology.none" | "topology.tree" | "topology.point" | "topology.claim" | "topology.role" | "topology.device" | "tariff.none" | "tariff.band" | "tariff.past" | "tariff.retention" | "investment.value" | "location.none" | "location.value" | "retention.value" | "zone.value" | "connection.none" | "connection.value" | "connection.poll-seconds" | "connection.in-use" | "device.none" | "device.connection" | "device.transport" | "device.profile" | "device.profile-change" | "device.address" | "deadband.role" | "deadband.kind" | "deadband.step" | "scan.subnet" | "scan.busy" | "setting.none" | "setting.read-only" | "setting.value" | "setting.writes-off" | "setting.interval" | "setting.precondition" | "setting.community" | "setting.no-snapshot" | "setting.not-enabled" | "secret.missing" | "secret.value" | "index.value" | "update.none" | "import.busy" | "import.path" | "import.size" | "import.file" | "import.device" | "import.profile" | "backup.name" | "backup.exists" | "clock.unsynced" | "storage.full" | "internal";
         Condition: {
             /** @description A stable machine code, such as `clock.unsynced`. */
             code: components["schemas"]["Code"];
@@ -1692,6 +1673,30 @@ export interface components {
                 };
             };
         };
+        /** @description A module on a roof face. */
+        GridModule: {
+            /**
+             * Format: double
+             * @description Its lower left corner across and up the face's outline, in metres, seen from the front.
+             */
+            across: number;
+            /** @description Long side across the slope. */
+            landscape: boolean;
+            optimized?: boolean;
+            /**
+             * Format: int32
+             * @description Its place along its string's wiring, which runs through the string's modules from the
+             *     lowest; a module without one follows them.
+             */
+            order?: number | null;
+            /**
+             * Format: int32
+             * @description The string it is painted into; unassigned, it produces nothing.
+             */
+            string?: number | null;
+            /** Format: double */
+            up: number;
+        };
         /** @enum {string} */
         GroundFinish: "lawn" | "paving" | "driveway" | "gravel" | "path";
         /**
@@ -1956,20 +1961,20 @@ export interface components {
         ModuleCatalogue: {
             sheets: components["schemas"]["Sheet"][];
         };
-        /** @description The modules on one roof face. */
+        /** @description The modules on one roof face, all of one module type. */
         ModuleGrid: {
             /** @description The block's index in the scene. */
             block: number;
             /** @description The roof face's index in its block, in the order the `pv` crate lists a block's roof faces. */
             face: number;
-            /** @description Long side across the slope. */
+            /** @description The orientation a new module takes: its long side across the slope. */
             landscape: boolean;
             /**
              * Format: int32
-             * @description The id of the module type, which sizes the cells.
+             * @description The id of the module type, which sizes the modules.
              */
             moduleType: number;
-            modules: components["schemas"]["Cell"][];
+            modules: components["schemas"]["GridModule"][];
             /**
              * Format: double
              * @description Metres kept free along every edge of the face.

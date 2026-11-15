@@ -10,6 +10,7 @@ mod estimate;
 mod fitting;
 mod grid;
 mod imported;
+mod laying;
 mod mppt;
 mod opening;
 mod parking;
@@ -26,11 +27,13 @@ pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
 pub use estimate::estimate;
 pub use fitting::Unfit;
-pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
+pub use grid::{Area, GAP, GridModule, Misplaced, ModuleGrid, Placed, RoofFace, Size, Spot};
 pub use imported::{
-    Area, Around, Building, CREDITS, Coordinate, Draped, Element, Fetched, Hedge, Import, Imported,
-    MapData, Member, Patch, PatchFinish, Relief, Roofing, Spot, Standing, Terrain, Tile, Tree,
+    Around, Building, CREDITS, Coordinate, Draped, EastNorth, Element, Fetched, Hedge, Import,
+    Imported, MapData, Member, Patch, PatchFinish, Relief, Roofing, Standing, Terrain, Tile, Tree,
+    Vicinity,
 };
+pub use laying::Ghost;
 pub use mppt::{input_output, module_counts_differ};
 pub use opening::{Fitted, Opening, OpeningKind};
 pub use parking::{CarPlace, Stand};

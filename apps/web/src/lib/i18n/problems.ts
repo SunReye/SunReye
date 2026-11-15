@@ -38,6 +38,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "layout.scene": m.problem_layout_scene,
   "layout.setback": m.problem_layout_setback,
   "layout.overlap": m.problem_layout_overlap,
+  "layout.covered": m.problem_layout_covered,
   "topology.none": m.problem_topology_none,
   "topology.tree": m.problem_topology_tree,
   "topology.point": m.problem_topology_point,
