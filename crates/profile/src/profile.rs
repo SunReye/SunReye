@@ -513,15 +513,6 @@ impl Profile {
         self.variants.iter().find(|v| v.variant() == Some(id))
     }
 
-    /// Variant `variant`; the base, with the family's largest limits, for `None` or an id it does
-    /// not declare, such as a SunSpec model's, which binds at connect.
-    #[must_use]
-    pub fn resolve(&self, variant: Option<&str>) -> &Self {
-        variant
-            .and_then(|id| self.declared(id))
-            .map_or(self, |variant| variant)
-    }
-
     /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
     /// chain (see [`Profile::bind`]).
     #[must_use]

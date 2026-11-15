@@ -56,11 +56,31 @@ export interface Datasheet<Inputs extends number> {
   readonly mppt: Frozen<Mppt> | readonly [Frozen<Mppt>, Frozen<Mppt>];
 }
 
-/** `watts` of rated power as a variant's id, such as `15k`; a model without one is refused. */
-export function kilowatts(watts: number): string {
+/** One model of a range, or the family's base. */
+export interface Model<Inputs extends number> {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  /** The PV inputs whose registers it reads, as v4 did. */
+  readonly inputs: Inputs;
+  /** Amperes: the bound of the battery current settings, from v4's profile of the model. */
+  readonly current: number;
+  /** From the datasheet, with the rated AC output. */
+  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
+  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
+  readonly rated?: number;
+}
+
+/** `watts`, refused unless it is a rated power: a model is identified and capped by it. */
+function ratedPower(watts: number): number {
   if (!(watts > 0)) throw new Error("a model needs its rated power");
 
-  return `${watts / 1000}k`;
+  return watts;
+}
+
+/** `watts` of rated power as a variant's id, such as `15k`; a model without one is refused. */
+export function kilowatts(watts: number): string {
+  return `${ratedPower(watts) / 1000}k`;
 }
 
 /** What a family's profile takes of `sheet`: its rated power identifies the model and caps it. */
@@ -72,13 +92,11 @@ export function modelOf<Inputs extends number>(
 } {
   const { mppt, ...model } = sheet;
 
-  kilowatts(sheet.rated);
-
   return {
     ...model,
     inverter: {
       maxInputVoltage,
-      acRating: sheet.rated,
+      acRating: ratedPower(sheet.rated),
       mppt: "maxCurrent" in mppt ? [mppt, mppt] : mppt,
     },
   };

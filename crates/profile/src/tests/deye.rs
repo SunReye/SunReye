@@ -114,7 +114,10 @@ fn models() -> Vec<Model> {
 
 fn profile(model: &Model) -> Profile {
     let family = Profile::load(model.json).unwrap();
-    family.resolve(model.variant).clone()
+    match model.variant {
+        Some(variant) => (**family.declared(variant).unwrap()).clone(),
+        None => family,
+    }
 }
 
 fn profiles() -> impl Iterator<Item = Profile> {
@@ -365,7 +368,7 @@ fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_
             assert_eq!(q.kind() == RoleKind::Held, held, "{} {}", profile.id, q.key);
             let live = repeats.contains(&q.role.as_str());
             assert_eq!(
-                q.storage() == StorageClass::Live,
+                q.storage() == StorageClass::NoHistory,
                 live,
                 "{} {}",
                 profile.id,

@@ -75,7 +75,8 @@ pub fn conversions(
             .iter()
             .zip(converted)
             .enumerate()
-            // A quantity stored nowhere takes no history (ADR 3); it still converts its inputs.
+            // A quantity whose storage class is `none` takes no history (ADR 3); it still converts
+            // its inputs.
             .filter(|(_, (q, _))| q.storage() == StorageClass::Series)
             .filter_map(|(at, (q, linear))| Some((q.key.clone(), (at, linear?))))
             .collect(),

@@ -42,7 +42,7 @@ pub struct RoleDeadband {
 /// How `quantity` is stored, with the deadband `overrides` give its role; `None` when its storage
 /// class is `none`, so it is published live and never written (ADR 3).
 pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Option<Policy> {
-    if quantity.storage() == StorageClass::Live {
+    if quantity.storage() == StorageClass::NoHistory {
         return None;
     }
     let cadence = quantity.cadence();

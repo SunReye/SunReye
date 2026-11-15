@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 use serde_json::{Value, json};
 
 use super::fake::{Host, Signer, entry};
-use super::{OFFICIAL_INDEX, Profiles, Report, Status};
+use super::{Chosen, OFFICIAL_INDEX, Profiles, Report, Status};
 use crate::bus::Bus;
 use crate::storage::Storage;
 
@@ -426,9 +426,15 @@ fn the_bundled_snapshot_holds_every_profile_of_the_official_index() {
 fn a_variant_resolves_to_the_profile_its_family_loaded() {
     let catalogue = super::Catalogue::bundled().unwrap();
 
-    let first = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
-    let second = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
-    let base = catalogue.resolve("deye-sg05lp3", Some("99k")).unwrap();
+    let first = catalogue
+        .resolve(&Chosen::new("deye-sg05lp3", Some("15k")))
+        .unwrap();
+    let second = catalogue
+        .resolve(&Chosen::new("deye-sg05lp3", Some("15k")))
+        .unwrap();
+    let base = catalogue
+        .resolve(&Chosen::new("deye-sg05lp3", Some("99k")))
+        .unwrap();
 
     assert_eq!(first.variant(), Some("15k"));
     assert!(std::sync::Arc::ptr_eq(&first, &second));

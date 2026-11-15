@@ -1,13 +1,14 @@
 <!--
-  Settings › Devices' list: each device with its profile and connection, the measuring points'
+  Settings › Devices' list: each device with what it is read as and its connection, the measuring points'
   review after a change, the add action, and the profile updates waiting for the admin.
 -->
 <script lang="ts">
-  import type { Connection, Core, Device } from "../api/core";
+  import type { Connection, Core, Device, Listing } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
   import { m } from "../paraglide/messages.js";
+  import { readAs } from "../setup/catalogue.ts";
   import AddRow from "./AddRow.svelte";
   import ProfileUpdates from "./ProfileUpdates.svelte";
 
@@ -15,6 +16,7 @@
     core,
     devices,
     connections,
+    profiles,
     changed,
     onopen,
     onadd,
@@ -23,6 +25,7 @@
     core: Core;
     devices: readonly Device[];
     connections: readonly Connection[];
+    profiles: readonly Listing[];
     /** Whether a device changed since the measuring points were last reviewed here. */
     changed: boolean;
     onopen: (id: number) => void;
@@ -32,13 +35,12 @@
 
   const named = $derived(new Map(connections.map((c) => [c.id, c.name])));
 
-  /** Its profile, and its connection's name when listed. */
+  /** What it is read as, and its connection's name when listed. */
   function summary(device: Device): string {
     const connection = named.get(device.connection);
+    const profile = readAs(profiles, device);
 
-    return connection === undefined
-      ? device.profile
-      : m.settings_device_summary({ profile: device.profile, connection });
+    return connection === undefined ? profile : m.settings_device_summary({ profile, connection });
   }
 </script>
 

@@ -23,10 +23,10 @@
   <div class="flex flex-col gap-2">
     {#each maker.families as family (family[0]?.profile)}
       <GlassCard element="ul" class="divide-y divide-border/60">
-        {#each family as model (model.variant ?? "")}
+        {#each family as offer (offer.variant ?? "")}
           <ProfileRow
-            {model}
-            chosen={model.profile === value && model.variant === variant}
+            {offer}
+            chosen={offer.profile === value && offer.variant === variant}
             {onpick}
           />
         {/each}

@@ -49,9 +49,9 @@ pub enum StorageClass {
     /// History: change points and rollups.
     #[default]
     Series,
-    /// Published live, never written: `none` in a profile.
+    /// `none` in a profile: published live, never written.
     #[serde(rename = "none")]
-    Live,
+    NoHistory,
 }
 
 /// The kind of a named role; a role ADR 4 lacks is a measurement.

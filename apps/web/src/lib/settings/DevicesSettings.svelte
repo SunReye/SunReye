@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Connection, Core, Device, Problem } from "../api/core";
+  import type { Connection, Core, Device, Listing, Problem } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
@@ -26,7 +26,12 @@
     onlevel: (id: string | null) => void;
   } = $props();
 
-  let listed = $state.raw<{ devices: readonly Device[]; connections: readonly Connection[] }>();
+  let listed = $state.raw<{
+    devices: readonly Device[];
+    connections: readonly Connection[];
+    /** The profiles served, which name what each device is read as; none when they do not load. */
+    profiles: readonly Listing[];
+  }>();
 
   let refused = $state.raw<Problem>();
 
@@ -36,10 +41,23 @@
   const open = $derived(listed?.devices.find((d) => String(d.id) === level));
 
   async function load(): Promise<void> {
-    const [devices, connections] = await Promise.all([core.devices(), core.connections()]);
+    const [devices, connections, profiles] = await Promise.all([
+      core.devices(),
+      core.connections(),
+      core.profiles(),
+    ]);
 
-    if ("problem" in devices) refused = devices;
-    else listed = { devices, connections: "problem" in connections ? [] : connections };
+    if ("problem" in devices) {
+      refused = devices;
+
+      return;
+    }
+
+    listed = {
+      devices,
+      connections: "problem" in connections ? [] : connections,
+      profiles: "problem" in profiles ? [] : profiles,
+    };
   }
 
   onMount(() => {
@@ -82,6 +100,7 @@
     {core}
     devices={listed.devices}
     connections={listed.connections}
+    profiles={listed.profiles}
     {changed}
     onopen={(id) => {
       onlevel(String(id));
@@ -98,6 +117,7 @@
     {core}
     device={open}
     connections={listed.connections}
+    profiles={listed.profiles}
     onback={back}
     onchanged={after}
   />

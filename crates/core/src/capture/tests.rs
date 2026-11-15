@@ -7,6 +7,7 @@ use sunreye_profile::{Framing, Profile};
 use super::{CYCLES, Options, Recording, record, run};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{CADENCE, Device, TIMEOUT, spawn};
+use crate::profiles::Chosen;
 use crate::transport::{Capture, Client, Endpoint, Error, Exchange, fake};
 
 fn deye() -> Arc<Profile> {
@@ -280,7 +281,9 @@ async fn capture_refuses_a_variant_the_profile_lacks_before_it_connects() {
 async fn a_capture_reads_the_devices_variant_and_records_it() {
     let mut fake = fake::serve().await;
     let catalogue = crate::profiles::Catalogue::bundled().unwrap();
-    let small = catalogue.resolve("deye-sg05lp3", Some("5k")).unwrap();
+    let small = catalogue
+        .resolve(&Chosen::new("deye-sg05lp3", Some("5k")))
+        .unwrap();
 
     let recording = record(&fake.endpoint(), 0, Arc::clone(&small), 1)
         .await
@@ -484,9 +487,9 @@ async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
 async fn the_owners_capture_replays_with_each_four_input_sg05lp3_model() {
     let catalogue = crate::profiles::Catalogue::bundled().unwrap();
     for kw in [14, 15, 16, 18, 20] {
-        let family = catalogue.get("deye-sg05lp3").unwrap();
         let variant = format!("{kw}k");
-        let profile = std::sync::Arc::new(family.resolve(Some(&variant)).clone());
+        let chosen = Chosen::new("deye-sg05lp3", Some(&variant));
+        let profile = catalogue.resolve(&chosen).unwrap();
         let recording = Recording::parse(PLANT).unwrap();
         let bus = Bus::default();
         let mut readings = bus.subscribe();

@@ -298,8 +298,11 @@ pub const CYCLES: usize = 12;
 #[derive(Debug)]
 pub enum RunError {
     Profile(String),
-    /// The profile, and the variant it lacks.
-    Variant(String, String),
+    /// The profile lacks the variant.
+    Variant {
+        profile: String,
+        variant: String,
+    },
     Transport(Error),
 }
 
@@ -307,8 +310,8 @@ impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Profile(id) => write!(f, "no bundled profile `{id}`"),
-            Self::Variant(id, variant) => {
-                write!(f, "profile `{id}` has no variant `{variant}`")
+            Self::Variant { profile, variant } => {
+                write!(f, "profile `{profile}` has no variant `{variant}`")
             }
             Self::Transport(e) => write!(f, "{e}"),
         }
@@ -329,10 +332,11 @@ pub async fn run(options: Options) -> Result<Recording, RunError> {
         .ok_or(RunError::Profile(options.profile))?;
     let profile = match options.variant {
         None => family,
-        Some(variant) => match family.declared(&variant) {
-            Some(declared) => Arc::clone(declared),
-            None => return Err(RunError::Variant(family.id.clone(), variant)),
-        },
+        Some(variant) => {
+            let declared = family.declared(&variant).cloned();
+            let profile = family.id.clone();
+            declared.ok_or(RunError::Variant { profile, variant })?
+        }
     };
     record(&options.endpoint, options.unit, profile, CYCLES)
         .await
