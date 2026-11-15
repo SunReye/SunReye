@@ -17,10 +17,10 @@ use sunreye_pv::{
     WallFrame, open_circuit_voltage, sun_position,
 };
 
-/// The faces, solids, equipment mounts, car stands, ground surfaces, fences and openings of a
-/// scene, in the shading frame: east, north, up. The mounts are `null` while a marker lies off its
-/// wall, the stands while a car place is refused, the ground, the fences and the openings while
-/// one of theirs is.
+/// The faces, solids, equipment mounts, car stands, ground surfaces, fences, openings and roof
+/// windows' panes of a scene, in the shading frame: east, north, up. The mounts are `null` while a
+/// marker lies off its wall, the stands while a car place is refused, the ground, the fences, the
+/// openings and the roof windows while one of theirs is.
 fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
@@ -46,6 +46,7 @@ fn geometry(scene: &[u8]) -> String {
                 fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out }))
                     .collect::<Vec<_>>()
             }),
+            "roofWindows": scene.panes().ok(),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
     }
@@ -60,8 +61,8 @@ struct Gridded {
 }
 
 /// The roof faces, each grid laid out on its face, the first misplaced module, and what the
-/// builder's handles stand on: every block's walls and every chimney's footing, `null` for one
-/// that names no roof face.
+/// builder's handles stand on: every block's walls, every chimney's footing and every roof
+/// window's pane, `null` for one that names no roof face.
 fn modules(input: &[u8]) -> String {
     let Gridded { scene, sizes } = match serde_json::from_slice(input) {
         Ok(gridded) => gridded,
@@ -91,12 +92,14 @@ fn modules(input: &[u8]) -> String {
         "misplaced": misplaced,
         "walls": scene.walls().iter().map(walls).collect::<Vec<_>>(),
         "footings": scene.footings().iter().map(|f| f.as_ref().map(footing)).collect::<Vec<_>>(),
+        "panes": scene.outlines(),
     }})
     .to_string()
 }
 
 /// A grid on its face: each module's footprint, the face's outline and that outline inside the
-/// setback, corner for corner and `null` where none is left, and the chimneys' footprints.
+/// setback, corner for corner and `null` where none is left, and the footprints of the chimneys
+/// and roof windows.
 fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
     let modules: Vec<Value> = grid
         .modules
@@ -112,7 +115,8 @@ fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
         "modules": modules,
         "outline": ring(&face.outline),
         "inset": face.inset(grid.setback).map(|inset| ring(&inset)),
-        "blocked": face.chimneys.iter().map(|area| face.corners(*area)).collect::<Vec<_>>(),
+        "blocked": face.chimneys.iter().chain(&face.windows)
+            .map(|area| face.corners(*area)).collect::<Vec<_>>(),
     })
 }
 
@@ -198,6 +202,7 @@ fn misplaced(misplaced: Misplaced, grids: &[ModuleGrid], sizes: &HashMap<u32, Si
         Misplaced::Setback { grid, module } => ("setback", grid, module),
         Misplaced::Overlap { grid, module } => ("overlap", grid, module),
         Misplaced::Chimney { grid, module } => ("chimney", grid, module),
+        Misplaced::Window { grid, module } => ("window", grid, module),
     };
     let area = grids
         .get(grid)
@@ -414,6 +419,33 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::edited(input, super::edit::Strike::grid))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn glide_window(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Glide::window))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn roof_window_at(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Strike::window))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn place_window(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Glazed::reply))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.

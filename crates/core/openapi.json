@@ -3193,6 +3193,49 @@
           }
         ]
       },
+      "RoofWindow": {
+        "additionalProperties": false,
+        "description": "A window lying flush in a block's roof face, placed in the face's outline like a chimney:\nmetres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its size: across the slope, and up it.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "length"
+        ],
+        "type": "object"
+      },
       "ScanReport": {
         "description": "What a scan found.",
         "properties": {
@@ -3287,6 +3330,13 @@
             "description": "Windows and doors on the blocks' walls. Drawn only; they never shade.",
             "items": {
               "$ref": "#/components/schemas/Opening"
+            },
+            "type": "array"
+          },
+          "roofWindows": {
+            "description": "Windows lying flush in roof faces. Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/RoofWindow"
             },
             "type": "array"
           },
