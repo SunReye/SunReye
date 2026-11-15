@@ -407,3 +407,21 @@ fn a_variant_may_declare_an_input_the_base_does_not_limit() {
 
     assert_eq!(load(&doc).map(|_| ()), Ok(()));
 }
+
+#[test]
+fn a_variant_replaces_a_quantity_but_never_a_setting() {
+    let dropped = first_variant("drop", &json!(["pv2", "total", "current"]));
+    let whole = first_variant(
+        "settings",
+        &json!({ "current": {
+            "key": "current", "type": "u16", "range": { "min": 0, "max": 120 }, "minInterval": 1,
+            "recipe": [{ "write": { "register": 109 } }], "readBack": { "register": 109 },
+        } }),
+    );
+
+    assert_eq!(
+        refusal(&dropped),
+        "variant `5k`: `current` is a setting: a variant changes only its range"
+    );
+    assert!(refusal(&whole).contains("unknown field `key`"));
+}

@@ -92,6 +92,20 @@ fn merge(mut base: ProfileDoc, doc: VariantDoc) -> Result<ProfileDoc, String> {
         setting(&mut base, &key, range)?;
     }
     let (dropped, added) = (doc.drop.unwrap_or_default(), doc.add.unwrap_or_default());
+    // Drop and add replace a quantity; a setting changes only in its range.
+    let replaced = |key: &String| {
+        base.settings.iter().any(|s| s.key == *key)
+            && !base.quantities.iter().any(|q| q.key == *key)
+    };
+    if let Some(key) = dropped
+        .iter()
+        .chain(added.iter().map(|q| &q.key))
+        .find(|k| replaced(k))
+    {
+        return Err(format!(
+            "`{key}` is a setting: a variant changes only its range"
+        ));
+    }
     base.quantities = quantities(std::mem::take(&mut base.quantities), &dropped, added)?;
     Ok(base)
 }
