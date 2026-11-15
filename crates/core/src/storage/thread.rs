@@ -24,6 +24,9 @@ mod rollups;
 const BUCKET: Tick = 600;
 /// An hour in ticks.
 const HOUR: Tick = 36_000;
+/// Bytes in a page: a block of up to 2 KB stays in its leaf, where 4 KB pages spill it into an
+/// overflow page left mostly empty (ADR 3).
+const PAGE: i64 = 8192;
 /// `PRAGMA auto_vacuum` of a file that returns freed pages on request.
 const INCREMENTAL: i64 = 2;
 /// Expired blocks deleted per transaction, each followed by an incremental vacuum.
@@ -226,13 +229,13 @@ fn open(path: &Path) -> Result<Connection, Error> {
     private(path).map_err(Error::Io)?;
     let mut db = Connection::open(path)?;
     // Page size and auto-vacuum take effect only before the first table exists.
-    db.execute_batch(
-        "PRAGMA page_size = 4096;
+    db.execute_batch(&format!(
+        "PRAGMA page_size = {PAGE};
          PRAGMA auto_vacuum = INCREMENTAL;
          PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA cache_size = -2048;",
-    )?;
+    ))?;
     let applied: i64 = db.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if applied > SCHEMA {
         return Err(Error::Newer(applied));
@@ -243,13 +246,37 @@ fn open(path: &Path) -> Result<Connection, Error> {
         tx.pragma_update(None, "user_version", version)?;
     }
     tx.commit()?;
-    // A file made before its first table without incremental vacuum, such as by another tool,
-    // converts by one full vacuum: expiry could not shrink it otherwise (ADR 3).
-    let vacuum: i64 = db.query_row("PRAGMA auto_vacuum", [], |row| row.get(0))?;
-    if vacuum != INCREMENTAL {
-        db.execute_batch("PRAGMA auto_vacuum = INCREMENTAL; VACUUM;")?;
-    }
+    convert(&db)?;
     Ok(db)
+}
+
+/// Rewrites a file made at another page size, by an earlier build, or without incremental
+/// vacuum, by another tool, in one full vacuum (ADR 3): blocks would spill into overflow pages,
+/// and expiry could not shrink the file.
+fn convert(db: &Connection) -> Result<(), Error> {
+    let pragma = |name: &str| db.query_row(&format!("PRAGMA {name}"), [], |row| row.get(0));
+    let (page, vacuum): (i64, i64) = (pragma("page_size")?, pragma("auto_vacuum")?);
+    if page == PAGE && vacuum == INCREMENTAL {
+        return Ok(());
+    }
+    // A vacuum cannot change the page size of a file in WAL mode.
+    let rewritten = db.execute_batch(&format!(
+        "PRAGMA journal_mode = DELETE;
+         PRAGMA page_size = {PAGE};
+         PRAGMA auto_vacuum = INCREMENTAL;
+         VACUUM;",
+    ));
+    db.execute_batch("PRAGMA journal_mode = WAL")?;
+    match rewritten {
+        // Another process, such as `sunreye backup`, holds the file: the next open converts it.
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if e.code == rusqlite::ErrorCode::DatabaseBusy =>
+        {
+            tracing::warn!("the store is in use by another process and keeps its old page layout");
+            Ok(())
+        }
+        other => Ok(other?),
+    }
 }
 
 /// Makes the file and its WAL readable by the core alone (ADR 7): it holds the connections'

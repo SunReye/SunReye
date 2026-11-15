@@ -9,6 +9,7 @@ use super::{ChangePoint, Issue, Policy, Problem, Storage};
 use crate::bus::{Bus, DeviceId, Reading, SeriesId};
 
 mod import;
+mod pages;
 mod retention;
 mod rollups;
 
