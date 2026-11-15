@@ -220,7 +220,8 @@ const fn input_of(string: &PvString) -> (DeviceId, u32) {
 
 /// The model's values with each MPPT input's learned `factor` applied to it and to its strings
 /// (ADR 17); each inverter's `pv.power` is the sum of its corrected inputs, capped at its AC
-/// `rating` when its profile declares one.
+/// `rating` when its profile declares one. A capped inverter's inputs and strings are scaled
+/// with it, so they still sum to it.
 fn corrected(
     mut values: HashMap<Key, f64>,
     version: Option<&Version>,
@@ -245,9 +246,20 @@ fn corrected(
             *inverters.entry(*device).or_default() += *value;
         }
     }
+    // What each inverter over its rating keeps of its inputs and strings.
+    let kept: HashMap<DeviceId, f64> = inverters
+        .iter()
+        .filter_map(|(device, power)| {
+            let cap = rating(*device).filter(|cap| power > cap)?;
+            Some((*device, cap / power))
+        })
+        .collect();
+    for ((device, _, _), value) in &mut values {
+        *value *= kept.get(device).copied().unwrap_or(1.0);
+    }
     for (device, power) in inverters {
-        let cap = rating(device).unwrap_or(f64::INFINITY);
-        values.insert((device, "pv.power", None), power.min(cap));
+        let kept = kept.get(&device).copied().unwrap_or(1.0);
+        values.insert((device, "pv.power", None), power * kept);
     }
     values
 }
@@ -319,10 +331,7 @@ impl Model {
                         input(index, &strings, declared, module_types, &by_string)
                     })
                     .unzip();
-                let inverter = pv::Inverter {
-                    ac_rating: section.and_then(|i| i.ac_rating),
-                    inputs,
-                };
+                let inverter = pv::Inverter { inputs };
                 let place = InverterPlace {
                     device: DeviceId(device),
                     inputs: places,

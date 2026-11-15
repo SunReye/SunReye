@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13, 2026-11-15)
 
 ## Context
 
@@ -29,7 +29,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 - Electrics: De Soto's single-diode model, fitted to Vmp, Imp, Voc, Isc and the voltage and current coefficients as pvlib's `fit_desoto`, split into equal substrings. Pmax and the power coefficient feed kWp and nothing else. A conducting bypass diode drops 0.5 V.
 - Per string: the current-voltage curve summed over its substrings, with bypass diodes, and its maximum power point; then the string's loss on its current. A module with an optimizer delivers its own maximum power, less 1 %, whatever the string current; a string of optimized modules alone runs at their own maximum power point's current.
 - Per MPPT input: parallel strings share one voltage and their currents add; the input runs at the summed curve's peak within its voltage window, at a current no higher than its maximum input current. When the open-circuit voltage stays below the window or the start voltage it yields nothing; a peak above the window is clipped to its top, one below it held at its bottom. Each parallel string's forecast is the input's power split by modelled current, the rule estimates use below, so a string's forecasts sum to its input's.
-- Per inverter: capped at its AC rating. Battery and feed-in curtailment are planning and wait for the EMS stage (ADR 1).
+- Per inverter: the sum of its inputs. The AC rating caps the solar forecast, not the model (Correction). Battery and feed-in curtailment are planning and wait for the EMS stage (ADR 1).
 - Perez golden values are generated offline with pvlib and committed as fixtures. Open-Meteo's tilted irradiance is a looser cross-check.
 
 **Parallel-string estimates.** The measured MPPT current is split by each string's modelled current. A string's estimate is the measured `pv.mppt.power` times its share, so the estimates sum to it. The modelled currents are the strings' latest solar forecasts at the target nearest the reading, which are split by modelled current; without one, or when they are all 0 W, the strings share equally. A string alone on its MPPT input is reported as measured. Estimates are history as `pv.string.power` (ADR 4), in the solar forecast's 1 W step, since a series' forecast and history share one step; the capabilities document marks them `estimated`.
@@ -40,7 +40,7 @@ Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 - An hour is the hourly rollup's mean against the model's mean at the hour's two ends, as archive weather is instantaneous and hourly.
 - An input learns against `pv.mppt.power` while it has that history in the run's days, else against `pv.power` and the inverter's model.
 - Not every inverter profile declares an AC rating (ADR 5), so the AC limit is observed: an hour is at it when the inverter's `pv.power` peaks within 2 % of the highest hourly peak it stored in the past year while the model expects more than that peak. v4's rules stay as well: an hour is skipped when the input's model is under 3 % of its kWp, or the input's or the inverter's model or measurement reaches 85 % of its kWp.
-- The solar forecast applies each input's factor at the target's plant-local month and hour to the input and its strings; the inverter's forecast is the sum of its corrected inputs.
+- The solar forecast applies each input's factor at the target's plant-local month and hour to the input and its strings; the inverter's forecast is the sum of its corrected inputs, capped at its AC rating where its profile declares one. The cap is applied here, once, after the factors. A capped inverter's inputs and strings are scaled by the same share, so they still sum to it. The learner's model is not capped, so an hour clipped at the rating is modelled above its measured peak.
 - Not carried over: the feed-in cap, which waits for the EMS stage, and 3.x's skill figure, which nothing reports.
 
 **Storage.** The solar forecast issues on start, after each stored weather forecast and after each layout change. Forecasts of `pv.string.power`, `pv.mppt.power` and `pv.power` go to the forecast store (ADR 15). They are stored under each inverter's device, so a series' forecast and history share one device and index. An issue runs the layout in force at each weather target and covers every string, input and inverter any layout version has, at 0 W where the version in force lacks it, so a removed string's earlier issue is superseded.

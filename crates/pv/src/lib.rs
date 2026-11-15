@@ -212,8 +212,6 @@ pub struct Layout {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inverter {
-    /// Watts; without it the output is not capped.
-    pub ac_rating: Option<f64>,
     pub inputs: Vec<Input>,
 }
 
@@ -247,7 +245,8 @@ pub struct Estimate {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InverterEstimate {
-    /// Watts, capped at the AC rating.
+    /// Watts, the sum of its inputs. The AC rating caps a forecast, not the model, so a
+    /// learner sees what a clipped hour would have produced (ADR 17).
     pub power: f64,
     pub inputs: Vec<InputEstimate>,
 }

@@ -61,10 +61,27 @@ struct Plant {
 
 /// Berlin, the owner's Deye as device 1 with 16 modules of 400 Wp facing south on input 1.
 async fn plant() -> Plant {
+    plant_of(None).await
+}
+
+/// The Deye family, declaring an AC `rating` in place of its 20 kW when given.
+fn deye(rating: Option<f64>) -> Profile {
+    let mut family: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
+    if let Some(rating) = rating {
+        family["inverter"]["acRating"] = rating.into();
+        // No variant may exceed its base.
+        family["variants"] = serde_json::json!([]);
+    }
+    Profile::load(&family.to_string()).unwrap()
+}
+
+/// [`plant`] with the Deye declaring an AC `rating` in place of its 20 kW, when given.
+async fn plant_of(rating: Option<f64>) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage = Storage::open(&dir.path().join("core.sqlite"), UNIX_EPOCH, "UTC", &bus).unwrap();
-    let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
+    let deye = deye(rating);
     let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
     let layouts = Layouts::new(storage.database(), inverters);
     let module_type = layouts
@@ -336,6 +353,50 @@ async fn hours_with_the_inverter_at_its_ac_limit_are_skipped() {
         }
     }
     assert!(checked.0 > 0 && checked.1 > 0, "{checked:?}");
+}
+
+/// The model the learner compares against is not capped at the AC rating, or an hour clipped at
+/// the rating would never be modelled above the peak it was measured at.
+#[tokio::test]
+async fn hours_clipped_at_the_declared_ac_rating_are_skipped() {
+    const RATING: f64 = 3000.0;
+    // 20 kW never caps this string, so its forecast is the model.
+    let modelled = plant().await.modelled("pv.mppt.power", Some(1)).await;
+    let plant = plant_of(Some(RATING)).await;
+    for (role, index) in [("pv.mppt.power", Some(1)), ("pv.power", None)] {
+        plant
+            .measure(role, index, &modelled, |w| w.min(RATING))
+            .await;
+    }
+    let (archive, _calls) = FakeArchive::new(archive());
+    let learner = plant.learner(archive);
+
+    learner
+        .learn(&plant.storage, BERLIN, &berlin(), at(NOW))
+        .await
+        .unwrap();
+
+    let local = |hour: u64| {
+        let time = jiff::Timestamp::from_second(i64::try_from(hour).unwrap()).unwrap();
+        u8::try_from(time.to_zoned(berlin()).hour()).unwrap()
+    };
+    // Clipped, and clear of 85 % of the 6.4 kWp nameplate, which skips an hour by itself.
+    let clipped: Vec<u8> = hourly(&modelled)
+        .filter(|(_, mean)| (3050.0..5000.0).contains(mean))
+        .map(|(hour, _)| local(hour))
+        .collect();
+    let unclipped: Vec<u8> = hourly(&modelled)
+        .filter(|(_, mean)| *mean < 3050.0)
+        .map(|(hour, _)| local(hour))
+        .collect();
+    let cells: Vec<u8> = learned(&learner).await.iter().map(|c| c.1).collect();
+    let only_clipped: Vec<_> = clipped.iter().filter(|h| !unclipped.contains(h)).collect();
+    assert!(!only_clipped.is_empty(), "{clipped:?} {unclipped:?}");
+    for hour in only_clipped {
+        assert!(!cells.contains(hour), "{hour} learned: {cells:?}");
+    }
+    // Hours under the rating still learn.
+    assert!(cells.contains(&8), "{cells:?}");
 }
 
 #[tokio::test]
