@@ -5,6 +5,7 @@
  * The measured strain is kept per device, so a slow wall tablet starts lean the next day.
  */
 import { MediaQuery } from "svelte/reactivity";
+import { quality as sceneQuality, type QualityStore } from "../scene/quality.svelte.ts";
 import {
   clampStrain,
   FrameStrain,
@@ -52,6 +53,13 @@ export class MotionStore {
   #raf: number | null = null;
   #settleTimer: ReturnType<typeof setTimeout> | null = null;
   #leases = 0;
+  /** A strain measured over a scene drawn richly takes a level off its 3D quality first (ADR 20). */
+  readonly #quality: QualityStore;
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- its steps are taken.
+  constructor(quality: QualityStore = sceneQuality) {
+    this.#quality = quality;
+  }
 
   /** What to render. Everything on the page branches on this and nothing else. */
   get tier(): MotionTier {
@@ -90,11 +98,15 @@ export class MotionStore {
   }
 
   #sync(): void {
-    const wanted =
-      this.#leases > 0 && !this.#lowPower && this.#strain < MAX_STRAIN && !this.#reduce.current;
+    const wanted = this.#leases > 0 && !this.#lowPower && !this.#reduce.current && this.#gives();
 
     if (wanted) this.#start();
     else this.#stop();
+  }
+
+  /** Whether a strain could still lower anything: the tier, or the scene's drawing. */
+  #gives(): boolean {
+    return this.#strain < MAX_STRAIN || this.#quality.relieves(this.tier);
   }
 
   #start(): void {
@@ -120,13 +132,16 @@ export class MotionStore {
 
       if (this.#frames.windows >= WATCH_WINDOWS) return;
 
-      if (this.#leases > 0 && this.#strain < MAX_STRAIN) this.#tick();
+      if (this.#leases > 0 && this.#gives()) this.#tick();
     });
   }
 
   #downgrade(): void {
-    this.#strain = clampStrain(this.#strain + 1);
-    write(STRAIN_KEY, String(this.#strain));
+    if (!this.#quality.relieve(this.tier)) {
+      this.#strain = clampStrain(this.#strain + 1);
+      write(STRAIN_KEY, String(this.#strain));
+    }
+
     // Through the settle delay again: the tier change rebuilds part of the hero, which is not evidence.
     this.#sync();
   }
