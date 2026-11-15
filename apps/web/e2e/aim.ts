@@ -8,7 +8,7 @@ import type { Page } from "playwright";
 import { presetView } from "../src/lib/builder/camera.ts";
 import { chimney } from "../src/lib/builder/draft.ts";
 import { handles, type Handle, type Target } from "../src/lib/builder/handles/grips.ts";
-import { loadPv, type Scene } from "../src/lib/builder/pv.ts";
+import { loadPv, type Pv, type Scene } from "../src/lib/builder/pv.ts";
 import { fresh } from "../src/lib/builder/wall-openings.ts";
 import { SCENE } from "./fixtures.ts";
 import type { Pixel } from "./gestures.ts";
@@ -25,30 +25,38 @@ const GRIP = { block: "width", window: "width", chimney: "move" } as const;
 
 type Triple = readonly [number, number, number];
 
+/** The fixture as the builder holds it once the journey's `ready` has added what it drags. */
+const SCENES: Readonly<Record<Aimed, (pv: Pv, scene: Scene) => readonly [Scene, Target]>> = {
+  block: (_, scene) => [scene, { kind: "block", index: 0 }],
+  window: (pv, scene) => [
+    { ...scene, openings: [fresh(pv, scene, "window")].filter((made) => made !== null) },
+    { kind: "opening", index: 0 },
+  ],
+  chimney: (pv, scene) => [
+    {
+      ...scene,
+      chimneys: pv
+        .modules(scene, {})
+        .roofs.slice(0, 1)
+        .map((face) => chimney(face)),
+    },
+    { kind: "chimney", index: 0 },
+  ],
+};
+
+/** Two metres along an arrow; two metres east for a handle that moves its object. */
+function reached({ at: [x, y, z], axis = [1, 0, 0] }: Handle): Triple {
+  return [x + axis[0] * 2, y, z + axis[2] * 2];
+}
+
 export async function aim(page: Page, aimed: Aimed = "block"): Promise<readonly [Pixel, Pixel]> {
   const pv = await loadPv(new Uint8Array(await Bun.file(WASM).arrayBuffer()));
-  const plain: Scene = SCENE;
-  const { roofs } = pv.modules(plain, {});
-  const [face] = roofs;
-  const made = fresh(plain, "window");
-
-  if (face === undefined || made === null) throw new Error("no roof face or no room for a window");
-
-  const scenes: Readonly<Record<Aimed, readonly [Scene, Target]>> = {
-    block: [plain, { kind: "block", index: 0 }],
-    window: [
-      { ...plain, openings: [made] },
-      { kind: "opening", index: 0 },
-    ],
-    chimney: [
-      { ...plain, chimneys: [chimney(face)] },
-      { kind: "chimney", index: 0 },
-    ],
-  };
-
-  const [scene, target] = scenes[aimed];
+  const [scene, target] = SCENES[aimed](pv, SCENE);
   const canvas = await page.getByLabel("3D-Szene des Hauses").boundingBox();
-  const handle = handles(scene, target, roofs).find(({ grip }) => grip === GRIP[aimed]);
+
+  const handle = handles(scene, target, pv.modules(scene, {})).find(
+    ({ grip }) => grip === GRIP[aimed],
+  );
 
   if (canvas === null || handle === undefined) throw new Error("no canvas or no handle");
 
@@ -69,9 +77,4 @@ export async function aim(page: Page, aimed: Aimed = "block"): Promise<readonly 
   };
 
   return [onPage(handle.at), onPage(reached(handle))];
-}
-
-/** Two metres along an arrow; two metres east for a handle that moves its object. */
-function reached({ at: [x, y, z], axis = [1, 0, 0] }: Handle): Triple {
-  return [x + axis[0] * 2, y, z + axis[2] * 2];
 }

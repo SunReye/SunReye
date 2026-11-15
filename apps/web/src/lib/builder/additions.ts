@@ -16,7 +16,7 @@ export interface Addition {
 
 /** A chimney goes on the first roof face; without a roof, none is added. Windows and doors go
  * on the walls. */
-function buildings({ draft, laid }: Plan): Addition[] {
+function buildings({ draft, laid, pv }: Plan): Addition[] {
   const { blocks, chimneys = [] } = draft.scene;
   const [face] = laid.roofs;
 
@@ -37,7 +37,7 @@ function buildings({ draft, laid }: Plan): Addition[] {
           },
         ];
 
-  return [block, ...onRoof, ...onWalls(draft)];
+  return [block, ...onRoof, ...onWalls(draft, pv)];
 }
 
 const OPENINGS: readonly (readonly [OpeningKind, () => string])[] = [
@@ -49,11 +49,11 @@ const OPENINGS: readonly (readonly [OpeningKind, () => string])[] = [
 
 /** A window or a door goes in the first free place on a wall; without room for it, none is
  * added. */
-function onWalls(draft: Draft): Addition[] {
+function onWalls(draft: Draft, pv: Plan["pv"]): Addition[] {
   const openings = draft.scene.openings ?? [];
 
   return OPENINGS.flatMap(([kind, label]): Addition[] => {
-    const made = fresh(draft.scene, kind);
+    const made = fresh(pv, draft.scene, kind);
 
     return made === null
       ? []

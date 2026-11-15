@@ -8,7 +8,8 @@
   import type { Opening } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
-  import { USUAL, type Unfit } from "./wall-openings.ts";
+  import type { Unfit } from "./pv.ts";
+  import { USUAL } from "./wall-openings.ts";
 
   let {
     item,

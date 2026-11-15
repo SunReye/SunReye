@@ -184,8 +184,8 @@ test(
   async () => {
     const draws = vi.spyOn(EffectComposer.prototype, "render");
     const start = chimneyed();
-    const { roofs } = pv.modules(start.scene, {});
-    const [top] = handles(start.scene, { kind: "chimney", index: 0 }, roofs);
+    const laid = pv.modules(start.scene, {});
+    const [top] = handles(start.scene, { kind: "chimney", index: 0 }, laid);
 
     if (top === undefined) throw new Error("no chimney handle");
 

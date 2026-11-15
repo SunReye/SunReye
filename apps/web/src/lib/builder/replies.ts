@@ -1,6 +1,6 @@
 // The pv glue crate's exports and its JSON replies, `{"ok": …}` or `{"error": "…"}`, checked
 // at the boundary.
-import type { Geometry, Modules, Sun } from "./pv.ts";
+import type { Chimney, Geometry, Modules, Opening, Sun, Unfit } from "./pv.ts";
 
 export type Reply<T> = { readonly ok: T } | { readonly error: string };
 
@@ -33,16 +33,26 @@ export function isGeometry(value: unknown): value is Reply<Geometry> {
   );
 }
 
+/** The grids' layout: the roof faces and each grid's cells. */
+const isGridded = (laid: unknown): laid is Pick<Modules, "roofs" | "grids"> =>
+  laid instanceof Object &&
+  "roofs" in laid &&
+  Array.isArray(laid.roofs) &&
+  "grids" in laid &&
+  Array.isArray(laid.grids);
+
+/** What the handles stand on: the walls and the chimneys' footings. */
+const isStoodOn = (laid: unknown): laid is Pick<Modules, "walls" | "footings"> =>
+  laid instanceof Object &&
+  "walls" in laid &&
+  Array.isArray(laid.walls) &&
+  "footings" in laid &&
+  Array.isArray(laid.footings);
+
 export function isModules(value: unknown): value is Reply<Modules> {
   return (
     isFailure(value) ||
-    (value instanceof Object &&
-      "ok" in value &&
-      value.ok instanceof Object &&
-      "roofs" in value.ok &&
-      Array.isArray(value.ok.roofs) &&
-      "grids" in value.ok &&
-      Array.isArray(value.ok.grids))
+    (value instanceof Object && "ok" in value && isGridded(value.ok) && isStoodOn(value.ok))
   );
 }
 
@@ -79,6 +89,31 @@ export function isWatts(value: unknown): value is Reply<number[][]> {
   );
 }
 
+const isRecord = (value: unknown): value is object => value instanceof Object;
+
+/** An edit's answer: an object, or null where the crate has none. */
+function isAnswer<T>(value: unknown): value is Reply<T> {
+  return (
+    isFailure(value) ||
+    (isRecord(value) && "ok" in value && (value.ok === null || isRecord(value.ok)))
+  );
+}
+
+export const isRefit: (
+  value: unknown,
+) => value is Reply<{ readonly opening: Opening } | { readonly unfit: Unfit }> = isAnswer;
+
+export const isOpening: (value: unknown) => value is Reply<Opening | null> = isAnswer;
+
+export const isChimney: (value: unknown) => value is Reply<Chimney | null> = isAnswer;
+
+export function isIndex(value: unknown): value is Reply<number | null> {
+  return (
+    isFailure(value) ||
+    (isRecord(value) && "ok" in value && (value.ok === null || Number.isInteger(value.ok)))
+  );
+}
+
 /** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
 export interface Exports {
   readonly memory: WebAssembly.Memory;
@@ -89,6 +124,10 @@ export interface Exports {
   readonly sun: (input: number, inputLen: number) => bigint;
   readonly clear_sky: (input: number, inputLen: number) => bigint;
   readonly cold_voltages: (input: number, inputLen: number) => bigint;
+  readonly refit: (input: number, inputLen: number) => bigint;
+  readonly place: (input: number, inputLen: number) => bigint;
+  readonly glide: (input: number, inputLen: number) => bigint;
+  readonly chimney_at: (input: number, inputLen: number) => bigint;
 }
 
 const functions = [
@@ -99,6 +138,10 @@ const functions = [
   "sun",
   "clear_sky",
   "cold_voltages",
+  "refit",
+  "place",
+  "glide",
+  "chimney_at",
 ] as const;
 
 export function isExports(

@@ -41,6 +41,8 @@ async function stage(scene: Scene, target = BLOCK) {
     editing: {
       scene,
       target,
+      pv,
+      laid: pv.modules(scene, {}),
       ondrag: (next: Scene) => {
         dragged.push(next);
       },

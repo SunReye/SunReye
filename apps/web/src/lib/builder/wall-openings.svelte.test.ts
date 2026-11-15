@@ -37,7 +37,10 @@ afterEach(async () => {
 /** A mouse drag of opening `index`'s width arrow, 20 cm along its wall. */
 async function widen(scene: Scene, index: number): Promise<void> {
   const onPage = onCanvas(scene);
-  const arrow = handles(scene, { kind: "opening", index }).find(({ grip }) => grip === "width");
+
+  const arrow = handles(scene, { kind: "opening", index }, pv.modules(scene, {})).find(
+    ({ grip }) => grip === "width",
+  );
 
   if (arrow?.axis === undefined) throw new Error("no width arrow");
 
@@ -82,7 +85,7 @@ test("a window is added on a wall and its width arrow drags it wider, in one und
   await expect.element(width.getByText(/^1,2$/u)).toBeVisible();
 
   // The scene as the builder now holds it: the template's openings and the new one after them.
-  const made = fresh(start.scene, "window");
+  const made = fresh(pv, start.scene, "window");
 
   if (made === null) throw new Error("no room for a window");
 
