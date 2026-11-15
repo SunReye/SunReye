@@ -1,6 +1,8 @@
-// What laying modules and wiring strings draw over the roof (ADR 20): a selected face's free cells
-// in the brand colour, the selected module's outline, and the picked string's wiring in its tint
-// from a start marker. Built anew for each step; it only shows, a press strikes the roof under it.
+// What laying modules and wiring strings draw over the roof (ADR 20): a selected face's roof outside
+// its setback and under its chimneys shaded, the ghost modules under the pointer in the brand colour
+// or red where they do not fit, the selected module's outline, and the picked string's wiring in its
+// tint from a start marker. Built anew for each step; it only shows, a press strikes the roof under
+// it.
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js objects, built in place. */
 import {
   BufferGeometry,
@@ -18,16 +20,18 @@ import {
   Vector3,
 } from "three";
 import { fan } from "../scene/surfaces.ts";
-import type { CellPlace, Point } from "./pv.ts";
+import type { Footprint, Ghost, LaidGrid, Point } from "./pv.ts";
 import { stringColour, toThree } from "./scene.ts";
 
-/** What the overlay shows: a face's cells, or a string's wiring. */
+/** What the overlay shows: a face's modules being laid, or a string's wiring. */
 export type Shown =
   | {
       readonly kind: "modules";
-      /** The cells a press may place a module in. */
-      readonly free: readonly CellPlace[];
-      readonly selected?: CellPlace | undefined;
+      /** The roof modules may not lie on. */
+      readonly shade: LaidGrid;
+      readonly selected?: Footprint | undefined;
+      /** The modules not laid yet. */
+      readonly ghosts?: readonly Ghost[];
     }
   | {
       readonly kind: "string";
@@ -36,8 +40,17 @@ export type Shown =
       readonly path: readonly Point[];
     };
 
-/** Metres the cells float over the roof, clear of its tiles. */
+/** The overlay's colours: the brand's, and the one of what does not fit. */
+export interface Tints {
+  readonly brand: Color;
+  readonly unfit: Color;
+}
+
+/** Metres the overlay floats over the roof, clear of its tiles. */
 const LIFT = 0.03;
+
+/** Metres a ghost floats over the roof: over the modules' glass. */
+const OVER = 0.06;
 
 /** The start marker's radius, in metres. */
 const START = 0.14;
@@ -45,10 +58,15 @@ const START = 0.14;
 /** Over everything the scene draws, as the handles. */
 const ON_TOP = 10;
 
-/** The cell's corners in three.js's frame, lifted off the roof along its normal. */
-function lifted({ corners }: CellPlace): Vector3[] {
+/** The shaded roof: black, faint enough to read the tiles through. */
+const SHADE = { color: 0x000000, opacity: 0.38 } as const;
+
+/** A flat polygon's corners in three.js's frame, lifted `by` metres off the roof along its
+ * normal. */
+function lifted(corners: readonly Point[], by = LIFT): Vector3[] {
   const points = corners.map((corner) => new Vector3(...toThree(corner)));
-  const [a, b, , d] = points;
+  const [a, b] = points;
+  const d = points.at(-1);
 
   if (a === undefined || b === undefined || d === undefined) return points;
 
@@ -57,40 +75,73 @@ function lifted({ corners }: CellPlace): Vector3[] {
   // Up, whichever way the crate wound the corners.
   if (normal.y < 0) normal.negate();
 
-  return points.map((point) => point.addScaledVector(normal, LIFT));
+  return points.map((point) => point.addScaledVector(normal, by));
 }
 
-function outline(cell: CellPlace, colour: Color, opacity: number): LineLoop {
+function outline(corners: readonly Point[], colour: Color, by = LIFT): LineLoop {
   return new LineLoop(
-    new BufferGeometry().setFromPoints(lifted(cell)),
-    new LineBasicMaterial({ color: colour, transparent: true, opacity, toneMapped: false }),
+    new BufferGeometry().setFromPoints(lifted(corners, by)),
+    new LineBasicMaterial({ color: colour, transparent: true, toneMapped: false }),
   );
 }
 
-/** A free cell: a faint fill a press strikes, and its outline. */
-function free(cell: CellPlace, colour: Color): Object3D[] {
+/** Convex polygons filled in one colour; they never write depth, so what lies under them shows. */
+function filled(
+  polygons: readonly (readonly Vector3[])[],
+  { color, opacity }: { readonly color: Color | number; readonly opacity: number },
+): Mesh {
   const geometry = new BufferGeometry();
-  const points = lifted(cell);
 
   geometry.setAttribute(
     "position",
-    new Float32BufferAttribute(fan(points.map(({ x, y, z }) => [x, y, z] as const)).flat(), 3),
+    new Float32BufferAttribute(
+      polygons.flatMap((points) => fan(points.map(({ x, y, z }) => [x, y, z] as const)).flat()),
+      3,
+    ),
   );
 
-  const fill = new Mesh(
+  return new Mesh(
     geometry,
     new MeshBasicMaterial({
-      color: colour,
+      color,
+      opacity,
       transparent: true,
-      opacity: 0.12,
       depthWrite: false,
       toneMapped: false,
+      side: DoubleSide,
     }),
   );
+}
 
-  fill.material.side = DoubleSide;
+/** The roof no module may lie on: the band between the face's edge and its setback, the whole face
+ * where the setback leaves none, and the chimneys' footprints. */
+function shaded({ outline: edge, inset, blocked }: LaidGrid): Mesh {
+  const outer = lifted(edge);
+  const inner = inset === null ? null : lifted(inset);
 
-  return [fill, outline(cell, colour, 0.55)];
+  const band =
+    inner === null
+      ? [outer]
+      : outer.flatMap((from, i) => {
+          const j = (i + 1) % outer.length;
+          const [to, within, before] = [outer[j], inner[j], inner[i]];
+
+          return to === undefined || within === undefined || before === undefined
+            ? []
+            : [[from, to, within, before]];
+        });
+
+  return filled([...band, ...blocked.map((corners) => lifted(corners))], SHADE);
+}
+
+/** A module not laid yet: a fill and an outline, red where it does not fit. */
+function ghost({ corners, fits }: Ghost, { brand, unfit }: Tints): Object3D[] {
+  const colour = fits ? brand : unfit;
+
+  return [
+    filled([lifted(corners, OVER)], { color: colour, opacity: 0.35 }),
+    outline(corners, colour, OVER),
+  ];
 }
 
 /** A string's wiring: a thin line through its modules' centres and a marker at its start. */
@@ -115,15 +166,18 @@ function wired(string: number, path: readonly Point[]): Object3D[] {
 }
 
 /** The overlay's objects, over the scene. */
-export function overlay(shown: Shown, brand: Color): Group {
+export function overlay(shown: Shown, tints: Tints): Group {
   const group = new Group();
 
   const parts =
     shown.kind === "string"
       ? wired(shown.string, shown.path)
       : [
-          ...shown.free.flatMap((cell) => free(cell, brand)),
-          ...(shown.selected === undefined ? [] : [outline(shown.selected, brand, 1)]),
+          shaded(shown.shade),
+          ...(shown.selected === undefined
+            ? []
+            : [outline(shown.selected.corners, tints.brand, OVER)]),
+          ...(shown.ghosts ?? []).flatMap((item) => ghost(item, tints)),
         ];
 
   if (parts.length > 0) group.add(...parts);

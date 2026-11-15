@@ -20,8 +20,10 @@ import {
   tap,
   testCore,
   undesk,
+  filledFace,
+  SIZES,
 } from "./builder.harness.ts";
-import { addGrid, emptyDraft, fillGrid, panels } from "./modules.ts";
+import { addGrid, emptyDraft, panels } from "./modules.ts";
 import { toThree } from "./scene.ts";
 import { handles } from "./handles/grips.ts";
 
@@ -29,8 +31,6 @@ import { handles } from "./handles/grips.ts";
 // "+" adds, and every step is a finger.
 
 const SLOW = { timeout: 15_000 };
-
-const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
 /** The inspector's bottom sheet and the handle that pulls it up. */
 const sheet = () => page.getByRole("region", { name: "Szene bearbeiten" });
@@ -52,7 +52,7 @@ async function row(label: string): Promise<void> {
 /** Each module's centre on the page once the house's south face is filled, from its first view. */
 function southModules(): [number, number][] {
   const gridded = addGrid(house().scene, 0, 1, MODULE.id);
-  const filled = fillGrid(gridded, 0, pv.modules(gridded, SIZES).grids[0] ?? []);
+  const filled = filledFace(gridded, 0);
   const onPage = onCanvas(filled);
 
   return panels(filled, pv.modules(filled, SIZES).grids).map(({ corners }) => {
@@ -178,15 +178,13 @@ test("opening a face for its modules flies the camera onto it: a tap lands in th
   const [left] = cells("0.0");
   const [right] = cells("0.1");
 
-  // From the first view a cell is about 10 px across; here it is a finger's.
+  // From the first view a module is about 10 px across; here it is a finger's.
   expect(right - left).toBeGreaterThan(30);
 
   await press("touch", [cells("1.2")]);
-  await expect.element(sheet().getByText("1 von 16 Modulen gesetzt")).toBeInTheDocument();
+  await expect.element(sheet().getByText("1 Module gesetzt")).toBeInTheDocument();
   await press("touch", [cells("1.2")]);
-  await expect
-    .element(sheet().getByRole("heading", { name: "Reihe 2, Spalte 3" }))
-    .toBeInTheDocument();
+  await expect.element(sheet().getByRole("heading", { name: "Modul 1" })).toBeInTheDocument();
 });
 
 test("a finger picks a chimney and slides it along its roof, still peeking", async () => {

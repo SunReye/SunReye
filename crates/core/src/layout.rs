@@ -63,8 +63,10 @@ enum Refusal {
     Scene,
     /// A module crosses its face's setback.
     Setback,
-    /// Two modules share a cell.
+    /// Two modules overlap.
     Overlap,
+    /// A module overlaps a roof chimney.
+    Covered,
 }
 
 impl From<Refusal> for Refused {
@@ -95,6 +97,7 @@ impl From<Refusal> for Problem {
             Refusal::Scene => Code::LayoutScene,
             Refusal::Setback => Code::LayoutSetback,
             Refusal::Overlap => Code::LayoutOverlap,
+            Refusal::Covered => Code::LayoutCovered,
         };
         Self {
             status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -351,8 +354,10 @@ impl Layouts {
         scene: Option<Scene>,
         changed: SystemTime,
     ) -> Result<Version, Refused> {
+        let module_types = self.module_types().await.map_err(internal)?;
+        // Saved with places, whatever it came with (ADR 20).
+        let scene = scene.map(|scene| scene.settled(scene::sizes(&module_types)));
         if let Some(scene) = &scene {
-            let module_types = self.module_types().await.map_err(internal)?;
             scene::derive(scene, &mut strings, &module_types).map_err(Problem::from)?;
         }
         for (at, draft) in strings.iter().enumerate() {
@@ -617,7 +622,18 @@ fn insert_string(db: &Connection, layout: i64, s: &PvString) -> rusqlite::Result
     Ok(())
 }
 
+/// Every version, each scene's modules at their places: one stored with rows and columns reads
+/// with each module at its cell's corner (ADR 20).
 fn read_versions(db: &Connection) -> rusqlite::Result<Vec<Version>> {
+    let module_types = read_module_types(db)?;
+    let mut versions = read_stored(db)?;
+    for scene in versions.iter_mut().filter_map(|v| v.scene.as_mut()) {
+        *scene = scene.settled(scene::sizes(&module_types));
+    }
+    Ok(versions)
+}
+
+fn read_stored(db: &Connection) -> rusqlite::Result<Vec<Version>> {
     let mut strings = db.prepare(
         "SELECT string, name, module_type, device, input, modules, optimized, tilt, azimuth, loss
          FROM layout_string WHERE layout = ?1 ORDER BY string",

@@ -27,7 +27,7 @@ export interface Editing {
   readonly target: Target;
   /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
    * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
-  readonly pv: Pick<Pv, "refit" | "glide" | "chimneyAt">;
+  readonly pv: Pick<Pv, "refit" | "glide" | "chimneyAt" | "gridAt">;
   readonly laid: Laid;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
