@@ -234,6 +234,19 @@ pub struct Listing {
     pub official: bool,
     /// Watts of AC output at the inverter's rating; a family's largest.
     pub ac_rating: Option<f64>,
+    /// A family's variants in file order (ADR 5); a device that is none of them is added
+    /// without one and read as the base.
+    pub variants: Vec<ListedVariant>,
+}
+
+/// One variant of a family, as an admin picks it for a device.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedVariant {
+    pub id: String,
+    pub name: String,
+    /// Watts of AC output at this model's rating.
+    pub ac_rating: Option<f64>,
 }
 
 impl Listing {
@@ -246,6 +259,17 @@ impl Listing {
             version: profile.version.clone(),
             official: held.official,
             ac_rating: profile.inverter().and_then(|i| i.ac_rating),
+            variants: profile
+                .variants()
+                .iter()
+                .filter_map(|variant| {
+                    Some(ListedVariant {
+                        id: variant.variant()?.to_owned(),
+                        name: variant.name.clone(),
+                        ac_rating: variant.inverter().and_then(|i| i.ac_rating),
+                    })
+                })
+                .collect(),
         }
     }
 }

@@ -2006,6 +2006,30 @@
         ],
         "type": "object"
       },
+      "ListedVariant": {
+        "description": "One variant of a family, as an admin picks it for a device.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at this model's rating.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
       "Listing": {
         "description": "A profile served, as an admin picks it for a device.",
         "properties": {
@@ -2030,6 +2054,13 @@
           "official": {
             "type": "boolean"
           },
+          "variants": {
+            "description": "A family's variants in file order (ADR 5); a device that is none of them is added\nwithout one and read as the base.",
+            "items": {
+              "$ref": "#/components/schemas/ListedVariant"
+            },
+            "type": "array"
+          },
           "version": {
             "type": "string"
           }
@@ -2039,7 +2070,8 @@
           "manufacturer",
           "name",
           "version",
-          "official"
+          "official",
+          "variants"
         ],
         "type": "object"
       },
