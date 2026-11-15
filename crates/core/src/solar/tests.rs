@@ -2,11 +2,9 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_profile::Profile;
 use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Overhang, Roof, Scene};
 use tokio::sync::watch;
 
@@ -15,6 +13,7 @@ use crate::bus::{Bus, DeviceId};
 use crate::correction::{Cell as Learned, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
+use crate::profiles::{Catalogue, Chosen};
 use crate::storage::{Issue, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
@@ -78,9 +77,9 @@ async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
     )
     .unwrap();
     store_weather(&storage, &bus, targets).await;
-    let family = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
-    let deye = family.resolve(variant).clone();
-    let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
+    let chosen = Chosen::new("deye-sg05lp3", variant);
+    let deye = Catalogue::bundled().unwrap().resolve(&chosen).unwrap();
+    let inverters: Inverters = std::iter::once((INVERTER, deye)).collect();
     let layouts = Layouts::new(storage.database(), inverters);
     let module_type = layouts
         .add_module_type(Datasheet {

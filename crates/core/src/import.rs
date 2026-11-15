@@ -272,7 +272,7 @@ pub async fn targets(
             let profile = registered
                 .iter()
                 .find(|d| d.id == id)
-                .and_then(|d| catalogue.resolve(&d.draft.profile, d.draft.variant.as_deref()))
+                .and_then(|d| catalogue.resolve(&d.draft.chosen()))
                 .ok_or(Error::UnknownTarget(id))?;
             Ok(Target {
                 slug,

@@ -91,6 +91,24 @@ struct Retired {
 /// Settings applied updates added or changed, as (profile, setting).
 type Changed = HashSet<(String, String)>;
 
+/// A device's profile id and variant, as stored: what it is read as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Chosen {
+    pub profile: String,
+    /// None for the family's base.
+    pub variant: Option<String>,
+}
+
+impl Chosen {
+    #[must_use]
+    pub fn new(profile: &str, variant: Option<&str>) -> Self {
+        Self {
+            profile: profile.to_owned(),
+            variant: variant.map(str::to_owned),
+        }
+    }
+}
+
 /// The profiles served, by id; clones share one catalogue, so a fetched profile reaches every
 /// holder.
 #[derive(Debug, Clone, Default)]
@@ -152,11 +170,12 @@ impl Catalogue {
         self.held(id).map(|held| held.profile)
     }
 
-    /// Profile `id` as its variant `variant` reads (ADR 5); the family's base for `None` or a
-    /// variant it does not declare.
+    /// The profile as `chosen`'s variant reads (ADR 5); the family's base for no variant or one
+    /// it does not declare, such as a SunSpec model's, which binds at connect.
     #[must_use]
-    pub fn resolve(&self, id: &str, variant: Option<&str>) -> Option<Arc<Profile>> {
-        let family = self.get(id)?;
+    pub fn resolve(&self, chosen: &Chosen) -> Option<Arc<Profile>> {
+        let family = self.get(&chosen.profile)?;
+        let variant = chosen.variant.as_deref();
         let declared = variant.and_then(|v| family.declared(v)).cloned();
         Some(declared.unwrap_or(family))
     }

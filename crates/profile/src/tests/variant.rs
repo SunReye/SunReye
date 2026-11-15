@@ -105,7 +105,7 @@ fn a_family_lists_its_variants_by_id_and_name() {
 fn a_variant_is_the_base_with_its_name_inverter_and_setting_ranges() {
     let family = load(&family()).unwrap();
 
-    let small = family.resolve(Some("5k"));
+    let small = family.declared("5k").unwrap();
 
     assert_eq!(
         (small.id.as_str(), small.name.as_str()),
@@ -121,19 +121,21 @@ fn a_variant_is_the_base_with_its_name_inverter_and_setting_ranges() {
 fn a_quantity_added_under_a_dropped_key_takes_its_place_and_others_follow_the_base() {
     let family = load(&family()).unwrap();
 
-    assert_eq!(keys(family.resolve(Some("5k"))), ["pv1", "total", "spare"]);
     assert_eq!(
-        keys(family.resolve(Some("15k"))),
+        keys(family.declared("5k").unwrap()),
+        ["pv1", "total", "spare"]
+    );
+    assert_eq!(
+        keys(family.declared("15k").unwrap()),
         ["pv1", "pv2", "total", "spare", "fan"]
     );
 }
 
 #[test]
-fn an_unknown_variant_and_none_resolve_to_the_base() {
+fn a_family_declares_no_variant_it_does_not_list() {
     let family = load(&family()).unwrap();
 
-    assert_eq!(family.resolve(Some("99k")).variant(), None);
-    assert_eq!(family.resolve(None).name, "Family");
+    assert!(family.declared("99k").is_none());
 }
 
 #[test]
@@ -433,10 +435,10 @@ fn a_variant_lists_the_retired_profiles_it_replaces() {
     let family = load(&doc).unwrap();
 
     assert_eq!(
-        family.resolve(Some("5k")).replaces(),
+        family.declared("5k").unwrap().replaces(),
         ["family-5k", "family-5000"]
     );
-    assert_eq!(family.resolve(Some("15k")).replaces(), [] as [&str; 0]);
+    assert_eq!(family.declared("15k").unwrap().replaces(), [] as [&str; 0]);
     assert_eq!(family.replaces(), [] as [&str; 0]);
 }
 

@@ -27,7 +27,7 @@ use crate::endpoint::{self, Task};
 use crate::http;
 use crate::layout::Inverters;
 use crate::mqtt;
-use crate::profiles::Catalogue;
+use crate::profiles::{Catalogue, Chosen};
 use crate::publisher::{self, Publisher, Publishing};
 use crate::scan::{self, Scanner};
 use crate::settings::{
@@ -245,19 +245,20 @@ pub struct DeviceDraft {
     pub writes: bool,
 }
 
+impl DeviceDraft {
+    /// The profile and variant the device is read as.
+    #[must_use]
+    pub fn chosen(&self) -> Chosen {
+        Chosen::new(&self.profile, self.variant.as_deref())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct Device {
     /// Stable; never reused. The device id of its history.
     pub id: u32,
     #[serde(flatten)]
     pub draft: DeviceDraft,
-}
-
-/// A device's profile id and variant, as stored.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Chosen {
-    profile: String,
-    variant: Option<String>,
 }
 
 /// A device where it sits behind its connection, and what it is read as.
@@ -954,8 +955,7 @@ impl Devices {
     }
 
     fn resolved(&self, draft: &DeviceDraft) -> Option<Arc<Profile>> {
-        self.catalogue
-            .resolve(&draft.profile, draft.variant.as_deref())
+        self.catalogue.resolve(&draft.chosen())
     }
 
     /// The binding the draft's profile reads through; refused when the profile or its variant is
@@ -1112,8 +1112,8 @@ impl Devices {
 
     /// `device` with its profile as its variant reads, unless the profile is not known.
     fn known(&self, device: &Addressed) -> Option<endpoint::Device> {
-        let Chosen { profile, variant } = &device.profile;
-        let Some(resolved) = self.catalogue.resolve(profile, variant.as_deref()) else {
+        let Some(resolved) = self.catalogue.resolve(&device.profile) else {
+            let profile = &device.profile.profile;
             tracing::warn!(device = device.id, profile, "unknown profile");
             return None;
         };

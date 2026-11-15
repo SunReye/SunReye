@@ -114,7 +114,10 @@ fn models() -> Vec<Model> {
 
 fn profile(model: &Model) -> Profile {
     let family = Profile::load(model.json).unwrap();
-    family.resolve(model.variant).clone()
+    match model.variant {
+        Some(variant) => (**family.declared(variant).unwrap()).clone(),
+        None => family,
+    }
 }
 
 fn profiles() -> impl Iterator<Item = Profile> {
