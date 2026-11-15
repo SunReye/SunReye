@@ -27,12 +27,12 @@ pub enum Sums {
 
 /// The window `[start, end)` of a series; `points` are in time order and include the one in
 /// force at `start`. `None` when no value falls in the window, and always for a status or a
-/// setting: their reads carry the last value forward.
+/// held value: their reads carry the last value forward.
 pub fn roll(kind: RoleKind, points: &[Point], start: Tick, end: Tick) -> Option<Sums> {
     match kind {
         RoleKind::Measurement => measurement(points, start, end),
         RoleKind::Counter => counter(points, start, end),
-        RoleKind::Status | RoleKind::Setting => None,
+        RoleKind::Status | RoleKind::Held => None,
     }
 }
 
@@ -133,7 +133,7 @@ pub fn buckets(kind: RoleKind, values: &[(Tick, i64)], width: Tick) -> Vec<(Tick
                     delta: (value - first).max(0),
                 }
             }
-            RoleKind::Status | RoleKind::Setting => return Vec::new(),
+            RoleKind::Status | RoleKind::Held => return Vec::new(),
         };
         rolled.push((start, sums));
         previous = Some((start, value));

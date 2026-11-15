@@ -241,12 +241,12 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
 }
 
 #[tokio::test]
-async fn a_setting_is_stored_as_change_points_and_rolls_up_nothing() {
+async fn a_held_value_is_stored_as_change_points_and_rolls_up_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();
     let storage = Storage::open(&dir.path().join("s.sqlite"), epoch(), "UTC", &plant.bus).unwrap();
-    let setting = Policy::new(RoleKind::Setting, None, 1.0, Duration::from_secs(5));
-    storage.declare(DEVICE, plant.power, setting).await.unwrap();
+    let held = Policy::new(RoleKind::Held, None, 1.0, Duration::from_secs(5));
+    storage.declare(DEVICE, plant.power, held).await.unwrap();
     // 50 until half past the first hour, then 51, into a third hour.
     let readings = steady(0.0, 1460, 5.0, |t| if t < 1800.0 { 50.0 } else { 51.0 });
     plant.record(&storage, &readings).await;

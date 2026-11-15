@@ -72,7 +72,7 @@ deadband?: number,
  */
 pollGroup?: string, };
 
-export type RoleKind = "measurement" | "counter" | "status" | "setting";
+export type RoleKind = "measurement" | "counter" | "status" | "held";
 
 export type StorageClass = "series" | "none";
 

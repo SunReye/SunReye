@@ -37,8 +37,8 @@ pub enum RoleKind {
     Counter,
     /// An enum.
     Status,
-    /// A held value: stored on every change.
-    Setting,
+    /// A value the device holds, such as a configured limit: stored on every change.
+    Held,
 }
 
 /// Where a quantity's readings go (ADR 3).

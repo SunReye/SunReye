@@ -2,7 +2,7 @@
   "profiles": [
     {
       "id": "deye-sg01hp3",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "schema": 1,
       "requires": [
         "modbus",
@@ -20,7 +20,7 @@
         "unit",
         "variants"
       ],
-      "sha256": "36e0edcd756d98a77d23ab34c55adc6ed5e99c90359a55bac78b5da93fb1da38",
+      "sha256": "cdd4be6de655f37b9b4fbc41ca194947c3c651bb2a67f0fd5de7f8ae9e148790",
       "url": "deye-sg01hp3.json",
       "variants": [
         {
@@ -59,7 +59,7 @@
     },
     {
       "id": "deye-sg05lp3",
-      "version": "2.2.9",
+      "version": "2.2.10",
       "schema": 1,
       "requires": [
         "modbus",
@@ -77,7 +77,7 @@
         "unit",
         "variants"
       ],
-      "sha256": "4b286a933cd092c02b1600b49344b03e5d2cb833db7f7dd0d17d74f6fc52f766",
+      "sha256": "7685ea2d3ac0775919b0accf2bae3c2816400eb86779a3a6c86e3949db9ec1cb",
       "url": "deye-sg05lp3.json",
       "variants": [
         {

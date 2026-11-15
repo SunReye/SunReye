@@ -344,14 +344,14 @@ const SETTINGS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.maximum_grid_charge_current",
     role: "extra.settings_battery_maximum_grid_charge_current",
-    kind: "setting",
+    kind: "held",
     register: 128,
     type: "u16",
   },
   {
     key: "settings.solar_sell_max_power",
     role: "extra.settings_solar_sell_max_power",
-    kind: "setting",
+    kind: "held",
     register: 143,
     type: "u16",
     scale: 10,
@@ -359,7 +359,7 @@ const SETTINGS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.solar_sell",
     role: "extra.settings_solar_sell",
-    kind: "setting",
+    kind: "held",
     register: 145,
     type: "u16",
   },

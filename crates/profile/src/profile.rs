@@ -88,7 +88,7 @@ pub struct Quantity {
 /// Why a deadband does not fit a quantity (ADR 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeadbandRefusal {
-    /// Not a measurement: a counter, enum or setting stores every change.
+    /// Not a measurement: a counter, enum or held value stores every change.
     Kind,
     /// Below the quantisation step, or not a finite number.
     Step,
@@ -110,7 +110,7 @@ impl Quantity {
         self.kind
     }
 
-    /// Its role's unit, or the one an extra declares; none for a status or setting (ADR 4).
+    /// Its role's unit, or the one an extra declares; none for a status or held value (ADR 4).
     #[must_use]
     pub const fn unit(&self) -> Option<Unit> {
         self.unit

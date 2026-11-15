@@ -21,7 +21,7 @@ fn an_extra_is_of_the_kind_it_declares() {
         { "key": "m", "role": "extra.m", "register": 1, "type": "u16", "kind": "measurement", "unit": "none" },
         { "key": "c", "role": "extra.c", "register": 2, "type": "u32", "kind": "counter", "unit": "none" },
         { "key": "f", "role": "extra.f", "register": 4, "type": "u16", "kind": "status" },
-        { "key": "s", "role": "extra.s", "register": 5, "type": "u16", "kind": "setting" },
+        { "key": "s", "role": "extra.s", "register": 5, "type": "u16", "kind": "held" },
     ]));
 
     let kinds: Vec<RoleKind> = load(&doc)
@@ -37,7 +37,7 @@ fn an_extra_is_of_the_kind_it_declares() {
             RoleKind::Measurement,
             RoleKind::Counter,
             RoleKind::Status,
-            RoleKind::Setting
+            RoleKind::Held
         ]
     );
 }
@@ -104,9 +104,9 @@ fn a_quantity_is_stored_as_a_series_unless_it_declares_none() {
 }
 
 #[test]
-fn a_setting_has_no_deadband() {
+fn a_held_value_has_no_deadband() {
     let doc = case(&json!([
-        { "key": "s", "role": "extra.s", "register": 1, "type": "u16", "kind": "setting",
+        { "key": "s", "role": "extra.s", "register": 1, "type": "u16", "kind": "held",
           "deadband": 1 },
     ]));
 
@@ -119,7 +119,7 @@ fn a_setting_has_no_deadband() {
 #[test]
 fn an_extra_reading_a_register_a_setting_reads_back_is_refused() {
     let mut doc = case(&json!([
-        { "key": "a", "role": "extra.a", "register": 7, "type": "u32", "kind": "setting" },
+        { "key": "a", "role": "extra.a", "register": 7, "type": "u32", "kind": "held" },
     ]));
     doc["settings"] = json!([{
         "key": "s", "type": "u16", "range": { "min": 0, "max": 9 }, "minInterval": 60,
