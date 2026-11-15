@@ -6,6 +6,7 @@ mod fitting;
 mod fixtures;
 mod grid;
 mod input;
+mod laying;
 mod lint;
 mod opening;
 mod parking;
