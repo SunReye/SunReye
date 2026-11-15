@@ -139,7 +139,7 @@ fn import(args: impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
-/// `sunreye backup` (ADR 3): backs up the store and car bodies, the core running or not.
+/// `sunreye backup` (ADR 3): backs up the store and kept files, the core running or not.
 fn backup(args: impl Iterator<Item = String>) -> ExitCode {
     let options = match backup::Options::backup(args, |name| std::env::var(name).ok()) {
         Ok(options) => options,
@@ -160,7 +160,7 @@ fn backup(args: impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
-/// `sunreye restore` (ADR 3): replaces the store and car bodies while the core is stopped.
+/// `sunreye restore` (ADR 3): replaces the store and kept files while the core is stopped.
 fn restore(args: impl Iterator<Item = String>) -> ExitCode {
     let options = match backup::Options::restore(args, |name| std::env::var(name).ok()) {
         Ok(options) => options,
@@ -195,6 +195,7 @@ async fn run(options: Options, logs: Logs) -> Result<(), startup::Error> {
         weather: OpenMeteo,
         archive: OpenMeteoArchive,
         spot: EnergyCharts,
+        sources: sunreye_core::surroundings::open_data(),
         fetch: std::sync::Arc::new(Https),
         keys: profiles::KEYS,
         logs,

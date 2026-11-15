@@ -35,6 +35,7 @@ use crate::settings::{Declared, Enable};
 use crate::spa;
 use crate::spot::SpotZone;
 use crate::storage;
+use crate::surroundings::Surroundings;
 use crate::tariff::Tariffs;
 use crate::topology::Topologies;
 
@@ -75,6 +76,7 @@ pub struct Api {
     pub topologies: Topologies,
     pub tariffs: Tariffs,
     pub cars: CarBodies,
+    pub surroundings: Surroundings,
     /// The plant timezone and change-point retention.
     pub storage: storage::Settings,
     pub imports: Imports,
@@ -105,6 +107,7 @@ pub fn router(api: Api) -> Router {
         api.tariffs.routes(Clock::clone(&api.clock)),
         api.changes.routes(),
         api.cars.routes(),
+        api.surroundings.routes(),
         api.location.routes(Clock::clone(&api.clock)),
         api.spot.routes(Clock::clone(&api.clock)),
         storage_routes(api.storage, &api.clock),
@@ -484,6 +487,18 @@ pub enum Code {
     CarUri,
     #[serde(rename = "car.none")]
     CarNone,
+    /// Surroundings load for 100, 200 or 300 m only.
+    #[serde(rename = "surroundings.radius")]
+    SurroundingsRadius,
+    /// No centre to load surroundings for: no location is set and none was given, or it lies
+    /// off the map.
+    #[serde(rename = "surroundings.location")]
+    SurroundingsLocation,
+    /// A load of surroundings is still running.
+    #[serde(rename = "surroundings.busy")]
+    SurroundingsBusy,
+    #[serde(rename = "surroundings.none")]
+    SurroundingsNone,
     #[serde(rename = "topology.none")]
     TopologyNone,
     #[serde(rename = "topology.tree")]

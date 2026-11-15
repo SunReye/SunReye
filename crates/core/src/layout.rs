@@ -24,6 +24,7 @@ use utoipa_axum::routes;
 use crate::api::{Clock, Code, Problem, ProblemDetails, Refused, internal};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
+use crate::surroundings::Documents;
 
 mod catalogue;
 mod scene;
@@ -59,7 +60,8 @@ enum Refusal {
         field: &'static str,
     },
     /// A scene's grid names no roof face, a module no string or one of another module type, an
-    /// equipment marker lies off its wall, or a car place, ground surface or fence is refused.
+    /// equipment marker lies off its wall, a car place, ground surface or fence is refused, or
+    /// its import names no stored surroundings.
     Scene,
     /// A module crosses its face's setback.
     Setback,
@@ -278,6 +280,8 @@ pub fn in_force(versions: &[Version], at: SystemTime) -> Option<&Version> {
 pub struct Layouts {
     database: Database,
     inverters: Inverters,
+    /// The imported surroundings a scene may name (ADR 20).
+    documents: Option<Documents>,
     changed: Arc<watch::Sender<()>>,
 }
 
@@ -287,8 +291,24 @@ impl Layouts {
         Self {
             database,
             inverters,
+            documents: None,
             changed: Arc::new(watch::channel(()).0),
         }
+    }
+
+    /// The layouts whose scenes may stand among the imported surroundings of `documents`;
+    /// without them a scene names none.
+    #[must_use]
+    pub fn among(mut self, documents: Documents) -> Self {
+        self.documents = Some(documents);
+        self
+    }
+
+    /// The imported surroundings the scene of `version` names; `None` without a scene, an
+    /// import, or its document.
+    pub async fn surroundings(&self, version: &Version) -> Option<Arc<pv::Imported>> {
+        let import = version.scene.as_ref()?.imported.as_ref()?;
+        self.documents.as_ref()?.read(&import.document).await
     }
 
     /// Marked changed by each layout change.
@@ -354,6 +374,7 @@ impl Layouts {
         if let Some(scene) = &scene {
             let module_types = self.module_types().await.map_err(internal)?;
             scene::derive(scene, &mut strings, &module_types).map_err(Problem::from)?;
+            self.imports(scene).await?;
         }
         for (at, draft) in strings.iter().enumerate() {
             self.check(at, &draft.wiring)?;
@@ -365,6 +386,18 @@ impl Layouts {
             .map_err(internal)??;
         self.changed.send_replace(());
         Ok(stored)
+    }
+
+    /// Refuses a scene whose import names no stored document.
+    async fn imports(&self, scene: &Scene) -> Result<(), Refusal> {
+        let Some(import) = &scene.imported else {
+            return Ok(());
+        };
+        let stored = match &self.documents {
+            Some(documents) if scene.import_fits() => documents.read(&import.document).await,
+            _ => None,
+        };
+        stored.map(|_| ()).ok_or(Refusal::Scene)
     }
 
     /// Each string of `version` whose open-circuit voltage at −10 °C exceeds its inverter's
