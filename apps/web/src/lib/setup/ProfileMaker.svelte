@@ -2,34 +2,31 @@
 <script lang="ts">
   import Eyebrow from "../components/eyebrow.svelte";
   import GlassCard from "../components/glass-card.svelte";
-  import type { Listing } from "../api/core.ts";
   import type { Manufacturer } from "./catalogue.ts";
   import ProfileRow from "./ProfileRow.svelte";
 
   let {
     maker,
-    families,
     value,
+    variant,
     onpick,
   }: {
     maker: Manufacturer;
-    /** The family profiles served. */
-    families: ReadonlySet<Readonly<Listing>>;
     value: string;
-    onpick: (id: string) => void;
+    variant: string | undefined;
+    onpick: (profile: string, variant?: string) => void;
   } = $props();
 </script>
 
 <section class="pb-3">
   <Eyebrow class="px-1 pt-2 pb-2">{maker.name}</Eyebrow>
   <div class="flex flex-col gap-2">
-    {#each maker.families as family (family[0]?.id)}
+    {#each maker.families as family (family[0]?.profile)}
       <GlassCard element="ul" class="divide-y divide-border/60">
-        {#each family as listing (listing.id)}
+        {#each family as model (model.variant ?? "")}
           <ProfileRow
-            {listing}
-            family={families.has(listing)}
-            chosen={listing.id === value}
+            {model}
+            chosen={model.profile === value && model.variant === variant}
             {onpick}
           />
         {/each}

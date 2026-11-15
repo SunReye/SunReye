@@ -1,42 +1,33 @@
-<!-- One profile in the picker: its name, a family or community tag under it, its rating beside it. -->
+<!-- One model in the picker: its name, a family or community tag under it, its rating beside it. -->
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
   import Check from "@lucide/svelte/icons/check";
-  import type { Listing } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { rated } from "./catalogue.ts";
+  import { power, type Model } from "./catalogue.ts";
 
   let {
-    listing,
-    family,
+    model,
     chosen,
     onpick,
   }: {
-    listing: Readonly<Listing>;
-    /** Whether it is a family profile, covering every model of its series. */
-    family: boolean;
+    model: Readonly<Model>;
     chosen: boolean;
-    onpick: (id: string) => void;
+    onpick: (profile: string, variant?: string) => void;
   } = $props();
 
-  const power = $derived(rated(listing.acRating));
-
-  // A family's rating is its largest model's.
-  const rating = $derived(
-    power !== undefined && family ? m.profile_up_to({ power }) : power,
-  );
+  const rating = $derived(power(model));
 
   const tags = $derived(
     [
-      family ? m.profile_family() : undefined,
-      listing.official ? undefined : m.profile_community(),
+      model.family ? m.profile_family() : undefined,
+      model.official ? undefined : m.profile_community(),
     ]
       .filter((tag) => tag !== undefined)
       .join(", "),
   );
 
   const spoken = $derived(
-    [listing.name, [tags, rating ?? ""].filter((part) => part !== "").join(", ")]
+    [model.name, [tags, rating ?? ""].filter((part) => part !== "").join(", ")]
       .filter((part) => part !== "")
       .join(" "),
   );
@@ -49,11 +40,11 @@
     aria-current={chosen ? "true" : undefined}
     class="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left"
     onclick={() => {
-      onpick(listing.id);
+      onpick(model.profile, model.variant);
     }}
   >
     <span class="flex min-w-0 flex-col">
-      <span class="truncate text-[15px] font-medium">{listing.name}</span>
+      <span class="truncate text-[15px] font-medium">{model.name}</span>
       {#if tags !== ""}<span class="truncate text-xs text-muted-foreground">{tags}</span>{/if}
     </span>
     <span class="ml-auto flex shrink-0 items-center gap-2">
