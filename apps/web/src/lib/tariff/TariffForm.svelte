@@ -3,10 +3,10 @@
   import { toast } from "svelte-sonner";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { Core, Problem, Tariff } from "../api/core";
+  import DateField from "../components/date-field.svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
   import { getLocale } from "../paraglide/runtime.js";
-  import AppliesFrom from "./AppliesFrom.svelte";
   import { changeOf, draftOf, instantOf } from "./draft";
   import ScheduleFields from "./ScheduleFields.svelte";
 
@@ -40,7 +40,16 @@
   <ScheduleFields legend={m.tariff_import()} bind:schedule={draft.import} />
   <ScheduleFields legend={m.tariff_export()} bind:schedule={draft.export} />
   <div class="mt-5 border-y border-border/60">
-    <AppliesFrom bind:value={draft.appliesFrom} />
+    <!-- From now, or from the plant's midnight of a picked day. -->
+    <DateField
+      variant="row"
+      label={m.tariff_applies_from()}
+      value={draft.appliesFrom.slice(0, 10)}
+      shortcut={{ text: m.tariff_now(), value: "" }}
+      onchange={(day) => {
+        draft.appliesFrom = day === "" ? "" : `${day}T00:00`;
+      }}
+    />
   </div>
   <!-- A save is confirmed by a toast; a refusal stays here, beside what has to change. -->
   {#if answer !== undefined && "problem" in answer}
