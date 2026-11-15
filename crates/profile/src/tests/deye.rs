@@ -366,7 +366,7 @@ fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_
             );
             let live = repeats.contains(&q.role.as_str());
             assert_eq!(
-                q.storage() == StorageClass::None,
+                q.storage() == StorageClass::Live,
                 live,
                 "{} {}",
                 profile.id,

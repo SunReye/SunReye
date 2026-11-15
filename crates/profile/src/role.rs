@@ -24,7 +24,7 @@ pub enum Unit {
     Hour,
     /// Dimensionless by the author's choice: every change is stored.
     #[serde(rename = "none")]
-    None,
+    Dimensionless,
 }
 
 /// What a quantity's values are (ADR 4): a named role's kind, or the one an extra declares.
@@ -49,8 +49,9 @@ pub enum StorageClass {
     /// History: change points and rollups.
     #[default]
     Series,
-    /// Published live, never written.
-    None,
+    /// Published live, never written: `none` in a profile.
+    #[serde(rename = "none")]
+    Live,
 }
 
 /// The kind of a named role; a role ADR 4 lacks is a measurement.
