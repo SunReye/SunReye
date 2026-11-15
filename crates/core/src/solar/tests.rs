@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_pv::{Block, GridModule, ModuleGrid, Obstacle, Overhang, Roof, Scene, Spot};
+use sunreye_pv::{
+    self as pv, Block, GridModule, ModuleGrid, Obstacle, Overhang, Roof, Scene, Spot,
+};
 use tokio::sync::watch;
 
 use super::SolarForecast;
@@ -15,6 +17,7 @@ use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
 use crate::profiles::{Catalogue, Chosen};
 use crate::storage::{Issue, Storage};
+use crate::surroundings::Documents;
 
 const INVERTER: DeviceId = DeviceId(1);
 const WEATHER: DeviceId = DeviceId(3);
@@ -31,7 +34,7 @@ fn at(seconds: u64) -> SystemTime {
 }
 
 struct Plant {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     bus: Bus,
     storage: Storage,
     layouts: Layouts,
@@ -80,7 +83,8 @@ async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
     let chosen = Chosen::new("deye-sg05lp3", variant);
     let deye = Catalogue::bundled().unwrap().resolve(&chosen).unwrap();
     let inverters: Inverters = std::iter::once((INVERTER, deye)).collect();
-    let layouts = Layouts::new(storage.database(), inverters);
+    let documents = Documents::new(dir.path().join("surroundings"));
+    let layouts = Layouts::new(storage.database(), inverters).among(documents);
     let module_type = layouts
         .add_module_type(Datasheet {
             name: "fixture".into(),
@@ -100,7 +104,7 @@ async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
         .unwrap()
         .id;
     Plant {
-        _dir: dir,
+        dir,
         bus,
         storage,
         layouts,
@@ -510,6 +514,7 @@ fn walled_house(module_type: u32) -> Scene {
         surfaces: vec![],
         fences: vec![],
         openings: vec![],
+        imported: None,
     }
 }
 
@@ -545,6 +550,91 @@ async fn a_saved_scene_places_the_modules_and_its_obstacles_shade_the_forecast()
     assert!(open > 2000.0, "eight modules in the noon sun: {open} W");
     // Behind the wall only diffuse light is left.
     assert!(walled < 0.4 * open, "walled {walled} W, open {open} W");
+}
+
+/// The 15 m wall of [`walled_house`] as an imported building, stored as a fetch stores it:
+/// under its SHA-256 in the data directory's `surroundings`.
+fn imported_wall(plant: &Plant) -> String {
+    let document = pv::Imported {
+        radius: 100.0,
+        buildings: vec![pv::Building {
+            id: 4,
+            // The scene's x runs east and its z south.
+            outline: vec![[-3.0, -9.3], [4.9, -9.3], [4.9, -9.0], [-3.0, -9.0]],
+            eave: 15.0,
+            roof: pv::Roofing::Flat,
+        }],
+        trees: vec![],
+        hedges: vec![],
+        grounds: vec![],
+        terrain: pv::Terrain {
+            step: 5.0,
+            side: 41,
+            heights: vec![0.0; 41 * 41],
+        },
+        credits: vec![],
+    };
+    let bytes = serde_json::to_vec(&document).unwrap();
+    let id = crate::auth::hex(ring::digest::digest(&ring::digest::SHA256, &bytes).as_ref());
+    let dir = plant.dir.path().join("surroundings");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(format!("{id}.json")), bytes).unwrap();
+    id
+}
+
+#[tokio::test]
+async fn imported_surroundings_shade_the_forecast_like_obstacles_unless_hidden() {
+    let plant = plant(&[NOON]).await;
+    let document = imported_wall(&plant);
+    let among = |hidden: Vec<u32>| {
+        let mut scene = walled_house(plant.module_type);
+        scene.obstacles.clear();
+        scene.imported = Some(pv::Import {
+            document: document.clone(),
+            x: 0.0,
+            z: 0.0,
+            turn: 0.0,
+            hidden,
+        });
+        scene
+    };
+    let strings = || {
+        vec![
+            plant.string(None, 1, 90.0, 1),
+            plant.string(None, 2, 90.0, 1),
+        ]
+    };
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+    let mut powers = Vec::new();
+    for (issue, hidden) in [(0, vec![]), (1, vec![4])] {
+        let layout = plant
+            .layouts
+            .change(at(issue), strings(), Some(among(hidden)), at(issue))
+            .await
+            .unwrap();
+        forecast
+            .refresh(
+                &plant.storage,
+                &HashMap::new(),
+                BERLIN,
+                at(NOON - HOUR + issue),
+            )
+            .await
+            .unwrap();
+        for string in &layout.strings {
+            let power = plant.forecast("pv.string.power", Some(string.id), &[NOON]);
+            powers.push(power.await[0]);
+        }
+    }
+
+    let [walled, open, shown, beside] = powers.as_slice() else {
+        panic!("two strings, twice");
+    };
+    assert!(*open > 2000.0, "eight modules in the noon sun: {open} W");
+    // Behind the imported wall only diffuse light is left; hidden, it shades nothing.
+    assert!(*walled < 0.4 * open, "walled {walled} W, open {open} W");
+    assert_near(*shown, *open, "the string behind the hidden wall");
+    assert_near(*beside, *open, "the string beside it");
 }
 
 impl Plant {

@@ -50,6 +50,11 @@ const ROUTES: &[(Method, &str, Access)] = &[
     // Uploaded car bodies the scene names.
     (Method::GET, "/api/v1/car-bodies/{id}", Read),
     (Method::POST, "/api/v1/car-bodies", Admin),
+    // The imported surroundings the scene names: metres, never where they were fetched for.
+    (Method::GET, "/api/v1/surroundings/{id}", Read),
+    // Loading sends the location to the sources.
+    (Method::GET, "/api/v1/surroundings", Admin),
+    (Method::POST, "/api/v1/surroundings", Admin),
     (Method::PUT, "/api/v1/layout", Admin),
     (Method::POST, "/api/v1/module-types", Admin),
     // The admin copies a module type from it (ADR 17).
