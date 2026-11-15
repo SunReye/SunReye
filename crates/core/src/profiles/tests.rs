@@ -420,3 +420,17 @@ fn the_bundled_snapshot_holds_every_profile_of_the_official_index() {
         );
     }
 }
+
+/// A variant is loaded once with its family; every device of it shares that profile.
+#[test]
+fn a_variant_resolves_to_the_profile_its_family_loaded() {
+    let catalogue = super::Catalogue::bundled().unwrap();
+
+    let first = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
+    let second = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
+    let base = catalogue.resolve("deye-sg05lp3", Some("99k")).unwrap();
+
+    assert_eq!(first.variant(), Some("15k"));
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+    assert_eq!(base.variant(), None);
+}

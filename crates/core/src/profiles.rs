@@ -139,11 +139,8 @@ impl Catalogue {
     #[must_use]
     pub fn resolve(&self, id: &str, variant: Option<&str>) -> Option<Arc<Profile>> {
         let family = self.get(id)?;
-        let resolved = family.resolve(variant);
-        if resolved.variant().is_none() {
-            return Some(family);
-        }
-        Some(Arc::new(resolved.clone()))
+        let declared = variant.and_then(|v| family.declared(v)).cloned();
+        Some(declared.unwrap_or(family))
     }
 
     /// Whether profile `id` is official: bundled, or its signature verifies (ADR 8).
