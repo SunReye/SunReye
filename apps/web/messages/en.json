@@ -1086,5 +1086,7 @@
   "builder_add_garage_door": "Add garage door",
   "opening_kind": "Kind",
   "opening_sill": "Sill height (m)",
-  "builder_opening_summary": "Block {block} · {wall} · {width} × {height} m"
+  "builder_opening_summary": "Block {block} · {wall} · {width} × {height} m",
+  "opening_refused_overlap": "Another opening is already there.",
+  "opening_refused_room": "The wall has no room for that."
 }

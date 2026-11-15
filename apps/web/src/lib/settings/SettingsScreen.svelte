@@ -18,12 +18,17 @@
     admin,
     open,
     onnavigate,
+    level,
+    onlevel,
   }: {
     core: Core;
     admin: boolean;
     /** The open group's id, from the hash route; null on the root. */
     open: string | null;
     onnavigate: (id: string | null) => void;
+    /** The level open inside the group, such as one device, from the hash route; null on the group's page. */
+    level: string | null;
+    onlevel: (id: string | null) => void;
   } = $props();
 
   /** The display's choices in a few words; the other groups have no summary. */
@@ -50,7 +55,7 @@
       {#if level === "root"}<PageTitle title={m.nav_settings()} class="px-1" />{/if}
     {/snippet}
     {#snippet page(group)}
-      <SettingsPage {core} id={group.id} />
+      <SettingsPage {core} id={group.id} {level} {onlevel} />
     {/snippet}
   </DrillIn>
 </main>

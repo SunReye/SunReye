@@ -1,11 +1,12 @@
 <!-- A block's, a roof chimney's or an opening's level in the inspector (ADR 20 Blocks). -->
 <script lang="ts">
+  import { haptics } from "../haptics.ts";
   import BlockFieldset from "./BlockFieldset.svelte";
   import ChimneyFieldset from "./ChimneyFieldset.svelte";
   import { withoutBlock } from "./modules.ts";
   import OpeningFieldset from "./OpeningFieldset.svelte";
   import type { RoofFace, Scene } from "./pv.ts";
-  import { refit } from "./wall-openings.ts";
+  import { refit, type Unfit } from "./wall-openings.ts";
 
   let {
     kind,
@@ -30,6 +31,9 @@
   const chimney = $derived(kind === "chimney" ? chimneys[index] : undefined);
   const openings = $derived(scene.openings ?? []);
   const opening = $derived(kind === "opening" ? openings[index] : undefined);
+
+  /** Why the last change to the opening was not made, until one is. */
+  let unfit = $state<Unfit>();
 
   // A scene keeps at least one block.
   const removeBlock = $derived(
@@ -64,10 +68,17 @@
   <OpeningFieldset
     item={opening}
     blocks={scene.blocks.length}
+    refused={unfit}
     onchange={(change) => {
       const fitted = refit(scene, index, change);
 
-      if (fitted !== null) onchange(fitted);
+      if ("unfit" in fitted) {
+        haptics.error();
+        ({ unfit } = fitted);
+      } else {
+        unfit = undefined;
+        onchange(fitted);
+      }
     }}
     onremove={() => {
       onremove({ ...scene, openings: openings.toSpliced(index, 1) });

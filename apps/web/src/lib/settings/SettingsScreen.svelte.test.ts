@@ -12,23 +12,23 @@ afterEach(async () => {
   await page.viewport(414, 896);
 });
 
-/** Settings opened on `group`, as the admin. */
-function opened(transport: Transport, group: string) {
+/** Settings opened on `group`, or on the root, as the admin or a viewer; the route stays there. */
+function opened(transport: Transport, group: string | null, admin = true) {
   return render(SettingsScreen, {
     core: connect(transport),
-    admin: true,
+    admin,
     open: group,
     onnavigate: () => null,
+    level: null,
+    onlevel: () => null,
   });
 }
 
 test("the admin reaches every group from the root", async () => {
-  const screen = await render(SettingsScreen, {
-    core: connect(testCore(() => Response.json({ writes: [] }))),
-    admin: true,
-    open: null,
-    onnavigate: () => null,
-  });
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    null,
+  );
 
   const names = [
     "Anlage",
@@ -55,12 +55,11 @@ test("the admin reaches every group from the root", async () => {
 });
 
 test("a viewer sees only the display, which is the browser's own, and About", async () => {
-  const screen = await render(SettingsScreen, {
-    core: connect(testCore(() => Response.json({ writes: [] }))),
-    admin: false,
-    open: null,
-    onnavigate: () => null,
-  });
+  const screen = await opened(
+    testCore(() => Response.json({ writes: [] })),
+    null,
+    false,
+  );
 
   await expect
     .element(screen.getByRole("button", { name: /^Anzeige\s*Dunkel · Deutsch/u }))

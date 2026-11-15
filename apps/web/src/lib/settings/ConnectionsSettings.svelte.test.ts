@@ -6,7 +6,7 @@ import { connect, type Transport } from "../api/core.ts";
 import Dashboard from "../dashboard/Dashboard.svelte";
 import type { Connection } from "../api/core.ts";
 import { FakeCore } from "./devices.harness.ts";
-import SettingsScreen from "./SettingsScreen.svelte";
+import Routed from "./routed.harness.svelte";
 
 /** A phone; levels land at once. */
 beforeEach(async () => {
@@ -17,17 +17,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // The levels move the hash.
+  history.replaceState(null, "", location.pathname + location.search);
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
 /** Settings › `group`, as the admin. */
 function opened(core: Transport, group: string) {
-  return render(SettingsScreen, {
-    core: connect(core),
-    admin: true,
-    open: group,
-    onnavigate: () => null,
-  });
+  return render(Routed, { core: connect(core), group });
 }
 
 /** EVCC's broker, signed in with both credentials. */
@@ -134,4 +131,22 @@ test("a connection a device uses is kept with the reason; an unused one is remov
 
   await expect.element(screen.getByRole("button", { name: /^Gateway/u })).toBeVisible();
   expect(screen.getByRole("button", { name: /^EVCC/u }).query()).toBeNull();
+});
+
+test("a connection's level is a hash route: browser back steps out of it and forward into it again", async () => {
+  const screen = await opened(new FakeCore(), "connections");
+  const host = screen.getByRole("textbox", { name: "Host" });
+
+  await screen.getByRole("button", { name: /^Gateway/u }).click();
+  await expect.element(host).toBeVisible();
+  expect(location.hash).toBe("#/settings?group=connections&level=1");
+
+  history.back();
+
+  await expect.element(screen.getByRole("button", { name: /^Gateway/u })).toBeVisible();
+  expect(host.query()).toBeNull();
+
+  history.forward();
+
+  await expect.element(host).toBeVisible();
 });

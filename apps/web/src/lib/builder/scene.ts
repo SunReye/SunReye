@@ -166,7 +166,7 @@ function sections(geometry: Geometry, panels: readonly Panel[]): (() => Object3D
     () => geometry.solids.map((obstacle, i) => solid(obstacle, i, geometry.solids)),
     () => panels.map((item) => panel(item)),
     () => (geometry.mounts ?? []).map((mount) => marker(mount)),
-    () => openings(geometry.openings ?? []),
+    () => openings(geometry.openings ?? [], roofs),
   ];
 }
 

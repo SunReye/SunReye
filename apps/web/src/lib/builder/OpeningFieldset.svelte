@@ -8,18 +8,21 @@
   import type { Opening } from "./pv.ts";
   import RemoveButton from "./RemoveButton.svelte";
   import ValueRow from "./ValueRow.svelte";
-  import { USUAL } from "./wall-openings.ts";
+  import { USUAL, type Unfit } from "./wall-openings.ts";
 
   let {
     item,
     blocks,
+    refused,
     onchange,
     onremove,
   }: {
     item: Opening;
     /** How many blocks the scene has. */
     blocks: number;
-    /** A change the wall has no room for is not made. */
+    /** Why the last change was not made, if it was not. */
+    refused: Unfit | undefined;
+    /** A change the wall has no room for, or one over another opening, is not made. */
     onchange: (change: Partial<Opening>) => void;
     onremove: () => void;
   } = $props();
@@ -50,6 +53,11 @@
   ] as const satisfies readonly (readonly [Numeric, Editable])[];
 
   const SILL = ["sill", metres(m.opening_sill(), 0, 10)] as const;
+
+  const REASONS: Readonly<Record<Unfit, () => string>> = {
+    overlap: m.opening_refused_overlap,
+    room: m.opening_refused_room,
+  };
 
   /** A door stands on the ground: it has no sill to set. */
   const fields = $derived(
@@ -94,4 +102,7 @@
     />
   {/each}
 </Item.Group>
+{#if refused !== undefined}
+  <p role="alert" class="px-4 py-2 text-sm text-destructive">{REASONS[refused]()}</p>
+{/if}
 <RemoveButton {onremove} />

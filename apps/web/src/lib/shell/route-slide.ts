@@ -3,14 +3,11 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import type { TransitionConfig } from "svelte/transition";
 import { ease, MOTION_MS, motionMs } from "../motion.ts";
-import { easeInOut } from "../motion/ease.ts";
+import { slideIn, slideTiming } from "../motion/slide.ts";
 import { BAR, MORE } from "./nav.ts";
 
 /** Dashboard · History · Forecast, then More's rows. */
 const ORDER = [...BAR, ...MORE].map((item) => item.route);
-
-/** ADR 21's movement between two resting places. */
-const SLIDE_MS = 300;
 
 export type Route = string | null;
 
@@ -64,19 +61,16 @@ function hold(node: HTMLElement): void {
   );
 }
 
-function enter(way: Way): TransitionConfig {
+function enter(node: HTMLElement, way: Way): TransitionConfig {
   if (way === 0)
     return { duration: motionMs(MOTION_MS.base), easing: ease, css: (t) => `opacity: ${t}` };
 
-  return {
-    duration: motionMs(SLIDE_MS),
-    easing: easeInOut,
-    css: (_t, u) => `transform: translate3d(${way * 100 * u}%, 0, 0)`,
-  };
+  return slideIn(node, way);
 }
 
 function leave(node: HTMLElement, way: Way): TransitionConfig {
-  const duration = motionMs(way === 0 ? MOTION_MS.base : SLIDE_MS);
+  const slide = slideTiming();
+  const duration = way === 0 ? motionMs(MOTION_MS.base) : slide.duration;
 
   if (duration === 0) return { duration };
 
@@ -93,8 +87,7 @@ function leave(node: HTMLElement, way: Way): TransitionConfig {
     };
 
   return {
-    duration,
-    easing: easeInOut,
+    ...slide,
     css: (t, u) =>
       `transform: translate3d(calc(${at.x * t}px + ${-way * 100 * u}%), 0, 0); opacity: ${at.opacity}`,
   };
@@ -119,7 +112,7 @@ export function routeSlide(first: Route) {
   };
 
   return {
-    enter: (_node: HTMLElement, to: Route) => enter(turn(to)),
+    enter: (node: HTMLElement, to: Route) => enter(node, turn(to)),
     leave: (node: HTMLElement, to: Route) => leave(node, turn(to)),
   };
 }

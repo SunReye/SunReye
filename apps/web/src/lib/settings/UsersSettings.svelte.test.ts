@@ -79,6 +79,8 @@ function opened(transport: Transport) {
     admin: true,
     open: "access",
     onnavigate: () => null,
+    level: null,
+    onlevel: () => null,
   });
 }
 

@@ -82,14 +82,22 @@ function kept(scene: Scene, opening: Opening): Opening | null {
   };
 }
 
-/** The scene with opening `index` changed, kept on its wall; null where the change cannot be:
- * over another opening, or on a wall too short. */
-export function refit(scene: Scene, index: number, change: Partial<Opening>): Scene | null {
+/** Why a change cannot be: it lies over another opening, or its wall has no room for it. */
+export type Unfit = "overlap" | "room";
+
+/** The scene with opening `index` changed, kept on its wall, or why the change cannot be. */
+export function refit(
+  scene: Scene,
+  index: number,
+  change: Partial<Opening>,
+): Scene | { readonly unfit: Unfit } {
   const openings = scene.openings ?? [];
   const before = openings[index];
   const after = before && kept(scene, { ...before, ...change });
 
-  if (after === undefined || after === null || !clear(scene, after, index)) return null;
+  if (after === undefined || after === null) return { unfit: "room" };
+
+  if (!clear(scene, after, index)) return { unfit: "overlap" };
 
   return { ...scene, openings: openings.with(index, after) };
 }
@@ -222,7 +230,10 @@ export function slide(
 
   const change = GRIPS[grip](opening, dot(moved, wall.right), moved[1]);
   const next = refit(scene, index, change);
-  const value = next?.openings?.[index]?.[grip === "move" ? "along" : grip];
 
-  return next === null || value === undefined ? null : { scene: next, value: [value], unit: "m" };
+  if ("unfit" in next) return null;
+
+  const value = next.openings?.[index]?.[grip === "move" ? "along" : grip];
+
+  return value === undefined ? null : { scene: next, value: [value], unit: "m" };
 }

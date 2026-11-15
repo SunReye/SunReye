@@ -18,6 +18,8 @@ function opened(transport: Transport, group: string) {
     admin: true,
     open: group,
     onnavigate: () => null,
+    level: null,
+    onlevel: () => null,
   });
 }
 
