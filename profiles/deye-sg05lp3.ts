@@ -1,6 +1,6 @@
 import { defineFamily } from "../packages/sdk/src/index.ts";
-import { type Model, sg05lp3 } from "./deye/sg05lp3.ts";
-import { type Datasheet, kilowatts, modelOf } from "./deye/shared.ts";
+import { type Inputs, sg05lp3 } from "./deye/sg05lp3.ts";
+import { type Datasheet, type Model, kilowatts, modelOf } from "./deye/shared.ts";
 
 const MPPT_20A_200V = { maxCurrent: 20, minVoltage: 200, maxVoltage: 650, startVoltage: 160 };
 const MPPT_26A_200V = { maxCurrent: 26, minVoltage: 200, maxVoltage: 650, startVoltage: 160 };
@@ -11,7 +11,7 @@ const MAX_INPUT_VOLTAGE = 800;
 
 // The base serves a model whose rated power matches no variant: each limit is the range's widest,
 // so a forecast never caps below the model behind it (ADR 5).
-const FAMILY: Model = {
+const FAMILY: Model<Inputs> = {
   id: "deye-sg05lp3",
   name: "SG05LP3",
   version: "2.2.0",
@@ -25,7 +25,7 @@ const FAMILY: Model = {
 };
 
 /** The models, each a variant identified by its rated power and named by it in kilowatts. */
-const MODELS: readonly Datasheet<2 | 4>[] = [
+const MODELS: readonly Datasheet<Inputs>[] = [
   { name: "SUN-5K-SG05LP3-EU-SM2", inputs: 2, current: 120, rated: 5000, mppt: MPPT_20A_200V },
   { name: "SUN-6K-SG05LP3-EU-SM2", inputs: 2, current: 135, rated: 6000, mppt: MPPT_20A_200V },
   { name: "SUN-8K-SG05LP3-EU-SM2", inputs: 2, current: 190, rated: 8000, mppt: MPPT_26A_200V },

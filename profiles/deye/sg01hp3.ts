@@ -1,8 +1,9 @@
-import type { Frozen, Inverter, Quantity } from "../../packages/sdk/src/index.ts";
+import type { Frozen, Quantity } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
 import {
   FLOWS,
   HIGH_VOLTAGE,
+  type Model,
   RUNNING_STATE,
   bounded,
   identify,
@@ -20,20 +21,8 @@ import {
 // - 2026-07: https://deye.com/wp-content/uploads/2026/07/【b】datasheet_sun-5-25k-sg01hp3-eu-am2_20260706_en.pdf
 // - https://deye.com/product/sun-5-6-8-10-12-15-20-25k-sg01hp3-eu-am2/
 
-/** One model of the range, or the family's base. */
-export interface Model {
-  readonly id: string;
-  readonly name: string;
-  readonly version: string;
-  /** The PV inputs whose registers it reads, as v4 did: 2 up to 10 kW, 3 at 12 and 15, 4 above. */
-  readonly inputs: 2 | 3 | 4;
-  /** Amperes: the bound of the battery current settings, from v4's profile of the model. */
-  readonly current: number;
-  /** From the datasheet, with the rated AC output. */
-  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
-  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
-  readonly rated?: number;
-}
+/** The PV inputs whose registers a model reads, as v4 did: 2 up to 10 kW, 3 at 12 and 15, 4 above. */
+export type Inputs = 2 | 3 | 4;
 
 const REGISTERS: readonly Frozen<Quantity>[] = [
   {
@@ -375,7 +364,7 @@ const CURRENTS = ["settings.battery.maximum_grid_charge_current"];
 /** The export limit's extra, bounded by the model's rated power. */
 const EXPORT = ["settings.solar_sell_max_power"];
 
-export function sg01hp3(model: Model): Frozen<ReturnType<typeof defineProfile>> {
+export function sg01hp3(model: Model<Inputs>): Frozen<ReturnType<typeof defineProfile>> {
   return defineProfile({
     schema: 1,
     id: model.id,

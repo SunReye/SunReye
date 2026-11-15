@@ -1,9 +1,10 @@
-import type { Frozen, Inverter, Quantity, Setting } from "../../packages/sdk/src/index.ts";
+import type { Frozen, Quantity, Setting } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
 import {
   BATTERY,
   FLOWS,
   LOW_VOLTAGE,
+  type Model,
   RUNNING_STATE,
   identify,
   inputs,
@@ -23,20 +24,8 @@ import {
 //   (the 2024-06 sheet gives 20 A on input 2:
 //   https://www.deyeinverter.com/deyeinverter/2024/06/01/datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf)
 
-/** One model of the range, or the family's base. */
-export interface Model {
-  readonly id: string;
-  readonly name: string;
-  readonly version: string;
-  /** The PV inputs whose registers it reads, as v4 did: 2 up to 12 kW, 4 above. */
-  readonly inputs: 2 | 4;
-  /** Amperes: the bound of the battery current settings, from v4's profile of the model. */
-  readonly current: number;
-  /** From the datasheet, with the rated AC output. */
-  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
-  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
-  readonly rated?: number;
-}
+/** The PV inputs whose registers a model reads, as v4 did: 2 up to 12 kW, 4 above. */
+export type Inputs = 2 | 4;
 
 const STATUS: readonly Frozen<Quantity>[] = [
   {
@@ -794,7 +783,7 @@ function slot(n: number, rated: number): Frozen<Setting>[] {
   ];
 }
 
-export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> {
+export function sg05lp3(model: Model<Inputs>): Frozen<ReturnType<typeof defineProfile>> {
   return defineProfile({
     schema: 1,
     id: model.id,
