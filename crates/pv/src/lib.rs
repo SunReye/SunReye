@@ -9,6 +9,7 @@ mod equipment;
 mod estimate;
 mod fitting;
 mod grid;
+mod imported;
 mod mppt;
 mod opening;
 mod parking;
@@ -26,6 +27,10 @@ pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
 pub use estimate::estimate;
 pub use fitting::Unfit;
 pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
+pub use imported::{
+    Area, Around, Building, CREDITS, Coordinate, Draped, Element, Fetched, Hedge, Import, Imported,
+    MapData, Member, Patch, PatchFinish, Relief, Roofing, Spot, Standing, Terrain, Tile, Tree,
+};
 pub use mppt::{input_output, module_counts_differ};
 pub use opening::{Fitted, Opening, OpeningKind};
 pub use parking::{CarPlace, Stand};
