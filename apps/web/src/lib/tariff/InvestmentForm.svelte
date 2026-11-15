@@ -1,30 +1,67 @@
+<!-- The investment payback counts against, as a row that opens the value editor; applying saves it. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import type { Core, Problem } from "../api/core";
+  import type { Outcome } from "../components/value-editor/editable.ts";
+  import ValueEditor from "../components/value-editor/value-editor.svelte";
+  import * as Item from "#lib/components/ui/item/index.js";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
+  import { euros } from "./format";
 
-  let { core, oninvested }: { core: Core; oninvested: () => void } = $props();
+  let {
+    core,
+    investment,
+    oninvested,
+  }: { core: Core; investment: number | null; oninvested: () => void } = $props();
 
-  const id = $props.id();
+  const edit = {
+    kind: "number" as const,
+    name: m.tariff_investment_field(),
+    unit: "",
+    min: 0.01,
+    max: 1_000_000,
+    step: 0.01,
+  };
 
-  let amount = $state<number | null>(null);
-  let refused = $state.raw<Problem>();
+  let row = $state<HTMLButtonElement | null>(null);
+  let open = $state(false);
 
-  async function invest(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
+  // The core's refusal shows in the editor, which stays open for a fix.
+  async function apply(amount: number): Promise<Outcome> {
+    const refused: Problem | undefined = await core.invest(amount);
 
-    if (amount === null) return;
+    if (refused) return { kind: "refused", reason: problemText(refused.problem) };
 
-    refused = await core.invest(amount);
     oninvested();
+
+    return { kind: "confirmed" };
   }
 </script>
 
-<form onsubmit={invest}>
-  <label for="{id}-amount">{m.tariff_investment_field()}</label>
-  <input id="{id}-amount" type="number" min="0.01" step="0.01" required bind:value={amount} />
-  <button type="submit">{m.tariff_save()}</button>
-</form>
-{#if refused}
-  <p role="alert">{problemText(refused.problem)}</p>
-{/if}
+<Item.Root class="rounded-none border-0">
+  {#snippet child({ props })}
+    <Pressable
+      feedback
+      {...props}
+      bind:ref={row}
+      aria-haspopup="dialog"
+      onclick={() => {
+        open = true;
+      }}
+      class={[props.class, "flex-nowrap text-left"]}
+    >
+      <Item.Content class="min-w-0">
+        <Item.Title class="text-[15px] font-normal">{m.tariff_investment()}</Item.Title>
+      </Item.Content>
+      <Item.Actions class="gap-2">
+        <span class="text-[15px] font-medium whitespace-nowrap tabular-nums">
+          {investment === null ? "–" : euros(investment)}
+        </span>
+        <ChevronRight class="size-4 text-muted-foreground" />
+      </Item.Actions>
+    </Pressable>
+  {/snippet}
+</Item.Root>
+<ValueEditor key={edit.name} {edit} current={investment} anchor={row} bind:open onapply={apply} />

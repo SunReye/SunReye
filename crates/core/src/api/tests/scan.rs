@@ -29,9 +29,9 @@ fn deye(unit: u8) -> Value {
     json!([{ "profile": "deye-sg05lp3", "unit": unit }])
 }
 
-/// Register 0 of a Deye three-phase hybrid: its device type, `0x0500` for a low-voltage battery,
-/// from Deye's three-phase protocol V105.
-const LOW_VOLTAGE_HYBRID: [u16; 1] = [0x0500];
+/// Register 0 of a Deye three-phase hybrid for a low-voltage battery: `0x0005`, as a
+/// SUN-15K-SG05LP3 answered it (read 2026-11-13); Deye's protocol V105 writes it `0x0500`.
+const LOW_VOLTAGE_HYBRID: [u16; 1] = [0x0005];
 
 async fn deye_at(host: &str, framing: Framing, unit: u8) -> fake::Fake {
     fake::serve_map(host, framing, unit, 0, &LOW_VOLTAGE_HYBRID).await

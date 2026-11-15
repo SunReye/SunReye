@@ -10,7 +10,7 @@ const place: CarPlace = {
   width: 2.5,
   length: 5,
   rotation: 0,
-  body: { class: "van", colour: "#123456" },
+  colour: "#123456",
 };
 
 const stand = {
@@ -33,7 +33,7 @@ test("a connected car stands with its charge power and SOC, in the admin's pick"
       device: 7,
       length: 5,
       width: 2.5,
-      body: { class: "van", colour: "#123456" },
+      colour: "#123456",
       model: null,
       watts: 7360,
       soc: 63,
@@ -41,15 +41,11 @@ test("a connected car stands with its charge power and SOC, in the admin's pick"
   ]);
 });
 
-test("a vehicle title in the catalogue picks its body; without a pick it is a grey sedan", () => {
-  const tesla = { "7": { "ev.connected": 1, "ev.vehicle.model": 1 } };
-  const unknown = { "7": { "ev.connected": 1, "ev.vehicle.model": 999 } };
-  const bare = { ...place, body: null, model: "ab".repeat(32) };
+test("a place without a colour paints the default body its own grey", () => {
+  const bare = { ...place, colour: null, model: "ab".repeat(32) };
 
-  expect(parked([place], [stand], tesla)[0]?.body).toEqual({ class: "sedan", colour: "#f2f2ee" });
-  expect(parked([place], [stand], unknown)[0]?.body).toEqual({ class: "van", colour: "#123456" });
-  expect(parked([bare], [stand], unknown)[0]).toMatchObject({
-    body: { class: "sedan", colour: "#8a8f98" },
+  expect(parked([bare], [stand], { "7": { "ev.connected": 1 } })[0]).toMatchObject({
+    colour: "#232528",
     model: "ab".repeat(32),
     watts: null,
     soc: null,

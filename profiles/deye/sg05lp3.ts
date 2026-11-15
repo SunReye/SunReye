@@ -1,10 +1,11 @@
-import type { Frozen, Inverter, Quantity } from "../../packages/sdk/src/index.ts";
+import type { Frozen, Inverter, Quantity, Setting } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
 import {
   BATTERY,
   CURRENTS,
   FLOWS,
   LOW_VOLTAGE,
+  RUNNING_STATE,
   bounded,
   identify,
   inputs,
@@ -42,9 +43,10 @@ export interface Model {
 const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.status",
-    role: "extra.inverter_status",
+    role: "inverter.status",
     register: 500,
     type: "u16",
+    enum: RUNNING_STATE,
   },
   {
     key: "ac.relay_status",
@@ -54,7 +56,7 @@ const STATUS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "radiator_temp",
-    role: "extra.radiator_temp",
+    role: "inverter.temperature",
     register: 540,
     type: "i16",
     scale: 0.1,
@@ -450,19 +452,22 @@ const AC: readonly Frozen<Quantity>[] = [
   },
   {
     key: "ac.ups.l1.power",
-    role: "extra.ac_ups_l1_power",
+    role: "load.phase.power",
+    index: 1,
     register: 650,
     type: "i16",
   },
   {
     key: "ac.ups.l2.power",
-    role: "extra.ac_ups_l2_power",
+    role: "load.phase.power",
+    index: 2,
     register: 651,
     type: "i16",
   },
   {
     key: "ac.ups.l3.power",
-    role: "extra.ac_ups_l3_power",
+    role: "load.phase.power",
+    index: 3,
     register: 652,
     type: "i16",
   },
@@ -869,6 +874,73 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   },
 ];
 
+/** Bit 0 of register 146 switches the slots on; bits 1 to 7 are the weekdays they run on. */
+const SCHEDULE: Frozen<Setting> = {
+  key: "battery.time_of_use.enabled",
+  name: "Time-of-use schedule",
+  labels: { 0: "Off", 1: "On" },
+  type: "u16",
+  values: [0, 1],
+  minInterval: 60,
+  verified: false,
+  recipe: [{ rmw: { register: 146, mask: 1 } }],
+  readBack: { register: 146, mask: 1 },
+};
+
+/** Deye's six time-of-use slots, from registers 148 to 177; none checked on hardware yet (#636). */
+const SLOTS = [1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * Slot `n`'s start (`HHMM`, the slot running until the next one's start), battery power in watts up
+ * to `rated`, SOC target and grid charge (bit 0 of its charge register; bit 1 is the generator's).
+ */
+function slot(n: number, rated: number): Frozen<Setting>[] {
+  const at = (first: number) => ({
+    minInterval: 60,
+    verified: false,
+    recipe: [{ write: { register: first + n - 1 } }],
+    readBack: { register: first + n - 1 },
+  });
+
+  return [
+    {
+      key: `battery.time_of_use.${n}.start`,
+      name: `Slot ${n} start`,
+      type: "u16",
+      time: { format: "hhmm", step: 5 },
+      range: { min: 0, max: 1435 },
+      ...at(148),
+    },
+    {
+      key: `battery.time_of_use.${n}.power`,
+      name: `Slot ${n} power`,
+      unit: "W",
+      type: "u16",
+      range: { min: 0, max: rated },
+      ...at(154),
+    },
+    {
+      key: `battery.time_of_use.${n}.soc`,
+      name: `Slot ${n} SOC target`,
+      unit: "%",
+      type: "u16",
+      range: { min: 0, max: 100 },
+      ...at(166),
+    },
+    {
+      key: `battery.time_of_use.${n}.grid_charge`,
+      name: `Slot ${n} grid charge`,
+      labels: { 0: "Off", 1: "On" },
+      type: "u16",
+      values: [0, 1],
+      minInterval: 60,
+      verified: false,
+      recipe: [{ rmw: { register: 172 + n - 1, mask: 1 } }],
+      readBack: { register: 172 + n - 1, mask: 1 },
+    },
+  ];
+}
+
 export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> {
   return defineProfile({
     schema: 1,
@@ -887,6 +959,10 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "identify",
       "ac-rating",
       "setting-text",
+      "register-enum",
+      "rmw",
+      "verified",
+      "time",
     ],
     identify: identify(LOW_VOLTAGE, model.rated),
     inverter: model.inverter,
@@ -899,6 +975,10 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       BATTERY,
       ...FLOWS,
     ],
-    settings: settings(model.current),
+    settings: [
+      ...settings(model.current),
+      SCHEDULE,
+      ...SLOTS.flatMap((n) => slot(n, model.inverter.acRating)),
+    ],
   });
 }

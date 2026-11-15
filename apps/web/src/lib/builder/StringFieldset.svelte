@@ -1,16 +1,24 @@
+<!-- A string's level in the inspector: its name, module type, wiring and loss. -->
 <script lang="ts">
-  import type { ModuleType, StringDraft } from "../api/core.ts";
+  import * as Item from "#lib/components/ui/item/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import type { Device, ModuleType, StringDraft } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
+  import { amount, choices } from "./fields.ts";
   import type { Painted } from "./modules.ts";
-  import NumberField from "./NumberField.svelte";
+  import ModuleTypeSelect from "./ModuleTypeSelect.svelte";
+  import RemoveButton from "./RemoveButton.svelte";
   import { stringCss } from "./scene.ts";
+  import ValueRow from "./ValueRow.svelte";
 
   let {
     string,
     position,
     made,
+    warning,
+    refused,
     moduleTypes,
+    devices,
     onchange,
     onremove,
   }: {
@@ -19,26 +27,50 @@
     position: number;
     /** What the scene paints into it. */
     made: Painted;
+    /** Why it is over its inverter's limit in the cold, if it is. */
+    warning: string | undefined;
+    /** Why the last save was refused for it, if it was. */
+    refused: string | undefined;
     moduleTypes: readonly ModuleType[];
+    /** The inverters it may be wired to. */
+    devices: readonly Device[];
     onchange: (string: Readonly<StringDraft>) => void;
     onremove: () => void;
   } = $props();
+
+  const named = $derived(devices.some(({ id }) => id === string.device));
+
+  /** The inverter by name; by number only while the device list does not hold it. */
+  const device = $derived(
+    named
+      ? choices(
+          m.field_device(),
+          devices.map(({ name }) => name),
+        )
+      : amount(m.field_device(), 1, 999),
+  );
+
+  const input = amount(m.field_input(), 1, 16);
+  const loss = amount(m.field_loss(), 0, 50, 0.1);
 </script>
 
-<fieldset>
-  <legend>
-    <span class="swatch" style:background={stringCss(position)}></span>
-    {string.name}
-  </legend>
-  <label>
-    {m.field_name()}
-    <input
-      value={string.name}
-      oninput={(event) => {
-        onchange({ ...string, name: event.currentTarget.value });
-      }}
-    />
-  </label>
+<Item.Group class="gap-0 divide-y divide-border/60">
+  <Item.Root class="rounded-none border-0">
+    <Item.Media>
+      <span class="size-3 rounded-sm" style:background={stringCss(position)}></span>
+    </Item.Media>
+    <Item.Content>
+      <label class="flex flex-col gap-1.5 text-sm text-muted-foreground">
+        {m.field_name()}
+        <Input
+          value={string.name}
+          oninput={(event) => {
+            onchange({ ...string, name: event.currentTarget.value });
+          }}
+        />
+      </label>
+    </Item.Content>
+  </Item.Root>
   <ModuleTypeSelect
     value={string.moduleType}
     {moduleTypes}
@@ -46,46 +78,38 @@
       onchange({ ...string, moduleType });
     }}
   />
-  <NumberField
-    label={m.field_device()}
-    value={string.device}
-    min={1}
-    onchange={(device) => {
-      onchange({ ...string, device });
+  <ValueRow
+    edit={device}
+    value={named ? devices.findIndex(({ id }) => id === string.device) : string.device}
+    onchange={(value) => {
+      onchange({ ...string, device: named ? (devices[value]?.id ?? string.device) : value });
     }}
   />
-  <NumberField
-    label={m.field_input()}
+  <ValueRow
+    edit={input}
     value={string.input}
-    min={1}
-    onchange={(input) => {
-      onchange({ ...string, input });
+    onchange={(value) => {
+      onchange({ ...string, input: value });
     }}
   />
-  <NumberField
-    label={m.field_loss()}
+  <ValueRow
+    edit={loss}
     value={string.loss}
-    min={0}
-    onchange={(loss) => {
-      onchange({ ...string, loss });
+    onchange={(value) => {
+      onchange({ ...string, loss: value });
     }}
   />
-  <p>{m.builder_string_modules(made)}</p>
-  <button type="button" onclick={onremove}>{m.builder_remove()}</button>
-</fieldset>
-
-<style>
-  fieldset {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-    align-items: end;
-    gap: 0.75rem;
-  }
-
-  .swatch {
-    display: inline-block;
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 2px;
-  }
-</style>
+  <Item.Root class="rounded-none border-0">
+    <Item.Content>
+      <Item.Description>{m.builder_string_modules(made)}</Item.Description>
+      <p class="text-sm text-muted-foreground">{m.builder_string_hint()}</p>
+      {#if refused !== undefined}
+        <p role="alert" class="text-sm text-destructive">{refused}</p>
+      {/if}
+      {#if warning !== undefined}
+        <p role="status" class="text-sm text-warning">{warning}</p>
+      {/if}
+    </Item.Content>
+  </Item.Root>
+</Item.Group>
+<RemoveButton {onremove} />

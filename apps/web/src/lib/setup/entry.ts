@@ -6,7 +6,8 @@ export type Entry =
   | { readonly screen: "sign-in" }
   /** `signedIn` once the admin is, or Home Assistant's ingress vouches for them. */
   | { readonly screen: "setup"; readonly signedIn: boolean }
-  | { readonly screen: "dashboard"; readonly layout: SceneLayout | null };
+  /** `admin` when the session lists the devices, which a viewer's does not. */
+  | { readonly screen: "dashboard"; readonly layout: SceneLayout | null; readonly admin: boolean };
 
 /**
  * Setup while the core has no admin password, or the admin no device yet; sign-in while signed
@@ -25,5 +26,5 @@ export async function entry(
 
   if (!("problem" in devices) && devices.length === 0) return { screen: "setup", signedIn: true };
 
-  return { screen: "dashboard", layout: await sceneLayout(core) };
+  return { screen: "dashboard", layout: await sceneLayout(core), admin: !("problem" in devices) };
 }

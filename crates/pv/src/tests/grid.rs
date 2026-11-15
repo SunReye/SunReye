@@ -2,6 +2,7 @@
 //! by hand: each roof face is 10 m wide and 4 m ÷ cos 35° = 4.883 m up the slope.
 
 use super::fixtures::MODULE;
+use crate::Overhang;
 use crate::shade::shaded_substrings;
 use crate::{
     Block, Cell, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size, Sun,
@@ -28,11 +29,18 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
             open: false,
+            overhang: Overhang::default(),
+            roof_colour: None,
+            wall_colour: None,
         }],
         obstacles: vec![],
         grids,
         equipment: vec![],
         car_places: vec![],
+        chimneys: vec![],
+        surfaces: vec![],
+        fences: vec![],
+        openings: vec![],
     }
 }
 
@@ -53,6 +61,7 @@ const fn cell(row: u32, column: u32, string: Option<u32>) -> Cell {
         column,
         string,
         optimized: false,
+        order: None,
     }
 }
 
@@ -109,6 +118,21 @@ fn a_cell_is_the_module_plus_a_gap_inside_the_setback() {
     // Landscape: 0.3 + c × 1.742 + 1.722 ≤ 9.7 and 0.3 + r × 1.154 + 1.134 ≤ 4.583.
     let landscape = face.cells(&grid(true, vec![]), SIZE);
     assert_eq!(landscape.len(), 5 * 3);
+}
+
+#[test]
+fn a_cell_past_the_setback_still_has_its_area_on_the_face() {
+    // Row 2 starts 0.3 + 2 × 1.742 = 3.784 m up the slope and reaches past 4.583.
+    let area = grid(false, vec![]).area(SIZE, 2, 1);
+
+    let expected = [[1.454, 3.784], [2.588, 5.506]];
+    assert!(
+        area.iter()
+            .flatten()
+            .zip(expected.iter().flatten())
+            .all(|(a, e)| close(*a, *e)),
+        "{area:?}"
+    );
 }
 
 #[test]

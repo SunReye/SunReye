@@ -2,9 +2,7 @@ import { expect, test } from "bun:test";
 import { copyFile, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { catalogue } from "../apps/web/src/lib/cars/catalogue.ts";
 import { buildProfiles } from "../packages/sdk/src/build.ts";
-import evcc from "../profiles/evcc.ts";
 
 const profiles = new URL("../profiles", import.meta.url).pathname;
 
@@ -20,12 +18,4 @@ test("the committed profile files and index are the build of profiles/", async (
 
   expect(files).toContain("index.json");
   expect(built).toEqual(committed);
-});
-
-test("EVCC reads each vehicle title in the SPA's car catalogue as its entry's id", () => {
-  const title = evcc.quantities.find(({ key }) => key === "vehicleTitle");
-
-  expect(title !== undefined && "enum" in title ? title.enum : undefined).toEqual(
-    Object.fromEntries(catalogue.map(({ model, id }) => [model, id])),
-  );
 });

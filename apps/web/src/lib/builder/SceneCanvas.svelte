@@ -1,152 +1,103 @@
 <script lang="ts" module>
-  import type { Point } from "./pv.ts";
-
-  /** Pixels from the canvas's top left corner. */
-  export type Projector = (point: Point) => readonly [number, number] | null;
+  export type { Editing, Painting, Projector } from "./drawing.svelte.ts";
 </script>
 
 <script lang="ts">
   import { untrack } from "svelte";
-  import {
-    CircleGeometry,
-    Color,
-    DirectionalLight,
-    HemisphereLight,
-    Mesh,
-    MeshStandardMaterial,
-    PerspectiveCamera,
-    Scene,
-    Vector3,
-    WebGLRenderer,
-    type Group,
-  } from "three";
+  import { type Group, PerspectiveCamera } from "three";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-  import { garage, type ModelLoader } from "../cars/garage.ts";
+  import { openGarage, type Garage, type ModelLoader } from "../cars/garage.ts";
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
-  import type { View } from "./camera.ts";
-  import type { Geometry } from "./pv.ts";
-  import { buildScene, tint, toThree, type Panel } from "./scene.ts";
+  import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
+  import { FOV, type View } from "./camera.ts";
+  import {
+    Brush,
+    Handled,
+    keep,
+    overlaid,
+    picking,
+    projector,
+    type Editing,
+    type Hit,
+    type Painting,
+    type Panel,
+    type Projector,
+    type Refused,
+  } from "./drawing.svelte.ts";
+  import type { Geometry, Point } from "./pv.ts";
 
   let {
     geometry,
     panels = [],
     shares,
     cars = [],
-    sun,
+    sun = null,
+    diffuse = null,
     model,
     view,
+    locked = false,
     onview,
     onrender,
+    onpick,
+    onready,
+    onerror,
+    editing,
+    painting,
   }: {
     geometry: Geometry;
     /** The placed modules. */
     panels?: readonly Panel[];
-    /** Live, by panel, its string's share of peak; the modules are tinted by it. */
+    /** Live, by panel, its string's share of peak; the modules' cells glow by it. */
     shares?: readonly (number | null)[];
     /** The connected cars; drawn again only when one comes, goes or changes body. */
     cars?: readonly Parked[];
-    /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun.
-     * Without it nothing casts a shadow. */
+    /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun. */
     sun?: Point | null | undefined;
+    /** How diffuse the sky's light is, 0 clear to 1 overcast: the weather; null for a clear sky. */
+    diffuse?: number | null | undefined;
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
+    /** The camera stays put and a finger on the canvas scrolls the page (ADR 20). */
+    locked?: boolean;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
     /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
     onrender?: (project: Projector) => void;
+    /** A click, not a drag: what it struck, if anything. */
+    onpick?: ((hit: Hit) => void) | undefined;
+    /** The first frame is drawn: nothing was before, so it never waited on a compile. */
+    onready?: (() => void) | undefined;
+    onerror?: ((reason: SceneFailure) => void) | undefined;
+    /** The selected object's handles and where their drags go; none, nothing is handled. */
+    editing?: Editing | undefined;
+    /** The picked string, which a drag across modules paints. */
+    painting?: Painting | undefined;
   } = $props();
 
-  /** Metres of ground around the origin. */
-  const GROUND = 100;
+  /** Why the last module pressed refused the paint, until the next press. */
+  let refused = $state.raw<Refused>();
 
-  /** Metres from the origin to the sun light, beyond the tallest tree. */
-  const SUN_DISTANCE = 80;
+  const handled = new Handled();
 
-  /** The fixed sun's place, from the south-west. */
-  const SOUTH_WEST: readonly [number, number, number] = [-20, 40, 30];
+  const ghost = new Ghost();
 
-  const SUN_INTENSITY = 2;
-
-  function dispose(group: Group): void {
-    group.traverse((part) => {
-      if (part instanceof Mesh) {
-        part.geometry.dispose();
-        part.material.dispose();
-      }
-    });
-  }
-
-  /** A sky, a sun from the south-west and the ground; the sun is returned to move. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds in place.
-  function lit(scene: Scene): DirectionalLight {
-    const light = new DirectionalLight(0xffffff, SUN_INTENSITY);
-
-    const ground = new Mesh(
-      new CircleGeometry(GROUND, 48),
-      new MeshStandardMaterial({ color: 0xa8b89a }),
-    );
-
-    light.position.set(...SOUTH_WEST);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    // A hair below the footprints, so the floor never flickers through them.
-    ground.position.y = -0.01;
-    scene.background = new Color(0xdce6ef);
-    scene.add(new HemisphereLight(0xdde8f5, 0x4a4a40, 1.6), light, ground);
-
-    return light;
-  }
-
-  /** Sets the light toward `toward`, dark below the horizon; a null sun stays south-west. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js moves it in place.
-  function shine(light: DirectionalLight, toward: Point | null): void {
-    if (toward === null) {
-      light.position.set(...SOUTH_WEST);
-      light.intensity = SUN_INTENSITY;
-
-      return;
-    }
-
-    const [east, north, up] = toward;
-
-    light.position.set(...toThree([east * SUN_DISTANCE, north * SUN_DISTANCE, up * SUN_DISTANCE]));
-    light.intensity = up > 0 ? SUN_INTENSITY : 0;
-  }
-
-  /** Lets the light cast shadows over the ground's middle. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-  function shadowing(renderer: WebGLRenderer, light: DirectionalLight): void {
-    const half = GROUND / 2;
-
-    renderer.shadowMap.enabled = true;
-    light.castShadow = true;
-    light.shadow.mapSize.set(2048, 2048);
-    Object.assign(light.shadow.camera, { left: -half, right: half, top: half, bottom: -half });
-    light.shadow.camera.far = SUN_DISTANCE * 2;
-    light.shadow.camera.updateProjectionMatrix();
-  }
-
-  function projector(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Projector {
-    return (point) => {
-      const at = new Vector3(...toThree(point)).project(camera);
-
-      return at.z > 1
-        ? null
-        : [((at.x + 1) / 2) * canvas.clientWidth, ((1 - at.y) / 2) * canvas.clientHeight];
-    };
-  }
+  const source = {
+    geometry: () => geometry,
+    panels: () => panels,
+    shares: () => shares,
+  };
 
   /** Fits the drawing buffer and the camera to the canvas whenever its size changes. */
   function fit(
     canvas: HTMLCanvasElement,
-    renderer: WebGLRenderer,
+    studio: Lit["studio"],
     camera: PerspectiveCamera,
     render: () => void,
   ): ResizeObserver {
     const resize = new ResizeObserver(() => {
-      renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+      studio.setSize(canvas.clientWidth, canvas.clientHeight);
       camera.aspect = canvas.clientWidth / Math.max(canvas.clientHeight, 1);
       camera.updateProjectionMatrix();
       render();
@@ -157,119 +108,258 @@
     return resize;
   }
 
-  /** Moves the light with the sun, if given one; whether the scene casts shadows. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-  function follow(renderer: WebGLRenderer, light: DirectionalLight, render: () => void): boolean {
-    // Shadows cost a pass per draw: only a scene given a sun casts them.
-    const shadowed = untrack(() => sun !== undefined);
-
-    if (shadowed) shadowing(renderer, light);
-
-    $effect(() => {
-      if (sun !== undefined) {
-        shine(light, sun);
-        render();
-      }
-    });
-
-    return shadowed;
-  }
-
-  /** Keeps the drawn meshes in step with the geometry and the live tints; returns their disposal. */
-  function keep(scene: Scene, render: () => void, shadowed: boolean): () => void {
-    let drawn: Group | undefined;
-
-    $effect(() => {
-      const next = buildScene(geometry, panels);
-      const live = untrack(() => shares);
-
-      if (shadowed) {
-        next.traverse((part) => {
-          part.castShadow = true;
-          part.receiveShadow = true;
-        });
-      }
-
-      if (live !== undefined) tint(next, live);
-
-      if (drawn !== undefined) {
-        scene.remove(drawn);
-        dispose(drawn);
-      }
-
-      scene.add(next);
-      drawn = next;
-      render();
-    });
-
-    // A live tick recolours the modules it already drew: one draw, nothing rebuilt.
-    $effect(() => {
-      if (shares !== undefined && drawn !== undefined) {
-        tint(drawn, shares);
-        render();
-      }
-    });
-
-    return () => {
-      if (drawn !== undefined) dispose(drawn);
-    };
-  }
-
-  /** Draws on a change of geometry or view, a camera move or a resize; never in a loop (ADR 20). */
-  function stage(canvas: HTMLCanvasElement): () => void {
-    const renderer = new WebGLRenderer({ canvas, antialias: true });
-    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
-    const scene = new Scene();
-    const controls = new OrbitControls(camera, canvas);
-
-    const render = (): void => {
-      renderer.render(scene, camera);
-      onrender?.(projector(canvas, camera.clone()));
-    };
-
-    const resize = fit(canvas, renderer, camera, render);
-    const release = keep(scene, render, follow(renderer, lit(scene), render));
-
-    const parking = garage(
-      scene,
-      render,
-      untrack(() => model),
-    );
-
-    $effect(() => {
-      parking.park(cars);
-    });
-
-    controls.addEventListener("change", render);
-    controls.addEventListener("end", () => {
-      onview({ position: camera.position.toArray(), target: controls.target.toArray() });
-    });
-
-    $effect(() => {
-      camera.position.set(...view.position);
-      controls.target.set(...view.target);
+  /** Flies the camera to each `view` given, from wherever it is; places the first at once. */
+  function follow(
+    camera: PerspectiveCamera,
+    controls: OrbitControls,
+    flight: Lit["flight"],
+    render: () => void,
+  ): void {
+    const place = ({ position, target }: View): void => {
+      camera.position.set(...position);
+      controls.target.set(...target);
       // Dispatches "change", which draws.
       controls.update();
+    };
+
+    let placed = false;
+
+    $effect(() => {
+      const to = view;
+
+      untrack(() => {
+        const from = { position: camera.position.toArray(), target: controls.target.toArray() };
+
+        if (!placed) {
+          placed = true;
+          place(to);
+        } else if (JSON.stringify(from) !== JSON.stringify(to)) {
+          flight.fly(from, to, place);
+          render();
+        }
+      });
+    });
+  }
+
+  /** Orbits the camera on a drag and reports the view once let go. */
+  function orbit(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    flight: Lit["flight"],
+    render: () => void,
+  ): OrbitControls {
+    const controls = new OrbitControls(camera, canvas);
+
+    controls.addEventListener("change", render);
+    // The admin's hand takes the camera from a flight.
+    controls.addEventListener("start", () => {
+      flight.stop();
+    });
+    controls.addEventListener("end", () => {
+      // A scroll the browser takes from a locked canvas cancels the pointer, which also ends here.
+      if (!controls.enabled) return;
+
+      onview({ position: camera.position.toArray(), target: controls.target.toArray() });
+    });
+    follow(camera, controls, flight, render);
+
+    $effect(() => {
+      controls.enabled = !locked;
+      // Over the controls' own inline "none".
+      canvas.style.touchAction = locked ? "pan-y" : "none";
+    });
+
+    return controls;
+  }
+
+  /** Parks the cars once `due`, each change after the last; the default body loaded and their
+   * programs compiled first. No car is drawn when the body cannot be read. */
+  function parkLater(
+    canvas: HTMLCanvasElement,
+    opening: Lit["opening"],
+    open: () => Promise<Garage>,
+  ) {
+    let due = $state(false);
+    let parking: Promise<Garage | null> | undefined;
+    let parked: Promise<unknown> = Promise.resolve();
+
+    $effect(() => {
+      const arriving = cars;
+
+      if (due) {
+        parking ??= open().catch(() => null);
+        parked = parked
+          .then(() => parking)
+          .then(
+            (ready) =>
+              ready &&
+              opening.arrive(canvas, ghost, () => {
+                ready.park(arriving);
+              }),
+          )
+          .catch(() => {});
+      }
+    });
+
+    return {
+      due: () => {
+        due = true;
+      },
+      dispose: () => {
+        void parking?.then((ready) => ready?.dispose());
+      },
+    };
+  }
+
+  /** The lit studio on `canvas`; null without WebGL2. */
+  function studioOn(canvas: HTMLCanvasElement, camera: PerspectiveCamera): Lit | null {
+    try {
+      return lit(
+        canvas,
+        camera,
+        () => ({ sun: sun ?? null, diffuse: diffuse ?? null }),
+        () => {
+          const project = projector(canvas, camera.clone());
+
+          handled.place(project);
+          onrender?.(project);
+        },
+      );
+    } catch {
+      onerror?.("webgl2");
+
+      return null;
+    }
+  }
+
+  /** Paints the picked string across the modules a press crosses; before the orbit controls. */
+  function brushOn(
+    canvas: HTMLCanvasElement,
+    camera: PerspectiveCamera,
+    drawn: () => Group | undefined,
+  ): Brush {
+    return new Brush(canvas, camera, {
+      painting: () => painting,
+      drawn,
+      panels: source.panels,
+      onrefuse: (reason) => {
+        refused = reason;
+      },
+    });
+  }
+
+  /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
+   * the studio is prepared. Cars come once the house is on screen. */
+  function stage(canvas: HTMLCanvasElement): () => void {
+    const camera = new PerspectiveCamera(FOV, 1, 0.1, 5000);
+    const scene = studioOn(canvas, camera);
+
+    if (scene === null) return () => {};
+
+    const { studio, flight, opening } = scene;
+    const { render } = opening;
+    const resize = fit(canvas, studio, camera, render);
+    const kept = keep(scene, source, render);
+    const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
+    // Before the picking and the orbit controls: a press on a handle never reaches them.
+    const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
+    const unlay = overlaid(studio.scene, () => painting, render);
+    const brush = brushOn(canvas, camera, kept.drawn);
+
+    const unpick = picking(canvas, camera, kept.drawn, {
+      panels: source.panels,
+      onpick: () => onpick,
+    });
+
+    const parking = parkLater(canvas, opening, () =>
+      openGarage(
+        studio.scene,
+        render,
+        untrack(() => model),
+      ),
+    );
+
+    const controls = orbit(canvas, camera, flight, render);
+
+    opening.open(kept.built, () => onready?.(), parking.due).catch(() => {
+      onerror?.("failed");
     });
 
     return () => {
       resize.disconnect();
+      unhandle();
+      brush.dispose();
+      unlay();
+      unpick();
       controls.dispose();
-      release();
       parking.dispose();
-      renderer.dispose();
+      scene.dispose();
     };
   }
 </script>
 
-<canvas aria-label={m.builder_scene()} {@attach stage}></canvas>
+<div class="scene">
+  <canvas aria-label={m.builder_scene()} {@attach stage}></canvas>
+  <canvas
+    bind:this={ghost.canvas}
+    class={["ghost", ghost.phase, ghost.instant && "instant"]}
+    ontransitionend={() => (ghost.phase = "off")}
+    aria-hidden="true"
+  ></canvas>
+  {#if handled.label !== undefined}
+    {@const { text, left, top } = handled.label}
+    <!-- The same ambient glass chip as the live scene's labels; it never takes the pointer. -->
+    <output
+      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap tabular-nums ring-1 ring-border/60 elevation-1"
+      style:left="{left}px"
+      style:top="{top}px">{text}</output
+    >
+  {/if}
+  {#if refused !== undefined}
+    <p
+      role="alert"
+      class="glass-ambient pointer-events-none absolute flex h-7 translate-x-3.5 -translate-y-1/2 items-center rounded-md px-2 text-xs whitespace-nowrap text-destructive ring-1 ring-destructive/40 elevation-1"
+      style:left="{refused.left}px"
+      style:top="{refused.top}px"
+    >
+      {refused.text}
+    </p>
+  {/if}
+</div>
 
 <style>
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
   canvas {
     display: block;
     width: 100%;
     height: 100%;
     min-height: 20rem;
     touch-action: none;
+  }
+  /* Opacity only (ADR 21): the picture without the new car goes, the car beneath it stays. */
+  .ghost {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .ghost.hold {
+    opacity: 1;
+  }
+  .ghost.fade {
+    transition: opacity 350ms var(--motion-ease, ease-out);
+  }
+  .ghost.instant {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ghost.fade {
+      transition: none;
+    }
   }
 </style>

@@ -1,14 +1,12 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { emptyCore, keepOffline } from "../route.harness.ts";
 import Page from "./+page.svelte";
 
-test("the history route shows history and statistics and links back to the overview", async () => {
-  const screen = await render(Page);
+keepOffline();
 
-  await expect
-    .element(screen.getByRole("link", { name: "Übersicht" }))
-    .toHaveAttribute("href", "#/");
-  await expect
-    .element(screen.getByRole("heading", { name: "Verlauf und Statistik" }))
-    .toBeVisible();
+test("the history route shows the statistics screen", async () => {
+  const screen = await render(Page, { context: emptyCore() });
+
+  await expect.element(screen.getByRole("heading", { name: "Verlauf" })).toBeVisible();
 });

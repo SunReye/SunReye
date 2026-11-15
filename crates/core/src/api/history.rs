@@ -24,7 +24,7 @@ const DAY: Duration = Duration::from_hours(24);
 const RAW_SPAN: Duration = DAY;
 /// The longest range of hours: the hour it starts in and 1,499 more.
 #[expect(clippy::cast_possible_truncation, reason = "1,499 fits")]
-const HOUR_SPAN: Duration = HOUR.saturating_mul(MAX_POINTS as u32 - 1);
+pub(super) const HOUR_SPAN: Duration = HOUR.saturating_mul(MAX_POINTS as u32 - 1);
 /// The longest range of plant-local days: 1,498 of the shortest, 23 hours, and the two it cuts.
 #[expect(clippy::cast_possible_truncation, reason = "1,498 fits")]
 pub(super) const DAY_SPAN: Duration = HOUR.saturating_mul(23 * (MAX_POINTS as u32 - 2));

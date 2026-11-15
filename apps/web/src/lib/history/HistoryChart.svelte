@@ -1,45 +1,133 @@
+<!--
+  One series over the route's range, a band per hour, day or month: a power series as its energy,
+  any other as its mean. Today, a series with a forecast draws it as a dashed curve over the hours,
+  as the prototype's day chart does. A new range tweens the bars from the figures they showed (ADR 21).
+-->
 <script lang="ts">
   import type { Core } from "../api/core.ts";
+  import { flowColour, roleFlow } from "../energy-colours.ts";
+  import { planned, plannedEnergy, type Planned } from "../forecast/forecast.ts";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
-  import PowerLines from "../PowerLines.svelte";
-  import { historyRows, type Span } from "./history.ts";
+  import BandChart from "../range/BandChart.svelte";
+  import { bandsOf } from "../range/fill.ts";
+  import { kwh, num } from "../range/format.ts";
+  import { RangeData } from "../range/range-data.svelte.ts";
+  import type { RangeRoute } from "../range/route.svelte.ts";
+  import { bandFigure, isPower, periodOf, rollups } from "./history.ts";
 
-  let { core, device, series }: { core: Core; device: number; series: string } = $props();
+  let {
+    core,
+    device,
+    series,
+    route,
+    forecast = [],
+  }: {
+    core: Readonly<Pick<Core, "statistics" | "forecasts">>;
+    device: number;
+    series: string;
+    route: RangeRoute;
+    /** The devices whose `series` forecasts add up to what this series expects. */
+    forecast?: readonly number[];
+  } = $props();
 
-  let span = $state<Span>("day");
+  const data = new RangeData(
+    () => route,
+    async (from, to, now) => {
+      const s = series;
+      const period = periodOf(route.range);
+      const until = Math.min(to.getTime(), now);
+      const today = route.range.kind === "day" && from.getTime() <= now && now < to.getTime();
+      const expects = today ? forecast : [];
 
-  const spans: readonly (readonly [Span, string])[] = [
-    ["day", m.history_day()],
-    ["week", m.history_week()],
-    ["month", m.history_month()],
-    ["year", m.history_year()],
-  ];
+      const [points, plans] = await Promise.all([
+        from.getTime() < until ? rollups(core, device, s, period, from, new Date(until)) : [],
+        Promise.all(expects.map((d) => planned(core, d, s, from, to))),
+      ]);
 
-  /** The SPA's locale, not the browser's; a day shows clock times, longer spans dates. */
-  const time = $derived(
-    new Intl.DateTimeFormat(
-      getLocale(),
-      span === "day" ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short" },
-    ),
+      return { series: s, points, plans: plans.length > 0 ? plans : null };
+    },
   );
 
-  const loaded = $derived(historyRows(core, device, series, span));
+  const LOADING = {
+    loading: true,
+    via: undefined,
+    bands: [],
+    down: [],
+    sum: { up: [0], down: [] },
+    expected: null,
+  };
+
+  /** A figure as the upper side, and the lower side when the series runs both ways. */
+  const splitter = (signed: boolean) => (v: number) => ({
+    up: [Math.max(0, v)],
+    down: signed ? [Math.max(0, -v)] : [],
+  });
+
+  /** From the first band's start to the last one's end. */
+  const whole = (spans: readonly (readonly [number, number])[]) =>
+    [spans[0]?.[0] ?? 0, spans.at(-1)?.[1] ?? 0] as const;
+
+  /** What flowed one way over all bands. */
+  const total = (figures: readonly { value: number }[], sign: 1 | -1) =>
+    figures.reduce((a, f) => a + Math.max(0, sign * f.value), 0);
+
+  const view = $derived.by(() => {
+    const got = data.current;
+
+    if (!got) return LOADING;
+
+    const { series: s, points, plans } = got.data;
+
+    const figures = got.spans.map(([a, b]) => ({
+      ...bandFigure(s, points, a, b),
+      planned: expected(plans ?? [], a, b),
+      elapsed: Math.max(0, Math.min(b, got.now) - a),
+    }));
+
+    // The lower side carries what flows the other way, such as export on `grid.power`.
+    const signed = figures.some((f) => f.value < 0);
+    const split = splitter(signed);
+
+    return {
+      loading: false,
+      via: got.via,
+      bands: bandsOf(got.list, (_, i) => {
+        const f = figures[i]!;
+
+        return { ...f, ...split(f.value), line: plans ? f.planned : null };
+      }),
+      expected: plans && figures.reduce((a, f) => a + f.planned, 0),
+      down: signed ? meta : [],
+      sum: isPower(s)
+        ? { up: [total(figures, 1)], down: signed ? [total(figures, -1)] : [] }
+        : split(bandFigure(s, points, ...whole(got.spans)).value),
+    };
+  });
+
+  /** What the devices' forecasts expect in [a, b), in kWh. */
+  function expected(plans: readonly (readonly Planned[])[], a: number, b: number): number {
+    return plans.reduce((sum, p) => sum + plannedEnergy(p, a, b), 0);
+  }
+
+  const meta = $derived([{ label: series, colour: flowColour(roleFlow(series)) }]);
+
+  // A power reads as energy; anything else as its mean, in its own unit.
+  const reads = $derived(
+    isPower(series) ? { fmt: kwh, unit: "kWh" } : { fmt: (v: number) => num(v, 1), unit: "" },
+  );
 </script>
 
-<section>
-  <label>
-    {m.history_span()}
-    <select bind:value={span}>
-      {#each spans as [key, text] (key)}
-        <option value={key}>{text}</option>
-      {/each}
-    </select>
-  </label>
-  <!-- PowerLines draws on canvas, so 1,500 points stay cheap (ADR 11). -->
-  <figure>
-    {#await loaded then data}
-      <PowerLines rows={data} height={280} {time} />
-    {/await}
-  </figure>
-</section>
+<BandChart
+  bands={view.bands}
+  up={meta}
+  down={view.down}
+  via={view.via}
+  lineLabel={view.expected === null ? "" : m.range_forecast()}
+  summary={{ title: data.title, ...view.sum, line: view.expected }}
+  fmt={reads.fmt}
+  unit={reads.unit}
+  loading={view.loading}
+  label={m.history_chart({ series })}
+  ondrill={data.drill}
+  onbrush={data.brush}
+/>

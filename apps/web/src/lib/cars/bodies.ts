@@ -1,71 +1,73 @@
-// Car bodies as three.js objects (ADR 20): SunReye's own low-poly bodies per class, procedural
-// boxes and wheels and no vehicle's design, or an uploaded model fitted to its place.
+// Car bodies as three.js objects (ADR 20): the default body, "2024 Tesla Model 3 + Interior" by
+// tonielpro520 (CC BY 4.0) cut by scripts/car.ts, painted per place; or an upload fitted to it.
 import {
   Box3,
-  BoxGeometry,
-  CylinderGeometry,
+  BufferGeometry,
   Group,
   Mesh,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   Vector3,
   type Object3D,
 } from "three";
-import type { BodyClass } from "../builder/pv.ts";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { toThree } from "../builder/scene.ts";
 import type { Parked } from "./parked.ts";
 
-/**
- * A class's silhouette: its length as a share of its place's, the height of its bonnet line and
- * its roof in metres, and its cabin's length and offset toward the rear as shares of its own.
- */
-interface Silhouette {
-  readonly length: number;
-  readonly deck: number;
-  readonly roof: number;
-  readonly cabin: number;
-  readonly offset: number;
+// Stealth Grey's finish; each car's paint is a copy in its place's colour.
+const PAINT = new MeshPhysicalMaterial({
+  roughness: 0.4,
+  metalness: 0.1,
+  specularIntensity: 0.6,
+  clearcoat: 1,
+  clearcoatRoughness: 0.04,
+});
+
+const GLASS = new MeshPhysicalMaterial({
+  color: "#07090b",
+  roughness: 0.04,
+  metalness: 0.2,
+  clearcoat: 1,
+});
+
+const TYRE = new MeshStandardMaterial({ color: "#151617", roughness: 0.9 });
+
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js dresses the mesh in place.
+function dress(mesh: Object3D): void {
+  if (!(mesh instanceof Mesh)) return;
+
+  const geometry: unknown = mesh.geometry;
+  const material: unknown = mesh.material;
+
+  mesh.castShadow = mesh.receiveShadow = true;
+
+  // The file ships positions only.
+  if (geometry instanceof BufferGeometry) geometry.computeVertexNormals();
+
+  if (!(material instanceof MeshStandardMaterial)) return;
+
+  if (material.name === "ext_carpaint") mesh.material = PAINT;
+  else if (material.name === "EXT_Window" || material.name === "Black_Glass") mesh.material = GLASS;
+  else if (material.name === "Tyre") mesh.material = TYRE;
+  else {
+    // Untextured trim must not turn into mirror chrome.
+    material.metalness = Math.min(material.metalness, 0.5);
+    material.roughness = Math.max(material.roughness, 0.35);
+  }
 }
 
-const SILHOUETTES: Readonly<Record<BodyClass, Silhouette>> = {
-  sedan: { length: 0.92, deck: 0.75, roof: 1.45, cabin: 0.5, offset: 0.05 },
-  hatchback: { length: 0.82, deck: 0.8, roof: 1.5, cabin: 0.6, offset: 0.12 },
-  suv: { length: 0.92, deck: 0.95, roof: 1.7, cabin: 0.62, offset: 0.08 },
-  van: { length: 0.95, deck: 1, roof: 1.95, cabin: 0.82, offset: 0.08 },
-  pickup: { length: 0.98, deck: 1.05, roof: 1.85, cabin: 0.35, offset: -0.15 },
-};
+/** The default body at `url`, its nose along +z like any glTF, unpainted. */
+export async function loadCar(url: string): Promise<Group> {
+  const response = await fetch(url);
 
-/** Metres. */
-const WHEEL = 0.33;
-const SILL = 0.25;
-const WIDEST = 1.95;
-const GLASS = 0x2b3440;
-const TYRE = 0x1d1f22;
+  const gltf = await new GLTFLoader()
+    .setMeshoptDecoder(MeshoptDecoder)
+    .parseAsync(await response.arrayBuffer(), "");
 
-function box(
-  size: readonly [number, number, number],
-  at: readonly [number, number, number],
-  colour: number | string,
-): Mesh {
-  const mesh = new Mesh(
-    new BoxGeometry(...size),
-    new MeshStandardMaterial({ color: colour, flatShading: true }),
-  );
+  for (const mesh of gltf.scene.getObjectsByProperty("isMesh", true)) dress(mesh);
 
-  mesh.position.set(...at);
-
-  return mesh;
-}
-
-function wheel(x: number, z: number): Mesh {
-  const mesh = new Mesh(
-    new CylinderGeometry(WHEEL, WHEEL, 0.25, 12),
-    new MeshStandardMaterial({ color: TYRE, flatShading: true }),
-  );
-
-  mesh.rotation.z = Math.PI / 2;
-  mesh.position.set(x, WHEEL, z);
-
-  return mesh;
+  return gltf.scene;
 }
 
 /** Turns `object`, whose nose points along its −z, to its stand. */
@@ -77,36 +79,40 @@ function stand<T extends Object3D>(object: T, { at, forward: [east, north] }: Pa
   return object;
 }
 
-/** The car's stylised body, in its colour, at its stand. */
-export function carBody(car: Parked): Group {
-  const silhouette = SILHOUETTES[car.body.class];
-  const length = car.length * silhouette.length;
-  const width = Math.min(car.width * 0.8, WIDEST);
-  const cabin = length * silhouette.cabin;
-  const group = new Group();
+/** `model` centred over the origin and set on the ground, its front turned from glTF's +z to −z. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds the model to a group.
+function seat(model: Object3D, scale = 1): Group {
+  const inner = new Group();
+  const seated = new Group();
 
-  group.add(
-    box(
-      [width, silhouette.deck - SILL, length],
-      [0, (silhouette.deck + SILL) / 2, 0],
-      car.body.colour,
-    ),
-    box(
-      [width * 0.9, silhouette.roof - silhouette.deck - 0.06, cabin],
-      [0, (silhouette.roof + silhouette.deck - 0.06) / 2, length * silhouette.offset],
-      GLASS,
-    ),
-    box(
-      [width * 0.9, 0.06, cabin],
-      [0, silhouette.roof - 0.03, length * silhouette.offset],
-      car.body.colour,
-    ),
-    ...[-1, 1].flatMap((side) =>
-      [-1, 1].map((end) => wheel(side * (width / 2 - 0.1), end * length * 0.33)),
-    ),
-  );
+  inner.add(model);
+  inner.rotation.y = Math.PI;
+  inner.scale.setScalar(scale);
+  inner.updateMatrixWorld(true);
 
-  return stand(group, car);
+  const bounds = new Box3().setFromObject(inner);
+  const centre = bounds.getCenter(new Vector3());
+
+  inner.position.set(-centre.x, -bounds.min.y, -centre.z);
+  seated.add(inner);
+
+  return seated;
+}
+
+/** The default body, at its own size, in the car's colour, at its stand. Paint is the car's own. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js clones the template.
+export function carBody(car: Parked, template: Group): Group {
+  const paint = PAINT.clone();
+  const body = template.clone();
+
+  paint.color.set(car.colour);
+  paint.userData["paint"] = true;
+
+  for (const mesh of body.getObjectsByProperty("material", PAINT)) {
+    if (mesh instanceof Mesh) mesh.material = paint;
+  }
+
+  return stand(seat(body), car);
 }
 
 /** An uploaded model at its stand, fitted to the place's length. */
@@ -115,33 +121,10 @@ export function placedModel(model: Object3D, car: Parked): Group {
   return stand(fitModel(model, car.length), car);
 }
 
-/**
- * `model` scaled so its longer horizontal side is `length`, centred over the origin and set on
- * the ground, its front turned from glTF's +z to −z.
- */
+/** `model` scaled so its longer horizontal side is `length`, seated on the ground. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds the model to a group.
 export function fitModel(model: Object3D, length: number): Group {
-  const inner = new Group();
-  const fitted = new Group();
+  const size = new Box3().setFromObject(model).getSize(new Vector3());
 
-  const bounds = (): Box3 => {
-    inner.updateMatrixWorld(true);
-
-    return new Box3().setFromObject(inner);
-  };
-
-  inner.add(model);
-  inner.rotation.y = Math.PI;
-
-  const size = bounds().getSize(new Vector3());
-
-  inner.scale.setScalar(length / Math.max(size.x, size.z, Number.EPSILON));
-
-  const bounded = bounds();
-  const centre = bounded.getCenter(new Vector3());
-
-  inner.position.set(-centre.x, -bounded.min.y, -centre.z);
-  fitted.add(inner);
-
-  return fitted;
+  return seat(model, length / Math.max(size.x, size.z, Number.EPSILON));
 }

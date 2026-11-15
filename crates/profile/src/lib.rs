@@ -54,10 +54,12 @@ pub const CAPABILITIES: &[&str] = &[
     "ac-rating",
     "resolution",
     "text-enum",
+    "register-enum",
     "setting-text",
     "verified",
     "poll-group",
     "live-control",
+    "time",
 ];
 
 /// The schemas and capabilities this build loads: the one table the WASM and the core's API both

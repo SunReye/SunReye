@@ -3,11 +3,25 @@ import type { Frozen, Identify, Quantity, Setting } from "../../packages/sdk/src
 // What Deye's SG05LP3 and SG01HP3 ranges share: the registers of Deye's three-phase protocol
 // (MODBUS RTU 三相储能通信规约 V105, https://download.axilogi.com/DEYE/Other/MODBUS_RTU.pdf).
 
-/** Register 0, the device type, of a three-phase hybrid for a low-voltage battery. */
-export const LOW_VOLTAGE = [0x0500];
+/**
+ * Register 0, the device type, of a three-phase hybrid for a low-voltage battery. The protocol
+ * writes it 0x0500; a SUN-15K-SG05LP3 answered 0x0005 (read 2026-11-13).
+ */
+export const LOW_VOLTAGE = [0x0005];
 
-/** Register 0 of a three-phase hybrid for a high-voltage battery: 6 to 15 kW, then 20 to 50 kW. */
-export const HIGH_VOLTAGE = [0x0600, 0x0601];
+/**
+ * Register 0 of a three-phase hybrid for a high-voltage battery: 6 to 15 kW, then 20 to 50 kW.
+ * Unverified: the protocol's 0x0600 and 0x0601 beside their byte-swapped forms, as the low-voltage
+ * range answers, until an SG01HP3 is read.
+ */
+export const HIGH_VOLTAGE = [0x0600, 0x0601, 0x0006, 0x0106];
+
+/**
+ * Register 500, the running state (0 standby, 1 self-check, 2 normal, 3 alarm, 4 fault), as
+ * `inverter.status` (ADR 4: 0 standby, 1 normal, 2 fault). Self-check feeds nothing in yet; an
+ * alarm runs on with a warning set.
+ */
+export const RUNNING_STATE = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 2 };
 
 /** The device type, and the rated power in registers 20 and 21 (0.1 W, low word first). */
 export function identify(types: readonly number[], rated?: number): Frozen<Identify>[] {
@@ -63,7 +77,7 @@ export const BATTERY: Frozen<Quantity> = {
   },
 };
 
-/** Power flows derived from grid, battery, PV and load power, as v4 derived them. */
+/** Power flows, and the inverter's loss and efficiency as v3 defined them, from grid, battery, PV and load power. */
 export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.import_power",
@@ -101,7 +115,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "inverter.power",
-    role: "extra.inverter_power",
+    role: "inverter.loss.power",
     compute: {
       combine: {
         add: ["dc.total_power", "ac.total_power"],
@@ -111,7 +125,7 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "inverter.efficiency",
-    role: "extra.inverter_efficiency",
+    role: "inverter.efficiency",
     compute: {
       ratio: {
         num: ["ac.ups.total_power", "battery.charge_power", "grid.export_power"],

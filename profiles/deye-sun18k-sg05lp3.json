@@ -3,7 +3,7 @@
   "id": "deye-sun18k-sg05lp3",
   "name": "SUN-18K-SG05LP3-EU-SM2",
   "manufacturer": "Deye",
-  "version": "1.0.1",
+  "version": "1.0.6",
   "requires": [
     "modbus",
     "u16",
@@ -14,13 +14,17 @@
     "snapshot-toggle",
     "identify",
     "ac-rating",
-    "setting-text"
+    "setting-text",
+    "register-enum",
+    "rmw",
+    "verified",
+    "time"
   ],
   "identify": [
     {
       "register": 0,
       "values": [
-        1280
+        5
       ]
     },
     {
@@ -52,9 +56,16 @@
   "quantities": [
     {
       "key": "inverter.status",
-      "role": "extra.inverter_status",
+      "role": "inverter.status",
       "register": 500,
-      "type": "u16"
+      "type": "u16",
+      "enum": {
+        "0": 0,
+        "1": 0,
+        "2": 1,
+        "3": 1,
+        "4": 2
+      }
     },
     {
       "key": "ac.relay_status",
@@ -64,7 +75,7 @@
     },
     {
       "key": "radiator_temp",
-      "role": "extra.radiator_temp",
+      "role": "inverter.temperature",
       "register": 540,
       "type": "i16",
       "scale": 0.1,
@@ -549,19 +560,22 @@
     },
     {
       "key": "ac.ups.l1.power",
-      "role": "extra.ac_ups_l1_power",
+      "role": "load.phase.power",
+      "index": 1,
       "register": 650,
       "type": "i16"
     },
     {
       "key": "ac.ups.l2.power",
-      "role": "extra.ac_ups_l2_power",
+      "role": "load.phase.power",
+      "index": 2,
       "register": 651,
       "type": "i16"
     },
     {
       "key": "ac.ups.l3.power",
-      "role": "extra.ac_ups_l3_power",
+      "role": "load.phase.power",
+      "index": 3,
       "register": 652,
       "type": "i16"
     },
@@ -1026,7 +1040,7 @@
     },
     {
       "key": "inverter.power",
-      "role": "extra.inverter_power",
+      "role": "inverter.loss.power",
       "compute": {
         "combine": {
           "add": [
@@ -1042,7 +1056,7 @@
     },
     {
       "key": "inverter.efficiency",
-      "role": "extra.inverter_efficiency",
+      "role": "inverter.efficiency",
       "compute": {
         "ratio": {
           "num": [
@@ -1178,6 +1192,609 @@
           }
         }
       ]
+    },
+    {
+      "key": "battery.time_of_use.enabled",
+      "name": "Time-of-use schedule",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 146,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 146,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.1.start",
+      "name": "Slot 1 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 148
+          }
+        }
+      ],
+      "readBack": {
+        "register": 148
+      }
+    },
+    {
+      "key": "battery.time_of_use.1.power",
+      "name": "Slot 1 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 154
+          }
+        }
+      ],
+      "readBack": {
+        "register": 154
+      }
+    },
+    {
+      "key": "battery.time_of_use.1.soc",
+      "name": "Slot 1 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 166
+          }
+        }
+      ],
+      "readBack": {
+        "register": 166
+      }
+    },
+    {
+      "key": "battery.time_of_use.1.grid_charge",
+      "name": "Slot 1 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 172,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 172,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.2.start",
+      "name": "Slot 2 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 149
+          }
+        }
+      ],
+      "readBack": {
+        "register": 149
+      }
+    },
+    {
+      "key": "battery.time_of_use.2.power",
+      "name": "Slot 2 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 155
+          }
+        }
+      ],
+      "readBack": {
+        "register": 155
+      }
+    },
+    {
+      "key": "battery.time_of_use.2.soc",
+      "name": "Slot 2 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 167
+          }
+        }
+      ],
+      "readBack": {
+        "register": 167
+      }
+    },
+    {
+      "key": "battery.time_of_use.2.grid_charge",
+      "name": "Slot 2 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 173,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 173,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.3.start",
+      "name": "Slot 3 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 150
+          }
+        }
+      ],
+      "readBack": {
+        "register": 150
+      }
+    },
+    {
+      "key": "battery.time_of_use.3.power",
+      "name": "Slot 3 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 156
+          }
+        }
+      ],
+      "readBack": {
+        "register": 156
+      }
+    },
+    {
+      "key": "battery.time_of_use.3.soc",
+      "name": "Slot 3 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 168
+          }
+        }
+      ],
+      "readBack": {
+        "register": 168
+      }
+    },
+    {
+      "key": "battery.time_of_use.3.grid_charge",
+      "name": "Slot 3 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 174,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 174,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.4.start",
+      "name": "Slot 4 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 151
+          }
+        }
+      ],
+      "readBack": {
+        "register": 151
+      }
+    },
+    {
+      "key": "battery.time_of_use.4.power",
+      "name": "Slot 4 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 157
+          }
+        }
+      ],
+      "readBack": {
+        "register": 157
+      }
+    },
+    {
+      "key": "battery.time_of_use.4.soc",
+      "name": "Slot 4 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 169
+          }
+        }
+      ],
+      "readBack": {
+        "register": 169
+      }
+    },
+    {
+      "key": "battery.time_of_use.4.grid_charge",
+      "name": "Slot 4 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 175,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 175,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.5.start",
+      "name": "Slot 5 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 152
+          }
+        }
+      ],
+      "readBack": {
+        "register": 152
+      }
+    },
+    {
+      "key": "battery.time_of_use.5.power",
+      "name": "Slot 5 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 158
+          }
+        }
+      ],
+      "readBack": {
+        "register": 158
+      }
+    },
+    {
+      "key": "battery.time_of_use.5.soc",
+      "name": "Slot 5 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 170
+          }
+        }
+      ],
+      "readBack": {
+        "register": 170
+      }
+    },
+    {
+      "key": "battery.time_of_use.5.grid_charge",
+      "name": "Slot 5 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 176,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 176,
+        "mask": 1
+      }
+    },
+    {
+      "key": "battery.time_of_use.6.start",
+      "name": "Slot 6 start",
+      "type": "u16",
+      "time": {
+        "format": "hhmm",
+        "step": 5
+      },
+      "range": {
+        "min": 0,
+        "max": 1435
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 153
+          }
+        }
+      ],
+      "readBack": {
+        "register": 153
+      }
+    },
+    {
+      "key": "battery.time_of_use.6.power",
+      "name": "Slot 6 power",
+      "unit": "W",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 18000
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 159
+          }
+        }
+      ],
+      "readBack": {
+        "register": 159
+      }
+    },
+    {
+      "key": "battery.time_of_use.6.soc",
+      "name": "Slot 6 SOC target",
+      "unit": "%",
+      "type": "u16",
+      "range": {
+        "min": 0,
+        "max": 100
+      },
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "write": {
+            "register": 171
+          }
+        }
+      ],
+      "readBack": {
+        "register": 171
+      }
+    },
+    {
+      "key": "battery.time_of_use.6.grid_charge",
+      "name": "Slot 6 grid charge",
+      "labels": {
+        "0": "Off",
+        "1": "On"
+      },
+      "type": "u16",
+      "values": [
+        0,
+        1
+      ],
+      "minInterval": 60,
+      "verified": false,
+      "recipe": [
+        {
+          "rmw": {
+            "register": 177,
+            "mask": 1
+          }
+        }
+      ],
+      "readBack": {
+        "register": 177,
+        "mask": 1
+      }
     }
   ]
 }

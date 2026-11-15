@@ -3,6 +3,7 @@
 pub mod api;
 pub mod auth;
 pub mod backup;
+pub mod battery;
 pub mod bus;
 pub mod capture;
 pub mod cars;
@@ -22,6 +23,7 @@ pub mod mqtt;
 pub mod plant;
 pub mod profiles;
 pub mod publisher;
+pub mod records;
 pub mod retention;
 pub mod scan;
 pub mod settings;

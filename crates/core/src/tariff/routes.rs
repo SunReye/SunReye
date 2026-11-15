@@ -243,7 +243,7 @@ async fn reprice(
     Ok(Json((&version).into()))
 }
 
-/// The savings so far against the investment, in EUR to the cent.
+/// The savings so far against the investment, in EUR to the cent, and when they reach it.
 #[derive(Serialize, ToSchema)]
 struct Payback {
     /// What the admin entered; `null` until then.
@@ -252,6 +252,22 @@ struct Payback {
     savings: f64,
     /// What the savings have yet to pay back, none once they have; `null` without an investment.
     remaining: Option<f64>,
+    /// EUR saved a year: the last twelve months, or the record scaled to a year; `null` under
+    /// three months of record.
+    pace: Option<f64>,
+    /// The plant-local date, `YYYY-MM-DD`, the savings reach the investment at that pace; `null`
+    /// without an investment or a pace, or once paid back.
+    reached: Option<String>,
+    /// The savings so far at each month's last recorded day, in time order.
+    months: Vec<PaybackMonth>,
+}
+
+/// The savings summed up to a plant-local date.
+#[derive(Serialize, ToSchema)]
+struct PaybackMonth {
+    /// `YYYY-MM-DD`.
+    date: String,
+    saved: f64,
 }
 
 /// The savings so far against the investment.
@@ -259,13 +275,23 @@ struct Payback {
     (status = 200, body = Payback),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
 ))]
-async fn payback(State((tariffs, _)): TariffState) -> Result<Json<Payback>, Problem> {
-    let (investment, savings) = tariffs.payback().await.map_err(internal)?;
+async fn payback(State((tariffs, clock)): TariffState) -> Result<Json<Payback>, Problem> {
+    let (investment, savings, projection) = tariffs.payback(clock()).await.map_err(internal)?;
     let cents = |euros: f64| (euros * 100.0).round() / 100.0;
     Ok(Json(Payback {
         investment,
         savings: cents(savings),
         remaining: investment.map(|i| cents((i - savings).max(0.0))),
+        pace: projection.pace.map(cents),
+        reached: projection.reached.map(|d| d.to_string()),
+        months: projection
+            .months
+            .into_iter()
+            .map(|(date, saved)| PaybackMonth {
+                date: date.to_string(),
+                saved: cents(saved),
+            })
+            .collect(),
     }))
 }
 
@@ -344,7 +370,7 @@ struct CostDays {
 }
 
 /// What the plant paid, earned and saved per plant-local day, from the daily rollups of the
-/// `cost.*` rates; the current day covers its closed hours.
+/// `cost.*` rates; the current day runs to the latest reading.
 #[utoipa::path(get, path = "/api/v1/costs", params(Span), responses(
     (status = 200, body = CostDays),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),

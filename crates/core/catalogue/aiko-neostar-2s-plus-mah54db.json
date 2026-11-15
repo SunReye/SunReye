@@ -1,0 +1,110 @@
+{
+  "maker": "AIKO",
+  "series": "Neostar 2S+",
+  "source": {
+    "title": "Neostar 2S+ AIKO-A-MAH54Db 440-470W (1757x1134x30mm)",
+    "revision": "DS_EN_2405_V1.5",
+    "url": "https://aikosolar.com/wp-content/uploads/2024/10/Neostar-2S_Plus_188-AIKO-A-MAH54Db-440-470W_1757x1134x30mm_DS_EN_2405_V1.5.pdf",
+    "note": "Dual-glass, black anodized frame; the only 54-cell 2S+ variant AIKO publishes (MAH54Dw is the Neostar 2P+). AIKO's newer AU sheet (V3.1_202412_DsDr_EN, file 202601_V3.1_AU) prints only A455-A470 with identical STC values and coefficients."
+  },
+  "modules": [
+    {
+      "name": "AIKO-A440-MAH54Db",
+      "pmax": 440,
+      "vmp": 34.38,
+      "imp": 12.8,
+      "voc": 40.82,
+      "isc": 13.92,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A445-MAH54Db",
+      "pmax": 445,
+      "vmp": 34.44,
+      "imp": 12.93,
+      "voc": 40.88,
+      "isc": 14.02,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A450-MAH54Db",
+      "pmax": 450,
+      "vmp": 34.5,
+      "imp": 13.05,
+      "voc": 40.94,
+      "isc": 14.12,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A455-MAH54Db",
+      "pmax": 455,
+      "vmp": 34.56,
+      "imp": 13.17,
+      "voc": 41.0,
+      "isc": 14.22,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A460-MAH54Db",
+      "pmax": 460,
+      "vmp": 34.62,
+      "imp": 13.29,
+      "voc": 41.06,
+      "isc": 14.25,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A465-MAH54Db",
+      "pmax": 465,
+      "vmp": 34.68,
+      "imp": 13.41,
+      "voc": 41.12,
+      "isc": 14.29,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "AIKO-A470-MAH54Db",
+      "pmax": 470,
+      "vmp": 34.74,
+      "imp": 13.54,
+      "voc": 41.18,
+      "isc": 14.32,
+      "powerCoefficient": -0.26,
+      "voltageCoefficient": -0.22,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.757,
+      "bypassDiodes": 3
+    }
+  ]
+}

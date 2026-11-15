@@ -91,7 +91,6 @@ fn a_loadpoints_settings_read_as_ev_roles() {
         ("ev.mode", None),
         ("ev.battery.boost", None),
         ("ev.limit.soc", None),
-        ("ev.vehicle.model", None),
     ]);
     let read: Vec<(RoleKind, Option<Unit>)> = profile
         .quantities()
@@ -104,7 +103,44 @@ fn a_loadpoints_settings_read_as_ev_roles() {
             (RoleKind::Status, None),
             (RoleKind::Status, None),
             (RoleKind::Measurement, Some(Unit::Percent)),
-            (RoleKind::Status, None),
         ]
     );
+}
+
+#[test]
+fn inverter_temperature_and_status_per_phase_load_and_battery_cycles_follow_adr_4() {
+    let profile = load(&[
+        ("inverter.temperature", None),
+        ("inverter.status", None),
+        ("load.phase.power", Some(2)),
+        ("battery.cycles", None),
+    ]);
+    let read: Vec<(RoleKind, Option<Unit>)> = profile
+        .quantities()
+        .iter()
+        .map(|q| (q.kind(), q.unit()))
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (RoleKind::Measurement, Some(Unit::Celsius)),
+            (RoleKind::Status, None),
+            (RoleKind::Measurement, Some(Unit::Watt)),
+            (RoleKind::Counter, None),
+        ]
+    );
+}
+
+#[test]
+fn the_plants_shares_read_as_watts() {
+    let profile = load(&[
+        ("battery.charge.power", None),
+        ("battery.discharge.power", None),
+        ("grid.import.power", None),
+        ("grid.export.power", None),
+        ("self.consumption.power", None),
+        ("self.supply.power", None),
+    ]);
+    let units: Vec<Option<Unit>> = profile.quantities().iter().map(Quantity::unit).collect();
+    assert_eq!(units, [Some(Unit::Watt); 6]);
 }

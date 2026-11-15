@@ -11,18 +11,46 @@ export type Live = Values | Problem;
 /** The wait before reconnecting after a refusal or a failure. */
 const RETRY_MS = 1000;
 
-/** Streams until stopped: a clean end reconnects at once to a fresh snapshot (ADR 9). */
+/** Twice the core's 15 s keep-alive: a line this quiet is gone, even if no error says so. */
+const SILENCE_MS = 30_000;
+
+/**
+ * Streams until stopped: a clean end reconnects at once to a fresh snapshot (ADR 9). A stream that
+ * breaks hands its last values on once more, marked `lost`, until a snapshot replaces them.
+ */
 export async function follow(
   client: Client,
   listener: (live: Live) => void,
   signal: AbortSignal,
+  last?: Live,
 ): Promise<void> {
-  const snapshot = await stream(client, listener, signal).catch(() => false);
+  let latest = last;
 
-  if (!snapshot) await sleep(RETRY_MS, signal);
+  const snapshot = await stream(
+    client,
+    (live) => {
+      latest = live;
+      listener(live);
+    },
+    signal,
+  ).catch(() => false);
+
+  if (!snapshot) {
+    if (
+      !signal.aborted &&
+      latest !== undefined &&
+      "devices" in latest &&
+      latest.lost === undefined
+    ) {
+      latest = { ...latest, lost: Date.now() };
+      listener(latest);
+    }
+
+    await sleep(RETRY_MS, signal);
+  }
 
   // Not awaited, so a core that runs for months builds no chain of promises.
-  if (!signal.aborted) void follow(client, listener, signal);
+  if (!signal.aborted) void follow(client, listener, signal, latest);
 }
 
 /** Follows one stream to its end; resolves whether it delivered a snapshot. */
@@ -31,33 +59,72 @@ async function stream(
   listener: (live: Live) => void,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const { data, error, response } = await client.GET("/api/v1/live", {
-    parseAs: "stream",
-    signal,
-  });
+  const watch = silenceWatch(signal);
 
-  if (error !== undefined) {
-    listener(refusal(error, response.status));
+  try {
+    const { data, error, response } = await client.GET("/api/v1/live", {
+      parseAs: "stream",
+      signal: watch.signal,
+    });
 
-    return false;
+    if (error !== undefined) {
+      listener(refusal(error, response.status));
+
+      return false;
+    }
+
+    let values: Values | undefined;
+
+    const fold = new WritableStream<Message>({
+      write: ({ name, data: json }) => {
+        const frame = parseFrame(json);
+
+        if (frame !== undefined && (name === "snapshot" || values !== undefined)) {
+          values = merge(name === "snapshot" ? undefined : values, frame, Date.now());
+          listener(values);
+        }
+      },
+    });
+
+    await data?.pipeThrough(watch.bytes).pipeThrough(events()).pipeTo(fold, {
+      signal: watch.signal,
+    });
+
+    return values !== undefined;
+  } finally {
+    watch.stop();
   }
+}
 
-  let values: Values | undefined;
+/**
+ * Aborts a stream that has been quiet for {@link SILENCE_MS}. Every byte through `bytes` counts,
+ * keep-alives included: the parser drops those before an event reaches the listener.
+ */
+function silenceWatch(outer: AbortSignal) {
+  const silence = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const fold = new WritableStream<Message>({
-    write: ({ name, data: json }) => {
-      const frame = parseFrame(json);
+  const heard = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      silence.abort();
+    }, SILENCE_MS);
+  };
 
-      if (frame !== undefined && (name === "snapshot" || values !== undefined)) {
-        values = merge(name === "snapshot" ? undefined : values, frame, Date.now());
-        listener(values);
-      }
+  heard();
+
+  return {
+    signal: AbortSignal.any([outer, silence.signal]),
+    bytes: new TransformStream<Uint8Array, Uint8Array>({
+      transform: (chunk, controller) => {
+        heard();
+        controller.enqueue(chunk);
+      },
+    }),
+    stop: () => {
+      clearTimeout(timer);
     },
-  });
-
-  await data?.pipeThrough(events()).pipeTo(fold, { signal });
-
-  return values !== undefined;
+  };
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

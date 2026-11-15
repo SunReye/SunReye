@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { emptyCore, keepOffline } from "../route.harness.ts";
 import Page from "./+page.svelte";
 
-test("the settings route links back to the overview", async () => {
-  const screen = await render(Page);
+keepOffline();
 
-  await expect
-    .element(screen.getByRole("link", { name: "Übersicht" }))
-    .toHaveAttribute("href", "#/");
-  await expect.element(screen.getByRole("main")).toBeInTheDocument();
+test("the settings route shows the settings", async () => {
+  const screen = await render(Page, { context: emptyCore() });
+
+  await expect.element(screen.getByRole("heading", { name: "Einstellungen" })).toBeInTheDocument();
 });

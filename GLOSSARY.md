@@ -42,6 +42,10 @@ _Avoid_: Protocol, driver
 A declarative file describing one device model: its quantities, how to read them and which settings it may write.
 _Avoid_: Driver, template, map
 
+**Family**:
+A manufacturer's model range sharing one register map, such as Deye's SG05LP3. A family profile covers every model of it; a model's own profile adds its ratings.
+_Avoid_: Series, line
+
 **Official profile**:
 A profile signed by the profile key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
 _Avoid_: Verified profile
@@ -112,6 +116,18 @@ _Avoid_: Window, tick
 An hourly (UTC hour) or daily (plant-local day) aggregate built from intervals.
 _Avoid_: Aggregate, summary
 
+**Self-consumption**:
+The share of the PV energy used on site rather than fed in, over a day or longer.
+_Avoid_: Self-use, own consumption (a measurement point's own consumption is something else)
+
+**Autarky**:
+The share of the house load not bought from the grid, over a day or longer.
+_Avoid_: Self-sufficiency, independence
+
+**Usable capacity**:
+The energy a full battery gives today, inferred from its state of charge over whole discharges, not read from the device.
+_Avoid_: State of health, SOH, nameplate
+
 **Deadband**:
 The smallest change in a role's unit that is stored. The stored series is never wrong by more than this.
 _Avoid_: Threshold, tolerance
@@ -137,6 +153,10 @@ _Avoid_: Status, result
 **Snapshot toggle**:
 A setting that locks another setting at a fixed value and, on release, restores the value it held before. Deye's battery discharge lock is one.
 _Avoid_: Composite control, switch
+
+**Time-of-use slot**:
+One row of a device's own schedule: from its start until the next slot's, the battery works toward a SOC target at a power, charging from the grid or not. Its settings are written like any other.
+_Avoid_: Band (a tariff's), program, time window
 
 **Live control**:
 A write the device reverts unless it is refreshed. Only a controller under a lease may use it.
@@ -180,6 +200,10 @@ _Avoid_: PV1 (a vendor label), string
 Modules in series, wired to one MPPT input; they may sit on different roof faces. Strings on one input are in parallel.
 _Avoid_: Array, panel group
 
+**Wiring order**:
+The order a string runs through its modules, from its first.
+_Avoid_: Paint order
+
 **Substring**:
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group
@@ -187,6 +211,10 @@ _Avoid_: Cell string, diode group
 **Module type**:
 The datasheet values of one PV module model.
 _Avoid_: Panel model
+
+**Module catalogue**:
+Module types' datasheet values bundled with SunReye, each naming the maker's datasheet it was copied from. Picking one adds a module type.
+_Avoid_: Preset (a preset is a camera view), module database
 
 **Scene**:
 The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
@@ -204,13 +232,25 @@ _Avoid_: Border, margin
 A rectangular building footprint with one roof.
 _Avoid_: Building, house
 
+**Overhang**:
+How far a block's roof reaches past its walls: at the eaves and at the verges.
+_Avoid_: Eave depth, soffit
+
+**Roof chimney**:
+An upright box standing on one roof face of a block; no module may stand on its footprint.
+_Avoid_: Chimney obstacle, stack
+
 **Obstacle**:
-An opaque box, cylinder, tree or hedge in the scene that casts shade on the modules.
+An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
 **Equipment marker**:
 A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
 _Avoid_: Pin, icon
+
+**Opening**:
+A window or a door in a block's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
+_Avoid_: Hole, cutout, aperture
 
 **Car place**:
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.
@@ -275,6 +315,10 @@ _Avoid_: Profit, yield
 **Payback**:
 The savings summed since the first, against the investment amount the admin enters.
 _Avoid_: Amortisation, return on investment
+
+**Pace**:
+The savings of the last twelve months, the rate at which payback is projected.
+_Avoid_: Savings rate, trend
 
 ## Remote access
 

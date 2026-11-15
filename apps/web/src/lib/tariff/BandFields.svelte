@@ -1,10 +1,14 @@
+<!-- One band of a schedule: its weekdays, its hours on the time wheels and its price. -->
 <script lang="ts">
+  import Trash from "@lucide/svelte/icons/trash-2";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import { m } from "../paraglide/messages.js";
+  import BandTime from "./BandTime.svelte";
   import type { BandDraft } from "./draft";
+  import PriceRow from "./PriceRow.svelte";
 
   let { band = $bindable(), onremove }: { band: BandDraft; onremove: () => void } = $props();
-
-  const id = $props.id();
 
   const DAYS = [
     [1, m.tariff_day_1],
@@ -16,20 +20,44 @@
     [7, m.tariff_day_7],
   ] as const;
 
-  // `HH:MM`, 00:00 to 24:00, as the core takes it.
-  const CLOCK = "([01][0-9]|2[0-3]):[0-5][0-9]|24:00";
+  function pick(day: number, on: boolean): void {
+    band.days = on ? [...band.days, day] : band.days.filter((other) => other !== day);
+  }
 </script>
 
-<fieldset>
-  <legend>{m.tariff_band()}</legend>
-  {#each DAYS as [day, name] (day)}
-    <label><input type="checkbox" value={day} bind:group={band.days} />{name()}</label>
-  {/each}
-  <label for="{id}-from">{m.tariff_from()}</label>
-  <input id="{id}-from" type="text" pattern={CLOCK} required bind:value={band.from} />
-  <label for="{id}-to">{m.tariff_to()}</label>
-  <input id="{id}-to" type="text" pattern={CLOCK} required bind:value={band.to} />
-  <label for="{id}-price">{m.tariff_band_price()}</label>
-  <input id="{id}-price" type="number" step="0.001" required bind:value={band.price} />
-  <button type="button" onclick={onremove}>{m.tariff_band_remove()}</button>
+<fieldset class="flex min-w-0 flex-col">
+  <legend class="sr-only">{m.tariff_band()}</legend>
+  <div class="flex flex-col gap-3 px-4 pt-3 pb-1">
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-xs font-medium text-muted-foreground">{m.tariff_band()}</span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class="text-muted-foreground"
+        aria-label={m.tariff_band_remove()}
+        onclick={onremove}><Trash /></Button
+      >
+    </div>
+    <div class="flex flex-wrap gap-x-3 gap-y-2">
+      {#each DAYS as [day, name] (day)}
+        <label class="flex items-center gap-1.5 text-sm">
+          <Checkbox
+            checked={band.days.includes(day)}
+            onCheckedChange={(on) => pick(day, on)}
+          />{name()}
+        </label>
+      {/each}
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <BandTime label={m.tariff_from()} bind:value={band.from} />
+      <BandTime label={m.tariff_to()} bind:value={band.to} end />
+    </div>
+  </div>
+  <PriceRow
+    name={m.tariff_band_price()}
+    price={band.price}
+    onchange={(price) => {
+      band.price = price;
+    }}
+  />
 </fieldset>

@@ -1,4 +1,5 @@
-// The pv glue crate's JSON replies, `{"ok": …}` or `{"error": "…"}`, checked at the boundary.
+// The pv glue crate's exports and its JSON replies, `{"ok": …}` or `{"error": "…"}`, checked
+// at the boundary.
 import type { Geometry, Modules, Sun } from "./pv.ts";
 
 export type Reply<T> = { readonly ok: T } | { readonly error: string };
@@ -58,6 +59,16 @@ export function isSun(value: unknown): value is Reply<Sun> {
   );
 }
 
+export function isVolts(value: unknown): value is Reply<(number | null)[]> {
+  return (
+    isFailure(value) ||
+    (value instanceof Object &&
+      "ok" in value &&
+      Array.isArray(value.ok) &&
+      value.ok.every((volts) => volts === null || Number.isFinite(volts)))
+  );
+}
+
 export function isWatts(value: unknown): value is Reply<number[][]> {
   return (
     isFailure(value) ||
@@ -67,3 +78,47 @@ export function isWatts(value: unknown): value is Reply<number[][]> {
       value.ok.every((row) => Array.isArray(row)))
   );
 }
+
+/** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
+export interface Exports {
+  readonly memory: WebAssembly.Memory;
+  readonly reserve: (len: number) => number;
+  readonly release: (ptr: number, len: number) => void;
+  readonly geometry: (input: number, inputLen: number) => bigint;
+  readonly modules: (input: number, inputLen: number) => bigint;
+  readonly sun: (input: number, inputLen: number) => bigint;
+  readonly clear_sky: (input: number, inputLen: number) => bigint;
+  readonly cold_voltages: (input: number, inputLen: number) => bigint;
+}
+
+const functions = [
+  "reserve",
+  "release",
+  "geometry",
+  "modules",
+  "sun",
+  "clear_sky",
+  "cold_voltages",
+] as const;
+
+export function isExports(
+  exports: Readonly<WebAssembly.Exports>,
+): exports is Readonly<WebAssembly.Exports> & Exports {
+  return (
+    exports["memory"] instanceof WebAssembly.Memory &&
+    functions.every((name) => {
+      const value = exports[name];
+
+      // A WASM export that is no memory, global or table is a function.
+      return (
+        value !== undefined &&
+        !(value instanceof WebAssembly.Memory) &&
+        !(value instanceof WebAssembly.Global) &&
+        !(value instanceof WebAssembly.Table)
+      );
+    })
+  );
+}
+
+/** An export that answers JSON. */
+export type Exported = Exclude<(typeof functions)[number], "reserve" | "release">;

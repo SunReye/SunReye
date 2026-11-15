@@ -1,6 +1,6 @@
 # 7. Settings writes
 
-Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-10, 2026-11-12)
 
 ## Context
 
@@ -8,7 +8,7 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 
 ## Decision
 
-**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum, the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition` and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
+**One funnel.** The only code that issues a write. It rejects before touching a device unless the setting exists, is writable, the value fits the profile's range, step or enum (a time's step in minutes, ADR 5), the device's writes are switched on, the profile's writes are enabled (ADR 8) and every precondition holds. A rejection is a validation error, never a device fault. Preconditions are read first, in the endpoint's task; one that does not hold is refused as `setting.precondition` and does not start the interval. One that cannot be read writes nothing and reports `unknown`.
 
 **Recipes.** A setting is an ordered list of steps declared by the profile (ADR 5 lists the kinds). It runs inside the endpoint's task between polls, stops at the first failing step and names it. `finally` steps (relock) run once the unlock was sent, even after a failure, each once; a failing one is named counting on from the recipe's last step. An acknowledged unlock or relock is not a write of the setting. The default `write` step is function code 16, since Deye ignores 6 on its settings registers (measured live). A device behind a broker has no endpoint task: its recipe publishes through its broker's client, and reads its preconditions, its value before writing and its read-back from the retained state that client's messages left (ADR 10). A publish that cannot be sent, the client being disconnected, is a failing step.
 
@@ -20,6 +20,8 @@ A write can reach a grid-tied inverter or battery. Vendors differ: unlock codes,
 - A device that refuses a step with an exception before any write was acknowledged is a `mismatch`; any step failing after an acknowledged write is `partial`.
 - There is no rollback; the device's state after `partial` is uncertain and the admin is told so.
 - An unlock failure is never retried automatically.
+
+**Reading.** An admin reads a setting's current value from its read-back, in the endpoint's task between polls, as a write reads its value before writing; a device behind a broker reads the retained state. A read writes nothing, starts no interval and is not logged. A write-only setting, or one whose read-back fails, reads as unknown. A snapshot toggle reads engaged while its target holds the locked value.
 
 **Audit.** Every attempt at a known device is appended to a write log, refusals included: time, device, setting, value before, value requested, value read back, outcome, failing step (counted from 1), actor, and `via`: the trusted device key a remote write came through (ADR 16). A refusal is logged with outcome `refused` and the code it was refused with, before and after empty; it writes nothing and does not start the interval. It is kept long and not rolled up.
 

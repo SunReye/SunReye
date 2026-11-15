@@ -1,4 +1,4 @@
-//! Statistics by plant-local day, week and month (ADR 3, 9), folded from daily rollups.
+//! Statistics by hour, and by plant-local day, week and month (ADR 3, 9), from the rollups.
 
 use std::time::{Duration, SystemTime};
 
@@ -136,6 +136,7 @@ async fn a_month_is_time_weighted_over_its_plant_local_days() {
                 "min": 1000.0,
                 "max": 1745.0,
                 "integral": 762_880.0,
+                "hours": 745.0,
             }],
         })
     );
@@ -176,6 +177,61 @@ async fn only_periods_starting_in_the_range_are_read() {
 }
 
 #[tokio::test]
+async fn an_hour_is_read_from_its_hourly_rollup() {
+    let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
+    // 1 kW, then 2 kW, then 3 kW, each held an hour.
+    core.hourly_until(
+        "pv.power",
+        ("2026-10-24T10:00:00Z", "2026-10-24T12:00:00Z"),
+        |n| f64::from(n + 1) * 1000.0,
+    )
+    .await;
+
+    let (status, body) = core
+        .statistics(
+            &set_cookie,
+            "series=pv.power&period=hour&from=2026-10-24T11:00:00Z&to=2026-10-24T13:00:00Z",
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let hour = |start: &str, end: &str, watts: f64| {
+        json!({
+            "date": "2026-10-24", "start": start, "end": end,
+            "mean": watts, "min": watts, "max": watts, "integral": watts, "hours": 1.0,
+        })
+    };
+    assert_eq!(
+        body,
+        json!({
+            "period": "hour",
+            "points": [
+                hour("2026-10-24T11:00:00Z", "2026-10-24T12:00:00Z", 2000.0),
+                hour("2026-10-24T12:00:00Z", "2026-10-24T13:00:00Z", 3000.0),
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn hours_are_read_as_far_as_the_hourly_history_tier() {
+    let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
+
+    // 1,500 hours from 1 September.
+    let (status, body) = core
+        .statistics(
+            &set_cookie,
+            "series=pv.power&period=hour&from=2026-09-01T00:00:00Z&to=2026-11-02T12:00:00Z",
+        )
+        .await;
+
+    assert_eq!(
+        (status, &body["code"]),
+        (StatusCode::UNPROCESSABLE_ENTITY, &json!("history.range"))
+    );
+}
+
+#[tokio::test]
 async fn an_empty_range_or_an_unknown_period_is_refused() {
     let (_dir, core, set_cookie) = berlin("pv.power", RoleKind::Measurement).await;
 
@@ -199,5 +255,24 @@ async fn an_empty_range_or_an_unknown_period_is_refused() {
     assert_eq!(
         (unknown, &body["code"]),
         (StatusCode::BAD_REQUEST, &json!("request.query"))
+    );
+}
+
+#[tokio::test]
+async fn the_battery_capacity_has_no_estimate_before_a_discharge() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let (status, capacity) = core.ask(&set_cookie, get("/api/v1/battery/capacity")).await;
+
+    assert_eq!(
+        (status, capacity),
+        (
+            StatusCode::OK,
+            json!({
+                "measurements": [], "now": null, "first": null, "perYear": null,
+                "nameplate": null, "discharged": 0.0, "cycles": null, "since": null,
+            })
+        )
     );
 }

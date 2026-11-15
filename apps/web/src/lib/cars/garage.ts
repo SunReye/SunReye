@@ -1,7 +1,8 @@
 // Keeps the scene's cars in step with the live values (ADR 20): drawn again only when a car comes,
 // goes or changes body, never for a new charge power or SOC.
-import { BufferGeometry, Group, Material, Mesh, type Object3D } from "three";
-import { carBody, placedModel } from "./bodies.ts";
+import { Group, Material, Mesh, type Object3D } from "three";
+import { carBody, loadCar, placedModel } from "./bodies.ts";
+import carUrl from "./car.glb?url";
 import type { Parked } from "./parked.ts";
 
 /** An uploaded body by id, shared between draws; null when it cannot be read. */
@@ -13,47 +14,56 @@ export interface Garage {
 }
 
 /** What decides a car's drawing. */
-function drawing({ at, forward, length, width, body, model }: Parked): string {
-  return JSON.stringify([at, forward, length, width, body, model]);
+function drawing({ at, forward, length, width, colour, model }: Parked): string {
+  return JSON.stringify([at, forward, length, width, colour, model]);
 }
 
-/** Frees the stylised bodies; an uploaded model's meshes stay with its loader. */
+/** Frees each car's own paint; the default body's meshes and an upload's stay with their loader. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js frees in place.
 function release(object: Object3D): void {
-  if (object.userData["shared"] === true) return;
-
-  if (object instanceof Mesh) {
-    if (object.geometry instanceof BufferGeometry) object.geometry.dispose();
-
-    if (object.material instanceof Material) object.material.dispose();
+  for (const mesh of object.getObjectsByProperty("isMesh", true)) {
+    if (
+      mesh instanceof Mesh &&
+      mesh.material instanceof Material &&
+      mesh.material.userData["paint"] === true
+    ) {
+      mesh.material.dispose();
+    }
   }
-
-  for (const child of object.children) release(child);
 }
 
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds to the scene.
-export function garage(scene: Object3D, render: () => void, model?: ModelLoader): Garage {
+/** Swaps the default body for the uploaded model once it loads, if its cars are still drawn. */
+async function upload(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js swaps in place.
+  body: Group,
+  car: Parked,
+  load: ModelLoader,
+  render: () => void,
+): Promise<void> {
+  const loaded = car.model === null ? null : await load(car.model);
+  const group = body.parent;
+
+  if (loaded === null || group === null || group.parent === null) return;
+
+  group.remove(body);
+  release(body);
+  group.add(placedModel(loaded.clone(), car));
+  render();
+}
+
+/** `template` is the default body (bodies.ts `loadCar`), `model` reads an upload. */
+export function garage(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds to the scene.
+  scene: Object3D,
+  render: () => void,
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js clones it per car.
+  template: Group,
+  model?: ModelLoader,
+): Garage {
   let drawn = new Group();
   let key = "[]";
 
   scene.add(drawn);
-
-  /** Swaps the stylised body for the uploaded model once it loads, if still parked. */
-  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js swaps in place.
-  async function upload(body: Group, car: Parked, id: string, load: ModelLoader): Promise<void> {
-    const loaded = await load(id);
-    const group = body.parent;
-
-    if (loaded === null || group === null || group !== drawn) return;
-
-    const placed = placedModel(loaded.clone(), car);
-
-    placed.userData["shared"] = true;
-    group.remove(body);
-    release(body);
-    group.add(placed);
-    render();
-  }
 
   return {
     park(cars) {
@@ -67,11 +77,11 @@ export function garage(scene: Object3D, render: () => void, model?: ModelLoader)
       drawn = new Group();
 
       for (const car of cars) {
-        const body = carBody(car);
+        const body = carBody(car, template);
 
         drawn.add(body);
 
-        if (car.model !== null && model !== undefined) void upload(body, car, car.model, model);
+        if (model !== undefined) void upload(body, car, model, render);
       }
 
       scene.add(drawn);
@@ -81,4 +91,14 @@ export function garage(scene: Object3D, render: () => void, model?: ModelLoader)
       release(drawn);
     },
   };
+}
+
+/** A garage once the shipped default body has loaded. */
+export async function openGarage(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js adds to the scene.
+  scene: Object3D,
+  render: () => void,
+  model?: ModelLoader,
+): Promise<Garage> {
+  return garage(scene, render, await loadCar(carUrl), model);
 }

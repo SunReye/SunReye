@@ -1,0 +1,102 @@
+<!--
+  A roof face's level (ADR 20): its module-grid editor or, before one, its module type. A type picked,
+  copied from the module catalogue or entered here lays the grid at once.
+-->
+<script lang="ts">
+  import type { ModuleType } from "../api/core.ts";
+  import FaceGrid from "./FaceGrid.svelte";
+  import { moduleOf, type Level } from "./levels.ts";
+  import ModuleLevel from "./ModuleLevel.svelte";
+  import ModuleCatalogue from "./ModuleCatalogue.svelte";
+  import { addGrid, type Draft, type TypeSource } from "./modules.ts";
+  import ModuleTypeForm from "./ModuleTypeForm.svelte";
+  import ModuleTypePicker from "./ModuleTypePicker.svelte";
+  import type { Plan } from "./outline.ts";
+  import type { RoofFace } from "./pv.ts";
+
+  let {
+    roof,
+    module,
+    plan,
+    moduleTypes,
+    types,
+    onchange,
+    onremove,
+  }: {
+    roof: RoofFace;
+    /** A module of the face, tapped in 3D: its own level. */
+    module?: Extract<Level, { kind: "module" }> | undefined;
+    plan: Plan;
+    moduleTypes: readonly ModuleType[];
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
+    onchange: (draft: Draft) => void;
+    /** The draft without the module, back at the face. */
+    onremove: (draft: Draft) => void;
+  } = $props();
+
+  const draft = $derived(plan.draft);
+
+  const index = $derived(
+    (draft.scene.grids ?? []).findIndex((g) => g.block === roof.block && g.face === roof.face),
+  );
+
+  /** What shows instead of the types: the module catalogue or the new module type's form. */
+  let adding = $state<"catalogue" | "form">();
+
+  const tapped = $derived(module && moduleOf(draft.scene, module));
+
+  function lay(moduleType: number): void {
+    onchange({ ...draft, scene: addGrid(draft.scene, roof.block, roof.face, moduleType) });
+  }
+</script>
+
+{#if tapped !== undefined}
+  <ModuleLevel {draft} grid={tapped.grid} cell={tapped.cell} {onchange} {onremove} />
+{:else if draft.scene.grids?.[index] !== undefined}
+  <FaceGrid
+    {draft}
+    {index}
+    grid={draft.scene.grids[index]}
+    cells={plan.laid.grids[index] ?? []}
+    checks={{
+      misplaced: plan.laid.misplaced?.grid === index ? plan.laid.misplaced : null,
+      cold: plan.cold,
+    }}
+    {moduleTypes}
+    {onchange}
+  />
+{:else if adding === "catalogue"}
+  <ModuleCatalogue
+    {types}
+    onadded={({ id }) => {
+      adding = undefined;
+      lay(id);
+    }}
+    oncancel={() => {
+      adding = undefined;
+    }}
+  />
+{:else if adding === "form"}
+  <ModuleTypeForm
+    add={(datasheet) => types.addModuleType(datasheet)}
+    onadded={({ id }) => {
+      adding = undefined;
+      lay(id);
+    }}
+    oncancel={() => {
+      adding = undefined;
+    }}
+  />
+{:else}
+  <ModuleTypePicker
+    {moduleTypes}
+    onpick={lay}
+    oncatalogue={() => {
+      adding = "catalogue";
+    }}
+    onnew={() => {
+      adding = "form";
+    }}
+  />
+{/if}

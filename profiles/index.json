@@ -2,7 +2,7 @@
   "profiles": [
     {
       "id": "deye-sg01hp3-10k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -14,14 +14,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "bec15125b49191daa1eed636f68802677ae2e85de5515a12fd364d7d27db8e5b",
+      "sha256": "ebe8a7be1af74996b0db8fafc763a2a7d97551fde1c3f7bba509b50835704087",
       "url": "deye-sg01hp3-10k.json"
     },
     {
       "id": "deye-sg01hp3-12k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -33,14 +34,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "2c440b00fbb28b0d56de62830fe7c900279f89fd7557cddd990b9da52e61cf3c",
+      "sha256": "1499a7246cc70e6000e79a3c51310e69fee8efa1f72ce76238b9ecb5ca838661",
       "url": "deye-sg01hp3-12k.json"
     },
     {
       "id": "deye-sg01hp3-15k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -52,14 +54,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "645181cbdcd1a805a5490b6582d710e0cc61b5e7f9dc939ca9982908315ebb50",
+      "sha256": "81b637353fb4afef6526ff2b249f17117ed2466daa1ea60f1ac141f9fb8b3e3b",
       "url": "deye-sg01hp3-15k.json"
     },
     {
       "id": "deye-sg01hp3-20k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -71,14 +74,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "92ba94d72b17cd18c68f1245b9529aa2d1cf12ec180ab402211263fff7ea1730",
+      "sha256": "d420ccfabb0d4788e4203bb4ee7d7742d6bc4b697f384d3aa7a5b7f5de639abf",
       "url": "deye-sg01hp3-20k.json"
     },
     {
       "id": "deye-sg01hp3-25k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -90,14 +94,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "dcf865084855fc0ce989cc9a8c20a4c1a7a8b9f39ece3163645af3334c97e7e6",
+      "sha256": "17297b25bfc78ced94ee66a128b7ae34a339d4ce56eec764de5cf32dc608e943",
       "url": "deye-sg01hp3-25k.json"
     },
     {
       "id": "deye-sg01hp3-5k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -109,14 +114,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "3f43f4c5c84d77ae8fcafd1000f083fd9604f0c4f583be9e269ead9a2255cae1",
+      "sha256": "883976953a41f855a83a0e0c0210601978a10be0ab8914e4302aa337345494dc",
       "url": "deye-sg01hp3-5k.json"
     },
     {
       "id": "deye-sg01hp3-6k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -128,14 +134,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "23dc889d63382c840262c9d43b50ae76fd697aced8b31c1e4ac2b7b92613e640",
+      "sha256": "3db9a2dc2173001aae7741bb9cfb048ed96ab38217ab673fa11ef23eb6d14bcf",
       "url": "deye-sg01hp3-6k.json"
     },
     {
       "id": "deye-sg01hp3-8k",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -147,14 +154,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "d6a6199077c5a537bcc9c1d1b7c4f7dbb88b6db8f66eaacc1c6aa75d60b52ec3",
+      "sha256": "ac9b0f9a7042b675dc7395038577dd3ec6a0bb8720a369c62f41bfe6af3fb8d5",
       "url": "deye-sg01hp3-8k.json"
     },
     {
       "id": "deye-sg01hp3",
-      "version": "1.0.1",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "modbus",
@@ -166,14 +174,15 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum"
       ],
-      "sha256": "0bee72caad378bdfc7124f3534f313c068a4b0b8e972f95407045154283764dc",
+      "sha256": "82363e2486e01bf8a382bf255dc3fd1455e938875c2cfd752dd6f5b7ecc1b3de",
       "url": "deye-sg01hp3.json"
     },
     {
       "id": "deye-sg05lp3",
-      "version": "2.2.6",
+      "version": "2.2.11",
       "schema": 1,
       "requires": [
         "modbus",
@@ -185,14 +194,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "b08a904bae57415afc6c8ef64d5ac600db226c21cbf79e2a65bbf422c48bffc9",
+      "sha256": "67226cd8d34adbc2e516d5c3eef259212276a360bb4fd6b13f25c76794490f0c",
       "url": "deye-sg05lp3.json"
     },
     {
       "id": "deye-sun10k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -204,14 +217,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "8e6afff05fd1365c8a9bfcc471beadb2dc25ebb329b5280c1c9feb8b55f54a2d",
+      "sha256": "55b88672ae422dd6c3272e98d536629f475a3fb932adbc496d2baefdc4149431",
       "url": "deye-sun10k-sg05lp3.json"
     },
     {
       "id": "deye-sun12k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -223,14 +240,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "26206997e29f6fb9e1d44e7f851c77063cdd43bfec0ecb104ae727357ff59216",
+      "sha256": "4409ffe5c2fb548616e426474f1bde6886a8207295b47f533293955db66e6e76",
       "url": "deye-sun12k-sg05lp3.json"
     },
     {
       "id": "deye-sun14k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -242,14 +263,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "22fc5a5dfc828d926eb50216c18ec2f6001e72c6704fdcc0feee41d95bf9ed27",
+      "sha256": "fea7cf79feadb1204e599e3ef8f2ce2825be3041d5a7ef0cadc84d6a53cd221e",
       "url": "deye-sun14k-sg05lp3.json"
     },
     {
       "id": "deye-sun15k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -261,14 +286,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "27401dc833a6507f7f6b6937ff20ea5aeee0c128baaf1f76c68ab219a30c3be8",
+      "sha256": "ec48815743b8c73e73a4172329d02bcde49db8694add4b0d887d8db9c39ffbc6",
       "url": "deye-sun15k-sg05lp3.json"
     },
     {
       "id": "deye-sun16k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -280,14 +309,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "9fb28d2ec2ae6252ea8ef2d86d1bcb567ae7df8cb3cc09e30fb2a6fdb521079d",
+      "sha256": "5990de45647f4315f30f428378cb04048182a14b08889d9144876064962307c2",
       "url": "deye-sun16k-sg05lp3.json"
     },
     {
       "id": "deye-sun18k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -299,14 +332,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "f6949c6439f936b05c67da99cadb81c0edeb6a87a0dde58b6e3882c9be9070f8",
+      "sha256": "84002f90d02ed61d64d1d9ed48c93ecfac64cb53666240bd0139788f4fdbf477",
       "url": "deye-sun18k-sg05lp3.json"
     },
     {
       "id": "deye-sun20k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -318,14 +355,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "ebfc29f61067f839202de8d7b691e09541887ac482bd02c8b2feab0359757024",
+      "sha256": "0c0cb3e4b4c7bb791493e8250b8b6b7c4c195fac55f413f2f6faaba0c0d05e1c",
       "url": "deye-sun20k-sg05lp3.json"
     },
     {
       "id": "deye-sun5k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -337,14 +378,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "e0ca3f6080c8d6217d8d66b987a34aa6774d388777ff70b5d0bb4838d60fb0be",
+      "sha256": "d959bd4a7fd564186e8ec0c244088adfb94c2e58391bff4d9ba0f737baf72c04",
       "url": "deye-sun5k-sg05lp3.json"
     },
     {
       "id": "deye-sun6k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -356,14 +401,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "4a23d372211361e11049a2c06f8416f34ff686cad199e6b48886ba0730e6a7a5",
+      "sha256": "ece925e55c87cd34e53689a731c00e711bf948180574c1cdd78193cec2bb2499",
       "url": "deye-sun6k-sg05lp3.json"
     },
     {
       "id": "deye-sun8k-sg05lp3",
-      "version": "1.0.1",
+      "version": "1.0.6",
       "schema": 1,
       "requires": [
         "modbus",
@@ -375,14 +424,18 @@
         "snapshot-toggle",
         "identify",
         "ac-rating",
-        "setting-text"
+        "setting-text",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "b19aeab5de3d60104841455fcb9a2cea386588b9325285b8c545d5cc1d6ff9d6",
+      "sha256": "717b42b9ea9a04730578ca15b6c8a0f0f879feab5664658155c11042a7277666",
       "url": "deye-sun8k-sg05lp3.json"
     },
     {
       "id": "evcc",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "mqtt",
@@ -391,7 +444,7 @@
         "precondition",
         "text-enum"
       ],
-      "sha256": "d17ceeb42f3c72266e1c72177f7efe82b671163212ee57c209827e1d277010f2",
+      "sha256": "aa13b6ed44453e8ed5634e69d07fcad161190ffcce3f7383bb82d70fe84f87f9",
       "url": "evcc.json"
     },
     {

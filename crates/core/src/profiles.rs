@@ -147,6 +147,16 @@ impl Catalogue {
         all
     }
 
+    /// Every profile served, by id, as a device is chosen by.
+    #[must_use]
+    pub fn listings(&self) -> Vec<Listing> {
+        let profiles = crate::read(&self.served);
+        let mut all: Vec<_> = profiles.values().map(Listing::of).collect();
+        drop(profiles);
+        all.sort_by(|a, b| a.id.cmp(&b.id));
+        all
+    }
+
     #[must_use]
     pub fn get(&self, id: &str) -> Option<Arc<Profile>> {
         self.held(id).map(|held| held.profile)
@@ -185,6 +195,34 @@ fn bundled() -> Result<Served, LoadError> {
             Ok((held.profile.id.clone(), held))
         })
         .collect()
+}
+
+/// A profile served, as an admin picks it for a device.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Listing {
+    pub id: String,
+    pub manufacturer: String,
+    /// The model, or the family it covers.
+    pub name: String,
+    pub version: String,
+    pub official: bool,
+    /// Watts of AC output at the inverter's rating; a family's largest.
+    pub ac_rating: Option<f64>,
+}
+
+impl Listing {
+    fn of(held: &Held) -> Self {
+        let profile = &held.profile;
+        Self {
+            id: profile.id.clone(),
+            manufacturer: profile.manufacturer.clone(),
+            name: profile.name.clone(),
+            version: profile.version.clone(),
+            official: held.official,
+            ac_rating: profile.inverter().and_then(|i| i.ac_rating),
+        }
+    }
 }
 
 /// What became of one entry of an index.

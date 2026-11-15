@@ -7,7 +7,7 @@ use ts_rs::{Config, TS};
 use crate::document::{
     ActivateDoc, BlockDoc, DelayDoc, ExprDoc, HeartbeatDoc, IdentifyDoc, Kind, LiveControlDoc,
     MaskedDoc, PreconditionDoc, ProfileDoc, PublishDoc, QuantityDoc, Range, ReadBackDoc,
-    RegisterDoc, RelockDoc, SettingDoc, StepDoc, ToggleDoc, UnlockDoc,
+    RegisterDoc, RelockDoc, SettingDoc, StepDoc, TimeDoc, TimeFormat, ToggleDoc, UnlockDoc,
 };
 use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support, Unit};
 
@@ -31,6 +31,8 @@ fn declarations() -> String {
         SettingDoc::decl(&cfg),
         LiveControlDoc::decl(&cfg),
         HeartbeatDoc::decl(&cfg),
+        TimeDoc::decl(&cfg),
+        TimeFormat::decl(&cfg),
         Unit::decl(&cfg),
         StepDoc::decl(&cfg),
         RegisterDoc::decl(&cfg),

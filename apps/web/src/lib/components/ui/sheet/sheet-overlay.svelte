@@ -1,0 +1,23 @@
+<script lang="ts">
+	import { Dialog as SheetPrimitive } from "bits-ui";
+	import { cn } from "#lib/utils.js";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		...restProps
+	}: SheetPrimitive.OverlayProps = $props();
+</script>
+
+<SheetPrimitive.Overlay
+	bind:ref
+	data-slot="sheet-overlay"
+	class={cn(
+		// Local: duration and easing from the motion item, not upstream's duration-100 and CSS `ease` (ADR 0003, #38).
+		// Local: the scrim leaves with its sheet, faster and easing in (ADR 21).
+		// Local: glass-scrim (tint, blur and grain from the theme item's tokens, solid where blur is unsupported) instead of upstream's bg-black/10 and backdrop-blur-xs (#39).
+		"glass-scrim fixed inset-0 z-50 duration-(--motion-base) ease-(--motion-ease) data-closed:duration-(--motion-exit) data-closed:ease-(--motion-ease-exit) data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+		className
+	)}
+	{...restProps}
+/>

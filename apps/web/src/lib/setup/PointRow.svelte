@@ -1,49 +1,66 @@
+<!-- One measurement point: its tile, name and device, and its live power with what it means. -->
 <script lang="ts">
-  import type { PointDraft } from "../api/core.ts";
+  import { Pressable } from "../components/ui/pressable/index.js";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import PowerNumber from "../components/power-number.svelte";
+  import { STATES } from "../flow/node-words.ts";
   import { m } from "../paraglide/messages.js";
+  import { accentOf, stateOf } from "./point-look.ts";
+  import PointTile from "./PointTile.svelte";
 
   let {
-    point,
-    number,
-    earlier,
-    onchange,
-    onremove,
+    name,
+    role,
+    note,
+    watts,
+    onedit,
   }: {
-    point: PointDraft;
-    /** Counted from 1, the root first. */
-    number: number;
-    /** The points before it: only one of them may be its parent, so parents stay first. */
-    earlier: readonly PointDraft[];
-    onchange: (change: Readonly<Partial<PointDraft>>) => void;
-    onremove: () => void;
+    name: string;
+    role: string;
+    /** The devices it reads from. */
+    note: string;
+    /** Its power now; undefined while it is not read. */
+    watts: number | undefined;
+    /** Set while the tree is adjusted: the row opens the point's sheet. */
+    onedit?: (() => void) | undefined;
   } = $props();
+
+  const state = $derived(stateOf(role, watts));
+
+  const active = $derived(state !== undefined && state !== "idle");
 </script>
 
-<li>
-  <label>
-    {m.topology_name({ number })}
-    <input
-      required
-      value={point.name}
-      oninput={(event) => {
-        onchange({ name: event.currentTarget.value });
-      }}
-    />
-  </label>
-  {#if number > 1}
-    <label>
-      {m.topology_parent({ number })}
-      <select
-        value={point.parent}
-        onchange={(event) => {
-          onchange({ parent: Number(event.currentTarget.value) });
-        }}
-      >
-        {#each earlier as parent, at (at)}
-          <option value={at}>{parent.name}</option>
-        {/each}
-      </select>
-    </label>
-    <button type="button" onclick={onremove}>{m.topology_remove({ number })}</button>
-  {/if}
-</li>
+{#snippet body()}
+  <PointTile {role} {active} />
+  <span class="flex min-w-0 flex-1 flex-col text-left">
+    <span class="truncate text-[15px] font-medium">{name}</span>
+    <span class="truncate text-xs text-muted-foreground">{note}</span>
+  </span>
+  <span class="flex shrink-0 flex-col items-end leading-tight">
+    <span class="text-[15px] font-semibold whitespace-nowrap">
+      <PowerNumber
+        watts={watts === undefined ? null : Math.abs(watts)}
+        unitClass="text-xs font-normal text-muted-foreground"
+      />
+    </span>
+    <span
+      class="text-xs whitespace-nowrap"
+      style:color={active ? accentOf(role) : "var(--muted-foreground)"}
+      >{state === undefined ? " " : STATES[state]()}</span
+    >
+  </span>
+{/snippet}
+
+{#if onedit === undefined}
+  <div class="flex min-h-14 items-center gap-3 px-4 py-2">{@render body()}</div>
+{:else}
+  <Pressable
+    feedback
+    class="flex min-h-14 w-full items-center gap-3 px-4 py-2"
+    aria-label={m.topology_edit({ name })}
+    onclick={onedit}
+  >
+    {@render body()}
+    <ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+  </Pressable>
+{/if}

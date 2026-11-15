@@ -1,71 +1,61 @@
+<!--
+  Savings and costs over the route's range, a band per day, week or month, from the core's
+  plant-local days (ADR 12): savings above the baseline, the import bill below it.
+-->
 <script lang="ts">
+  import ProblemAlert from "../components/problem-alert.svelte";
+  import { flowColour } from "../energy-colours.ts";
   import type { Core } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
-  import { euros } from "./format";
+  import BandChart from "../range/BandChart.svelte";
+  import { bandsOf } from "../range/fill.ts";
+  import { money } from "../range/format.ts";
+  import { RangeData } from "../range/range-data.svelte.ts";
+  import type { RangeRoute } from "../range/route.svelte.ts";
+  import { costBands, split } from "./costs.ts";
 
-  let { core }: { core: Core } = $props();
+  let { core, route }: { core: Core; route: RangeRoute } = $props();
 
-  /** The last 31 days, so a month shows whole. */
-  const SPAN_MS = 31 * 86_400_000;
+  // Costs come by the day: a day is one band.
+  const data = new RangeData(
+    () => route,
+    (from, to) => core.costs(from, to),
+    "day",
+  );
 
-  const to = new Date();
-  const costs = $derived(core.costs(new Date(to.getTime() - SPAN_MS), to));
+  const view = $derived.by(() => {
+    const got = data.current;
 
-  const date = new Intl.DateTimeFormat(getLocale(), {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+    if (!got) return null;
+
+    if ("problem" in got.data) return { problem: got.data.problem, bands: [], total: split() };
+
+    return {
+      problem: null,
+      bands: bandsOf(got.list, costBands(got.data.days, got.spans, got.now)),
+      total: split(got.data.total),
+    };
   });
-
-  /** A plant-local day by its middle, which falls on its date in any viewer's timezone. */
-  function day(start: string, end: string): string {
-    return date.format((Date.parse(start) + Date.parse(end)) / 2);
-  }
 </script>
 
-<section>
-  <h2>{m.tariff_costs()}</h2>
-  {#await costs then answer}
-    {#if "problem" in answer}
-      <p role="alert">{problemText(answer.problem)}</p>
-    {:else}
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">{m.tariff_day()}</th>
-            <th scope="col">{m.tariff_paid()}</th>
-            <th scope="col">{m.tariff_earned()}</th>
-            <th scope="col">{m.tariff_saved()}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each answer.days as row (row.start)}
-            <tr>
-              <th scope="row">{day(row.start, row.end)}</th>
-              <td>{euros(row.paid)}</td>
-              <td>{euros(row.earned)}</td>
-              <td>{euros(row.saved)}</td>
-            </tr>
-          {/each}
-        </tbody>
-        <tfoot>
-          <tr>
-            <th scope="row">{m.tariff_total()}</th>
-            <td>{euros(answer.total.paid)}</td>
-            <td>{euros(answer.total.earned)}</td>
-            <td>{euros(answer.total.saved)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    {/if}
-  {/await}
-</section>
-
-<style>
-  td {
-    font-variant-numeric: tabular-nums;
-    text-align: end;
-  }
-</style>
+{#if view?.problem}
+  <ProblemAlert problem={view.problem} />
+{:else}
+  <BandChart
+    bands={view?.bands ?? []}
+    up={[
+      { label: m.tariff_avoided(), colour: flowColour("solar") },
+      { label: m.tariff_feed_in_pay(), colour: flowColour("export") },
+    ]}
+    down={[{ label: m.tariff_import_cost(), colour: flowColour("import") }]}
+    groups={[m.tariff_saving_group(), m.tariff_cost_group()]}
+    via={data.current?.via}
+    summary={{ title: data.title, ...(view?.total ?? split()) }}
+    fmt={money}
+    unit="€"
+    loading={!view}
+    label={m.tariff_chart()}
+    ondrill={data.drill}
+    onbrush={data.brush}
+  />
+{/if}

@@ -44,6 +44,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/battery/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The battery's usable capacity over the whole record. */
+        get: operations["capacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capabilities": {
         parameters: {
             query?: never;
@@ -174,7 +191,7 @@ export interface paths {
         };
         /**
          * What the plant paid, earned and saved per plant-local day, from the daily rollups of the
-         *     `cost.*` rates; the current day covers its closed hours.
+         *     `cost.*` rates; the current day runs to the latest reading.
          */
         get: operations["costs"];
         put?: never;
@@ -301,7 +318,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Reads a setting's current value from its read-back (ADR 7), between polls. Nothing is written
+         *     or logged.
+         */
+        get: operations["read_setting"];
         /**
          * Writes a setting through the one funnel (ADR 7) and answers the attempt as the write log keeps
          *     it. A refusal never reaches the device.
@@ -344,8 +365,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One series' figures for each plant-local period starting in the range, folded from its
-         *     daily rollups.
+         * One series' figures for each hour, or plant-local period, starting in the range, from its
+         *     hourly rollups or folded from its daily ones.
          */
         get: operations["statistics"];
         put?: never;
@@ -516,6 +537,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/module-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["module_catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/module-types": {
         parameters: {
             query?: never;
@@ -525,7 +562,7 @@ export interface paths {
         };
         get: operations["list_module_types"];
         put?: never;
-        /** Adds a module type; the admin enters its datasheet, there is no catalogue. */
+        /** Adds a module type from its datasheet, entered or copied from the module catalogue. */
         post: operations["add_module_type"];
         delete?: never;
         options?: never;
@@ -644,6 +681,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every profile the core serves, bundled and fetched alike, by id: what a device can be added
+         *     with.
+         */
+        get: operations["catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every recorded year with the same dates of the year before, and the best closed day and
+         *     month of production and day of savings, from the daily rollups.
+         */
+        get: operations["records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/retention": {
         parameters: {
             query?: never;
@@ -748,6 +825,23 @@ export interface paths {
         get: operations["spot_prices"];
         /** Chooses the bidding zone spot prices are fetched for, or none; the device follows at once. */
         put: operations["set_spot_prices"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sun-tint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The backdrop's tint for the sun over the plant now; viewers read it, never the location. */
+        get: operations["sun_tint"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -970,6 +1064,12 @@ export interface components {
             /** @description `HH:MM`, up to 24:00; later than `from`. */
             to: string;
         };
+        BestView: {
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** Format: double */
+            value: number;
+        };
         /**
          * @description A day-ahead market area.
          * @enum {string}
@@ -989,12 +1089,17 @@ export interface components {
             eave: number;
             /** @description A carport: a post at each corner instead of walls. */
             open?: boolean;
+            /** @description How far the roof reaches past the walls; none when stored without it. */
+            overhang?: components["schemas"]["Overhang"];
             roof: components["schemas"]["Roof"];
+            /** @description `#rrggbb`; the generated finish's own colour without one. */
+            roofColour?: string | null;
             /**
              * Format: double
              * @description Degrees clockwise about the corner, seen from above.
              */
             rotation: number;
+            wallColour?: string | null;
             /** Format: double */
             width: number;
             /** Format: double */
@@ -1002,14 +1107,6 @@ export interface components {
             /** Format: double */
             z: number;
         };
-        /** @description A stylised body the browser draws. */
-        Body: {
-            class: components["schemas"]["BodyClass"];
-            /** @description `#rrggbb`. */
-            colour: string;
-        };
-        /** @enum {string} */
-        BodyClass: "sedan" | "hatchback" | "suv" | "van" | "pickup";
         /** @description The inclusive bounds of a setting's value. */
         Bounds: {
             /** Format: double */
@@ -1026,11 +1123,58 @@ export interface components {
             lastError?: string | null;
         };
         /**
+         * @description The usable capacity inferred from the state of charge over each unbroken discharge of at
+         *     least 20 points; no vendor register reports it.
+         */
+        Capacity: {
+            /**
+             * Format: double
+             * @description Full cycles: `discharged` over the nameplate, else over `now`.
+             */
+            cycles?: number | null;
+            /**
+             * Format: double
+             * @description kWh discharged, summed per hour.
+             */
+            discharged: number;
+            /**
+             * Format: double
+             * @description kWh: the median of the first five.
+             */
+            first?: number | null;
+            /** @description In time order. */
+            measurements: components["schemas"]["CapacityMeasurement"][];
+            /**
+             * Format: double
+             * @description kWh, as the latest `battery.capacity` a device reports; `null` without one.
+             */
+            nameplate?: number | null;
+            /**
+             * Format: double
+             * @description kWh: the median of the latest five measurements; `null` before the first.
+             */
+            now?: number | null;
+            /**
+             * Format: double
+             * @description The relative change a year, from half a year of measurements and more than five.
+             */
+            perYear?: number | null;
+            /** @description RFC 3339: the first hour with battery power. */
+            since?: string | null;
+        };
+        CapacityMeasurement: {
+            /** @description RFC 3339: when the discharge ended. */
+            end: string;
+            /** Format: double */
+            kwh: number;
+        };
+        /**
          * @description A parking footprint: its width runs along x and its length along z from its corner, before
          *     it turns.
          */
         CarPlace: {
-            body?: components["schemas"]["Body"] | null;
+            /** @description The default body's paint, `#rrggbb`; the browser's own grey without one. */
+            colour?: string | null;
             /**
              * Format: int32
              * @description The EVCC loadpoint device's id (ADR 10).
@@ -1041,7 +1185,7 @@ export interface components {
              * @description An uploaded body is scaled to it.
              */
             length: number;
-            /** @description The uploaded GLB's id, its SHA-256 in hex. */
+            /** @description The uploaded GLB's id, its SHA-256 in hex; it replaces the default body. */
             model?: string | null;
             /**
              * Format: double
@@ -1055,11 +1199,20 @@ export interface components {
             /** Format: double */
             z: number;
         };
+        Catalogue: {
+            profiles: components["schemas"]["Listing"][];
+        };
         /** @description A module in one cell: rows count up the slope, columns across it, both from 0. */
         Cell: {
             /** Format: int32 */
             column: number;
             optimized?: boolean;
+            /**
+             * Format: int32
+             * @description Its place along its string's wiring, which runs through the string's modules from the
+             *     lowest; a module without one follows them.
+             */
+            order?: number | null;
             /** Format: int32 */
             row: number;
             /**
@@ -1074,6 +1227,35 @@ export interface components {
             appliesFrom: string;
             /** @description The root first, each parent before its children. */
             points: components["schemas"]["PointDraft"][];
+        };
+        /**
+         * @description An upright box standing on a block's roof face, placed in the face's outline like its module
+         *     grid: metres across the slope and up it from the face's lowest corner on the left.
+         */
+        Chimney: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            depth: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /**
+             * Format: double
+             * @description Its level top stands this high over the roof where its upper side meets it.
+             */
+            height: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its level size: across the slope, and along the fall line seen from above.
+             */
+            width: number;
         };
         /** @description A device measuring a point, by the power role it measures there. */
         Claim: {
@@ -1146,6 +1328,11 @@ export interface components {
             name?: string | null;
             password: string;
         };
+        /**
+         * @description A tree's crown, by its leaves.
+         * @enum {string}
+         */
+        Crown: "broadleaf" | "conifer";
         /** @description A PV module model's datasheet values. */
         Datasheet: {
             /** Format: int32 */
@@ -1217,6 +1404,8 @@ export interface components {
              * @description A value is a whole number of steps.
              */
             step: number;
+            /** @description The value is a time of day in minutes since midnight (ADR 5); absent for a number. */
+            time?: boolean;
             /** @description The only values it takes, when the profile enumerates them. */
             values?: number[] | null;
         };
@@ -1257,6 +1446,17 @@ export interface components {
              *     in parallel (ADR 17).
              */
             estimated: string[];
+            /**
+             * Format: double
+             * @description An inverter's maximum DC input voltage in volts, from its profile: what a string's
+             *     open-circuit voltage at −10 °C is checked against (ADR 20).
+             */
+            maxInputVoltage?: number | null;
+            /**
+             * @description The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
+             *     it can report, not what it reports now.
+             */
+            series: string[];
             /** @description What its profile lets the core write, in the profile's order. */
             settings: components["schemas"]["SettingSupport"][];
             /** @description Whether the admin switched its writes on (ADR 7). */
@@ -1327,6 +1527,22 @@ export interface components {
          * @enum {string}
          */
         EquipmentKind: "inverter" | "battery";
+        /** @description A polyline on the ground through `points`. */
+        Fence: {
+            finish: components["schemas"]["FenceFinish"];
+            /** Format: double */
+            height: number;
+            points: components["schemas"]["FencePoint"][];
+        };
+        /** @enum {string} */
+        FenceFinish: "wood" | "metal" | "wall";
+        /** @description A point on the ground in the scene's frame. */
+        FencePoint: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        };
         /** @description One period's figures: a measurement's, or a counter's delta. */
         Figures: {
             /** @description The plant-local date the period begins on, `YYYY-MM-DD`. */
@@ -1338,6 +1554,11 @@ export interface components {
             delta?: number | null;
             /** @description RFC 3339, UTC. */
             end: string;
+            /**
+             * Format: double
+             * @description The hours with a value: gaps excluded.
+             */
+            hours?: number | null;
             /**
              * Format: double
              * @description `Σ value·duration` in the unit times hours: Wh for power.
@@ -1354,6 +1575,20 @@ export interface components {
             min?: number | null;
             /** @description RFC 3339, UTC. */
             start: string;
+        };
+        /** @description kWh, and EUR saved. Autarky is `selfSupply / consumption`. */
+        FiguresView: {
+            /** Format: double */
+            consumption: number;
+            /** Format: double */
+            production: number;
+            /**
+             * Format: double
+             * @description `null` where no tariff priced a day.
+             */
+            saved?: number | null;
+            /** Format: double */
+            selfSupply: number;
         };
         ForecastPoint: {
             /** @description When the value was issued, RFC 3339, UTC. */
@@ -1393,6 +1628,28 @@ export interface components {
                     [key: string]: number;
                 };
             };
+        };
+        /** @enum {string} */
+        GroundFinish: "lawn" | "paving" | "driveway" | "gravel" | "path";
+        /**
+         * @description A rectangle on the plot: its width runs along x and its depth along z from its corner,
+         *     before it turns.
+         */
+        GroundSurface: {
+            /** Format: double */
+            depth: number;
+            finish: components["schemas"]["GroundFinish"];
+            /**
+             * Format: double
+             * @description Degrees clockwise about the corner, seen from above.
+             */
+            rotation: number;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
         };
         /** @description Time-weighted means of one series over a range, at the tier the server picked. */
         History: {
@@ -1531,6 +1788,20 @@ export interface components {
             /** @description Oldest first, as written to stderr. */
             lines: string[];
         };
+        /** @description A profile served, as an admin picks it for a device. */
+        Listing: {
+            /**
+             * Format: double
+             * @description Watts of AC output at the inverter's rating; a family's largest.
+             */
+            acRating?: number | null;
+            id: string;
+            manufacturer: string;
+            /** @description The model, or the family it covers. */
+            name: string;
+            official: boolean;
+            version: string;
+        };
         /** @description The plant's location in degrees, north and east positive. */
         Location: {
             /** Format: double */
@@ -1559,6 +1830,10 @@ export interface components {
             state?: unknown;
             /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`. */
             subject: string;
+        };
+        /** @description The module catalogue's sheets, as the admin picks a datasheet to add as a module type. */
+        ModuleCatalogue: {
+            sheets: components["schemas"]["Sheet"][];
         };
         /** @description The modules on one roof face. */
         ModuleGrid: {
@@ -1640,12 +1915,28 @@ export interface components {
             /** Format: double */
             z: number;
         } | {
+            crown?: components["schemas"]["Crown"];
             /** Format: double */
             height: number;
             /** @enum {string} */
             kind: "tree";
             /** Format: double */
             radius: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            z: number;
+        } | {
+            /** Format: double */
+            depth: number;
+            /** Format: double */
+            height: number;
+            /** @enum {string} */
+            kind: "hedge";
+            /** Format: double */
+            length: number;
+            /** Format: double */
+            rotation: number;
             /** Format: double */
             x: number;
             /** Format: double */
@@ -1657,11 +1948,44 @@ export interface components {
             status: components["schemas"]["Status"];
             version: string;
         };
+        /** @description A window or a door in a block's wall. */
+        Opening: {
+            /**
+             * Format: double
+             * @description Metres from the wall's left end to the opening's left edge, seen from outside.
+             */
+            along: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            height: number;
+            kind: components["schemas"]["OpeningKind"];
+            /**
+             * Format: double
+             * @description Metres from the ground to its lower edge; a door's is 0.
+             */
+            sill?: number;
+            wall: components["schemas"]["Wall"];
+            /** Format: double */
+            width: number;
+        };
+        /** @enum {string} */
+        OpeningKind: "window" | "frenchWindow" | "frontDoor" | "garageDoor";
         /**
          * @description How a write ended.
          * @enum {string}
          */
         Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged" | "refused";
+        /**
+         * @description Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable
+         *     ends or verges (Ortgang). A flat or hip roof has eaves all round.
+         */
+        Overhang: {
+            /** Format: double */
+            eave: number;
+            /** Format: double */
+            verge: number;
+        };
         /** @description A deadband override, in the role's unit. */
         Override: {
             /** Format: double */
@@ -1671,13 +1995,26 @@ export interface components {
         Password: {
             password: string;
         };
-        /** @description The savings so far against the investment, in EUR to the cent. */
+        /** @description The savings so far against the investment, in EUR to the cent, and when they reach it. */
         Payback: {
             /**
              * Format: double
              * @description What the admin entered; `null` until then.
              */
             investment?: number | null;
+            /** @description The savings so far at each month's last recorded day, in time order. */
+            months: components["schemas"]["PaybackMonth"][];
+            /**
+             * Format: double
+             * @description EUR saved a year: the last twelve months, or the record scaled to a year; `null` under
+             *     three months of record.
+             */
+            pace?: number | null;
+            /**
+             * @description The plant-local date, `YYYY-MM-DD`, the savings reach the investment at that pace; `null`
+             *     without an investment or a pace, or once paid back.
+             */
+            reached?: string | null;
             /**
              * Format: double
              * @description What the savings have yet to pay back, none once they have; `null` without an investment.
@@ -1689,11 +2026,18 @@ export interface components {
              */
             savings: number;
         };
+        /** @description The savings summed up to a plant-local date. */
+        PaybackMonth: {
+            /** @description `YYYY-MM-DD`. */
+            date: string;
+            /** Format: double */
+            saved: number;
+        };
         /**
-         * @description A plant-local calendar period.
+         * @description A UTC hour, as hourly rollups are cut, or a plant-local calendar period.
          * @enum {string}
          */
-        Period: "day" | "week" | "month";
+        Period: "hour" | "day" | "week" | "month";
         Point: {
             /** @description RFC 3339, UTC. */
             end: string;
@@ -1752,6 +2096,11 @@ export interface components {
         ProblemDetails: {
             /** @description A stable machine code, such as `auth.required`. */
             code: components["schemas"]["Code"];
+            /**
+             * @description The request body's member at fault, as an RFC 6901 JSON pointer such as
+             *     `/strings/0/modules`, where the core can name it.
+             */
+            pointer?: string | null;
             /**
              * Format: int32
              * @description The HTTP status.
@@ -1817,6 +2166,13 @@ export interface components {
             measured: number;
             /** Format: double */
             modelled: number;
+        };
+        /** @description Every recorded plant-local year, newest first, and the plant's records. */
+        Records: {
+            bestDay?: components["schemas"]["BestView"] | null;
+            bestMonth?: components["schemas"]["BestView"] | null;
+            bestSaving?: components["schemas"]["BestView"] | null;
+            years: components["schemas"]["YearView"][];
         };
         /** @description An index and the outcome of its last check. */
         Report: {
@@ -1884,8 +2240,12 @@ export interface components {
         Scene: {
             blocks: components["schemas"]["Block"][];
             carPlaces?: components["schemas"]["CarPlace"][];
+            /** @description Rectangular chimneys standing on roof faces. */
+            chimneys?: components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
+            /** @description Drawn only; they never shade. */
+            fences?: components["schemas"]["Fence"][];
             /** @description At most one per roof face. */
             grids?: components["schemas"]["ModuleGrid"][];
             /**
@@ -1894,6 +2254,10 @@ export interface components {
              */
             north: number;
             obstacles: components["schemas"]["Obstacle"][];
+            /** @description Windows and doors on the blocks' walls. Drawn only; they never shade. */
+            openings?: components["schemas"]["Opening"][];
+            /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
+            surfaces?: components["schemas"]["GroundSurface"][];
         };
         /** @description One flow's prices. */
         ScheduleView: {
@@ -1923,6 +2287,14 @@ export interface components {
             change: components["schemas"]["Delta"];
             key: string;
         };
+        /** @description A setting's current value. */
+        SettingNow: {
+            /**
+             * Format: double
+             * @description In the setting's unit; `null` when it cannot be read or the setting is write-only.
+             */
+            value?: number | null;
+        };
         /** @description A setting a device's profile declares (ADR 5, 7). */
         SettingSupport: components["schemas"]["Declared"] & {
             /** @description Whether trust lets it write (ADR 8); the device's `writes` switch applies as well. */
@@ -1949,6 +2321,23 @@ export interface components {
             /** @description Its path under `/share`. */
             path: string;
         };
+        /** @description The power classes one maker's datasheet prints. */
+        Sheet: {
+            maker: string;
+            modules: components["schemas"]["Datasheet"][];
+            series: string;
+            source: components["schemas"]["Source"];
+        };
+        /** @description The maker's datasheet every value of a sheet was copied from. */
+        Source: {
+            /** @description Why this edition was chosen, where it matters. */
+            note?: string | null;
+            /** @description The revision or date printed on the datasheet. */
+            revision: string;
+            /** @description As printed on the datasheet. */
+            title: string;
+            url: string;
+        };
         /** @description Whether spot prices are fetched, and for which bidding zone. */
         SpotPriceZone: {
             zone?: components["schemas"]["BiddingZone"] | null;
@@ -1970,6 +2359,10 @@ export interface components {
              * @description A string kept from an earlier version; absent for a new string.
              */
             id?: number | null;
+        };
+        /** @description The sun tint over the plant, without its location. */
+        SunTint: {
+            tint?: components["schemas"]["Tint"] | null;
         };
         /**
          * @description What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,
@@ -2011,6 +2404,11 @@ export interface components {
          * @enum {string}
          */
         Tier: "raw" | "bucket" | "hour" | "day";
+        /**
+         * @description The backdrop's tint for the sun over the plant.
+         * @enum {string}
+         */
+        Tint: "dawn" | "noon" | "dusk" | "night";
         /** @description A token as the API reads it: never the token. */
         Token: {
             /** Format: int32 */
@@ -2144,6 +2542,14 @@ export interface components {
         WriteLog: {
             writes: components["schemas"]["Entry"][];
         };
+        YearView: {
+            before?: components["schemas"]["FiguresView"] | null;
+            figures: components["schemas"]["FiguresView"];
+            /** @description The year today is in, summed to the latest reading. */
+            running: boolean;
+            /** Format: int32 */
+            year: number;
+        };
         /** @description The plant timezone. */
         Zone: {
             /** @description An IANA name, such as `Europe/Berlin`. */
@@ -2209,6 +2615,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Balance"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    capacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Capacity"];
                 };
             };
             "4XX": {
@@ -2838,6 +3271,36 @@ export interface operations {
             };
         };
     };
+    read_setting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingNow"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     write_setting: {
         parameters: {
             query?: never;
@@ -3316,6 +3779,33 @@ export interface operations {
             };
         };
     };
+    module_catalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleCatalogue"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     list_module_types: {
         parameters: {
             query?: never;
@@ -3569,6 +4059,60 @@ export interface operations {
             };
         };
     };
+    catalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalogue"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    records: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Records"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     retention: {
         parameters: {
             query?: never;
@@ -3809,6 +4353,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpotPriceZone"];
+                };
+            };
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    sun_tint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SunTint"];
                 };
             };
             "4XX": {

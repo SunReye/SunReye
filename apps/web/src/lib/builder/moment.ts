@@ -2,7 +2,7 @@
 // instant. Pure but for the reads it is handed; nothing here touches the scene.
 import type { Core, ModuleType } from "../api/core.ts";
 import type { Draft } from "./modules.ts";
-import type { Location, Point, Pv, Sun } from "./pv.ts";
+import type { Location, Pv } from "./pv.ts";
 
 /** Measured or estimated history, the solar forecast, or a clear sky run in the browser. */
 export type Source = "measured" | "forecast" | "clearSky";
@@ -44,13 +44,6 @@ export function sourceOf(day: string, today: string): Source {
   return day <= after(today, FORECAST_DAYS) ? "forecast" : "clearSky";
 }
 
-/** The unit vector toward the sun: east, north, up, as the pv crate shades. */
-export function sunward({ zenith, azimuth }: Sun): Point {
-  const [z, a] = [(zenith * Math.PI) / 180, (azimuth * Math.PI) / 180];
-
-  return [-Math.sin(a) * Math.sin(z), -Math.cos(a) * Math.sin(z), Math.cos(z)];
-}
-
 /** The watts in force at `at`, or null outside every interval. */
 export function wattsAt(intervals: readonly Interval[], at: number): number | null {
   return intervals.find(({ from, to }) => from <= at && at < to)?.watts ?? null;
@@ -69,13 +62,18 @@ export interface Reading {
   readonly today: string;
 }
 
+/** The day `YYYY-MM-DD` in the browser's calendar: its midnight and the next. */
+export function spanOf(day: string): readonly [Date, Date] {
+  return [new Date(`${day}T00:00`), new Date(`${after(day, 1)}T00:00`)];
+}
+
 /** Each saved string's stored series for the day; an unsaved one has none. */
 function stored(
   reading: Reading,
   source: "measured" | "forecast",
 ): Promise<(readonly Interval[])[]> {
   const { core, draft, day } = reading;
-  const [from, to] = [new Date(`${day}T00:00`), new Date(`${after(day, 1)}T00:00`)];
+  const [from, to] = spanOf(day);
 
   return Promise.all(
     draft.strings.map(async ({ id, device }) => {

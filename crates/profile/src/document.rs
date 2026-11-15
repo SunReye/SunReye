@@ -72,6 +72,8 @@ pub struct SettingDoc {
     pub scale: Option<f64>,
     pub range: Option<Range>,
     pub values: Option<Vec<f64>>,
+    /// A time of day: the value is minutes since midnight, the register holds it in `format`.
+    pub time: Option<TimeDoc>,
     /// The text the settings screen shows for each of `values`, keyed by the value.
     #[cfg_attr(test, ts(optional, type = "Record<string, string>"))]
     pub labels: Option<BTreeMap<String, String>>,
@@ -89,6 +91,29 @@ pub struct SettingDoc {
     pub verified: Option<bool>,
     /// What makes it a live-control point (ADR 5, 7): only a controller under a lease writes it.
     pub live_control: Option<LiveControlDoc>,
+}
+
+/// How a register holds a time of day, and the minutes a value is a whole number of.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Time"))]
+#[serde(deny_unknown_fields)]
+pub struct TimeDoc {
+    #[expect(
+        dead_code,
+        reason = "`hhmm` is the only format; parsing it is the check"
+    )]
+    pub format: TimeFormat,
+    pub step: u16,
+}
+
+/// A time of day's register encoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub enum TimeFormat {
+    /// Hours times 100 plus minutes, as decimal digits: 22:30 is 2230 (Deye).
+    Hhmm,
 }
 
 /// An expiring setpoint's revert time, a heartbeat register's interval and the device's fallback
@@ -128,6 +153,7 @@ impl SettingDoc {
         [
             text.then_some("setting-text"),
             self.verified.map(|_| "verified"),
+            self.time.map(|_| "time"),
             self.live_control.as_ref().map(|_| "live-control"),
             read_back.and_then(|r| r.mask).map(|_| "rmw"),
             quantities.then_some("publish"),
@@ -334,7 +360,9 @@ pub struct QuantityDoc {
     pub offset: Option<f64>,
     pub compute: Option<ExprDoc>,
     pub range: Option<Range>,
-    /// A topic's text payloads and the values they read as, such as EVCC's loadpoint mode.
+    /// A topic's text payloads and the values they read as, such as EVCC's loadpoint mode; or a
+    /// register's raw values, in decimal, and the values they read as, such as Deye's running
+    /// state. Any other payload or raw value is no value.
     #[serde(rename = "enum")]
     #[cfg_attr(test, ts(optional, type = "Record<string, number>"))]
     pub texts: Option<BTreeMap<String, f64>>,
@@ -360,7 +388,10 @@ impl QuantityDoc {
             self.get.as_ref().map(|_| "http"),
             self.scale_factor.map(|_| "scale-factor"),
             self.resolution.map(|_| "resolution"),
-            self.texts.as_ref().map(|_| "text-enum"),
+            self.texts.as_ref().map(|_| match self.topic {
+                Some(_) => "text-enum",
+                None => "register-enum",
+            }),
             self.compute.as_ref().map(|_| "compute"),
             self.deadband.map(|_| "deadband"),
             self.poll_group.as_ref().map(|_| "poll-group"),

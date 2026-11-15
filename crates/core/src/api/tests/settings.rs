@@ -349,8 +349,9 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
     assert_eq!(status, StatusCode::OK);
     let device = &body["devices"][plant.id.to_string()];
     assert_eq!(device["writes"], true);
+    let settings = device["settings"].as_array().unwrap();
     assert_eq!(
-        device["settings"],
+        json!(settings[..5]),
         json!([
             { "key": CHARGE, "name": "Max battery charge current", "unit": "A",
                 "range": { "min": 0.0, "max": 350.0 }, "step": 1.0, "enable": "on" },
@@ -372,6 +373,40 @@ async fn capabilities_list_each_devices_settings_from_its_profile() {
                 "step": 1.0, "enable": "on" },
         ])
     );
+}
+
+/// The detail sheets (ADR 21) show only the roles a device has.
+#[tokio::test]
+async fn capabilities_list_the_series_each_devices_profile_publishes_without_extras() {
+    let plant = Plant::bare(Writes::Store, false).await;
+
+    let (_, body) = plant
+        .core
+        .ask(&plant.set_cookie, get("/api/v1/capabilities"))
+        .await;
+
+    let series: Vec<String> =
+        serde_json::from_value(body["devices"][plant.id.to_string()]["series"].clone()).unwrap();
+    let has = |name: &str| series.iter().any(|s| s == name);
+    assert_eq!(
+        [
+            "inverter.status",
+            "inverter.temperature",
+            "load.phase.power[1]",
+            "load.phase.power[2]",
+            "load.phase.power[3]",
+            "battery.soc",
+            "battery.cycles",
+        ]
+        .map(has),
+        [true, true, true, true, true, true, false]
+    );
+    assert!(
+        !series.iter().any(|s| s.starts_with("extra.")),
+        "{series:?}"
+    );
+    let unique: std::collections::BTreeSet<_> = series.iter().collect();
+    assert_eq!(unique.len(), series.len(), "{series:?}");
 }
 
 #[tokio::test]
@@ -562,4 +597,190 @@ async fn a_release_the_device_ignores_keeps_the_stored_value_for_a_retry() {
         );
     }
     assert_eq!(plant.received(), [written(0), written(109), written(109)]);
+}
+
+impl Plant {
+    async fn read(&self, key: &str) -> (StatusCode, Value) {
+        let uri = format!("/api/v1/devices/{}/settings/{key}", self.id);
+        self.core.ask(&self.set_cookie, get(&uri)).await
+    }
+}
+
+#[tokio::test]
+async fn an_admin_reads_a_settings_current_value_with_writes_off_and_nothing_is_written_or_logged()
+{
+    let mut plant = Plant::bare(Writes::Store, false).await;
+
+    // Register 108 reads as its address.
+    assert_eq!(
+        plant.read(CHARGE).await,
+        (StatusCode::OK, json!({ "value": 108.0 }))
+    );
+    assert_eq!(plant.received(), []);
+    assert_eq!(plant.log().await, json!([]));
+}
+
+#[tokio::test]
+async fn a_read_follows_the_device_after_a_write() {
+    let plant = Plant::new(Writes::Store, true).await;
+    assert_eq!(plant.write(CHARGE, json!(50)).await.0, StatusCode::OK);
+
+    assert_eq!(plant.read(CHARGE).await.1, json!({ "value": 50.0 }));
+}
+
+#[tokio::test]
+async fn the_discharge_lock_reads_engaged_while_its_target_holds_the_locked_value() {
+    let plant = Plant::new(Writes::Store, true).await;
+    assert_eq!(plant.read(LOCK).await.1, json!({ "value": 0.0 }));
+
+    assert_eq!(plant.write(LOCK, json!(1)).await.0, StatusCode::OK);
+
+    assert_eq!(plant.read(LOCK).await.1, json!({ "value": 1.0 }));
+}
+
+#[tokio::test]
+async fn only_a_declared_setting_of_a_known_device_is_read() {
+    let plant = Plant::bare(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.read("battery.bogus").await,
+        refused(StatusCode::NOT_FOUND, "setting.none")
+    );
+    assert_eq!(
+        plant.read("battery.power").await,
+        refused(StatusCode::CONFLICT, "setting.read-only")
+    );
+    let uri = format!("/api/v1/devices/42/settings/{CHARGE}");
+    assert_eq!(
+        plant.core.ask(&plant.set_cookie, get(&uri)).await,
+        refused(StatusCode::NOT_FOUND, "device.none")
+    );
+}
+
+#[tokio::test]
+async fn a_setting_whose_device_does_not_answer_reads_null() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    // Bound and dropped: nothing listens on the port.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let gateway = json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
+        "port": port });
+    let connection = core.connection(&set_cookie, &gateway).await;
+    let deye = json!({ "name": "Deye", "connection": connection, "profile": "deye-sg05lp3",
+        "unit": 1, "writes": false });
+    let (_, body) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &deye))
+        .await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", body["id"]);
+
+    assert_eq!(
+        core.ask(&set_cookie, get(&uri)).await,
+        (StatusCode::OK, json!({ "value": null }))
+    );
+}
+
+#[tokio::test]
+async fn reading_a_setting_needs_the_admins_session() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    let uri = format!("/api/v1/devices/{}/settings/{CHARGE}", plant.id);
+
+    assert_eq!(
+        problem(plant.core.send(get(&uri)).await).await,
+        (StatusCode::UNAUTHORIZED, "auth.required".to_owned())
+    );
+    assert_eq!(plant.received(), []);
+}
+
+const START: &str = "battery.time_of_use.1.start";
+
+/// Deye's time-of-use slots (ADR 5): a start is minutes since midnight, held as `HHMM`.
+#[tokio::test]
+async fn capabilities_list_each_time_of_use_slot_with_its_start_as_a_time() {
+    let plant = Plant::bare(Writes::Store, true).await;
+
+    assert_eq!(
+        plant.capability(START).await,
+        json!({ "key": START, "name": "Slot 1 start", "range": { "min": 0.0, "max": 1435.0 },
+            "step": 5.0, "time": true, "enable": "off" })
+    );
+    for n in 1..=6 {
+        for field in ["start", "power", "soc", "grid_charge"] {
+            let key = format!("battery.time_of_use.{n}.{field}");
+            assert_eq!(plant.capability(&key).await["enable"], "off", "{key}");
+        }
+    }
+    assert!(
+        plant
+            .capability("battery.time_of_use.1.power")
+            .await
+            .get("time")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn a_slot_start_is_written_as_hhmm_and_an_off_step_time_is_refused() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    assert_eq!(plant.enable("PUT", START).await.0, StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        plant.write(START, json!(1352)).await,
+        refused(StatusCode::UNPROCESSABLE_ENTITY, "setting.value")
+    );
+    let (status, written) = plant.write(START, json!(1350)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    // Register 148 reads 148 before the write: 01:48.
+    assert_eq!(
+        (&written["before"], &written["after"], &written["outcome"]),
+        (&json!(108.0), &json!(1350.0), &json!("verified"))
+    );
+    assert_eq!(
+        plant.received(),
+        [Write {
+            unit: 1,
+            start: 148,
+            words: vec![2230]
+        }]
+    );
+    assert_eq!(plant.read(START).await.1, json!({ "value": 1350.0 }));
+}
+
+const SCHEDULE: &str = "battery.time_of_use.enabled";
+
+/// Register 146's bit 0 switches Deye's time-of-use schedule; bits 1 to 7 are its weekdays.
+#[tokio::test]
+async fn the_schedule_switch_writes_only_bit_0_of_register_146() {
+    let mut plant = Plant::bare(Writes::Store, true).await;
+    assert_eq!(
+        plant.capability(SCHEDULE).await,
+        json!({ "key": SCHEDULE, "name": "Time-of-use schedule", "values": [0.0, 1.0],
+            "labels": [{ "value": 0.0, "text": "Off" }, { "value": 1.0, "text": "On" }],
+            "step": 1.0, "enable": "off" })
+    );
+    assert_eq!(
+        plant.enable("PUT", SCHEDULE).await.0,
+        StatusCode::NO_CONTENT
+    );
+    // Register 146 reads 146: bit 0 clear, the weekday bits 0b1001001.
+    assert_eq!(plant.read(SCHEDULE).await.1, json!({ "value": 0.0 }));
+
+    let (status, written) = plant.write(SCHEDULE, json!(1)).await;
+
+    assert_eq!(
+        (status, &written["outcome"]),
+        (StatusCode::OK, &json!("verified"))
+    );
+    assert_eq!(
+        plant.received(),
+        [Write {
+            unit: 1,
+            start: 146,
+            words: vec![147]
+        }]
+    );
 }

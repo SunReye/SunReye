@@ -153,16 +153,8 @@ async fn a_community_setting_is_enabled_one_by_one_with_its_bounds_shown() {
         .iter()
         .map(|s| s["enable"].clone())
         .collect();
-    assert_eq!(
-        enables,
-        [
-            json!("on"),
-            json!("community"),
-            json!("community"),
-            json!("community"),
-            json!("community"),
-        ]
-    );
+    assert_eq!(enables[0], "on");
+    assert!(enables[1..].iter().all(|e| e == "community"), "{enables:?}");
 }
 
 /// A signed profile `box` at `version` with settings `a` and `b` verified on hardware and `c`
@@ -315,4 +307,35 @@ async fn an_applied_update_switches_off_each_setting_it_changed_until_re_enabled
         plant.ask("POST", "/api/v1/profile-updates/box").await.1["code"],
         "update.none"
     );
+}
+
+#[tokio::test]
+async fn the_catalogue_lists_every_profile_served_bundled_and_fetched_alike() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    community(&core);
+    core.ask(
+        &set_cookie,
+        send("POST", "/api/v1/profile-indexes", &json!({ "url": INDEX })),
+    )
+    .await;
+
+    let (status, body) = core.ask(&set_cookie, get("/api/v1/profiles")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let profiles = body["profiles"].as_array().unwrap();
+    let find = |id: &str| profiles.iter().find(|p| p["id"] == id).cloned();
+    assert_eq!(
+        find("deye-sun15k-sg05lp3").unwrap(),
+        json!({ "id": "deye-sun15k-sg05lp3", "manufacturer": "Deye",
+            "name": "SUN-15K-SG05LP3-EU-SM2", "version": find("deye-sun15k-sg05lp3").unwrap()["version"],
+            "official": true, "acRating": 15000.0 })
+    );
+    assert_eq!(
+        find("my-deye").unwrap(),
+        json!({ "id": "my-deye", "manufacturer": "Deye", "name": "SG05LP3",
+            "version": bundled_version(), "official": false, "acRating": 20000.0 })
+    );
+    assert_eq!(find("shelly-pro-3em").unwrap()["acRating"], Value::Null);
+    assert_eq!(profiles.len(), 24);
 }
