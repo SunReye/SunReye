@@ -105,11 +105,11 @@
   const bars = new Presence<View>();
   const ticks = new Presence<Tick>();
 
-  /** Bars drawn: a month's take a change in one frame, longer ranges a share per frame. */
+  /** Bars drawn: sixteen take a change per frame, so a month's bars take it in two. */
   const drawn = stagger(
     () => bars.list,
     (k) => k.key,
-    32,
+    16,
   );
 
   let arrivals = $state(1);
