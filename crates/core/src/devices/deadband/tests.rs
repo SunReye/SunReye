@@ -1,9 +1,12 @@
 //! Which deadband each role of a device is stored with (ADR 4).
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use serde_json::json;
 use sunreye_profile::Profile;
+
+use crate::endpoint::CADENCE;
 
 use super::{DeadbandSource, RoleDeadband, deadbands};
 
@@ -59,9 +62,14 @@ fn a_series_in_a_poll_group_is_stored_at_its_groups_cadence() {
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
 
-    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new()).unwrap();
+    let quantity = &profile.quantities()[0];
+    let policy = super::policy(quantity, &BTreeMap::new(), CADENCE).unwrap();
+    assert_eq!(policy.cadence, Duration::from_mins(1));
 
-    assert_eq!(policy.cadence, std::time::Duration::from_mins(1));
+    // On a 45 s cycle the 60 s group runs every second cycle: its gaps are judged at 90 s.
+    let cycle = Duration::from_secs(45);
+    let policy = super::policy(quantity, &BTreeMap::new(), cycle).unwrap();
+    assert_eq!(policy.cadence, Duration::from_secs(90));
 }
 
 #[test]
@@ -75,7 +83,7 @@ fn a_counter_extra_is_stored_as_a_counter_with_every_change() {
     });
     let profile = Profile::load(&doc.to_string()).unwrap();
 
-    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new()).unwrap();
+    let policy = super::policy(&profile.quantities()[0], &BTreeMap::new(), CADENCE).unwrap();
 
     assert_eq!(
         (policy.kind, policy.deadband),
@@ -98,7 +106,7 @@ fn a_quantity_stored_nowhere_has_no_storage_policy() {
     let stored: Vec<bool> = profile
         .quantities()
         .iter()
-        .map(|q| super::policy(q, &BTreeMap::new()).is_some())
+        .map(|q| super::policy(q, &BTreeMap::new(), CADENCE).is_some())
         .collect();
 
     assert_eq!(stored, [true, false]);
@@ -113,7 +121,11 @@ fn stored_deadbands(quantities: &serde_json::Value) -> Vec<f64> {
     profile
         .quantities()
         .iter()
-        .map(|q| super::policy(q, &BTreeMap::new()).unwrap().deadband)
+        .map(|q| {
+            super::policy(q, &BTreeMap::new(), CADENCE)
+                .unwrap()
+                .deadband
+        })
         .collect()
 }
 
@@ -160,7 +172,7 @@ fn an_override_left_on_a_role_that_is_no_longer_a_measurement_is_ignored() {
     let stored: Vec<f64> = profile
         .quantities()
         .iter()
-        .map(|q| super::policy(q, &overrides).unwrap().deadband)
+        .map(|q| super::policy(q, &overrides, CADENCE).unwrap().deadband)
         .collect();
 
     assert_eq!(stored, [0.0, 0.0, 0.0]);

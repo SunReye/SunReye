@@ -26,7 +26,7 @@ async fn one_cycle(endpoint: Endpoint) -> Vec<(String, Option<u32>, f64)> {
         unit: 0,
         profile: deye(),
     };
-    let task = spawn(endpoint, vec![device], bus.clone());
+    let task = spawn(endpoint, CADENCE, vec![device], bus.clone());
     readings.recv().await.unwrap();
     // A cycle publishes under the lock `latest` takes, so the whole cycle is in.
     task.latest()
@@ -324,7 +324,12 @@ async fn the_owners_plant_replays_in_sim_cycle_after_cycle() {
         unit: recording.unit,
         profile: deye(),
     };
-    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    let task = spawn(
+        Endpoint::Sim(recording.capture),
+        CADENCE,
+        vec![device],
+        bus.clone(),
+    );
     readings.recv().await.unwrap();
     let first = task.latest();
     let value = |role: &str| {
@@ -362,7 +367,12 @@ async fn the_owners_plant_reads_its_inverter_state_and_load_per_phase() {
         unit: recording.unit,
         profile: deye(),
     };
-    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    let task = spawn(
+        Endpoint::Sim(recording.capture),
+        CADENCE,
+        vec![device],
+        bus.clone(),
+    );
     readings.recv().await.unwrap();
     let first = task.latest();
     let value = |series: &str| {
@@ -444,7 +454,12 @@ async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
         unit: recording.unit,
         profile: sunspec(),
     };
-    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    let task = spawn(
+        Endpoint::Sim(recording.capture),
+        CADENCE,
+        vec![device],
+        bus.clone(),
+    );
     readings.recv().await.unwrap();
 
     let mut got: Vec<(String, Option<u32>, f64)> = task
@@ -498,7 +513,12 @@ async fn the_owners_capture_replays_with_each_four_input_sg05lp3_model() {
             unit: recording.unit,
             profile,
         };
-        let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+        let task = spawn(
+            Endpoint::Sim(recording.capture),
+            CADENCE,
+            vec![device],
+            bus.clone(),
+        );
         tokio::time::timeout(CADENCE * 2, readings.recv())
             .await
             .unwrap_or_else(|_| panic!("{kw} kW reads another plan"))

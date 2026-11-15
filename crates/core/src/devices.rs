@@ -12,7 +12,7 @@ mod store;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,8 @@ enum ChangeRefusal {
     NoDevice,
     /// An empty name or host, or port 0.
     ConnectionValue,
+    /// A poll cycle outside 1 to 60 s, or one on a broker or an HTTP host.
+    PollSeconds,
     /// A device still uses the connection.
     InUse,
     /// The device names no known connection.
@@ -78,6 +80,10 @@ impl From<ChangeRefusal> for Problem {
             ChangeRefusal::ConnectionValue => {
                 (StatusCode::UNPROCESSABLE_ENTITY, Code::ConnectionValue)
             }
+            ChangeRefusal::PollSeconds => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Code::ConnectionPollSeconds,
+            ),
             ChangeRefusal::InUse => (StatusCode::CONFLICT, Code::ConnectionInUse),
             ChangeRefusal::DeviceConnection => {
                 (StatusCode::UNPROCESSABLE_ENTITY, Code::DeviceConnection)
@@ -159,6 +165,11 @@ pub struct Reach {
     /// any other transport.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish: Option<Publish>,
+    /// The poll cycle in whole seconds, 1 to 60 (ADR 6): 5 when a new connection leaves it out,
+    /// kept when a change does. Refused for a broker or an HTTP host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(minimum = 1, maximum = 60)]
+    pub poll_seconds: Option<u32>,
 }
 
 /// The publisher of a broker connection: the `plant` device's role values and each device's
@@ -274,6 +285,8 @@ struct Addressed {
 struct Polled {
     device: Addressed,
     endpoint: Endpoint,
+    /// Its connection's poll cycle.
+    cycle: Duration,
 }
 
 /// A device's writes switch and its profile's settings with their enables, in the profile's order.
@@ -677,7 +690,11 @@ impl Devices {
             .run(move |db| deadband::set(db, id, &role, deadband, changed))
             .await
             .map_err(internal)?;
-        self.declare(DeviceId(id), &profile)
+        let cycle = running
+            .iter()
+            .find(|r| r.devices.iter().any(|d| d.device.id == id))
+            .map_or(endpoint::CADENCE, |r| cycle(&r.devices));
+        self.declare(DeviceId(id), &profile, cycle)
             .await
             .map_err(internal)?;
         drop(running);
@@ -1027,11 +1044,12 @@ impl Devices {
             {
                 continue;
             }
+            let cycle = cycle(&devices);
             for device in &polled {
-                self.declare(device.id, &device.profile).await?;
+                self.declare(device.id, &device.profile, cycle).await?;
             }
             running.push(Running {
-                task: endpoint::spawn(endpoint.clone(), polled, self.bus.clone()),
+                task: endpoint::spawn(endpoint.clone(), cycle, polled, self.bus.clone()),
                 endpoint,
                 devices,
             });
@@ -1097,7 +1115,8 @@ impl Devices {
     ) -> Result<Vec<endpoint::Device>, storage::Error> {
         let devices: Vec<endpoint::Device> = devices.iter().filter_map(|d| self.known(d)).collect();
         for device in &devices {
-            self.declare(device.id, &device.profile).await?;
+            self.declare(device.id, &device.profile, endpoint::CADENCE)
+                .await?;
         }
         Ok(devices)
     }
@@ -1124,16 +1143,22 @@ impl Devices {
         })
     }
 
-    /// Declares every stored series of `device` in its profile's steps, with its deadbands. A series
-    /// storage refuses, such as one stored in another step, is logged and not stored.
-    async fn declare(&self, device: DeviceId, profile: &Profile) -> Result<(), storage::Error> {
+    /// Declares every stored series of `device` in its profile's steps, with its deadbands and its
+    /// cadence on a connection polled every `cycle`. A series storage refuses, such as one stored in
+    /// another step, is logged and not stored.
+    async fn declare(
+        &self,
+        device: DeviceId,
+        profile: &Profile,
+        cycle: Duration,
+    ) -> Result<(), storage::Error> {
         let id = device.0;
         let overrides = self
             .database
             .run(move |db| deadband::overrides(db, id))
             .await?;
         for q in profile.quantities() {
-            let Some(policy) = deadband::policy(q, &overrides) else {
+            let Some(policy) = deadband::policy(q, &overrides, cycle) else {
                 continue;
             };
             let series = self.bus.intern(&q.role, q.index);
@@ -1173,6 +1198,12 @@ fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
     grouped
 }
 
+/// The poll cycle of the endpoint task for `devices`: the longest of their connections' (ADR 6).
+fn cycle(devices: &[Polled]) -> Duration {
+    let cycles = devices.iter().map(|d| d.cycle);
+    cycles.max().unwrap_or(endpoint::CADENCE)
+}
+
 /// Each series `profile` publishes once, extras (ADR 4) left out, in its order.
 fn published(profile: &Profile) -> Vec<String> {
     let mut series: Vec<String> = Vec::new();
@@ -1201,7 +1232,17 @@ fn is_inverter(profile: &Profile) -> bool {
             .any(|q| q.role.starts_with("pv."))
 }
 
+/// The poll cycles a connection may be set to, in seconds (ADR 6).
+const POLL_SECONDS: std::ops::RangeInclusive<u32> = 1..=60;
+
 fn check_reach(reach: &Reach) -> Result<(), ChangeRefusal> {
+    let polled = reach.transport.reads() == Reads::Registers;
+    if reach
+        .poll_seconds
+        .is_some_and(|s| !polled || !POLL_SECONDS.contains(&s))
+    {
+        return Err(ChangeRefusal::PollSeconds);
+    }
     let root = match (reach.transport, reach.topic_root.as_deref()) {
         (Transport::Mqtt, Some(root)) => is_topic_root(root),
         (Transport::Mqtt, None) => false,

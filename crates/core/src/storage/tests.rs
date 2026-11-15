@@ -491,3 +491,30 @@ async fn a_database_with_a_newer_schema_is_refused() {
         "{opened:?}"
     );
 }
+
+/// A connection stored before the poll cycle was a setting (#776) keeps polling every 5 s.
+#[tokio::test]
+async fn a_connection_stored_before_the_poll_cycle_gets_5_s() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    for sql in &super::thread::MIGRATIONS[..28] {
+        old.execute_batch(sql).unwrap();
+    }
+    old.pragma_update(None, "user_version", 28).unwrap();
+    old.execute(
+        "INSERT INTO connection (name, transport, host, port)
+         VALUES ('gateway', 'modbus-tcp', '10.0.0.2', 502)",
+        [],
+    )
+    .unwrap();
+    drop(old);
+
+    drop(Storage::open(&path, epoch(), "UTC", &Bus::default()).unwrap());
+
+    let seconds: u32 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .query_row("SELECT poll_seconds FROM connection", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(seconds, 5);
+}
