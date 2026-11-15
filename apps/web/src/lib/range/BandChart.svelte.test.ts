@@ -215,3 +215,17 @@ test("the axis names its unit above the top gridline's figure, not under it", as
     top.element().getBoundingClientRect().top,
   );
 });
+
+test("a series that runs both ways keeps a legend row for each side", async () => {
+  const signed = { label: "battery.power", colour: "var(--e-battery)" };
+
+  const screen = await render(BandChart, {
+    ...props([{ ...band("b0", 2), down: [3] }]),
+    up: [signed],
+    down: [signed],
+    summary: { title: "Summe", up: [2], down: [3] },
+  });
+
+  await expect.element(screen.getByText("2.0 kWh")).toBeVisible();
+  await expect.element(screen.getByText("3.0 kWh")).toBeVisible();
+});

@@ -18,3 +18,14 @@ export function slideIn(_node: Element, way: -1 | 1): TransitionConfig {
     css: (_t, u) => `transform: translate3d(${way * 100 * u}%, 0, 0)`,
   };
 }
+
+/**
+ * The level a deeper one slides over: as an `out:` it shifts left and dims, as an `in:` it comes
+ * back.
+ */
+export function shiftAside(_node: Element): TransitionConfig {
+  return {
+    ...slideTiming(),
+    css: (_t, u) => `transform: translate3d(${-30 * u}%, 0, 0); opacity: ${1 - 0.6 * u}`,
+  };
+}
