@@ -911,7 +911,7 @@ impl Devices {
         if !draft
             .variant
             .as_deref()
-            .is_none_or(|v| declares(&profile, v))
+            .is_none_or(|v| profile.has_variant(v))
         {
             return Err(ChangeRefusal::Profile);
         }
@@ -1117,16 +1117,6 @@ fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
         }
     }
     grouped
-}
-
-/// Whether `variant` is one of the profile's: a variant it declares, or for a SunSpec profile a
-/// model's id (ADR 5).
-fn declares(profile: &Profile, variant: &str) -> bool {
-    profile
-        .variants()
-        .iter()
-        .any(|v| v.variant() == Some(variant))
-        || (profile.reads_sunspec() && variant.parse::<u16>().is_ok())
 }
 
 /// Strings may be wired to a device whose profile declares an inverter's inputs or reads PV.

@@ -481,12 +481,25 @@ impl Profile {
         &self.variants
     }
 
+    /// Whether a device may be stored as variant `id`: one the family declares, or for a SunSpec
+    /// profile the id of the model after the common model (ADR 5).
+    #[must_use]
+    pub fn has_variant(&self, id: &str) -> bool {
+        self.declared(id).is_some() || (self.reads_sunspec() && id.parse::<u16>().is_ok())
+    }
+
+    /// The variant `id` the family declares.
+    #[must_use]
+    pub fn declared(&self, id: &str) -> Option<&Arc<Self>> {
+        self.variants.iter().find(|v| v.variant() == Some(id))
+    }
+
     /// Variant `variant`; the base, with the family's largest limits, for `None` or an id it does
-    /// not declare.
+    /// not declare, such as a SunSpec model's, which binds at connect.
     #[must_use]
     pub fn resolve(&self, variant: Option<&str>) -> &Self {
         variant
-            .and_then(|id| self.variants.iter().find(|v| v.variant() == Some(id)))
+            .and_then(|id| self.declared(id))
             .map_or(self, |variant| variant)
     }
 

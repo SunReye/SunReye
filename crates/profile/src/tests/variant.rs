@@ -346,3 +346,15 @@ fn a_capability_only_a_variant_uses_is_required_too() {
         "variant `5k`: `requires` lacks `deadband`, which the profile uses"
     );
 }
+
+#[test]
+fn a_family_has_the_variants_it_declares_and_sunspec_any_model_id() {
+    let family = load(&family()).unwrap();
+    let sunspec = Profile::load(include_str!("../../../../profiles/sunspec.json")).unwrap();
+
+    assert!(family.has_variant("5k"));
+    assert!(!family.has_variant("99k"));
+    assert!(!family.has_variant("103"), "not a SunSpec profile");
+    assert!(sunspec.has_variant("103"));
+    assert!(!sunspec.has_variant("three-phase"));
+}
