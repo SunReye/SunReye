@@ -47,7 +47,6 @@ pub struct Source {
     pub note: Option<String>,
 }
 
-/// Why a sheet was refused.
 #[derive(Debug)]
 pub enum Invalid {
     Json(serde_json::Error),
@@ -67,8 +66,6 @@ impl std::fmt::Display for Invalid {
     }
 }
 
-/// Reads one sheet.
-///
 /// # Errors
 /// The sheet does not parse, names no source or module, or a value is out of its range.
 pub fn parse(json: &str) -> Result<Sheet, Invalid> {
@@ -103,8 +100,6 @@ fn plausible(d: &Datasheet) -> bool {
         && (1..=6).contains(&d.bypass_diodes)
 }
 
-/// Every bundled sheet.
-///
 /// # Errors
 /// A bundled sheet is refused; a test loads them all.
 pub fn bundled() -> Result<Vec<Sheet>, Invalid> {
