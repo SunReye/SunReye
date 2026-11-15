@@ -64,6 +64,9 @@ pub struct VariantDoc {
     /// Ranges of the base's settings, by key.
     #[cfg_attr(test, ts(optional, type = "Record<string, Range>"))]
     pub settings: Option<BTreeMap<String, Range>>,
+    /// Ids of retired profiles of this device type: a device stored under one moves to this
+    /// variant.
+    pub replaces: Option<Vec<String>>,
     /// Keys of the base's quantities it lacks.
     pub drop: Option<Vec<String>>,
     /// Quantities it adds in full: one under a dropped key takes its place, the rest follow the

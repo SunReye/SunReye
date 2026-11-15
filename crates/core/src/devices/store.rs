@@ -473,3 +473,12 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     })?
     .collect()
 }
+
+/// Moves the devices of the retired profile `old` to `variant` of `family`.
+pub fn rehome(db: &Db, old: &str, family: &str, variant: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE device SET profile = ?2, variant = ?3 WHERE profile = ?1",
+        params![old, family, variant],
+    )?;
+    Ok(())
+}

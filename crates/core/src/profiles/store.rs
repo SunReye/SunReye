@@ -6,6 +6,7 @@ use std::time::SystemTime;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::Retired;
 use crate::changes::{self, Action, Entry, Subject};
 
 /// Who adds an index or applies an update: the one admin (ADR 9).
@@ -159,4 +160,30 @@ pub fn changed(db: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
     db.prepare("SELECT profile, setting FROM profile_setting_changed")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect()
+}
+
+/// Moves what is stored under each retired profile id to the variant that replaces it: devices
+/// and changed-setting marks move, fetched copies and waiting updates go.
+pub fn retire(db: &Connection, retired: &[Retired]) -> rusqlite::Result<()> {
+    let tx = db.unchecked_transaction()?;
+    for Retired {
+        old,
+        family,
+        variant,
+    } in retired
+    {
+        crate::devices::rehome(&tx, old, family, variant)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO profile_setting_changed (profile, setting)
+             SELECT ?2, setting FROM profile_setting_changed WHERE profile = ?1",
+            params![old, family],
+        )?;
+        tx.execute(
+            "DELETE FROM profile_setting_changed WHERE profile = ?1",
+            [old],
+        )?;
+        tx.execute("DELETE FROM fetched_profile WHERE id = ?1", [old])?;
+        tx.execute("DELETE FROM profile_update WHERE id = ?1", [old])?;
+    }
+    tx.commit()
 }

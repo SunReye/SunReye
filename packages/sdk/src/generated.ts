@@ -106,6 +106,11 @@ inverter?: Inverter,
  */
 settings?: Record<string, Range>, 
 /**
+ * Ids of retired profiles of this device type: a device stored under one moves to this
+ * variant.
+ */
+replaces?: Array<string>, 
+/**
  * Keys of the base's quantities it lacks.
  */
 drop?: Array<string>, 

@@ -165,8 +165,14 @@ const MODELS: readonly Omit<Model, "id" | "version">[] = [
 
 export default defineFamily(
   sg05lp3(FAMILY),
-  MODELS.map((model) => ({
-    id: `${(model.rated ?? 0) / 1000}k`,
-    profile: sg05lp3({ ...model, id: FAMILY.id, version: FAMILY.version }),
-  })),
+  MODELS.map((model) => {
+    const kw = `${(model.rated ?? 0) / 1000}k`;
+
+    return {
+      id: kw,
+      profile: sg05lp3({ ...model, id: FAMILY.id, version: FAMILY.version }),
+      // The per-model profile each variant was before the family was one file.
+      replaces: [`deye-sun${kw}-sg05lp3`],
+    };
+  }),
 );

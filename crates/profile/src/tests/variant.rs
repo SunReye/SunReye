@@ -425,3 +425,33 @@ fn a_variant_replaces_a_quantity_but_never_a_setting() {
     );
     assert!(refusal(&whole).contains("unknown field `key`"));
 }
+
+#[test]
+fn a_variant_lists_the_retired_profiles_it_replaces() {
+    let doc = first_variant("replaces", &json!(["family-5k", "family-5000"]));
+
+    let family = load(&doc).unwrap();
+
+    assert_eq!(
+        family.resolve(Some("5k")).replaces(),
+        ["family-5k", "family-5000"]
+    );
+    assert_eq!(family.resolve(Some("15k")).replaces(), [] as [&str; 0]);
+    assert_eq!(family.replaces(), [] as [&str; 0]);
+}
+
+#[test]
+fn a_retired_profile_is_replaced_by_one_variant_and_never_the_family_itself() {
+    let mut twice = first_variant("replaces", &json!(["family-old"]));
+    twice["variants"][1]["replaces"] = json!(["family-old"]);
+    let own = first_variant("replaces", &json!(["family"]));
+
+    assert_eq!(
+        refusal(&twice),
+        "variant `15k`: variant `5k` already replaces `family-old`"
+    );
+    assert_eq!(
+        refusal(&own),
+        "variant `5k`: it cannot replace its own family"
+    );
+}

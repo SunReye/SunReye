@@ -3,7 +3,7 @@
   "id": "deye-sg05lp3",
   "name": "SG05LP3",
   "manufacturer": "Deye",
-  "version": "2.2.10",
+  "version": "2.2.11",
   "requires": [
     "modbus",
     "u16",
@@ -1288,6 +1288,9 @@
     {
       "id": "5k",
       "name": "SUN-5K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun5k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1349,6 +1352,9 @@
     {
       "id": "6k",
       "name": "SUN-6K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun6k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1410,6 +1416,9 @@
     {
       "id": "8k",
       "name": "SUN-8K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun8k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1471,6 +1480,9 @@
     {
       "id": "10k",
       "name": "SUN-10K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun10k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1532,6 +1544,9 @@
     {
       "id": "12k",
       "name": "SUN-12K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun12k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1593,6 +1608,9 @@
     {
       "id": "14k",
       "name": "SUN-14K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun14k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1633,6 +1651,9 @@
     {
       "id": "15k",
       "name": "SUN-15K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun15k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1673,6 +1694,9 @@
     {
       "id": "16k",
       "name": "SUN-16K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun16k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1713,6 +1737,9 @@
     {
       "id": "18k",
       "name": "SUN-18K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun18k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1753,6 +1780,9 @@
     {
       "id": "20k",
       "name": "SUN-20K-SG05LP3-EU-SM2",
+      "replaces": [
+        "deye-sun20k-sg05lp3"
+      ],
       "identify": [
         {
           "register": 20,

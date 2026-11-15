@@ -88,3 +88,13 @@ test("a member whose quantities a variant cannot order is refused", () => {
     "variant 5k orders its quantities apart from the base",
   );
 });
+
+test("a member's retired profile ids reach its variant, which the loader takes", () => {
+  const family = defineFamily(model("Family", 2, 350), [
+    { id: "5k", profile: model("5K", 1, 120, 5000), replaces: ["family-5k"] },
+    { id: "20k", profile: model("20K", 2, 350, 20_000) },
+  ]);
+
+  expect(family.variants?.map((v) => v.replaces)).toEqual([["family-5k"], undefined]);
+  expect(wasm.lint(JSON.stringify(family))).toEqual([]);
+});

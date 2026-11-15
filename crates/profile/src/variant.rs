@@ -26,8 +26,20 @@ pub fn compile(base: &ProfileDoc, docs: Vec<VariantDoc>) -> Result<Vec<Arc<Profi
         if variants.iter().any(|v| v.variant() == Some(id.as_str())) {
             return Err(refuse("the id is declared twice".into()));
         }
+        let replaces = doc.replaces.clone().unwrap_or_default();
+        if replaces.contains(&base.id) {
+            return Err(refuse("it cannot replace its own family".into()));
+        }
+        let taken = |old: &String| variants.iter().find(|v| v.replaces().contains(old));
+        if let Some((old, other)) = replaces.iter().find_map(|old| Some((old, taken(old)?))) {
+            let other = other.variant().unwrap_or_default();
+            return Err(refuse(format!(
+                "variant `{other}` already replaces `{old}`"
+            )));
+        }
         let merged = merge(base.clone(), doc).map_err(refuse)?;
-        let variant = Profile::load_variant(merged, &id).map_err(|e| refuse(e.to_string()))?;
+        let variant =
+            Profile::load_variant(merged, &id, replaces).map_err(|e| refuse(e.to_string()))?;
         if let Some((base, own)) = base.inverter.as_ref().zip(variant.inverter())
             && let Some(problem) = exceeds(base, own)
         {

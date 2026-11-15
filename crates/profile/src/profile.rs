@@ -40,6 +40,8 @@ pub struct Profile {
     variant: Option<String>,
     /// A family's variants, each loaded whole.
     variants: Vec<Arc<Self>>,
+    /// Retired profile ids a variant replaces.
+    replaces: Vec<String>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -416,12 +418,17 @@ impl Profile {
     }
 
     /// Variant `id` of a family, from the base merged with its overrides.
-    pub(crate) fn load_variant(doc: ProfileDoc, id: &str) -> Result<Self, LoadError> {
+    pub(crate) fn load_variant(
+        doc: ProfileDoc,
+        id: &str,
+        replaces: Vec<String>,
+    ) -> Result<Self, LoadError> {
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
         let mut variant = Self::compile(doc, true)?;
         variant.variant = Some(id.to_owned());
+        variant.replaces = replaces;
         Ok(variant)
     }
 
@@ -466,6 +473,7 @@ impl Profile {
             chain: None,
             variant: None,
             variants: Vec::new(),
+            replaces: Vec::new(),
         })
     }
 
@@ -473,6 +481,13 @@ impl Profile {
     #[must_use]
     pub fn variant(&self) -> Option<&str> {
         self.variant.as_deref()
+    }
+
+    /// The ids of retired profiles a variant replaces (ADR 5): a device stored under one is this
+    /// variant of its family. Empty for a base.
+    #[must_use]
+    pub fn replaces(&self) -> &[String] {
+        &self.replaces
     }
 
     /// A family's variants in file order; empty for any other profile.

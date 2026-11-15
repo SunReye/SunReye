@@ -354,6 +354,17 @@ pub async fn registered(database: &Database) -> Result<Vec<Device>, storage::Err
     database.run(store::devices).await
 }
 
+/// Moves every device stored under the retired profile id `old` to `variant` of `family` (ADR 5);
+/// its id, by which its history is stored, stays.
+pub(crate) fn rehome(
+    db: &rusqlite::Connection,
+    old: &str,
+    family: &str,
+    variant: &str,
+) -> rusqlite::Result<()> {
+    store::rehome(db, old, family, variant)
+}
+
 impl Devices {
     /// Starts polling every configured device, and keeps `inverters` to the devices whose profile
     /// describes an inverter. Must be called inside a Tokio runtime.

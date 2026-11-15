@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3",
   "name": "SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "requires": [
     "modbus",
     "u16",
@@ -715,6 +715,9 @@
     {
       "id": "5k",
       "name": "SUN-5K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-5k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -801,6 +804,9 @@
     {
       "id": "6k",
       "name": "SUN-6K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-6k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -887,6 +893,9 @@
     {
       "id": "8k",
       "name": "SUN-8K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-8k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -973,6 +982,9 @@
     {
       "id": "10k",
       "name": "SUN-10K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-10k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1059,6 +1071,9 @@
     {
       "id": "12k",
       "name": "SUN-12K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-12k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1143,6 +1158,9 @@
     {
       "id": "15k",
       "name": "SUN-15K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-15k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1227,6 +1245,9 @@
     {
       "id": "20k",
       "name": "SUN-20K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-20k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1274,6 +1295,9 @@
     {
       "id": "25k",
       "name": "SUN-25K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-25k"
+      ],
       "identify": [
         {
           "register": 20,
