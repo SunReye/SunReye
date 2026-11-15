@@ -575,28 +575,28 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.maximum_grid_charge_current",
     role: "extra.settings_battery_maximum_grid_charge_current",
-    kind: "setting",
+    kind: "held",
     register: 128,
     type: "u16",
   },
   {
     key: "settings.solar_sell_max_power",
     role: "extra.settings_solar_sell_max_power",
-    kind: "setting",
+    kind: "held",
     register: 143,
     type: "u16",
   },
   {
     key: "settings.solar_sell",
     role: "extra.settings_solar_sell",
-    kind: "setting",
+    kind: "held",
     register: 145,
     type: "u16",
   },
   {
     key: "settings.battery.capacity",
     role: "extra.settings_battery_capacity",
-    kind: "setting",
+    kind: "held",
     register: 102,
     type: "u16",
     range: {
@@ -607,7 +607,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.shutdown_soc",
     role: "extra.settings_battery_shutdown_soc",
-    kind: "setting",
+    kind: "held",
     register: 115,
     type: "u16",
     range: {
@@ -618,7 +618,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.restart_soc",
     role: "extra.settings_battery_restart_soc",
-    kind: "setting",
+    kind: "held",
     register: 116,
     type: "u16",
     range: {
@@ -629,7 +629,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.low_soc",
     role: "extra.settings_battery_low_soc",
-    kind: "setting",
+    kind: "held",
     register: 117,
     type: "u16",
     range: {
@@ -640,7 +640,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge_start_soc",
     role: "extra.settings_battery_generator_charge_start_soc",
-    kind: "setting",
+    kind: "held",
     register: 124,
     type: "u16",
     range: {
@@ -651,14 +651,14 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge_current",
     role: "extra.settings_battery_generator_charge_current",
-    kind: "setting",
+    kind: "held",
     register: 125,
     type: "u16",
   },
   {
     key: "settings.battery.grid_charge_start_soc",
     role: "extra.settings_battery_grid_charge_start_soc",
-    kind: "setting",
+    kind: "held",
     register: 127,
     type: "u16",
     range: {
@@ -669,63 +669,63 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge",
     role: "extra.settings_battery_generator_charge",
-    kind: "setting",
+    kind: "held",
     register: 129,
     type: "u16",
   },
   {
     key: "timeofuse.selling",
     role: "extra.timeofuse_selling",
-    kind: "setting",
+    kind: "held",
     register: 146,
     type: "u16",
   },
   {
     key: "timeofuse.time.1",
     role: "extra.timeofuse_time_1",
-    kind: "setting",
+    kind: "held",
     register: 148,
     type: "u16",
   },
   {
     key: "timeofuse.time.2",
     role: "extra.timeofuse_time_2",
-    kind: "setting",
+    kind: "held",
     register: 149,
     type: "u16",
   },
   {
     key: "timeofuse.time.3",
     role: "extra.timeofuse_time_3",
-    kind: "setting",
+    kind: "held",
     register: 150,
     type: "u16",
   },
   {
     key: "timeofuse.time.4",
     role: "extra.timeofuse_time_4",
-    kind: "setting",
+    kind: "held",
     register: 151,
     type: "u16",
   },
   {
     key: "timeofuse.time.5",
     role: "extra.timeofuse_time_5",
-    kind: "setting",
+    kind: "held",
     register: 152,
     type: "u16",
   },
   {
     key: "timeofuse.time.6",
     role: "extra.timeofuse_time_6",
-    kind: "setting",
+    kind: "held",
     register: 153,
     type: "u16",
   },
   {
     key: "timeofuse.power.1",
     role: "extra.timeofuse_power_1",
-    kind: "setting",
+    kind: "held",
     register: 154,
     type: "u16",
     range: {
@@ -736,7 +736,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.power.2",
     role: "extra.timeofuse_power_2",
-    kind: "setting",
+    kind: "held",
     register: 155,
     type: "u16",
     range: {
@@ -747,7 +747,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.power.3",
     role: "extra.timeofuse_power_3",
-    kind: "setting",
+    kind: "held",
     register: 156,
     type: "u16",
     range: {
@@ -758,7 +758,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.power.4",
     role: "extra.timeofuse_power_4",
-    kind: "setting",
+    kind: "held",
     register: 157,
     type: "u16",
     range: {
@@ -769,7 +769,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.power.5",
     role: "extra.timeofuse_power_5",
-    kind: "setting",
+    kind: "held",
     register: 158,
     type: "u16",
     range: {
@@ -780,7 +780,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.power.6",
     role: "extra.timeofuse_power_6",
-    kind: "setting",
+    kind: "held",
     register: 159,
     type: "u16",
     range: {
@@ -791,7 +791,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.1",
     role: "extra.timeofuse_voltage_1",
-    kind: "setting",
+    kind: "held",
     register: 160,
     type: "u16",
     scale: 0.01,
@@ -799,7 +799,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.2",
     role: "extra.timeofuse_voltage_2",
-    kind: "setting",
+    kind: "held",
     register: 161,
     type: "u16",
     scale: 0.01,
@@ -807,7 +807,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.3",
     role: "extra.timeofuse_voltage_3",
-    kind: "setting",
+    kind: "held",
     register: 162,
     type: "u16",
     scale: 0.01,
@@ -815,7 +815,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.4",
     role: "extra.timeofuse_voltage_4",
-    kind: "setting",
+    kind: "held",
     register: 163,
     type: "u16",
     scale: 0.01,
@@ -823,7 +823,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.5",
     role: "extra.timeofuse_voltage_5",
-    kind: "setting",
+    kind: "held",
     register: 164,
     type: "u16",
     scale: 0.01,
@@ -831,7 +831,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.6",
     role: "extra.timeofuse_voltage_6",
-    kind: "setting",
+    kind: "held",
     register: 165,
     type: "u16",
     scale: 0.01,
@@ -839,7 +839,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.1",
     role: "extra.timeofuse_soc_1",
-    kind: "setting",
+    kind: "held",
     register: 166,
     type: "u16",
     range: {
@@ -850,7 +850,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.2",
     role: "extra.timeofuse_soc_2",
-    kind: "setting",
+    kind: "held",
     register: 167,
     type: "u16",
     range: {
@@ -861,7 +861,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.3",
     role: "extra.timeofuse_soc_3",
-    kind: "setting",
+    kind: "held",
     register: 168,
     type: "u16",
     range: {
@@ -872,7 +872,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.4",
     role: "extra.timeofuse_soc_4",
-    kind: "setting",
+    kind: "held",
     register: 169,
     type: "u16",
     range: {
@@ -883,7 +883,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.5",
     role: "extra.timeofuse_soc_5",
-    kind: "setting",
+    kind: "held",
     register: 170,
     type: "u16",
     range: {
@@ -894,7 +894,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.soc.6",
     role: "extra.timeofuse_soc_6",
-    kind: "setting",
+    kind: "held",
     register: 171,
     type: "u16",
     range: {
@@ -905,42 +905,42 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.enabled.1",
     role: "extra.timeofuse_enabled_1",
-    kind: "setting",
+    kind: "held",
     register: 172,
     type: "u16",
   },
   {
     key: "timeofuse.enabled.2",
     role: "extra.timeofuse_enabled_2",
-    kind: "setting",
+    kind: "held",
     register: 173,
     type: "u16",
   },
   {
     key: "timeofuse.enabled.3",
     role: "extra.timeofuse_enabled_3",
-    kind: "setting",
+    kind: "held",
     register: 174,
     type: "u16",
   },
   {
     key: "timeofuse.enabled.4",
     role: "extra.timeofuse_enabled_4",
-    kind: "setting",
+    kind: "held",
     register: 175,
     type: "u16",
   },
   {
     key: "timeofuse.enabled.5",
     role: "extra.timeofuse_enabled_5",
-    kind: "setting",
+    kind: "held",
     register: 176,
     type: "u16",
   },
   {
     key: "timeofuse.enabled.6",
     role: "extra.timeofuse_enabled_6",
-    kind: "setting",
+    kind: "held",
     register: 177,
     type: "u16",
   },

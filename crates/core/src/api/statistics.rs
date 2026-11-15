@@ -259,6 +259,8 @@ fn figures(date: Date, bounds: &Range<SystemTime>, aggregate: Aggregate) -> Figu
             figures.integral = Some(integral);
         }
         Aggregate::Counter { delta, .. } => figures.delta = Some(delta),
+        // A status or held value has no figure to compare.
+        Aggregate::Held { .. } => {}
     }
     figures
 }

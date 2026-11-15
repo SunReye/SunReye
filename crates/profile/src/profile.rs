@@ -2,10 +2,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json::Value;
 
 use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
@@ -39,7 +39,9 @@ pub struct Profile {
     /// Which of its family's variants it is; `None` for the base.
     variant: Option<String>,
     /// A family's variants, each loaded whole.
-    variants: Vec<Self>,
+    variants: Vec<Arc<Self>>,
+    /// Retired profile ids a variant replaces.
+    replaces: Vec<String>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -88,7 +90,7 @@ pub struct Quantity {
 /// Why a deadband does not fit a quantity (ADR 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeadbandRefusal {
-    /// Not a measurement: a counter, enum or setting stores every change.
+    /// Not a measurement: a counter, enum or held value stores every change.
     Kind,
     /// Below the quantisation step, or not a finite number.
     Step,
@@ -110,7 +112,7 @@ impl Quantity {
         self.kind
     }
 
-    /// Its role's unit, or the one an extra declares; none for a status or setting (ADR 4).
+    /// Its role's unit, or the one an extra declares; none for a status or held value (ADR 4).
     #[must_use]
     pub const fn unit(&self) -> Option<Unit> {
         self.unit
@@ -398,8 +400,7 @@ impl Profile {
         {
             return Err(LoadError::MissingCapability(missing));
         }
-        let file: Value = serde_json::from_str(json).map_err(|e| malformed(&e))?;
-        let mut doc = ProfileDoc::deserialize(&file).map_err(|e| malformed(&e))?;
+        let mut doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
@@ -411,19 +412,23 @@ impl Profile {
                 "variants need an identify probe".into(),
             ));
         }
-        let mut family = Self::compile(doc, true)?;
-        family.variants = crate::variant::compile(&file, &variants)?;
+        let mut family = Self::compile(doc.clone(), true)?;
+        family.variants = crate::variant::compile(&doc, variants)?;
         Ok(family)
     }
 
-    /// Variant `id` of a family, from the base's file merged with its overrides.
-    pub(crate) fn load_variant(file: &Value, id: &str) -> Result<Self, LoadError> {
-        let doc = ProfileDoc::deserialize(file).map_err(|e| malformed(&e))?;
+    /// Variant `id` of a family, from the base merged with its overrides.
+    pub(crate) fn load_variant(
+        doc: ProfileDoc,
+        id: &str,
+        replaces: Vec<String>,
+    ) -> Result<Self, LoadError> {
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
         let mut variant = Self::compile(doc, true)?;
         variant.variant = Some(id.to_owned());
+        variant.replaces = replaces;
         Ok(variant)
     }
 
@@ -468,6 +473,7 @@ impl Profile {
             chain: None,
             variant: None,
             variants: Vec::new(),
+            replaces: Vec::new(),
         })
     }
 
@@ -477,19 +483,39 @@ impl Profile {
         self.variant.as_deref()
     }
 
+    /// The ids of retired profiles a variant replaces (ADR 5): a device stored under one is this
+    /// variant of its family. Empty for a base.
+    #[must_use]
+    pub fn replaces(&self) -> &[String] {
+        &self.replaces
+    }
+
     /// A family's variants in file order; empty for any other profile.
     #[must_use]
-    pub fn variants(&self) -> &[Self] {
+    pub fn variants(&self) -> &[Arc<Self>] {
         &self.variants
     }
 
+    /// Whether a device may be stored as variant `id`: one the family declares, or for a SunSpec
+    /// profile the id of the model after the common model (ADR 5).
+    #[must_use]
+    pub fn has_variant(&self, id: &str) -> bool {
+        self.declared(id).is_some() || (self.reads_sunspec() && id.parse::<u16>().is_ok())
+    }
+
+    /// The variant `id` the family declares.
+    #[must_use]
+    pub fn declared(&self, id: &str) -> Option<&Arc<Self>> {
+        self.variants.iter().find(|v| v.variant() == Some(id))
+    }
+
     /// Variant `variant`; the base, with the family's largest limits, for `None` or an id it does
-    /// not declare.
+    /// not declare, such as a SunSpec model's, which binds at connect.
     #[must_use]
     pub fn resolve(&self, variant: Option<&str>) -> &Self {
         variant
-            .and_then(|id| self.variants.iter().find(|v| v.variant() == Some(id)))
-            .unwrap_or(self)
+            .and_then(|id| self.declared(id))
+            .map_or(self, |variant| variant)
     }
 
     /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
@@ -541,6 +567,7 @@ impl Profile {
     pub fn identify(&self, registers: &Registers) -> Option<&Self> {
         self.variants
             .iter()
+            .map(|v| &**v)
             .find(|v| identify::matches(&v.identify, registers))
             .or_else(|| identify::matches(&self.identify, registers).then_some(self))
     }

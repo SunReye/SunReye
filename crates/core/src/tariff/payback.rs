@@ -42,7 +42,7 @@ impl Tariffs {
             .iter()
             .filter_map(|day| match day.aggregate {
                 Aggregate::Measurement { integral, .. } => Some(integral),
-                Aggregate::Counter { .. } => None,
+                Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
             })
             .sum();
         Ok((investment, savings))

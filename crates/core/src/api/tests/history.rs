@@ -249,6 +249,57 @@ async fn a_series_never_exceeds_1500_points() {
     );
 }
 
+/// A status or held value has no mean: each hour and day reads as the last value it held
+/// (ADR 3), carried forward through windows without a change.
+#[tokio::test]
+async fn a_held_value_and_a_status_carry_the_last_value_forward_at_every_tier() {
+    for kind in [RoleKind::Held, RoleKind::Status] {
+        let (_dir, core, set_cookie) = core(kind, 60).await;
+        // 50 until half past the first hour, then 80, read for three hours and then lost.
+        let readings = steady(0, 10_800, 60, |t| if t < 1800 { 50.0 } else { 80.0 });
+        core.store(readings).await;
+
+        let (_, hours) = core.history(&set_cookie, 0, 2 * 86_400).await;
+        let (_, days) = core.history(&set_cookie, 0, 1500 * 3600).await;
+
+        let hour = |start: u64| json!({ "start": instant(start), "end": instant(start + 3600), "mean": 80.0 });
+        assert_eq!(
+            hours,
+            json!({ "tier": "hour", "points": [hour(0), hour(3600), hour(7200)] }),
+            "{kind:?}"
+        );
+        assert_eq!(
+            days,
+            json!({
+                "tier": "day",
+                "points": [
+                    { "start": "2026-08-26T00:00:00Z", "end": "2026-08-27T00:00:00Z", "mean": 80.0 },
+                ],
+            }),
+            "{kind:?}"
+        );
+    }
+}
+
+/// The hour in progress reads as the value in force, not a mean of the hour so far.
+#[tokio::test]
+async fn a_held_values_hour_in_progress_reads_as_the_value_in_force() {
+    let (_dir, core, set_cookie) = core(RoleKind::Held, 60).await;
+    // 50 for three and a quarter hours, then 80 for another quarter, still being read.
+    let readings = steady(0, 12_600, 60, |t| if t < 11_700 { 50.0 } else { 80.0 });
+    core.store_until(readings, 12_660).await;
+
+    let (_, body) = core.history(&set_cookie, 0, 2 * 86_400).await;
+
+    let means: Vec<_> = body["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["mean"].as_f64().unwrap())
+        .collect();
+    assert_eq!(means, [50.0, 50.0, 50.0, 80.0]);
+}
+
 fn refused(code: &str) -> (StatusCode, String) {
     let status = if code == "history.range" {
         StatusCode::UNPROCESSABLE_ENTITY

@@ -14,6 +14,8 @@ export interface Member {
   /** 1 to 16 lowercase letters, digits or hyphens, such as `15k`. */
   readonly id: string;
   readonly profile: Frozen<Profile>;
+  /** Ids of retired profiles of this device type; a device stored under one moves to the variant. */
+  readonly replaces?: readonly string[];
 }
 
 /** Fields a variant never overrides; `id` and `version` are the family's. */
@@ -116,6 +118,7 @@ function variant(base: Frozen<Profile>, member: Member): Frozen<Variant> {
   return {
     id: member.id,
     name: profile.name,
+    ...(member.replaces !== undefined && { replaces: member.replaces }),
     ...(values.length > 0 && { identify: values }),
     ...inverter(base, member),
     ...(Object.keys(ranges).length > 0 && { settings: ranges }),

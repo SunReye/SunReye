@@ -80,6 +80,14 @@ impl Held {
 
 type Served = HashMap<String, Held>;
 
+/// A retired profile id and the variant of a family that replaces it (ADR 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Retired {
+    old: String,
+    family: String,
+    variant: String,
+}
+
 /// Settings applied updates added or changed, as (profile, setting).
 type Changed = HashSet<(String, String)>;
 
@@ -139,11 +147,8 @@ impl Catalogue {
     #[must_use]
     pub fn resolve(&self, id: &str, variant: Option<&str>) -> Option<Arc<Profile>> {
         let family = self.get(id)?;
-        let resolved = family.resolve(variant);
-        if resolved.variant().is_none() {
-            return Some(family);
-        }
-        Some(Arc::new(resolved.clone()))
+        let declared = variant.and_then(|v| family.declared(v)).cloned();
+        Some(declared.unwrap_or(family))
     }
 
     /// Whether profile `id` is official: bundled, or its signature verifies (ADR 8).
@@ -155,6 +160,32 @@ impl Catalogue {
     fn held(&self, id: &str) -> Option<Held> {
         let profiles = crate::read(&self.served);
         profiles.get(id).cloned()
+    }
+
+    /// Every retired profile id a served variant replaces.
+    fn retired(&self) -> Vec<Retired> {
+        let variants = |family: Arc<Profile>| {
+            let replaced = |variant: &Arc<Profile>| {
+                let id = variant.variant().unwrap_or_default();
+                let retired = variant.replaces().iter().map(|old| Retired {
+                    old: old.clone(),
+                    family: family.id.clone(),
+                    variant: id.to_owned(),
+                });
+                retired.collect::<Vec<_>>()
+            };
+            family
+                .variants()
+                .iter()
+                .flat_map(replaced)
+                .collect::<Vec<_>>()
+        };
+        self.profiles().into_iter().flat_map(variants).collect()
+    }
+
+    fn forget(&self, retired: &[Retired]) {
+        let mut profiles = crate::write(&self.served);
+        profiles.retain(|id, _| !retired.iter().any(|r| r.old == *id));
     }
 
     fn replace(&self, profiles: Served) {
@@ -309,6 +340,7 @@ impl Profiles {
         };
         let trust = profiles.state.lock().await.trust;
         profiles.reload(trust).await?;
+        profiles.retire().await.map_err(Error::Storage)?;
         let changed = profiles
             .database
             .run(store::changed)
@@ -318,6 +350,19 @@ impl Profiles {
             profiles.catalogue.mark(&id, vec![setting]);
         }
         Ok(profiles)
+    }
+
+    /// Moves every device stored under a retired profile id to the variant that replaces it, with
+    /// its changed-setting marks, and drops the retired profile's stored copies.
+    async fn retire(&self) -> Result<(), storage::Error> {
+        let retired = self.catalogue.retired();
+        if retired.is_empty() {
+            return Ok(());
+        }
+        self.catalogue.forget(&retired);
+        self.database
+            .run(move |db| store::retire(db, &retired))
+            .await
     }
 
     /// The profiles served; it follows every check.

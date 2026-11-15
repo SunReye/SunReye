@@ -345,7 +345,7 @@ fn a_rating_no_variant_declares_is_read_as_the_familys_base() {
 }
 
 #[test]
-fn settings_registers_are_settings_and_extras_repeating_a_role_are_kept_live_only() {
+fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_only() {
     let repeats = [
         "extra.grid_import_power",
         "extra.grid_export_power",
@@ -357,16 +357,10 @@ fn settings_registers_are_settings_and_extras_repeating_a_role_are_kept_live_onl
         for q in profile.quantities() {
             let held =
                 q.role.starts_with("extra.settings_") || q.role.starts_with("extra.timeofuse_");
-            assert_eq!(
-                q.kind() == RoleKind::Setting,
-                held,
-                "{} {}",
-                profile.id,
-                q.key
-            );
+            assert_eq!(q.kind() == RoleKind::Held, held, "{} {}", profile.id, q.key);
             let live = repeats.contains(&q.role.as_str());
             assert_eq!(
-                q.storage() == StorageClass::None,
+                q.storage() == StorageClass::Live,
                 live,
                 "{} {}",
                 profile.id,

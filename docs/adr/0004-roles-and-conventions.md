@@ -8,7 +8,7 @@ Every profile maps its native quantities to roles; storage, the API, the SPA and
 
 ## Decision
 
-Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries an MPPT input, string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total), `status` (an enum) and `setting` (a held value, stored on every change). A named role's kind is fixed here.
+Roles are dotted lowercase names. Each has a kind and a unit, and a sign convention if signed. An indexed role carries an MPPT input, string or phase index. Kinds: `measurement`, `counter` (a monotonic lifetime total), `status` (an enum) and `held` (a value the device holds, such as a configured limit, stored on every change). A named role's kind is fixed here.
 
 | Role | Unit | Kind | Signed |
 | --- | --- | --- | --- |

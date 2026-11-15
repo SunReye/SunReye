@@ -159,7 +159,7 @@ fn a_family_reads_one_probe_plan_for_every_variant() {
     let plans: Vec<_> = family
         .variants()
         .iter()
-        .map(Profile::identify_plan)
+        .map(|v| v.identify_plan())
         .collect();
 
     assert!(plans.iter().all(|plan| *plan == family.identify_plan()));
@@ -344,5 +344,114 @@ fn a_capability_only_a_variant_uses_is_required_too() {
     assert_eq!(
         refusal(&doc),
         "variant `5k`: `requires` lacks `deadband`, which the profile uses"
+    );
+}
+
+#[test]
+fn a_family_has_the_variants_it_declares_and_sunspec_any_model_id() {
+    let family = load(&family()).unwrap();
+    let sunspec = Profile::load(include_str!("../../../../profiles/sunspec.json")).unwrap();
+
+    assert!(family.has_variant("5k"));
+    assert!(!family.has_variant("99k"));
+    assert!(!family.has_variant("103"), "not a SunSpec profile");
+    assert!(sunspec.has_variant("103"));
+    assert!(!sunspec.has_variant("three-phase"));
+}
+
+/// The first variant's inverter section with `change` applied.
+fn first_inverter(change: impl FnOnce(&mut Value)) -> Value {
+    let mut doc = family();
+    change(&mut doc["variants"][0]["inverter"]);
+    doc
+}
+
+#[test]
+fn a_variant_whose_limits_exceed_the_bases_is_refused() {
+    let rating = first_inverter(|i| i["acRating"] = json!(20_001));
+    let uncapped = first_inverter(|i| {
+        i.as_object_mut().unwrap().remove("acRating");
+    });
+    let input = first_inverter(|i| i["maxInputVoltage"] = json!(801));
+    let current = first_inverter(|i| i["mppt"][0]["maxCurrent"] = json!(36.5));
+    let voltage = first_inverter(|i| i["mppt"][0]["maxVoltage"] = json!(651));
+    let window = first_inverter(|i| i["mppt"][0]["minVoltage"] = json!(159));
+    let start = first_inverter(|i| i["mppt"][0]["startVoltage"] = json!(159));
+
+    assert_eq!(
+        refusal(&rating),
+        "variant `5k`: its AC rating exceeds the base's"
+    );
+    assert_eq!(
+        refusal(&uncapped),
+        "variant `5k`: its AC rating exceeds the base's"
+    );
+    assert_eq!(
+        refusal(&input),
+        "variant `5k`: its maximum input voltage exceeds the base's"
+    );
+    for doc in [current, voltage, window, start] {
+        assert_eq!(
+            refusal(&doc),
+            "variant `5k`: MPPT input 1 exceeds the base's limits"
+        );
+    }
+}
+
+#[test]
+fn a_variant_may_declare_an_input_the_base_does_not_limit() {
+    let doc = first_inverter(|i| {
+        let input = i["mppt"][0].clone();
+        i["mppt"].as_array_mut().unwrap().push(input);
+    });
+
+    assert_eq!(load(&doc).map(|_| ()), Ok(()));
+}
+
+#[test]
+fn a_variant_replaces_a_quantity_but_never_a_setting() {
+    let dropped = first_variant("drop", &json!(["pv2", "total", "current"]));
+    let whole = first_variant(
+        "settings",
+        &json!({ "current": {
+            "key": "current", "type": "u16", "range": { "min": 0, "max": 120 }, "minInterval": 1,
+            "recipe": [{ "write": { "register": 109 } }], "readBack": { "register": 109 },
+        } }),
+    );
+
+    assert_eq!(
+        refusal(&dropped),
+        "variant `5k`: `current` is a setting: a variant changes only its range"
+    );
+    assert!(refusal(&whole).contains("unknown field `key`"));
+}
+
+#[test]
+fn a_variant_lists_the_retired_profiles_it_replaces() {
+    let doc = first_variant("replaces", &json!(["family-5k", "family-5000"]));
+
+    let family = load(&doc).unwrap();
+
+    assert_eq!(
+        family.resolve(Some("5k")).replaces(),
+        ["family-5k", "family-5000"]
+    );
+    assert_eq!(family.resolve(Some("15k")).replaces(), [] as [&str; 0]);
+    assert_eq!(family.replaces(), [] as [&str; 0]);
+}
+
+#[test]
+fn a_retired_profile_is_replaced_by_one_variant_and_never_the_family_itself() {
+    let mut twice = first_variant("replaces", &json!(["family-old"]));
+    twice["variants"][1]["replaces"] = json!(["family-old"]);
+    let own = first_variant("replaces", &json!(["family"]));
+
+    assert_eq!(
+        refusal(&twice),
+        "variant `15k`: variant `5k` already replaces `family-old`"
+    );
+    assert_eq!(
+        refusal(&own),
+        "variant `5k`: it cannot replace its own family"
     );
 }

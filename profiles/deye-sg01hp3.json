@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3",
   "name": "SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "requires": [
     "modbus",
     "u16",
@@ -460,7 +460,7 @@
     {
       "key": "settings.battery.maximum_grid_charge_current",
       "role": "extra.settings_battery_maximum_grid_charge_current",
-      "kind": "setting",
+      "kind": "held",
       "register": 128,
       "type": "u16",
       "range": {
@@ -471,7 +471,7 @@
     {
       "key": "settings.solar_sell_max_power",
       "role": "extra.settings_solar_sell_max_power",
-      "kind": "setting",
+      "kind": "held",
       "register": 143,
       "type": "u16",
       "scale": 10,
@@ -483,7 +483,7 @@
     {
       "key": "settings.solar_sell",
       "role": "extra.settings_solar_sell",
-      "kind": "setting",
+      "kind": "held",
       "register": 145,
       "type": "u16"
     },
@@ -715,6 +715,9 @@
     {
       "id": "5k",
       "name": "SUN-5K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-5k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -766,7 +769,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -777,7 +780,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -801,6 +804,9 @@
     {
       "id": "6k",
       "name": "SUN-6K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-6k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -852,7 +858,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -863,7 +869,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -887,6 +893,9 @@
     {
       "id": "8k",
       "name": "SUN-8K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-8k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -938,7 +947,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -949,7 +958,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -973,6 +982,9 @@
     {
       "id": "10k",
       "name": "SUN-10K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-10k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1024,7 +1036,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -1035,7 +1047,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -1059,6 +1071,9 @@
     {
       "id": "12k",
       "name": "SUN-12K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-12k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1107,7 +1122,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -1118,7 +1133,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -1143,6 +1158,9 @@
     {
       "id": "15k",
       "name": "SUN-15K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-15k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1191,7 +1209,7 @@
         {
           "key": "settings.battery.maximum_grid_charge_current",
           "role": "extra.settings_battery_maximum_grid_charge_current",
-          "kind": "setting",
+          "kind": "held",
           "register": 128,
           "type": "u16",
           "range": {
@@ -1202,7 +1220,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -1227,6 +1245,9 @@
     {
       "id": "20k",
       "name": "SUN-20K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-20k"
+      ],
       "identify": [
         {
           "register": 20,
@@ -1260,7 +1281,7 @@
         {
           "key": "settings.solar_sell_max_power",
           "role": "extra.settings_solar_sell_max_power",
-          "kind": "setting",
+          "kind": "held",
           "register": 143,
           "type": "u16",
           "scale": 10,
@@ -1274,6 +1295,9 @@
     {
       "id": "25k",
       "name": "SUN-25K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-25k"
+      ],
       "identify": [
         {
           "register": 20,

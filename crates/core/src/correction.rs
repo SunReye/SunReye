@@ -331,7 +331,7 @@ impl Corrections {
                     .into_iter()
                     .filter_map(|r| match r.aggregate {
                         Aggregate::Measurement { mean, max, .. } => Some((r.start, (mean, max))),
-                        Aggregate::Counter { .. } => None,
+                        Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
                     })
                     .collect::<BTreeMap<SystemTime, (f64, f64)>>(),
             )

@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use rusqlite::{Connection, params};
 use serde::Serialize;
-use sunreye_profile::{DeadbandRefusal, Profile, Quantity, StorageClass};
+use sunreye_profile::{DeadbandRefusal, Profile, Quantity, RoleKind, StorageClass};
 use utoipa::ToSchema;
 
 use super::{ChangeRefusal, entry};
@@ -42,7 +42,7 @@ pub struct RoleDeadband {
 /// How `quantity` is stored, with the deadband `overrides` give its role; `None` when its storage
 /// class is `none`, so it is published live and never written (ADR 3).
 pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Option<Policy> {
-    if quantity.storage() == StorageClass::None {
+    if quantity.storage() == StorageClass::Live {
         return None;
     }
     let cadence = quantity.cadence();
@@ -71,7 +71,10 @@ fn resolve(quantity: &Quantity, overrides: &Overrides) -> RoleDeadband {
         quantity.cadence(),
     )
     .deadband;
-    let (deadband, source) = if let Some(&deadband) = overrides.get(&quantity.role) {
+    // An override may outlive the profile that made its role a measurement: the kind wins.
+    let measured = quantity.kind() == RoleKind::Measurement;
+    let overridden = overrides.get(&quantity.role).filter(|_| measured);
+    let (deadband, source) = if let Some(&deadband) = overridden {
         (Some(deadband), DeadbandSource::Override)
     } else if let Some(deadband) = quantity.deadband() {
         (Some(deadband), DeadbandSource::Profile)

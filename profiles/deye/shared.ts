@@ -1,4 +1,11 @@
-import type { Frozen, Identify, Quantity, Setting } from "../../packages/sdk/src/index.ts";
+import type {
+  Frozen,
+  Identify,
+  Inverter,
+  Mppt,
+  Quantity,
+  Setting,
+} from "../../packages/sdk/src/index.ts";
 
 // What Deye's SG05LP3 and SG01HP3 ranges share: the registers of Deye's three-phase protocol
 // (MODBUS RTU 三相储能通信规约 V105, https://download.axilogi.com/DEYE/Other/MODBUS_RTU.pdf).
@@ -20,6 +27,47 @@ export function identify(types: readonly number[], rated?: number): Frozen<Ident
     { register: 0, values: types },
     rated === undefined ? power : { ...power, values: [rated * 10] },
   ];
+}
+
+/** One model as its datasheet rates it. */
+export interface Datasheet<Inputs extends number> {
+  readonly name: string;
+  /** Watts of rated AC output: registers 20 and 21 report it, and the forecast caps there. */
+  readonly rated: number;
+  /** The PV inputs whose registers it reads. */
+  readonly inputs: Inputs;
+  /** Amperes: the bound of the battery current settings. */
+  readonly current: number;
+  /** Both trackers' limits, or each tracker's own. */
+  readonly mppt: Frozen<Mppt> | readonly [Frozen<Mppt>, Frozen<Mppt>];
+}
+
+/** `watts` of rated power as a variant's id, such as `15k`; a model without one is refused. */
+export function kilowatts(watts: number): string {
+  if (!(watts > 0)) throw new Error("a model needs its rated power");
+
+  return `${watts / 1000}k`;
+}
+
+/** What a family's profile takes of `sheet`: its rated power identifies the model and caps it. */
+export function modelOf<Inputs extends number>(
+  sheet: Datasheet<Inputs>,
+  maxInputVoltage: number,
+): Omit<Datasheet<Inputs>, "mppt"> & {
+  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
+} {
+  const { mppt, ...model } = sheet;
+
+  kilowatts(sheet.rated);
+
+  return {
+    ...model,
+    inverter: {
+      maxInputVoltage,
+      acRating: sheet.rated,
+      mppt: "maxCurrent" in mppt ? [mppt, mppt] : mppt,
+    },
+  };
 }
 
 /** PV input `n`'s power, voltage and current registers; the high-voltage range scales power by 10. */

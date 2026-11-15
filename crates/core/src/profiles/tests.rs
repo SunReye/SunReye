@@ -420,3 +420,67 @@ fn the_bundled_snapshot_holds_every_profile_of_the_official_index() {
         );
     }
 }
+
+/// A variant is loaded once with its family; every device of it shares that profile.
+#[test]
+fn a_variant_resolves_to_the_profile_its_family_loaded() {
+    let catalogue = super::Catalogue::bundled().unwrap();
+
+    let first = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
+    let second = catalogue.resolve("deye-sg05lp3", Some("15k")).unwrap();
+    let base = catalogue.resolve("deye-sg05lp3", Some("99k")).unwrap();
+
+    assert_eq!(first.variant(), Some("15k"));
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+    assert_eq!(base.variant(), None);
+}
+
+/// A device stored under a retired profile id moves to the variant that replaces it (ADR 5),
+/// keeping its id, by which its history is stored; no copy of the retired profile survives.
+#[tokio::test]
+async fn a_device_on_a_retired_profile_moves_to_the_variant_that_replaces_it() {
+    let plant = Plant::new();
+    let database = plant.storage.database();
+    let insert = |db: &rusqlite::Connection| {
+        db.execute_batch(
+            "INSERT INTO connection (id, name, transport, host, port)
+               VALUES (1, 'g', 'modbus-tcp', 'h', 502);
+             INSERT INTO device (id, name, connection, profile, unit) VALUES
+               (7, 'Deye', 1, 'deye-sun15k-sg05lp3', 1),
+               (8, 'Hybrid', 1, 'deye-sg01hp3-25k', 2),
+               (9, 'Family', 1, 'deye-sg05lp3', 3);
+             INSERT INTO fetched_profile (id, document) VALUES ('deye-sun15k-sg05lp3', x'7b7d');
+             INSERT INTO profile_setting_changed (profile, setting)
+               VALUES ('deye-sun15k-sg05lp3', 'work_mode');",
+        )
+    };
+    database.run(insert).await.unwrap();
+
+    let profiles = plant.open().await;
+
+    let stored = |db: &rusqlite::Connection| {
+        let devices: Vec<(u32, String, Option<String>)> = db
+            .prepare("SELECT id, profile, variant FROM device ORDER BY id")?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        let fetched: i64 =
+            db.query_row("SELECT count(*) FROM fetched_profile", [], |row| row.get(0))?;
+        Ok((devices, fetched))
+    };
+    let (devices, fetched) = database.run(stored).await.unwrap();
+    assert_eq!(
+        devices,
+        [
+            (7, "deye-sg05lp3".to_owned(), Some("15k".to_owned())),
+            (8, "deye-sg01hp3".to_owned(), Some("25k".to_owned())),
+            (9, "deye-sg05lp3".to_owned(), None),
+        ]
+    );
+    assert_eq!(fetched, 0);
+    assert!(profiles.catalogue().changed("deye-sg05lp3", "work_mode"));
+    assert!(
+        !profiles
+            .catalogue()
+            .changed("deye-sun15k-sg05lp3", "work_mode")
+    );
+}

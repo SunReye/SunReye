@@ -94,7 +94,11 @@ fn an_extra_has_the_unit_it_declares() {
 
     assert_eq!(
         units,
-        [Some(Unit::Ampere), Some(Unit::Hour), Some(Unit::None)]
+        [
+            Some(Unit::Ampere),
+            Some(Unit::Hour),
+            Some(Unit::Dimensionless)
+        ]
     );
 }
 
@@ -136,8 +140,8 @@ fn a_named_role_refuses_a_unit() {
 }
 
 #[test]
-fn a_status_or_setting_extra_refuses_a_unit() {
-    for kind in ["status", "setting"] {
+fn a_status_or_held_extra_refuses_a_unit() {
+    for kind in ["status", "held"] {
         let doc = case(&json!([
             { "key": "a", "role": "extra.a", "register": 1, "type": "u16", "kind": kind,
               "unit": "A" },

@@ -78,8 +78,16 @@ _Avoid_: Poll list
 The read that tells which profile, and which variant of it, a device answers to: a magic register such as `SunS`, or a device-type register.
 _Avoid_: Fingerprint, detection
 
+**Family**:
+The device models one profile describes together, because they differ only in ratings and limits.
+_Avoid_: Series (a series is a stored role), range, product line
+
+**Base**:
+What every model of a family shares, with the family's largest limits. A device that matches no variant is read as the base.
+_Avoid_: Default, parent, generic profile
+
 **Variant**:
-The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases, or a Deye model by its rated power. A family's profile declares each as its base with overrides; a device stores the variant's id beside the profile's, none for the base.
+The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases, or a Deye model by its rated power. A family's variant is its base with overrides.
 _Avoid_: Model (a SunSpec model is a register block)
 
 ## Quantities and storage

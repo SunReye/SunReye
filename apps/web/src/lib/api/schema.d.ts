@@ -1704,7 +1704,8 @@ export interface components {
             end: string;
             /**
              * Format: double
-             * @description The value weighted by the time it held between `start` and `end`.
+             * @description The value weighted by the time it held between `start` and `end`; for a status or a held
+             *     value in an `hour` or a `day`, the last value it held.
              */
             mean: number;
             /** @description RFC 3339, UTC. */

@@ -72,7 +72,7 @@ deadband?: number,
  */
 pollGroup?: string, };
 
-export type RoleKind = "measurement" | "counter" | "status" | "setting";
+export type RoleKind = "measurement" | "counter" | "status" | "held";
 
 export type StorageClass = "series" | "none";
 
@@ -105,6 +105,11 @@ inverter?: Inverter,
  * Ranges of the base's settings, by key.
  */
 settings?: Record<string, Range>, 
+/**
+ * Ids of retired profiles of this device type: a device stored under one moves to this
+ * variant.
+ */
+replaces?: Array<string>, 
 /**
  * Keys of the base's quantities it lacks.
  */
