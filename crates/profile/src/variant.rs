@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::document::{ProfileDoc, QuantityDoc, Range, VariantDoc, VariantIdentifyDoc};
-use crate::profile::{LoadError, Profile};
+use crate::profile::{Inverter, LoadError, Mppt, Profile};
 
 /// The longest variant id.
 const ID: usize = 16;
@@ -28,6 +28,11 @@ pub fn compile(base: &ProfileDoc, docs: Vec<VariantDoc>) -> Result<Vec<Arc<Profi
         }
         let merged = merge(base.clone(), doc).map_err(refuse)?;
         let variant = Profile::load_variant(merged, &id).map_err(|e| refuse(e.to_string()))?;
+        if let Some((base, own)) = base.inverter.as_ref().zip(variant.inverter())
+            && let Some(problem) = exceeds(base, own)
+        {
+            return Err(refuse(problem));
+        }
         if let Some(other) = variants.iter().find(|v| v.overlaps(&variant)) {
             let other = other.variant().unwrap_or_default();
             return Err(refuse(format!(
@@ -44,6 +49,34 @@ fn is_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// How `own`, a variant's limits, exceed `base`'s: the base serves a device that matches no
+/// variant, so it holds the family's largest (ADR 5). No rating is no cap; an input the base does
+/// not declare has no limit there.
+fn exceeds(base: &Inverter, own: &Inverter) -> Option<String> {
+    let cap = |inverter: &Inverter| inverter.ac_rating.unwrap_or(f64::INFINITY);
+    if cap(own) > cap(base) {
+        return Some("its AC rating exceeds the base's".into());
+    }
+    if own.max_input_voltage > base.max_input_voltage {
+        return Some("its maximum input voltage exceeds the base's".into());
+    }
+    let wider = |(own, base): &(&Mppt, &Mppt)| {
+        own.max_current > base.max_current
+            || own.max_voltage > base.max_voltage
+            || own.min_voltage < base.min_voltage
+            || own.start_voltage < base.start_voltage
+    };
+    let input = own
+        .mppt
+        .iter()
+        .zip(&base.mppt)
+        .position(|pair| wider(&pair))?;
+    Some(format!(
+        "MPPT input {} exceeds the base's limits",
+        input + 1
+    ))
 }
 
 /// `base` with the overrides of `doc`.
