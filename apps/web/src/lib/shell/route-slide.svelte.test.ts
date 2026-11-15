@@ -1,6 +1,6 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 import { createRawSnippet } from "svelte";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { motion } from "../motion/tier.svelte.ts";
@@ -149,6 +149,64 @@ test("a second change mid-slide goes on from where the screens are", async () =>
 
   await expect.poll(() => travels(screens()[2]!)).toHaveLength(1);
   expect(held(screens()[2]!, 0.5)).toBeGreaterThan(0);
+});
+
+test("a screen at rest leaves without its style being read", async () => {
+  const screen = await render(Shell, { shell: "bar", current: "/", admin: false, goto, children });
+
+  await landed();
+
+  // A read here forces the style of the whole arriving screen inside the task that mounts it.
+  const style = vi.spyOn(window, "getComputedStyle");
+  const animations = vi.spyOn(Element.prototype, "getAnimations");
+
+  onTestFinished(() => {
+    style.mockRestore();
+    animations.mockRestore();
+  });
+
+  await screen.rerender({ current: "/history" });
+
+  const read = new Set<unknown>([
+    ...style.mock.calls.map(([of]) => of),
+    ...animations.mock.contexts,
+  ]);
+
+  expect(screens()).toHaveLength(2);
+  expect(screens().filter((each) => read.has(each))).toEqual([]);
+});
+
+test("the leaving screen slides out without going inert, which would restyle all of it", async () => {
+  const screen = await shell("/");
+
+  await screen.rerender({ current: "/history" });
+
+  const [leaving] = screens();
+
+  expect(screens()).toHaveLength(2);
+  expect(leaving?.inert).toBe(false);
+  // Only an empty element may: nothing of the screen's content is restyled.
+  expect([...(leaving?.querySelectorAll("[inert]") ?? [])].map((e) => e.childNodes.length)).toEqual(
+    [0],
+  );
+});
+
+test("a press on the leaving screen reaches nothing", async () => {
+  const screen = await shell("/");
+  const pressed = vi.fn();
+
+  screen.container.addEventListener("click", () => {
+    pressed();
+  });
+  await screen.rerender({ current: "/history" });
+
+  const [leaving, arriving] = screens();
+
+  leaving?.querySelector("p")?.click();
+  expect(pressed).not.toHaveBeenCalled();
+
+  arriving?.querySelector("p")?.click();
+  expect(pressed).toHaveBeenCalledOnce();
 });
 
 test("the leaving screen keeps its place while the page scrolls to the next one's", async () => {
