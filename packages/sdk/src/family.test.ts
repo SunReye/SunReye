@@ -79,6 +79,39 @@ test("a member that differs in what a variant cannot override is refused", () =>
   );
 });
 
+test("what a member adds to the base's identify fields or settings is the loader's to refuse", () => {
+  const base = model("Family", 2, 350);
+  const small = model("5K", 2, 120, 5000);
+  const [current] = small.settings ?? [];
+
+  const probed = { ...small, identify: [...(small.identify ?? []), { register: 30, values: [1] }] };
+
+  const set = {
+    ...small,
+    settings: current === undefined ? [] : [current, { ...current, key: "more" }],
+  };
+
+  const refused = (profile: Frozen<Profile>) => () =>
+    wasm.lint(JSON.stringify(defineFamily(base, [{ id: "5k", profile }])));
+
+  expect(refused(probed)).toThrow("identify register 30 is not a field of the base");
+  expect(refused(set)).toThrow("setting `more` is not the base's");
+});
+
+test("a member that drops an identify field or a setting of the base is refused", () => {
+  const base = model("Family", 2, 350);
+  const small = model("5K", 2, 120, 5000);
+
+  expect(() =>
+    defineFamily(base, [
+      { id: "5k", profile: { ...small, identify: (small.identify ?? []).slice(1) } },
+    ]),
+  ).toThrow("variant 5k differs from the base in an identify field other than its values");
+  expect(() => defineFamily(base, [{ id: "5k", profile: { ...small, settings: [] } }])).toThrow(
+    "variant 5k differs from the base in a setting other than its range",
+  );
+});
+
 test("a member whose quantities a variant cannot order is refused", () => {
   const base = model("Family", 2, 350);
   const [first, second, ...rest] = base.quantities;

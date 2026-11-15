@@ -18,6 +18,9 @@ export interface Member {
   readonly replaces?: readonly string[];
 }
 
+// ADR 5 keeps one decoder: the loader refuses whatever a variant may not hold. Refused here is
+// only a difference the variant cannot carry, which the loader therefore never sees.
+
 /** Fields a variant never overrides; `id` and `version` are the family's. */
 const FIXED = ["schema", "manufacturer", "requires", "pollGroups"] as const;
 
@@ -42,33 +45,42 @@ function unranged(list: readonly Frozen<Setting>[]): readonly object[] {
   return list.map((s) => ({ ...s, range: undefined }));
 }
 
-/** Values of the base's identify fields that differ; the fields themselves may not. */
+/**
+ * Values of the base's identify fields that differ. A field the base lacks goes to the loader,
+ * which refuses it; a base field dropped or retyped never reaches it, so it is refused here.
+ */
 function identify(base: Frozen<Profile>, member: Member): Frozen<VariantIdentify>[] {
   const fields = member.profile.identify ?? [];
+  const theirs = new Map(base.identify?.map((f) => [f.register, f]));
+  const kept = fields.filter((f) => theirs.has(f.register));
 
-  if (differs(registers(fields), registers(base.identify ?? []))) {
-    refuse(member, "declares identify fields apart from the base");
+  if (differs(registers(kept), registers(base.identify ?? []))) {
+    refuse(member, "differs from the base in an identify field other than its values");
   }
 
-  return fields.flatMap(({ register, values }, i) =>
-    values !== undefined && differs(values, base.identify?.[i]?.values)
+  return fields.flatMap(({ register, values = [] }) =>
+    !theirs.has(register) || differs(values, theirs.get(register)?.values ?? [])
       ? [{ register, values }]
       : [],
   );
 }
 
-/** Ranges of the base's settings that differ; nothing else of a setting may. */
+/**
+ * Ranges of the base's settings that differ. A ranged setting the base lacks goes to the loader,
+ * which refuses it; any other difference never reaches it, so it is refused here.
+ */
 function settings(base: Frozen<Profile>, member: Member): Record<string, Frozen<Range>> {
   const ours = member.profile.settings ?? [];
-  const theirs = base.settings ?? [];
+  const theirs = new Map(base.settings?.map((s) => [s.key, s]));
+  const kept = ours.filter((s) => theirs.has(s.key) || s.range === undefined);
 
-  if (differs(unranged(ours), unranged(theirs))) {
+  if (differs(unranged(kept), unranged(base.settings ?? []))) {
     refuse(member, "differs from the base in a setting other than its range");
   }
 
   return Object.fromEntries(
-    ours.flatMap(({ key, range }, i) =>
-      range !== undefined && differs(range, theirs[i]?.range) ? [[key, range]] : [],
+    ours.flatMap(({ key, range }) =>
+      range !== undefined && differs(range, theirs.get(key)?.range) ? [[key, range]] : [],
     ),
   );
 }
