@@ -257,8 +257,8 @@
     status: stateText(shown),
     open: shown?.drillable === true && ondrill !== undefined && (reading.pinned || sel !== null),
     rows: [
-      { name: groups[0], series: up, values: readout.up, mark: true },
-      { name: groups[1], series: down, values: readout.down, mark: false },
+      { side: "up" as const, name: groups[0], series: up, values: readout.up, mark: true },
+      { side: "down" as const, name: groups[1], series: down, values: readout.down, mark: false },
     ].filter((row) => row.series.length > 0),
     mark: markOf(),
     ghost: markOf() ? ghostOf() : null,
