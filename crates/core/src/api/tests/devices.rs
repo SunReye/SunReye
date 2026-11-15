@@ -203,6 +203,68 @@ async fn a_device_names_a_known_connection_and_profile_and_a_free_unit_id() {
     assert_eq!(core.ask(&set_cookie, moved).await.0, StatusCode::OK);
 }
 
+/// A device stores its family and the variant the scan proposed (ADR 5); the variant's limits
+/// are the ones that apply, here its battery current.
+#[tokio::test]
+async fn a_device_stores_its_familys_variant_and_reads_with_its_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let mut small = deye(&connection, "deye-sg05lp3", 1);
+    small["variant"] = json!("5k");
+
+    let (status, added) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &small))
+        .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["variant"], "5k");
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/devices")).await;
+    assert_eq!(listed["devices"][0]["variant"], "5k");
+    let (_, capabilities) = core.ask(&set_cookie, get("/api/v1/capabilities")).await;
+    let settings = &capabilities["devices"][added["id"].to_string()]["settings"];
+    assert_eq!(settings[0]["range"], json!({ "min": 0.0, "max": 120.0 }));
+
+    let mut unknown = deye(&connection, "deye-sg05lp3", 2);
+    unknown["variant"] = json!("99k");
+    assert_eq!(
+        core.refused(&set_cookie, send("POST", "/api/v1/devices", &unknown))
+            .await,
+        unprocessable("device.profile")
+    );
+    let mut other = small.clone();
+    other["variant"] = json!("15k");
+    let at = format!("/api/v1/devices/{}", added["id"]);
+    assert_eq!(
+        core.refused(&set_cookie, send("PUT", &at, &other)).await,
+        conflict("device.profile-change")
+    );
+}
+
+/// SunSpec's variant is the model after the common model (ADR 5), by its id.
+#[tokio::test]
+async fn a_sunspec_devices_variant_is_its_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let connection = core.connection(&set_cookie, &gateway()).await;
+    let mut inverter = deye(&connection, "sunspec", 1);
+    inverter["variant"] = json!("103");
+    let mut named = deye(&connection, "sunspec", 2);
+    named["variant"] = json!("three-phase");
+
+    let (status, added) = core
+        .ask(&set_cookie, send("POST", "/api/v1/devices", &inverter))
+        .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["variant"], "103");
+    assert_eq!(
+        core.refused(&set_cookie, send("POST", "/api/v1/devices", &named))
+            .await,
+        unprocessable("device.profile")
+    );
+}
+
 #[tokio::test]
 async fn a_connection_needs_a_host_and_is_removed_only_once_no_device_uses_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -320,6 +382,41 @@ async fn devices_behind_one_endpoint_share_one_task_and_their_readings_are_store
         .await
         .unwrap();
     assert_eq!(history.iter().find_map(|p| p.value), Some(5.87));
+}
+
+#[tokio::test]
+async fn a_quantity_stored_nowhere_is_published_live_and_never_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let device = fake::serve().await;
+    let mut readings = core.bus.subscribe();
+    let gateway = json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
+        "port": device.address.port() });
+    let connection = core.connection(&set_cookie, &gateway).await;
+    let deye = DeviceId(id(&core.deye(&set_cookie, &connection, 0).await));
+    // The Deye profile keeps its internal CT total live only: `grid.power` is the record.
+    let internal = core.bus.intern("extra.ac_total_internal_power", None);
+    let voltage = core.bus.intern("battery.voltage", None);
+
+    let mut live = BTreeSet::new();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while live.len() < 2 {
+            let series = readings.recv().await.unwrap().series;
+            live.extend([internal, voltage].into_iter().filter(|s| *s == series));
+        }
+    })
+    .await
+    .unwrap();
+    let now = SystemTime::now();
+    core.storage
+        .tick(now + Duration::from_secs(120))
+        .await
+        .unwrap();
+    let span = (now - Duration::from_secs(60), now + Duration::from_secs(60));
+    let stored = |series| core.storage.history(deye, series, span.0, span.1);
+
+    assert_ne!(stored(voltage).await.unwrap(), []);
+    assert_eq!(stored(internal).await.unwrap(), []);
 }
 
 #[tokio::test]

@@ -9,7 +9,8 @@ const PROFILES = [
     name: "SG05LP3",
     version: "1.0.0",
     official: true,
-    acRating: 5000,
+    acRating: 20_000,
+    variants: [{ id: "5k", name: "SUN-5K-SG05LP3-EU-SM2", acRating: 5000 }],
   },
   {
     id: "evcc",
@@ -18,6 +19,7 @@ const PROFILES = [
     version: "1.0.4",
     official: true,
     acRating: null,
+    variants: [],
   },
 ];
 
@@ -29,7 +31,7 @@ const REPORT = {
       transport: "modbus-tcp",
       host: "192.168.1.40",
       port: 502,
-      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+      devices: [{ profile: "deye-sg05lp3", variant: "5k", name: "SUN-5K-SG05LP3-EU-SM2", unit: 1 }],
     },
   ],
 };

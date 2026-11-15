@@ -42,7 +42,7 @@ pub(super) fn measured(rollups: &[Rollup]) -> Vec<Measured> {
                 round(max),
                 round(integral),
             ),
-            Aggregate::Counter { .. } => panic!("a counter rollup"),
+            Aggregate::Counter { .. } | Aggregate::Held { .. } => panic!("no measurement rollup"),
         })
         .collect()
 }
@@ -55,7 +55,7 @@ pub(super) fn counted(rollups: &[Rollup]) -> Vec<(f64, f64, f64, f64)> {
             Aggregate::Counter { first, last, delta } => {
                 (hours(r.start), round(first), round(last), round(delta))
             }
-            Aggregate::Measurement { .. } => panic!("a measurement rollup"),
+            Aggregate::Measurement { .. } | Aggregate::Held { .. } => panic!("no counter rollup"),
         })
         .collect()
 }
@@ -277,6 +277,83 @@ async fn a_counter_rolls_up_its_delta_and_a_reset_is_never_negative() {
         counted(&rollups(&storage, total, Tier::Hour, 0.0, 7200.0).await),
         [(0.0, 1000.0, 1005.9, 5.9), (1.0, 1005.9, 2.9, 5.9)]
     );
+}
+
+#[tokio::test]
+async fn a_held_value_stores_no_rollup_and_reads_as_the_last_value_of_each_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    let storage = Storage::open(&dir.path().join("s.sqlite"), epoch(), "UTC", &plant.bus).unwrap();
+    let held = Policy::new(RoleKind::Held, None, 1.0, Duration::from_secs(5));
+    storage.declare(DEVICE, plant.power, held).await.unwrap();
+    // 50 until half past the first hour, then 51, into a third hour.
+    let readings = steady(0.0, 1460, 5.0, |t| if t < 1800.0 { 50.0 } else { 51.0 });
+    plant.record(&storage, &readings).await;
+
+    assert_eq!(
+        plant.history(&storage, 0.0, 7200.0).await,
+        [(0.0, Some(50.0)), (1800.0, Some(51.0))]
+    );
+    let stored = |db: &rusqlite::Connection| {
+        db.query_row(
+            "SELECT (SELECT count(*) FROM rollup_hour) + (SELECT count(*) FROM rollup_day)",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+    };
+    assert_eq!(storage.database().run(stored).await.unwrap(), 0);
+    for tier in [Tier::Hour, Tier::Day] {
+        let held: Vec<_> = rollups(&storage, plant.power, tier, -86_400.0, 86_400.0)
+            .await
+            .into_iter()
+            .map(|r| (hours(r.start), r.aggregate))
+            .collect();
+        let value = Aggregate::Held { value: 51.0 };
+        let expected = match tier {
+            Tier::Hour => vec![(0.0, value), (1.0, value), (2.0, value)],
+            // The UTC day `T0`'s noon falls in.
+            Tier::Day => vec![(-12.0, value)],
+        };
+        assert_eq!(held, expected, "{tier:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_held_value_carries_forward_once_its_device_is_no_longer_declared() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    for kind in [RoleKind::Held, RoleKind::Status] {
+        let path = dir.path().join(format!("{kind:?}.sqlite"));
+        let series = plant.bus.intern(&format!("{kind:?}"), None);
+        let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+        let policy = Policy::new(kind, None, 1.0, Duration::from_secs(5));
+        storage.declare(DEVICE, series, policy).await.unwrap();
+        // 50 until half past the first hour, then 51, into a third hour.
+        for (seconds, value) in steady(0.0, 1460, 5.0, |t| if t < 1800.0 { 50.0 } else { 51.0 }) {
+            let reading = Reading {
+                series,
+                ..plant.reading(seconds, value)
+            };
+            storage.record(reading).await.unwrap();
+        }
+        storage.shutdown().await.unwrap();
+
+        // The device is removed, or its profile is gone: nothing declares the series.
+        let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+        let value = Aggregate::Held { value: 51.0 };
+        for (tier, expected) in [
+            (Tier::Hour, vec![(0.0, value), (1.0, value), (2.0, value)]),
+            (Tier::Day, vec![(-12.0, value)]),
+        ] {
+            let held: Vec<_> = rollups(&storage, series, tier, -86_400.0, 86_400.0)
+                .await
+                .into_iter()
+                .map(|r| (hours(r.start), r.aggregate))
+                .collect();
+            assert_eq!(held, expected, "{kind:?} {tier:?}");
+        }
+        storage.shutdown().await.unwrap();
+    }
 }
 
 #[tokio::test]

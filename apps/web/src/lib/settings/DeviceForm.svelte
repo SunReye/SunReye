@@ -1,7 +1,7 @@
 <!--
   A device as the admin adds it on a connection or changes it: its name, connection and address.
-  The profile is chosen once, on adding (ADR 6). A new connection, such as EVCC's broker, can be
-  made here on the way.
+  The profile and its variant are chosen once, on adding (ADR 5), and shown by name after. A new
+  connection, such as EVCC's broker, can be made here on the way.
 -->
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
@@ -18,11 +18,14 @@
   let {
     core,
     connections,
+    readAs,
     device,
     onsaved,
   }: {
     core: Core;
     connections: readonly Connection[];
+    /** What the device to change is read as, by name; its profile's id when left out. */
+    readAs?: string | undefined;
     /** The device to change; a new one when absent. */
     device?: Device;
     onsaved: (device: Device) => void;
@@ -34,6 +37,7 @@
     name: device?.name ?? "",
     connection: device?.connection ?? connections[0]?.id,
     profile: device?.profile ?? "",
+    variant: device?.variant ?? undefined,
     unit: device?.unit ?? 1,
   });
 
@@ -81,6 +85,7 @@
       connection,
       name: fields.name.trim(),
       profile: fields.profile,
+      ...(fields.variant !== undefined && { variant: fields.variant }),
       unit: fields.unit,
       writes: device?.writes ?? false,
     };
@@ -101,16 +106,18 @@
       <ProfilePicker
         {core}
         value={fields.profile}
+        variant={fields.variant}
         label={m.devices_profile()}
-        onpick={(id) => {
-          fields.profile = id;
+        onpick={(profile, variant) => {
+          fields.profile = profile;
+          fields.variant = variant;
         }}
       />
     </div>
   {:else}
     <div class="flex flex-col gap-1.5 text-sm">
       <span>{m.devices_profile()}</span>
-      <span class="text-[15px]">{device.profile}</span>
+      <span class="text-[15px]">{readAs ?? device.profile}</span>
       <span class="text-xs text-muted-foreground">{m.settings_device_profile_fixed()}</span>
     </div>
   {/if}

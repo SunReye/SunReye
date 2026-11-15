@@ -51,7 +51,7 @@ const SCAN = {
       transport: "modbus-tcp",
       host: "192.168.1.20",
       port: 502,
-      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+      devices: [{ profile: "deye-sg05lp3", name: "SG05LP3", unit: 1 }],
     },
   ],
 };

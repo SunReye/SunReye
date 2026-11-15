@@ -39,12 +39,8 @@ _Avoid_: Protocol, driver
 ## Profiles
 
 **Profile**:
-A declarative file describing one device model: its quantities, how to read them and which settings it may write.
+A declarative file describing one device model or family: its quantities, how to read them and which settings it may write.
 _Avoid_: Driver, template, map
-
-**Family**:
-A manufacturer's model range sharing one register map, such as Deye's SG05LP3. A family profile covers every model of it; a model's own profile adds its ratings.
-_Avoid_: Series, line
 
 **Official profile**:
 A profile signed by the profile key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
@@ -82,8 +78,16 @@ _Avoid_: Poll list
 The read that tells which profile, and which variant of it, a device answers to: a magic register such as `SunS`, or a device-type register.
 _Avoid_: Fingerprint, detection
 
+**Family**:
+A manufacturer's model range that one profile describes together, because its models share one register map and differ only in ratings and limits, such as Deye's SG05LP3.
+_Avoid_: Series (a series is a stored role), range, product line
+
+**Base**:
+What every model of a family shares, with the family's largest limits. A device that matches no variant is read as the base.
+_Avoid_: Default, parent, generic profile
+
 **Variant**:
-The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases.
+The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases, or a Deye model by its rated power. A family's variant is its base with overrides.
 _Avoid_: Model (a SunSpec model is a register block)
 
 ## Quantities and storage

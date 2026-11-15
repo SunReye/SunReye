@@ -68,11 +68,11 @@ fn counters_and_enums_refuse_any_deadband() {
 
     assert_eq!(
         counter.map(drop),
-        refusal("energy", "a counter or enum has no deadband")
+        refusal("energy", "only a measurement has a deadband")
     );
     assert_eq!(
         status.map(drop),
-        refusal("mode", "a counter or enum has no deadband")
+        refusal("mode", "only a measurement has a deadband")
     );
 }
 

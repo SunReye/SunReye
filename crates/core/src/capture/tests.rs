@@ -7,6 +7,7 @@ use sunreye_profile::{Framing, Profile};
 use super::{CYCLES, Options, Recording, record, run};
 use crate::bus::{Bus, DeviceId};
 use crate::endpoint::{CADENCE, Device, TIMEOUT, spawn};
+use crate::profiles::Chosen;
 use crate::transport::{Capture, Client, Endpoint, Error, Exchange, fake};
 
 fn deye() -> Arc<Profile> {
@@ -106,6 +107,7 @@ const FILE: &str = r#"{"capture":1,"profile":"deye-sg05lp3","version":"1.2.0","f
 fn recording() -> Recording {
     Recording {
         profile: "deye-sg05lp3".into(),
+        variant: None,
         version: "1.2.0".into(),
         unit: 0,
         capture: Capture {
@@ -167,8 +169,10 @@ fn capture_takes_an_endpoint_url_a_unit_id_and_a_bundled_profile() {
             },
             unit: 0,
             profile: "deye-sg05lp3".into(),
+            variant: None,
         })
     );
+
     assert_eq!(
         parse(&[
             "--endpoint=solarman-v5://stick.lan:8899",
@@ -194,6 +198,21 @@ fn capture_takes_an_endpoint_url_a_unit_id_and_a_bundled_profile() {
             host: "10.20.0.70".into(),
             port: 4196
         })
+    );
+}
+
+#[test]
+fn capture_takes_the_variant_the_device_is() {
+    let args = [
+        "--endpoint=modbus-tcp://h:502",
+        "--unit=1",
+        "--profile=deye-sg05lp3",
+    ];
+
+    assert_eq!(parse(&args).map(|o| o.variant), Ok(None));
+    assert_eq!(
+        parse(&[args.as_slice(), &["--variant", "15k"]].concat()).map(|o| o.variant),
+        Ok(Some("15k".into()))
     );
 }
 
@@ -231,12 +250,59 @@ async fn capture_refuses_a_profile_that_is_not_bundled_before_it_connects() {
         endpoint: fake.endpoint(),
         unit: 0,
         profile: "nope".into(),
+        variant: None,
     };
     assert_eq!(
         run(options).await.map_err(|e| e.to_string()),
         Err("no bundled profile `nope`".into())
     );
     assert!(fake.reads.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn capture_refuses_a_variant_the_profile_lacks_before_it_connects() {
+    let mut fake = fake::serve().await;
+    let options = Options {
+        endpoint: fake.endpoint(),
+        unit: 0,
+        profile: "deye-sg05lp3".into(),
+        variant: Some("99k".into()),
+    };
+    assert_eq!(
+        run(options).await.map_err(|e| e.to_string()),
+        Err("profile `deye-sg05lp3` has no variant `99k`".into())
+    );
+    assert!(fake.reads.try_recv().is_err());
+}
+
+/// A capture reads the device as its variant does, and its header says which (ADR 6): the 5 kW
+/// model reads two PV inputs fewer than the family's base.
+#[tokio::test]
+async fn a_capture_reads_the_devices_variant_and_records_it() {
+    let mut fake = fake::serve().await;
+    let catalogue = crate::profiles::Catalogue::bundled().unwrap();
+    let small = catalogue
+        .resolve(&Chosen::new("deye-sg05lp3", Some("5k")))
+        .unwrap();
+
+    let recording = record(&fake.endpoint(), 0, Arc::clone(&small), 1)
+        .await
+        .unwrap();
+
+    let mut requests = 0;
+    while fake.reads.try_recv().is_ok() {
+        requests += 1;
+    }
+    assert_eq!(requests, small.read_plan(0).len());
+    assert_ne!(small.read_plan(0), deye().read_plan(0));
+    assert_eq!(recording.variant.as_deref(), Some("5k"));
+    let file = recording.to_ndjson();
+    let header = file.lines().next().unwrap();
+    assert!(
+        header.starts_with(r#"{"capture":1,"profile":"deye-sg05lp3","variant":"5k","version":"#),
+        "{header}"
+    );
+    assert_eq!(Recording::parse(&file), Ok(recording));
 }
 
 /// The owner's plant through its gateway at unit 0 (#641): twelve cycles, recorded read-only.
@@ -414,14 +480,16 @@ async fn the_generic_sunspec_profile_reads_a_conforming_capture() {
     assert_eq!(got, expected);
 }
 
-/// The SG05LP3 models of 14 to 20 kW read the family's register map: the owner's capture, of the
-/// family profile's read plan, replays with each. The 5 to 12 kW models read two PV inputs fewer,
+/// The SG05LP3 variants of 14 to 20 kW read the family's register map: the owner's capture, of the
+/// base's read plan, replays with each. The 5 to 12 kW models read two PV inputs fewer,
 /// so it cannot replay with them.
 #[tokio::test(start_paused = true)]
 async fn the_owners_capture_replays_with_each_four_input_sg05lp3_model() {
     let catalogue = crate::profiles::Catalogue::bundled().unwrap();
     for kw in [14, 15, 16, 18, 20] {
-        let profile = catalogue.get(&format!("deye-sun{kw}k-sg05lp3")).unwrap();
+        let variant = format!("{kw}k");
+        let chosen = Chosen::new("deye-sg05lp3", Some(&variant));
+        let profile = catalogue.resolve(&chosen).unwrap();
         let recording = Recording::parse(PLANT).unwrap();
         let bus = Bus::default();
         let mut readings = bus.subscribe();

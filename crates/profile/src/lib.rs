@@ -8,6 +8,7 @@ mod profile;
 mod role;
 mod setting;
 pub mod sunspec;
+mod variant;
 
 use std::time::Duration;
 
@@ -16,7 +17,7 @@ use serde::Serialize;
 pub use decode::Registers;
 pub use plan::Block;
 pub use profile::{DeadbandRefusal, Inverter, LoadError, Mppt, Profile, Quantity};
-pub use role::{RoleKind, Unit};
+pub use role::{RoleKind, StorageClass, Unit};
 pub use setting::{Field, LiveControl, Relock, Setting, Source, Step, Toggle, Unlock};
 
 /// Where a topic names the device address.
@@ -59,6 +60,10 @@ pub const CAPABILITIES: &[&str] = &[
     "verified",
     "poll-group",
     "live-control",
+    "kind",
+    "storage",
+    "unit",
+    "variants",
     "time",
 ];
 

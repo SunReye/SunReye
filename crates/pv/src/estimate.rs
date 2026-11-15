@@ -24,9 +24,8 @@ pub fn estimate(layout: &Layout, weather: &Weather) -> Estimate {
                 .iter()
                 .map(|i| input_output(i, &sky, &layout.occluders))
                 .collect();
-            let power: f64 = inputs.iter().map(|i| i.power).sum();
             InverterEstimate {
-                power: power.min(inverter.ac_rating.unwrap_or(f64::INFINITY)),
+                power: inputs.iter().map(|i| i.power).sum(),
                 inputs,
             }
         })

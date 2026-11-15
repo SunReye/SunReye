@@ -1,6 +1,6 @@
 // Generated from crates/profile by `bun run --cwd packages/sdk types`. Do not edit.
 
-export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "register-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "time";
+export type Capability = "modbus" | "mqtt" | "http" | "sunspec" | "u16" | "i16" | "u32" | "acc32" | "scale-factor" | "compute" | "deadband" | "write" | "write-block" | "rmw" | "activate" | "precondition" | "unlock" | "delay" | "snapshot-toggle" | "publish" | "identify" | "ac-rating" | "resolution" | "text-enum" | "register-enum" | "setting-text" | "verified" | "poll-group" | "live-control" | "kind" | "storage" | "unit" | "variants" | "time";
 
 export type Profile = { schema: 1, id: string, name: string, manufacturer: string, version: string, requires: Array<Capability>, quantities: Array<Quantity>, inverter?: Inverter, 
 /**
@@ -11,9 +11,26 @@ identify?: Array<Identify>, settings?: Array<Setting>,
 /**
  * Each poll group's cadence in seconds, by name: a whole number of default cycles.
  */
-pollGroups?: Record<string, number>, };
+pollGroups?: Record<string, number>, 
+/**
+ * Device types of the family its identify probe tells apart, each the base with its
+ * overrides; a device that matches none is read as the base.
+ */
+variants?: Array<Variant>, };
 
-export type Quantity = { key: string, role: string, index?: number, 
+export type Quantity = { key: string, role: string, 
+/**
+ * What an extra's values are; a named role's kind is fixed (ADR 4).
+ */
+kind?: RoleKind, 
+/**
+ * Where its readings go; `series` when left out.
+ */
+storage?: StorageClass, 
+/**
+ * What a measurement or counter extra is measured in; a named role's unit is fixed (ADR 4).
+ */
+unit?: Unit, index?: number, 
 /**
  * The SunSpec models it reads, by ID; the first the device's chain holds is read. `register`
  * then counts from the model's ID register, as the SunSpec model definitions lay it out.
@@ -49,13 +66,17 @@ resolution?: number, offset?: number, compute?: Expr, range?: Range,
 enum?: Record<string, number>, 
 /**
  * The smallest change stored, in the role's unit, for this hardware (ADR 4); never below
- * the quantisation step, and none for a counter or enum.
+ * the quantisation step, and only on a measurement.
  */
 deadband?: number, 
 /**
  * The poll group it is read in; the default cadence when left out.
  */
 pollGroup?: string, };
+
+export type RoleKind = "measurement" | "counter" | "status" | "held";
+
+export type StorageClass = "series" | "none";
 
 export type Kind = "u16" | "i16" | "u32" | "acc32";
 
@@ -67,7 +88,41 @@ export type Identify = { register: number,
 /**
  * `u16` when left out.
  */
-type?: Kind, values: Array<number>, };
+type?: Kind, values?: Array<number>, };
+
+export type Variant = { 
+/**
+ * 1 to 16 lowercase letters, digits or hyphens, such as `15k`.
+ */
+id: string, name: string, 
+/**
+ * Values of the base's identify fields, by register; a field left out keeps the base's.
+ */
+identify?: Array<VariantIdentify>, 
+/**
+ * In place of the base's.
+ */
+inverter?: Inverter, 
+/**
+ * Ranges of the base's settings, by key.
+ */
+settings?: Record<string, Range>, 
+/**
+ * Ids of retired profiles of this device type: a device stored under one moves to this
+ * variant.
+ */
+replaces?: Array<string>, 
+/**
+ * Keys of the base's quantities it lacks.
+ */
+drop?: Array<string>, 
+/**
+ * Quantities it adds in full: one under a dropped key takes its place, the rest follow the
+ * base's.
+ */
+add?: Array<Quantity>, };
+
+export type VariantIdentify = { register: number, values: Array<number>, };
 
 export type Inverter = { 
 /**
@@ -136,7 +191,7 @@ export type Time = { format: TimeFormat, step: number, };
 
 export type TimeFormat = "hhmm";
 
-export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C";
+export type Unit = "W" | "kWh" | "V" | "A" | "Hz" | "%" | "°C" | "h" | "none";
 
 export type Step = { "write": Register } | { "writeBlock": WriteBlock } | { "rmw": Masked } | { "activate": Activate } | { "precondition": Precondition } | { "unlock": Unlock } | { "delay": Delay } | { "snapshotToggle": SnapshotToggle } | { "publish": Publish };
 

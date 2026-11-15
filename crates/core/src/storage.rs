@@ -47,6 +47,7 @@ impl Policy {
             (RoleKind::Measurement, Some(Unit::Volt | Unit::Celsius)) => 0.5,
             (RoleKind::Measurement, Some(Unit::Ampere)) => 0.1,
             (RoleKind::Measurement, Some(Unit::Hertz)) => 0.02,
+            (RoleKind::Measurement, Some(Unit::Percent)) => 1.0,
             _ => 0.0,
         };
         Self {
@@ -98,6 +99,9 @@ pub enum Aggregate {
         /// The rises from value to value: a drop is a reset and adds nothing, as does a gap.
         delta: f64,
     },
+    /// A status or held value: the last value it held in the window, carried forward from
+    /// before it. No row is stored; it is read from change points.
+    Held { value: f64 },
 }
 
 /// A value issued at one time about a later target time (ADR 15).
@@ -728,7 +732,8 @@ impl Reader {
         .await?
     }
 
-    /// The rollups of `series` in `tier` that start within `range`.
+    /// The rollups of `series` in `tier` that start within `range`. A status or held value of a
+    /// declared series reads as the value each window last held, up to the window in progress.
     ///
     /// # Errors
     /// The file cannot be read.

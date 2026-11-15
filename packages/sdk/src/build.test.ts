@@ -52,6 +52,37 @@ test("a new profile renders at its source version and lists in the index by its 
   });
 });
 
+test("a family lists once in the index, with its variants' ids and names", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "profiles-"));
+
+  const family = {
+    ...meter,
+    requires: ["modbus", "u16", "identify", "variants"],
+    identify: [{ register: 0 }, { register: 1, values: [1] }],
+    variants: [
+      { id: "a", name: "Meter A", identify: [{ register: 0, values: [1] }] },
+      { id: "b", name: "Meter B", identify: [{ register: 0, values: [2] }] },
+    ],
+  };
+
+  await writeFile(join(dir, "meter.ts"), `export default ${JSON.stringify(family)};\n`);
+  await buildProfiles(dir, dir);
+
+  const index: unknown = JSON.parse(await readFile(join(dir, "index.json"), "utf8"));
+
+  expect(index).toMatchObject({
+    profiles: [
+      {
+        id: "meter",
+        variants: [
+          { id: "a", name: "Meter A" },
+          { id: "b", name: "Meter B" },
+        ],
+      },
+    ],
+  });
+});
+
 /** A directory holding `profile` as source and `published` as its last build. */
 async function built(profile: Frozen<Meter>, published: Frozen<Meter>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "profiles-"));

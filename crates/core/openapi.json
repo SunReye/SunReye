@@ -1071,6 +1071,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "variant": {
+            "description": "The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after\nthe common model, such as `103`; none for a family's base. Fixed with the profile.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "writes": {
             "description": "Whether settings may be written (ADR 7); off when left out.",
             "type": "boolean"
@@ -1999,6 +2006,30 @@
         ],
         "type": "object"
       },
+      "ListedVariant": {
+        "description": "One variant of a family, as an admin picks it for a device.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at this model's rating.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
       "Listing": {
         "description": "A profile served, as an admin picks it for a device.",
         "properties": {
@@ -2023,6 +2054,13 @@
           "official": {
             "type": "boolean"
           },
+          "variants": {
+            "description": "A family's variants in file order (ADR 5); a device that is none of them is added\nwithout one and read as the base.",
+            "items": {
+              "$ref": "#/components/schemas/ListedVariant"
+            },
+            "type": "array"
+          },
           "version": {
             "type": "string"
           }
@@ -2032,7 +2070,8 @@
           "manufacturer",
           "name",
           "version",
-          "official"
+          "official",
+          "variants"
         ],
         "type": "object"
       },
@@ -2629,7 +2668,7 @@
             "type": "string"
           },
           "mean": {
-            "description": "The value weighted by the time it held between `start` and `end`.",
+            "description": "The value weighted by the time it held between `start` and `end`; for a status or a held\nvalue in an `hour` or a `day`, the last value it held.",
             "format": "double",
             "type": "number"
           },
@@ -2788,6 +2827,10 @@
       "Proposal": {
         "description": "A device the identify probe of a profile found.",
         "properties": {
+          "name": {
+            "description": "What the homeowner is shown: the variant's name, else the profile's.",
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
@@ -2797,17 +2840,16 @@
             "type": "integer"
           },
           "variant": {
-            "description": "The variant the probe found: for SunSpec, the device model after the common model, such\nas 103 for a three-phase inverter.",
-            "format": "int32",
-            "minimum": 0,
+            "description": "The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after\nthe common model, such as `103` for a three-phase inverter; none for a family's base.",
             "type": [
-              "integer",
+              "string",
               "null"
             ]
           }
         },
         "required": [
           "profile",
+          "name",
           "unit"
         ],
         "type": "object"

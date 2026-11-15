@@ -1,4 +1,11 @@
-import type { Frozen, Identify, Quantity, Setting } from "../../packages/sdk/src/index.ts";
+import type {
+  Frozen,
+  Identify,
+  Inverter,
+  Mppt,
+  Quantity,
+  Setting,
+} from "../../packages/sdk/src/index.ts";
 
 // What Deye's SG05LP3 and SG01HP3 ranges share: the registers of Deye's three-phase protocol
 // (MODBUS RTU 三相储能通信规约 V105, https://download.axilogi.com/DEYE/Other/MODBUS_RTU.pdf).
@@ -23,11 +30,76 @@ export const HIGH_VOLTAGE = [0x0600, 0x0601, 0x0006, 0x0106];
  */
 export const RUNNING_STATE = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 2 };
 
-/** The device type, and the rated power in registers 20 and 21 (0.1 W, low word first). */
+/**
+ * The device type, and the rated power in registers 20 and 21 (0.1 W, low word first): any rating
+ * when `rated` is left out, for the family's base.
+ */
 export function identify(types: readonly number[], rated?: number): Frozen<Identify>[] {
-  const type = { register: 0, values: types };
+  const power = { register: 20, type: "u32" } as const;
 
-  return rated === undefined ? [type] : [type, { register: 20, type: "u32", values: [rated * 10] }];
+  return [
+    { register: 0, values: types },
+    rated === undefined ? power : { ...power, values: [rated * 10] },
+  ];
+}
+
+/** One model as its datasheet rates it. */
+export interface Datasheet<Inputs extends number> {
+  readonly name: string;
+  /** Watts of rated AC output: registers 20 and 21 report it, and the forecast caps there. */
+  readonly rated: number;
+  /** The PV inputs whose registers it reads. */
+  readonly inputs: Inputs;
+  /** Amperes: the bound of the battery current settings. */
+  readonly current: number;
+  /** Both trackers' limits, or each tracker's own. */
+  readonly mppt: Frozen<Mppt> | readonly [Frozen<Mppt>, Frozen<Mppt>];
+}
+
+/** One model of a range, or the family's base. */
+export interface Model<Inputs extends number> {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  /** The PV inputs whose registers it reads, as v4 did. */
+  readonly inputs: Inputs;
+  /** Amperes: the bound of the battery current settings, from v4's profile of the model. */
+  readonly current: number;
+  /** From the datasheet, with the rated AC output. */
+  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
+  /** Watts, as registers 20 and 21 report it; the family's base takes any rating. */
+  readonly rated?: number;
+}
+
+/** `watts`, refused unless it is a rated power: a model is identified and capped by it. */
+function ratedPower(watts: number): number {
+  if (!(watts > 0)) throw new Error("a model needs its rated power");
+
+  return watts;
+}
+
+/** `watts` of rated power as a variant's id, such as `15k`; a model without one is refused. */
+export function kilowatts(watts: number): string {
+  return `${ratedPower(watts) / 1000}k`;
+}
+
+/** What a family's profile takes of `sheet`: its rated power identifies the model and caps it. */
+export function modelOf<Inputs extends number>(
+  sheet: Datasheet<Inputs>,
+  maxInputVoltage: number,
+): Omit<Datasheet<Inputs>, "mppt"> & {
+  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
+} {
+  const { mppt, ...model } = sheet;
+
+  return {
+    ...model,
+    inverter: {
+      maxInputVoltage,
+      acRating: ratedPower(sheet.rated),
+      mppt: "maxCurrent" in mppt ? [mppt, mppt] : mppt,
+    },
+  };
 }
 
 /** PV input `n`'s power, voltage and current registers; the high-voltage range scales power by 10. */
@@ -82,6 +154,9 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.import_power",
     role: "extra.grid_import_power",
+    kind: "measurement",
+    unit: "W",
+    storage: "none",
     compute: {
       clamp: {
         key: "ac.total_power",
@@ -92,6 +167,9 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "grid.export_power",
     role: "extra.grid_export_power",
+    kind: "measurement",
+    unit: "W",
+    storage: "none",
     compute: {
       diff: ["grid.import_power", "ac.total_power"],
     },
@@ -99,6 +177,9 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "battery.charge_power",
     role: "extra.battery_charge_power",
+    kind: "measurement",
+    unit: "W",
+    storage: "none",
     compute: {
       clamp: {
         key: "battery.power",
@@ -109,6 +190,9 @@ export const FLOWS: readonly Frozen<Quantity>[] = [
   {
     key: "battery.discharge_power",
     role: "extra.battery_discharge_power",
+    kind: "measurement",
+    unit: "W",
+    storage: "none",
     compute: {
       diff: ["battery.charge_power", "battery.power"],
     },
@@ -246,12 +330,6 @@ const SETTINGS: readonly Frozen<Setting>[] = [
       },
     ],
   },
-];
-
-/** The battery current registers' extras, bounded per model. */
-export const CURRENTS: readonly string[] = [
-  "settings.battery.maximum_charge_current",
-  "settings.battery.maximum_discharge_current",
 ];
 
 /** `item` bounded from 0 to `max`. */

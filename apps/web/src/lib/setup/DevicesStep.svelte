@@ -107,8 +107,15 @@
 
           if (before !== undefined) return before;
 
-          const { profile, unit, name } = choice;
-          const device = await core.addDevice({ connection: connection.id, name, profile, unit });
+          const { profile, variant, unit, name } = choice;
+
+          const device = await core.addDevice({
+            connection: connection.id,
+            name,
+            profile,
+            ...(variant !== undefined && { variant }),
+            unit,
+          });
 
           if (!("problem" in device)) added.set(choice.key, device);
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sunreye_profile::RoleKind;
 
 use super::{HOUR, Store, blocks, lookup, points, tick, time, write_block};
@@ -64,7 +64,7 @@ impl Store {
         }: Range<Tick>,
         limit: Tick,
     ) -> Result<(), Error> {
-        if from >= to || kind == RoleKind::Status {
+        if from >= to || matches!(kind, RoleKind::Status | RoleKind::Held) {
             return Ok(());
         }
         let days = rollup::days(&self.zone.1, from, to);
@@ -184,6 +184,9 @@ impl Store {
         };
         let range = tick(from).unwrap_or(0)..tick(to).unwrap_or(0);
         let (from, to) = (range.start, range.end);
+        if self.carries(device, series)? {
+            return self.carried(device.0, (series, step), tier, range);
+        }
         let (sql, from, to) = match tier {
             Tier::Hour => (
                 "SELECT hour * 36000, hour * 36000 + 36000,
@@ -227,6 +230,26 @@ impl Store {
             .collect())
     }
 
+    /// Whether `series` is a status or a held value. Read from storage, so it holds for a
+    /// device that is removed or whose profile is gone (ADR 3).
+    fn carries(&self, device: DeviceId, series: i64) -> Result<bool, Error> {
+        let kind: Option<String> = self
+            .db
+            .prepare_cached("SELECT kind FROM step WHERE device = ?1 AND series = ?2")?
+            .query_row(params![device.0, series], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(matches!(kind.as_deref(), Some("status" | "held")))
+    }
+
+    /// The kind of `device`'s declared `series`.
+    fn kind(&self, device: DeviceId, series: i64) -> Option<RoleKind> {
+        self.tracks
+            .iter()
+            .find(|((d, _), stored)| *d == device && stored.id == series)
+            .map(|(_, stored)| stored.kind)
+    }
+
     /// The hours or days starting within `range` that the open hour reaches into, rolled up from
     /// their change points, the unflushed ones included, to the latest reading (ADR 3).
     fn open(
@@ -236,12 +259,7 @@ impl Store {
         tier: Tier,
         range: Range<Tick>,
     ) -> Result<Vec<(Range<Tick>, Sums)>, Error> {
-        let kind = self
-            .tracks
-            .iter()
-            .find(|((d, _), stored)| *d == device && stored.id == series)
-            .map(|(_, stored)| stored.kind);
-        let (Some(kind), Some(rolled)) = (kind, self.rolled) else {
+        let (Some(kind), Some(rolled)) = (self.kind(device, series), self.rolled) else {
             return Ok(Vec::new());
         };
         let limit = self.clock;
@@ -274,6 +292,60 @@ impl Store {
             }
         }
         Ok(open)
+    }
+}
+
+impl Store {
+    /// The windows of `tier` starting within `range`, each as the last value the series held
+    /// in it: a status or held value stores no rollup row (ADR 3). The window in progress is
+    /// the last; nothing is carried past it.
+    fn carried(
+        &self,
+        device: u32,
+        (series, step): (i64, f64),
+        tier: Tier,
+        Range {
+            start: from,
+            end: to,
+        }: Range<Tick>,
+    ) -> Result<Vec<Rollup>, Error> {
+        let windows: Vec<(Tick, Tick)> = match tier {
+            Tier::Hour => (ceil(from)..ceil(to))
+                .map(|hour| (hour * HOUR, (hour + 1) * HOUR))
+                .collect(),
+            Tier::Day => rollup::days(&self.zone.1, from, to)
+                .into_iter()
+                .filter(|day| day.start >= from)
+                .map(|day| (day.start, day.end))
+                .collect(),
+        };
+        let Some(open) = self.rolled else {
+            return Ok(Vec::new());
+        };
+        let windows: Vec<(Tick, Tick)> = windows.into_iter().filter(|w| w.0 <= open).collect();
+        let (Some(first), Some(last)) = (windows.first(), windows.last()) else {
+            return Ok(Vec::new());
+        };
+        let points = points(&self.db, device, series, first.0, last.1)?;
+        let held = |&(start, end): &(Tick, Tick)| {
+            let in_force = points
+                .partition_point(|p| p.time <= start)
+                .saturating_sub(1);
+            let until = points.partition_point(|p| p.time < end);
+            let value = points
+                .get(in_force..until)?
+                .iter()
+                .rev()
+                .find_map(|p| p.value)?;
+            #[expect(clippy::cast_precision_loss, reason = "values are bounded to ±2^53")]
+            let value = value as f64 * step;
+            Some(Rollup {
+                start: time(start),
+                end: time(end),
+                aggregate: Aggregate::Held { value },
+            })
+        };
+        Ok(windows.iter().filter_map(held).collect())
     }
 }
 

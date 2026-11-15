@@ -363,13 +363,13 @@ pub fn energy(role: &str, rollup: impl Fn(&str) -> Option<Aggregate>) -> Option<
             .iter()
             .map(|&(series, sign)| match rollup(series)? {
                 Aggregate::Counter { delta, .. } => Some(sign * delta),
-                Aggregate::Measurement { .. } => None,
+                Aggregate::Measurement { .. } | Aggregate::Held { .. } => None,
             })
             .sum()
     });
     counted.or_else(|| match rollup(role)? {
         Aggregate::Measurement { integral, .. } => Some(integral / 1000.0),
-        Aggregate::Counter { .. } => None,
+        Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
     })
 }
 

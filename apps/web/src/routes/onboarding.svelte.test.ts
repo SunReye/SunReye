@@ -38,7 +38,7 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
   await expect
-    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:502, Adresse 1" }))
+    .element(screen.getByRole("checkbox", { name: "SG05LP3 an 192.168.1.20:502, Adresse 1" }))
     .toBeChecked();
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 

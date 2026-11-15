@@ -16,6 +16,10 @@ export interface Choice {
   readonly found: Endpoint;
   readonly manual: boolean;
   profile: string;
+  /** The variant the scan found, or the admin picked with the profile (ADR 5); none for a family's base. */
+  variant?: string | undefined;
+  /** What the scan calls the device: the variant's name, else the profile's. */
+  readonly title: string;
   unit: number;
   chosen: boolean;
   name: string;
@@ -35,24 +39,35 @@ export const TRANSPORTS: readonly Found["transport"][] = [
 export function manual(endpoint: Endpoint, chosen: boolean): Choice {
   const key = `${endpoint.host}:${endpoint.port}/manual`;
 
-  return { key, found: endpoint, manual: true, chosen, profile: "", unit: UNIT, name: "" };
+  return {
+    key,
+    found: endpoint,
+    manual: true,
+    chosen,
+    profile: "",
+    title: "",
+    unit: UNIT,
+    name: "",
+  };
 }
 
-/** A scan's choices: each recognised device chosen under its profile's name, each other host to enter by hand. */
+/** A scan's choices: each recognised device chosen under the name the scan gives it, each other host to enter by hand. */
 export function scanned(endpoints: readonly Endpoint[]): Choice[] {
   return endpoints.flatMap((endpoint: Endpoint): Choice[] => {
     const at = `${endpoint.host}:${endpoint.port}`;
 
     if (endpoint.devices.length === 0) return [manual(endpoint, false)];
 
-    return endpoint.devices.map(({ profile, unit }) => ({
+    return endpoint.devices.map(({ profile, variant, name, unit }) => ({
       key: `${at}/${profile}/${unit}`,
       found: endpoint,
       manual: false,
       profile,
+      ...(variant !== undefined && variant !== null && { variant }),
+      title: name,
       unit,
       chosen: true,
-      name: profile,
+      name,
     }));
   });
 }

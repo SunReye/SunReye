@@ -1,7 +1,7 @@
-//! A quantity's unit is its role's, from ADR 4's table.
+//! A quantity's unit is its role's, from ADR 4's table, or the one an extra declares.
 
-use crate::{Profile, Quantity, RoleKind, Unit};
-use serde_json::json;
+use crate::{LoadError, Profile, Quantity, RoleKind, Unit};
+use serde_json::{Value, json};
 
 fn units(roles: &[(&str, Option<u32>)]) -> Vec<Option<Unit>> {
     load(roles)
@@ -16,8 +16,13 @@ fn load(roles: &[(&str, Option<u32>)]) -> Profile {
         .iter()
         .enumerate()
         .map(|(i, (role, index))| {
-            json!({ "key": format!("q{i}"), "role": role, "index": index,
-                    "register": i, "type": "u16" })
+            let mut quantity = json!({ "key": format!("q{i}"), "role": role, "index": index,
+                                       "register": i, "type": "u16" });
+            if role.starts_with("extra.") {
+                quantity["kind"] = json!("measurement");
+                quantity["unit"] = json!("°C");
+            }
+            quantity
         })
         .collect();
     let doc = json!({
@@ -54,11 +59,99 @@ fn each_role_carries_its_unit_from_adr_4() {
 }
 
 #[test]
-fn a_status_role_and_an_extra_have_no_unit() {
+fn a_status_role_has_no_unit() {
+    assert_eq!(units(&[("battery.mode", None)]), [None]);
+}
+
+fn case(quantities: &Value) -> Value {
+    json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": super::all(), "quantities": quantities,
+    })
+}
+
+fn refusal(doc: &Value) -> String {
+    Profile::load(&doc.to_string()).unwrap_err().to_string()
+}
+
+#[test]
+fn an_extra_has_the_unit_it_declares() {
+    let doc = case(&json!([
+        { "key": "a", "role": "extra.a", "register": 1, "type": "u16", "kind": "measurement",
+          "unit": "A" },
+        { "key": "h", "role": "extra.h", "register": 2, "type": "u32", "kind": "counter",
+          "unit": "h" },
+        { "key": "n", "role": "extra.n", "register": 4, "type": "u16", "kind": "measurement",
+          "unit": "none" },
+    ]));
+
+    let units: Vec<Option<Unit>> = Profile::load(&doc.to_string())
+        .unwrap()
+        .quantities()
+        .iter()
+        .map(Quantity::unit)
+        .collect();
+
     assert_eq!(
-        units(&[("battery.mode", None), ("extra.radiator_temp", None)]),
-        [None, None]
+        units,
+        [
+            Some(Unit::Ampere),
+            Some(Unit::Hour),
+            Some(Unit::Dimensionless)
+        ]
     );
+}
+
+#[test]
+fn a_unit_needs_its_capability() {
+    let mut doc = case(&json!([
+        { "key": "a", "role": "extra.a", "register": 1, "type": "u16", "kind": "measurement",
+          "unit": "A" },
+    ]));
+    doc["requires"] = super::all_but("unit");
+
+    assert_eq!(
+        Profile::load(&doc.to_string()).unwrap_err(),
+        LoadError::Unrequired("unit".to_owned())
+    );
+}
+
+#[test]
+fn a_measurement_or_counter_extra_without_a_unit_is_refused() {
+    for kind in ["measurement", "counter"] {
+        let doc = case(&json!([
+            { "key": "a", "role": "extra.a", "register": 1, "type": "u16", "kind": kind },
+        ]));
+
+        assert_eq!(refusal(&doc), "quantity `a`: an extra declares its unit");
+    }
+}
+
+#[test]
+fn a_named_role_refuses_a_unit() {
+    let doc = case(&json!([
+        { "key": "p", "role": "pv.power", "register": 1, "type": "u16", "unit": "W" },
+    ]));
+
+    assert_eq!(
+        refusal(&doc),
+        "quantity `p`: a named role's unit is fixed by ADR 4"
+    );
+}
+
+#[test]
+fn a_status_or_held_extra_refuses_a_unit() {
+    for kind in ["status", "held"] {
+        let doc = case(&json!([
+            { "key": "a", "role": "extra.a", "register": 1, "type": "u16", "kind": kind,
+              "unit": "A" },
+        ]));
+
+        assert_eq!(
+            refusal(&doc),
+            "quantity `a`: only a measurement or counter has a unit"
+        );
+    }
 }
 
 #[test]

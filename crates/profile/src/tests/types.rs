@@ -8,8 +8,9 @@ use crate::document::{
     ActivateDoc, BlockDoc, DelayDoc, ExprDoc, HeartbeatDoc, IdentifyDoc, Kind, LiveControlDoc,
     MaskedDoc, PreconditionDoc, ProfileDoc, PublishDoc, QuantityDoc, Range, ReadBackDoc,
     RegisterDoc, RelockDoc, SettingDoc, StepDoc, TimeDoc, TimeFormat, ToggleDoc, UnlockDoc,
+    VariantDoc, VariantIdentifyDoc,
 };
-use crate::{Block, CAPABILITIES, Inverter, Mppt, Schemas, Support, Unit};
+use crate::{Block, CAPABILITIES, Inverter, Mppt, RoleKind, Schemas, StorageClass, Support, Unit};
 
 fn declarations() -> String {
     let cfg = Config::new().with_large_int("number");
@@ -22,10 +23,14 @@ fn declarations() -> String {
         format!("type Capability = {capability};"),
         ProfileDoc::decl(&cfg),
         QuantityDoc::decl(&cfg),
+        RoleKind::decl(&cfg),
+        StorageClass::decl(&cfg),
         Kind::decl(&cfg),
         Range::decl(&cfg),
         ExprDoc::decl(&cfg),
         IdentifyDoc::decl(&cfg),
+        VariantDoc::decl(&cfg),
+        VariantIdentifyDoc::decl(&cfg),
         Inverter::decl(&cfg),
         Mppt::decl(&cfg),
         SettingDoc::decl(&cfg),

@@ -26,15 +26,25 @@ async fn scan(core: &Core, set_cookie: &str, body: &Value) -> (StatusCode, Value
 }
 
 fn deye(unit: u8) -> Value {
-    json!([{ "profile": "deye-sg05lp3", "unit": unit }])
+    json!([{
+        "profile": "deye-sg05lp3", "variant": "15k", "name": "SUN-15K-SG05LP3-EU-SM2", "unit": unit,
+    }])
 }
 
-/// Register 0 of a Deye three-phase hybrid for a low-voltage battery: `0x0005`, as a
-/// SUN-15K-SG05LP3 answered it (read 2026-11-13); Deye's protocol V105 writes it `0x0500`.
-const LOW_VOLTAGE_HYBRID: [u16; 1] = [0x0005];
+/// Registers 0 to 21 of a Deye three-phase hybrid for a low-voltage battery: its device type in 0,
+/// `0x0005` as a SUN-15K-SG05LP3 answered it (read 2026-11-13; Deye's protocol V105 writes it
+/// `0x0500`), and its rated power in 20 and 21, in 0.1 W, low word first.
+fn low_voltage_hybrid(watts: u32) -> Vec<u16> {
+    let tenths = watts * 10;
+    let mut map = vec![0; 22];
+    map[0] = 0x0005;
+    map[20] = u16::try_from(tenths & 0xFFFF).unwrap();
+    map[21] = u16::try_from(tenths >> 16).unwrap();
+    map
+}
 
 async fn deye_at(host: &str, framing: Framing, unit: u8) -> fake::Fake {
-    fake::serve_map(host, framing, unit, 0, &LOW_VOLTAGE_HYBRID).await
+    fake::serve_map(host, framing, unit, 0, &low_voltage_hybrid(15_000)).await
 }
 
 /// The owner's plant: the gateway answers unit 0, the Solarman stick unit 1, the same inverter.
@@ -207,7 +217,30 @@ async fn a_sunspec_device_is_proposed_with_its_variant() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
         body["endpoints"][0]["devices"],
-        json!([{ "profile": "sunspec", "unit": 1, "variant": 103 }])
+        json!([{ "profile": "sunspec", "variant": "103", "name": "SunSpec device", "unit": 1 }])
+    );
+}
+
+/// A rating no variant declares is proposed as the family's base, which has its largest limits.
+#[tokio::test]
+async fn a_deye_of_a_rating_no_variant_declares_is_proposed_as_its_family() {
+    let inverter = fake::serve_map(
+        "127.0.0.10",
+        Framing::Tcp,
+        1,
+        0,
+        &low_voltage_hybrid(13_000),
+    )
+    .await;
+    let port = inverter.address.port();
+    let (core, set_cookie, _dir) = scanning(vec![(port, Framing::Tcp)], || None).await;
+
+    let (status, body) = scan(&core, &set_cookie, &json!({ "subnet": "127.0.0.10/32" })).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["endpoints"][0]["devices"],
+        json!([{ "profile": "deye-sg05lp3", "name": "SG05LP3", "unit": 1 }])
     );
 }
 

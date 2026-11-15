@@ -48,21 +48,24 @@ fn a_device_is_identified_only_when_every_field_holds_one_of_its_values() {
     let lp3_6k = answered(&[(0, &[0x0500]), (20, &[60_000, 0])]);
     let hp3 = answered(&[(0, &[0x0600]), (20, &[60_000, 0])]);
     let lp3_8k = answered(&[(0, &[0x0500]), (20, &[14_464, 1])]);
-    assert!(profile.identifies(&lp3_6k));
-    assert!(!profile.identifies(&hp3));
-    assert!(!profile.identifies(&lp3_8k), "80 000 is low word first");
+    assert!(profile.identify(&lp3_6k).is_some());
+    assert!(profile.identify(&hp3).is_none());
+    assert!(
+        profile.identify(&lp3_8k).is_none(),
+        "80 000 is low word first"
+    );
 }
 
 #[test]
 fn an_unanswered_field_identifies_nothing() {
-    assert!(!deye().identifies(&answered(&[(0, &[0x0500])])));
+    assert!(deye().identify(&answered(&[(0, &[0x0500])])).is_none());
 }
 
 #[test]
 fn a_profile_without_a_probe_has_an_empty_plan_and_identifies_nothing() {
     let profile = profile(&Value::Null).unwrap();
     assert_eq!(profile.identify_plan(), []);
-    assert!(!profile.identifies(&answered(&[(500, &[1])])));
+    assert!(profile.identify(&answered(&[(500, &[1])])).is_none());
 }
 
 #[test]

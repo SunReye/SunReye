@@ -14,10 +14,10 @@
   <label class="flex cursor-pointer items-center gap-3">
     <Checkbox
       bind:checked={choice.chosen}
-      aria-label={m.devices_confirm({ ...at, profile: choice.profile, unit: choice.unit })}
+      aria-label={m.devices_confirm({ ...at, profile: choice.title, unit: choice.unit })}
     />
     <span class="flex min-w-0 flex-col">
-      <span class="truncate text-[15px] font-medium">{choice.profile}</span>
+      <span class="truncate text-[15px] font-medium">{choice.title}</span>
       <span class="text-xs text-muted-foreground tabular-nums">
         {m.devices_at({ ...at, unit: choice.unit })}
       </span>
@@ -28,7 +28,7 @@
       label={m.devices_device_name()}
       class="pl-7"
       required
-      aria-label={m.devices_name({ profile: choice.profile })}
+      aria-label={m.devices_name({ profile: choice.title })}
       bind:value={choice.name}
     />
   {/if}

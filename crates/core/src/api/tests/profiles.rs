@@ -325,17 +325,47 @@ async fn the_catalogue_lists_every_profile_served_bundled_and_fetched_alike() {
     assert_eq!(status, StatusCode::OK);
     let profiles = body["profiles"].as_array().unwrap();
     let find = |id: &str| profiles.iter().find(|p| p["id"] == id).cloned();
+    // A family's variants are the next test's.
+    let listed = |id: &str| {
+        let mut listing = find(id).unwrap();
+        listing.as_object_mut().unwrap().remove("variants");
+        listing
+    };
     assert_eq!(
-        find("deye-sun15k-sg05lp3").unwrap(),
-        json!({ "id": "deye-sun15k-sg05lp3", "manufacturer": "Deye",
-            "name": "SUN-15K-SG05LP3-EU-SM2", "version": find("deye-sun15k-sg05lp3").unwrap()["version"],
-            "official": true, "acRating": 15000.0 })
+        listed("deye-sg05lp3"),
+        json!({ "id": "deye-sg05lp3", "manufacturer": "Deye", "name": "SG05LP3",
+            "version": bundled_version(), "official": true, "acRating": 20000.0 })
     );
     assert_eq!(
-        find("my-deye").unwrap(),
+        listed("my-deye"),
         json!({ "id": "my-deye", "manufacturer": "Deye", "name": "SG05LP3",
             "version": bundled_version(), "official": false, "acRating": 20000.0 })
     );
     assert_eq!(find("shelly-pro-3em").unwrap()["acRating"], Value::Null);
-    assert_eq!(profiles.len(), 24);
+    assert_eq!(profiles.len(), 6);
+}
+
+/// A device entered by hand chooses among its family's variants (ADR 5, 6): each is listed by id
+/// and name, as an index lists it (ADR 8), with its own rating.
+#[tokio::test]
+async fn a_family_is_listed_with_its_variants_and_any_other_profile_with_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let (_, body) = core.ask(&set_cookie, get("/api/v1/profiles")).await;
+
+    let profiles = body["profiles"].as_array().unwrap();
+    let find = |id: &str| profiles.iter().find(|p| p["id"] == id).cloned().unwrap();
+    let variants = find("deye-sg05lp3")["variants"].clone();
+    assert_eq!(
+        variants[0],
+        json!({ "id": "5k", "name": "SUN-5K-SG05LP3-EU-SM2", "acRating": 5000.0 })
+    );
+    // The largest model declares no rating of its own: it is the base's.
+    assert_eq!(
+        variants[9],
+        json!({ "id": "20k", "name": "SUN-20K-SG05LP3-EU-SM2", "acRating": 20000.0 })
+    );
+    assert_eq!(variants.as_array().unwrap().len(), 10);
+    assert_eq!(find("shelly-pro-3em")["variants"], json!([]));
 }

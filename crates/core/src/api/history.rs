@@ -85,7 +85,8 @@ struct Point {
     start: String,
     /// RFC 3339, UTC.
     end: String,
-    /// The value weighted by the time it held between `start` and `end`.
+    /// The value weighted by the time it held between `start` and `end`; for a status or a held
+    /// value in an `hour` or a `day`, the last value it held.
     mean: f64,
 }
 
@@ -200,7 +201,8 @@ impl Read {
     }
 }
 
-/// The rollups that end after `from`, as their means. A counter's rollup has no mean.
+/// The rollups that end after `from`, as their means, or the value a status or held value
+/// carried. A counter's rollup has no mean.
 fn rolled(rollups: &[Rollup], from: SystemTime) -> Result<Vec<Point>, Problem> {
     rollups
         .iter()
@@ -210,6 +212,11 @@ fn rolled(rollups: &[Rollup], from: SystemTime) -> Result<Vec<Point>, Problem> {
                 start: rfc3339(r.start),
                 end: rfc3339(r.end),
                 mean,
+            }),
+            Aggregate::Held { value } => Ok(Point {
+                start: rfc3339(r.start),
+                end: rfc3339(r.end),
+                mean: value,
             }),
             Aggregate::Counter { .. } => Err(COUNTER),
         })

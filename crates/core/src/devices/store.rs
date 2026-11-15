@@ -5,8 +5,8 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Brokering, ChangeRefusal, Connection, ConnectionDraft, Device, DeviceDraft, Hosting, Polled,
-    Publish, Reach, Reads, Transport, entry,
+    Addressed, Brokering, ChangeRefusal, Chosen, Connection, ConnectionDraft, Device, DeviceDraft,
+    Hosting, Polled, Publish, Reach, Reads, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::http;
@@ -163,12 +163,25 @@ fn credentials(db: &Db, id: u32) -> rusqlite::Result<Option<(String, String)>> {
 }
 
 /// Each device's id, address and profile behind connection `id`, by id.
-fn behind(db: &Db, id: u32) -> rusqlite::Result<Vec<(u32, u8, String)>> {
+fn behind(db: &Db, id: u32) -> rusqlite::Result<Vec<Addressed>> {
     db.prepare(
-        "SELECT id, unit, profile FROM device WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
+        "SELECT id, unit, profile, variant FROM device
+         WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
     )?
-    .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    .query_map([id], addressed)?
     .collect()
+}
+
+/// The device in the columns id, unit, profile and variant.
+fn addressed(row: &rusqlite::Row<'_>) -> rusqlite::Result<Addressed> {
+    Ok(Addressed {
+        id: row.get(0)?,
+        unit: row.get(1)?,
+        profile: Chosen {
+            profile: row.get(2)?,
+            variant: row.get(3)?,
+        },
+    })
 }
 
 /// Applies a draft's secret changes to connection `id`.
@@ -315,9 +328,11 @@ fn units_at(db: &Db, r: &Reach, counts: impl Fn(u32, u32) -> bool) -> rusqlite::
 }
 
 pub fn devices(db: &Db) -> rusqlite::Result<Vec<Device>> {
-    db.prepare("SELECT id, name, connection, profile, unit, writes FROM device ORDER BY id")?
-        .query_map([], device_row)?
-        .collect()
+    db.prepare(
+        "SELECT id, name, connection, profile, unit, writes, variant FROM device ORDER BY id",
+    )?
+    .query_map([], device_row)?
+    .collect()
 }
 
 fn device_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Device> {
@@ -329,13 +344,14 @@ fn device_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Device> {
             profile: row.get(3)?,
             unit: row.get(4)?,
             writes: row.get(5)?,
+            variant: row.get(6)?,
         },
     })
 }
 
 pub fn device(db: &Db, id: u32) -> rusqlite::Result<Option<Device>> {
     db.query_row(
-        "SELECT id, name, connection, profile, unit, writes FROM device WHERE id = ?1",
+        "SELECT id, name, connection, profile, unit, writes, variant FROM device WHERE id = ?1",
         [id],
         device_row,
     )
@@ -380,11 +396,13 @@ pub fn add_device(
         return Ok(Err(refusal));
     }
     tx.execute(
-        "INSERT INTO device (name, connection, profile, unit, writes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO device (name, connection, profile, variant, unit, writes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             draft.name,
             draft.connection,
             draft.profile,
+            draft.variant,
             draft.unit,
             draft.writes
         ],
@@ -406,7 +424,7 @@ pub fn change_device(
     let Some(stored) = device(&tx, id)? else {
         return Ok(Err(ChangeRefusal::NoDevice));
     };
-    if stored.draft.profile != draft.profile {
+    if stored.draft.profile != draft.profile || stored.draft.variant != draft.variant {
         return Ok(Err(ChangeRefusal::ProfileChange));
     }
     if let Err(refusal) = check_device(&tx, Some(id), &draft, reads)? {
@@ -437,17 +455,15 @@ pub fn remove_device(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
 /// Every device with its connection's endpoint, by id.
 pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     db.prepare(
-        "SELECT d.id, d.unit, d.profile, c.transport, c.host, c.port
+        "SELECT d.id, d.unit, d.profile, d.variant, c.transport, c.host, c.port
          FROM device d JOIN connection c ON c.id = d.connection
          WHERE d.unit IS NOT NULL AND c.transport NOT IN ('mqtt', 'http') ORDER BY d.id",
     )?
     .query_map([], |row| {
-        let (host, port) = (row.get(4)?, row.get(5)?);
+        let (host, port) = (row.get(5)?, row.get(6)?);
         Ok(Polled {
-            id: row.get(0)?,
-            unit: row.get(1)?,
-            profile: row.get(2)?,
-            endpoint: match transport(&row.get::<_, String>(3)?)? {
+            device: addressed(row)?,
+            endpoint: match transport(&row.get::<_, String>(4)?)? {
                 Transport::ModbusTcp => Endpoint::ModbusTcp { host, port },
                 Transport::RtuOverTcp => Endpoint::RtuOverTcp { host, port },
                 Transport::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
@@ -456,4 +472,13 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
         })
     })?
     .collect()
+}
+
+/// Moves the devices of the retired profile `old` to `variant` of `family`.
+pub fn rehome(db: &Db, old: &str, family: &str, variant: &str) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE device SET profile = ?2, variant = ?3 WHERE profile = ?1",
+        params![old, family, variant],
+    )?;
+    Ok(())
 }

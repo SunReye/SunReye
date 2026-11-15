@@ -1434,6 +1434,11 @@ export interface components {
              *     profile names, such as an EVCC loadpoint's.
              */
             unit: number;
+            /**
+             * @description The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after
+             *     the common model, such as `103`; none for a family's base. Fixed with the profile.
+             */
+            variant?: string | null;
             /** @description Whether settings may be written (ADR 7); off when left out. */
             writes?: boolean;
         };
@@ -1788,6 +1793,16 @@ export interface components {
             /** @description Oldest first, as written to stderr. */
             lines: string[];
         };
+        /** @description One variant of a family, as an admin picks it for a device. */
+        ListedVariant: {
+            /**
+             * Format: double
+             * @description Watts of AC output at this model's rating.
+             */
+            acRating?: number | null;
+            id: string;
+            name: string;
+        };
         /** @description A profile served, as an admin picks it for a device. */
         Listing: {
             /**
@@ -1800,6 +1815,11 @@ export interface components {
             /** @description The model, or the family it covers. */
             name: string;
             official: boolean;
+            /**
+             * @description A family's variants in file order (ADR 5); a device that is none of them is added
+             *     without one and read as the base.
+             */
+            variants: components["schemas"]["ListedVariant"][];
             version: string;
         };
         /** @description The plant's location in degrees, north and east positive. */
@@ -2043,7 +2063,8 @@ export interface components {
             end: string;
             /**
              * Format: double
-             * @description The value weighted by the time it held between `start` and `end`.
+             * @description The value weighted by the time it held between `start` and `end`; for a status or a held
+             *     value in an `hour` or a `day`, the last value it held.
              */
             mean: number;
             /** @description RFC 3339, UTC. */
@@ -2113,15 +2134,16 @@ export interface components {
         };
         /** @description A device the identify probe of a profile found. */
         Proposal: {
+            /** @description What the homeowner is shown: the variant's name, else the profile's. */
+            name: string;
             profile: string;
             /** Format: int32 */
             unit: number;
             /**
-             * Format: int32
-             * @description The variant the probe found: for SunSpec, the device model after the common model, such
-             *     as 103 for a three-phase inverter.
+             * @description The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after
+             *     the common model, such as `103` for a three-phase inverter; none for a family's base.
              */
-            variant?: number | null;
+            variant?: string | null;
         };
         /**
          * @description The publisher of a broker connection: the `plant` device's role values and each device's
