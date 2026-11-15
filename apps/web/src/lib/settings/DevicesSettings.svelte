@@ -62,43 +62,48 @@
   <div class="drill-card">
     {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
   </div>
-{:else if level === "add"}
-  <Level back={m.settings_devices()} title={m.settings_device_add()} onback={back}>
-    <AddDevice {core} known={listed} onadded={after} />
-  </Level>
-{:else if level === "topology"}
-  <Level back={m.settings_devices()} title={m.topology_title()} onback={back}>
-    <TopologyStep
-      {core}
-      devices={listed.devices}
-      ondone={() => {
-        changed = false;
-        back();
-      }}
-    />
-  </Level>
-{:else if open === undefined}
-  <DeviceList
-    {core}
-    devices={listed.devices}
-    connections={listed.connections}
-    {changed}
-    onopen={(id) => {
-      onlevel(String(id));
-    }}
-    onadd={() => {
-      onlevel("add");
-    }}
-    onreview={() => {
-      onlevel("topology");
-    }}
-  />
 {:else}
-  <DeviceLevel
-    {core}
-    device={open}
-    connections={listed.connections}
-    onback={back}
-    onchanged={after}
-  />
+  <!-- One grid cell, so nothing reflows: a level slides over the list, which shifts aside. -->
+  <div class="grid overflow-x-clip">
+    {#if level === "add"}
+      <Level back={m.settings_devices()} title={m.settings_device_add()} onback={back}>
+        <AddDevice {core} known={listed} onadded={after} />
+      </Level>
+    {:else if level === "topology"}
+      <Level back={m.settings_devices()} title={m.topology_title()} onback={back}>
+        <TopologyStep
+          {core}
+          devices={listed.devices}
+          ondone={() => {
+            changed = false;
+            back();
+          }}
+        />
+      </Level>
+    {:else if open === undefined}
+      <DeviceList
+        {core}
+        devices={listed.devices}
+        connections={listed.connections}
+        {changed}
+        onopen={(id) => {
+          onlevel(String(id));
+        }}
+        onadd={() => {
+          onlevel("add");
+        }}
+        onreview={() => {
+          onlevel("topology");
+        }}
+      />
+    {:else}
+      <DeviceLevel
+        {core}
+        device={open}
+        connections={listed.connections}
+        onback={back}
+        onchanged={after}
+      />
+    {/if}
+  </div>
 {/if}

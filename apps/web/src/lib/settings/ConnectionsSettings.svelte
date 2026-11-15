@@ -10,6 +10,7 @@
   import ConnectionForm from "./ConnectionForm.svelte";
   import ConnectionList from "./ConnectionList.svelte";
   import Level from "./Level.svelte";
+  import { shiftAside } from "../motion/slide.ts";
   import RemoveConfirm from "./RemoveConfirm.svelte";
 
   let {
@@ -60,29 +61,34 @@
 
 {#if listed === undefined}
   <div class="drill-card"><LoadingRows /></div>
-{:else if level === "add"}
-  <Level back={m.settings_connections()} title={m.settings_connection_add()} onback={back}>
-    <ConnectionForm {core} onsaved={after} />
-  </Level>
-{:else if open === undefined}
-  <div class="drill-card">
-    <ConnectionList
-      answer={listed}
-      onopen={(id) => {
-        onlevel(String(id));
-      }}
-      onadd={() => {
-        onlevel("add");
-      }}
-    />
-  </div>
 {:else}
-  <Level back={m.settings_connections()} title={open.name} onback={back}>
-    <ConnectionForm {core} connection={open} onsaved={after} />
-    <RemoveConfirm
-      ask={m.settings_connection_remove()}
-      note={m.settings_connection_remove_note()}
-      onremove={() => remove(open.id)}
-    />
-  </Level>
+  <!-- One grid cell, so nothing reflows: a level slides over the list, which shifts aside. -->
+  <div class="grid overflow-x-clip">
+    {#if level === "add"}
+      <Level back={m.settings_connections()} title={m.settings_connection_add()} onback={back}>
+        <ConnectionForm {core} onsaved={after} />
+      </Level>
+    {:else if open === undefined}
+      <div class="drill-card col-start-1 row-start-1 min-w-0 self-start" in:shiftAside out:shiftAside>
+        <ConnectionList
+          answer={listed}
+          onopen={(id) => {
+            onlevel(String(id));
+          }}
+          onadd={() => {
+            onlevel("add");
+          }}
+        />
+      </div>
+    {:else}
+      <Level back={m.settings_connections()} title={open.name} onback={back}>
+        <ConnectionForm {core} connection={open} onsaved={after} />
+        <RemoveConfirm
+          ask={m.settings_connection_remove()}
+          note={m.settings_connection_remove_note()}
+          onremove={() => remove(open.id)}
+        />
+      </Level>
+    {/if}
+  </div>
 {/if}

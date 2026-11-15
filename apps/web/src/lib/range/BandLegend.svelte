@@ -13,6 +13,8 @@
     open: boolean;
     /** The upper side's row, then the lower side's, each with its series' values. */
     rows: {
+      /** Which side of the baseline: a series that runs both ways has a row on each. */
+      side: "up" | "down";
       name: string;
       series: readonly SeriesMeta[];
       values: readonly number[];
@@ -161,7 +163,7 @@
       >
     {/if}
   </div>
-  {#each rows as r (r.name + r.series.length)}
+  {#each rows as r (r.side)}
     {@render row(r)}
   {/each}
 </div>
