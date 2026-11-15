@@ -18,15 +18,15 @@ import {
   testCore,
   undesk,
   type Pointer,
+  filledFace,
+  SIZES,
 } from "./builder.harness.ts";
 import { saveFrom } from "./moment.harness.ts";
 import { connect, type Transport } from "../api/core.ts";
-import { addGrid, fillGrid, panels, type Draft } from "./modules.ts";
+import { addGrid, panels, type Draft } from "./modules.ts";
 import { toThree } from "./scene.ts";
 
 const SLOW = { timeout: 15_000 };
-
-const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
 const OTHER = { ...MODULE, id: 8, name: "Other 300" };
 
@@ -48,9 +48,7 @@ function wired(name: string, moduleType: number): StringDraft {
 function filled(strings: readonly Readonly<StringDraft>[]): Draft {
   const { scene } = house();
   let gridded = addGrid(addGrid(scene, 0, 0, MODULE.id), 0, 1, MODULE.id);
-  const laid = pv.modules(gridded, SIZES).grids;
-
-  gridded = fillGrid(fillGrid(gridded, 0, laid[0] ?? []), 1, laid[1] ?? []);
+  gridded = filledFace(filledFace(gridded, 0), 1);
 
   return { scene: gridded, strings };
 }
@@ -100,7 +98,7 @@ async function opened(draft: Draft, transport: Readonly<Transport> = testCore())
 function three(draft: Draft): [number, number][] {
   const all = centres(draft);
   // The north face fills first: the south face's first row follows it.
-  const south = pv.modules(draft.scene, SIZES).grids[0]?.length ?? 0;
+  const south = draft.scene.grids?.[0]?.modules.length ?? 0;
 
   return all.slice(south, south + 3);
 }
@@ -152,10 +150,9 @@ test("a drag across modules wires them in the order it crosses them, and saves t
   // The south face is the second grid, filled two rows of eight: its first row wired right to left.
   const south = Array.from({ length: 16 }, (_, i) => {
     const [row, column] = [Math.floor(i / 8), i % 8];
+    const at = { landscape: false };
 
-    return row === 0 && column < 3
-      ? { row, column, string: 0, order: 2 - column }
-      : { row, column };
+    return row === 0 && column < 3 ? { ...at, string: 0, order: 2 - column } : at;
   });
 
   expect(transport.puts[0]).toMatchObject({

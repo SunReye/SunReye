@@ -5,7 +5,6 @@ import {
   clearGrid,
   addString,
   apply,
-  fillGrid,
   paint,
   painted,
   panels,
@@ -15,6 +14,7 @@ import {
   withoutBlock,
   withoutString,
 } from "./modules.ts";
+import { place } from "./placing.ts";
 import { loadPv, type Scene } from "./pv.ts";
 
 const wasm = new URL(
@@ -46,38 +46,22 @@ test("a new grid on a face holds portrait modules of its type behind a 0.3 m set
   ]);
 });
 
-test("placing toggles a module in a cell, and painting assigns it to a string", () => {
-  const placed = apply(gridded, 0, { row: 0, column: 2 }, { kind: "place" });
+/** Portrait modules side by side from the setback's corner, 2 cm apart, by their position. */
+const spot = (i: number) => ({ across: 0.3 + i * 1.154, up: 0.3, landscape: false });
+const spots = (count: number) => Array.from({ length: count }, (_, i) => spot(i));
 
-  expect(placed.grids?.[0]?.modules).toEqual([{ row: 0, column: 2, optimized: false }]);
+/** The south face's grid with `count` modules. */
+const laid = (count: number) => place(gridded, 0, spots(count));
 
-  const into = apply(placed, 0, { row: 0, column: 2 }, { kind: "paint", string: 1 });
+const [first, second] = [spot(0), spot(1)];
 
-  expect(into.grids?.[0]?.modules).toEqual([
-    { row: 0, column: 2, string: 1, optimized: false, order: 0 },
+test("the optimizer tool toggles a module's optimizer", () => {
+  const on = apply(laid(1), 0, 0, { kind: "optimizer" });
+
+  expect(on.grids?.[0]?.modules).toEqual([{ ...first, optimized: true }]);
+  expect(apply(on, 0, 0, { kind: "optimizer" }).grids?.[0]?.modules).toEqual([
+    { ...first, optimized: false },
   ]);
-  expect(apply(placed, 0, { row: 0, column: 2 }, { kind: "place" }).grids?.[0]?.modules).toEqual(
-    [],
-  );
-});
-
-test("painting an empty cell places a module there, and unpainting keeps the module", () => {
-  const into = apply(gridded, 0, { row: 1, column: 0 }, { kind: "paint", string: 0 });
-  const unpainted = apply(into, 0, { row: 1, column: 0 }, { kind: "paint" });
-
-  expect(into.grids?.[0]?.modules).toEqual([
-    { row: 1, column: 0, string: 0, optimized: false, order: 0 },
-  ]);
-  expect(unpainted.grids?.[0]?.modules).toEqual([{ row: 1, column: 0, optimized: false }]);
-});
-
-test("the optimizer tool toggles a placed module's optimizer and leaves empty cells empty", () => {
-  const placed = apply(gridded, 0, { row: 0, column: 0 }, { kind: "place" });
-
-  expect(
-    apply(placed, 0, { row: 0, column: 0 }, { kind: "optimizer" }).grids?.[0]?.modules,
-  ).toEqual([{ row: 0, column: 0, optimized: true }]);
-  expect(apply(gridded, 0, { row: 0, column: 0 }, { kind: "optimizer" })).toEqual(gridded);
 });
 
 test("removing a block drops its grids and renumbers those of later blocks", () => {
@@ -115,52 +99,45 @@ test("removing a block drops the equipment on its walls and renumbers that of la
 });
 
 test("removing a string unassigns its modules and renumbers later strings", () => {
-  let scene = apply(gridded, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+  let scene = apply(laid(2), 0, 0, { kind: "paint", string: 0 });
 
-  scene = apply(scene, 0, { row: 0, column: 1 }, { kind: "paint", string: 1 });
+  scene = apply(scene, 0, 1, { kind: "paint", string: 1 });
 
   expect(withoutString(scene, 0).grids?.[0]?.modules).toEqual([
-    { row: 0, column: 0, optimized: false },
-    { row: 0, column: 1, string: 0, optimized: false, order: 0 },
+    { ...first, optimized: false },
+    { ...second, string: 0, optimized: false, order: 0 },
   ]);
 });
 
 test("a string counts the modules painted into it across faces", () => {
-  let scene = addGrid(gridded, 1, 0, 7);
+  let scene = place(addGrid(laid(1), 1, 0, 7), 1, spots(2));
 
-  scene = apply(scene, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
-  scene = apply(scene, 1, { row: 0, column: 0 }, { kind: "paint", string: 0 });
-  scene = apply(scene, 1, { row: 0, column: 1 }, { kind: "place" });
+  scene = apply(scene, 0, 0, { kind: "paint", string: 0 });
+  scene = apply(scene, 1, 0, { kind: "paint", string: 0 });
 
   expect(painted(scene, 0)).toEqual({ modules: 2, optimized: 0 });
 });
 
-test("a placed module is drawn where the crate laid out its cell; one outside every cell is not", () => {
-  let scene = apply(gridded, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+test("a module is drawn where the crate laid it out, named by its place in its grid", () => {
+  const scene = apply(laid(2), 0, 1, { kind: "paint", string: 0 });
+  const grids = pv.modules(scene, SIZES).grids;
+  const drawn = panels(scene, grids);
 
-  scene = apply(scene, 0, { row: 5, column: 0 }, { kind: "place" });
-
-  const corners = [
-    [0, 0, 0],
-    [1, 0, 0],
-    [1, 1, 0],
-    [0, 1, 0],
-  ] as const;
-
-  const area = [
-    [0, 0],
-    [1, 1],
-  ] as const;
-
-  expect(panels(scene, [[{ row: 0, column: 0, area, corners }]])).toEqual([
-    { corners, string: 0, grid: 0, row: 0, column: 0 },
+  expect(drawn.map(({ string, grid, module }) => [string, grid, module])).toEqual([
+    [null, 0, 0],
+    [0, 0, 1],
   ]);
+  expect(drawn[1]?.corners).toEqual(grids[0]?.modules[1]?.corners);
+  // The second module's lower left corner: 1.454 m east of the south eave's west end, 0.3 m up it.
+  expect(drawn[1]?.corners[0]?.[0]).toBeCloseTo(1.454, 6);
+  // A grid the crate could not lay out draws nothing.
+  expect(panels(scene, [null])).toEqual([]);
 });
 
 test("a new string is wired like the first one, else to device 1, and starts empty", () => {
-  const first = addString({ scene: gridded, strings: [] }, "South", 7);
+  const added = addString({ scene: gridded, strings: [] }, "South", 7);
 
-  expect(first.strings).toEqual([
+  expect(added.strings).toEqual([
     {
       name: "South",
       moduleType: 7,
@@ -194,55 +171,19 @@ test("a new string is wired like the first one, else to device 1, and starts emp
   expect(addString(rewired, "North", 7).strings[1]).toMatchObject({ device: 4, loss: 3, input: 1 });
 });
 
-test("fill face places a module in every cell the crate's grid holds, keeping painted ones", () => {
-  const started = apply(gridded, 0, { row: 0, column: 1 }, { kind: "paint", string: 0 });
-  const cells = pv.modules(started, SIZES).grids[0] ?? [];
-  const filled = fillGrid(started, 0, cells);
-
-  // A 10 m wide, 4.883 m deep face behind a 0.3 m setback holds 8 × 2 portrait modules.
-  expect(cells).toHaveLength(16);
-  expect(filled.grids?.[0]?.modules).toHaveLength(16);
-  expect(filled.grids?.[0]?.modules).toContainEqual({
-    row: 0,
-    column: 1,
-    string: 0,
-    optimized: false,
-    order: 0,
-  });
-  expect(pv.modules(filled, SIZES).misplaced).toBeNull();
-});
-
-test("a drag that starts on an empty cell places along its path, one that starts on a module erases", () => {
-  const placing = strokeOf(gridded, 0, { row: 0, column: 0 }, { kind: "place" });
-  let scene = paint(gridded, 0, { row: 0, column: 0 }, placing);
-
-  scene = paint(scene, 0, { row: 0, column: 1 }, placing);
-  scene = paint(scene, 0, { row: 0, column: 1 }, placing);
-
-  expect(scene.grids?.[0]?.modules).toHaveLength(2);
-
-  const erasing = strokeOf(scene, 0, { row: 0, column: 1 }, { kind: "place" });
-
-  scene = paint(scene, 0, { row: 0, column: 1 }, erasing);
-  scene = paint(scene, 0, { row: 0, column: 0 }, erasing);
-  scene = paint(scene, 0, { row: 1, column: 0 }, erasing);
-
-  expect(scene.grids?.[0]?.modules).toEqual([]);
-});
-
 test("a string stroke paints across grids, and one starting on the string's own module unpaints", () => {
-  const two = addGrid(gridded, 1, 0, 7);
-  const painting = strokeOf(two, 0, { row: 0, column: 0 }, { kind: "paint", string: 0 });
-  let scene = paint(two, 0, { row: 0, column: 0 }, painting);
+  const two = place(addGrid(laid(1), 1, 0, 7), 1, spots(1));
+  const painting = strokeOf(two, 0, 0, { kind: "paint", string: 0 });
+  let scene = paint(two, 0, 0, painting);
 
-  scene = paint(scene, 1, { row: 0, column: 0 }, painting);
+  scene = paint(scene, 1, 0, painting);
 
   expect(painted(scene, 0).modules).toBe(2);
 
-  const unpainting = strokeOf(scene, 1, { row: 0, column: 0 }, { kind: "paint", string: 0 });
+  const unpainting = strokeOf(scene, 1, 0, { kind: "paint", string: 0 });
 
-  scene = paint(scene, 1, { row: 0, column: 0 }, unpainting);
-  scene = paint(scene, 0, { row: 0, column: 0 }, unpainting);
+  scene = paint(scene, 1, 0, unpainting);
+  scene = paint(scene, 0, 0, unpainting);
 
   expect(painted(scene, 0).modules).toBe(0);
   expect(scene.grids?.flatMap((grid) => grid.modules)).toHaveLength(2);
@@ -257,38 +198,28 @@ test("painting a string into a grid of another module type is refused", () => {
   expect(refuses(draft, 0, { kind: "paint", string: 0 })).toBe(false);
   expect(refuses(draft, 1, { kind: "paint", string: 0 })).toBe(true);
   expect(refuses(draft, 1, { kind: "paint" })).toBe(false);
-  expect(refuses(draft, 1, { kind: "place", erase: false })).toBe(false);
+  expect(refuses(draft, 1, { kind: "optimizer" })).toBe(false);
 });
 
-test("a stroke leaves each cell with a module or none, keeping what it does not change", () => {
-  const at = { row: 0, column: 0 };
-  const module = { row: 0, column: 0, string: 1, optimized: true };
+test("a stroke changes a module's string or optimizer and keeps the rest", () => {
+  const module = { across: 1, up: 2, landscape: true, string: 1, optimized: true };
 
-  expect(stroked(undefined, at, { kind: "place", erase: false })).toEqual({
-    ...at,
-    optimized: false,
-  });
-  expect(stroked(module, at, { kind: "place", erase: false })).toBe(module);
-  expect(stroked(module, at, { kind: "place", erase: true })).toBeUndefined();
-  expect(stroked(undefined, at, { kind: "optimizer", on: true })).toBeUndefined();
-  expect(stroked(module, at, { kind: "optimizer", on: false })).toEqual({
+  expect(stroked(module, { kind: "optimizer", on: false })).toEqual({
     ...module,
     optimized: false,
   });
-  expect(stroked(undefined, at, { kind: "paint", string: 2, erase: true })).toBeUndefined();
-  expect(stroked(undefined, at, { kind: "paint", string: 2, erase: false })).toEqual({
-    ...at,
+  expect(stroked(module, { kind: "paint", string: 2, erase: false })).toEqual({
+    ...module,
     string: 2,
-    optimized: false,
   });
-  expect(stroked(module, at, { kind: "paint", string: 1, erase: true })).toEqual({
-    ...at,
+  expect(stroked(module, { kind: "paint", string: 1, erase: true })).toEqual({
+    across: 1,
+    up: 2,
+    landscape: true,
     optimized: true,
   });
 });
 
 test("clearing a face takes its modules and keeps its grid", () => {
-  const placed = apply(gridded, 0, { row: 0, column: 0 }, { kind: "place" });
-
-  expect(clearGrid(placed, 0).grids).toEqual(gridded.grids);
+  expect(clearGrid(laid(3), 0).grids).toEqual(gridded.grids);
 });

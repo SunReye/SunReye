@@ -1,34 +1,38 @@
 import "../../app.css";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect } from "../api/core.ts";
+import { connect, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import {
   cellsOnPage,
   desk,
   DEVICES,
   drill,
+  faceOnPage,
   house,
   inspector,
   MODULE,
-  ontoFace,
-  phone,
   press,
   pv,
   SOUTH,
   choose,
-  starts,
-  tap,
   testCore,
   undesk,
+  filledFace,
 } from "./builder.harness.ts";
+import { saveFrom } from "./moment.harness.ts";
 import { addGrid, type Draft } from "./modules.ts";
+import type { Scene } from "./pv.ts";
 
-// Modules placed on the roof in 3D (ADR 20): a face's free cells show on it while it is selected.
+// Modules laid on the roof in 3D (ADR 20): a press on the selected face lays a module where the
+// pointer holds its middle, a drag a row, and a drag from a module moves it.
 
 const SLOW = { timeout: 15_000 };
+
+/** Each test drives the canvas and the inspector many times: slow beside the rest of the suite. */
+const MINUTE = 60_000;
 
 /** The template house with an empty grid on its south face. */
 function gridded(): Draft {
@@ -39,11 +43,13 @@ function gridded(): Draft {
 
 /** The face level's count of placed modules. */
 const count = (placed: number) =>
-  inspector().getByText(new RegExp(`^${placed} von 16 Modulen gesetzt$`, "u"));
+  inspector().getByText(`${placed} Module gesetzt`, { exact: true });
 
 /** The module level's string row, naming the string the module is wired into. */
 const wiredTo = (name: string) =>
   inspector().getByRole("button", { name: `String ${name}`, exact: true });
+
+const undo = () => inspector().getByRole("button", { name: "Rückgängig" }).click();
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.builder.view");
@@ -56,12 +62,12 @@ afterEach(async () => {
   await page.viewport(1280, 900);
 });
 
-async function opened(draft: Draft): Promise<void> {
+async function opened(draft: Draft, transport: Readonly<Transport> = testCore()): Promise<void> {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    core: connect(transport),
     start: draft,
     moduleTypes: [MODULE],
     devices: DEVICES,
@@ -71,168 +77,187 @@ async function opened(draft: Draft): Promise<void> {
   await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
 }
 
-test("a drag across three free cells on the roof places three modules, as one undo step", async () => {
-  const draft = gridded();
+/** The modules of the south face as the last save sent them, their places in millimetres. */
+function saved(transport: { readonly puts: readonly unknown[] }) {
+  const put = JSON.stringify(transport.puts.at(-1));
+  // SAFETY: the test core keeps what the builder sent, a layout change with its scene.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- as above.
+  const { scene } = JSON.parse(put) as { readonly scene: Scene };
 
-  await opened(draft);
-
-  const cells = cellsOnPage(draft.scene, 0);
-
-  await press("mouse", [cells("0.0"), cells("0.1"), cells("0.2")]);
-
-  await expect.element(count(3)).toBeVisible();
-
-  await inspector().getByRole("button", { name: "Rückgängig" }).click();
-
-  await expect.element(count(0)).toBeVisible();
-});
-
-test("a tap on a placed module selects it, and a drag that starts on one removes a run", async () => {
-  const draft = gridded();
-
-  await opened(draft);
-
-  const cells = cellsOnPage(draft.scene, 0);
-  const at = (...keys: readonly string[]) => keys.map((key) => cells(key));
-
-  await press("mouse", at("0.0", "0.1", "0.2", "0.3"));
-  await expect.element(count(4)).toBeVisible();
-
-  await press("mouse", at("0.2", "0.3"));
-  await expect.element(count(2)).toBeVisible();
-
-  await press("mouse", at("0.1"));
-  await expect
-    .element(inspector().getByRole("heading", { name: "Reihe 1, Spalte 2" }))
-    .toBeVisible();
-
-  await inspector().getByRole("checkbox", { name: "Optimierer" }).click();
-  await inspector().getByRole("button", { name: "Entfernen" }).click();
-
-  await expect.element(count(1)).toBeVisible();
-});
-
-test("a module tapped in 3D is wired into a new string or a picked one, or unwired, from its level", async () => {
-  const draft = gridded();
-
-  await opened(draft);
-
-  const cells = cellsOnPage(draft.scene, 0);
-  const at = (...keys: readonly string[]) => keys.map((key) => cells(key));
-
-  await press("mouse", at("0.0", "0.1"));
-  await expect.element(count(2)).toBeVisible();
-
-  await press("mouse", at("0.0"));
-  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
-  await choose("String", "Neuer String");
-  await expect.element(wiredTo("String 1")).toBeVisible();
-
-  await press("mouse", at("0.1"));
-  await choose("String", "String 1");
-  await press("mouse", at("0.0"));
-  await choose("String", "Keinem String zugeordnet");
-  await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
-
-  await drill("Baukörper 1, Fläche 2", "Module", "Szene", "Strings", "String 1");
-  await expect.element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u)).toBeVisible();
-
-  await inspector().getByRole("button", { name: "Rückgängig" }).click();
-  await expect.element(inspector().getByText(/^2 Module, davon 0 mit Optimierer$/u)).toBeVisible();
-});
-
-test("a drag that starts off the roof orbits the camera and places nothing", async () => {
-  const draft = gridded();
-
-  await opened(draft);
-
-  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const [left, top] = [canvas.left + 30, canvas.top + canvas.height * 0.8];
-
-  await press("mouse", [
-    [left, top],
-    [left + 60, top + 10],
-    [left + 120, top + 20],
+  return (scene.grids?.[0]?.modules ?? []).map(({ across, up, landscape }) => [
+    Math.round(across * 1000),
+    Math.round(up * 1000),
+    landscape,
   ]);
-
-  await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
-  await expect.element(count(0)).toBeVisible();
-});
-
-/** The fingers at `points`, through the browser's touch input; each keeps its id by position. */
-async function touch(
-  type: "touchStart" | "touchMove" | "touchEnd",
-  points: readonly (readonly [number, number])[],
-): Promise<void> {
-  await cdp().send("Input.dispatchTouchEvent", {
-    type,
-    touchPoints: points.map(([x, y], id) => ({ x, y, id })),
-  });
 }
 
-/** Two fingers: the first presses `one` and moves to `two`, then a second joins and both move. */
-async function pinch(
-  one: readonly [number, number],
-  two: readonly [number, number],
-): Promise<void> {
-  await touch("touchStart", [one]);
-  await touch("touchMove", [two]);
-  await touch("touchStart", [two, [two[0] + 80, two[1] + 80]]);
-  await touch("touchMove", [
-    [two[0] - 40, two[1] - 40],
-    [two[0] + 140, two[1] + 140],
-  ]);
-  await touch("touchEnd", []);
-}
+test(
+  "a tap on the roof lays a module there and a drag across free roof a row, as one undo step each",
+  async () => {
+    const draft = gridded();
+    const transport = testCore();
 
-/** A phone's inspector sheet, and the handle that pulls it up. */
-const sheet = () => page.getByRole("region", { name: "Szene bearbeiten" });
-const handle = () => page.getByRole("button", { name: "Szene bearbeiten" });
+    await opened(draft, transport);
 
-/** Taps a row or button of the pulled-up sheet whose name starts with `label`. */
-async function row(label: string): Promise<void> {
-  const button = sheet()
-    .getByRole("button", { name: starts(label) })
-    .first();
+    const at = faceOnPage(draft.scene, 0);
 
-  await expect.element(button).toBeVisible();
-  await tap(button);
-}
+    // The pointer holds a portrait module's middle: 0.567 m across and 0.861 m up from its corner.
+    await press("mouse", [at(1.067, 1.361)]);
+    await expect.element(count(1)).toBeVisible();
 
-test("on a phone a finger lays a run on the selected face and a tap selects one; a second finger orbits", async () => {
-  await phone();
+    // 3.6 m across: a module and its 2 cm gap fit three times more.
+    await press("mouse", [at(3.067, 1.361), at(5, 1.5), at(6.667, 1.5)]);
+    await expect.element(count(5)).toBeVisible();
 
-  const draws = vi.spyOn(EffectComposer.prototype, "render");
-  const draft = gridded();
+    await saveFrom("2026-11-01");
+    await expect.poll(() => transport.puts).toHaveLength(1);
+    expect(saved(transport)).toEqual([
+      [500, 500, false],
+      [2500, 500, false],
+      [3654, 500, false],
+      [4808, 500, false],
+      [5962, 500, false],
+    ]);
+  },
+  MINUTE,
+);
 
-  await render(Builder, {
-    pv,
-    core: connect(testCore()),
-    start: draft,
-    moduleTypes: [MODULE],
-    devices: DEVICES,
-  });
+test(
+  "a row is one undo step, and a tap where no module fits lays none",
+  async () => {
+    const draft = gridded();
 
-  await tap(handle());
-  await row("Module");
-  await row(SOUTH);
-  await tap(handle());
-  await expect.poll(() => draws.mock.calls.length, SLOW).toBeGreaterThan(0);
+    await opened(draft);
 
-  // The camera flew onto the face when it was opened.
-  const at = cellsOnPage(draft.scene, 0, ontoFace(draft.scene, 0));
+    const at = faceOnPage(draft.scene, 0);
 
-  await press("touch", [at("0.0"), at("0.1"), at("0.2")]);
-  await press("touch", [at("0.1")]);
-  await expect
-    .element(sheet().getByRole("heading", { name: "Reihe 1, Spalte 2" }))
-    .toBeInTheDocument();
+    await press("mouse", [at(1.067, 1.361), at(2.5, 1.4), at(4, 1.4)]);
+    await expect.element(count(3)).toBeVisible();
 
-  // A second finger puts its run back and turns the camera instead.
-  await pinch(at("0.4"), at("0.5"));
-  await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
+    // Over the setback at the eave and at the ridge.
+    await press("mouse", [at(5, 0.6)]);
+    await press("mouse", [at(7, 4.2)]);
+    await expect.element(count(3)).toBeVisible();
 
-  await tap(handle());
-  await row("Baukörper 1, Fläche 2");
-  await expect.element(sheet().getByText("3 von 16 Modulen gesetzt")).toBeVisible();
-}, 60_000);
+    await undo();
+    await expect.element(count(0)).toBeVisible();
+  },
+  MINUTE,
+);
+
+test(
+  "a tap on a module selects it, and a drag that starts on one moves it, snapped beside the next",
+  async () => {
+    const draft = gridded();
+    const transport = testCore();
+
+    await opened(draft, transport);
+
+    const at = faceOnPage(draft.scene, 0);
+
+    await press("mouse", [at(1.067, 1.361)]);
+    await press("mouse", [at(5.067, 1.361)]);
+    await expect.element(count(2)).toBeVisible();
+
+    // The first module, dragged 2.8 m to the right: 2 cm left of the second, in line with it.
+    await press("mouse", [at(1, 1.2), at(2, 1.3), at(3.8, 1.3)]);
+    // Onto the second it does not fit, and stays at the last place it did.
+    await press("mouse", [at(3.9, 1.2), at(4.6, 1.2), at(5.3, 1.2)]);
+
+    await press("mouse", [at(5, 1.2)]);
+    await expect.element(inspector().getByRole("heading", { name: "Modul 2" })).toBeVisible();
+
+    await choose("Ausrichtung", "Quer");
+    await inspector().getByRole("checkbox", { name: "Optimierer" }).click();
+    await saveFrom("2026-11-01");
+    await expect.poll(() => transport.puts).toHaveLength(1);
+    expect(saved(transport)).toEqual([
+      [3346, 500, false],
+      [4500, 500, true],
+    ]);
+
+    await inspector().getByRole("button", { name: "Entfernen" }).click();
+    await expect.element(count(1)).toBeVisible();
+  },
+  MINUTE,
+);
+
+test(
+  "a module tapped in 3D is wired into a new string or a picked one, or unwired, from its level",
+  async () => {
+    const draft = gridded();
+
+    await opened(draft);
+
+    const cells = cellsOnPage(draft.scene, 0);
+
+    await press("mouse", [cells("0.0")]);
+    await press("mouse", [cells("0.1")]);
+    await expect.element(count(2)).toBeVisible();
+
+    await press("mouse", [cells("0.0")]);
+    await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+    await choose("String", "Neuer String");
+    await expect.element(wiredTo("String 1")).toBeVisible();
+
+    await press("mouse", [cells("0.1")]);
+    await choose("String", "String 1");
+    await press("mouse", [cells("0.0")]);
+    await choose("String", "Keinem String zugeordnet");
+    await expect.element(wiredTo("Keinem String zugeordnet")).toBeVisible();
+
+    await drill("Baukörper 1, Fläche 2", "Module", "Szene", "Strings", "String 1");
+    await expect
+      .element(inspector().getByText(/^1 Module, davon 0 mit Optimierer$/u))
+      .toBeVisible();
+
+    await undo();
+    await expect
+      .element(inspector().getByText(/^2 Module, davon 0 mit Optimierer$/u))
+      .toBeVisible();
+  },
+  MINUTE,
+);
+
+test(
+  "a chimney moved onto modules removes the ones it covers, in the same undo step",
+  async () => {
+    const draft = gridded();
+
+    await opened({ ...draft, scene: filledFace(draft.scene, 0) });
+    await expect.element(count(16)).toBeVisible();
+
+    // The first roof face is the north one; moved to the south face it stands in its middle, three
+    // fifths up it: on the upper row's fourth and fifth module.
+    await drill("Module", "Szene", "Gebäude", "Schornstein hinzufügen");
+    await choose("Dachfläche", SOUTH);
+    await drill("Gebäude", "Szene", "Module", SOUTH);
+    await expect.element(count(14)).toBeVisible();
+
+    await undo();
+    await expect.element(count(16)).toBeVisible();
+  },
+  MINUTE,
+);
+
+test(
+  "a drag that starts off the roof orbits the camera and places nothing",
+  async () => {
+    const draft = gridded();
+
+    await opened(draft);
+
+    const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+    const [left, top] = [canvas.left + 30, canvas.top + canvas.height * 0.8];
+
+    await press("mouse", [
+      [left, top],
+      [left + 60, top + 10],
+      [left + 120, top + 20],
+    ]);
+
+    await expect.poll(() => localStorage.getItem("sunreye.builder.view")).not.toBeNull();
+    await expect.element(count(0)).toBeVisible();
+  },
+  MINUTE,
+);

@@ -13,8 +13,8 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sunreye_pv::{
-    COLD, CellPlace, Face, Footing, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene,
-    Size, Surface, WallFrame, open_circuit_voltage, sun_position,
+    COLD, Face, Footing, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene, Size, Surface,
+    WallFrame, open_circuit_voltage, sun_position,
 };
 
 /// The faces, solids, equipment mounts, car stands, ground surfaces, fences and openings of a
@@ -59,7 +59,7 @@ struct Gridded {
     sizes: HashMap<u32, Size>,
 }
 
-/// The roof faces, each grid's cells inside its setback, the first misplaced module, and what the
+/// The roof faces, each grid laid out on its face, the first misplaced module, and what the
 /// builder's handles stand on: every block's walls and every chimney's footing, `null` for one
 /// that names no roof face.
 fn modules(input: &[u8]) -> String {
@@ -76,7 +76,7 @@ fn modules(input: &[u8]) -> String {
                 .iter()
                 .find(|r| (r.block, r.face) == (grid.block, grid.face));
             match (face, sizes.get(&grid.module_type)) {
-                (Some(face), Some(size)) => face.cells(grid, *size).iter().map(cell).collect(),
+                (Some(face), Some(size)) => laid(face, grid, *size),
                 _ => Value::Null,
             }
         })
@@ -93,6 +93,27 @@ fn modules(input: &[u8]) -> String {
         "footings": scene.footings().iter().map(|f| f.as_ref().map(footing)).collect::<Vec<_>>(),
     }})
     .to_string()
+}
+
+/// A grid on its face: each module's footprint, the face's outline and that outline inside the
+/// setback, corner for corner and `null` where none is left, and the chimneys' footprints.
+fn laid(face: &RoofFace, grid: &ModuleGrid, size: Size) -> Value {
+    let modules: Vec<Value> = grid
+        .modules
+        .iter()
+        .map(|module| {
+            let area = grid.footprint(size, module.spot);
+            json!({ "area": area, "corners": face.corners(area) })
+        })
+        .collect();
+    let ring =
+        |outline: &[[f64; 2]]| -> Vec<_> { outline.iter().map(|p| face.point(*p)).collect() };
+    json!({
+        "modules": modules,
+        "outline": ring(&face.outline),
+        "inset": face.inset(grid.setback).map(|inset| ring(&inset)),
+        "blocked": face.chimneys.iter().map(|area| face.corners(*area)).collect::<Vec<_>>(),
+    })
 }
 
 /// An instant and a place, as `sun` takes them.
@@ -169,22 +190,19 @@ fn edited<T: DeserializeOwned>(input: &[u8], reply: impl Fn(&T) -> Value) -> Str
     .to_string()
 }
 
-fn cell(cell: &CellPlace) -> Value {
-    json!({ "row": cell.row, "column": cell.column, "area": cell.area, "corners": cell.corners })
-}
-
-/// The first misplaced module, with its cell's area on the face, so the browser shows it there.
+/// The first misplaced module, with its footprint on the face, so the browser shows it there.
 fn misplaced(misplaced: Misplaced, grids: &[ModuleGrid], sizes: &HashMap<u32, Size>) -> Value {
-    let (kind, grid, row, column) = match misplaced {
+    let (kind, grid, module) = match misplaced {
         Misplaced::Face { grid } => return json!({ "kind": "face", "grid": grid }),
         Misplaced::ModuleType { grid } => return json!({ "kind": "moduleType", "grid": grid }),
-        Misplaced::Setback { grid, row, column } => ("setback", grid, row, column),
-        Misplaced::Overlap { grid, row, column } => ("overlap", grid, row, column),
+        Misplaced::Setback { grid, module } => ("setback", grid, module),
+        Misplaced::Overlap { grid, module } => ("overlap", grid, module),
+        Misplaced::Chimney { grid, module } => ("chimney", grid, module),
     };
     let area = grids
         .get(grid)
-        .and_then(|g| Some(g.area(*sizes.get(&g.module_type)?, row, column)));
-    json!({ "kind": kind, "grid": grid, "row": row, "column": column, "area": area })
+        .and_then(|g| Some(g.footprint(*sizes.get(&g.module_type)?, g.modules.get(module)?.spot)));
+    json!({ "kind": kind, "grid": grid, "module": module, "area": area })
 }
 
 /// Module types and strings, as `cold_voltages` takes them.
@@ -351,6 +369,51 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::edited(input, super::edit::Strike::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn lay(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Lay::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn slide(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Slide::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn fill(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Laid::fill))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn covered(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Laid::covered))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn grid_at(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Strike::grid))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.

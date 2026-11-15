@@ -1,4 +1,4 @@
-<!-- A face grid's module type, orientation and edge setback. -->
+<!-- A face grid's module type, the orientation its new modules take, and its edge setback. -->
 <script lang="ts">
   import * as Item from "#lib/components/ui/item/index.js";
   import type { ModuleType } from "../api/core.ts";
@@ -18,7 +18,7 @@
     onedit: (fields: Partial<Pick<ModuleGrid, "moduleType" | "landscape" | "setback">>) => void;
   } = $props();
 
-  const orientation = choices(m.builder_orientation(), [
+  const orientation = choices(m.builder_new_orientation(), [
     m.builder_portrait(),
     m.builder_landscape(),
   ]);

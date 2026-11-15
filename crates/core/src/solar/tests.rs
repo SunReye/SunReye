@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Overhang, Roof, Scene};
+use sunreye_pv::{Block, GridModule, ModuleGrid, Obstacle, Overhang, Roof, Scene, Spot};
 use tokio::sync::watch;
 
 use super::SolarForecast;
@@ -466,9 +466,8 @@ async fn a_form_entered_strings_optimizers_reach_the_model() {
 /// and string 1 the right four, behind a 15 m wall 1 m in front of the left half.
 fn walled_house(module_type: u32) -> Scene {
     let cells = (0..2).flat_map(|row| {
-        (0..8).map(move |column| Cell {
-            row,
-            column,
+        (0..8).map(move |column| GridModule {
+            spot: Spot::Cell { row, column },
             string: Some(column / 4),
             optimized: false,
             order: None,

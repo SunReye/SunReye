@@ -74,11 +74,13 @@ function coldText(name: string, volts: number, limit: number): string {
 
 /** Why the core would refuse the grids, as the crate in the browser finds it. */
 export function misplacedText(at: Misplaced): string {
-  if (!("row" in at)) return at.kind === "face" ? m.misplaced_face() : m.misplaced_moduleType();
+  if (!("module" in at)) return at.kind === "face" ? m.misplaced_face() : m.misplaced_moduleType();
 
-  const cell = { grid: at.grid + 1, row: at.row + 1, column: at.column + 1 };
+  const module = { grid: at.grid + 1, module: at.module + 1 };
 
-  return at.kind === "setback" ? m.misplaced_setback(cell) : m.misplaced_overlap(cell);
+  if (at.kind === "chimney") return m.misplaced_chimney(module);
+
+  return at.kind === "setback" ? m.misplaced_setback(module) : m.misplaced_overlap(module);
 }
 
 /** A string's refusal: its position in the draft and the text shown on its level. */

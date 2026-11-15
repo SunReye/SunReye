@@ -1,6 +1,6 @@
 // A string's wiring (ADR 20): each module's place along it, and the line drawn through their centres
 // in that order.
-import type { Cell, CellPlace, Point, Scene } from "./pv.ts";
+import type { GridModule, LaidGrid, Point, Scene } from "./pv.ts";
 
 /** The place in string `string`'s wiring after its last module's. */
 export function following(scene: Readonly<Scene>, string: number | undefined): number {
@@ -12,11 +12,10 @@ export function following(scene: Readonly<Scene>, string: number | undefined): n
 }
 
 /** The string a module is wired into, if any. */
-const stringOf = (cell: Readonly<Cell> | undefined): number | undefined =>
-  cell?.string ?? undefined;
+const stringOf = (cell: GridModule | undefined): number | undefined => cell?.string ?? undefined;
 
 /** `cell` at place `order` along its string; as it is without one. */
-function placed(cell: Readonly<Cell>, order: number | null | undefined): Cell {
+function placed(cell: GridModule, order: number | null | undefined): GridModule {
   const place = order ?? undefined;
 
   return place === undefined ? cell : { ...cell, order: place };
@@ -24,19 +23,15 @@ function placed(cell: Readonly<Cell>, order: number | null | undefined): Cell {
 
 /** `after`, wired: in its place along its string, kept while it stays in the string `before` was;
  * else at `order`. */
-export function ordered(
-  before: Readonly<Cell> | undefined,
-  after: Readonly<Cell> | undefined,
-  order: number,
-): Cell | undefined {
+export function ordered(before: GridModule, after: GridModule, order: number): GridModule {
   const string = stringOf(after);
 
-  if (after === undefined || string === undefined) return after;
+  if (string === undefined) return after;
 
-  return placed(after, stringOf(before) === string ? before?.order : order);
+  return placed(after, stringOf(before) === string ? before.order : order);
 }
 
-/** The mean of a cell's corners. */
+/** The mean of a module's corners. */
 function centre(corners: readonly Point[]): Point {
   const sum = corners.reduce<readonly [number, number, number]>(
     (total, [x, y, z]) => [total[0] + x, total[1] + y, total[2] + z],
@@ -56,20 +51,20 @@ function byKey(a: readonly number[], b: readonly number[]): number {
 }
 
 /** The centres of string `string`'s laid-out modules along its wiring: by their place in it, those
- * without one last, by grid, row and column. */
+ * without one last, by grid and their position in it. */
 export function wiring(
   scene: Readonly<Scene>,
-  cells: readonly (readonly Readonly<CellPlace>[] | null)[],
+  laid: readonly (LaidGrid | null)[],
   string: number,
 ): Point[] {
   const wired: readonly { readonly key: readonly number[]; readonly at: Point }[] = (
     scene.grids ?? []
   ).flatMap((grid, i) =>
-    grid.modules.flatMap(({ row, column, string: into, order }) => {
-      const cell = cells[i]?.find((place) => place.row === row && place.column === column);
+    grid.modules.flatMap(({ string: into, order }, module) => {
+      const footprint = laid[i]?.modules[module];
 
-      return into === string && cell !== undefined
-        ? [{ key: [order ?? Infinity, i, row, column], at: centre(cell.corners) }]
+      return into === string && footprint !== undefined
+        ? [{ key: [order ?? Infinity, i, module], at: centre(footprint.corners) }]
         : [];
     }),
   );

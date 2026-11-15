@@ -255,8 +255,15 @@ fn house(module_type: &Value, modules: &[Value]) -> Value {
     })
 }
 
+/// A portrait module where a grid of rows and columns laid it: its lower left corner a module
+/// and 2 cm on per column and row from the 0.3 m setback.
 fn cell(row: u32, column: u32, string: Option<u32>, optimized: bool) -> Value {
-    let mut cell = json!({ "row": row, "column": column, "optimized": optimized });
+    let mut cell = json!({
+        "across": 1.154f64.mul_add(f64::from(column), 0.3),
+        "up": 1.742f64.mul_add(f64::from(row), 0.3),
+        "landscape": false,
+        "optimized": optimized,
+    });
     if let Some(string) = string {
         cell["string"] = json!(string);
     }
@@ -366,6 +373,89 @@ async fn saving_refuses_modules_outside_the_setback_or_overlapping_or_unknown() 
         refused(&[cell(0, 0, Some(1), false)]).await,
         unprocessable("layout.scene")
     );
+}
+
+#[tokio::test]
+async fn saving_refuses_a_module_that_overlaps_a_roof_chimney() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    // The first module spans 0.3 m to 1.434 m across and 0.3 m to 2.022 m up the slope.
+    let chimneyed = |across: f64| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["chimneys"] = json!([{
+            "block": 0, "face": 1, "across": across, "up": 1.0, "width": 0.6, "depth": 0.6,
+            "height": 1.2,
+        }]);
+        scene
+    };
+
+    let (beside, _) = core.put_scene(&set_cookie, &strings, &chimneyed(2.0)).await;
+    let (status, body) = core.put_scene(&set_cookie, &strings, &chimneyed(1.0)).await;
+
+    assert_eq!(beside, StatusCode::OK);
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (StatusCode::UNPROCESSABLE_ENTITY, Some("layout.covered"))
+    );
+}
+
+/// Each module's lower left corner on its face, in millimetres.
+fn corners(scene: &Value) -> Vec<(i64, i64)> {
+    let mm = |metres: &Value| (metres.as_f64().unwrap() * 1000.0).round().to_string();
+    scene["grids"][0]["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            assert_eq!(
+                (m.get("row"), m["landscape"].as_bool()),
+                (None, Some(false)),
+                "{m}"
+            );
+            (
+                mm(&m["across"]).parse().unwrap(),
+                mm(&m["up"]).parse().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_scene_with_rows_and_columns_is_saved_and_read_with_each_module_at_its_cells_corner() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("core.sqlite");
+    let (core, set_cookie) = Core::signed_in(&path).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let rows = json!([
+        { "row": 0, "column": 0, "string": 0, "optimized": true, "order": 1 },
+        { "row": 1, "column": 3, "string": 0 },
+    ]);
+    let scene = house(&module, rows.as_array().unwrap());
+
+    let (status, saved) = core.put_scene(&set_cookie, &strings, &scene).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(corners(&saved["scene"]), [(300, 300), (3762, 2042)]);
+    let first = &saved["scene"]["grids"][0]["modules"][0];
+    assert_eq!(
+        (&first["optimized"], &first["order"]),
+        (&json!(true), &json!(1))
+    );
+    assert_eq!(saved["strings"][0]["modules"], json!(2));
+
+    // As a layout saved before modules had places is stored: it reads with places too.
+    let mut stored = scene;
+    stored["grids"][0]["modules"] = json!([{ "row": 0, "column": 1, "string": 1 }]);
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute("UPDATE layout_scene SET scene = ?1", [stored.to_string()])
+        .unwrap();
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(corners(&read["scene"]), [(1454, 300)]);
+    assert_eq!(read["scene"]["grids"][0]["modules"][0]["string"], json!(0));
 }
 
 #[tokio::test]
