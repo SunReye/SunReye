@@ -1,8 +1,6 @@
 <!-- A screen over one range: its title, the range control on the page's centre line, then the content. -->
 <script lang="ts">
-  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import PageTitle from "../components/page-title.svelte";
-  import Staged from "../motion/Staged.svelte";
   import type { Snippet } from "svelte";
   import type { Ranged } from "./range.ts";
   import RangeControl from "./RangeControl.svelte";
@@ -21,9 +19,5 @@
       <RangeControl {model} />
     </div>
   </header>
-  <!-- The cards in the frames after the header's: all at once overruns a route change's (ADR 21). -->
-  <Staged>
-    {#snippet skeleton()}<Skeleton class="h-[420px] rounded-lg" />{/snippet}
-    {@render children()}
-  </Staged>
+  {@render children()}
 </main>

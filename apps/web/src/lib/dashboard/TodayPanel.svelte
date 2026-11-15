@@ -4,8 +4,6 @@
 -->
 <script lang="ts">
   import { Pressable } from "../components/ui/pressable/index.js";
-  import Staged from "../motion/Staged.svelte";
-  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import { flowColour } from "../energy-colours.ts";
   import * as Card from "#lib/components/ui/card/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
@@ -105,63 +103,59 @@
   ]);
 </script>
 
-<!-- Fills in a frame after the screen mounts (ADR 21). -->
-<Staged>
-  {#snippet skeleton()}<Skeleton class="min-h-[420px] rounded-lg lg:flex-1" />{/snippet}
-  <Card.Root
-    size="sm"
-    class="glass-ambient @container min-h-0 gap-0 py-0 lg:flex-1"
-    role="group"
-    aria-label={m.dash_today()}
-  >
-    <div class="flex shrink-0 items-center justify-between gap-3 pl-4">
-      <h2 class="text-sm font-semibold">{m.dash_today()}</h2>
-      <Pressable
-        feedback
-        class="flex items-baseline gap-2 px-4 py-2.5"
-        onclick={() => onopen("saved")}
-      >
-        <span class="text-xs text-muted-foreground">{m.dash_saved()}</span>
-        <span class="text-base font-semibold tabular-nums"
-          >{day?.money ? eur.format(day.money.saved) : "–,–– €"}</span
-        >
-      </Pressable>
-    </div>
-
-    <div class="grid shrink-0 grid-cols-2">
-      {#each figures as f, i (f.id)}
-        <Pressable
-          class={[
-            "flex min-w-0 flex-col items-start gap-1 border-t border-border/60 px-4 py-3 text-left @[560px]:py-4",
-            i % 2 === 1 && "border-l",
-          ]}
-          feedback
-          onclick={() => onopen(f.id)}
-        >
-          <span class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-            ><span class="size-2 rounded-[1px]" style:background={f.colour}></span>{f.label}</span
-          >
-          <span
-            class="text-2xl leading-none font-semibold tracking-tight whitespace-nowrap @[560px]:text-3xl"
-          >
-            <AnimatedNumber value={f.value} /><span
-              class="ml-1 text-sm font-medium text-muted-foreground">kWh</span
-            >
-          </span>
-          <span class="max-w-full truncate text-xs text-muted-foreground tabular-nums">{f.sub}</span>
-        </Pressable>
-      {/each}
-    </div>
-
+<Card.Root
+  size="sm"
+  class="glass-ambient @container min-h-0 gap-0 py-0 lg:flex-1"
+  role="group"
+  aria-label={m.dash_today()}
+>
+  <div class="flex shrink-0 items-center justify-between gap-3 pl-4">
+    <h2 class="text-sm font-semibold">{m.dash_today()}</h2>
     <Pressable
       feedback
-      class="grid shrink-0 grid-cols-2 gap-6 border-t border-border/60 px-4 py-3 text-left"
-      onclick={() => onopen("autarky")}
+      class="flex items-baseline gap-2 px-4 py-2.5"
+      onclick={() => onopen("saved")}
     >
-      <Meter label={m.dash_autarky()} value={day?.today.autarky ?? null} colour={flowColour("battery")} />
-      <Meter label={m.dash_self_use()} value={day?.today.selfUse ?? null} colour={flowColour("solar")} />
+      <span class="text-xs text-muted-foreground">{m.dash_saved()}</span>
+      <span class="text-base font-semibold tabular-nums"
+        >{day?.money ? eur.format(day.money.saved) : "–,–– €"}</span
+      >
     </Pressable>
+  </div>
 
-    <DayTile {day} hours={clock} onopen={() => onopen("production")} />
-  </Card.Root>
-</Staged>
+  <div class="grid shrink-0 grid-cols-2">
+    {#each figures as f, i (f.id)}
+      <Pressable
+        class={[
+          "flex min-w-0 flex-col items-start gap-1 border-t border-border/60 px-4 py-3 text-left @[560px]:py-4",
+          i % 2 === 1 && "border-l",
+        ]}
+        feedback
+        onclick={() => onopen(f.id)}
+      >
+        <span class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          ><span class="size-2 rounded-[1px]" style:background={f.colour}></span>{f.label}</span
+        >
+        <span
+          class="text-2xl leading-none font-semibold tracking-tight whitespace-nowrap @[560px]:text-3xl"
+        >
+          <AnimatedNumber value={f.value} /><span
+            class="ml-1 text-sm font-medium text-muted-foreground">kWh</span
+          >
+        </span>
+        <span class="max-w-full truncate text-xs text-muted-foreground tabular-nums">{f.sub}</span>
+      </Pressable>
+    {/each}
+  </div>
+
+  <Pressable
+    feedback
+    class="grid shrink-0 grid-cols-2 gap-6 border-t border-border/60 px-4 py-3 text-left"
+    onclick={() => onopen("autarky")}
+  >
+    <Meter label={m.dash_autarky()} value={day?.today.autarky ?? null} colour={flowColour("battery")} />
+    <Meter label={m.dash_self_use()} value={day?.today.selfUse ?? null} colour={flowColour("solar")} />
+  </Pressable>
+
+  <DayTile {day} hours={clock} onopen={() => onopen("production")} />
+</Card.Root>

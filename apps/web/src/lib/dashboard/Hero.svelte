@@ -4,7 +4,6 @@
   once the page is idle, behind the studio stand-in or the flow it replaces, and fades in.
 -->
 <script lang="ts">
-  import Staged from "../motion/Staged.svelte";
   import type { Core, Live } from "../api/core.ts";
   import { CHOICE, dashboard, keptChoice, type SceneLayout } from "../live/dashboard.ts";
   import Flow2d from "../flow/Flow2d.svelte";
@@ -65,8 +64,7 @@
 
 <section class="relative isolate {className}" aria-label={m.dash_hero()}>
   {#if flowShown}
-    <!-- Its own frame: with the rest of the dashboard it overruns the route change's (ADR 21). -->
-    <Staged><Flow2d {core} {live} top={height + 12} {onselect} /></Staged>
+    <Flow2d {core} {live} top={height + 12} {onselect} />
   {/if}
   {#if mode === "3d" && scene !== null}
     <HeroScene {core} layout={scene} {load} {locked} top={height} {onselect} />

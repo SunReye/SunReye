@@ -3,9 +3,7 @@
   Settings › Tariff; money over time and payback live in History, which this screen links to.
 -->
 <script lang="ts">
-  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import Section from "../components/section.svelte";
-  import Staged from "../motion/Staged.svelte";
   import PageTitle from "../components/page-title.svelte";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import type { Core } from "../api/core";
@@ -25,20 +23,13 @@
   class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
 >
   <PageTitle wide title={m.tariff_title()} />
-  <!-- Each part in a frame of its own after the title's (ADR 21). -->
-  <Staged>
-    {#snippet skeleton()}<Skeleton class="h-28 rounded-lg" />{/snippet}
-    <PricesNow {core} />
-  </Staged>
-  <Staged>
-    {#snippet skeleton()}<Skeleton class="h-[420px] rounded-lg" />{/snippet}
-    <RangeCard model={route}>
-      <RangeControl model={route} />
-      <Section title={m.tariff_costs()}>
-        <Costs {core} {route} />
-      </Section>
-    </RangeCard>
-  </Staged>
+  <PricesNow {core} />
+  <RangeCard model={route}>
+    <RangeControl model={route} />
+    <Section title={m.tariff_costs()}>
+      <Costs {core} {route} />
+    </Section>
+  </RangeCard>
   <a
     href="#/history?metric=money"
     class="group flex items-center gap-2 self-start text-sm font-medium text-brand outline-none hover:underline focus-visible:underline"

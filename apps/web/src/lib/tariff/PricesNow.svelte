@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { Skeleton } from "#lib/components/ui/skeleton/index.js";
   import StatStrip from "../components/stat-strip.svelte";
+  import Staged from "../motion/Staged.svelte";
   import Section from "../components/section.svelte";
   import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core, Values } from "../api/core";
@@ -30,22 +32,26 @@
   const spot = $derived(Object.values(devices).find((values) => "price.spot" in values));
 </script>
 
-<Section title={m.tariff_prices_now()}>
-  {#if waiting}
-    <LoadingRows />
-  {/if}
-  {#if refused !== undefined}
-    <ProblemAlert problem={refused} />
-  {/if}
-  {#if tariff !== undefined}
-    <StatStrip
-      stats={[
-        { label: m.tariff_import(), value: ctPerKwh(tariff["price.import"]) },
-        { label: m.tariff_export(), value: ctPerKwh(tariff["price.export"]) },
-      ]}
-    />
-  {/if}
-  {#if spot !== undefined}
-    <SpotPriceCard values={spot} />
-  {/if}
-</Section>
+<!-- In a frame after the screen's (ADR 21). -->
+<Staged>
+  {#snippet skeleton()}<Skeleton class="h-28 rounded-lg" />{/snippet}
+  <Section title={m.tariff_prices_now()}>
+    {#if waiting}
+      <LoadingRows />
+    {/if}
+    {#if refused !== undefined}
+      <ProblemAlert problem={refused} />
+    {/if}
+    {#if tariff !== undefined}
+      <StatStrip
+        stats={[
+          { label: m.tariff_import(), value: ctPerKwh(tariff["price.import"]) },
+          { label: m.tariff_export(), value: ctPerKwh(tariff["price.export"]) },
+        ]}
+      />
+    {/if}
+    {#if spot !== undefined}
+      <SpotPriceCard values={spot} />
+    {/if}
+  </Section>
+</Staged>
