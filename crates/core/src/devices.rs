@@ -1031,7 +1031,12 @@ impl Devices {
                 self.declare(device.id, &device.profile).await?;
             }
             running.push(Running {
-                task: endpoint::spawn(endpoint.clone(), polled, self.bus.clone()),
+                task: endpoint::spawn(
+                    endpoint.clone(),
+                    endpoint::CADENCE,
+                    polled,
+                    self.bus.clone(),
+                ),
                 endpoint,
                 devices,
             });

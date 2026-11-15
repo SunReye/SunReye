@@ -7,7 +7,7 @@ use sunreye_profile::{Framing, Profile, Unit};
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Instant;
 
-use super::{Device, backoff, spawn};
+use super::{CADENCE, Device, Pace, backoff, spawn};
 use crate::bus::{Bus, DeviceId, Reading};
 use crate::transport::{Capture, Endpoint, Exchange};
 
@@ -90,7 +90,7 @@ async fn one_poll_cycle_publishes_typed_readings() {
         framing: Framing::Tcp,
         exchanges: one_cycle(),
     };
-    let _task = spawn(Endpoint::Sim(capture), vec![device()], bus.clone());
+    let _task = spawn(Endpoint::Sim(capture), CADENCE, vec![device()], bus.clone());
     let got = cycle(&mut readings).await;
     assert!(
         got.iter()
@@ -113,6 +113,7 @@ async fn an_error_backs_off_and_the_last_good_value_reports_its_age() {
             framing: Framing::Tcp,
             exchanges,
         }),
+        CADENCE,
         vec![device()],
         bus.clone(),
     );
@@ -237,7 +238,7 @@ async fn a_merged_block_refused_with_exception_2_is_split_and_stays_split() {
     };
     let bus = Bus::default();
     let mut readings = bus.subscribe();
-    let _task = spawn(Endpoint::Sim(capture), vec![device], bus.clone());
+    let _task = spawn(Endpoint::Sim(capture), CADENCE, vec![device], bus.clone());
     let values = async |readings: &mut Receiver<Reading>| {
         cycle(readings)
             .await
@@ -291,7 +292,7 @@ async fn a_sunspec_chain_is_discovered_at_connect_and_a_refused_merge_split() {
     };
     let bus = Bus::default();
     let mut readings = bus.subscribe();
-    let _task = spawn(Endpoint::Sim(capture), vec![device], bus.clone());
+    let _task = spawn(Endpoint::Sim(capture), CADENCE, vec![device], bus.clone());
 
     let two = async {
         [
@@ -336,7 +337,7 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
             unit: 0,
             profile: Arc::clone(&profile),
         };
-        let _task = spawn(endpoint, vec![device], Bus::default());
+        let _task = spawn(endpoint, CADENCE, vec![device], Bus::default());
         let mut functions = Vec::new();
         for _ in 0..requests {
             functions.push(fake.reads.recv().await.unwrap().function);
@@ -392,6 +393,7 @@ async fn a_poll_group_is_read_at_its_own_cadence_and_its_readings_say_so() {
             framing: Framing::Tcp,
             exchanges,
         }),
+        CADENCE,
         vec![device],
         bus.clone(),
     );
@@ -417,4 +419,148 @@ async fn a_poll_group_is_read_at_its_own_cadence_and_its_readings_say_so() {
             seen("extra.slow", 5.0, 10),
         ]
     );
+}
+
+/// Register 500 every cycle, 600 in a 10 s group and 700 in a 30 s group.
+const TWO_GROUPS: &str = r#"{
+    "schema": 1, "id": "grouped", "name": "case", "manufacturer": "test", "version": "1.0.0",
+    "requires": ["modbus", "u16", "poll-group", "kind", "unit"],
+    "pollGroups": { "quick": 10, "slow": 30 },
+    "quantities": [
+        { "key": "fast", "role": "extra.fast", "kind": "measurement", "unit": "none", "register": 500, "type": "u16" },
+        { "key": "quick", "role": "extra.quick", "kind": "measurement", "unit": "none", "register": 600, "type": "u16", "pollGroup": "quick" },
+        { "key": "slow", "role": "extra.slow", "kind": "measurement", "unit": "none", "register": 700, "type": "u16", "pollGroup": "slow" }
+    ]
+}"#;
+
+#[tokio::test(start_paused = true)]
+async fn a_task_polls_at_its_connections_cycle_and_its_readings_carry_it() {
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let mut exchanges = one_cycle();
+    exchanges.push(Exchange::Request(unhex("000200000006010301f40003")));
+    exchanges.push(Exchange::Reply(vec![unhex(
+        "00020000000901030604d2fc180019",
+    )]));
+    let capture = Capture {
+        framing: Framing::Tcp,
+        exchanges,
+    };
+    let start = Instant::now();
+    let _task = spawn(
+        Endpoint::Sim(capture),
+        Duration::from_secs(10),
+        vec![device()],
+        bus.clone(),
+    );
+
+    let first = cycle(&mut readings).await;
+    assert_eq!(start.elapsed(), Duration::ZERO);
+    let second = cycle(&mut readings).await;
+    assert_eq!(start.elapsed(), Duration::from_secs(10));
+    for reading in first.iter().chain(&second) {
+        assert_eq!(reading.cadence, Duration::from_secs(10));
+        // Three cadences, past ADR 3's floor of 15 s.
+        assert_eq!(reading.gap_threshold(), Duration::from_secs(30));
+    }
+}
+
+/// On a 20 s cycle the 10 s group runs every cycle and the 30 s group every second one, at 40 s.
+#[tokio::test(start_paused = true)]
+async fn a_poll_group_rounds_up_to_whole_cycles_and_never_below_one() {
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let exchanges = [
+        single(1, 500, 1),
+        single(2, 600, 2),
+        single(3, 700, 3),
+        single(4, 500, 4),
+        single(5, 600, 5),
+        single(6, 500, 6),
+        single(7, 600, 7),
+        single(8, 700, 8),
+    ]
+    .concat();
+    let device = Device {
+        id: DeviceId(7),
+        unit: 1,
+        profile: Arc::new(Profile::load(TWO_GROUPS).unwrap()),
+    };
+    let start = Instant::now();
+    let _task = spawn(
+        Endpoint::Sim(Capture {
+            framing: Framing::Tcp,
+            exchanges,
+        }),
+        Duration::from_secs(20),
+        vec![device],
+        bus.clone(),
+    );
+
+    let mut got = Vec::new();
+    for _ in 0..8 {
+        let reading = readings.recv().await.unwrap();
+        got.push((
+            bus.series(reading.series).unwrap().role,
+            reading.value,
+            reading.cadence.as_secs(),
+            start.elapsed().as_secs(),
+        ));
+    }
+
+    let seen = |role: &str, value, cadence, at| (role.to_owned(), value, cadence, at);
+    assert_eq!(
+        got,
+        [
+            seen("extra.fast", 1.0, 20, 0),
+            seen("extra.quick", 2.0, 20, 0),
+            seen("extra.slow", 3.0, 40, 0),
+            seen("extra.fast", 4.0, 20, 20),
+            seen("extra.quick", 5.0, 20, 20),
+            seen("extra.fast", 6.0, 20, 40),
+            seen("extra.quick", 7.0, 20, 40),
+            seen("extra.slow", 8.0, 40, 40),
+        ]
+    );
+}
+
+#[test]
+fn a_30_s_group_runs_every_third_cycle_of_10_s() {
+    let cadence = |cycle, group| {
+        super::cadence(Duration::from_secs(cycle), Duration::from_secs(group)).as_secs()
+    };
+    assert_eq!(cadence(10, 30), 30);
+    assert_eq!(cadence(20, 30), 40);
+    assert_eq!(cadence(60, 5), 60);
+    assert_eq!(cadence(1, 5), 5);
+    assert_eq!(cadence(7, 30), 35);
+}
+
+/// Reads that overrun a 5 s cycle by 3 s: the next cycle starts as they end, and carries 8 s.
+#[test]
+fn a_cycle_that_overruns_starts_the_next_late_at_the_cadence_achieved() {
+    let start = Instant::now();
+    let at = |seconds| start + Duration::from_secs(seconds);
+    let mut pace = Pace::new(Duration::from_secs(5), start);
+
+    assert_eq!(pace.begin(at(0)), Duration::from_secs(5));
+    assert_eq!(pace.next(), at(5));
+    assert_eq!(pace.begin(at(5)), Duration::from_secs(5));
+    // The cycle begun at 5 s ends at 13 s.
+    assert_eq!(pace.next(), at(10));
+    assert_eq!(pace.begin(at(13)), Duration::from_secs(8));
+    assert_eq!(pace.next(), at(18));
+    assert_eq!(pace.begin(at(18)), Duration::from_secs(5));
+}
+
+/// The silence of a backoff is no cadence: the cycle after it carries the configured one.
+#[test]
+fn a_cycle_after_a_failure_carries_the_configured_cadence() {
+    let start = Instant::now();
+    let mut pace = Pace::new(Duration::from_secs(5), start);
+    pace.begin(start);
+    let retry = start + Duration::from_secs(20);
+    pace.retry(retry);
+    assert_eq!(pace.next(), retry);
+    assert_eq!(pace.begin(retry), Duration::from_secs(5));
 }
