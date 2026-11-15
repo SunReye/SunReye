@@ -124,6 +124,8 @@ async function narrow(group: string): Promise<HTMLElement> {
     admin: true,
     open: group,
     onnavigate: () => null,
+    level: null,
+    onlevel: () => null,
   });
 
   await expect.poll(() => document.querySelector("[aria-busy=true]")).toBeNull();

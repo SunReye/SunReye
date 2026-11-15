@@ -18,6 +18,8 @@ test.each(["plant", "devices", "writes", "connections", "tariff", "logs", "dange
       admin: true,
       open: group,
       onnavigate: () => null,
+      level: null,
+      onlevel: () => null,
     });
 
     await expect

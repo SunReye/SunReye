@@ -102,3 +102,25 @@ test("a sheet over the page opens and closes without moving the page's scroll", 
     ["#/", { replace: true, state: {}, reset: false }],
   ]);
 });
+
+test("a level inside a group is a hash route of its own, pushed over the group's", () => {
+  drillRoute(on("/settings?group=devices", true), "level").navigate("3");
+
+  expect(sent).toEqual([
+    ["#/settings?group=devices&level=3", { replace: false, state: { drilled: true } }],
+  ]);
+});
+
+/** Settings' groups on a device's level. */
+const onDevice = (drilled?: boolean) =>
+  drillRoute(on("/settings?group=devices&level=3", drilled), "group", { inner: "level" });
+
+test("another group, or the root, leaves the level inside the old group behind", () => {
+  onDevice(true).navigate("connections");
+  onDevice().navigate(null);
+
+  expect(sent).toEqual([
+    ["#/settings?group=connections", { replace: true, state: { drilled: true } }],
+    ["#/settings", { replace: true, state: {} }],
+  ]);
+});

@@ -11,7 +11,18 @@
   import TariffSettings from "./TariffSettings.svelte";
   import WritesSettings from "./WritesSettings.svelte";
 
-  let { core, id }: { core: Core; id: string } = $props();
+  let {
+    core,
+    id,
+    level,
+    onlevel,
+  }: {
+    core: Core;
+    id: string;
+    /** The level open inside the page, from the hash route; null on the page itself. */
+    level: string | null;
+    onlevel: (id: string | null) => void;
+  } = $props();
 
   const pages = new Map([
     ["plant", plant],
@@ -26,9 +37,9 @@
 </script>
 
 {#snippet plant()}<PlantSettings {core} />{/snippet}
-{#snippet devices()}<DevicesSettings {core} />{/snippet}
+{#snippet devices()}<DevicesSettings {core} {level} {onlevel} />{/snippet}
 {#snippet writes()}<WritesSettings {core} />{/snippet}
-{#snippet connections()}<ConnectionsSettings {core} />{/snippet}
+{#snippet connections()}<ConnectionsSettings {core} {level} {onlevel} />{/snippet}
 {#snippet tariff()}<TariffSettings {core} />{/snippet}
 {#snippet forecast()}<ForecastSettings />{/snippet}
 {#snippet display()}<DisplaySettings />{/snippet}

@@ -1,4 +1,7 @@
-<!-- Settings › Connections: where the core reaches its devices, each broker's state, and a level to add or change one. -->
+<!--
+  Settings › Connections: where the core reaches its devices, each broker's state, and a level to
+  add or change one. Each level is a hash route (ADR 21): `add`, or a connection's id.
+-->
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Connection, Core, Problem } from "../api/core";
@@ -9,23 +12,24 @@
   import Level from "./Level.svelte";
   import RemoveConfirm from "./RemoveConfirm.svelte";
 
-  let { core }: { core: Core } = $props();
-
-  type Shown =
-    | { readonly kind: "list" }
-    | { readonly kind: "add" }
-    | { readonly kind: "connection"; readonly id: number };
-
-  let shown = $state.raw<Shown>({ kind: "list" });
+  let {
+    core,
+    level,
+    onlevel,
+  }: {
+    core: Core;
+    /** The open level, from the hash route; null on the list. */
+    level: string | null;
+    onlevel: (id: string | null) => void;
+  } = $props();
 
   let listed = $state.raw<readonly Connection[] | Problem>();
 
+  /** The connection the level names; none on another level, or once it is removed. */
   const open = $derived.by(() => {
-    const at = shown;
-
     const list = listed === undefined || "problem" in listed ? [] : listed;
 
-    return at.kind === "connection" ? list.find((c) => c.id === at.id) : undefined;
+    return list.find((c) => String(c.id) === level);
   });
 
   async function load(): Promise<void> {
@@ -38,7 +42,7 @@
 
   async function after(): Promise<void> {
     await load();
-    shown = { kind: "list" };
+    onlevel(null);
   }
 
   async function remove(id: number): Promise<Problem | undefined> {
@@ -50,13 +54,13 @@
   }
 
   const back = () => {
-    shown = { kind: "list" };
+    onlevel(null);
   };
 </script>
 
 {#if listed === undefined}
   <div class="drill-card"><LoadingRows /></div>
-{:else if shown.kind === "add"}
+{:else if level === "add"}
   <Level back={m.settings_connections()} title={m.settings_connection_add()} onback={back}>
     <ConnectionForm {core} onsaved={after} />
   </Level>
@@ -65,10 +69,10 @@
     <ConnectionList
       answer={listed}
       onopen={(id) => {
-        shown = { kind: "connection", id };
+        onlevel(String(id));
       }}
       onadd={() => {
-        shown = { kind: "add" };
+        onlevel("add");
       }}
     />
   </div>

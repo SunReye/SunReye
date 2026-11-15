@@ -1,6 +1,7 @@
 <!--
   Settings › Devices: the list, and a level to add a device, change or remove one, or review the
-  measuring points after a change (ADR 14).
+  measuring points after a change (ADR 14). Each level is a hash route (ADR 21): `add`, `topology`,
+  or a device's id.
 -->
 <script lang="ts">
   import { onMount } from "svelte";
@@ -14,15 +15,16 @@
   import DeviceList from "./DeviceList.svelte";
   import Level from "./Level.svelte";
 
-  let { core }: { core: Core } = $props();
-
-  type Shown =
-    | { readonly kind: "list" }
-    | { readonly kind: "add" }
-    | { readonly kind: "device"; readonly id: number }
-    | { readonly kind: "topology" };
-
-  let shown = $state.raw<Shown>({ kind: "list" });
+  let {
+    core,
+    level,
+    onlevel,
+  }: {
+    core: Core;
+    /** The open level, from the hash route; null on the list. */
+    level: string | null;
+    onlevel: (id: string | null) => void;
+  } = $props();
 
   let listed = $state.raw<{ devices: readonly Device[]; connections: readonly Connection[] }>();
 
@@ -30,11 +32,8 @@
 
   let changed = $state(false);
 
-  const open = $derived.by(() => {
-    const at = shown;
-
-    return at.kind === "device" ? listed?.devices.find((d) => d.id === at.id) : undefined;
-  });
+  /** The device the level names; none on another level, or once it is removed. */
+  const open = $derived(listed?.devices.find((d) => String(d.id) === level));
 
   async function load(): Promise<void> {
     const [devices, connections] = await Promise.all([core.devices(), core.connections()]);
@@ -51,11 +50,11 @@
   async function after(): Promise<void> {
     await load();
     changed = true;
-    shown = { kind: "list" };
+    onlevel(null);
   }
 
   const back = () => {
-    shown = { kind: "list" };
+    onlevel(null);
   };
 </script>
 
@@ -63,11 +62,11 @@
   <div class="drill-card">
     {#if refused}<div class="p-4"><Refusal {refused} /></div>{:else}<LoadingRows />{/if}
   </div>
-{:else if shown.kind === "add"}
+{:else if level === "add"}
   <Level back={m.settings_devices()} title={m.settings_device_add()} onback={back}>
     <AddDevice {core} known={listed} onadded={after} />
   </Level>
-{:else if shown.kind === "topology"}
+{:else if level === "topology"}
   <Level back={m.settings_devices()} title={m.topology_title()} onback={back}>
     <TopologyStep
       {core}
@@ -85,13 +84,13 @@
     connections={listed.connections}
     {changed}
     onopen={(id) => {
-      shown = { kind: "device", id };
+      onlevel(String(id));
     }}
     onadd={() => {
-      shown = { kind: "add" };
+      onlevel("add");
     }}
     onreview={() => {
-      shown = { kind: "topology" };
+      onlevel("topology");
     }}
   />
 {:else}

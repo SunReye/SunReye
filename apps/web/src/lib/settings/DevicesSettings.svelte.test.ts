@@ -4,7 +4,7 @@ import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
 import { FakeCore } from "./devices.harness.ts";
-import SettingsScreen from "./SettingsScreen.svelte";
+import Routed from "./routed.harness.svelte";
 
 /** A phone; the value editor and levels land at once. */
 beforeEach(async () => {
@@ -15,17 +15,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // The levels move the hash.
+  history.replaceState(null, "", location.pathname + location.search);
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
 /** Settings › `group`, as the admin. */
 function opened(core: Transport, group: string) {
-  return render(SettingsScreen, {
-    core: connect(core),
-    admin: true,
-    open: group,
-    onnavigate: () => null,
-  });
+  return render(Routed, { core: connect(core), group });
 }
 
 /** Types `value` into a number row's value editor and applies it. */
@@ -114,4 +111,41 @@ test("a scan leaves out a device the core already reads", async () => {
     .element(screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }))
     .toBeDisabled();
   expect(screen.getByLabelText("Name von deye-sg05lp3").query()).toBeNull();
+});
+
+test("a device's level is a hash route: browser back steps out of it and forward into it again", async () => {
+  const screen = await opened(new FakeCore(), "devices");
+  const name = screen.getByRole("textbox", { name: "Name" });
+
+  await screen.getByRole("button", { name: /^Wechselrichter/u }).click();
+  await expect.element(name).toBeVisible();
+  expect(location.hash).toBe("#/settings?group=devices&level=3");
+
+  history.back();
+
+  await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
+  expect(name.query()).toBeNull();
+  expect(location.hash).toBe("#/settings?group=devices");
+
+  history.forward();
+
+  await expect.element(name).toBeVisible();
+
+  // The level's own back button is the browser's.
+  await screen.getByRole("button", { name: "Geräte" }).click();
+
+  await expect.element(screen.getByRole("button", { name: "Gerät hinzufügen" })).toBeVisible();
+  expect(location.hash).toBe("#/settings?group=devices");
+});
+
+test("adding a device is a level of its own in the history", async () => {
+  const screen = await opened(new FakeCore(), "devices");
+
+  await screen.getByRole("button", { name: "Gerät hinzufügen" }).click();
+  await expect.element(screen.getByRole("button", { name: "Netzwerk durchsuchen" })).toBeVisible();
+  expect(location.hash).toBe("#/settings?group=devices&level=add");
+
+  history.back();
+
+  await expect.element(screen.getByRole("button", { name: /^Wechselrichter/u })).toBeVisible();
 });
