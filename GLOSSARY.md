@@ -225,7 +225,7 @@ The 3D geometry of the plant: blocks, obstacles, equipment, car places and where
 _Avoid_: Model, 3D view
 
 **Module grid**:
-The cells on one roof face, each a module type's size plus a gap, inside the face's setback. A module sits in one cell.
+The modules on one roof face, all of one module type, each at its own place and orientation inside the face's setback.
 _Avoid_: Array, panel layout
 
 **Setback**:
@@ -243,6 +243,10 @@ _Avoid_: Eave depth, soffit
 **Roof chimney**:
 An upright box standing on one roof face of a block; no module may stand on its footprint.
 _Avoid_: Chimney obstacle, stack
+
+**Roof window**:
+A window lying flush in one roof face; it casts no shade and no module may cover it.
+_Avoid_: Skylight, Dachfenster, roof obstacle
 
 **Obstacle**:
 An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
