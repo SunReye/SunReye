@@ -5,7 +5,7 @@ import {
   type WebGLProgramParametersWithUniforms,
   type WebGLRenderer,
 } from "three";
-import { extras, patched, weathered } from "./weather.ts";
+import { patched, weatherFinishes, weathered } from "./weather.ts";
 
 type Shader = WebGLProgramParametersWithUniforms;
 
@@ -90,11 +90,11 @@ test("off the full motion tier a finish is drawn as it is, in a program of its o
   const lean = weathered(new MeshStandardMaterial(), { colour: 0.3, rough: 0.1, loose: true });
   const full = lean.customProgramCacheKey();
 
-  extras.value = 0;
+  weatherFinishes(false);
 
   const [shader, key] = [compiled(lean), lean.customProgramCacheKey()];
 
-  extras.value = 1;
+  weatherFinishes(true);
 
   expect(shader.fragmentShader).not.toContain("weatherNoise");
   expect(shader.uniforms).toEqual({});

@@ -1,10 +1,7 @@
 // How diffuse the sky's light is at an instant (ADR 20 Look), from the weather device's forecast
 // (ADR 17): the scene's clouds. Pure but for the read it is handed.
-import type { Core } from "../api/core.ts";
+import { WEATHER, type Core } from "../api/core.ts";
 import type { Target } from "../dashboard/today.ts";
-
-/** The weather computed device's fixed id (ADR 15). */
-const WEATHER = 4_294_967_295;
 
 /** A forecast value is in force this long at most: its step is 15 minutes, an older store's an hour. */
 const IN_FORCE = 3_600_000;

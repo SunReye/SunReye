@@ -1,5 +1,5 @@
-//! Windows and doors on a block's walls (ADR 20). They are drawn only and never shade: the
-//! browser fits each on its wall and lights the windows at night.
+//! Windows and doors on a block's walls (ADR 20). They are drawn only and never shade:
+//! `Scene::fitted` fits each on its wall, and the browser lights the windows at night.
 
 use serde::{Deserialize, Serialize};
 

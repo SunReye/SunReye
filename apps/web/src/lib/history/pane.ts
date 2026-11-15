@@ -1,8 +1,7 @@
 // What every tab's pane is given, and which tabs chart the range.
 import { flowColour } from "../energy-colours.ts";
-import type { Core } from "../api/core.ts";
+import { PLANT, type Core } from "../api/core.ts";
 import type { HeatSource } from "../analytics/heat.ts";
-import { PLANT } from "../dashboard/day.ts";
 import { m } from "../paraglide/messages.js";
 import type { RangeRoute } from "../range/route.svelte.ts";
 import type { Facts } from "./facts.ts";

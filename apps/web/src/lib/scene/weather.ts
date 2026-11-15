@@ -9,10 +9,16 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from "three";
 
-/** 1 on the full motion tier, 0 on the lite and still ones, which draw every finish unweathered
- * (ADR 21). A finish reads it as its program is made, so a build keeps what it was first drawn
- * with. */
-export const extras = { value: 1 };
+/** Off on the lite and still motion tiers, which draw every finish unweathered (ADR 21). */
+let extras = true;
+
+/**
+ * Whether finishes weather from here on. A finish reads it as its program is made, on its first
+ * frame, and a build keeps what it was first drawn with: a studio sets it as it is made.
+ */
+export function weatherFinishes(on: boolean): void {
+  extras = on;
+}
 
 export interface Weather {
   /** How far the colour and the roughness swing with the large-scale variation, 0 to 1. */
@@ -157,7 +163,7 @@ export function weathered<M extends MeshStandardMaterial>(material: M, weather: 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
   const made = patched(material, key, (shader) => {
     // The lite and still tiers draw the finish as it is.
-    if (extras.value <= 0.5) return;
+    if (!extras) return;
 
     shader.uniforms["uWeather"] = { value: [weather.colour, weather.rough, foot ?? 1] };
     shader.uniforms["uPatches"] = { value: patches ?? [1, 1, 1] };
@@ -180,7 +186,7 @@ export function weathered<M extends MeshStandardMaterial>(material: M, weather: 
   const keyed = made.customProgramCacheKey.bind(made);
 
   // Weathered and plain are two programs.
-  made.customProgramCacheKey = () => `${keyed()}:${extras.value > 0.5}`;
+  made.customProgramCacheKey = () => `${keyed()}:${extras}`;
 
   return made;
 }

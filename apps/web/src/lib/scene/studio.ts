@@ -28,7 +28,7 @@ import { toThree } from "../builder/scene.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import { aim, backdrop, ground, sky } from "./backdrop.ts";
 import { occlusion, untone, type Daylight, type Theme } from "./light.ts";
-import { extras } from "./weather.ts";
+import { weatherFinishes } from "./weather.ts";
 
 /** Soft shadows: PCF with a radius, as r187 dropped PCFSoftShadowMap. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it up in place.
@@ -95,7 +95,7 @@ export class Studio {
   #size: readonly [number, number] = [1, 1];
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on them.
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera) {
+  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, tier: MotionTier) {
     this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
@@ -121,6 +121,8 @@ export class Studio {
     this.#composer.addPass(new RenderPass(this.scene, camera));
     this.#composer.addPass(this.#occlusion);
     this.#composer.addPass(new OutputPass());
+    // Before the first frame: a finish is compiled for the tier it is first drawn on.
+    this.follow(tier);
   }
 
   /** Whether the ambient-occlusion pass runs. */
@@ -131,7 +133,7 @@ export class Studio {
   /** Ambient occlusion and the finishes' extras run on the full motion tier only (ADR 21). */
   follow(tier: MotionTier): void {
     this.#occlusion.enabled = occlusion(tier);
-    extras.value = tier === "full" ? 1 : 0;
+    weatherFinishes(tier === "full");
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */

@@ -5,25 +5,30 @@ import {
   DirectionalLight,
   FloatType,
   Fog,
+  MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
   Texture,
   Vector3,
   WebGLCubeRenderTarget,
   WebGLRenderer,
+  type WebGLProgramParametersWithUniforms,
 } from "three";
 import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { skylight } from "./skylight.ts";
+import type { MotionTier } from "../motion/tier.ts";
 import { Studio } from "./studio.ts";
+import { weathered } from "./weather.ts";
 
 let studio: Studio | undefined;
 
-function open(): Studio {
+function open(tier: MotionTier = "full"): Studio {
   const canvas = document.createElement("canvas");
 
   document.body.append(canvas);
-  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000));
+  studio?.dispose();
+  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), tier);
   studio.setSize(64, 64);
 
   return studio;
@@ -43,6 +48,34 @@ test("the ambient-occlusion pass runs on the full motion tier only", () => {
   expect(opened.occlusion).toBe(false);
   opened.follow("still");
   expect(opened.occlusion).toBe(false);
+});
+
+type Sources = Pick<WebGLProgramParametersWithUniforms, "fragmentShader">;
+
+/** Of all three.js hands a material before it compiles its program, the weathering needs these. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the patch fills it.
+const isShader = (source: Sources): source is WebGLProgramParametersWithUniforms =>
+  "fragmentShader" in source;
+
+/** Whether a finish made now compiles weathered in `opened`. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+function weathers(opened: Studio): boolean {
+  const shader = { uniforms: {}, vertexShader: "", fragmentShader: "#include <common>" };
+
+  if (!isShader(shader)) throw new TypeError("no shader");
+
+  weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1 }).onBeforeCompile(
+    shader,
+    opened.renderer,
+  );
+
+  return shader.fragmentShader.includes("weatherNoise");
+}
+
+test("a studio is made on its motion tier, so its first frame already draws the finishes for it", () => {
+  expect(weathers(open("lite"))).toBe(false);
+  expect(weathers(open("still"))).toBe(false);
+  expect(weathers(open("full"))).toBe(true);
 });
 
 test("light and dark themes change the background, the fog and the exposure", () => {

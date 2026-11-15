@@ -129,7 +129,7 @@ export function lit(
   sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
   drawn: () => void,
 ): Lit {
-  const studio = new Studio(canvas, camera);
+  const studio = new Studio(canvas, camera, motion.tier);
   const opened = new Opening(studio, drawn);
   const { flight } = opened;
   const { render } = opened;

@@ -59,6 +59,8 @@ export type {
 
 export type { Live, Values } from "./live";
 
+export { PLANT, registered, SPOT, TARIFF, WEATHER } from "./computed-devices";
+
 export type { Corrections } from "./model";
 
 export type { BiddingZone, ScheduleChange, SpotPriceZone, Tariff, TariffChange } from "./tariff";

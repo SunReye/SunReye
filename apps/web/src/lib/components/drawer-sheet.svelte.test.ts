@@ -6,7 +6,7 @@ import "../../app.css";
 import { haptics } from "../haptics.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import DrawerSheet from "./drawer-sheet.svelte";
-import { press } from "./drawer.harness.ts";
+import { held, press } from "./drawer.harness.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -56,10 +56,7 @@ test("the drawer follows the finger and settles back open with a soft tap when l
   const release = await press(sheet().element(), 40);
 
   // Held still: a slow release is no fling.
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 400);
-  });
-  release();
+  held(release);
 
   await expect.poll(lift).toBe(0);
   await expect.element(sheet()).toBeVisible();
@@ -98,10 +95,7 @@ test("under low power the drawer opens, settles and closes without a frame", asy
 
   // No frame ever comes: only a drawer that does not animate can land.
   vi.stubGlobal("requestAnimationFrame", () => 0);
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 400);
-  });
-  release();
+  held(release);
 
   await expect.poll(lift).toBe(0);
   vi.unstubAllGlobals();

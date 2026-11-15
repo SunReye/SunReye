@@ -3,9 +3,10 @@
   picked on a calendar; the time scrubs, so it stays a slider (ADR 21).
 -->
 <script lang="ts">
+  import DateField from "#lib/components/date-field.svelte";
   import { Slider } from "#lib/components/ui/slider/index.js";
   import { m } from "../paraglide/messages.js";
-  import DateField from "./DateField.svelte";
+  import { today } from "./day.ts";
 
   let {
     day = $bindable(),
@@ -30,7 +31,15 @@
   aria-label={m.builder_moment()}
   class="glass-ambient flex h-11 items-center gap-2 rounded-lg pr-3 pl-1.5 ring-1 ring-border/60 elevation-1"
 >
-  <DateField bind:value={day} label={m.builder_day()} />
+  <DateField
+    variant="compact"
+    label={m.builder_day()}
+    value={day}
+    shortcut={{ text: m.range_today(), value: today() }}
+    onchange={(next) => {
+      day = next;
+    }}
+  />
   <Slider
     type="single"
     min={0}

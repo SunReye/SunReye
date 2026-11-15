@@ -1,14 +1,11 @@
 // What the live scene shows (ADR 20): each string tinted by its share of its own peak, and a chip
 // per string, inverter, battery, car and plant flow. Pure: no three.js.
-import type { PvString, Values } from "../api/core.ts";
+import { PLANT, type PvString, type Values } from "../api/core.ts";
 import type { CarPlace, Equipment, Geometry, Mount, Point } from "../builder/pv.ts";
 import type { Panel } from "../builder/scene.ts";
 import { parked, type Parked } from "../cars/parked.ts";
 import { formatFigure } from "../detail/figures.ts";
 import type { EquipmentKind } from "../equipment-kinds.ts";
-
-/** The `plant` computed device's fixed id (ADR 15). */
-export const PLANT = "4294967294";
 
 /** What the live scene is built from. */
 export interface Live3d {
@@ -135,7 +132,7 @@ function stringChip(input: Live3d, string: Readonly<PvString>, at: number): Chip
 }
 
 /** A device's power series and whether it is stale; null without a value. */
-function seriesReading(input: Live3d, device: string, series: string): Reading | null {
+function seriesReading(input: Live3d, device: number | string, series: string): Reading | null {
   const watts = input.values[device]?.[series];
 
   return watts === undefined
@@ -143,7 +140,7 @@ function seriesReading(input: Live3d, device: string, series: string): Reading |
     : { watts, stale: input.stale?.[device]?.[series] !== undefined };
 }
 
-function batteryReading(input: Live3d, device: string): Reading | null {
+function batteryReading(input: Live3d, device: number | string): Reading | null {
   const power = seriesReading(input, device, "battery.power");
 
   return power === null ? null : { ...power, soc: input.values[device]?.["battery.soc"] ?? null };
