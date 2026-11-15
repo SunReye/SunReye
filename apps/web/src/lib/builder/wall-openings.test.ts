@@ -63,14 +63,20 @@ test("a scene without a walled block takes no opening, and a low wall a lower on
 
 test("a change is kept on its wall and under the eave, and refused over another opening", () => {
   const scene = glazed(window, { ...window, along: 5 });
-  const moved = (change: Partial<Opening>) => refit(scene, 0, change)?.openings?.[0];
+
+  const moved = (change: Partial<Opening>) => {
+    const fitted = refit(scene, 0, change);
+
+    return "unfit" in fitted ? fitted.unfit : fitted.openings?.[0];
+  };
 
   expect(moved({ along: 9.5 })).toMatchObject({ along: 8.8 });
   expect(moved({ along: -1 })).toMatchObject({ along: 0 });
   expect(moved({ height: 5 })).toMatchObject({ height: 2.1 });
-  expect(moved({ width: 30 })).toBeUndefined();
+  // The wall is 10 m long.
+  expect(moved({ width: 30 })).toBe("room");
   // 4 m + 1.2 m overlaps the window at 5 m.
-  expect(refit(scene, 0, { along: 4 })).toBeNull();
+  expect(moved({ along: 4 })).toBe("overlap");
   // A door stands on the ground.
   expect(moved({ kind: "frontDoor" })).toMatchObject({ sill: 0 });
 });

@@ -1086,5 +1086,7 @@
   "builder_add_garage_door": "Garagentor hinzufügen",
   "opening_kind": "Art",
   "opening_sill": "Brüstungshöhe (m)",
-  "builder_opening_summary": "Baukörper {block} · {wall} · {width} × {height} m"
+  "builder_opening_summary": "Baukörper {block} · {wall} · {width} × {height} m",
+  "opening_refused_overlap": "Dort liegt schon eine andere Öffnung.",
+  "opening_refused_room": "Dafür hat die Wand keinen Platz."
 }
