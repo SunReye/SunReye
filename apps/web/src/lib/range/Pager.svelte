@@ -18,6 +18,7 @@
 <script lang="ts" generics="T">
   import { untrack, type Snippet } from "svelte";
   import { spring, tween } from "../animate.ts";
+  import { mute } from "../motion/mute.ts";
   import { motion } from "../motion/tier.svelte.ts";
   import Pane from "./Pane.svelte";
   import { drag } from "./pager-drag.ts";
@@ -281,11 +282,13 @@
 <div class="pager" bind:this={root} style:--after="{after}ms">
   <div class="track" bind:this={track}>
     {#each panes as p (p.uid)}
+      <!-- A pane that fades out is muted, not inert: that would restyle all of it as it goes. -->
       <div
         class={["pane", p.uid !== cur && "aside", p.out && "out"]}
         style:--slot={p.slot}
         style:--from="{p.from}px"
-        inert={p.uid !== cur}
+        inert={p.uid !== cur && !p.out}
+        {@attach p.out && mute}
       >
         <div class={["inner", p.fade && "fade"]}>
           <Pane data={p.uid === cur ? data : p.data} hold={p.hold} {children} />

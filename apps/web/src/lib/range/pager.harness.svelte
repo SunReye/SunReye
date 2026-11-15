@@ -43,3 +43,10 @@
     {/snippet}
   </Pager>
 </div>
+<!-- A change that is no drag: the pages crossfade in place. -->
+<button
+  type="button"
+  onclick={() => {
+    n += 1;
+  }}>Weiter</button
+>

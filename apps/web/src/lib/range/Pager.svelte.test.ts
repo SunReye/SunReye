@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cdp } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Harness from "./pager.harness.svelte";
@@ -110,4 +110,29 @@ test("still motion steps on a swipe without moving the pages", async () => {
 
   await until(() => steps.length === 1);
   await expect.element(screen.getByText("Seite 2")).toBeVisible();
+});
+
+test("the page that leaves on a crossfade takes no press, without going inert", async () => {
+  const screen = await render(Harness, { steps: [] });
+  const pressed = vi.fn();
+
+  card().addEventListener("click", () => {
+    pressed();
+  });
+  await screen.getByRole("button", { name: "Weiter" }).click();
+
+  const leaving = screen.getByText("Seite 1").element();
+
+  expect(leaving.closest(".pane")?.classList.contains("out")).toBe(true);
+  // Inert would restyle all of the leaving page in the frame of the press that changed it.
+  expect(leaving.closest("[inert]")).toBeNull();
+
+  leaving.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(pressed).not.toHaveBeenCalled();
+
+  screen
+    .getByText("Seite 2")
+    .element()
+    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(pressed).toHaveBeenCalledOnce();
 });
