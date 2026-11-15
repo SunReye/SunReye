@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use sunreye_profile::Profile;
+use sunreye_profile::{Profile, StorageClass};
 
 /// `v5 = v3 · scale + offset`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,7 +41,7 @@ struct Document {
     metrics: Vec<Metric>,
 }
 
-/// The v3 metrics `v5` reads, by key: the position of the v5 quantity and the conversion. `None`
+/// The v3 metrics `v5` stores, by key: the position of the v5 quantity and the conversion. `None`
 /// when `v3` is not a v3 profile.
 pub fn conversions(
     v3: &serde_json::Value,
@@ -75,6 +75,8 @@ pub fn conversions(
             .iter()
             .zip(converted)
             .enumerate()
+            // A quantity stored nowhere takes no history (ADR 3); it still converts its inputs.
+            .filter(|(_, (q, _))| q.storage() == StorageClass::Series)
             .filter_map(|(at, (q, linear))| Some((q.key.clone(), (at, linear?))))
             .collect(),
     )

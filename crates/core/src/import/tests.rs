@@ -325,6 +325,80 @@ async fn a_target_the_archive_does_not_hold_is_refused() {
     assert!(matches!(refused, Err(Error::UnknownDevice(slug)) if slug == "elsewhere"));
 }
 
+/// `text`, gzipped.
+fn gzip(text: &str) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gz.write_all(text.as_bytes()).unwrap();
+    gz.finish().unwrap()
+}
+
+/// An archive of one v3 device `inv` with a reading of `pv` and of `live`, and the v5 profile
+/// that reads both, `live` with the storage class `none`.
+fn unstored(dir: &std::path::Path) -> (PathBuf, std::sync::Arc<sunreye_profile::Profile>) {
+    let v5 = serde_json::json!({
+        "schema": 1, "id": "inverter", "name": "Inverter", "manufacturer": "test",
+        "version": "1.0.0", "requires": ["modbus", "u16", "kind", "unit", "storage"],
+        "quantities": [
+            { "key": "pv", "role": "pv.power", "register": 1, "type": "u16" },
+            { "key": "live", "role": "extra.live", "kind": "measurement", "unit": "W",
+              "storage": "none", "register": 2, "type": "u16" },
+        ],
+    });
+    let config = serde_json::json!({
+        "plant": { "devices": [{ "slug": "inv", "profileId": "v3" }] },
+        "installedProfiles": [{ "id": "v3", "data": { "metrics": [
+            { "key": "pv", "addresses": [1] },
+            { "key": "live", "addresses": [2] },
+        ] } }],
+    })
+    .to_string();
+    let reading = |metric: &str| {
+        format!(
+            r#"{{"time":"2026-07-07T10:00:00Z","device_slug":"inv","metric_key":"{metric}","value":500,"dur_ms":60000,"source_tier":"raw"}}"#
+        )
+    };
+    let readings = gzip(&format!("{}\n{}\n", reading("pv"), reading("live")));
+    let manifest = br#"{"format":"sunreye-archive","formatVersion":1}"#;
+    let members: [(&str, &[u8]); 3] = [
+        ("manifest.json", manifest),
+        ("config.json", config.as_bytes()),
+        ("readings.ndjson.gz", &readings),
+    ];
+    let profile = sunreye_profile::Profile::load(&v5.to_string()).unwrap();
+    (archive(dir, &members), std::sync::Arc::new(profile))
+}
+
+/// A quantity whose storage class is `none` is published live and never written (ADR 3): the
+/// archive's readings of it are left out and reported.
+#[tokio::test]
+async fn a_quantity_stored_nowhere_takes_no_history_from_the_archive() {
+    let plant = Plant::new();
+    let dir = tempfile::tempdir().unwrap();
+    let (file, profile) = unstored(dir.path());
+    let targets = vec![Target {
+        slug: "inv".to_owned(),
+        device: DEVICE,
+        profile,
+    }];
+
+    let importer = plant.storage.importer();
+    let report = run(file, &importer, &plant.bus, targets, |_, _| {})
+        .await
+        .unwrap();
+
+    assert_eq!(report.series, 1);
+    assert_eq!(
+        report.unread.into_iter().collect::<Vec<_>>(),
+        ["inv/live".to_owned()]
+    );
+    assert_eq!(plant.history("extra.live", None, 0.0, 400.0).await, []);
+    assert_eq!(
+        plant.history("pv.power", None, 0.0, 400.0).await.first(),
+        Some(&(154.0, Some(500.0)))
+    );
+}
+
 fn args(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_owned).collect()
 }
