@@ -9,8 +9,8 @@
   import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
   import { portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
-  import ChoiceField from "./ChoiceField.svelte";
   import SecretField from "./SecretField.svelte";
+  import SelectField from "../components/select-field.svelte";
   import TextField from "../components/text-field.svelte";
   import ToggleRow from "./ToggleRow.svelte";
 
@@ -85,13 +85,9 @@
       (fields.transport !== "mqtt" || fields.topicRoot.trim() !== ""),
   );
 
-  const CHOICES = TRANSPORTS.map(([value]) => ({ value, text: value }));
+  const CHOICES = TRANSPORTS.map(([value]) => ({ value, label: value }));
 
-  function pick(value: string): void {
-    const next = TRANSPORTS.find(([t]) => t === value)?.[0];
-
-    if (next === undefined) return;
-
+  function pick(next: Connection["transport"]): void {
     // A port still at the old transport's usual one moves to the new one's.
     if (fields.port === portOf(fields.transport)) fields.port = portOf(next);
 
@@ -115,11 +111,12 @@
 
 <div class="flex flex-col gap-3 p-4">
   <TextField required autocomplete="off" label={m.settings_connection_name()} bind:value={fields.name} />
-  <ChoiceField
+  <SelectField
+    field
     label={m.devices_endpoint_transport()}
     value={fields.transport}
     options={CHOICES}
-    onpick={pick}
+    onchange={pick}
   />
   <TextField required autocomplete="off" label={m.devices_endpoint_host()} placeholder="192.168.1.40" bind:value={fields.host} />
   <div class="overflow-hidden rounded-md border border-border/60">

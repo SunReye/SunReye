@@ -11,8 +11,8 @@
   import { m } from "../paraglide/messages.js";
   import ProfilePicker from "../setup/ProfilePicker.svelte";
   import Refusal from "../setup/Refusal.svelte";
-  import ChoiceField from "./ChoiceField.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
+  import SelectField from "../components/select-field.svelte";
   import TextField from "../components/text-field.svelte";
 
   let {
@@ -121,11 +121,12 @@
       <span class="text-xs text-muted-foreground">{m.settings_device_profile_fixed()}</span>
     </div>
   {/if}
-  <ChoiceField
+  <SelectField
+    field
     label={m.settings_device_connection()}
     value={String(fields.connection)}
-    options={choices.map((c) => ({ value: String(c.id), text: `${c.name} · ${c.transport}` }))}
-    onpick={(next) => {
+    options={choices.map((c) => ({ value: String(c.id), label: `${c.name} · ${c.transport}` }))}
+    onchange={(next) => {
       fields.connection = Number(next);
     }}
   />
