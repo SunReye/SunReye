@@ -189,7 +189,6 @@ fn layout(strings: Vec<PvString>) -> Layout {
             longitude: 13.38,
         },
         inverters: vec![Inverter {
-            ac_rating: None,
             inputs: vec![Input {
                 limits: None,
                 strings,

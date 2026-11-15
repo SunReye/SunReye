@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
+import { tap } from "../builder/pointer.harness.ts";
 import { FakeCore } from "./devices.harness.ts";
 import Routed from "./routed.harness.svelte";
 
@@ -66,6 +67,27 @@ test("the admin adds a scanned Modbus device after setup, renames it and removes
     'POST /api/v1/devices {"connection":11,"name":"Speicher","profile":"deye-sg05lp3","variant":"5k","unit":1}',
     'PUT /api/v1/devices/12 {"connection":11,"name":"Speicher Keller","profile":"deye-sg05lp3","variant":"5k","unit":1,"writes":false}',
     "DELETE /api/v1/devices/12",
+  ]);
+});
+
+test("a device added on a connection is the variant of its family the admin picks", async () => {
+  const core = new FakeCore();
+  const screen = await opened(core, "devices");
+
+  await tap(screen.getByRole("button", { name: "Gerät hinzufügen" }));
+  await tap(screen.getByRole("button", { name: "Auf einer Verbindung hinzufügen" }));
+  await tap(screen.getByRole("button", { name: "Profil", exact: true }));
+  await tap(page.getByRole("dialog").getByRole("button", { name: "SUN-5K-SG05LP3-EU-SM2 5 kW" }));
+  await expect
+    .element(screen.getByRole("button", { name: "Profil", exact: true }))
+    .toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");
+  await enter("Adresse", "2");
+  await userEvent.fill(screen.getByRole("textbox", { name: "Name" }), "Zweiter");
+  await tap(screen.getByRole("button", { name: "Gerät hinzufügen" }));
+
+  await expect.element(screen.getByRole("button", { name: /^Zweiter/u })).toBeVisible();
+  expect(core.calls).toEqual([
+    'POST /api/v1/devices {"connection":1,"name":"Zweiter","profile":"deye-sg05lp3","variant":"5k","unit":2,"writes":false}',
   ]);
 });
 

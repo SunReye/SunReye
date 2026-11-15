@@ -65,9 +65,11 @@
       <ProfilePicker
         {core}
         value={choice.profile}
+        variant={choice.variant}
         label={m.devices_manual_profile(at)}
-        onpick={(id) => {
-          choice.profile = id;
+        onpick={(profile, variant) => {
+          choice.profile = profile;
+          choice.variant = variant;
         }}
       />
     </div>

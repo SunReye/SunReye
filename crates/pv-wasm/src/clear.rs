@@ -121,7 +121,6 @@ impl Run {
         let inverters = wired
             .into_values()
             .map(|inputs| Inverter {
-                ac_rating: None,
                 inputs: inputs
                     .into_values()
                     .map(|strings| Input {

@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Device, type Transport } from "../api/core.ts";
 import "../../app.css";
+import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
 
 /** A phone; the value editor lands at once. */
@@ -35,32 +36,30 @@ const ADDED = {
   unit: 1,
 };
 
-/** The profiles the test core serves. */
+/** A profile the test core serves. */
+const served = (
+  id: string,
+  manufacturer: string,
+  name: string,
+  variants: readonly string[] = [],
+) => ({
+  id,
+  manufacturer,
+  name,
+  version: "1.0.0",
+  official: true,
+  acRating: variants.length > 0 ? 20_000 : null,
+  variants: variants.map((kw) => ({
+    id: `${kw}k`,
+    name: `SUN-${kw}K-SG05LP3-EU-SM2`,
+    acRating: Number(kw) * 1000,
+  })),
+});
+
 const PROFILES = [
-  {
-    id: "deye-sg05lp3",
-    manufacturer: "Deye",
-    name: "SG05LP3",
-    version: "1.0.0",
-    official: true,
-    acRating: 20_000,
-  },
-  {
-    id: "shelly-pro-3em",
-    manufacturer: "Shelly",
-    name: "Pro 3EM",
-    version: "1.0.0",
-    official: true,
-    acRating: null,
-  },
-  {
-    id: "sunspec",
-    manufacturer: "SunSpec",
-    name: "SunSpec device",
-    version: "1.0.0",
-    official: false,
-    acRating: null,
-  },
+  served("deye-sg05lp3", "Deye", "SG05LP3", ["5", "15"]),
+  served("shelly-pro-3em", "Shelly", "Pro 3EM"),
+  served("sunspec", "SunSpec", "SunSpec device"),
 ];
 
 /** Picks the profile named `name` for the device at `at` from the catalogue, by searching for `search`. */
@@ -197,16 +196,42 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   ]);
 });
 
+/** Enters the RTU gateway at 192.168.1.40:4196 by hand, up to choosing its device's profile. */
+async function gateway(): Promise<void> {
+  await tap(page.getByRole("button", { name: "Endpunkt von Hand eingeben" }));
+  await userEvent.fill(page.getByLabelText("Host"), "192.168.1.40");
+  await enter("Port", "4196");
+  await tap(page.getByRole("radio", { name: "rtu-over-tcp" }));
+  await tap(page.getByRole("button", { name: "Endpunkt hinzufügen" }));
+}
+
+test("a device entered by hand is added as the variant of its family the admin picks", async () => {
+  const transport = testCore();
+  const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
+  const profile = page.getByRole("button", { name: "Profil für 192.168.1.40:4196" });
+
+  await render(DevicesStep, { core: connect(transport), ondone: done });
+
+  await gateway();
+  await pick("192.168.1.40:4196", "sg05", "SUN-5K-SG05LP3-EU-SM2");
+  await expect.element(profile).toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");
+  await userEvent.fill(page.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Keller");
+  await tap(page.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }));
+
+  await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(transport.calls[1]).toBe(
+    '/api/v1/devices {"connection":5,"name":"Keller","profile":"deye-sg05lp3","variant":"5k","unit":1}',
+  );
+});
+
 test("the admin enters an RTU gateway the scan does not probe by hand", async () => {
   const transport = testCore();
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
-  await screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }).click();
-  await userEvent.fill(screen.getByLabelText("Host"), "192.168.1.40");
-  await enter("Port", "4196");
-  await screen.getByRole("radio", { name: "rtu-over-tcp" }).click();
-  await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
+  await gateway();
+  // Another profile drops the variant picked before it.
+  await pick("192.168.1.40:4196", "sg05", "SUN-5K-SG05LP3-EU-SM2");
   await pick("192.168.1.40:4196", "3em", "Pro 3EM");
   await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");

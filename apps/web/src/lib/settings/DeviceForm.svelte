@@ -1,6 +1,6 @@
 <!--
   A device as the admin adds it on a connection or changes it: its name, connection and address.
-  The profile is chosen once, on adding (ADR 6). A new connection, such as EVCC's broker, can be
+  The profile and its variant are chosen once, on adding (ADR 6). A new connection, such as EVCC's broker, can be
   made here on the way.
 -->
 <script lang="ts">
@@ -34,6 +34,7 @@
     name: device?.name ?? "",
     connection: device?.connection ?? connections[0]?.id,
     profile: device?.profile ?? "",
+    variant: device?.variant ?? undefined,
     unit: device?.unit ?? 1,
   });
 
@@ -71,13 +72,6 @@
     making = false;
   }
 
-  /** A device's variant, fixed with its profile (ADR 5); none for a new device or a base. */
-  function variantOf(known: Device | undefined): { variant?: string } {
-    const variant = known?.variant ?? undefined;
-
-    return variant === undefined ? {} : { variant };
-  }
-
   async function save(): Promise<void> {
     const { connection } = fields;
 
@@ -88,7 +82,7 @@
       connection,
       name: fields.name.trim(),
       profile: fields.profile,
-      ...variantOf(device),
+      ...(fields.variant !== undefined && { variant: fields.variant }),
       unit: fields.unit,
       writes: device?.writes ?? false,
     };
@@ -109,9 +103,11 @@
       <ProfilePicker
         {core}
         value={fields.profile}
+        variant={fields.variant}
         label={m.devices_profile()}
-        onpick={(id) => {
-          fields.profile = id;
+        onpick={(profile, variant) => {
+          fields.profile = profile;
+          fields.variant = variant;
         }}
       />
     </div>

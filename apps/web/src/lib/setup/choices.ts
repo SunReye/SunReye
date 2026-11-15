@@ -16,8 +16,8 @@ export interface Choice {
   readonly found: Endpoint;
   readonly manual: boolean;
   profile: string;
-  /** The variant the scan found (ADR 5); none for a family's base or a manual entry. */
-  readonly variant?: string;
+  /** The variant the scan found, or the admin picked with the profile (ADR 5); none for a family's base. */
+  variant?: string | undefined;
   /** What the scan calls the device: the variant's name, else the profile's. */
   readonly title: string;
   unit: number;

@@ -1793,6 +1793,16 @@ export interface components {
             /** @description Oldest first, as written to stderr. */
             lines: string[];
         };
+        /** @description One variant of a family, as an admin picks it for a device. */
+        ListedVariant: {
+            /**
+             * Format: double
+             * @description Watts of AC output at this model's rating.
+             */
+            acRating?: number | null;
+            id: string;
+            name: string;
+        };
         /** @description A profile served, as an admin picks it for a device. */
         Listing: {
             /**
@@ -1805,6 +1815,11 @@ export interface components {
             /** @description The model, or the family it covers. */
             name: string;
             official: boolean;
+            /**
+             * @description A family's variants in file order (ADR 5); a device that is none of them is added
+             *     without one and read as the base.
+             */
+            variants: components["schemas"]["ListedVariant"][];
             version: string;
         };
         /** @description The plant's location in degrees, north and east positive. */

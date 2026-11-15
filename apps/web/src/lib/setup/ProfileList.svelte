@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { Listing, Problem } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
-  import { catalogue, covers } from "./catalogue.ts";
+  import { catalogue } from "./catalogue.ts";
   import ProfileMaker from "./ProfileMaker.svelte";
   import Refusal from "./Refusal.svelte";
 
@@ -11,19 +11,20 @@
     refused,
     query,
     value,
+    variant,
     onpick,
   }: {
     /** Undefined while the core answers. */
     listings: readonly Readonly<Listing>[] | undefined;
     refused: Problem | undefined;
     query: string;
+    /** The profile chosen, and which of its variants. */
     value: string;
-    onpick: (id: string) => void;
+    variant: string | undefined;
+    onpick: (profile: string, variant?: string) => void;
   } = $props();
 
   const groups = $derived(listings === undefined ? [] : catalogue(listings, query));
-
-  const families = $derived(new Set(listings?.filter((l) => covers(l, listings ?? []))));
 </script>
 
 {#if refused !== undefined}
@@ -37,5 +38,5 @@
     {m.profile_none({ query: query.trim() })}
   </p>
 {:else}
-  {#each groups as maker (maker.name)}<ProfileMaker {maker} {families} {value} {onpick} />{/each}
+  {#each groups as maker (maker.name)}<ProfileMaker {maker} {value} {variant} {onpick} />{/each}
 {/if}
