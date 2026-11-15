@@ -48,6 +48,8 @@ export function ground({ finish, corners }: Ground, index: number): Mesh {
 
   mesh.position.y = LIFT + index * STACK;
   mesh.name = "ground";
+  // What grows through it: blades stand on a lawn surface, and on no other (ADR 20).
+  mesh.userData = { finish };
 
   return mesh;
 }
