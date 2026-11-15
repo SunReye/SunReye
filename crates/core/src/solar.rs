@@ -223,6 +223,8 @@ pub(crate) async fn estimates(
             None => HashMap::new(),
         };
         estimates.push((target, values));
+        // A run over months of weather would hold the one thread the API answers on.
+        tokio::task::yield_now().await;
     }
     Ok(estimates)
 }
