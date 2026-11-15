@@ -1,6 +1,7 @@
 <!--
-  A connection as the admin adds or changes it: where it reaches, a broker's topic root and
-  publisher, and its credentials, which show only whether they are set (ADR 7).
+  A connection as the admin adds or changes it: where it reaches, a polled endpoint's poll cycle
+  (ADR 6), a broker's topic root and publisher, and its credentials, which show only whether they
+  are set (ADR 7).
 -->
 <script lang="ts">
   import type { Connection, ConnectionDraft, Core, Problem } from "../api/core";
@@ -8,7 +9,7 @@
   import ValueRow from "../builder/ValueRow.svelte";
   import { m } from "../paraglide/messages.js";
   import Refusal from "../setup/Refusal.svelte";
-  import { portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
+  import { POLL_SECONDS, polled, portOf, secretsOf, TRANSPORTS } from "./connection-draft.ts";
   import SecretField from "./SecretField.svelte";
   import SelectField from "../components/select-field.svelte";
   import TextField from "../components/text-field.svelte";
@@ -35,13 +36,17 @@
     transport: connection?.transport ?? "modbus-tcp",
     host: connection?.host ?? "",
     port: connection?.port ?? portOf("modbus-tcp"),
+    pollSeconds: connection?.pollSeconds ?? POLL_SECONDS.default,
     topicRoot: connection?.topicRoot ?? "",
     publish: connection?.publish !== undefined && connection.publish !== null,
     discovery: connection?.publish?.discovery ?? false,
     secrets: changes,
   });
 
-  /** The draft the core takes: a broker's topic root and publisher only on a broker, changed secrets only. */
+  /**
+   * The draft the core takes: a poll cycle only on a polled endpoint, a broker's topic root and
+   * publisher only on a broker, changed secrets only.
+   */
   function draft(): ConnectionDraft {
     const { name, transport, host, port } = fields;
 
@@ -50,6 +55,8 @@
     );
 
     let made: ConnectionDraft = { name: name.trim(), transport, host: host.trim(), port };
+
+    if (polled(transport)) made = { ...made, pollSeconds: fields.pollSeconds };
 
     if (transport === "mqtt") made = { ...made, topicRoot: fields.topicRoot.trim() };
 
@@ -71,6 +78,15 @@
     unit: "",
     min: 1,
     max: 65_535,
+    step: 1,
+  };
+
+  const POLL = {
+    kind: "number" as const,
+    name: m.settings_connection_poll_seconds(),
+    unit: "s",
+    min: POLL_SECONDS.min,
+    max: POLL_SECONDS.max,
     step: 1,
   };
 
@@ -127,6 +143,15 @@
         fields.port = next;
       }}
     />
+    {#if polled(fields.transport)}
+      <ValueRow
+        edit={POLL}
+        value={fields.pollSeconds}
+        onchange={(next) => {
+          fields.pollSeconds = next;
+        }}
+      />
+    {/if}
   </div>
   {#if fields.transport === "mqtt"}
     <TextField required autocomplete="off"

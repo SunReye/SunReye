@@ -59,6 +59,7 @@ const TEXTS: Readonly<Record<Code, Text>> = {
   "retention.value": m.problem_retention_value,
   "connection.none": m.problem_connection_none,
   "connection.value": m.problem_connection_value,
+  "connection.poll-seconds": m.problem_connection_poll_seconds,
   "connection.in-use": m.problem_connection_in_use,
   "device.none": m.problem_device_none,
   "device.connection": m.problem_device_connection,
