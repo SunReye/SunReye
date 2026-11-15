@@ -39,14 +39,14 @@ const SERVED: readonly Readonly<Listing>[] = [
   listing("shelly-pro-3em", "Shelly", "Pro 3EM", null),
 ];
 
-/** Each manufacturer's families, each model as its profile and, for a variant, `profile/variant`. */
+/** Each manufacturer's families, each offer as its profile and, for a variant, `profile/variant`. */
 function ids(query: string): Record<string, string[][]> {
   return Object.fromEntries(
     catalogue(SERVED, query).map(({ name, families }) => [
       name,
       families.map((family) =>
-        family.map((model) =>
-          model.variant === undefined ? model.profile : `${model.profile}/${model.variant}`,
+        family.map((offer) =>
+          offer.variant === undefined ? offer.profile : `${offer.profile}/${offer.variant}`,
         ),
       ),
     ]),
@@ -64,19 +64,19 @@ test("profiles group by manufacturer, then by family: its base first, then its v
   });
 });
 
-test("a family's base is marked as the family and carries no variant; a variant has its own name and rating", () => {
+test("a family's base is marked as the base and carries no variant; a variant has its own name and rating", () => {
   const [base, small] = catalogue(SERVED, "sg05")[0]?.families[0] ?? [];
 
-  expect(base).toMatchObject({ profile: "deye-sg05lp3", name: "SG05LP3", family: true });
+  expect(base).toMatchObject({ profile: "deye-sg05lp3", name: "SG05LP3", base: true });
   expect(base?.variant).toBeUndefined();
   expect(small).toMatchObject({
     profile: "deye-sg05lp3",
     variant: "5k",
     name: "SUN-5K-SG05LP3-EU-SM2",
     acRating: 5000,
-    family: false,
+    base: false,
   });
-  expect(catalogue(SERVED, "evcc")[0]?.families[0]?.[0]?.family).toBe(false);
+  expect(catalogue(SERVED, "evcc")[0]?.families[0]?.[0]?.base).toBe(false);
 });
 
 test("search finds a model by any token of its name or ids, in any case", () => {

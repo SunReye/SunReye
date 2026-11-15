@@ -12,7 +12,7 @@
   import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
   import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
-  import { models, power } from "./catalogue.ts";
+  import { offers, power } from "./catalogue.ts";
   import ProfileList from "./ProfileList.svelte";
 
   let {
@@ -42,8 +42,8 @@
   const chosen = $derived(
     listings
       ?.filter((listing) => listing.id === value)
-      .flatMap((listing) => models(listing))
-      .find((model) => model.variant === variant),
+      .flatMap((listing) => offers(listing))
+      .find((offer) => offer.variant === variant),
   );
 
   const rating = $derived(chosen === undefined ? undefined : power(chosen));
