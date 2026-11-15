@@ -198,6 +198,83 @@ fn a_chimney_stands_upright_on_its_face_and_its_top_lies_level() {
     assert!((highest - (back + 1.2)).abs() < 1e-6, "{highest} {back}");
 }
 
+fn near(actual: &[f64], expected: &[f64]) {
+    let close = actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|(a, e)| (a - e).abs() < 1e-3);
+    assert!(close, "{actual:?} is not {expected:?}");
+}
+
+#[test]
+fn a_chimneys_footing_is_its_foot_on_the_roof_and_its_level_top() {
+    let mut faceless = chimney(3.0);
+    faceless["face"] = json!(9);
+    let footings = gridded(&json!([chimney(3.0), faceless]), &json!([])).footings();
+    let [Some(footing), None] = footings.as_slice() else {
+        panic!("{footings:?}");
+    };
+
+    // 0.3 m either side of 3 m across; 0.3 m level either side of 1.5 m up the 35° slope, which
+    // is 1.229 m north of the eave and 0.860 m over it.
+    near(
+        &footing.foot.concat(),
+        &[
+            [2.7, -7.071, 3.650],
+            [3.3, -7.071, 3.650],
+            [3.3, -6.471, 4.070],
+            [2.7, -6.471, 4.070],
+        ]
+        .concat(),
+    );
+    near(&[footing.top], &[5.270]);
+}
+
+#[test]
+fn a_strike_on_a_chimneys_top_or_side_lands_on_it_and_beside_it_on_none() {
+    let scene = gridded(&json!([chimney(3.0)]), &json!([]));
+
+    assert_eq!(scene.chimney_at([3.0, -6.771, 5.27]), Some(0));
+    assert_eq!(scene.chimney_at([3.1, -7.071, 4.0]), Some(0));
+    assert_eq!(scene.chimney_at([4.0, -6.771, 3.86]), None);
+    assert_eq!(scene.chimney_at([3.0, -6.771, 6.0]), None);
+}
+
+#[test]
+fn a_chimney_glides_along_its_face_in_10_cm_steps_and_stops_at_its_edge() {
+    let scene = gridded(&json!([chimney(3.0)]), &json!([]));
+    let glided = |east, north| {
+        let moved = scene.glide(0, [east, north]).unwrap();
+        [moved.across, moved.up]
+    };
+
+    // 0.82 m north, seen from above, is 1 m up the 35° slope.
+    near(&glided(2.04, 0.82), &[5.0, 2.5]);
+    // The face is 10 m wide, the chimney 0.6 m.
+    near(&glided(20.0, 0.0), &[9.7, 1.5]);
+    // Its upper side stops at the ridge, 4 / cos 35° = 4.883 m up the face, and it slides on.
+    let ridge = 4.883 - 0.3 / 35f64.to_radians().cos();
+    near(&glided(20.0, 20.0), &[9.7, ridge]);
+    let [across, up] = glided(20.0, 20.0);
+    let stopped = gridded(
+        &json!([{ "block": 0, "face": 1, "across": across, "up": up, "width": 0.6,
+            "depth": 0.6, "height": 1.2 }]),
+        &json!([]),
+    );
+    assert_eq!(stopped.check_chimneys(), Ok(()));
+    assert_eq!(scene.glide(1, [1.0, 0.0]), None);
+}
+
+#[test]
+fn a_chimney_off_its_face_goes_where_it_is_moved() {
+    let scene = gridded(&json!([chimney(20.0)]), &json!([]));
+
+    let moved = scene.glide(0, [1.0, 0.0]).unwrap();
+
+    near(&[moved.across, moved.up], &[21.0, 1.5]);
+}
+
 #[test]
 fn modules_cannot_stand_where_a_chimney_stands() {
     let scene = gridded(&json!([chimney(2.0)]), &json!([{ "row": 0, "column": 1 }]));

@@ -93,6 +93,7 @@ export class Session {
     this.plan = $derived({
       draft: this.draft,
       laid: this.laid,
+      pv: opening().pv,
       devices: opening().devices,
       cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
       refused: this.#refused(),
@@ -190,7 +191,8 @@ export class Session {
     return {
       scene: this.draft.scene,
       target: { kind: level.kind, index: level.index },
-      roofs: this.laid.roofs,
+      pv: this.#opening().pv,
+      laid: this.laid,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -257,7 +259,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit, this.laid.roofs, this.laid.grids);
+    const level = picked(this.draft.scene, hit, this.#opening().pv, this.laid);
 
     if (level === null) return;
 

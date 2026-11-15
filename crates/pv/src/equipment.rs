@@ -63,6 +63,9 @@ pub struct Run {
 }
 
 impl Wall {
+    /// A block's walls, in the order the builder goes round them.
+    pub const ALL: [Self; 4] = [Self::Front, Self::Right, Self::Back, Self::Left];
+
     /// This wall of a block `width` across and `depth` deep.
     #[must_use]
     pub const fn run(self, width: f64, depth: f64) -> Run {
@@ -80,6 +83,16 @@ impl Wall {
             length,
         }
     }
+}
+
+/// A block's wall in the shading frame, for what the browser hangs on it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WallFrame {
+    /// Its left end on the ground, seen from outside.
+    pub left: Point,
+    /// A metre along it to the right, and its outward normal, both level.
+    pub right: Point,
+    pub out: Point,
 }
 
 /// Where a marker is drawn, in the shading frame.
@@ -100,6 +113,31 @@ impl Scene {
             .iter()
             .enumerate()
             .map(|(index, marker)| self.mount(marker).ok_or(index))
+            .collect()
+    }
+
+    /// Every block's walls, in the order of `Wall::ALL`.
+    #[must_use]
+    pub fn walls(&self) -> Vec<[WallFrame; 4]> {
+        self.blocks
+            .iter()
+            .map(|block| {
+                let frame = self.prism(block.x, block.z, block.rotation);
+                let [east0, north0, _] = frame.place([0.0; 3]);
+                // Never −0, which JSON keeps.
+                let level = |[across, deep]: [f64; 2]| {
+                    let [east, north, _] = frame.place([across, 0.0, deep]);
+                    [east - east0 + 0.0, north - north0 + 0.0, 0.0]
+                };
+                Wall::ALL.map(|wall| {
+                    let run = wall.run(block.width, block.depth);
+                    WallFrame {
+                        left: frame.place([run.left[0], 0.0, run.left[1]]),
+                        right: level([run.across, run.deep]),
+                        out: level(run.out),
+                    }
+                })
+            })
             .collect()
     }
 

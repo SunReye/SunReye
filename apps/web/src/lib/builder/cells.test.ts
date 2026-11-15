@@ -38,7 +38,7 @@ function onSouth(u: number, v: number): Point {
   return [o[0] + a[0] * u + w[0] * v, o[1] + a[1] * u + w[1] * v, o[2] + a[2] * u + w[2] * v];
 }
 
-const strike = (point: Point) => picked(scene, { kind: "point", point }, laid.roofs, laid.grids);
+const strike = (point: Point) => picked(scene, { kind: "point", point }, pv, laid);
 
 test("a point on a roof face finds the grid's cell it lies in", () => {
   expect(cellAt(scene, laid, centre(1, 3))).toEqual({ grid: 0, row: 1, column: 3 });

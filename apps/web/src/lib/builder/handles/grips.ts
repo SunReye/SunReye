@@ -1,10 +1,9 @@
 // The builder's 3D handles (ADR 20): where each sits on the selected object, and what a drag from
 // one pointer ray to another makes of the scene, snapped. Pure and three.js-free: rays and points
 // are in three.js's frame (x east, y up, z south, turned by the scene's north).
-import { footing } from "../chimneys.ts";
-import type { RoofFace, Scene } from "../pv.ts";
+import type { Footing, Modules, Scene } from "../pv.ts";
 import { bodyOf, onWorld, ridge, type Rect, type Round, type Target } from "./body.ts";
-import { onWall } from "../wall-openings.ts";
+import { wallOf } from "../wall-openings.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 export type { Target } from "./body.ts";
@@ -102,15 +101,15 @@ function fenceHandles({ north, fences = [] }: Scene, index: number): Handle[] {
   }));
 }
 
+/** What a chimney's and an opening's handles stand on, as the crate laid the scene out. */
+export type Laid = Pick<Modules, "walls" | "footings">;
+
 /** A chimney's foot outlined on its roof face; its top, where the live value shows. The chimney
  * itself is dragged. */
-function chimneyHandles({ chimneys = [] }: Scene, index: number, roofs: readonly RoofFace[]) {
-  const chimney = chimneys[index];
-  const roof = roofs.find((face) => face.block === chimney?.block && face.face === chimney.face);
+function chimneyHandles(footing: Footing | null | undefined): Handle[] {
+  if (footing === undefined || footing === null) return [];
 
-  if (chimney === undefined || roof === undefined) return [];
-
-  const { foot, top } = footing(chimney, roof);
+  const { foot, top } = footing;
   // The crate's east, north, up in three.js's frame.
   const outline = foot.map(([east, north, up]): Triple => [east, up, 0 - north]);
   const [east, north] = [0, 1].map((i) => foot.reduce((sum, p) => sum + (p[i] ?? 0), 0) / 4);
@@ -124,22 +123,20 @@ const OFF_WALL = 0.08;
 
 /** An opening outlined on its wall, which a drag slides it along; an arrow at its right edge for
  * its width and one over it for its height. */
-function openingHandles(scene: Scene, index: number): Handle[] {
+function openingHandles(scene: Scene, index: number, laid: Laid): Handle[] {
   const opening = scene.openings?.[index];
-  const block = opening && scene.blocks[opening.block];
+  const wall = wallOf(scene, laid, index);
 
-  if (opening === undefined || block === undefined) return [];
+  if (opening === undefined || wall === undefined) return [];
 
-  const { north } = scene;
   const { along, width, height, sill = 0 } = opening;
-  const wall = onWall(block, opening.wall);
-  const at = (across: number, up: number): Triple => world(north, wall.at(across, up, OFF_WALL));
+  const at = (across: number, up: number): Triple => wall.at(across, up, OFF_WALL);
 
   return [
     {
       grip: "width",
       at: at(along + width + ARROW, sill + height / 2),
-      axis: world(north, wall.right),
+      axis: wall.right,
     },
     { grip: "height", at: at(along + width / 2, sill + height + ARROW), axis: [0, 1, 0] },
     {
@@ -155,13 +152,16 @@ function openingHandles(scene: Scene, index: number): Handle[] {
   ];
 }
 
-/** The selected object's handles; a chimney's stand on the laid-out `roofs`. */
-export function handles(scene: Scene, target: Target, roofs: readonly RoofFace[] = []): Handle[] {
+const NONE: Laid = { walls: [], footings: [] };
+
+/** The selected object's handles; a chimney's and an opening's stand on what the crate `laid` out
+ * for this `scene`, and without it they have none. */
+export function handles(scene: Scene, target: Target, laid: Laid = NONE): Handle[] {
   if (target.kind === "fence") return fenceHandles(scene, target.index);
 
-  if (target.kind === "chimney") return chimneyHandles(scene, target.index, roofs);
+  if (target.kind === "chimney") return chimneyHandles(laid.footings[target.index]);
 
-  if (target.kind === "opening") return openingHandles(scene, target.index);
+  if (target.kind === "opening") return openingHandles(scene, target.index, laid);
 
   const body = bodyOf(scene, target);
 

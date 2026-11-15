@@ -14,7 +14,7 @@ import {
   ROOFS,
   WALL_NAMES,
 } from "./names.ts";
-import type { Fence, Modules } from "./pv.ts";
+import type { Fence, Modules, Pv } from "./pv.ts";
 
 export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
 
@@ -23,6 +23,8 @@ export interface Plan {
   readonly draft: Draft;
   /** The crate's layout of the draft's grids. */
   readonly laid: Modules;
+  /** The crate, which places a new opening and keeps a changed one on its wall. */
+  readonly pv: Pick<Pv, "place" | "refit">;
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];

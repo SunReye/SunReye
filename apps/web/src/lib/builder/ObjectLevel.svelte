@@ -91,6 +91,7 @@
     {index}
     {scene}
     roofs={plan.laid.roofs}
+    pv={plan.pv}
     onchange={sceneEdit}
     onremove={sceneRemove}
   />

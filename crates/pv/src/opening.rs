@@ -44,7 +44,7 @@ pub enum OpeningKind {
 
 impl OpeningKind {
     /// A door stands on the ground.
-    const fn door(self) -> bool {
+    pub(crate) const fn door(self) -> bool {
         matches!(self, Self::FrontDoor | Self::GarageDoor)
     }
 }
@@ -61,7 +61,7 @@ pub struct Fitted {
 
 impl Opening {
     /// Whether both lie on one wall and share some of it.
-    fn overlaps(&self, other: &Self) -> bool {
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
         self.block == other.block
             && self.wall == other.wall
             && self.along < other.along + other.width

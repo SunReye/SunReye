@@ -1,8 +1,17 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
 import { cellAt } from "./cells.ts";
-import { chimneyAt } from "./chimneys.ts";
 import type { At } from "./modules.ts";
-import type { Block, Cell, CellPlace, FencePoint, Modules, Point, RoofFace, Scene } from "./pv.ts";
+import type {
+  Block,
+  Cell,
+  CellPlace,
+  FencePoint,
+  Modules,
+  Point,
+  Pv,
+  RoofFace,
+  Scene,
+} from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -133,14 +142,16 @@ function indexed(kind: Extract<Level, { index: number }>["kind"], index: number)
   return index >= 0 ? { kind, index } : null;
 }
 
+/** What a strike is found on: the crate, which finds a chimney, and its layout, whose cells find
+ * a grid's face. */
+interface Found {
+  readonly pv?: Pick<Pv, "chimneyAt"> | undefined;
+  readonly laid?: Pick<Modules, "roofs" | "grids"> | undefined;
+}
+
 /** The face whose grid holds a cell at `point`, when the cells are known. */
-function faceAt(
-  scene: Scene,
-  roofs: readonly RoofFace[],
-  cells: Modules["grids"] | undefined,
-  point: Point,
-): Level | null {
-  const hit = cells && cellAt(scene, { roofs, grids: cells }, point);
+function faceAt(scene: Scene, laid: Found["laid"], point: Point): Level | null {
+  const hit = laid && cellAt(scene, laid, point);
   const grid = hit && scene.grids?.[hit.grid];
 
   return grid ? { kind: "face", block: grid.block, face: grid.face } : null;
@@ -149,18 +160,18 @@ function faceAt(
 /** The object at a point: a chimney on its roof, a grid's cell on its face, what stands before the
  * blocks it stands by, a car place before the roof over it, the ground last, the latest surface
  * first as it is drawn over the others. */
-function at(
-  scene: Scene,
-  roofs: readonly RoofFace[],
-  cells: Modules["grids"] | undefined,
-  [east, north, up]: Point,
-): Level | null {
+function at(scene: Scene, { pv, laid }: Found, [east, north, up]: Point): Level | null {
   const point = turn(east, -north, -scene.north);
 
   // The first finder that finds wins.
   const finders: readonly (() => Level | null)[] = [
-    () => indexed("chimney", chimneyAt(scene, roofs, [east, north, up])),
-    () => faceAt(scene, roofs, cells, [east, north, up]),
+    () =>
+      indexed(
+        "chimney",
+        // No chimney, no question to the crate.
+        (scene.chimneys?.length ?? 0) > 0 ? (pv?.chimneyAt(scene, [east, north, up]) ?? -1) : -1,
+      ),
+    () => faceAt(scene, laid, [east, north, up]),
     () => indexed("obstacle", obstacleAt(scene, point)),
     () =>
       indexed(
@@ -191,19 +202,19 @@ function at(
   return null;
 }
 
-/** The level a click in 3D drills the inspector to; null for open ground. A chimney is found on
- * the laid-out `roofs`, a grid's face on its laid-out `cells`. */
+/** The level a click in 3D drills the inspector to; null for open ground. A chimney is found by
+ * the crate `pv`, a grid's face on the cells the crate `laid` out. */
 export function picked(
   scene: Scene,
   hit: Hit,
-  roofs: readonly RoofFace[] = [],
-  cells?: Modules["grids"],
+  pv?: Pick<Pv, "chimneyAt">,
+  laid?: Pick<Modules, "roofs" | "grids">,
 ): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
 
   if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
-  if (hit.kind === "point") return at(scene, roofs, cells, hit.point);
+  if (hit.kind === "point") return at(scene, { pv, laid }, hit.point);
 
   const grid = scene.grids?.[hit.grid];
 

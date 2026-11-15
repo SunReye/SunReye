@@ -2,6 +2,7 @@ mod clear_sky;
 mod diode;
 mod equipment;
 mod estimate;
+mod fitting;
 mod fixtures;
 mod grid;
 mod input;

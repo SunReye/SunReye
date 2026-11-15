@@ -141,6 +141,36 @@ const DESK: readonly Journey[] = [
     },
   },
   {
+    name: "builder: drag a window's width handle",
+    route: "builder",
+    ready: async (page) => {
+      await builderShown(page);
+      await tap(page, "Gebäude");
+      await tap(page, "Fenster hinzufügen");
+    },
+    act: async (page) => {
+      const [from, to] = await aim(page, "window");
+
+      await drag(page, from, to);
+      await drag(page, to, from);
+    },
+  },
+  {
+    name: "builder: drag a chimney over its roof",
+    route: "builder",
+    ready: async (page) => {
+      await builderShown(page);
+      await tap(page, "Gebäude");
+      await tap(page, "Schornstein hinzufügen");
+    },
+    act: async (page) => {
+      const [from, to] = await aim(page, "chimney");
+
+      await drag(page, from, to);
+      await drag(page, to, from);
+    },
+  },
+  {
     name: "builder: paint a stroke across a face's cells",
     route: "builder",
     ready: async (page) => {
