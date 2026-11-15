@@ -319,6 +319,44 @@ async fn a_held_value_stores_no_rollup_and_reads_as_the_last_value_of_each_windo
 }
 
 #[tokio::test]
+async fn a_held_value_carries_forward_once_its_device_is_no_longer_declared() {
+    let dir = tempfile::tempdir().unwrap();
+    let plant = Plant::new();
+    for kind in [RoleKind::Held, RoleKind::Status] {
+        let path = dir.path().join(format!("{kind:?}.sqlite"));
+        let series = plant.bus.intern(&format!("{kind:?}"), None);
+        let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+        let policy = Policy::new(kind, None, 1.0, Duration::from_secs(5));
+        storage.declare(DEVICE, series, policy).await.unwrap();
+        // 50 until half past the first hour, then 51, into a third hour.
+        for (seconds, value) in steady(0.0, 1460, 5.0, |t| if t < 1800.0 { 50.0 } else { 51.0 }) {
+            let reading = Reading {
+                series,
+                ..plant.reading(seconds, value)
+            };
+            storage.record(reading).await.unwrap();
+        }
+        storage.shutdown().await.unwrap();
+
+        // The device is removed, or its profile is gone: nothing declares the series.
+        let storage = Storage::open(&path, epoch(), "UTC", &plant.bus).unwrap();
+        let value = Aggregate::Held { value: 51.0 };
+        for (tier, expected) in [
+            (Tier::Hour, vec![(0.0, value), (1.0, value), (2.0, value)]),
+            (Tier::Day, vec![(-12.0, value)]),
+        ] {
+            let held: Vec<_> = rollups(&storage, series, tier, -86_400.0, 86_400.0)
+                .await
+                .into_iter()
+                .map(|r| (hours(r.start), r.aggregate))
+                .collect();
+            assert_eq!(held, expected, "{kind:?} {tier:?}");
+        }
+        storage.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn a_low_reading_at_the_end_of_an_hour_is_not_a_reset_in_the_next() {
     let dir = tempfile::tempdir().unwrap();
     let plant = Plant::new();

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sunreye_profile::RoleKind;
 
 use super::{HOUR, Store, blocks, lookup, points, tick, time, write_block};
@@ -184,7 +184,7 @@ impl Store {
         };
         let range = tick(from).unwrap_or(0)..tick(to).unwrap_or(0);
         let (from, to) = (range.start, range.end);
-        if let Some(RoleKind::Status | RoleKind::Held) = self.kind(device, series) {
+        if self.carries(device, series)? {
             return self.carried(device.0, (series, step), tier, range);
         }
         let (sql, from, to) = match tier {
@@ -230,7 +230,19 @@ impl Store {
             .collect())
     }
 
-    /// The kind of `device`'s stored `series`, when it has one.
+    /// Whether `series` is a status or a held value. Read from storage, so it holds for a
+    /// device that is removed or whose profile is gone (ADR 3).
+    fn carries(&self, device: DeviceId, series: i64) -> Result<bool, Error> {
+        let kind: Option<String> = self
+            .db
+            .prepare_cached("SELECT kind FROM step WHERE device = ?1 AND series = ?2")?
+            .query_row(params![device.0, series], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(matches!(kind.as_deref(), Some("status" | "held")))
+    }
+
+    /// The kind of `device`'s declared `series`.
     fn kind(&self, device: DeviceId, series: i64) -> Option<RoleKind> {
         self.tracks
             .iter()
