@@ -94,7 +94,7 @@ async fn attempt(device: Device, job: Job, exchanges: Vec<Exchange>) -> Result<A
         framing: Framing::Tcp,
         exchanges,
     });
-    let task = endpoint::spawn(endpoint, vec![device], Bus::default());
+    let task = endpoint::spawn(endpoint, endpoint::CADENCE, vec![device], Bus::default());
     task.write(job).await.unwrap()
 }
 

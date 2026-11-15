@@ -90,6 +90,7 @@ export class FakeCore implements Transport {
       transport: "modbus-tcp",
       host: "192.168.1.30",
       port: 502,
+      pollSeconds: 5,
       secrets: [],
     },
   ];

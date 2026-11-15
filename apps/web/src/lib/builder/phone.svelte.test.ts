@@ -194,7 +194,7 @@ test("a finger picks a chimney and slides it along its roof, still peeking", asy
   const start = house();
   const chimney = { block: 0, face: 1, across: 3, up: 1.5, width: 0.6, depth: 0.6, height: 1.2 };
   const scene = { ...start.scene, chimneys: [chimney] };
-  const [top] = handles(scene, { kind: "chimney", index: 0 }, pv.modules(scene, {}).roofs);
+  const [top] = handles(scene, { kind: "chimney", index: 0 }, pv.modules(scene, {}));
 
   if (top === undefined) throw new Error("no chimney handle");
 

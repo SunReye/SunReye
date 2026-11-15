@@ -1,134 +1,45 @@
 // Windows and doors on a block's walls, as the builder edits them (ADR 20 Openings): a new one's
-// place, a change kept on its wall, and a handle's drag along it. Pure; the pv crate decides
-// what is refused.
+// place, a change kept on its wall, and a handle's drag along it. The pv crate fits them and
+// decides what is refused; here are each kind's usual size, the handles' steps and the
+// pointer's travel.
 import type { Dragged } from "./handles/dragging.ts";
-import { clamp, inScene, meet, snap, turn, type Ray, type Triple } from "./handles/frame.ts";
-import type { Block, Opening, OpeningKind, Scene, Wall } from "./pv.ts";
+import { meet, snap, type Ray, type Triple } from "./handles/frame.ts";
+import type { Modules, Opening, OpeningKind, Point, Pv, Scene, Unfit, WallFrame } from "./pv.ts";
 
 /** Each kind's usual size in metres. */
-export const USUAL: Readonly<Record<OpeningKind, Pick<Opening, "width" | "height" | "sill">>> = {
+export const USUAL: Readonly<
+  Record<OpeningKind, Required<Pick<Opening, "width" | "height" | "sill">>>
+> = {
   window: { width: 1.2, height: 1.4, sill: 0.9 },
   frenchWindow: { width: 1.8, height: 2.2, sill: 0 },
   frontDoor: { width: 1, height: 2.1, sill: 0 },
   garageDoor: { width: 2.5, height: 2.1, sill: 0 },
 };
 
-const WALLS: readonly Wall[] = ["front", "right", "back", "left"];
-
-/** Metres: the handles' step, the smallest opening, and a new one's distance from a corner or
- * from its neighbour. */
+/** Metres: the handles' step. */
 const STEP = 0.1;
-const SMALLEST = 0.4;
-const CLEAR = 0.5;
-
-/** A wall in its block's own frame, as the pv crate's `Wall::run`. */
-interface Run {
-  readonly left: readonly [number, number];
-  readonly along: readonly [number, number];
-  readonly out: readonly [number, number];
-  readonly length: number;
-}
-
-function run({ width, depth }: Pick<Block, "width" | "depth">, wall: Wall): Run {
-  const runs: Readonly<Record<Wall, Run>> = {
-    front: { left: [0, depth], along: [1, 0], out: [0, 1], length: width },
-    right: { left: [width, depth], along: [0, -1], out: [1, 0], length: depth },
-    back: { left: [width, 0], along: [-1, 0], out: [0, -1], length: width },
-    left: { left: [0, 0], along: [0, 1], out: [-1, 0], length: depth },
-  };
-
-  return runs[wall];
-}
-
-const door = (kind: OpeningKind): boolean => kind === "frontDoor" || kind === "garageDoor";
-
-const sillOf = (opening: Opening): number => opening.sill ?? 0;
-
-function overlaps(a: Opening, b: Opening): boolean {
-  return (
-    a.block === b.block &&
-    a.wall === b.wall &&
-    a.along < b.along + b.width &&
-    b.along < a.along + a.width &&
-    sillOf(a) < sillOf(b) + b.height &&
-    sillOf(b) < sillOf(a) + a.height
-  );
-}
-
-/** Whether `opening` is clear of every other one in the scene but the one at `index`. */
-function clear(scene: Scene, opening: Opening, index: number): boolean {
-  return (scene.openings ?? []).every((other, at) => at === index || !overlaps(opening, other));
-}
-
-/** `opening` kept on its wall and under its eave, a door on the ground; null where its wall is
- * too short or too low for it, or it names no walled block. */
-function kept(scene: Scene, opening: Opening): Opening | null {
-  const block = scene.blocks[opening.block];
-
-  if (block === undefined || block.open === true) return null;
-
-  const { length } = run(block, opening.wall);
-  const sill = door(opening.kind) ? 0 : clamp(sillOf(opening), 0, block.eave - SMALLEST);
-  const [width, height] = [Math.max(opening.width, SMALLEST), Math.max(opening.height, SMALLEST)];
-
-  if (width > length || sill < 0) return null;
-
-  return {
-    ...opening,
-    sill,
-    width: snap(width, 0.01),
-    height: snap(Math.min(height, block.eave - sill), 0.01),
-    along: snap(clamp(opening.along, 0, length - width), 0.01),
-  };
-}
-
-/** Why a change cannot be: it lies over another opening, or its wall has no room for it. */
-export type Unfit = "overlap" | "room";
 
 /** The scene with opening `index` changed, kept on its wall, or why the change cannot be. */
 export function refit(
+  pv: Pick<Pv, "refit">,
   scene: Scene,
   index: number,
   change: Partial<Opening>,
 ): Scene | { readonly unfit: Unfit } {
   const openings = scene.openings ?? [];
   const before = openings[index];
-  const after = before && kept(scene, { ...before, ...change });
 
-  if (after === undefined || after === null) return { unfit: "room" };
+  if (before === undefined) return { unfit: "room" };
 
-  if (!clear(scene, after, index)) return { unfit: "overlap" };
+  const fitted = pv.refit(scene, index, { ...before, ...change });
 
-  return { ...scene, openings: openings.with(index, after) };
+  return "unfit" in fitted ? fitted : { ...scene, openings: openings.with(index, fitted.opening) };
 }
 
-/** `sized` in the first place from its wall's left end that is clear of every other opening,
- * with a hand's breadth to spare. */
-function placed(scene: Scene, sized: Opening, length: number): Opening | undefined {
-  const places = Math.floor((length - CLEAR * 2 - sized.width) / STEP + 1e-9) + 1;
-
-  return Array.from({ length: Math.max(0, places) }, (_, i) => snap(CLEAR + i * STEP, STEP))
-    .map((along): Opening => Object.assign({}, sized, { along }))
-    .find((at) =>
-      clear(scene, { ...at, along: at.along - STEP * 2, width: sized.width + STEP * 4 }, -1),
-    );
-}
-
-/** A new opening of `kind` in its usual size, in the first free place on a walled block: a wall
- * at a time from the front, each from its left end; null when none takes it. */
-export function fresh(scene: Scene, kind: OpeningKind): Opening | null {
-  const walls = scene.blocks.flatMap((block, index) =>
-    block.open === true ? [] : WALLS.map((wall) => ({ block, index, wall })),
-  );
-
-  for (const { block, index, wall } of walls) {
-    const sized = kept(scene, { kind, block: index, wall, along: 0, ...USUAL[kind] });
-    const found = sized === null ? undefined : placed(scene, sized, run(block, wall).length);
-
-    if (found !== undefined) return found;
-  }
-
-  return null;
+/** A new opening of `kind` in its usual size, in the first free place on a walled block; null
+ * when none takes it. */
+export function fresh(pv: Pick<Pv, "place">, scene: Scene, kind: OpeningKind): Opening | null {
+  return pv.place(scene, kind, USUAL[kind]);
 }
 
 const lowered = (opening: Opening): Opening => ({ ...opening, block: opening.block - 1 });
@@ -145,7 +56,7 @@ export function withOpenings(scene: Scene, index: number): Scene {
   };
 }
 
-/** A wall in the scene's frame. */
+/** A wall in three.js's frame. */
 export interface OnWall {
   /** The point `along` it at `height`, `off` metres out. */
   readonly at: (along: number, height: number, off?: number) => Triple;
@@ -154,31 +65,52 @@ export interface OnWall {
   readonly out: Triple;
 }
 
-/** Where an opening's wall stands in the scene's frame: a point `along` it at `height`, a metre
- * along it to the right, and its outward normal. */
-export function onWall(block: Block, wall: Wall): OnWall {
-  const {
-    left,
-    along: [du, dw],
-    out: [nu, nw],
-  } = run(block, wall);
+/** The crate's east, north, up in three.js's frame. */
+const three = ([east, north, up]: Point): Triple => [east, up, 0 - north];
 
-  const turned = (u: number, w: number): [number, number] => turn(u, w, block.rotation);
-  const [rx, rz] = turned(du, dw);
-  const [ox, oz] = turned(nu, nw);
+/** A wall the crate laid out, as three.js draws on it. */
+function onWall(frame: WallFrame): OnWall {
+  const [left, right, out] = [three(frame.left), three(frame.right), three(frame.out)];
 
   return {
-    at: (along, height, off = 0) => {
-      const [x, z] = turned(left[0] + du * along + nu * off, left[1] + dw * along + nw * off);
-
-      return [block.x + x, height, block.z + z];
-    },
-    right: [rx, 0, rz],
-    out: [ox, 0, oz],
+    at: (along, height, off = 0) => [
+      left[0] + right[0] * along + out[0] * off,
+      height,
+      left[2] + right[2] * along + out[2] * off,
+    ],
+    right,
+    out,
   };
 }
 
+/** The laid-out wall opening `index` is in. */
+export function wallOf(
+  scene: Scene,
+  { walls }: Pick<Modules, "walls">,
+  index: number,
+): OnWall | undefined {
+  const opening = scene.openings?.[index];
+  const frame = opening && walls[opening.block]?.[opening.wall];
+
+  return frame && onWall(frame);
+}
+
 const dot = (a: Triple, b: Triple): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/** How far the pointer went from `grab` to `now` in the plane of `wall` through `opening`: metres
+ * along the wall and up; null where either ray misses it. */
+function travel(
+  wall: OnWall,
+  opening: Opening,
+  [grab, now]: readonly [Ray, Ray],
+): readonly [number, number] | null {
+  const origin = wall.at(opening.along, opening.sill ?? 0);
+  const [from, to] = [meet(grab, origin, wall.out), meet(now, origin, wall.out)];
+
+  if (from === null || to === null) return null;
+
+  return [dot([to[0] - from[0], 0, to[2] - from[2]], wall.right), to[1] - from[1]];
+}
 
 /** What a grip changes by a drag of `across` metres along the wall and `up` metres. */
 const GRIPS = {
@@ -191,49 +123,43 @@ const GRIPS = {
 
 export type OpeningGrip = keyof typeof GRIPS;
 
-/** How far the pointer went from `rays[0]` to `rays[1]` in the plane of `wall` through
- * `origin`; null where either ray misses it. */
-function travel(
-  scene: Scene,
-  wall: Pick<OnWall, "out">,
-  origin: Triple,
-  rays: readonly [Ray, Ray],
-): Triple | null {
-  const [from, to] = rays.map((ray) => meet(inScene(scene.north, ray), origin, wall.out));
+/** The dragged scene and what the grip's handle shows of opening `index`. */
+function reading(scene: Scene, index: number, grip: OpeningGrip): Dragged | null {
+  const opening = scene.openings?.[index];
 
-  if (from === undefined || to === undefined || from === null || to === null) return null;
+  return opening === undefined
+    ? null
+    : { scene, value: [opening[grip === "move" ? "along" : grip]], unit: "m" };
+}
 
-  return [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+/** What an opening's drag asks the crate: its fit, and the walls it laid out. */
+export interface Fitter {
+  readonly pv: Pick<Pv, "refit">;
+  readonly laid: Pick<Modules, "walls">;
 }
 
 /**
  * What dragging opening `index` by `grip` from the ray that grabbed it to the pointer's ray now
  * makes of the scene, both in three.js's frame: it slides in its wall's plane, snapped to 10 cm.
- * Null where a ray misses the wall or the opening would lie over another.
+ * Null where a ray misses the wall or the crate refuses the change.
  */
 export function slide(
   scene: Scene,
   index: number,
   grip: OpeningGrip,
-  grab: Ray,
-  now: Ray,
+  rays: readonly [Ray, Ray],
+  { pv, laid }: Fitter,
 ): Dragged | null {
   const opening = scene.openings?.[index];
-  const block = opening && scene.blocks[opening.block];
+  const wall = wallOf(scene, laid, index);
 
-  if (opening === undefined || block === undefined) return null;
+  if (opening === undefined || wall === undefined) return null;
 
-  const wall = onWall(block, opening.wall);
-  const moved = travel(scene, wall, wall.at(opening.along, sillOf(opening)), [grab, now]);
+  const moved = travel(wall, opening, rays);
 
   if (moved === null) return null;
 
-  const change = GRIPS[grip](opening, dot(moved, wall.right), moved[1]);
-  const next = refit(scene, index, change);
+  const next = refit(pv, scene, index, GRIPS[grip](opening, ...moved));
 
-  if ("unfit" in next) return null;
-
-  const value = next.openings?.[index]?.[grip === "move" ? "along" : grip];
-
-  return value === undefined ? null : { scene: next, value: [value], unit: "m" };
+  return "unfit" in next ? null : reading(next, index, grip);
 }

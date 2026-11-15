@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import type { PvString } from "../api/core.ts";
+import { PLANT, type PvString } from "../api/core.ts";
 import type { Equipment, Mount } from "../builder/pv.ts";
-import { PLANT, liveScene, type Live3d } from "./labels.ts";
+import { liveScene, type Live3d } from "./labels.ts";
 
 const string = (id: number, name: string, input: number, modules: number): PvString => ({
   id,

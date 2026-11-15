@@ -1,8 +1,7 @@
 // The plant's rollups and its house load's history over a range (ADR 3, 9); the core caps each
 // read, so a long range is read in pieces.
-import type { Core } from "../api/core.ts";
+import { PLANT, type Core } from "../api/core.ts";
 import type { Interval } from "../dashboard/today.ts";
-import { PLANT } from "../dashboard/day.ts";
 import { PLANT_FLOWS, NO_PLANT, type PlantFlow, type Plant, type Rollups } from "./flows.ts";
 import { rollups, type RollupPeriod } from "./history.ts";
 

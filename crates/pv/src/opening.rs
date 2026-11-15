@@ -1,5 +1,5 @@
-//! Windows and doors on a block's walls (ADR 20). They are drawn only and never shade: the
-//! browser fits each on its wall and lights the windows at night.
+//! Windows and doors on a block's walls (ADR 20). They are drawn only and never shade:
+//! `Scene::fitted` fits each on its wall, and the browser lights the windows at night.
 
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ pub enum OpeningKind {
 
 impl OpeningKind {
     /// A door stands on the ground.
-    const fn door(self) -> bool {
+    pub(crate) const fn door(self) -> bool {
         matches!(self, Self::FrontDoor | Self::GarageDoor)
     }
 }
@@ -61,7 +61,7 @@ pub struct Fitted {
 
 impl Opening {
     /// Whether both lie on one wall and share some of it.
-    fn overlaps(&self, other: &Self) -> bool {
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
         self.block == other.block
             && self.wall == other.wall
             && self.along < other.along + other.width

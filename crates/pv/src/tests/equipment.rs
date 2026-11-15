@@ -89,3 +89,32 @@ fn a_marker_off_its_wall_or_its_block_is_misplaced() {
     assert_eq!(past.mounts(), Err(1));
     assert_eq!(nowhere.mounts(), Err(0));
 }
+
+#[test]
+fn a_wall_carries_its_frame_from_its_left_end_seen_from_outside() {
+    let near = |actual: [f64; 3], expected: [f64; 3]| {
+        let close = actual
+            .iter()
+            .zip(expected)
+            .all(|(a, e)| (a - e).abs() < 1e-9);
+        assert!(close, "{actual:?} is not {expected:?}");
+    };
+    let [front, right, _, _] = house(vec![]).walls().remove(0);
+
+    // The front wall runs along +z = 8 m, 8 m south; seen from the south, east is to the right.
+    near(front.left, [0.0, -8.0, 0.0]);
+    near(front.right, [1.0, 0.0, 0.0]);
+    near(front.out, [0.0, -1.0, 0.0]);
+    // The right wall starts at the south-east corner and runs north.
+    near(right.left, [10.0, -8.0, 0.0]);
+    near(right.right, [0.0, 1.0, 0.0]);
+    near(right.out, [1.0, 0.0, 0.0]);
+
+    // Turned a quarter clockwise about its corner, the front faces west and runs south.
+    let mut turned = house(vec![]);
+    turned.blocks.iter_mut().for_each(|b| b.rotation = 90.0);
+    let [front, ..] = turned.walls().remove(0);
+    near(front.left, [-8.0, 0.0, 0.0]);
+    near(front.right, [0.0, -1.0, 0.0]);
+    near(front.out, [-1.0, 0.0, 0.0]);
+}

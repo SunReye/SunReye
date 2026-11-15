@@ -32,7 +32,8 @@ const scene: Scene = {
   chimneys: [CHIMNEY],
 };
 
-const { roofs } = pv.modules(scene, {});
+const laid = pv.modules(scene, {});
+const { roofs } = laid;
 const TARGET: Target = { kind: "chimney", index: 0 };
 
 const rounded = (point: readonly number[] = []) =>
@@ -50,7 +51,7 @@ test("a roof face carries its frame: the south face's lowest left corner, across
 const TOP = 5.27;
 
 const at = (east: number, north: number, up: number) =>
-  picked(scene, { kind: "point", point: [east, north, up] }, roofs);
+  picked(scene, { kind: "point", point: [east, north, up] }, pv);
 
 test("a strike on a chimney's top or side drills to it; on the roof beside it, to its block", () => {
   expect(at(3, -6.771, TOP)).toEqual({ kind: "chimney", index: 0 });
@@ -59,7 +60,7 @@ test("a strike on a chimney's top or side drills to it; on the roof beside it, t
 });
 
 test("a chimney's one handle outlines its foot on the roof", () => {
-  const [move, ...rest] = handles(scene, TARGET, roofs);
+  const [move, ...rest] = handles(scene, TARGET, laid);
 
   expect(rest).toEqual([]);
   expect(move?.grip).toBe("move");
@@ -82,7 +83,7 @@ function slid(east: number, north: number): Chimney | undefined {
     TARGET,
     { grip: "move", ray: down(3, 6.771), height: TOP },
     down(3 + east, 6.771 - north),
-    roofs,
+    { pv, laid },
   );
 
   return moved?.scene.chimneys?.[0];

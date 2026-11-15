@@ -1,6 +1,6 @@
 // Reads today from the core: the plant's energy from its rollups, the PV forecast, the day's prices, the weather
 // and the money (ADR 12, 14, 15, 17). Nothing here is live; the dashboard rereads it.
-import type { Core } from "../api/core.ts";
+import { PLANT, SPOT, WEATHER, type Core } from "../api/core.ts";
 import type { CostDays } from "../api/tariff.ts";
 import { plantMidnight } from "../plant-day.ts";
 import { current, sky, type Sky } from "./now.ts";
@@ -16,12 +16,6 @@ import {
   type Target,
   type Today,
 } from "./today.ts";
-
-/** The computed devices' fixed ids (ADR 15). */
-const WEATHER = 4_294_967_295;
-export const PLANT = 4_294_967_294;
-export const TARIFF = 4_294_967_293;
-export const SPOT = 4_294_967_292;
 
 const HOUR = 3_600_000;
 

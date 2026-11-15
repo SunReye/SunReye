@@ -3,9 +3,10 @@
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import { toast } from "svelte-sonner";
+  import DateField from "#lib/components/date-field.svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import { m } from "../paraglide/messages.js";
-  import DateField from "./DateField.svelte";
+  import { today } from "./day.ts";
   import Outcome from "./Outcome.svelte";
   import type { Session } from "./session.svelte.ts";
 
@@ -48,7 +49,15 @@
   <span class="ml-auto text-xs whitespace-nowrap text-muted-foreground" aria-hidden="true">
     {m.builder_applies_from()}
   </span>
-  <DateField bind:value={session.appliesFrom} label={m.builder_applies_from()} />
+  <DateField
+    variant="compact"
+    label={m.builder_applies_from()}
+    value={session.appliesFrom}
+    shortcut={{ text: m.range_today(), value: today() }}
+    onchange={(day) => {
+      session.appliesFrom = day;
+    }}
+  />
   <Button
     size="sm"
     onclick={() => {

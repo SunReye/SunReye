@@ -31,8 +31,7 @@ export class Shown {
 
   /** The handles of what `editing` selects, or none. */
   show(editing: Editing | undefined): void {
-    const found =
-      editing === undefined ? [] : handles(editing.scene, editing.target, editing.roofs);
+    const found = editing === undefined ? [] : handles(editing.scene, editing.target, editing.laid);
 
     const key = editing === undefined ? "" : `${editing.target.kind} ${editing.target.index}`;
     const fresh = key !== this.#selected;

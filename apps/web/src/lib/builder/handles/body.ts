@@ -1,6 +1,6 @@
 // The object the handles sit on (ADR 20): a block, a box, a hedge, a ground surface or a car place
 // as a turned rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
-// fence's handles sit on its points instead, a chimney's on its roof face (chimneys.ts). Pure.
+// fence's handles sit on its points instead, a chimney's on its footing (grips.ts). Pure.
 import type { Block, Obstacle, Scene } from "../pv.ts";
 import { turn, world, type Triple } from "./frame.ts";
 

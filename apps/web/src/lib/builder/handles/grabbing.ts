@@ -5,7 +5,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
-import type { RoofFace, Scene } from "../pv.ts";
+import type { Pv, Scene } from "../pv.ts";
 import { strike, type Panel } from "../scene.ts";
 import { handleOf } from "./gizmo.ts";
 import {
@@ -14,6 +14,7 @@ import {
   type Dragged,
   type Grab,
   type Handle,
+  type Laid,
   type Ray,
   type Target,
   type Triple,
@@ -24,8 +25,10 @@ import { Handover, listen, ndc } from "../pointer.ts";
 export interface Editing {
   readonly scene: Scene;
   readonly target: Target;
-  /** The laid-out roof faces a chimney stands on. */
-  readonly roofs?: readonly RoofFace[];
+  /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
+   * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
+  readonly pv: Pick<Pv, "refit" | "glide" | "chimneyAt">;
+  readonly laid: Laid;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -127,7 +130,7 @@ export class Grabbing {
 
     if (hit?.kind !== "point") return undefined;
 
-    const level = picked(editing.scene, hit, editing.roofs);
+    const level = picked(editing.scene, hit, editing.pv);
 
     return level !== null && same(editing.target, level)
       ? { grip: "move", ray, height: hit.point[2] }
@@ -188,15 +191,19 @@ export class Grabbing {
   };
 
   #step({ editing, grab }: Held, ray: Ray): void {
-    const dragged = drag(editing.scene, editing.target, grab, ray, editing.roofs);
+    const dragged = drag(editing.scene, editing.target, grab, ray, editing);
 
     if (dragged === null) return;
 
-    const at = handles(dragged.scene, editing.target, editing.roofs).find(
+    editing.ondrag(dragged.scene);
+
+    // Once the step is shown, its handles stand on what the crate laid out for it.
+    const shown = this.#sources.editing();
+    const laid = shown?.scene === dragged.scene ? shown.laid : editing.laid;
+
+    const at = handles(dragged.scene, editing.target, laid).find(
       (item) => item.grip === grab.grip && item.point === grab.point,
     )?.at;
-
-    editing.ondrag(dragged.scene);
 
     if (at !== undefined) this.#sources.onreading({ value: dragged.value, unit: dragged.unit, at });
   }

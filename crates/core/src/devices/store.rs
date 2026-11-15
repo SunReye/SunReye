@@ -1,6 +1,6 @@
 //! The devices module's SQL on its own tables. A change and its change log entry commit together.
 
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
@@ -58,16 +58,20 @@ pub fn connections(db: &Db) -> rusqlite::Result<Vec<Connection>> {
 fn connection(db: &Db, id: u32) -> rusqlite::Result<Option<Connection>> {
     let Some(reach) = db
         .query_row(
-            "SELECT name, transport, host, port, topic_root, publish FROM connection WHERE id = ?1",
+            "SELECT name, transport, host, port, topic_root, publish, poll_seconds FROM connection
+                 WHERE id = ?1",
             [id],
             |row| {
+                let transport = transport(&row.get::<_, String>(1)?)?;
+                let polled = transport.reads() == Reads::Registers;
                 Ok(Reach {
                     name: row.get(0)?,
-                    transport: transport(&row.get::<_, String>(1)?)?,
+                    transport,
                     host: row.get(2)?,
                     port: row.get(3)?,
                     topic_root: row.get(4)?,
                     publish: row.get::<_, Option<bool>>(5)?.map(publish),
+                    poll_seconds: polled.then(|| row.get(6)).transpose()?,
                 })
             },
         )
@@ -220,15 +224,16 @@ pub fn add_connection(
     let tx = db.unchecked_transaction()?;
     let r = &draft.reach;
     tx.execute(
-        "INSERT INTO connection (name, transport, host, port, topic_root, publish)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO connection (name, transport, host, port, topic_root, publish, poll_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, coalesce(?7, 5))",
         params![
             r.name,
             transport_name(r.transport),
             r.host,
             r.port,
             r.topic_root,
-            r.publish.map(|p| p.discovery)
+            r.publish.map(|p| p.discovery),
+            r.poll_seconds
         ],
     )?;
     let id = id(&tx);
@@ -260,7 +265,7 @@ pub fn change_connection(
     }
     tx.execute(
         "UPDATE connection SET name = ?2, transport = ?3, host = ?4, port = ?5, topic_root = ?6,
-         publish = ?7 WHERE id = ?1",
+         publish = ?7, poll_seconds = coalesce(?8, poll_seconds) WHERE id = ?1",
         params![
             id,
             r.name,
@@ -268,7 +273,8 @@ pub fn change_connection(
             r.host,
             r.port,
             r.topic_root,
-            r.publish.map(|p| p.discovery)
+            r.publish.map(|p| p.discovery),
+            r.poll_seconds
         ],
     )?;
     write_secrets(&tx, id, draft)?;
@@ -455,7 +461,7 @@ pub fn remove_device(db: &Db, id: u32, changed: SystemTime) -> Outcome<()> {
 /// Every device with its connection's endpoint, by id.
 pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     db.prepare(
-        "SELECT d.id, d.unit, d.profile, d.variant, c.transport, c.host, c.port
+        "SELECT d.id, d.unit, d.profile, d.variant, c.transport, c.host, c.port, c.poll_seconds
          FROM device d JOIN connection c ON c.id = d.connection
          WHERE d.unit IS NOT NULL AND c.transport NOT IN ('mqtt', 'http') ORDER BY d.id",
     )?
@@ -469,6 +475,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
                 Transport::SolarmanV5 => Endpoint::SolarmanV5 { host, port },
                 Transport::Mqtt | Transport::Http => return Err(rusqlite::Error::InvalidQuery),
             },
+            cycle: Duration::from_secs(row.get::<_, u32>(7)?.into()),
         })
     })?
     .collect()

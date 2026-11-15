@@ -2,14 +2,18 @@
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
 import type { Chimney, Overhang } from "./roofing.ts";
-import type { Equipment, Fitted, Opening } from "./walls.ts";
+import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
 
-export type { Equipment, Fitted, Opening, OpeningKind, Wall } from "./walls.ts";
+export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
 
 import {
+  isChimney,
   isExports,
   isGeometry,
+  isIndex,
   isModules,
+  isOpening,
+  isRefit,
   isSun,
   isVolts,
   isWatts,
@@ -28,7 +32,11 @@ export type {
   Obstacle,
 } from "./obstacles.ts";
 
-export type { Chimney, Overhang } from "./roofing.ts";
+export type { Chimney, Footing, Overhang } from "./roofing.ts";
+
+import type { Modules } from "./laid.ts";
+
+export type { CellPlace, Misplaced, Modules, RoofFace } from "./laid.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -119,48 +127,6 @@ export interface Size {
   readonly height: number;
 }
 
-/** A roof face as a module grid sees it. */
-export interface RoofFace {
-  readonly block: number;
-  readonly face: number;
-  readonly tilt: number;
-  readonly azimuth: number;
-  /** Metres across and up the slope from the lowest corner on the left, seen from the front. */
-  readonly outline: readonly (readonly [number, number])[];
-  /** The outline's frame: where it starts, and the unit directions across the slope and up it. */
-  readonly origin: Point;
-  readonly across: Point;
-  readonly up: Point;
-}
-
-/** A cell whose module fits inside the setback. */
-export interface CellPlace {
-  readonly row: number;
-  readonly column: number;
-  /** Lower left and upper right corner in the face's outline. */
-  readonly area: readonly [readonly [number, number], readonly [number, number]];
-  readonly corners: readonly Point[];
-}
-
-/** Why the core would refuse to save the grids. */
-export type Misplaced =
-  | { readonly kind: "face" | "moduleType"; readonly grid: number }
-  | {
-      readonly kind: "setback" | "overlap";
-      readonly grid: number;
-      readonly row: number;
-      readonly column: number;
-      /** The module's cell on its face, as `CellPlace.area`; null without a module size. */
-      readonly area: CellPlace["area"] | null;
-    };
-
-/** The roofs, each grid's cells (null for a missing face or module type) and the first misfit. */
-export interface Modules {
-  readonly roofs: readonly RoofFace[];
-  readonly grids: readonly (readonly CellPlace[] | null)[];
-  readonly misplaced: Misplaced | null;
-}
-
 export interface Face {
   readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
   /** A flat convex polygon. */
@@ -239,6 +205,24 @@ export interface Pv {
     moduleTypes: readonly Readonly<ModuleType>[],
     strings: readonly Wiring[],
   ) => (number | null)[];
+  /** Opening `index` as `opening`, kept on its wall and under its eave, or why it cannot be. */
+  readonly refit: (
+    scene: Scene,
+    index: number,
+    opening: Opening,
+  ) => { readonly opening: Opening } | { readonly unfit: Unfit };
+  /** A new opening of `kind` and its usual size in the first free place on a wall: a wall at a
+   * time from the front, each from its left end; null when none takes it. */
+  readonly place: (
+    scene: Scene,
+    kind: OpeningKind,
+    usual: Readonly<Required<Pick<Opening, "width" | "height" | "sill">>>,
+  ) => Opening | null;
+  /** Chimney `index` moved by a level east and north, in metres, along its face: in 10 cm steps,
+   * stopped at the face's edge and sliding along it; null without it or its face. */
+  readonly glide: (scene: Scene, index: number, shift: readonly [number, number]) => Chimney | null;
+  /** The index of the chimney a strike at `point` lands on; null for none. */
+  readonly chimneyAt: (scene: Scene, point: Point) => number | null;
 }
 
 /** Instantiates the glue crate's release build. */
@@ -274,6 +258,14 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
     coldVoltages: (moduleTypes, strings) =>
       unwrap(call("cold_voltages", JSON.stringify({ moduleTypes, strings })), isVolts),
+    refit: (scene, index, opening) =>
+      unwrap(call("refit", JSON.stringify({ scene, index, opening })), isRefit),
+    place: (scene, kind, usual) =>
+      unwrap(call("place", JSON.stringify({ scene, kind, ...usual })), isOpening),
+    glide: (scene, index, shift) =>
+      unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
+    chimneyAt: (scene, point) =>
+      unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
   };
 }
 

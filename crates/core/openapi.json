@@ -595,6 +595,7 @@
           "zone.value",
           "connection.none",
           "connection.value",
+          "connection.poll-seconds",
           "connection.in-use",
           "device.none",
           "device.connection",
@@ -2912,6 +2913,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "pollSeconds": {
+            "description": "The poll cycle in whole seconds, 1 to 60 (ADR 6): 5 when a new connection leaves it out,\nkept when a change does. Refused for a broker or an HTTP host.",
+            "format": "int32",
+            "maximum": 60,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "port": {
             "format": "int32",

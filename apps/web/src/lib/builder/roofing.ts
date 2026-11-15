@@ -1,6 +1,8 @@
 // What a block carries besides its footprint and roof in the scene's schema (ADR 20 Blocks): its
 // roof's overhang and the chimneys standing on its roof faces.
 
+import type { Point } from "./pv.ts";
+
 export interface Overhang {
   readonly eave: number;
   readonly verge: number;
@@ -18,4 +20,11 @@ export interface Chimney {
   readonly depth: number;
   /** Over the roof where its upper side meets it. */
   readonly height: number;
+}
+
+/** A chimney's foot on its roof face as the pv crate lays it out: its corners from the lower
+ * left, east, north, up, and the height of its level top. */
+export interface Footing {
+  readonly foot: readonly Point[];
+  readonly top: number;
 }

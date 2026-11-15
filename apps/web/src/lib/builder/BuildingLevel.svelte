@@ -5,14 +5,15 @@
   import ChimneyFieldset from "./ChimneyFieldset.svelte";
   import { withoutBlock } from "./modules.ts";
   import OpeningFieldset from "./OpeningFieldset.svelte";
-  import type { RoofFace, Scene } from "./pv.ts";
-  import { refit, type Unfit } from "./wall-openings.ts";
+  import type { Pv, RoofFace, Scene, Unfit } from "./pv.ts";
+  import { refit } from "./wall-openings.ts";
 
   let {
     kind,
     index,
     scene,
     roofs,
+    pv,
     onchange,
     onremove,
   }: {
@@ -21,6 +22,8 @@
     scene: Scene;
     /** The roof faces a chimney may stand on. */
     roofs: readonly RoofFace[];
+    /** The crate, which keeps a changed opening on its wall. */
+    pv: Pick<Pv, "refit">;
     onchange: (scene: Scene) => void;
     /** The scene without the object. */
     onremove: (scene: Scene) => void;
@@ -70,7 +73,7 @@
     blocks={scene.blocks.length}
     refused={unfit}
     onchange={(change) => {
-      const fitted = refit(scene, index, change);
+      const fitted = refit(pv, scene, index, change);
 
       if ("unfit" in fitted) {
         haptics.error();

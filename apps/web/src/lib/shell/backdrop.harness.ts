@@ -1,7 +1,6 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- the DOM, used in place. */
 // What the backdrop's tests share: a noon core, the plant's PV fed by hand and a beat stepped by hand.
-import type { Live } from "../api/core.ts";
-import { PLANT } from "../live/labels.ts";
+import { PLANT, type Live } from "../api/core.ts";
 import { stream } from "../live/stream.svelte.ts";
 import { motion } from "../motion/tier.svelte.ts";
 

@@ -1,5 +1,5 @@
 // A finger on a bottom drawer (vaul), for component tests.
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 /**
  * Puts a finger on `drawer` and moves it `dy` px down; the returned function lifts it at `dy`.
@@ -44,6 +44,20 @@ export async function press(drawer: Element, dy: number): Promise<() => void> {
   return () => {
     fire("pointerup", dy);
   };
+}
+
+/**
+ * Lifts a finger that held still: the drawer tells a fling by the drag's speed on the clock, so
+ * the clock reads later while the finger lifts and no test waits the hold out.
+ */
+export function held(release: () => void): void {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 400 });
+
+  try {
+    release();
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 /** Pulls `drawer` `dy` px down and lets go there. */

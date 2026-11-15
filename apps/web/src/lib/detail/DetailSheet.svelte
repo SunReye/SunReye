@@ -4,10 +4,10 @@
 -->
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
-  import type { Core, Live, PvString } from "../api/core.ts";
+  import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
   import DrawerSheet from "../components/drawer-sheet.svelte";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
-  import { SPOT, type Day } from "../dashboard/day.ts";
+  import type { Day } from "../dashboard/day.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";

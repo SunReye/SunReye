@@ -2,11 +2,17 @@
 import { expect } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { connect, type Core, type Layout, type Transport, type Values } from "../api/core.ts";
+import {
+  connect,
+  PLANT,
+  type Core,
+  type Layout,
+  type Transport,
+  type Values,
+} from "../api/core.ts";
 import { MODULE, pv } from "../builder/builder.harness.ts";
 import type { Scene } from "../builder/pv.ts";
 import "../../app.css";
-import { PLANT } from "./labels.ts";
 import LiveScene from "./LiveScene.svelte";
 
 /** A 10 m × 8 m gable house: two modules of string 0 on the south face, an inverter marker. */

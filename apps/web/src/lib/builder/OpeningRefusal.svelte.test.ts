@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
+import { pv } from "./builder.harness.ts";
 import BuildingLevel from "./BuildingLevel.svelte";
 import type { Opening, Scene } from "./pv.ts";
 
@@ -53,6 +54,7 @@ test("a window moved onto another is refused with the reason, until a change fit
     index: 0,
     scene,
     roofs: [],
+    pv,
     onchange,
     onremove: () => null,
   });

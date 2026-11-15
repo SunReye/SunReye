@@ -1,4 +1,5 @@
-// The transports a connection in Settings may use, their usual ports and their credentials (ADR 7).
+// The transports a connection in Settings may use, their usual ports, their poll cycle (ADR 6) and
+// their credentials (ADR 7).
 import type { Connection } from "../api/core.ts";
 
 /** Every transport the core reaches devices through, each with the port it usually listens on. */
@@ -20,4 +21,12 @@ export function secretsOf(
   transport: Connection["transport"],
 ): readonly ("username" | "password")[] {
   return transport === "mqtt" || transport === "http" ? ["username", "password"] : [];
+}
+
+/** The poll cycle of a polled endpoint in seconds, as the core bounds it (ADR 6). */
+export const POLL_SECONDS = { min: 1, max: 60, default: 5 } as const;
+
+/** Whether the core polls `transport` in cycles: Modbus, but no broker and no HTTP host. */
+export function polled(transport: Connection["transport"]): boolean {
+  return transport !== "mqtt" && transport !== "http";
 }

@@ -150,3 +150,37 @@ test("a connection's level is a hash route: browser back steps out of it and for
 
   await expect.element(host).toBeVisible();
 });
+
+test("a Modbus connection's level edits its poll interval; a broker's has none", async () => {
+  const core = new FakeCore();
+
+  core.connections.push(BROKER);
+
+  const screen = await opened(core, "connections");
+  const interval = screen.getByRole("button", { name: /^Abfrageintervall \(s\)/u });
+
+  await screen.getByRole("button", { name: /^EVCC/u }).click();
+  await expect.element(screen.getByRole("textbox", { name: "Topic-Wurzel" })).toBeVisible();
+  expect(interval.query()).toBeNull();
+
+  await screen.getByRole("button", { name: "Verbindungen" }).click();
+  await screen.getByRole("button", { name: /^Gateway/u }).click();
+  await expect
+    .element(screen.getByRole("button", { name: "Abfrageintervall (s) 5" }))
+    .toBeVisible();
+
+  await interval.click();
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: "Abfrageintervall (s) eingeben" }), "20");
+  await userEvent.keyboard("{Enter}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+  await expect
+    .element(screen.getByRole("button", { name: "Abfrageintervall (s) 20" }))
+    .toBeVisible();
+  await screen.getByRole("button", { name: "Speichern" }).click();
+
+  await expect.poll(() => core.connections[0]?.pollSeconds).toBe(20);
+  expect(core.calls).toEqual([
+    'PUT /api/v1/connections/1 {"name":"Gateway","transport":"modbus-tcp","host":"192.168.1.30","port":502,"pollSeconds":20}',
+  ]);
+});

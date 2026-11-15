@@ -1,7 +1,6 @@
 // What a detail sheet's range analytics read (ADR 21): the series its overview charts, the power
 // its heat grid reads per hour, and whether its strings compare. Pure.
-import type { PvString } from "../api/core.ts";
-import { PLANT } from "../dashboard/day.ts";
+import { PLANT, type PvString } from "../api/core.ts";
 import { parseFigure } from "../detail/figures.ts";
 
 export interface Analytics {
