@@ -23,6 +23,7 @@ export type Level =
       readonly kind:
         | "block"
         | "chimney"
+        | "roofWindow"
         | "opening"
         | "obstacle"
         | "surface"
@@ -44,6 +45,7 @@ export type Level =
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
   chimney: "buildings",
+  roofWindow: "buildings",
   opening: "buildings",
   obstacle: "surroundings",
   surface: "surroundings",
@@ -139,8 +141,8 @@ function indexed(kind: Extract<Level, { index: number }>["kind"], index: number)
   return index >= 0 ? { kind, index } : null;
 }
 
-/** The crate, which finds what a strike lands on: a chimney, or a grid's face. */
-type Finder = Pick<Pv, "chimneyAt" | "gridAt"> | undefined;
+/** The crate, which finds what a strike lands on: a chimney, a roof window or a grid's face. */
+type Finder = Pick<Pv, "chimneyAt" | "roofWindowAt" | "gridAt"> | undefined;
 
 /** The face whose grid a strike at `point` lands on, inside its setback. */
 function faceAt(scene: Scene, pv: Finder, point: Point): Level | null {
@@ -151,7 +153,7 @@ function faceAt(scene: Scene, pv: Finder, point: Point): Level | null {
   return grid ? { kind: "face", block: grid.block, face: grid.face } : null;
 }
 
-/** The object at a point: a chimney on its roof, a grid's face inside its setback, what stands before the
+/** The object at a point: a chimney on its roof, a roof window, a grid's face inside its setback, what stands before the
  * blocks it stands by, a car place before the roof over it, the ground last, the latest surface
  * first as it is drawn over the others. */
 function at(scene: Scene, pv: Finder, [east, north, up]: Point): Level | null {
@@ -164,6 +166,13 @@ function at(scene: Scene, pv: Finder, [east, north, up]: Point): Level | null {
         "chimney",
         // No chimney, no question to the crate.
         (scene.chimneys?.length ?? 0) > 0 ? (pv?.chimneyAt(scene, [east, north, up]) ?? -1) : -1,
+      ),
+    () =>
+      indexed(
+        "roofWindow",
+        (scene.roofWindows?.length ?? 0) > 0
+          ? (pv?.roofWindowAt(scene, [east, north, up]) ?? -1)
+          : -1,
       ),
     () => faceAt(scene, pv, [east, north, up]),
     () => indexed("obstacle", obstacleAt(scene, point)),
@@ -201,7 +210,7 @@ function at(scene: Scene, pv: Finder, [east, north, up]: Point): Level | null {
 export function picked(
   scene: Scene,
   hit: Hit,
-  pv?: Pick<Pv, "chimneyAt" | "gridAt">,
+  pv?: Pick<Pv, "chimneyAt" | "roofWindowAt" | "gridAt">,
 ): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
 

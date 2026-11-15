@@ -148,7 +148,8 @@ export function fillGrid(
   ]);
 }
 
-/** The scene without block `index`: its grids, chimneys and equipment go, later blocks' follow it down. */
+/** The scene without block `index`: its grids, chimneys, roof windows and equipment go, later
+ * blocks' follow it down. */
 export function withoutBlock(scene: Scene, index: number): Scene {
   const equipment = scene.equipment
     ?.filter((marker) => marker.block !== index)
@@ -158,8 +159,13 @@ export function withoutBlock(scene: Scene, index: number): Scene {
     ?.filter((item) => item.block !== index)
     .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
 
+  const windows = scene.roofWindows
+    ?.filter((item) => item.block !== index)
+    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
+
   const blocks = scene.blocks.toSpliced(index, 1);
-  const glazed = withOpenings(scene, index);
+  const walled = withOpenings(scene, index);
+  const glazed = windows === undefined ? walled : { ...walled, roofWindows: windows };
   const kept = chimneys === undefined ? { ...glazed, blocks } : { ...glazed, blocks, chimneys };
 
   return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>
@@ -169,7 +175,7 @@ export function withoutBlock(scene: Scene, index: number): Scene {
   );
 }
 
-/** The scene without the modules a roof chimney stands on, as the crate names them: each its
+/** The scene without the modules a roof chimney or roof window covers, as the crate names them: each its
  * grid's index and its own in it. The same scene where it stands on none. */
 export function uncovered(scene: Scene, covered: readonly (readonly [number, number])[]): Scene {
   if (covered.length === 0) return scene;
