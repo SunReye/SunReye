@@ -5,8 +5,8 @@ use std::time::SystemTime;
 use rusqlite::{Connection as Db, OptionalExtension, params};
 
 use super::{
-    Brokering, ChangeRefusal, Chosen, Connection, ConnectionDraft, Device, DeviceDraft, Hosting,
-    Polled, Publish, Reach, Reads, Transport, entry,
+    Addressed, Brokering, ChangeRefusal, Chosen, Connection, ConnectionDraft, Device, DeviceDraft,
+    Hosting, Polled, Publish, Reach, Reads, Transport, entry,
 };
 use crate::changes::{self, Action, Subject};
 use crate::http;
@@ -163,20 +163,24 @@ fn credentials(db: &Db, id: u32) -> rusqlite::Result<Option<(String, String)>> {
 }
 
 /// Each device's id, address and profile behind connection `id`, by id.
-fn behind(db: &Db, id: u32) -> rusqlite::Result<Vec<(u32, u8, Chosen)>> {
+fn behind(db: &Db, id: u32) -> rusqlite::Result<Vec<Addressed>> {
     db.prepare(
         "SELECT id, unit, profile, variant FROM device
          WHERE connection = ?1 AND unit IS NOT NULL ORDER BY id",
     )?
-    .query_map([id], |row| Ok((row.get(0)?, row.get(1)?, chosen(row, 2)?)))?
+    .query_map([id], addressed)?
     .collect()
 }
 
-/// The profile and variant in columns `at` and the next.
-fn chosen(row: &rusqlite::Row<'_>, at: usize) -> rusqlite::Result<Chosen> {
-    Ok(Chosen {
-        profile: row.get(at)?,
-        variant: row.get(at + 1)?,
+/// The device in the columns id, unit, profile and variant.
+fn addressed(row: &rusqlite::Row<'_>) -> rusqlite::Result<Addressed> {
+    Ok(Addressed {
+        id: row.get(0)?,
+        unit: row.get(1)?,
+        profile: Chosen {
+            profile: row.get(2)?,
+            variant: row.get(3)?,
+        },
     })
 }
 
@@ -458,9 +462,7 @@ pub fn polled(db: &Db) -> rusqlite::Result<Vec<Polled>> {
     .query_map([], |row| {
         let (host, port) = (row.get(5)?, row.get(6)?);
         Ok(Polled {
-            id: row.get(0)?,
-            unit: row.get(1)?,
-            profile: chosen(row, 2)?,
+            device: addressed(row)?,
             endpoint: match transport(&row.get::<_, String>(4)?)? {
                 Transport::ModbusTcp => Endpoint::ModbusTcp { host, port },
                 Transport::RtuOverTcp => Endpoint::RtuOverTcp { host, port },

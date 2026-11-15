@@ -357,13 +357,7 @@ fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_
         for q in profile.quantities() {
             let held =
                 q.role.starts_with("extra.settings_") || q.role.starts_with("extra.timeofuse_");
-            assert_eq!(
-                q.kind() == RoleKind::Held,
-                held,
-                "{} {}",
-                profile.id,
-                q.key
-            );
+            assert_eq!(q.kind() == RoleKind::Held, held, "{} {}", profile.id, q.key);
             let live = repeats.contains(&q.role.as_str());
             assert_eq!(
                 q.storage() == StorageClass::Live,

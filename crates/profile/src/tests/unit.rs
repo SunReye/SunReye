@@ -94,7 +94,11 @@ fn an_extra_has_the_unit_it_declares() {
 
     assert_eq!(
         units,
-        [Some(Unit::Ampere), Some(Unit::Hour), Some(Unit::Dimensionless)]
+        [
+            Some(Unit::Ampere),
+            Some(Unit::Hour),
+            Some(Unit::Dimensionless)
+        ]
     );
 }
 
