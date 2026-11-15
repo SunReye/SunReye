@@ -5,9 +5,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
-  import { cubicInOut } from "svelte/easing";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { motionMs } from "../motion.ts";
+  import { slideIn, slideTiming } from "../motion/slide.ts";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
   import { title } from "./outline.ts";
@@ -32,9 +31,6 @@
     session.go(at);
   }
 
-  /** Ease-in-out between two resting places (ADR 21). */
-  const SLIDE_MS = 300;
-
   // The depth last shown: a deeper level enters from the right, a shallower one from the left.
   // svelte-ignore state_referenced_locally
   let shown = depth(level);
@@ -49,16 +45,12 @@
   });
 
   /** In from the right going deeper, from the left going back; out the other way. */
-  function shift(_node: Element, { entering }: { entering: boolean }) {
-    const ahead = forward === entering;
+  function shift(node: Element, { entering }: { entering: boolean }) {
+    if (forward === entering) return slideIn(node, 1);
 
     return {
-      duration: motionMs(SLIDE_MS),
-      easing: cubicInOut,
-      css: (_t: number, u: number) =>
-        ahead
-          ? `transform: translateX(${u * 100}%)`
-          : `transform: translateX(${-30 * u}%); opacity: ${1 - 0.6 * u}`,
+      ...slideTiming(),
+      css: (_t: number, u: number) => `transform: translateX(${-30 * u}%); opacity: ${1 - 0.6 * u}`,
     };
   }
 
