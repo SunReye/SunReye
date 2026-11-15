@@ -1,7 +1,6 @@
 // What the 2D power flow reads (ADR 21): the `plant` device's roles (ADR 14), the loadpoints' `ev`
 // roles (ADR 10) and the layout's strings, signs per ADR 4. Pure.
-import type { Live, PvString, Values } from "../api/core.ts";
-import { PLANT } from "../live/labels.ts";
+import { PLANT, type Live, type PvString, type Values } from "../api/core.ts";
 import { formatFigure } from "../detail/figures.ts";
 
 /** The layout's strings, as far as the flow needs them. */
@@ -85,7 +84,7 @@ function charger(values: Values["devices"], power: number | undefined): ChargerD
 
 /** Every device's values but the plant's. */
 function devices(values: Values["devices"]): Readonly<Record<string, number>>[] {
-  return Object.keys(values).flatMap((id) => (id === PLANT ? [] : [values[id] ?? {}]));
+  return Object.keys(values).flatMap((id) => (Number(id) === PLANT ? [] : [values[id] ?? {}]));
 }
 
 /** In watts and percent; efficiency and own use only while power goes through the inverter. */

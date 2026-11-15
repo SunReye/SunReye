@@ -4,12 +4,12 @@
   first.
 -->
 <script lang="ts">
-  import type { Core, Live } from "../api/core.ts";
+  import { PLANT, SPOT, TARIFF, registered, type Core, type Live } from "../api/core.ts";
   import DetailSheet from "../detail/DetailSheet.svelte";
   import type { SceneLayout } from "../live/dashboard.ts";
   import { record, type LiveSeries } from "../live-graph/series.ts";
   import type { Go } from "../range/route.svelte.ts";
-  import { PLANT, SPOT, TARIFF, readDay, type Day } from "./day.ts";
+  import { readDay, type Day } from "./day.ts";
   import EvCard from "./EvCard.svelte";
   import Hero from "./Hero.svelte";
   import NowStrip from "./NowStrip.svelte";
@@ -95,12 +95,11 @@
   const stale = $derived(live !== undefined && "stale" in live ? live.stale : undefined);
 
   /**
-   * Each EVCC loadpoint, told by its `ev.charge.power` (ADR 10). The plant's total is none: the
-   * computed devices hold the top ids, the spot price's lowest (ADR 15).
+   * Each EVCC loadpoint, told by its `ev.charge.power` (ADR 10). The plant's total is none.
    */
   const loadpoints = $derived(
     Object.entries(values ?? {})
-      .filter(([id, series]) => Number(id) < SPOT && "ev.charge.power" in series)
+      .filter(([id, series]) => registered(Number(id)) && "ev.charge.power" in series)
       .map(([id, series]) => ({ id: Number(id), values: series })),
   );
 </script>

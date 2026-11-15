@@ -1,9 +1,8 @@
 // The live stream's state, app-wide: the shell's connection chip shows it and every live number
 // stops gliding while it is halted (ADR 21).
-import type { Core, Live } from "../api/core.ts";
+import { PLANT, type Core, type Live } from "../api/core.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { glideDurationMs, TICK_MS } from "./glide.ts";
-import { PLANT } from "./labels.ts";
 import { streamState, type StreamState } from "./stream.ts";
 
 class Stream {

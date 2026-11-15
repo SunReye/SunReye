@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { chip, frame, show, ticking } from "./live-scene.harness.ts";
-import { PLANT } from "./labels.ts";
+import { PLANT } from "../api/core.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.dashboard.view");
