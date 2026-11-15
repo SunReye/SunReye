@@ -100,7 +100,7 @@ fn a_quantity_is_stored_as_a_series_unless_it_declares_none() {
         .map(crate::Quantity::storage)
         .collect();
 
-    assert_eq!(storage, [StorageClass::Series, StorageClass::Live]);
+    assert_eq!(storage, [StorageClass::Series, StorageClass::NoHistory]);
 }
 
 #[test]
