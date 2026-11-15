@@ -91,6 +91,30 @@ test("a device added on a connection is the variant of its family the admin pick
   ]);
 });
 
+test("a device shows what it is read as by name: its variant's, or its family's for the base", async () => {
+  const core = new FakeCore();
+
+  core.devices.push(
+    { id: 4, connection: 1, name: "Speicher", profile: "deye-sg05lp3", variant: "5k", unit: 2 },
+    { id: 5, connection: 1, name: "Zähler", profile: "gone", unit: 3 },
+  );
+
+  const screen = await opened(core, "devices");
+  const row = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`, "u") });
+
+  await expect.element(row("Wechselrichter")).toHaveTextContent("Wechselrichter SG05LP3 · Gateway");
+  await expect
+    .element(row("Speicher"))
+    .toHaveTextContent("Speicher SUN-5K-SG05LP3-EU-SM2 · Gateway");
+  // A profile the core no longer serves has no name to show.
+  await expect.element(row("Zähler")).toHaveTextContent("Zähler gone · Gateway");
+
+  await tap(row("Speicher"));
+
+  await expect.element(screen.getByText("SUN-5K-SG05LP3-EU-SM2", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Das Profil bleibt fest", { exact: false })).toBeVisible();
+});
+
 test("a device moves to another unit id on its connection", async () => {
   const core = new FakeCore();
   const screen = await opened(core, "devices");

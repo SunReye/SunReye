@@ -71,6 +71,7 @@ const FIXED = new Map([
   ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
   ["/api/v1/devices", () => Response.json({ devices: [DEVICE] })],
   ["/api/v1/connections", () => Response.json({ connections: [] })],
+  ["/api/v1/profiles", () => Response.json({ profiles: [] })],
   ["/api/v1/profile-updates", () => Response.json({ updates: [] })],
   // No import has run, and none is offered.
   ["/api/v1/import", () => Response.json({ state: "idle", done: 0, total: 0 })],

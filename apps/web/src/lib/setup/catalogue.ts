@@ -70,6 +70,23 @@ export function offers(listing: Served): Family {
   return [base, ...own.toSorted(byRating)];
 }
 
+/**
+ * What a device is read as, by name: its variant's, or its family's for the base and for a variant
+ * the family does not list, such as a SunSpec model. The profile's id while it is not served.
+ */
+export function readAs(
+  all: readonly Served[],
+  { profile, variant }: { readonly profile: string; readonly variant?: string | null },
+): string {
+  const listing = all.find((served: Served) => served.id === profile);
+
+  const own = listing?.variants.find(
+    (v: Readonly<Listing["variants"][number]>) => v.id === variant,
+  );
+
+  return own?.name ?? listing?.name ?? profile;
+}
+
 /** Every offer matching `text`, grouped; families by id, manufacturers by name. */
 export function catalogue(all: readonly Served[], text: string): Manufacturer[] {
   const wanted = queryWords(text);
