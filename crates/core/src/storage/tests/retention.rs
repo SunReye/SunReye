@@ -75,8 +75,8 @@ async fn expiry_shrinks_the_file() {
     let path = dir.path().join("r.sqlite");
     let plant = Plant::new();
     let storage = plant.open(&path, epoch()).await;
-    // Four days of a value changing every 5 s.
-    let raw = (0..69_120)
+    // Twenty days of a value changing every 5 s: several times the empty file's own pages.
+    let raw = (0..345_600)
         .map(|i| Held {
             time: at(f64::from(i) * 5.0),
             value: f64::from(i % 1000),
@@ -96,7 +96,7 @@ async fn expiry_shrinks_the_file() {
 
     let storage = plant.open(&path, epoch()).await;
     retain(&storage, 1).await;
-    storage.tick(at(5.0 * DAY)).await.unwrap();
+    storage.tick(at(21.0 * DAY)).await.unwrap();
     storage.shutdown().await.unwrap();
 
     let pruned = std::fs::metadata(&path).unwrap().len();

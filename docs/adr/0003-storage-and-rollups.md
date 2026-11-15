@@ -8,7 +8,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 ## Decision
 
-**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, a fixed page size, and `auto_vacuum=incremental` set at creation. A file without it, made by another tool, is converted by one full `VACUUM` when the core opens it; every file the core creates has it. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Each install is one plant and generates a stable install id (a UUID) at first run; local tables carry no plant key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
+**Store.** One SQLite file under the data directory (`rusqlite`, bundled). WAL, `synchronous=NORMAL`, a checkpoint after each flush, a capped page cache, 8 KB pages, and `auto_vacuum=incremental` set at creation. A block is 0.4 to 2 KB, and a `WITHOUT ROWID` table keeps at most about a quarter of a page of a row in its leaf: on 4 KB pages every block over 1 KB spilled into an overflow page left mostly empty, and the `block` table took about three times its payload. A file at another page size, made by an earlier build, or without incremental vacuum, made by another tool, is converted by one full `VACUUM` when the core opens it, outside WAL mode, where a page size cannot change. A file another process holds open then keeps its layout until the next open. Every file the core creates has both. Tables are `WITHOUT ROWID` with no secondary index beyond the key. Each install is one plant and generates a stable install id (a UUID) at first run; local tables carry no plant key. Devices are keyed by a stable integer id from the device registry, never by profile id: a profile can be swapped inside the retention window.
 
 **Change points.** History is a series of change points: a value and the instant it began, plus a gap marker when a silence exceeds the gap threshold. Intervals, their durations and their split at rollup boundaries are derived when rollups and reads need them, so a flat signal costs nothing.
 
@@ -44,6 +44,7 @@ History for years on flash storage, on hardware where memory and write volume ma
 
 - **TimescaleDB.** Rejected: a server process, and v3's hyperfunctions and compression jobs cannot run on Android.
 - **Floats.** Rejected: integers delta-encode far better and are exact.
+- **4 KB or 16 KB pages.** Rejected: measured on a day of a Deye polled every 5 s, 8 KB pages shrank the `block` table from 3.4 MB to 1.46 MB and the file by 23 %; 16 KB pages gained nothing more, and every table takes at least one page.
 - **One row per interval.** Rejected: key, row header and page overhead cost several times the value.
 - **Fixed-rate samples.** Rejected: row volume then scales with the poll rate; change-encoding makes it a property of the signal.
 - **Daily rollups summed from hourly ones.** Rejected: exact only for whole-hour offsets, and v5 has no parity requirement with an older release.

@@ -369,3 +369,45 @@ async fn the_backup_command_backs_up_the_store_of_a_running_core() {
     assert!(written.unwrap() > 0);
     assert_eq!(restored.history(&storage).await, before);
 }
+
+#[tokio::test]
+async fn a_backup_of_a_store_at_another_page_size_restores_into_one_the_core_converts() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = Data::new(&dir.path().join("data"));
+    let storage = data.open().await;
+    data.record(&storage).await;
+    let before = data.history(&storage).await;
+    storage.shutdown().await.unwrap();
+    let page_size = |store: &Path| -> i64 {
+        let db = rusqlite::Connection::open(store).unwrap();
+        db.query_row("PRAGMA page_size", [], |row| row.get(0))
+            .unwrap()
+    };
+    // As a build before 8 KB pages left it.
+    rusqlite::Connection::open(data.dir.join(STORE))
+        .unwrap()
+        .execute_batch(
+            "PRAGMA journal_mode = DELETE;
+             PRAGMA page_size = 4096;
+             VACUUM;
+             PRAGMA journal_mode = WAL;",
+        )
+        .unwrap();
+    let options = Options {
+        file: dir.path().join("sunreye.tar"),
+        data_dir: data.dir.clone(),
+        secrets: false,
+    };
+    command(&options).unwrap();
+
+    let restored = Data::new(&dir.path().join("restored"));
+    restore(&options.file, &restored.dir).unwrap();
+    assert_eq!(page_size(&restored.dir.join(STORE)), 4096);
+    let storage = restored.open().await;
+    let after = restored.history(&storage).await;
+    storage.shutdown().await.unwrap();
+
+    assert!(before.len() >= 2, "{before:?}");
+    assert_eq!(after, before);
+    assert_eq!(page_size(&restored.dir.join(STORE)), 8192);
+}
