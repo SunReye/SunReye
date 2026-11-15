@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { loadPv, sunAt, sunward, type Cell, type Scene } from "./pv.ts";
+import { loadPv, sunAt, sunward, type GridModule, type Scene } from "./pv.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -137,9 +137,7 @@ test("a scene the crate cannot read throws", () => {
   expect(() => pv.geometry(broken)).toThrow();
 });
 
-const sizes = { 7: { width: 1.134, height: 1.722 } };
-
-function gridded(modules: readonly Cell[]): Scene {
+function gridded(modules: readonly GridModule[]): Scene {
   const block = house.blocks[0];
 
   return {
@@ -148,29 +146,6 @@ function gridded(modules: readonly Cell[]): Scene {
     grids: [{ block: 0, face: 1, moduleType: 7, landscape: false, setback: 0.3, modules }],
   };
 }
-
-test("the crate lays out a south face's cells: 8 columns and 2 rows of portrait modules", () => {
-  const { roofs, grids, misplaced } = pv.modules(gridded([]), sizes);
-
-  expect(roofs.map(({ tilt, azimuth }) => [Math.round(tilt), Math.round(azimuth)])).toEqual([
-    [35, 180],
-    [35, 0],
-  ]);
-  expect(grids[0]?.length).toBe(16);
-  expect(misplaced).toBeNull();
-});
-
-test("a module beyond the setback comes back misplaced", () => {
-  const { misplaced } = pv.modules(gridded([{ row: 2, column: 0, optimized: false }]), sizes);
-
-  // Row 2 starts 0.3 + 2 × 1.742 m up the slope and reaches past the face's 4.883 m.
-  expect(misplaced).toMatchObject({ kind: "setback", grid: 0, row: 2, column: 0 });
-  const area = misplaced && "area" in misplaced ? (misplaced.area?.flat() ?? []) : [];
-
-  expect(area.map((metres) => Math.round(metres * 1000) / 1000)).toEqual([
-    0.3, 3.784, 1.434, 5.506,
-  ]);
-});
 
 test("a carport has posts for walls and a car stands at its place's centre, nose forward", () => {
   const carport: Scene = {
@@ -239,7 +214,13 @@ function wired(modules: number, azimuth: number) {
 }
 
 test("a clear sky lights a painted south string over one entered by form facing north", () => {
-  const painted = [0, 1, 2, 3].map((column) => ({ row: 0, column, string: 0, optimized: false }));
+  const painted = [0, 1, 2, 3].map((column) => ({
+    across: 0.3 + column * 1.154,
+    up: 0.3,
+    landscape: false,
+    string: 0,
+    optimized: false,
+  }));
 
   const run = (unix: number) =>
     pv.clearSky({

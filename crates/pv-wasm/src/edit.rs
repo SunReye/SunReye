@@ -74,6 +74,13 @@ impl Strike {
     }
 }
 
+impl Strike {
+    /// The index of the grid whose face the strike lands on, inside its setback; null for none.
+    pub fn grid(&self) -> Value {
+        json!(self.scene.grid_at(self.point))
+    }
+}
+
 /// A scene's grid `grid` and the size of each module type, by id.
 #[derive(Deserialize)]
 pub struct Laid {

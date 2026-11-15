@@ -210,6 +210,19 @@ impl Scene {
             .collect()
     }
 
+    /// The index of the first grid whose face a strike at `point` lands on, inside its setback.
+    #[must_use]
+    pub fn grid_at(&self, point: Point) -> Option<usize> {
+        let roofs = self.roofs();
+        self.grids.iter().position(|grid| {
+            let face = roofs
+                .iter()
+                .find(|r| (r.block, r.face) == (grid.block, grid.face));
+            let at = face.and_then(|face| Some((face, face.locate(point)?)));
+            at.is_some_and(|(face, at)| face.inside(at, grid.setback))
+        })
+    }
+
     /// The modules a roof chimney stands on, as a grid's index and a module's in it: what adding
     /// or moving a chimney removes. A grid without its module's size has none.
     #[must_use]

@@ -1,6 +1,6 @@
-// The scene as the pv crate lays it out (ADR 20): the roof faces and the module grids' cells on
-// them, and what the builder's handles stand on.
-import type { Point, Wall } from "./pv.ts";
+// The scene as the pv crate lays it out (ADR 20): the roof faces and the module grids on them, and
+// what the builder's handles stand on.
+import type { Point, Spot, Wall } from "./pv.ts";
 import type { Footing } from "./roofing.ts";
 import type { WallFrame } from "./walls.ts";
 
@@ -18,12 +18,31 @@ export interface RoofFace {
   readonly up: Point;
 }
 
-/** A cell whose module fits inside the setback. */
-export interface CellPlace {
-  readonly row: number;
-  readonly column: number;
-  /** Lower left and upper right corner in the face's outline. */
-  readonly area: readonly [readonly [number, number], readonly [number, number]];
+/** A lower left and an upper right corner in a face's outline. */
+export type Area = readonly [readonly [number, number], readonly [number, number]];
+
+/** A module on its face: its footprint in the outline and its corners in the scene. */
+export interface Footprint {
+  readonly area: Area;
+  readonly corners: readonly Point[];
+}
+
+/** A grid on its face: each module's footprint, by its position in the grid, and the roof modules
+ * may not lie on. */
+export interface LaidGrid {
+  readonly modules: readonly Footprint[];
+  /** The face's outline in the scene, and that outline inside the setback, corner for corner; null
+   * where the setback leaves no roof. */
+  readonly outline: readonly Point[];
+  readonly inset: readonly Point[] | null;
+  /** The footprints of the face's chimneys. */
+  readonly blocked: readonly (readonly Point[])[];
+}
+
+/** A module that is not laid yet: where it would lie, whether it fits there, and its corners in
+ * the scene. */
+export interface Ghost extends Spot {
+  readonly fits: boolean;
   readonly corners: readonly Point[];
 }
 
@@ -31,19 +50,19 @@ export interface CellPlace {
 export type Misplaced =
   | { readonly kind: "face" | "moduleType"; readonly grid: number }
   | {
-      readonly kind: "setback" | "overlap";
+      readonly kind: "setback" | "overlap" | "chimney";
       readonly grid: number;
-      readonly row: number;
-      readonly column: number;
-      /** The module's cell on its face, as `CellPlace.area`; null without a module size. */
-      readonly area: CellPlace["area"] | null;
+      /** The module's position in its grid. */
+      readonly module: number;
+      /** Its footprint on its face; null without a module size. */
+      readonly area: Area | null;
     };
 
-/** The roofs, each grid's cells (null for a missing face or module type) and the first misfit;
+/** The roofs, each grid on its face (null for a missing face or module type) and the first misfit;
  * and what the builder's handles stand on. */
 export interface Modules {
   readonly roofs: readonly RoofFace[];
-  readonly grids: readonly (readonly CellPlace[] | null)[];
+  readonly grids: readonly (LaidGrid | null)[];
   readonly misplaced: Misplaced | null;
   /** By block, each of its walls. */
   readonly walls: readonly Readonly<Record<Wall, WallFrame>>[];

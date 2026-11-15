@@ -42,7 +42,7 @@ afterEach(async () => {
   await undesk();
 });
 
-/** The south face's grid, laid out, and a press on its cell `row.column` in 3D. */
+/** A press in 3D on the south face where a filled face has its module `row.column`. */
 async function onTheRoof(): Promise<(key: string) => Promise<void>> {
   await expect.poll(drawn, SLOW).toBeGreaterThan(0);
 
@@ -59,7 +59,7 @@ test("the admin lays modules, wires one into a string, undoes one and saves from
   await roof("0.0");
   await roof("0.1");
   await inspector().getByRole("button", { name: "Rückgängig" }).click();
-  await expect.element(inspector().getByText("1 von 16 Modulen gesetzt")).toBeVisible();
+  await expect.element(inspector().getByText("1 Module gesetzt")).toBeVisible();
 
   await drill("Module", "Szene", "Strings", "String hinzufügen");
   await roof("0.0");
@@ -85,7 +85,9 @@ test("the admin lays modules, wires one into a string, undoes one and saves from
           moduleType: 7,
           landscape: false,
           setback: 0.3,
-          modules: [{ row: 0, column: 0, string: 0, optimized: false, order: 0 }],
+          modules: [
+            { across: 0.3, up: 0.3, landscape: false, string: 0, optimized: false, order: 0 },
+          ],
         },
       ],
     },
@@ -108,9 +110,7 @@ test("a module the setback no longer holds is flagged before saving", async () =
 
   await expect
     .element(screen.getByRole("alert"))
-    .toHaveTextContent(
-      "Raster 1: Das Modul in Reihe 2, Spalte 1 ragt über den Randabstand oder in einen Schornstein.",
-    );
+    .toHaveTextContent("Raster 1: Modul 1 ragt über den Randabstand.");
   await drill("Module");
   await expect
     .element(inspector().getByText("1 Module gehören zu keinem String und erzeugen nichts."))

@@ -1,11 +1,9 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import { cellAt } from "./cells.ts";
-import type { At } from "./modules.ts";
 import type {
   Block,
-  Cell,
-  CellPlace,
   FencePoint,
+  GridModule,
+  LaidGrid,
   Modules,
   Point,
   Pv,
@@ -35,13 +33,12 @@ export type Level =
       readonly index: number;
     }
   | { readonly kind: "face"; readonly block: number; readonly face: number }
-  /** One module on a face, by its cell. */
+  /** One module on a face, by its position in the face's grid. */
   | {
       readonly kind: "module";
       readonly block: number;
       readonly face: number;
-      readonly row: number;
-      readonly column: number;
+      readonly module: number;
     };
 
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
@@ -142,25 +139,22 @@ function indexed(kind: Extract<Level, { index: number }>["kind"], index: number)
   return index >= 0 ? { kind, index } : null;
 }
 
-/** What a strike is found on: the crate, which finds a chimney, and its layout, whose cells find
- * a grid's face. */
-interface Found {
-  readonly pv?: Pick<Pv, "chimneyAt"> | undefined;
-  readonly laid?: Pick<Modules, "roofs" | "grids"> | undefined;
-}
+/** The crate, which finds what a strike lands on: a chimney, or a grid's face. */
+type Finder = Pick<Pv, "chimneyAt" | "gridAt"> | undefined;
 
-/** The face whose grid holds a cell at `point`, when the cells are known. */
-function faceAt(scene: Scene, laid: Found["laid"], point: Point): Level | null {
-  const hit = laid && cellAt(scene, laid, point);
-  const grid = hit && scene.grids?.[hit.grid];
+/** The face whose grid a strike at `point` lands on, inside its setback. */
+function faceAt(scene: Scene, pv: Finder, point: Point): Level | null {
+  // No grid, no question to the crate.
+  const index = (scene.grids?.length ?? 0) > 0 ? (pv?.gridAt(scene, point) ?? null) : null;
+  const grid = index === null ? undefined : scene.grids?.[index];
 
   return grid ? { kind: "face", block: grid.block, face: grid.face } : null;
 }
 
-/** The object at a point: a chimney on its roof, a grid's cell on its face, what stands before the
+/** The object at a point: a chimney on its roof, a grid's face inside its setback, what stands before the
  * blocks it stands by, a car place before the roof over it, the ground last, the latest surface
  * first as it is drawn over the others. */
-function at(scene: Scene, { pv, laid }: Found, [east, north, up]: Point): Level | null {
+function at(scene: Scene, pv: Finder, [east, north, up]: Point): Level | null {
   const point = turn(east, -north, -scene.north);
 
   // The first finder that finds wins.
@@ -171,7 +165,7 @@ function at(scene: Scene, { pv, laid }: Found, [east, north, up]: Point): Level 
         // No chimney, no question to the crate.
         (scene.chimneys?.length ?? 0) > 0 ? (pv?.chimneyAt(scene, [east, north, up]) ?? -1) : -1,
       ),
-    () => faceAt(scene, laid, [east, north, up]),
+    () => faceAt(scene, pv, [east, north, up]),
     () => indexed("obstacle", obstacleAt(scene, point)),
     () =>
       indexed(
@@ -202,19 +196,18 @@ function at(scene: Scene, { pv, laid }: Found, [east, north, up]: Point): Level 
   return null;
 }
 
-/** The level a click in 3D drills the inspector to; null for open ground. A chimney is found by
- * the crate `pv`, a grid's face on the cells the crate `laid` out. */
+/** The level a click in 3D drills the inspector to; null for open ground. The crate `pv` finds a
+ * chimney and a grid's face. */
 export function picked(
   scene: Scene,
   hit: Hit,
-  pv?: Pick<Pv, "chimneyAt">,
-  laid?: Pick<Modules, "roofs" | "grids">,
+  pv?: Pick<Pv, "chimneyAt" | "gridAt">,
 ): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
 
   if (hit.kind === "opening") return { kind: "opening", index: hit.index };
 
-  if (hit.kind === "point") return at(scene, { pv, laid }, hit.point);
+  if (hit.kind === "point") return at(scene, pv, hit.point);
 
   const grid = scene.grids?.[hit.grid];
 
@@ -233,46 +226,37 @@ export function depth(level: Level): number {
 /** The module a module level names, and its grid's position in the scene. */
 export function moduleOf(
   scene: Scene,
-  { block, face, row, column }: Extract<Level, { kind: "module" }>,
-): { readonly grid: number; readonly cell: Cell } | undefined {
+  { block, face, module }: Extract<Level, { kind: "module" }>,
+): { readonly grid: number; readonly module: number; readonly laid: GridModule } | undefined {
   const grid = (scene.grids ?? []).findIndex((item) => item.block === block && item.face === face);
+  const laid = scene.grids?.[grid]?.modules[module];
 
-  const cell = scene.grids?.[grid]?.modules.find(
-    (item) => item.row === row && item.column === column,
-  );
-
-  return cell === undefined ? undefined : { grid, cell };
+  return laid === undefined ? undefined : { grid, module, laid };
 }
 
-/** Whether two cells are the same. */
-function same(a: Readonly<At>, b: Readonly<At>): boolean {
-  return a.row === b.row && a.column === b.column;
-}
-
-/** A selected face's or module's grid: its position in the scene, the cells free to place a module
- * in, and the selected module's cell; null for a face without a grid. */
-export function faceCells(
+/** A selected face's or module's grid: its position in the scene, how the crate laid it out, and
+ * the selected module's footprint; null for a face without a grid or its module type. */
+export function faceGrid(
   scene: Readonly<Scene>,
   { grids }: Readonly<Pick<Modules, "grids">>,
   level: Extract<Level, { kind: "face" | "module" }>,
 ): {
   readonly grid: number;
-  readonly free: readonly CellPlace[];
-  readonly selected: CellPlace | undefined;
+  readonly shade: LaidGrid;
+  readonly selected: LaidGrid["modules"][number] | undefined;
 } | null {
   const grid = (scene.grids ?? []).findIndex(
     (item) => item.block === level.block && item.face === level.face,
   );
 
-  if (grid < 0) return null;
+  const shade = grids[grid];
 
-  const modules = scene.grids?.[grid]?.modules ?? [];
-  const cells = grids[grid] ?? [];
+  if (shade === undefined || shade === null) return null;
 
   return {
     grid,
-    free: cells.filter((cell) => !modules.some((module) => same(module, cell))),
-    selected: level.kind === "module" ? cells.find((cell) => same(level, cell)) : undefined,
+    shade,
+    selected: level.kind === "module" ? shade.modules[level.module] : undefined,
   };
 }
 

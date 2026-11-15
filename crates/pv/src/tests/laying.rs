@@ -252,3 +252,14 @@ fn the_modules_a_chimney_stands_on_are_the_covered_ones() {
     assert_eq!(covered.covered(|_| Some(SIZE)), [(0, 1), (0, 2)]);
     assert_eq!(covered.covered(|_| None), [] as [(usize, usize); 0]);
 }
+
+#[test]
+fn a_strike_inside_a_grids_setback_lands_on_the_grid() {
+    let empty = scene(&json!([]), &json!([]));
+
+    assert_eq!(empty.grid_at(on_face(5.0, 2.0)), Some(0));
+    // In the setback, on the north face, and over the roof.
+    assert_eq!(empty.grid_at(on_face(0.2, 2.0)), None);
+    assert_eq!(empty.grid_at([5.0, -2.0, 4.4]), None);
+    assert_eq!(empty.grid_at([5.0, -6.0, 9.0]), None);
+}

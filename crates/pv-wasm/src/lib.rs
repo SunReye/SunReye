@@ -407,6 +407,15 @@ mod exports {
         leak(super::edited(input, super::edit::Laid::covered))
     }
 
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn grid_at(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Strike::grid))
+    }
+
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.
     fn leak(reply: String) -> u64 {
         let bytes = reply.into_bytes().into_boxed_slice();

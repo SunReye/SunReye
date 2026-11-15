@@ -6,7 +6,7 @@ import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
-import { emptyDraft } from "./modules.ts";
+import { emptyDraft, fillGrid } from "./modules.ts";
 import { faceView, presetView, type View } from "./camera.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
@@ -182,7 +182,7 @@ export async function phone(): Promise<void> {
 }
 
 /** The module type's size, by its id, as the crate lays cells out. */
-const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
+export const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
 
 /** The view a phone flies to when grid `grid`'s face is opened for its modules. */
 export function ontoFace(start: Scene, grid: number): View {
@@ -199,29 +199,53 @@ export function ontoFace(start: Scene, grid: number): View {
   return faceView(roof, canvas.width / canvas.height);
 }
 
-/** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from `kept` or else
- * its first view. */
+/** Where the point `across` and `up` the face of grid `grid` of `start` lands on the page, seen
+ * from `kept` or else its first view. */
+export function faceOnPage(
+  start: Scene,
+  grid: number,
+  kept?: View,
+): (across: number, up: number) => [number, number] {
+  const onPage = onCanvas(start, kept);
+  const at = start.grids?.[grid];
+
+  const roof = pv
+    .modules(start, SIZES)
+    .roofs.find((r) => r.block === at?.block && r.face === at.face);
+
+  if (roof === undefined) throw new Error(`no face under grid ${String(grid)}`);
+
+  const { origin, across: right, up: rise } = roof;
+
+  return (across, up) => {
+    const along = (i: 0 | 1 | 2): number => origin[i] + across * right[i] + up * rise[i];
+
+    // East, north, up to three.js's x, y up, z south.
+    return onPage([along(0), along(2), 0 - along(1)]);
+  };
+}
+
+/** Where the middle of a portrait module in row `row` and column `column` of a filled face lands on
+ * the page, by the key `row.column`: a tap there lays a module at that place. */
 export function cellsOnPage(
   start: Scene,
   grid: number,
   kept?: View,
 ): (key: string) => [number, number] {
-  const onPage = onCanvas(start, kept);
-
-  const cells = new Map(
-    (pv.modules(start, SIZES).grids[grid] ?? []).map(({ row, column, corners }) => {
-      const sum = corners.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
-
-      // East, north, up to three.js's x, y up, z south.
-      return [`${row}.${column}`, onPage([sum[0] / 4, sum[2] / 4, -sum[1] / 4])];
-    }),
-  );
+  const onPage = faceOnPage(start, grid, kept);
+  const setback = start.grids?.[grid]?.setback ?? 0;
 
   return (key) => {
-    const at = cells.get(key);
+    const [row = 0, column = 0] = key.split(".").map(Number);
 
-    if (at === undefined) throw new Error(`no cell ${key}`);
-
-    return at;
+    return onPage(
+      setback + column * (MODULE.width + 0.02) + MODULE.width / 2,
+      setback + row * (MODULE.height + 0.02) + MODULE.height / 2,
+    );
   };
+}
+
+/** The scene with grid `grid` filled, as "Fläche füllen" fills it. */
+export function filledFace(scene: Scene, grid: number): Scene {
+  return fillGrid(scene, grid, pv.fillFace({ scene, sizes: SIZES, grid }));
 }

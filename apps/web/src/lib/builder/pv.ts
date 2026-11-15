@@ -10,7 +10,9 @@ import {
   isChimney,
   isExports,
   isGeometry,
+  isGhost,
   isIndex,
+  isList,
   isModules,
   isOpening,
   isRefit,
@@ -34,9 +36,12 @@ export type {
 
 export type { Chimney, Footing, Overhang } from "./roofing.ts";
 
-import type { Modules } from "./laid.ts";
+import type { ModuleGrid, OnGrid, Sizes } from "./grids.ts";
+import type { Ghost, Modules } from "./laid.ts";
 
-export type { CellPlace, Misplaced, Modules, RoofFace } from "./laid.ts";
+export type { GridModule, ModuleGrid, OnGrid, Sizes, Spot } from "./grids.ts";
+
+export type { Footprint, Ghost, LaidGrid, Misplaced, Modules, RoofFace } from "./laid.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -67,30 +72,6 @@ export interface Block {
   readonly wallColour?: string | null;
 }
 
-/** A module in one cell: rows count up the slope, columns across it, from 0. */
-export interface Cell {
-  readonly row: number;
-  readonly column: number;
-  /** The string it is painted into; unassigned, it produces nothing. */
-  readonly string?: number | null;
-  readonly optimized?: boolean;
-  /** Its place along its string's wiring, from the lowest; one without follows them. */
-  readonly order?: number | null;
-}
-
-/** The modules on one roof face; cells are the module type's size plus a gap. */
-export interface ModuleGrid {
-  readonly block: number;
-  /** The roof face's index in its block, as `roofs` lists them. */
-  readonly face: number;
-  readonly moduleType: number;
-  /** Long side across the slope. */
-  readonly landscape: boolean;
-  /** Metres kept free along every edge. */
-  readonly setback: number;
-  readonly modules: readonly Cell[];
-}
-
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
 export interface CarPlace {
   readonly device: number;
@@ -119,12 +100,6 @@ export interface Scene {
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
   readonly openings?: readonly Opening[];
-}
-
-/** A module's outline in metres; `height` is its long side. */
-export interface Size {
-  readonly width: number;
-  readonly height: number;
 }
 
 export interface Face {
@@ -195,7 +170,7 @@ export interface Pv {
   /** The scene's faces and solids; throws the crate's reason for a scene it cannot read. */
   readonly geometry: (scene: Scene) => Geometry;
   /** The scene's module grids laid out, with module sizes by module type id. */
-  readonly modules: (scene: Scene, sizes: Readonly<Record<number, Size>>) => Modules;
+  readonly modules: (scene: Scene, sizes: Sizes) => Modules;
   /** Where the sun stands at `unix` seconds over `location`. */
   readonly sun: (unix: number, location: Location) => Sun;
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
@@ -223,6 +198,38 @@ export interface Pv {
   readonly glide: (scene: Scene, index: number, shift: readonly [number, number]) => Chimney | null;
   /** The index of the chimney a strike at `point` lands on; null for none. */
   readonly chimneyAt: (scene: Scene, point: Point) => number | null;
+  /** The index of the grid whose face a strike at `point` lands on, inside its setback. */
+  readonly gridAt: (scene: Scene, point: Point) => number | null;
+  /** What a press on a grid's face at `from`, dragged to `to`, would lay: the ghost module under
+   * the pointer, snapped, and with a drag the row along it; null for a press off the face. */
+  readonly lay: (on: OnGrid, from: Point, to: Point) => Ghost[] | null;
+  /** Module `module` of a grid dragged from `from` to `to`: where it would lie, snapped like a
+   * ghost, and whether it fits there; null without it. */
+  readonly slide: (on: OnGrid, module: number, from: Point, to: Point) => Ghost | null;
+  /** The places "Fill face" adds to a grid: across and up its face. */
+  readonly fillFace: (on: OnGrid) => (readonly [number, number])[];
+  /** The modules a roof chimney stands on: each its grid's index and its own in it. */
+  readonly covered: (scene: Scene, sizes: Sizes) => (readonly [number, number])[];
+}
+
+/** The reply of a glue crate's export to its JSON input. */
+type Call = (name: Exported, input: string) => string;
+
+/** What the crate answers while modules are laid (ADR 20 Modules). */
+function laying(call: Call): Pick<Pv, "gridAt" | "lay" | "slide" | "fillFace" | "covered"> {
+  return {
+    gridAt: (scene, point) => unwrap(call("grid_at", JSON.stringify({ scene, point })), isIndex),
+    lay: (on, from, to) => unwrap(call("lay", JSON.stringify({ ...on, from, to })), isList<Ghost>),
+    slide: (on, module, from, to) =>
+      unwrap(call("slide", JSON.stringify({ ...on, module, from, to })), isGhost),
+    fillFace: (on) =>
+      unwrap(call("fill", JSON.stringify(on)), isList<readonly [number, number]>) ?? [],
+    covered: (scene, sizes) =>
+      unwrap(
+        call("covered", JSON.stringify({ scene, sizes })),
+        isList<readonly [number, number]>,
+      ) ?? [],
+  };
 }
 
 /** Instantiates the glue crate's release build. */
@@ -233,7 +240,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
   /** The reply of export `name` to the JSON `input`. */
-  const call = (name: Exported, input: string): string => {
+  const call: Call = (name, input) => {
     const encoded = new TextEncoder().encode(input);
     const at = wasm.reserve(encoded.length);
 
@@ -266,6 +273,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
       unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
     chimneyAt: (scene, point) =>
       unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
+    ...laying(call),
   };
 }
 

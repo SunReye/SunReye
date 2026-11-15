@@ -14,7 +14,7 @@ import {
   ROOFS,
   WALL_NAMES,
 } from "./names.ts";
-import type { Fence, Modules, Pv } from "./pv.ts";
+import type { Fence, Modules, Pv, Sizes } from "./pv.ts";
 
 export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
 
@@ -23,8 +23,10 @@ export interface Plan {
   readonly draft: Draft;
   /** The crate's layout of the draft's grids. */
   readonly laid: Modules;
-  /** The crate, which places a new opening and keeps a changed one on its wall. */
-  readonly pv: Pick<Pv, "place" | "refit">;
+  /** The crate, which places a new opening, keeps a changed one on its wall and fills a face. */
+  readonly pv: Pick<Pv, "place" | "refit" | "fillFace">;
+  /** Each module type's size, by its id, as the crate lays modules out. */
+  readonly sizes: Sizes;
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];
@@ -231,8 +233,7 @@ export function title(level: Level, plan: Plan): string {
 
   if (level.kind === "section") return SECTIONS[level.section]();
 
-  if (level.kind === "module")
-    return m.builder_cell({ row: level.row + 1, column: level.column + 1 });
+  if (level.kind === "module") return m.builder_cell({ number: level.module + 1 });
 
   const up = parent(level);
   const key = JSON.stringify(level);
