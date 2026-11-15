@@ -139,3 +139,37 @@ fn a_percentage_holds_a_one_percent_deadband() {
 
     assert_eq!(deadbands, [1.0, 1.0]);
 }
+
+/// An override saved while a role was a measurement outlives the profile update that made it a
+/// held value, a status or a counter: the kind wins, and every change is stored.
+#[test]
+fn an_override_left_on_a_role_that_is_no_longer_a_measurement_is_ignored() {
+    let doc = json!({
+        "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
+        "requires": ["modbus", "u16", "kind", "unit"], "quantities": [
+            { "key": "limit", "role": "extra.limit", "kind": "held", "register": 1, "type": "u16" },
+            { "key": "state", "role": "extra.state", "kind": "status", "register": 2, "type": "u16" },
+            { "key": "runs", "role": "extra.runs", "kind": "counter", "unit": "none",
+              "register": 3, "type": "u16" },
+        ],
+    });
+    let profile = Profile::load(&doc.to_string()).unwrap();
+    let stale = ["extra.limit", "extra.state", "extra.runs"].map(|role| (role.to_owned(), 5.0));
+    let overrides = BTreeMap::from(stale);
+
+    let stored: Vec<f64> = profile
+        .quantities()
+        .iter()
+        .map(|q| super::policy(q, &overrides).unwrap().deadband)
+        .collect();
+
+    assert_eq!(stored, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        deadbands(&profile, &overrides),
+        [
+            deadband("extra.limit", None, DeadbandSource::None),
+            deadband("extra.state", None, DeadbandSource::None),
+            deadband("extra.runs", None, DeadbandSource::None),
+        ]
+    );
+}
