@@ -1,12 +1,14 @@
 <!--
   Settings › Devices' list: each device with its profile and connection, the measuring points'
-  review after a change, the add action, and the profile updates waiting for the admin.
+  review after a change, the add action, and the profile updates waiting for the admin. It shifts
+  aside under a level that slides over it, in the caller's one grid cell.
 -->
 <script lang="ts">
   import type { Connection, Core, Device } from "../api/core";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Item from "#lib/components/ui/item/index.js";
   import DrillRow from "../components/drill-in/drill-row.svelte";
+  import { shiftAside } from "../motion/slide.ts";
   import { m } from "../paraglide/messages.js";
   import AddRow from "./AddRow.svelte";
   import ProfileUpdates from "./ProfileUpdates.svelte";
@@ -42,31 +44,33 @@
   }
 </script>
 
-<div class="drill-card">
-  <Item.Group class="gap-0 divide-y divide-border/60">
-    {#each devices as device (device.id)}
-      <DrillRow
-        group={{
-          id: String(device.id),
-          label: device.name,
-          summary: summary(device),
-        }}
-        onclick={() => {
-          onopen(device.id);
-        }}
-      />
-    {/each}
-  </Item.Group>
-  {#if changed}
-    <div class="flex flex-col gap-2 border-t border-border/60 p-4">
-      <p role="status" class="text-sm text-muted-foreground">{m.settings_topology_hint()}</p>
-      <Button variant="outline" class="self-start" onclick={onreview}>
-        {m.settings_topology_review()}
-      </Button>
+<div class="col-start-1 row-start-1 min-w-0" in:shiftAside out:shiftAside>
+  <div class="drill-card">
+    <Item.Group class="gap-0 divide-y divide-border/60">
+      {#each devices as device (device.id)}
+        <DrillRow
+          group={{
+            id: String(device.id),
+            label: device.name,
+            summary: summary(device),
+          }}
+          onclick={() => {
+            onopen(device.id);
+          }}
+        />
+      {/each}
+    </Item.Group>
+    {#if changed}
+      <div class="flex flex-col gap-2 border-t border-border/60 p-4">
+        <p role="status" class="text-sm text-muted-foreground">{m.settings_topology_hint()}</p>
+        <Button variant="outline" class="self-start" onclick={onreview}>
+          {m.settings_topology_review()}
+        </Button>
+      </div>
+    {/if}
+    <div class="border-t border-border/60">
+      <AddRow label={m.settings_device_add()} onclick={onadd} />
     </div>
-  {/if}
-  <div class="border-t border-border/60">
-    <AddRow label={m.settings_device_add()} onclick={onadd} />
   </div>
+  <ProfileUpdates {core} onapplied={() => undefined} />
 </div>
-<ProfileUpdates {core} onapplied={() => undefined} />

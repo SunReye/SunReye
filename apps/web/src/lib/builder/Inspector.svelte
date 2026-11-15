@@ -6,7 +6,7 @@
   import type { Snippet } from "svelte";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { slideIn, slideTiming } from "../motion/slide.ts";
+  import { shiftAside, slideIn } from "../motion/slide.ts";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
   import { title } from "./outline.ts";
@@ -46,12 +46,7 @@
 
   /** In from the right going deeper, from the left going back; out the other way. */
   function shift(node: Element, { entering }: { entering: boolean }) {
-    if (forward === entering) return slideIn(node, 1);
-
-    return {
-      ...slideTiming(),
-      css: (_t: number, u: number) => `transform: translateX(${-30 * u}%); opacity: ${1 - 0.6 * u}`,
-    };
+    return forward === entering ? slideIn(node, 1) : shiftAside(node);
   }
 
   const key = $derived(JSON.stringify(level));
