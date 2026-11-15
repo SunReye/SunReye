@@ -9,15 +9,19 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from "three";
 
-/** Off on the lite and still motion tiers, which draw every finish unweathered (ADR 21). */
+/** Off below Mittel, and on the lite and still motion tiers under Auto (ADR 20, ADR 21). */
 let extras = true;
 
+/** Hoch's: the variation also tilts the surface, so a wall or a lawn is never a flat sheet. */
+let relief = false;
+
 /**
- * Whether finishes weather from here on. A finish reads it as its program is made, on its first
- * frame, and a build keeps what it was first drawn with: a studio sets it as it is made.
+ * Whether finishes weather from here on, and whether in relief. A finish reads it as its program
+ * is made: a studio sets it as it is made, and makes its finishes' programs again on a change.
  */
-export function weatherFinishes(on: boolean): void {
+export function weatherFinishes(on: boolean, raised = false): void {
   extras = on;
+  relief = on && raised;
 }
 
 export interface Weather {
@@ -30,6 +34,8 @@ export interface Weather {
   readonly loose?: boolean;
   /** What patches of it turn toward, as a factor per channel: a lawn's dry spots. */
   readonly patches?: readonly [number, number, number];
+  /** How far the surface rises and falls with the variation in relief, in metres. */
+  readonly relief?: number;
 }
 
 export type Shader = WebGLProgramParametersWithUniforms;
@@ -109,6 +115,25 @@ float weatherNoise(vec2 p) {
   );
 }`;
 
+/** The surface's normal tilted by a height's slope across the screen (Mikkelsen's bump). */
+const RELIEF = `
+uniform float uRelief;
+vec3 weatherRelief(vec3 n, vec3 at, float height, float face) {
+  vec3 sx = dFdx(at);
+  vec3 sy = dFdy(at);
+  vec3 r1 = cross(sy, n);
+  vec3 r2 = cross(n, sx);
+  float det = dot(sx, r1) * face;
+  vec3 slope = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+  return normalize(abs(det) * n - slope);
+}`;
+
+/** Two scales of the variation as a height, a hand's and an arm's length across. */
+const RAISED = `
+#include <normal_fragment_maps>
+float weatherHeight = weatherNoise(weatherAt * 1.9 + 3.0) + 0.5 * weatherNoise(weatherAt * 4.3 + 9.0);
+normal = weatherRelief(normal, -vViewPosition, weatherHeight * uRelief, faceDirection);`;
+
 /** The second scale: the map again, turned 34° and 3.2 times as large, as a brightness. One
  * fixed level of it: a brightness needs no anisotropic filtering, which costs most at the
  * lawn's grazing angles. */
@@ -154,6 +179,15 @@ function brightness({ map }: MeshStandardMaterial): number {
   return Math.max(r + g + b, 0.001);
 }
 
+/** Tilts the weathered surface by the variation's slope. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+function raise(shader: Shader, metres: number): void {
+  shader.uniforms["uRelief"] = { value: metres };
+  shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", `#include <common>\n${RELIEF}`)
+    .replace("#include <normal_fragment_maps>", RAISED);
+}
+
 /** Weathers a finish that has a map; its programs are shared by every finish weathered alike. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js patches in place.
 export function weathered<M extends MeshStandardMaterial>(material: M, weather: Weather): M {
@@ -181,12 +215,14 @@ export function weathered<M extends MeshStandardMaterial>(material: M, weather: 
         "#include <roughnessmap_fragment>",
         "#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor * (1.0 + (weather - 0.5) * 2.0 * uWeather.y), 0.04, 1.0);",
       );
+
+    if (relief) raise(shader, weather.relief ?? 0);
   });
 
   const keyed = made.customProgramCacheKey.bind(made);
 
   // Weathered and plain are two programs.
-  made.customProgramCacheKey = () => `${keyed()}:${extras}`;
+  made.customProgramCacheKey = () => `${keyed()}:${extras}:${relief}`;
 
   return made;
 }

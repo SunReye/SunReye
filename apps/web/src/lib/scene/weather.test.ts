@@ -27,7 +27,8 @@ function compiled(material: MeshStandardMaterial): Shader {
   const shader = {
     uniforms: {},
     vertexShader: "#include <common>\n#include <project_vertex>",
-    fragmentShader: "#include <common>\n#include <map_fragment>\n#include <roughnessmap_fragment>",
+    fragmentShader:
+      "#include <common>\n#include <map_fragment>\n#include <roughnessmap_fragment>\n#include <normal_fragment_maps>",
   };
 
   const renderer = { render: null };
@@ -86,7 +87,7 @@ test("only loose ground samples its map at a second scale", () => {
   expect(laid.fragmentShader).not.toContain("textureLod(map, mat2");
 });
 
-test("off the full motion tier a finish is drawn as it is, in a program of its own", () => {
+test("unweathered, a finish is drawn as it is, in a program of its own", () => {
   const lean = weathered(new MeshStandardMaterial(), { colour: 0.3, rough: 0.1, loose: true });
   const full = lean.customProgramCacheKey();
 
@@ -99,4 +100,32 @@ test("off the full motion tier a finish is drawn as it is, in a program of its o
   expect(shader.fragmentShader).not.toContain("weatherNoise");
   expect(shader.uniforms).toEqual({});
   expect(key).not.toBe(full);
+});
+
+test("in relief, the variation also tilts the surface, in a program of its own", () => {
+  const wall = weathered(new MeshStandardMaterial(), { colour: 0.1, rough: 0.1, relief: 0.012 });
+  const flat = [compiled(wall), wall.customProgramCacheKey()] as const;
+
+  weatherFinishes(true, true);
+
+  const raised = [compiled(wall), wall.customProgramCacheKey()] as const;
+
+  weatherFinishes(true);
+
+  expect(flat[0].fragmentShader).not.toContain("weatherRelief");
+  expect(raised[0].fragmentShader).toContain("normal = weatherRelief(normal");
+  expect(raised[0].uniforms["uRelief"]?.value).toBe(0.012);
+  expect(raised[1]).not.toBe(flat[1]);
+});
+
+test("an unweathered finish has no relief either", () => {
+  const wall = weathered(new MeshStandardMaterial(), { colour: 0.1, rough: 0.1, relief: 0.012 });
+
+  weatherFinishes(false, true);
+
+  const shader = compiled(wall);
+
+  weatherFinishes(true);
+
+  expect(shader.fragmentShader).not.toContain("weatherRelief");
 });

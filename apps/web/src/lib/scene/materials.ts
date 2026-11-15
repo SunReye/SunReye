@@ -102,7 +102,7 @@ function plastered(): MeshStandardMaterial {
       roughness: 0.92,
     }),
     // Rain streaks, and splashed dirt at the foot.
-    { colour: 0.07, rough: 0.06, foot: 0.8 },
+    { colour: 0.07, rough: 0.06, foot: 0.8, relief: 0.012 },
   );
 }
 
@@ -121,7 +121,7 @@ function tiled(): MeshStandardMaterial {
       roughness: 1,
     }),
     // Patches of older, darker tiles.
-    { colour: 0.16, rough: 0.12 },
+    { colour: 0.16, rough: 0.12, relief: 0.02 },
   );
 }
 
@@ -134,7 +134,7 @@ export function render(colour?: string): MeshStandardMaterial {
         normalMap: map("plinth", "normal"),
         roughness: 0.85,
       }),
-      { colour: 0.12, rough: 0.1 },
+      { colour: 0.12, rough: 0.1, relief: 0.012 },
     ),
     colour,
   );
@@ -165,7 +165,7 @@ export function lawn(): MeshStandardMaterial {
       roughness: 0.95,
     }),
     // Lusher and thinner stretches, and dry spots.
-    { colour: 0.22, rough: 0.05, loose: true, patches: [1.22, 1.06, 0.72] },
+    { colour: 0.22, rough: 0.05, loose: true, patches: [1.22, 1.06, 0.72], relief: 0.05 },
   );
 }
 
@@ -200,7 +200,7 @@ function paved(name: "pavers" | "asphalt" | "gravel" | "flags", roughness: numbe
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     }),
-    { colour: 0.14, rough: 0.12, loose },
+    { colour: 0.14, rough: 0.12, loose, relief: loose ? 0.02 : 0.008 },
   );
 }
 
