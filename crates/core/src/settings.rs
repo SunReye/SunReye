@@ -141,6 +141,9 @@ pub struct Declared {
     pub values: Option<Vec<f64>>,
     /// A value is a whole number of steps.
     pub step: f64,
+    /// The value is a time of day in minutes since midnight (ADR 5); absent for a number.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub time: bool,
 }
 
 /// The inclusive bounds of a setting's value.
@@ -156,6 +159,7 @@ impl From<&Setting> for Declared {
             range: setting.range().map(|(min, max)| Bounds { min, max }),
             values: setting.values().map(<[f64]>::to_vec),
             step: setting.step(),
+            time: setting.time(),
         }
     }
 }
@@ -354,6 +358,29 @@ pub async fn run(
     };
     applied.failed_step = result.err().map(|failure| failure.step);
     Ok(applied)
+}
+
+/// The value `setting`'s read-back holds on unit `unit`, read through `client`, connecting to
+/// `endpoint` when it has none; `None` for a write-only setting or a read that fails. Nothing is
+/// written.
+pub async fn read(
+    endpoint: &Endpoint,
+    client: &mut Option<Client>,
+    timeout: Duration,
+    unit: u8,
+    setting: &Setting,
+) -> Option<f64> {
+    let mut link = Link {
+        endpoint,
+        client,
+        timeout,
+        unit,
+    };
+    let words = link
+        .read_back(setting.read_back()?, usize::from(setting.width()))
+        .await
+        .ok()?;
+    setting.decode(&words)
 }
 
 /// Stores `before` through `snapshot`, if any: before the write, so a release can restore it

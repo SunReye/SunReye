@@ -1,37 +1,47 @@
+<!--
+  Setup's measurement points (ADR 14), confirm first: the tree proposed from the readings, each point
+  with its live power and the remainder no point measures. One tap accepts it; "Anpassen" lets a point
+  be renamed, moved through a sheet, removed, or added back.
+-->
 <script lang="ts">
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import type { Core, Device, PointDraft, Problem, Values } from "../api/core.ts";
+  import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
-  import PointRow from "./PointRow.svelte";
-  import Refusal from "./Refusal.svelte";
-  import { propose, remove } from "./topology.ts";
+  import AddSheet from "./AddSheet.svelte";
+  import { roleWord } from "./point-look.ts";
+  import PointSheet from "./PointSheet.svelte";
+  import PointTree from "./PointTree.svelte";
+  import TopologyActions from "./TopologyActions.svelte";
+  import { left, move, propose, remove } from "./topology.ts";
 
   let { core, devices, ondone }: { core: Core; devices: readonly Device[]; ondone: () => void } =
     $props();
 
-  const ROLES = new Map([
-    ["pv.power", m.role_pv],
-    ["generator.power", m.role_generator],
-    ["battery.power", m.role_battery],
-    ["load.power", m.role_load],
-    ["backup.power", m.role_backup],
-    ["ev.charge.power", m.role_ev],
-  ]);
-
-  function label(role: string): string {
-    return ROLES.get(role)?.() ?? role;
-  }
-
   let values = $state.raw<Values>();
 
-  /** The admin's tree once they changed the proposal; until then the proposal follows the readings. */
+  /** The tree held still while it is adjusted; until then the proposal follows the readings. */
   let edited = $state.raw<readonly PointDraft[]>();
+
+  let adjusting = $state(false);
+
+  /** The open point, by its claims: a move reorders the points. */
+  let picked = $state.raw<PointDraft["claims"]>();
+
+  let sheet = $state(false);
 
   let refused = $state.raw<Problem>();
 
   const points = $derived(
     edited ??
-      (values === undefined ? undefined : propose(devices, values, m.topology_root(), label)),
+      (values === undefined ? undefined : propose(devices, values, roleWord("grid.power"), roleWord)),
   );
+
+  const unclaimed = $derived(
+    points === undefined || values === undefined ? [] : left(points, devices, values, roleWord),
+  );
+
+  const index = $derived(points?.findIndex(({ claims }) => claims === picked) ?? -1);
 
   $effect(() =>
     core.live((live) => {
@@ -39,10 +49,22 @@
     }),
   );
 
-  function change(index: number, point: Readonly<Partial<PointDraft>>): void {
-    const at = points?.[index];
+  function adjust(): void {
+    haptics.soft();
+    edited = points;
+    adjusting = true;
+  }
 
-    if (points !== undefined && at !== undefined) edited = points.with(index, { ...at, ...point });
+  function open(at: number): void {
+    picked = points?.[at]?.claims;
+    sheet = true;
+  }
+
+  function rename(name: string): void {
+    const point = points?.[index];
+
+    if (points !== undefined && point !== undefined)
+      edited = points.with(index, { ...point, name });
   }
 
   async function save(): Promise<void> {
@@ -53,28 +75,57 @@
 
     refused = "problem" in saved ? saved : undefined;
 
-    if (refused === undefined) ondone();
+    if (refused === undefined) {
+      haptics.success();
+      ondone();
+    }
   }
 </script>
 
-{#if points === undefined}
-  <p role="status">{m.topology_waiting()}</p>
-{:else}
-  <ol>
-    {#each points as point, index (index)}
-      <PointRow
-        {point}
-        number={index + 1}
-        earlier={points.slice(0, index)}
-        onchange={(next) => {
-          change(index, next);
-        }}
-        onremove={() => {
-          edited = remove(points, index);
+<div class="flex flex-col gap-4 p-4">
+  <p class="text-sm text-muted-foreground">
+    {adjusting ? m.topology_adjust_hint() : m.topology_hint()}
+  </p>
+  {#if points === undefined}
+    <p role="status" class="flex items-center gap-2 text-sm text-muted-foreground">
+      <LoaderCircle class="size-4 motion-safe:animate-spin" />
+      {m.topology_waiting()}
+    </p>
+  {/if}
+</div>
+{#if points !== undefined && values !== undefined}
+  <div class="border-y border-border/60 py-1">
+    <PointTree {points} {values} {devices} onedit={adjusting ? open : undefined} />
+    {#if adjusting}
+      <AddSheet
+        points={unclaimed}
+        {devices}
+        onadd={(point) => {
+          edited = [...points, point];
         }}
       />
-    {/each}
-  </ol>
-  <button type="button" onclick={save}>{m.topology_save()}</button>
+    {/if}
+  </div>
+  <TopologyActions
+    {adjusting}
+    {refused}
+    onaccept={save}
+    onadjust={adjust}
+    onreset={() => {
+      edited = undefined;
+      adjusting = false;
+    }}
+  />
+  <PointSheet
+    bind:open={sheet}
+    {points}
+    {index}
+    onrename={rename}
+    onmove={(parent) => {
+      edited = move(points, index, parent);
+    }}
+    onremove={() => {
+      edited = remove(points, index);
+    }}
+  />
 {/if}
-<Refusal {refused} />

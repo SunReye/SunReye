@@ -1,26 +1,33 @@
+<!-- Bought or fed-in prices: the base price, then each band that overrides it on given days and hours. -->
 <script lang="ts">
+  import Eyebrow from "../components/eyebrow.svelte";
   import { m } from "../paraglide/messages.js";
+  import AddRow from "../settings/AddRow.svelte";
   import BandFields from "./BandFields.svelte";
   import { newBand, type ScheduleDraft } from "./draft";
+  import PriceRow from "./PriceRow.svelte";
 
   let { legend, schedule = $bindable() }: { legend: string; schedule: ScheduleDraft } = $props();
-
-  const id = $props.id();
 </script>
 
-<fieldset>
-  <legend>{legend}</legend>
-  <label for="{id}-price">{m.tariff_base_price()}</label>
-  <input id="{id}-price" type="number" step="0.001" required bind:value={schedule.price} />
-  {#each schedule.bands as band, index (band.key)}
-    <BandFields
-      bind:band={schedule.bands[index]!}
-      onremove={() => {
-        schedule.bands = schedule.bands.filter((other) => other !== band);
+<fieldset class="flex min-w-0 flex-col">
+  <Eyebrow element="legend" class="float-left w-full px-4 pt-5 pb-2">{legend}</Eyebrow>
+  <div class="clear-left flex flex-col divide-y divide-border/60 border-y border-border/60">
+    <PriceRow
+      name={m.tariff_base_price()}
+      price={schedule.price}
+      onchange={(price) => {
+        schedule.price = price;
       }}
     />
-  {/each}
-  <button type="button" onclick={() => schedule.bands.push(newBand())}>
-    {m.tariff_band_add()}
-  </button>
+    {#each schedule.bands as band, index (band.key)}
+      <BandFields
+        bind:band={schedule.bands[index]!}
+        onremove={() => {
+          schedule.bands = schedule.bands.filter((other) => other !== band);
+        }}
+      />
+    {/each}
+    <AddRow label={m.tariff_band_add()} onclick={() => schedule.bands.push(newBand())} />
+  </div>
 </fieldset>

@@ -1,8 +1,18 @@
 /// <reference types="bun" />
-import { expect, test } from "bun:test";
-import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Object3D } from "three";
+import { expect, spyOn, test } from "bun:test";
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DataTexture,
+  InstancedMesh,
+  Mesh,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  type Object3D,
+} from "three";
 import type { Geometry } from "./pv.ts";
-import { buildScene, shareColour, stringColour, tint } from "./scene.ts";
+import { buildScene, buildSliced, stringColour, tint } from "./scene.ts";
 
 const house: Geometry = {
   faces: [
@@ -11,8 +21,8 @@ const house: Geometry = {
       corners: [
         [0, 0, 3],
         [10, 0, 3],
-        [10, -8, 3],
-        [0, -8, 3],
+        [10, -8, 5],
+        [0, -8, 5],
       ],
     },
     {
@@ -31,6 +41,13 @@ const house: Geometry = {
   ],
 };
 
+const corners = [
+  [0, -1, 3],
+  [1, -1, 3],
+  [1, -2, 3],
+  [0, -2, 3],
+] as const;
+
 function part(name: string): Object3D {
   const found = buildScene(house).getObjectByName(name);
 
@@ -39,14 +56,26 @@ function part(name: string): Object3D {
   return found;
 }
 
-function colour(name: string): number {
-  const found = part(name);
-
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+function standard(found: Object3D | undefined): MeshStandardMaterial {
   if (!(found instanceof Mesh) || !(found.material instanceof MeshStandardMaterial)) {
-    throw new TypeError(`${name} has no colour`);
+    throw new TypeError("no material");
   }
 
-  return found.material.color.getHex();
+  return found.material;
+}
+
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+function glass(mesh: Object3D | undefined): MeshPhysicalMaterial {
+  if (!(mesh instanceof Mesh) || !(mesh.material instanceof MeshPhysicalMaterial)) {
+    throw new TypeError("no module glass");
+  }
+
+  return mesh.material;
+}
+
+function material(name: string): MeshStandardMaterial {
+  return standard(part(name));
 }
 
 function vertices(name: string): number[][] {
@@ -71,13 +100,56 @@ test("a roof is drawn as triangles with up as y and north as −z", () => {
   const roof = vertices("roof");
 
   expect(roof).toHaveLength(6);
-  expect(roof).toContainEqual([10, 3, 8]);
+  expect(roof).toContainEqual([10, 5, 8]);
   expect(roof).toContainEqual([0, 3, 0]);
 });
 
-test("walls and roofs are drawn apart, so each has its own colour", () => {
+test("walls and roofs are drawn apart, each in its own finish", () => {
   expect(vertices("wall")).toContainEqual([10, 3, 0]);
-  expect(colour("wall")).not.toBe(colour("roof"));
+  expect(material("wall").map).not.toBeNull();
+  expect(material("wall").map).not.toBe(material("roof").map);
+});
+
+test("a flat roof is rendered, a pitched one tiled", () => {
+  const flat: Geometry = {
+    faces: [
+      {
+        surface: "roof",
+        corners: [
+          [0, 0, 3],
+          [10, 0, 3],
+          [10, -8, 3],
+        ],
+      },
+    ],
+    solids: [],
+  };
+
+  const drawn = buildScene(flat).getObjectByName("flat");
+  const triangles: unknown = drawn instanceof Mesh ? drawn.geometry : null;
+
+  const position: unknown =
+    triangles instanceof BufferGeometry ? triangles.getAttribute("position") : null;
+
+  expect(standard(drawn).map).not.toBe(material("roof").map);
+  expect(position instanceof BufferAttribute ? position.count : 0).toBe(3);
+});
+
+test("every map is generated in code: no texture is loaded", () => {
+  const maps = ["map", "normalMap", "roughnessMap", "emissiveMap"] as const;
+  const found: unknown[] = [];
+
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+  buildScene(house, [{ corners, string: 0 }]).traverse((object) => {
+    if (object instanceof Mesh && object.material instanceof MeshStandardMaterial) {
+      const used = object.material;
+
+      found.push(...maps.flatMap((key) => (used[key] === null ? [] : [used[key]])));
+    }
+  });
+
+  expect(found.length).toBeGreaterThan(0);
+  expect(found.every((map) => map instanceof DataTexture)).toBe(true);
 });
 
 test("a crown is drawn at its centre and a chimney stands on its base", () => {
@@ -87,29 +159,33 @@ test("a crown is drawn at its centre and a chimney stands on its base", () => {
   expect(chimney?.position.toArray()).toEqual([3, 4.5, 2]);
 });
 
-test("each placed module is drawn in its string's colour, unassigned ones in grey", () => {
-  const corners = [
-    [0, -1, 3],
-    [1, -1, 3],
-    [1, -2, 3],
-    [0, -2, 3],
-  ] as const;
+test("a crown is leaves and the trunk beneath it bark; a lone pole is neither", () => {
+  const tree: Geometry = {
+    faces: [],
+    solids: [
+      { kind: "cylinder", base: [0, 0, 0], radius: 0.3, height: 4 },
+      { kind: "sphere", centre: [0, 0, 5], radius: 2 },
+      { kind: "cylinder", base: [6, 0, 0], radius: 0.1, height: 6 },
+    ],
+  };
 
+  const [trunk, crown, pole] = buildScene(tree).getObjectsByProperty("name", "solid");
+
+  expect(crown).toBeInstanceOf(InstancedMesh);
+  expect(standard(trunk).map).not.toBe(standard(pole).map);
+});
+
+test("modules are full black under anti-reflective glass; the builder tells strings by glow", () => {
   const [painted, unassigned] = buildScene(house, [
     { corners, string: 0 },
     { corners },
   ]).getObjectsByProperty("name", "module");
 
-  expect(
-    painted instanceof Mesh && painted.material instanceof MeshStandardMaterial
-      ? painted.material.color.getHex()
-      : null,
-  ).toBe(stringColour(0));
-  expect(
-    unassigned instanceof Mesh && unassigned.material instanceof MeshStandardMaterial
-      ? unassigned.material.color.getHex()
-      : null,
-  ).toBe(stringColour(null));
+  // Plain glass reflects at a specular intensity of 1.
+  expect(glass(painted).specularIntensity).toBeLessThanOrEqual(0.5);
+  expect(glass(painted).color.getHex()).toBe(0xffffff);
+  expect(glass(painted).emissive.getHex()).toBe(new Color(stringColour(0)).getHex());
+  expect(glass(unassigned).emissive.getHex()).toBe(new Color(stringColour(null)).getHex());
   expect(stringColour(null)).not.toBe(stringColour(0));
 });
 
@@ -121,29 +197,72 @@ test("each equipment marker is drawn where the crate hung it", () => {
   expect(marker?.position.toArray()).toEqual([2, 1.5, 8.1]);
 });
 
-test("live, each module is tinted by its string's share of peak, from dim to full sun", () => {
-  const corners = [
-    [0, -1, 3],
-    [1, -1, 3],
-    [1, -2, 3],
-    [0, -2, 3],
-  ] as const;
-
+test("live, each module's cells glow in the solar colour by its string's share of peak", () => {
   const group = buildScene(house, [{ corners, string: 0 }, { corners, string: 1 }, { corners }]);
+  const solar = 0xffa63a;
 
-  tint(group, [1, 0, null]);
+  tint(group, [1, 0.5, null], { colour: solar, daylight: 1 });
 
-  const colours: (number | null)[] = [];
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+  const glows = group.getObjectsByProperty("name", "module").map((mesh) => glass(mesh));
 
-  for (const mesh of group.getObjectsByProperty("name", "module")) {
-    colours.push(
-      mesh instanceof Mesh && mesh.material instanceof MeshStandardMaterial
-        ? mesh.material.color.getHex()
-        : null,
-    );
+  expect(glows[0]?.emissive.getHex()).toBe(new Color(solar).getHex());
+  expect(glows[0]?.emissiveIntensity).toBeGreaterThan(glows[1]?.emissiveIntensity ?? 1);
+  expect(glows[1]?.emissiveIntensity).toBeGreaterThan(0);
+  expect(glows[2]?.emissiveIntensity).toBe(0);
+
+  tint(group, [1, 0.5, null], { colour: solar, daylight: 0 });
+
+  expect(glows[0]?.emissiveIntensity).toBe(0);
+});
+
+/** Each part's name, in order. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's group.
+const names = (group: Object3D): string[] => group.children.map((child) => child.name);
+
+test("built in slices, the scene waits at each yield between sections and ends as the whole build", async () => {
+  const yields: (() => void)[] = [];
+  let done = false;
+
+  const building = buildSliced(house, [], async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    yields.push(resolve);
+    await promise;
+  });
+
+  void (async () => {
+    await building;
+    done = true;
+  })();
+
+  /** Lets go of each yield in turn; the build ends only after the last. */
+  async function release(seen: number): Promise<number> {
+    await Bun.sleep(0);
+
+    if (done) return seen;
+
+    expect(yields).toHaveLength(seen + 1);
+    yields.at(-1)?.();
+
+    return release(seen + 1);
   }
 
-  expect(colours).toEqual([shareColour(1), shareColour(0), stringColour(null)]);
-  expect(shareColour(1)).not.toBe(shareColour(0));
-  expect(shareColour(0.5)).not.toBe(shareColour(0));
+  expect(await release(0)).toBeGreaterThan(2);
+
+  expect(names(await building)).toEqual(names(buildScene(house)));
+});
+
+test("a section with nothing to draw adds nothing and logs nothing", async () => {
+  const logged = spyOn(console, "error").mockImplementation(() => {});
+
+  try {
+    // The house has no hedge, ground, fence, module or marker.
+    buildScene(house);
+    await buildSliced(house, [], async () => {});
+
+    expect(logged).not.toHaveBeenCalled();
+  } finally {
+    logged.mockRestore();
+  }
 });

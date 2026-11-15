@@ -1,10 +1,14 @@
 // What the first run configures (ADR 9, 11): the admin password, sign-in, the plant timezone and
-// location, devices and the topology.
+// location, devices and the topology; and who else signs in afterwards.
+import { access, type Access } from "./access";
 import { done, refusal, type Client, type Problem } from "./client";
 import type { Device } from "./core";
 import type { components } from "./schema";
 
 export type Location = components["schemas"]["Location"];
+
+/** A timezone by IANA name. */
+export type Zone = components["schemas"]["Zone"];
 
 /** What the setup scan found: each endpoint with the devices proposed behind it (ADR 6). */
 export type ScanReport = components["schemas"]["ScanReport"];
@@ -20,7 +24,15 @@ export type Reach = Readonly<
 
 export type Connection = components["schemas"]["Connection"];
 
+/** A connection as the admin enters it: its reach and credentials by name, `null` removing one (ADR 7). */
+export type ConnectionDraft = Reach & {
+  readonly secrets?: Readonly<Record<string, string | null>>;
+};
+
 export type DeviceDraft = components["schemas"]["DeviceDraft"];
+
+/** A profile the core serves, as a device is added with it (ADR 8). */
+export type Listing = components["schemas"]["Listing"];
 
 export type Claim = Readonly<components["schemas"]["Claim"]>;
 
@@ -38,13 +50,17 @@ export interface TopologyChange {
 
 export type Topology = components["schemas"]["Topology"];
 
-export interface Setup {
+export type { CreatedToken, Scope, Token, Viewer } from "./access";
+
+export interface Setup extends Access {
   /** Undefined while signed in, Home Assistant's ingress too; else `auth.setup` or `auth.required`. */
   session(): Promise<Problem | undefined>;
   /** Sets the admin password on the first run. */
   setPassword(password: string): Promise<Problem | undefined>;
   /** Signs the admin in, or a viewer by `name`. */
   signIn(password: string, name?: string): Promise<Problem | undefined>;
+  /** The plant timezone, which days are cut in (ADR 3). */
+  timezone(): Promise<Zone | Problem>;
   /** Sets the plant timezone by IANA name; admin only. */
   setTimezone(name: string): Promise<Problem | undefined>;
   /** Sets the plant's location; admin only. */
@@ -52,9 +68,21 @@ export interface Setup {
   /** Scans the local network, or `subnet`, for devices; admin only. */
   scan(subnet?: string): Promise<ScanReport | Problem>;
   /** Adds a connection; admin only. */
-  addConnection(reach: Reach): Promise<Connection | Problem>;
+  addConnection(draft: ConnectionDraft): Promise<Connection | Problem>;
+  /** Changes a connection; an absent secret is kept; admin only. */
+  changeConnection(id: number, draft: ConnectionDraft): Promise<Connection | Problem>;
+  /** Removes a connection no device uses; admin only. */
+  removeConnection(id: number): Promise<Problem | undefined>;
+  /** Every profile the core serves, bundled and fetched alike; admin only. */
+  profiles(): Promise<readonly Listing[] | Problem>;
   /** Adds a device behind a connection; admin only. */
   addDevice(draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
+  /** Changes a device, such as its writes switch (ADR 7); admin only. */
+  changeDevice(id: number, draft: Readonly<DeviceDraft>): Promise<Device | Problem>;
+  /** Removes a device and stops polling it; its history stays (ADR 3); admin only. */
+  removeDevice(id: number): Promise<Problem | undefined>;
+  /** The topology in force now; a viewer reads it too. */
+  topology(): Promise<Topology | Problem>;
   /** Changes the topology from an instant on; admin only. */
   changeTopology(change: TopologyChange): Promise<Topology | Problem>;
 }
@@ -78,37 +106,99 @@ export function setup(client: Client): Setup {
 
       return done(error, response);
     },
+    ...zone(client),
     ...plant(client),
+    ...topology(client),
+    ...devices(client),
+    ...connections(client),
+    ...access(client),
   };
 }
 
-/** The plant's configuration. */
-function plant(client: Client): Omit<Setup, "session" | "setPassword" | "signIn"> {
+/** The plant timezone. */
+function zone(client: Client): Pick<Setup, "timezone" | "setTimezone"> {
   return {
+    timezone: async () => {
+      const { data, error, response } = await client.GET("/api/v1/timezone");
+
+      return data ?? refusal(error, response.status);
+    },
     setTimezone: async (name) => {
       const { error, response } = await client.PUT("/api/v1/timezone", { body: { name } });
 
       return done(error, response);
     },
-    setLocation: async (location) => {
-      const { data, error, response } = await client.PUT("/api/v1/location", { body: location });
+  };
+}
+
+/** The devices behind the connections. */
+function devices(
+  client: Client,
+): Pick<Setup, "profiles" | "addDevice" | "changeDevice" | "removeDevice"> {
+  return {
+    profiles: async () => {
+      const { data, error, response } = await client.GET("/api/v1/profiles");
+
+      return data === undefined ? refusal(error ?? "", response.status) : data.profiles;
+    },
+    addDevice: async (draft) => {
+      const { data, error, response } = await client.POST("/api/v1/devices", { body: draft });
 
       return data ?? refusal(error, response.status);
     },
-    scan: async (subnet) => {
-      const { data, error, response } = await client.POST("/api/v1/scan", {
-        body: subnet === undefined ? {} : { subnet },
+    changeDevice: async (id, draft) => {
+      const { data, error, response } = await client.PUT("/api/v1/devices/{id}", {
+        params: { path: { id } },
+        body: draft,
       });
 
       return data ?? refusal(error, response.status);
     },
-    addConnection: async (reach) => {
-      const { data, error, response } = await client.POST("/api/v1/connections", { body: reach });
+    removeDevice: async (id) => {
+      const { error, response } = await client.DELETE("/api/v1/devices/{id}", {
+        params: { path: { id } },
+      });
+
+      return done(error, response);
+    },
+  };
+}
+
+/** Where the core reaches its devices, with their credentials (ADR 7). */
+function connections(
+  client: Client,
+): Pick<Setup, "addConnection" | "changeConnection" | "removeConnection"> {
+  return {
+    addConnection: async (draft) => {
+      const { data, error, response } = await client.POST("/api/v1/connections", {
+        body: draft,
+      });
 
       return data ?? refusal(error, response.status);
     },
-    addDevice: async (draft) => {
-      const { data, error, response } = await client.POST("/api/v1/devices", { body: draft });
+    changeConnection: async (id, draft) => {
+      const { data, error, response } = await client.PUT("/api/v1/connections/{id}", {
+        params: { path: { id } },
+        body: draft,
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+    removeConnection: async (id) => {
+      const { error, response } = await client.DELETE("/api/v1/connections/{id}", {
+        params: { path: { id } },
+      });
+
+      return done(error, response);
+    },
+  };
+}
+
+/** The plant's measurement points (ADR 14). */
+function topology(client: Client): Pick<Setup, "topology" | "changeTopology"> {
+  return {
+    topology: async () => {
+      const { data, error, response } = await client.GET("/api/v1/topology");
 
       return data ?? refusal(error, response.status);
     },
@@ -123,6 +213,43 @@ function plant(client: Client): Omit<Setup, "session" | "setPassword" | "signIn"
             claims: [...claims],
           })),
         },
+      });
+
+      return data ?? refusal(error, response.status);
+    },
+  };
+}
+
+/** The plant's configuration. */
+function plant(
+  client: Client,
+): Omit<
+  Setup,
+  | keyof Access
+  | "session"
+  | "setPassword"
+  | "signIn"
+  | "timezone"
+  | "setTimezone"
+  | "profiles"
+  | "addDevice"
+  | "changeDevice"
+  | "removeDevice"
+  | "addConnection"
+  | "changeConnection"
+  | "removeConnection"
+  | "topology"
+  | "changeTopology"
+> {
+  return {
+    setLocation: async (location) => {
+      const { data, error, response } = await client.PUT("/api/v1/location", { body: location });
+
+      return data ?? refusal(error, response.status);
+    },
+    scan: async (subnet) => {
+      const { data, error, response } = await client.POST("/api/v1/scan", {
+        body: subnet === undefined ? {} : { subnet },
       });
 
       return data ?? refusal(error, response.status);

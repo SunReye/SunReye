@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { expect, test } from "bun:test";
-import { loadPv, type Cell, type Scene } from "./pv.ts";
+import { loadPv, sunAt, sunward, type Cell, type Scene } from "./pv.ts";
 
 // The release build the gate and the SPA build produce (crates/pv-wasm).
 const wasm = new URL(
@@ -41,6 +41,74 @@ test("a tree reaches the browser as a trunk under a sphere crown", () => {
     { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 8 },
     { kind: "sphere", centre: [-4, 0, 8], radius: 2 },
   ]);
+});
+
+test("a conifer reaches the browser as a trunk under a cone, a hedge as faces drawn as hedge", () => {
+  const garden: Scene = {
+    north: 0,
+    blocks: [],
+    obstacles: [
+      { kind: "tree", x: -4, z: 0, radius: 2, height: 10, crown: "conifer" },
+      { kind: "hedge", x: 0, z: 5, length: 6, depth: 0.8, height: 1.8, rotation: 0 },
+    ],
+  };
+
+  const { faces, solids } = pv.geometry(garden);
+
+  expect(solids).toEqual([
+    { kind: "cylinder", base: [-4, 0, 0], radius: 0.2, height: 2 },
+    { kind: "cone", base: [-4, 0, 2], radius: 2, height: 8 },
+  ]);
+  expect(faces.map(({ surface }) => surface)).toEqual(Array.from({ length: 5 }, () => "hedge"));
+});
+
+test("ground surfaces lie on the ground and fences run through their points; refused, none", () => {
+  const surrounded: Scene = {
+    ...house,
+    surfaces: [{ x: 0, z: 10, width: 4, depth: 2, rotation: 0, finish: "driveway" }],
+    fences: [
+      {
+        points: [
+          { x: 0, z: 12 },
+          { x: 6, z: 12 },
+        ],
+        height: 1.2,
+        finish: "metal",
+      },
+    ],
+  };
+
+  const { ground, fences } = pv.geometry(surrounded);
+
+  expect(ground).toEqual([
+    {
+      finish: "driveway",
+      corners: [
+        [0, -10, 0],
+        [4, -10, 0],
+        [4, -12, 0],
+        [0, -12, 0],
+      ],
+    },
+  ]);
+  expect(fences).toEqual([
+    {
+      finish: "metal",
+      height: 1.2,
+      points: [
+        [0, -12, 0],
+        [6, -12, 0],
+      ],
+    },
+  ]);
+
+  const refused = pv.geometry({
+    ...surrounded,
+    surfaces: [{ x: 0, z: 0, width: 0, depth: 2, rotation: 0, finish: "gravel" }],
+    fences: [{ points: [{ x: 0, z: 0 }], height: 1, finish: "wall" }],
+  });
+
+  expect([refused.ground, refused.fences]).toEqual([null, null]);
 });
 
 test("an equipment marker hangs on its wall with its label above the ridge", () => {
@@ -95,7 +163,13 @@ test("the crate lays out a south face's cells: 8 columns and 2 rows of portrait 
 test("a module beyond the setback comes back misplaced", () => {
   const { misplaced } = pv.modules(gridded([{ row: 2, column: 0, optimized: false }]), sizes);
 
-  expect(misplaced).toEqual({ kind: "setback", grid: 0, row: 2, column: 0 });
+  // Row 2 starts 0.3 + 2 × 1.742 m up the slope and reaches past the face's 4.883 m.
+  expect(misplaced).toMatchObject({ kind: "setback", grid: 0, row: 2, column: 0 });
+  const area = misplaced && "area" in misplaced ? (misplaced.area?.flat() ?? []) : [];
+
+  expect(area.map((metres) => Math.round(metres * 1000) / 1000)).toEqual([
+    0.3, 3.784, 1.434, 5.506,
+  ]);
 });
 
 test("a carport has posts for walls and a car stands at its place's centre, nose forward", () => {
@@ -185,4 +259,37 @@ test("a clear sky lights a painted south string over one entered by form facing 
   expect(south).toBeGreaterThan(north);
   expect(south).toBeLessThan(4 * 400);
   expect(north).toBeGreaterThan(0);
+});
+
+test("each string's open-circuit voltage at −10 °C scales its modules' Voc by the coefficient", () => {
+  // 16 × 41 V × (1 + 0.27 %/K × 35 K), worked by hand.
+  const [volts] = pv.coldVoltages([datasheet], [wired(16, 0)]);
+
+  expect(volts).toBeCloseTo(717.992, 3);
+  // An unknown module type has no voltage.
+  expect(pv.coldVoltages([], [wired(16, 0)])).toEqual([null]);
+});
+
+test("the sun due south at 60° from the zenith shines from the south, up", () => {
+  const [east, north, up] = sunward({ zenith: 60, azimuth: 0 });
+
+  expect(east).toBeCloseTo(0, 9);
+  expect(north).toBeCloseTo(-Math.sqrt(3) / 2, 9);
+  expect(up).toBeCloseTo(0.5, 9);
+});
+
+test("the sun stands where the plant's location and the time put it", () => {
+  const berlin = { latitude: 52.52, longitude: 13.4 };
+  // Solar noon in Berlin on the June solstice: about 11:07 UTC, 61° high.
+  const [east, north, up] = sunAt(pv, berlin, Date.parse("2026-06-21T11:07:00Z"));
+
+  expect(Math.abs(east)).toBeLessThan(0.02);
+  expect(north).toBeLessThan(0);
+  expect((Math.asin(up) * 180) / Math.PI).toBeCloseTo(61, 0);
+
+  // Midnight: below the horizon, in the north.
+  const [, midnightNorth, midnightUp] = sunAt(pv, berlin, Date.parse("2026-06-21T23:07:00Z"));
+
+  expect(midnightUp).toBeLessThan(0);
+  expect(midnightNorth).toBeGreaterThan(0);
 });

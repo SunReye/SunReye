@@ -2,7 +2,7 @@
   "profiles": [
     {
       "id": "deye-sg01hp3",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "schema": 1,
       "requires": [
         "modbus",
@@ -18,9 +18,10 @@
         "kind",
         "storage",
         "unit",
-        "variants"
+        "variants",
+        "register-enum"
       ],
-      "sha256": "265d5c79ad53f0cd20161fa99e192b6c8c8aa8412fa28d955e11274d96d42f5e",
+      "sha256": "28e458d175ace133f3f219979c208bc4b74acddc40f6d2a9f2fb6e54cd949f15",
       "url": "deye-sg01hp3.json",
       "variants": [
         {
@@ -59,7 +60,7 @@
     },
     {
       "id": "deye-sg05lp3",
-      "version": "2.2.11",
+      "version": "2.2.12",
       "schema": 1,
       "requires": [
         "modbus",
@@ -75,9 +76,13 @@
         "kind",
         "storage",
         "unit",
-        "variants"
+        "variants",
+        "register-enum",
+        "rmw",
+        "verified",
+        "time"
       ],
-      "sha256": "47fcf1a9eb8cd0694fd59a67f0eda080b385c297ced3cf305c9a1b015f1925fc",
+      "sha256": "dfffb30827a09f8e8892f2ac508dff3617b40591b430db5f7af4b83bafddf69f",
       "url": "deye-sg05lp3.json",
       "variants": [
         {
@@ -124,7 +129,7 @@
     },
     {
       "id": "evcc",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "schema": 1,
       "requires": [
         "mqtt",
@@ -133,7 +138,7 @@
         "precondition",
         "text-enum"
       ],
-      "sha256": "d17ceeb42f3c72266e1c72177f7efe82b671163212ee57c209827e1d277010f2",
+      "sha256": "aa13b6ed44453e8ed5634e69d07fcad161190ffcce3f7383bb82d70fe84f87f9",
       "url": "evcc.json"
     },
     {

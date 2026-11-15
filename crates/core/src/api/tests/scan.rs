@@ -31,13 +31,13 @@ fn deye(unit: u8) -> Value {
     }])
 }
 
-/// Registers 0 to 21 of a Deye three-phase hybrid, from Deye's three-phase protocol V105: its
-/// device type in 0, `0x0500` for a low-voltage battery, and its rated power in 20 and 21, in
-/// 0.1 W, low word first.
+/// Registers 0 to 21 of a Deye three-phase hybrid for a low-voltage battery: its device type in 0,
+/// `0x0005` as a SUN-15K-SG05LP3 answered it (read 2026-11-13; Deye's protocol V105 writes it
+/// `0x0500`), and its rated power in 20 and 21, in 0.1 W, low word first.
 fn low_voltage_hybrid(watts: u32) -> Vec<u16> {
     let tenths = watts * 10;
     let mut map = vec![0; 22];
-    map[0] = 0x0500;
+    map[0] = 0x0005;
     map[20] = u16::try_from(tenths & 0xFFFF).unwrap();
     map[21] = u16::try_from(tenths >> 16).unwrap();
     map

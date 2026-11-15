@@ -60,6 +60,11 @@ fn live_values_and_history_are_read_and_configuration_is_admin() {
             "/api/v1/devices/{id}/settings/{key}",
             Access::Admin,
         ),
+        (
+            Method::GET,
+            "/api/v1/devices/{id}/settings/{key}",
+            Access::Admin,
+        ),
         (Method::POST, "/api/v1/login", Access::Public),
     ] {
         assert_eq!(access(&method, path), Some(expected), "{method} {path}");

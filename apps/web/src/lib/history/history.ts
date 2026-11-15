@@ -1,90 +1,83 @@
-// What the history and statistics screen reads (ADR 11): the core picks history's tier and cuts
-// statistics in the plant timezone, so the SPA only chooses spans back from now.
-import type { Core, History, Period, Statistics, Values } from "../api/core.ts";
-import { PLANT } from "../live/labels.ts";
+// One series' rollups over a range (ADR 3, 9): a band reads a power's energy or any other series'
+// mean from the core's hourly or daily rollups, never by integrating a history.
+import type { Core } from "../api/core.ts";
+import { grainOf, t0Of, t1Of, type Range } from "../range/range.ts";
 
-export type Figures = Statistics["points"][number];
+const H = 3_600_000;
 
-/** One device and the series it publishes, sorted. */
-export interface Choice {
-  readonly device: number;
-  readonly series: readonly string[];
+/** The longest read of each period the core serves (ADR 9), less a margin. */
+const PIECE = { hour: 1400 * H, day: 1400 * 24 * H } as const;
+
+/** An hour's or day's rollup, in ms since the epoch. */
+export interface Rolled {
+  readonly start: number;
+  readonly end: number;
+  /** The unit times hours: Wh for a power. */
+  readonly integral: number;
+  readonly mean: number;
+  /** How long it had a value, in ms. */
+  readonly covered: number;
 }
 
-/** Each live device and its series: the plant first, then by id. */
-export function choices(devices: Values["devices"]): Choice[] {
-  const ids = Object.keys(devices)
-    .map(Number)
-    .toSorted((a, b) => rank(a) - rank(b) || a - b);
+export type RollupPeriod = "hour" | "day";
 
-  return ids.map((device) => ({
-    device,
-    series: Object.keys(devices[device] ?? {}).toSorted((a, b) => a.localeCompare(b)),
-  }));
-}
+/** A power series is charted as its energy; any other as its mean. */
+export const isPower = (series: string): boolean => /\.power(\[\d+\])?$/u.test(series);
 
-function rank(device: number): number {
-  return String(device) === PLANT ? 0 : 1;
-}
+/** Whole days read day rollups; hour bands, or a range cut inside a day, hourly ones. */
+export const periodOf = (r: Range): RollupPeriod =>
+  grainOf(r) === "hour" || t0Of(r) % 24 !== 0 || t1Of(r) % 24 !== 0 ? "hour" : "day";
 
-/** The history chart's spans, in days back from now. */
-const SPANS = { day: 1, week: 7, month: 30, year: 365 } as const;
-
-export type Span = keyof typeof SPANS;
-
-/** How far back each period's statistics reach, in days: a month of days, a quarter of weeks. */
-const LOOKBACK: Readonly<Record<Period, number>> = { day: 31, week: 84, month: 365 };
-
-const DAY_MS = 86_400_000;
-
-/** One line point, as the shared power chart draws it. */
-export interface Row {
-  readonly time: Date;
-  readonly power: number;
-  readonly series: string;
-}
-
-/** The series' points over the span up to now, at the tier the core picks (ADR 9). */
-export async function historyRows(
-  core: Readonly<Pick<Core, "history">>,
-  device: number,
-  series: string,
-  span: Span,
-): Promise<Row[]> {
-  const to = new Date();
-  const from = new Date(to.getTime() - SPANS[span] * DAY_MS);
-  const history = await core.history(device, series, from, to);
-
-  return "points" in history
-    ? history.points.map((p: Readonly<History["points"][number]>) => ({
-        time: new Date(p.start),
-        power: p.mean,
-        series,
-      }))
-    : [];
-}
-
-/** Each period's figures up to now, cut by the core in the plant timezone (ADR 3). */
-export async function periodFigures(
+/** The series' rollups starting from `from` to before `to`, read in pieces the core serves. */
+export async function rollups(
   core: Readonly<Pick<Core, "statistics">>,
   device: number,
   series: string,
-  period: Period,
-): Promise<Figures[]> {
-  const to = new Date();
-  const from = new Date(to.getTime() - LOOKBACK[period] * DAY_MS);
-  const read = await core.statistics(device, series, period, from, to);
+  period: RollupPeriod,
+  from: Readonly<Date>,
+  to: Readonly<Date>,
+): Promise<Rolled[]> {
+  const pieces: (readonly [number, number])[] = [];
 
-  return "points" in read ? read.points : [];
+  for (let a = from.getTime(); a < to.getTime(); a += PIECE[period])
+    pieces.push([a, Math.min(to.getTime(), a + PIECE[period])]);
+
+  const reads = await Promise.all(
+    pieces.map((p) => core.statistics(device, series, period, new Date(p[0]), new Date(p[1]))),
+  );
+
+  const out: Rolled[] = [];
+
+  for (const read of reads)
+    if ("points" in read)
+      for (const p of read.points)
+        out.push({
+          start: Date.parse(p.start),
+          end: Date.parse(p.end),
+          integral: p.integral ?? 0,
+          mean: p.mean ?? 0,
+          covered: (p.hours ?? 0) * H,
+        });
+
+  return out;
 }
 
-/** A period's energy in kWh: a counter's delta, or a power's integral; null for anything else. */
-export function energy(series: string, figures: Readonly<Figures>): number | null {
-  const role = series.replace(/\[\d+\]$/u, "");
-  const delta = figures.delta ?? null;
-  const integral = figures.integral ?? null;
+/**
+ * A band's figure from the rollups starting in [from, to): a power's energy in kWh, any other
+ * series' mean weighted by the time each was read.
+ */
+export function bandFigure(series: string, rolled: readonly Rolled[], from: number, to: number) {
+  let [integral, weighted, covered] = [0, 0, 0];
 
-  if (delta !== null) return role.endsWith(".total") || role === "ev.session.energy" ? delta : null;
+  for (const r of rolled)
+    if (r.start >= from && r.start < to)
+      [integral, weighted, covered] = [
+        integral + r.integral,
+        weighted + r.mean * r.covered,
+        covered + r.covered,
+      ];
 
-  return role.endsWith(".power") && integral !== null ? integral / 1000 : null;
+  if (isPower(series)) return { value: integral / 1000, covered };
+
+  return { value: covered > 0 ? weighted / covered : 0, covered };
 }

@@ -21,7 +21,7 @@ use tokio::sync::{Mutex, watch};
 use utoipa::ToSchema;
 
 use crate::api::{Code, INTERNAL, Problem, internal};
-use crate::bus::{Bus, DeviceId};
+use crate::bus::{Bus, DeviceId, Series};
 use crate::changes::{Action, Entry, Subject};
 use crate::endpoint::{self, Task};
 use crate::http;
@@ -279,6 +279,8 @@ struct Polled {
 #[derive(Debug, Clone)]
 pub struct Writable {
     pub id: u32,
+    /// The series its profile publishes, extras left out, in the profile's order.
+    pub series: Vec<String>,
     pub writes: bool,
     pub settings: Vec<(Setting, Enable)>,
 }
@@ -344,6 +346,17 @@ impl std::fmt::Debug for Devices {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Devices").finish_non_exhaustive()
     }
+}
+
+/// Setting `key` of `profile`.
+fn declared<'a>(profile: &'a Profile, key: &str) -> Result<&'a Setting, settings::Refusal> {
+    profile.setting(key).ok_or_else(|| {
+        if profile.quantities().iter().any(|q| q.key == key) {
+            settings::Refusal::ReadOnly
+        } else {
+            settings::Refusal::Unknown
+        }
+    })
 }
 
 /// Every registered device, by id, without starting any: for the commands beside the core.
@@ -439,7 +452,7 @@ impl Devices {
         self.database.run(store::devices).await
     }
 
-    /// Every device with its writes switch and its settings, by id.
+    /// Every device with its series, its writes switch and its settings, by id.
     ///
     /// # Errors
     /// The file cannot be read.
@@ -456,6 +469,7 @@ impl Devices {
             }
             writable.push(Writable {
                 id: device.id,
+                series: published(&profile),
                 writes: device.draft.writes,
                 settings,
             });
@@ -477,18 +491,46 @@ impl Devices {
     ) -> Result<(), Problem> {
         let device = self.device(id).await?;
         let profile = self.profile(&device.draft)?;
-        let fingerprint = match profile.setting(&key) {
-            Some(setting) => enable::fingerprint(setting),
-            None if profile.quantities().iter().any(|q| q.key == key) => {
-                return Err(settings::Refusal::ReadOnly.into());
-            }
-            None => return Err(settings::Refusal::Unknown.into()),
-        };
+        let fingerprint = enable::fingerprint(declared(&profile, &key)?);
         let fingerprint = on.then_some(fingerprint);
         self.database
             .run(move |db| enable::set(db, id, &key, fingerprint.as_deref(), changed))
             .await
             .map_err(internal)
+    }
+
+    /// The current value of setting `key` of device `id` (ADR 7), read through its endpoint task or
+    /// from its broker's retained state; `None` when it cannot be read or is write-only. A snapshot
+    /// toggle reads 1 while its target holds the locked value. Nothing is written or logged.
+    ///
+    /// # Errors
+    /// The device or setting is unknown or read-only, or the file cannot be read.
+    pub async fn read_setting(&self, id: u32, key: &str) -> Result<Option<f64>, Problem> {
+        let running = self.running.lock().await;
+        let device = self.device(id).await?;
+        let profile = self.profile(&device.draft)?;
+        let setting = declared(&profile, key)?;
+        let Some(toggle) = setting.toggle() else {
+            return Ok(self.read(&running, &device, setting.clone()).await);
+        };
+        let target = profile.setting(&toggle.target).ok_or(INTERNAL)?;
+        let locked = target.encode(toggle.locked);
+        let value = self.read(&running, &device, target.clone()).await;
+        drop(running);
+        Ok(value.map(|v| f64::from(u8::from(target.encode(v) == locked))))
+    }
+
+    /// Reads `setting` of `device` through its endpoint task, or else its broker.
+    async fn read(&self, running: &[Running], device: &Device, setting: Setting) -> Option<f64> {
+        let id = device.id;
+        let task = running
+            .iter()
+            .find(|r| r.devices.iter().any(|d| d.device.id == id))
+            .map(|r| &r.task);
+        match task {
+            Some(task) => task.read(device.draft.unit, setting).await,
+            None => publish::read(&self.writer(id)?, &setting),
+        }
     }
 
     /// Whether `setting` of `device` may be written, as far as trust goes.
@@ -1129,6 +1171,25 @@ fn by_endpoint(polled: Vec<Polled>) -> Vec<(Endpoint, Vec<Polled>)> {
         }
     }
     grouped
+}
+
+/// Each series `profile` publishes once, extras (ADR 4) left out, in its order.
+fn published(profile: &Profile) -> Vec<String> {
+    let mut series: Vec<String> = Vec::new();
+    for quantity in profile.quantities() {
+        if quantity.role.starts_with("extra.") {
+            continue;
+        }
+        let name = Series {
+            role: quantity.role.clone(),
+            index: quantity.index,
+        }
+        .to_string();
+        if !series.contains(&name) {
+            series.push(name);
+        }
+    }
+    series
 }
 
 /// Strings may be wired to a device whose profile declares an inverter's inputs or reads PV.

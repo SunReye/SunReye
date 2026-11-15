@@ -28,14 +28,23 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::GET, "/api/v1/capabilities", Read),
     (Method::GET, "/api/v1/devices/{id}/history", Read),
     (Method::GET, "/api/v1/devices/{id}/statistics", Read),
+    // History folded, as statistics and costs are (ADR 9).
+    (Method::GET, "/api/v1/records", Read),
+    (Method::GET, "/api/v1/battery/capacity", Read),
     (Method::GET, "/api/v1/devices/{id}/forecasts", Read),
     // History of the plant's points (ADR 14).
     (Method::GET, "/api/v1/balance", Read),
+    // The points the house sheet names its consumers by (ADR 14, 21).
+    (Method::GET, "/api/v1/topology", Read),
     // History of the `cost.*` rates; no investment (ADR 12).
     (Method::GET, "/api/v1/costs", Read),
+    // The zone history's days are cut in, so a viewer's "today" is the plant's (ADR 3).
+    (Method::GET, "/api/v1/timezone", Read),
     // The scene viewers see read-only (ADR 20).
     (Method::GET, "/api/v1/layout", Read),
     (Method::GET, "/api/v1/module-types", Read),
+    // The backdrop's colour, never the coordinates it comes from (ADR 21).
+    (Method::GET, "/api/v1/sun-tint", Read),
     // Measured against the model, as history; no location (ADR 20).
     (Method::GET, "/api/v1/corrections", Read),
     // Uploaded car bodies the scene names.
@@ -43,6 +52,8 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/car-bodies", Admin),
     (Method::PUT, "/api/v1/layout", Admin),
     (Method::POST, "/api/v1/module-types", Admin),
+    // The admin copies a module type from it (ADR 17).
+    (Method::GET, "/api/v1/module-catalogue", Admin),
     (Method::GET, "/api/v1/connections", Admin),
     (Method::POST, "/api/v1/connections", Admin),
     (Method::PUT, "/api/v1/connections/{id}", Admin),
@@ -51,6 +62,7 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/devices", Admin),
     (Method::PUT, "/api/v1/devices/{id}", Admin),
     (Method::DELETE, "/api/v1/devices/{id}", Admin),
+    (Method::GET, "/api/v1/devices/{id}/settings/{key}", Admin),
     (Method::PUT, "/api/v1/devices/{id}/settings/{key}", Admin),
     (
         Method::PUT,
@@ -73,14 +85,12 @@ const ROUTES: &[(Method, &str, Access)] = &[
     (Method::POST, "/api/v1/scan", Admin),
     (Method::GET, "/api/v1/location", Admin),
     (Method::PUT, "/api/v1/location", Admin),
-    (Method::GET, "/api/v1/timezone", Admin),
     (Method::PUT, "/api/v1/timezone", Admin),
     (Method::GET, "/api/v1/retention", Admin),
     (Method::PUT, "/api/v1/retention", Admin),
     (Method::GET, "/api/v1/spot-prices", Admin),
     (Method::PUT, "/api/v1/spot-prices", Admin),
     (Method::GET, "/api/v1/changes", Admin),
-    (Method::GET, "/api/v1/topology", Admin),
     (Method::PUT, "/api/v1/topology", Admin),
     (Method::GET, "/api/v1/tariff", Admin),
     (Method::PUT, "/api/v1/tariff", Admin),
@@ -89,6 +99,7 @@ const ROUTES: &[(Method, &str, Access)] = &[
     // Payback names the investment, which is configuration.
     (Method::GET, "/api/v1/payback", Admin),
     // Profile distribution is configuration (ADR 8, ADR 9).
+    (Method::GET, "/api/v1/profiles", Admin),
     (Method::GET, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes", Admin),
     (Method::POST, "/api/v1/profile-indexes/check", Admin),

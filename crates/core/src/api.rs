@@ -20,6 +20,7 @@ use utoipa_axum::routes;
 
 use crate::auth::Auth;
 use crate::backup::Backups;
+use crate::bus::DeviceId;
 use crate::cars::CarBodies;
 use crate::changes::Changes;
 use crate::correction::Corrections;
@@ -46,8 +47,10 @@ const METHOD: Problem = Problem {
     code: Code::RequestMethod,
 };
 
+mod battery;
 mod forecasts;
 mod history;
+mod records;
 mod roles;
 mod statistics;
 
@@ -178,6 +181,16 @@ fn stored_routes(api: &Api) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(forecasts::forecasts))
             .with_state(api.history.clone()),
+        OpenApiRouter::new()
+            .routes(routes!(records::records))
+            .with_state((
+                api.history.clone(),
+                api.storage.zones.watch(),
+                Clock::clone(&api.clock),
+            )),
+        OpenApiRouter::new()
+            .routes(routes!(battery::capacity))
+            .with_state((api.history.clone(), Clock::clone(&api.clock))),
         api.corrections.clone().routes(
             api.location.watch(),
             api.storage.zones.watch(),
@@ -213,14 +226,22 @@ struct Support {
 }
 
 #[derive(Default, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 struct DeviceSupport {
     /// Series computed from others, not measured, such as `pv.string.power[3]` of a string
     /// in parallel (ADR 17).
     estimated: Vec<String>,
+    /// The series its profile publishes, extras left out, such as `load.phase.power[2]`: what
+    /// it can report, not what it reports now.
+    series: Vec<String>,
     /// Whether the admin switched its writes on (ADR 7).
     writes: bool,
     /// What its profile lets the core write, in the profile's order.
     settings: Vec<SettingSupport>,
+    /// An inverter's maximum DC input voltage in volts, from its profile: what a string's
+    /// open-circuit voltage at −10 °C is checked against (ADR 20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_input_voltage: Option<f64>,
 }
 
 /// A setting a device's profile declares (ADR 5, 7).
@@ -275,12 +296,19 @@ async fn capabilities(
     }
     for device in devices.writable().await.map_err(internal)? {
         let entry = support.entry(device.id.to_string()).or_default();
+        entry.series = device.series;
         entry.writes = device.writes;
         entry.settings = device
             .settings
             .iter()
             .map(|(setting, enable)| setting_support(setting, *enable))
             .collect();
+    }
+    for (DeviceId(device), volts) in layouts.inverters().max_input_voltages() {
+        support
+            .entry(device.to_string())
+            .or_default()
+            .max_input_voltage = Some(volts);
     }
     let devices = support;
     let support = sunreye_profile::SUPPORT;
@@ -590,20 +618,48 @@ pub struct ProblemDetails {
     status: u16,
     /// A stable machine code, such as `auth.required`.
     code: Code,
+    /// The request body's member at fault, as an RFC 6901 JSON pointer such as
+    /// `/strings/0/modules`, where the core can name it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pointer: Option<String>,
 }
 
-impl IntoResponse for Problem {
+/// A [`Problem`] that names the request body's member at fault.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused {
+    pub problem: Problem,
+    pub pointer: Option<String>,
+}
+
+impl From<Problem> for Refused {
+    fn from(problem: Problem) -> Self {
+        Self {
+            problem,
+            pointer: None,
+        }
+    }
+}
+
+impl IntoResponse for Refused {
     fn into_response(self) -> Response {
+        let Self { problem, pointer } = self;
         let details = ProblemDetails {
-            status: self.status.as_u16(),
-            code: self.code,
+            status: problem.status.as_u16(),
+            code: problem.code,
+            pointer,
         };
-        let mut response = (self.status, axum::Json(details)).into_response();
+        let mut response = (problem.status, axum::Json(details)).into_response();
         response.headers_mut().insert(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/problem+json"),
         );
         response
+    }
+}
+
+impl IntoResponse for Problem {
+    fn into_response(self) -> Response {
+        Refused::from(self).into_response()
     }
 }
 

@@ -182,15 +182,10 @@ impl Store {
         let Some((series, step)) = lookup(&self.db, device, name)? else {
             return Ok(Vec::new());
         };
-        let (from, to) = (tick(from).unwrap_or(0), tick(to).unwrap_or(0));
-        let declared = self
-            .tracks
-            .iter()
-            .find(|((d, _), s)| *d == device && s.id == series);
-        if let Some((_, stored)) = declared
-            && matches!(stored.kind, RoleKind::Status | RoleKind::Held)
-        {
-            return self.carried(device.0, (series, step), tier, from..to);
+        let range = tick(from).unwrap_or(0)..tick(to).unwrap_or(0);
+        let (from, to) = (range.start, range.end);
+        if let Some(RoleKind::Status | RoleKind::Held) = self.kind(device, series) {
+            return self.carried(device.0, (series, step), tier, range);
         }
         let (sql, from, to) = match tier {
             Tier::Hour => (
@@ -217,18 +212,74 @@ impl Store {
             }
             Ok((row.get::<_, Tick>(0)?, row.get::<_, Tick>(1)?, columns))
         })?;
-        let mut rollups = Vec::new();
-        for row in rows {
-            let (start, end, columns) = row?;
-            if let Some(aggregate) = aggregate(step, columns) {
-                rollups.push(Rollup {
+        let mut rows = rows.collect::<Result<Vec<_>, _>>()?;
+        for (window, sums) in self.open(device, series, tier, range)? {
+            rows.retain(|&(start, ..)| start != window.start);
+            rows.push((window.start, window.end, columns(sums)));
+        }
+        rows.sort_by_key(|&(start, ..)| start);
+        Ok(rows
+            .into_iter()
+            .filter_map(|(start, end, columns)| {
+                Some(Rollup {
                     start: time(start),
                     end: time(end),
-                    aggregate,
-                });
+                    aggregate: aggregate(step, columns)?,
+                })
+            })
+            .collect())
+    }
+
+    /// The kind of `device`'s stored `series`, when it has one.
+    fn kind(&self, device: DeviceId, series: i64) -> Option<RoleKind> {
+        self.tracks
+            .iter()
+            .find(|((d, _), stored)| *d == device && stored.id == series)
+            .map(|(_, stored)| stored.kind)
+    }
+
+    /// The hours or days starting within `range` that the open hour reaches into, rolled up from
+    /// their change points, the unflushed ones included, to the latest reading (ADR 3).
+    fn open(
+        &self,
+        device: DeviceId,
+        series: i64,
+        tier: Tier,
+        range: Range<Tick>,
+    ) -> Result<Vec<(Range<Tick>, Sums)>, Error> {
+        let (Some(kind), Some(rolled)) = (self.kind(device, series), self.rolled) else {
+            return Ok(Vec::new());
+        };
+        let limit = self.clock;
+        let windows: Vec<Range<Tick>> = match tier {
+            Tier::Hour => (floor(rolled)..limit)
+                .step_by(usize::try_from(HOUR).unwrap_or(usize::MAX))
+                .map(|start| start..start + HOUR)
+                .collect(),
+            Tier::Day => rollup::days(&self.zone.1, rolled, limit)
+                .into_iter()
+                .map(|day| day.start..day.end)
+                .collect(),
+        };
+        let mut open = Vec::new();
+        for open_window in windows {
+            let (start, end) = (open_window.start, limit.min(open_window.end));
+            if !range.contains(&start) {
+                continue;
+            }
+            let mut points = points(&self.db, device.0, series, start, end)?;
+            points.extend(
+                self.pending
+                    .iter()
+                    .filter(|&&(d, s, p)| (d, s) == (device.0, series) && p.time < end)
+                    .map(|&(.., p)| p),
+            );
+            points.sort_by_key(|p| p.time);
+            if let Some(sums) = rollup::roll(kind, window(&points, start, end), start, end) {
+                open.push((open_window, sums));
             }
         }
-        Ok(rollups)
+        Ok(open)
     }
 }
 

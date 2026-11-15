@@ -1,8 +1,30 @@
-import { expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Device, type Transport } from "../api/core.ts";
+import "../../app.css";
 import DevicesStep from "./DevicesStep.svelte";
+
+/** A phone; the value editor lands at once. */
+beforeEach(async () => {
+  await page.viewport(390, 800);
+  await cdp().send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+});
+
+afterEach(async () => {
+  await cdp().send("Emulation.setEmulatedMedia", { features: [] });
+});
+
+/** Types `value` into a number row's value editor and applies it. */
+async function enter(row: string, value: string): Promise<void> {
+  await page.getByRole("button", { name: new RegExp(`^${row} `, "u") }).click();
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
+  await userEvent.keyboard("{Enter}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+}
 
 const ADDED = {
   id: 6,
@@ -12,6 +34,41 @@ const ADDED = {
   variant: "15k",
   unit: 1,
 };
+
+/** The profiles the test core serves. */
+const PROFILES = [
+  {
+    id: "deye-sg05lp3",
+    manufacturer: "Deye",
+    name: "SG05LP3",
+    version: "1.0.0",
+    official: true,
+    acRating: 20_000,
+  },
+  {
+    id: "shelly-pro-3em",
+    manufacturer: "Shelly",
+    name: "Pro 3EM",
+    version: "1.0.0",
+    official: true,
+    acRating: null,
+  },
+  {
+    id: "sunspec",
+    manufacturer: "SunSpec",
+    name: "SunSpec device",
+    version: "1.0.0",
+    official: false,
+    acRating: null,
+  },
+];
+
+/** Picks the profile named `name` for the device at `at` from the catalogue, by searching for `search`. */
+async function pick(at: string, search: string, name: string): Promise<void> {
+  await page.getByRole("button", { name: `Profil für ${at}` }).click();
+  await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), search);
+  await page.getByRole("button", { name: new RegExp(`^${name}`, "u") }).click();
+}
 
 const REPORT = {
   subnet: "192.168.1.0/24",
@@ -38,6 +95,7 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
 
   const answers = new Map<string, () => Response>([
     ["/api/v1/scan", () => Response.json(REPORT)],
+    ["/api/v1/profiles", () => Response.json({ profiles: PROFILES })],
     ["/api/v1/connections", () => Response.json({ id: 5, secrets: [] }, { status: 201 })],
     [
       "/api/v1/devices",
@@ -60,7 +118,7 @@ function testCore(refusals = 0): Transport & { readonly calls: string[] } {
     fetch: async (request) => {
       const path = new URL(request.url).pathname;
 
-      calls.push(`${path} ${await request.text()}`);
+      if (request.method !== "GET") calls.push(`${path} ${await request.text()}`);
 
       return answers.get(path)?.() ?? Response.error();
     },
@@ -75,11 +133,12 @@ test("the admin confirms a scanned device under a name of their own", async () =
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
 
   await expect
-    .element(screen.getByText("192.168.1.30:502 antwortet, aber kein Profil erkennt das Gerät."))
-    .toBeVisible();
-  await screen
-    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
-    .click();
+    .element(
+      screen.getByRole("checkbox", {
+        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
+      }),
+    )
+    .toBeChecked();
   await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
@@ -98,9 +157,6 @@ test("adding again after a refused device does not add its connection twice", as
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen
-    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
-    .click();
   await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
 
   const add = screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" });
@@ -124,16 +180,20 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await screen.getByRole("checkbox", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
-  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.30:502"), "sunspec-meter");
-  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.30:502"), "3");
+  await screen
+    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
+    .click();
+  await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
+  await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
+  await pick("192.168.1.30:502", "sunspec", "SunSpec device");
+  await enter("Adresse für 192.168.1.30:502", "3");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.30:502"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.slice(1)).toEqual([
     '/api/v1/connections {"name":"192.168.1.30","host":"192.168.1.30","port":502,"transport":"modbus-tcp"}',
-    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec-meter","unit":3}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"sunspec","unit":3}',
   ]);
 });
 
@@ -142,18 +202,73 @@ test("the admin enters an RTU gateway the scan does not probe by hand", async ()
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
+  await screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }).click();
   await userEvent.fill(screen.getByLabelText("Host"), "192.168.1.40");
-  await userEvent.fill(screen.getByLabelText("Port"), "4196");
-  await userEvent.selectOptions(screen.getByLabelText("Übertragung"), "rtu-over-tcp");
+  await enter("Port", "4196");
+  await screen.getByRole("radio", { name: "rtu-over-tcp" }).click();
   await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
-  await userEvent.fill(screen.getByLabelText("Profil für 192.168.1.40:4196"), "eastron-sdm630");
-  await userEvent.fill(screen.getByLabelText("Adresse für 192.168.1.40:4196"), "2");
+  await pick("192.168.1.40:4196", "3em", "Pro 3EM");
+  await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
     '/api/v1/connections {"name":"192.168.1.40","host":"192.168.1.40","port":4196,"transport":"rtu-over-tcp"}',
-    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"eastron-sdm630","unit":2}',
+    '/api/v1/devices {"connection":5,"name":"Zähler","profile":"shelly-pro-3em","unit":2}',
   ]);
+});
+
+test("hosts no profile recognises wait folded away under their own row", async () => {
+  const screen = await render(DevicesStep, { core: connect(testCore()), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  const more = screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u });
+
+  await expect.element(more).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("192.168.1.30:502").query()).toBeNull();
+  await more.click();
+  await expect.element(screen.getByText("192.168.1.30:502")).toBeVisible();
+});
+
+test("a scan that finds nothing says so and offers the endpoint by hand", async () => {
+  const transport: Transport = {
+    base: "http://core.test/",
+    fetch: () => Promise.resolve(Response.json({ subnet: "192.168.1.0/24", endpoints: [] })),
+  };
+
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  await expect.element(screen.getByText("Kein Gerät gefunden.")).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }))
+    .toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: /^Ausgewählte Geräte hinzufügen/u }))
+    .toBeDisabled();
+});
+
+test("a running scan shows its progress", async () => {
+  const report = Promise.withResolvers<Response>();
+
+  const transport: Transport = { base: "http://core.test/", fetch: () => report.promise };
+
+  const screen = await render(DevicesStep, { core: connect(transport), ondone: () => {} });
+
+  await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
+
+  await expect
+    .element(screen.getByRole("status").getByText(/Netzwerk wird durchsucht/u))
+    .toBeVisible();
+  report.resolve(Response.json(REPORT));
+  await expect
+    .element(
+      screen.getByRole("checkbox", {
+        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
+      }),
+    )
+    .toBeChecked();
 });

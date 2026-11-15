@@ -1,62 +1,129 @@
+<!--
+  The builder's canvas (ADR 20) and its zones: the time slider along the top with the views'
+  button at its right, one status line at the lower left and the tools at the lower right. The
+  rest is the camera's. No glass behind the scene itself (ADR 11).
+-->
 <script lang="ts">
-  import type { Core, Device, ModuleType } from "../api/core.ts";
-  import ModelCheck from "./ModelCheck.svelte";
-  import { Moment } from "./moment.svelte.ts";
+  import type { Snippet } from "svelte";
+  import type { Core, Device, ModuleType, Values } from "../api/core.ts";
+  import { parked } from "../cars/parked.ts";
+  import { laying, type Level } from "./levels.ts";
+  import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
-  import type { Geometry, Location, Pv } from "./pv.ts";
-  import type { Panel } from "./scene.ts";
-  import Stage from "./Stage.svelte";
+  import type { Geometry, Location, RoofFace } from "./pv.ts";
+  import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
+  import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
-    pv,
     core,
     draft,
     geometry,
     panels,
-    moduleTypes,
     devices,
     location,
+    moment,
+    clear = 0,
+    covered = false,
+    onpick,
+    editing,
+    painting,
+    roofs = [],
+    facing,
+    tools,
   }: {
-    pv: Pv;
     core: Core;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
     draft: Draft;
     geometry: Geometry;
     panels: readonly Panel[];
-    moduleTypes: readonly ModuleType[];
     devices: readonly Device[];
     location: Location | undefined;
+    /** The slider's instant. */
+    moment: Moment;
+    /** Pixels at the bottom a peeking sheet keeps covered. */
+    clear?: number;
+    /** Whether a pulled-up sheet covers the lower zones: they go, instead of lying under it. */
+    covered?: boolean;
+    onpick?: ((hit: Hit) => void) | undefined;
+    /** The selected object's handles. */
+    editing?: Editing | undefined;
+    /** The picked string, painted by a drag across modules. */
+    painting?: Painting | undefined;
+    roofs?: readonly RoofFace[];
+    /** A phone's inspector level: from afar a roof cell is too small for a finger, so the camera
+     * flies onto the face whose modules it lays (ADR 20). */
+    facing?: Level | undefined;
+    /** Buttons at the lower right, beside the status line. */
+    tools?: Snippet | undefined;
   } = $props();
 
-  const moment = new Moment(() => ({ core, pv, draft, moduleTypes, location }));
+  let width = $state(0);
+  let height = $state(0);
 
-  const local = $derived(new Date(moment.at));
+  let values = $state.raw<Values["devices"]>({});
+
+  $effect(() =>
+    core.live((live) => {
+      if ("devices" in live) values = live.devices;
+    }),
+  );
+
+  const cars = $derived(parked(draft.scene.carPlaces ?? [], geometry.stands, values));
 </script>
 
-<div>
-  <Stage
-    {core}
-    {geometry}
-    {panels}
-    sun={moment.sun}
-    places={draft.scene.carPlaces ?? []}
-    {devices}
-  />
-  <TimeSlider
-    bind:day={moment.day}
-    bind:minutes={moment.minutes}
-    source={moment.production?.source}
-    strings={draft.strings.map(({ name }, i) => ({ name, watts: moment.watts[i] ?? null }))}
-    located={location !== undefined}
-  />
-  <ModelCheck {core} {devices} month={local.getMonth() + 1} hour={local.getHours()} />
-</div>
+<!-- Edge to edge on a phone. -->
+<div
+  bind:clientWidth={width}
+  bind:clientHeight={height}
+  class="relative size-full min-h-0 overflow-hidden rounded-lg ring-1 ring-border/60 elevation-1 max-sm:rounded-none max-sm:ring-0 max-sm:[box-shadow:none]"
+>
+  <!-- Measured first: the first view fits the canvas, with no flight to it. -->
+  {#if height > 0}
+    <Stage
+      {core}
+      {geometry}
+      {panels}
+      sun={moment.sun}
+      diffuse={moment.diffuse}
+      {cars}
+      {onpick}
+      {editing}
+      {painting}
+      onto={facing && laying(roofs, facing)}
+      aspect={width / height}
+    />
+  {/if}
 
-<style>
-  div {
-    display: grid;
-    gap: 1rem;
-    align-content: start;
-  }
-</style>
+  <!-- Beside the views' button, which the stage keeps at the top right. -->
+  <div class="pointer-events-none absolute top-3 right-16 left-3 flex">
+    <div class="pointer-events-auto w-full max-w-md">
+      <TimeSlider bind:day={moment.day} bind:minutes={moment.minutes} />
+    </div>
+  </div>
+
+  <!-- One row: the status line takes what the tools leave, so the two never overlap. -->
+  <div
+    class={[
+      "pointer-events-none absolute inset-x-3 bottom-3 flex items-end gap-2 transition-[opacity,visibility] duration-(--motion-fast) ease-(--motion-ease)",
+      covered && "invisible opacity-0",
+    ]}
+    style:margin-bottom="{clear}px"
+  >
+    <div class="flex min-w-0 flex-1">
+      <StatusStrip
+        strings={draft.strings}
+        watts={moment.watts}
+        source={moment.production?.source}
+        {cars}
+        {devices}
+        located={location !== undefined}
+      />
+    </div>
+    {#if tools}
+      <div class="pointer-events-auto shrink-0">
+        {@render tools()}
+      </div>
+    {/if}
+  </div>
+</div>

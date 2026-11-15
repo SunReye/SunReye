@@ -1,5 +1,6 @@
-//! Statistics by plant-local day, week and month (ADR 3, 9): daily rollups folded into periods cut
-//! in the plant timezone, so a week or month spans its 23- and 25-hour days exactly.
+//! Statistics by hour, and by plant-local day, week and month (ADR 3, 9): hourly rollups as they
+//! are, and daily rollups folded into periods cut in the plant timezone, so a week or month spans
+//! its 23- and 25-hour days exactly.
 
 use std::ops::Range;
 use std::time::SystemTime;
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use utoipa::{IntoParams, ToSchema};
 
-use super::history::DAY_SPAN;
+use super::history::{DAY_SPAN, HOUR_SPAN};
 use super::{Code, Problem, ProblemDetails};
 use crate::api::internal;
 use crate::bus::{DeviceId, Series};
@@ -36,10 +37,11 @@ const RANGE: Problem = Problem {
 
 pub type StatisticsState = State<(Reader, watch::Receiver<TimeZone>)>;
 
-/// A plant-local calendar period.
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+/// A UTC hour, as hourly rollups are cut, or a plant-local calendar period.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Period {
+    Hour,
     Day,
     /// From Monday, as ISO 8601 weeks are.
     Week,
@@ -85,13 +87,16 @@ struct Figures {
     /// `Σ value·duration` in the unit times hours: Wh for power.
     #[serde(skip_serializing_if = "Option::is_none")]
     integral: Option<f64>,
+    /// The hours with a value: gaps excluded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hours: Option<f64>,
     /// A counter's rises, resets excluded.
     #[serde(skip_serializing_if = "Option::is_none")]
     delta: Option<f64>,
 }
 
-/// One series' figures for each plant-local period starting in the range, folded from its
-/// daily rollups.
+/// One series' figures for each hour, or plant-local period, starting in the range, from its
+/// hourly rollups or folded from its daily ones.
 #[utoipa::path(get, path = "/api/v1/devices/{id}/statistics",
     params(("id" = u32, Path, description = "The device id."), Params),
     responses(
@@ -109,7 +114,12 @@ pub async fn statistics(
     let series = Series::parse(&params.series).ok_or(QUERY)?;
     let range = instant(&params.from)?..instant(&params.to)?;
     let span = range.end.duration_since(range.start).map_err(|_| RANGE)?;
-    if span.is_zero() || span > DAY_SPAN {
+    let cap = if params.period == Period::Hour {
+        HOUR_SPAN
+    } else {
+        DAY_SPAN
+    };
+    if span.is_zero() || span > cap {
         return Err(RANGE);
     }
     let zone = zone.borrow().clone();
@@ -120,13 +130,13 @@ pub async fn statistics(
             points: Vec::new(),
         }));
     };
+    let tier = if params.period == Period::Hour {
+        Tier::Hour
+    } else {
+        Tier::Day
+    };
     let rollups = reader
-        .rollups(
-            DeviceId(device),
-            &series,
-            Tier::Day,
-            first.1.start..last.1.end,
-        )
+        .rollups(DeviceId(device), &series, tier, first.1.start..last.1.end)
         .await
         .map_err(internal)?;
     let points = periods
@@ -142,13 +152,16 @@ pub async fn statistics(
     }))
 }
 
-/// Each period of `zone` starting in `range`, by its first date, with its bounds.
+/// Each period of `zone` starting in `range`, by its first plant-local date, with its bounds.
 fn periods(
     zone: &TimeZone,
     period: Period,
     range: &Range<SystemTime>,
 ) -> Option<Vec<(Date, Range<SystemTime>)>> {
     let from = Timestamp::try_from(range.start).ok()?;
+    if period == Period::Hour {
+        return hours(zone, from, range);
+    }
     let mut date = begin(period, from.to_zoned(zone.clone()).date())?;
     if midnight(zone, date)? < range.start {
         date = next(period, date)?;
@@ -165,10 +178,35 @@ fn periods(
     }
 }
 
+/// Each UTC hour starting in `range`, by the plant-local date it starts on.
+fn hours(
+    zone: &TimeZone,
+    from: Timestamp,
+    range: &Range<SystemTime>,
+) -> Option<Vec<(Date, Range<SystemTime>)>> {
+    let mut start = from
+        .round(
+            jiff::TimestampRound::new()
+                .smallest(jiff::Unit::Hour)
+                .mode(jiff::RoundMode::Ceil),
+        )
+        .ok()?;
+    let mut hours = Vec::new();
+    while SystemTime::from(start) < range.end {
+        let end = start.checked_add(1.hour()).ok()?;
+        hours.push((
+            start.to_zoned(zone.clone()).date(),
+            start.into()..end.into(),
+        ));
+        start = end;
+    }
+    Some(hours)
+}
+
 /// The first date of the period `date` falls in.
 fn begin(period: Period, date: Date) -> Option<Date> {
     match period {
-        Period::Day => Some(date),
+        Period::Hour | Period::Day => Some(date),
         Period::Week => date
             .checked_sub(i64::from(date.weekday().to_monday_zero_offset()).days())
             .ok(),
@@ -179,6 +217,7 @@ fn begin(period: Period, date: Date) -> Option<Date> {
 /// The first date of the period after the one starting on `date`.
 fn next(period: Period, date: Date) -> Option<Date> {
     let span = match period {
+        Period::Hour => 1.hour(),
         Period::Day => 1.day(),
         Period::Week => 1.week(),
         Period::Month => 1.month(),
@@ -243,6 +282,7 @@ fn figures(date: Date, bounds: &Range<SystemTime>, aggregate: Aggregate) -> Figu
         min: None,
         max: None,
         integral: None,
+        hours: None,
         delta: None,
     };
     match aggregate {
@@ -251,8 +291,9 @@ fn figures(date: Date, bounds: &Range<SystemTime>, aggregate: Aggregate) -> Figu
             min,
             max,
             integral,
-            ..
+            duration,
         } => {
+            figures.hours = Some(duration.as_secs_f64() / 3600.0);
             figures.mean = Some(mean);
             figures.min = Some(min);
             figures.max = Some(max);

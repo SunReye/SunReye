@@ -1,3 +1,5 @@
+<!-- Each MPPT input's learned correction at the slider's month and hour, and its last 30 days
+  measured against the model (ADR 20): shown with the strings it judges. -->
 <script lang="ts">
   import type { Core, Corrections, Device } from "../api/core.ts";
   import { m } from "../paraglide/messages.js";
@@ -16,6 +18,8 @@
     month: number;
     hour: number;
   } = $props();
+
+  const uid = $props.id();
 
   type Input = Corrections["inputs"][number];
 
@@ -54,10 +58,15 @@
 
 {#await loaded then corrections}
   {#if !("problem" in corrections) && corrections.inputs.length > 0}
-    <ul aria-label={m.builder_model_check()}>
-      {#each corrections.inputs as input (`${String(input.device)}:${String(input.input)}`)}
-        <li>{line(input)}</li>
-      {/each}
-    </ul>
+    <section class="flex flex-col gap-1.5 border-t border-border/60 px-4 py-3">
+      <h3 id="{uid}-check" class="text-xs font-medium text-muted-foreground">
+        {m.builder_model_check()}
+      </h3>
+      <ul aria-labelledby="{uid}-check" class="flex flex-col gap-1 text-sm tabular-nums">
+        {#each corrections.inputs as input (`${String(input.device)}:${String(input.input)}`)}
+          <li>{line(input)}</li>
+        {/each}
+      </ul>
+    </section>
   {/if}
 {/await}

@@ -1,6 +1,34 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
-import { isGeometry, isModules, isSun, isWatts, unwrap } from "./replies.ts";
+import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
+import type { Chimney, Overhang } from "./roofing.ts";
+import type { Equipment, Fitted, Opening } from "./walls.ts";
+
+export type { Equipment, Fitted, Opening, OpeningKind, Wall } from "./walls.ts";
+
+import {
+  isExports,
+  isGeometry,
+  isModules,
+  isSun,
+  isVolts,
+  isWatts,
+  unwrap,
+  type Exported,
+} from "./replies.ts";
+
+export type {
+  Fence,
+  FenceFinish,
+  FencePoint,
+  Fencing,
+  Ground,
+  GroundFinish,
+  GroundSurface,
+  Obstacle,
+} from "./obstacles.ts";
+
+export type { Chimney, Overhang } from "./roofing.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -24,25 +52,12 @@ export interface Block {
   readonly roof: Roof;
   /** A carport: a post at each corner instead of walls. */
   readonly open?: boolean;
+  /** Metres the roof reaches past the walls, level: at the eaves and at the verges. */
+  readonly overhang?: Overhang;
+  /** `#rrggbb`; the finish's own colour without one. */
+  readonly roofColour?: string | null;
+  readonly wallColour?: string | null;
 }
-
-export type Obstacle =
-  | {
-      readonly kind: "box";
-      readonly x: number;
-      readonly z: number;
-      readonly width: number;
-      readonly depth: number;
-      readonly height: number;
-      readonly rotation: number;
-    }
-  | {
-      readonly kind: "cylinder" | "tree";
-      readonly x: number;
-      readonly z: number;
-      readonly radius: number;
-      readonly height: number;
-    };
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
 export interface Cell {
@@ -51,6 +66,8 @@ export interface Cell {
   /** The string it is painted into; unassigned, it produces nothing. */
   readonly string?: number | null;
   readonly optimized?: boolean;
+  /** Its place along its string's wiring, from the lowest; one without follows them. */
+  readonly order?: number | null;
 }
 
 /** The modules on one roof face; cells are the module type's size plus a gap. */
@@ -66,23 +83,6 @@ export interface ModuleGrid {
   readonly modules: readonly Cell[];
 }
 
-/** A side of a block's footprint: the front along +z, the right along +x. */
-export type Wall = "front" | "right" | "back" | "left";
-
-/** A marker for an inverter or a battery, on a block's wall. */
-export interface Equipment {
-  readonly device: number;
-  readonly kind: "inverter" | "battery";
-  readonly block: number;
-  readonly wall: Wall;
-  /** Metres from the wall's left end, seen from outside. */
-  readonly along: number;
-  /** Behind the wall, in the building. */
-  readonly inside: boolean;
-}
-
-export type BodyClass = "sedan" | "hatchback" | "suv" | "van" | "pickup";
-
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
 export interface CarPlace {
   readonly device: number;
@@ -91,8 +91,8 @@ export interface CarPlace {
   readonly width: number;
   readonly length: number;
   readonly rotation: number;
-  /** The admin's pick of body, colour `#rrggbb`, and the id of an uploaded GLB. */
-  readonly body?: { readonly class: BodyClass; readonly colour: string } | null;
+  /** The default body's paint, `#rrggbb`, and the id of an uploaded GLB that replaces it. */
+  readonly colour?: string | null;
   readonly model?: string | null;
 }
 
@@ -106,6 +106,11 @@ export interface Scene {
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
+  readonly chimneys?: readonly Chimney[];
+  /** Each drawn over the last; without any the plot is lawn. */
+  readonly surfaces?: readonly GroundSurface[];
+  readonly fences?: readonly Fence[];
+  readonly openings?: readonly Opening[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -122,6 +127,10 @@ export interface RoofFace {
   readonly azimuth: number;
   /** Metres across and up the slope from the lowest corner on the left, seen from the front. */
   readonly outline: readonly (readonly [number, number])[];
+  /** The outline's frame: where it starts, and the unit directions across the slope and up it. */
+  readonly origin: Point;
+  readonly across: Point;
+  readonly up: Point;
 }
 
 /** A cell whose module fits inside the setback. */
@@ -141,6 +150,8 @@ export type Misplaced =
       readonly grid: number;
       readonly row: number;
       readonly column: number;
+      /** The module's cell on its face, as `CellPlace.area`; null without a module size. */
+      readonly area: CellPlace["area"] | null;
     };
 
 /** The roofs, each grid's cells (null for a missing face or module type) and the first misfit. */
@@ -151,15 +162,18 @@ export interface Modules {
 }
 
 export interface Face {
-  readonly surface: "wall" | "roof" | "obstacle";
+  readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
   /** A flat convex polygon. */
   readonly corners: readonly Point[];
+  /** Its block's wall or roof colour, `#rrggbb`. */
+  readonly colour?: string;
 }
 
 export type Solid =
   | { readonly kind: "sphere"; readonly centre: Point; readonly radius: number }
   | {
-      readonly kind: "cylinder";
+      /** Upright; a cone narrows from `radius` at its base to its apex `height` above. */
+      readonly kind: "cylinder" | "cone";
       readonly base: Point;
       readonly radius: number;
       readonly height: number;
@@ -182,6 +196,11 @@ export interface Geometry {
   readonly stands?:
     | readonly { readonly at: Point; readonly forward: Point; readonly above: Point }[]
     | null;
+  /** By ground surface and by fence, placed on the ground; null while one is refused. */
+  readonly ground?: readonly Ground[] | null;
+  readonly fences?: readonly Fencing[] | null;
+  /** By opening, fitted on its wall; null while one is refused. */
+  readonly openings?: readonly Fitted[] | null;
 }
 
 /** North and east positive, in degrees. */
@@ -215,38 +234,11 @@ export interface Pv {
   readonly sun: (unix: number, location: Location) => Sun;
   /** Each string's watts under a clear sky, by time, then string position (ADR 20). */
   readonly clearSky: (run: ClearRun) => number[][];
-}
-
-/** The ABI of crates/pv-wasm: a reply is `ptr << 32 | len` of JSON in linear memory. */
-interface Exports {
-  readonly memory: WebAssembly.Memory;
-  readonly reserve: (len: number) => number;
-  readonly release: (ptr: number, len: number) => void;
-  readonly geometry: (input: number, inputLen: number) => bigint;
-  readonly modules: (input: number, inputLen: number) => bigint;
-  readonly sun: (input: number, inputLen: number) => bigint;
-  readonly clear_sky: (input: number, inputLen: number) => bigint;
-}
-
-const functions = ["reserve", "release", "geometry", "modules", "sun", "clear_sky"] as const;
-
-function isExports(
-  exports: Readonly<WebAssembly.Exports>,
-): exports is Readonly<WebAssembly.Exports> & Exports {
-  return (
-    exports["memory"] instanceof WebAssembly.Memory &&
-    functions.every((name) => {
-      const value = exports[name];
-
-      // A WASM export that is no memory, global or table is a function.
-      return (
-        value !== undefined &&
-        !(value instanceof WebAssembly.Memory) &&
-        !(value instanceof WebAssembly.Global) &&
-        !(value instanceof WebAssembly.Table)
-      );
-    })
-  );
+  /** Each string's open-circuit voltage at −10 °C, by position; null for an unknown module type. */
+  readonly coldVoltages: (
+    moduleTypes: readonly Readonly<ModuleType>[],
+    strings: readonly Wiring[],
+  ) => (number | null)[];
 }
 
 /** Instantiates the glue crate's release build. */
@@ -257,10 +249,7 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
   if (!isExports(wasm)) throw new TypeError("pv WASM lacks an export");
 
   /** The reply of export `name` to the JSON `input`. */
-  const call = (
-    name: Exclude<(typeof functions)[number], "reserve" | "release">,
-    input: string,
-  ): string => {
+  const call = (name: Exported, input: string): string => {
     const encoded = new TextEncoder().encode(input);
     const at = wasm.reserve(encoded.length);
 
@@ -283,5 +272,19 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     modules: (scene, sizes) => unwrap(call("modules", JSON.stringify({ scene, sizes })), isModules),
     sun: (unix, location) => unwrap(call("sun", JSON.stringify({ unix, location })), isSun),
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
+    coldVoltages: (moduleTypes, strings) =>
+      unwrap(call("cold_voltages", JSON.stringify({ moduleTypes, strings })), isVolts),
   };
+}
+
+/** The unit vector toward the sun: east, north, up, as the pv crate shades. */
+export function sunward({ zenith, azimuth }: Sun): Point {
+  const [z, a] = [(zenith * Math.PI) / 180, (azimuth * Math.PI) / 180];
+
+  return [-Math.sin(a) * Math.sin(z), -Math.cos(a) * Math.sin(z), Math.cos(z)];
+}
+
+/** Toward the sun over `location` at `at`, ms since 1970: east, north, up. */
+export function sunAt(pv: Readonly<Pick<Pv, "sun">>, location: Location, at: number): Point {
+  return sunward(pv.sun(Math.floor(at / 1000), location));
 }

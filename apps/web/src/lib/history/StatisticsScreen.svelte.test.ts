@@ -1,0 +1,207 @@
+import { afterEach, expect, test } from "vitest";
+// The screen is laid out by the SPA's utilities.
+import "../../app.css";
+import { iso } from "../range/calendar.ts";
+import { asked, plant, reset, show, TODAY, YESTERDAY, zone } from "./statistics.harness.ts";
+
+afterEach(reset);
+
+const DAY = `range=day&at=${YESTERDAY}`;
+
+test("the range's answer: production against the day before, and a breakdown that balances", async () => {
+  const { screen } = await show(DAY);
+
+  await expect
+    .element(
+      screen.getByText(/^Gestern hat die Anlage 6,0 kWh erzeugt, 50 % mehr als am Vortag\./u),
+    )
+    .toBeVisible();
+
+  const breakdown = screen.getByRole("region", { name: "Aufschlüsselung" });
+
+  await expect.element(breakdown.getByText("Produktion")).toBeVisible();
+  // 2,0 kWh self-used and 4,0 kWh fed in make the 6,0 kWh; 2,0 self-covered and 11,0 bought the 13,0.
+  await expect.element(breakdown.getByText("4,0 kWh").first()).toBeVisible();
+  await expect.element(breakdown.getByText("13,0 kWh")).toBeVisible();
+  await expect.element(breakdown.getByText("11,0 kWh")).toBeVisible();
+});
+
+test("a gap is hatched, never drawn as zero, and named in the verdict", async () => {
+  const { screen } = await show(DAY);
+
+  await expect.element(screen.getByText("11 h ohne Daten.")).toBeVisible();
+  await expect
+    .poll(() => screen.container.querySelectorAll(".gap.hatch").length)
+    .toBeGreaterThan(0);
+  await expect
+    .element(
+      screen.getByRole("region", { name: "Auffälligkeiten" }).getByText(/^10 h ohne Daten ab/u),
+    )
+    .toBeVisible();
+});
+
+test("question and tab go into the route with the range, and come back from it", async () => {
+  const { screen, went } = await show(DAY);
+
+  await screen.getByRole("tab", { name: /^Ersparnis/u }).click();
+  await screen.getByRole("tab", { name: "Amortisation" }).click();
+
+  await expect
+    .poll(() => went.at(-1))
+    .toEqual({
+      patch: {
+        range: "day",
+        at: YESTERDAY,
+        from: null,
+        to: null,
+        metric: "money",
+        tab: "payback",
+        cmp: null,
+        sid: null,
+      },
+      push: false,
+    });
+});
+
+test("a route that names question and tab opens them, as after a reload or back", async () => {
+  const { screen } = await show(`${DAY}&metric=money&tab=payback`);
+
+  await expect
+    .element(screen.getByRole("tab", { name: "Amortisation" }))
+    .toHaveAttribute("aria-selected", "true");
+  await expect.element(screen.getByText("November 2033")).toBeVisible();
+});
+
+test("while the range loads, the figures dash and the space is held", async () => {
+  const open = Promise.withResolvers<void>();
+
+  plant.gate = open.promise;
+
+  const { screen } = await show(DAY);
+  const figure = screen.getByRole("tab", { name: /^Produktion/u });
+
+  await expect.element(figure.getByText("–")).toBeVisible();
+
+  const card = screen.container.querySelector<HTMLElement>(".min-h-\\[348px\\]");
+
+  expect(card?.getBoundingClientRect().height).toBeGreaterThanOrEqual(348);
+
+  open.resolve();
+  await expect.element(figure.getByText("6,0")).toBeVisible();
+});
+
+test("a failed read says so and loads again on request", async () => {
+  plant.broken = true;
+
+  const { screen } = await show(DAY);
+
+  await expect
+    .element(screen.getByRole("alert").getByText("Der Verlauf konnte nicht geladen werden"))
+    .toBeVisible();
+
+  // The plant's zone moves the range once; that read fails too.
+  await expect.poll(() => zone.read).toBe(true);
+  await expect.element(screen.getByRole("alert")).toBeVisible();
+
+  plant.broken = false;
+  await screen.getByRole("button", { name: "Erneut laden" }).click();
+
+  await expect.element(screen.getByText(/^Gestern hat die Anlage/u)).toBeVisible();
+});
+
+test("the first week lists what fills in, and compares with nothing yet", async () => {
+  plant.age = 2;
+
+  const { screen } = await show(DAY);
+  const filling = screen.getByRole("region", { name: "Der Verlauf füllt sich" });
+
+  await expect.element(filling).toBeVisible();
+  await expect.element(filling.getByText(/^Vergleich mit der Vorwoche/u)).toBeVisible();
+  await expect.element(screen.getByText(/^Aufzeichnung seit/u)).toBeVisible();
+  await expect
+    .element(screen.getByRole("radiogroup", { name: "Vergleich mit" }))
+    .not.toBeInTheDocument();
+});
+
+test("without a battery the plant has no battery tab; with one it has", async () => {
+  const { screen } = await show(`${DAY}&metric=plant&tab=data`);
+
+  await expect.element(screen.getByRole("tab", { name: "Daten" })).toBeVisible();
+  await expect.element(screen.getByRole("tab", { name: "Batterie" })).not.toBeInTheDocument();
+
+  plant.battery = true;
+
+  const again = await show(`${DAY}&metric=plant&tab=battery`);
+
+  await expect
+    .element(again.screen.getByRole("tab", { name: "Batterie" }))
+    .toHaveAttribute("aria-selected", "true");
+});
+
+test("no battery and no car add no rows to the breakdown", async () => {
+  const { screen } = await show(DAY);
+  const breakdown = screen.getByRole("region", { name: "Aufschlüsselung" });
+
+  await expect.element(breakdown.getByText("Hausverbrauch")).toBeVisible();
+  expect(breakdown.element().textContent).not.toMatch(/Batterie|Auto/u);
+});
+
+test("six strings each have their row", async () => {
+  plant.strings = 6;
+
+  const { screen } = await show(`${DAY}&metric=plant`);
+
+  await expect.element(screen.getByText("String 6")).toBeVisible();
+  await expect.element(screen.getByText("String 1")).toBeVisible();
+});
+
+test("ten years read in pieces and chart as years", async () => {
+  const from = iso(TODAY - 3650);
+  const { screen } = await show(`range=custom&from=${from}&to=${iso(TODAY)}`);
+
+  await expect.element(screen.getByText(/^Im gewählten Zeitraum hat die Anlage/u)).toBeVisible();
+  expect(asked.filter((a) => a.series === "pv.power").length).toBeGreaterThan(2);
+  await expect.element(screen.getByText(String(new Date().getUTCFullYear() - 10))).toBeVisible();
+  await expect.element(screen.getByText(String(new Date().getUTCFullYear() - 1))).toBeVisible();
+});
+
+test("a finger dragging the card pages the range to the neighbour it uncovers", async () => {
+  const { screen, went } = await show(DAY);
+
+  await expect.poll(() => zone.read).toBe(true);
+
+  const verdict = screen.getByText(/^Gestern hat die Anlage/u);
+
+  await expect.element(verdict).toBeVisible();
+
+  const target = verdict.element();
+
+  expect(went).toEqual([]);
+
+  const { left, top } = target.getBoundingClientRect();
+
+  const at = (x: number) => ({
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: left + 260 + x,
+    clientY: top + 4,
+    bubbles: true,
+  });
+
+  target.dispatchEvent(new PointerEvent("pointerdown", at(0)));
+
+  for (let i = 1; i <= 8; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- the moves are paced like a finger's.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 16);
+    });
+    target.dispatchEvent(new PointerEvent("pointermove", at(-30 * i)));
+  }
+
+  // The day after is drawn beside the card's pane while the finger holds it.
+  expect(document.querySelectorAll(".pane.aside").length).toBeGreaterThan(0);
+  target.dispatchEvent(new PointerEvent("pointerup", at(-240)));
+
+  // Today is the default day, so the address names no date.
+  await expect.poll(() => went.at(-1)?.patch).toMatchObject({ range: "day", at: null });
+});

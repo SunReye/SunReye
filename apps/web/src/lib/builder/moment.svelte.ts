@@ -1,24 +1,22 @@
 // The time slider's instant (ADR 20): the day and time the admin picks, the sun then and each
 // string's production. It reads the draft and never writes it: nothing changes the scene.
-import { load, sunward, wattsAt, type Day, type Reading } from "./moment.ts";
-import type { Point } from "./pv.ts";
-
-/** `YYYY-MM-DD` of `date` in the browser's calendar, as a date input holds it. */
-function calendarDay(date: Readonly<Date>): string {
-  return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
-}
+import { today } from "./day.ts";
+import { diffuseAt, irradiance, type Irradiance } from "../scene/diffuse.ts";
+import { load, spanOf, wattsAt, type Day, type Reading } from "./moment.ts";
+import { sunAt, type Point } from "./pv.ts";
 
 const MINUTE = 60_000;
 
 export class Moment {
-  day = $state(calendarDay(new Date()));
+  day = $state(today());
   /** Since the day's midnight. */
   minutes = $state(12 * 60);
 
   /** The day's production once read, by string position. */
   production = $state.raw<Day>();
+
+  /** The day's forecast irradiance once read: the scene's sky. */
+  #irradiance = $state.raw<Irradiance>();
 
   /** Milliseconds since 1970; NaN while the day is cleared. */
   readonly at = $derived(new Date(`${this.day}T00:00`).getTime() + this.minutes * MINUTE);
@@ -30,7 +28,7 @@ export class Moment {
     this.#reading = reading;
 
     $effect(() => {
-      const asked = { ...this.#reading(), day: this.day, today: calendarDay(new Date()) };
+      const asked = { ...this.#reading(), day: this.day, today: today() };
       let current = true;
 
       // A cleared day input keeps the last day's values.
@@ -46,15 +44,37 @@ export class Moment {
         current = false;
       };
     });
+
+    // Apart from the production: the weather changes with the day alone, never with the draft.
+    $effect(() => {
+      const { core } = this.#reading();
+      const { day } = this;
+      let current = true;
+
+      if (day !== "") {
+        void (async () => {
+          const read = await irradiance(core, ...spanOf(day));
+
+          if (current) this.#irradiance = read;
+        })();
+      }
+
+      return () => {
+        current = false;
+      };
+    });
+  }
+
+  /** How diffuse the sky's light is at the instant, 0 to 1; null without weather for it. */
+  get diffuse(): number | null {
+    return diffuseAt(this.#irradiance, this.at);
   }
 
   /** Toward the sun, or null without the plant's location. */
   get sun(): Point | null {
     const { pv, location } = this.#reading();
 
-    return location === undefined || Number.isNaN(this.at)
-      ? null
-      : sunward(pv.sun(Math.floor(this.at / 1000), location));
+    return location === undefined || Number.isNaN(this.at) ? null : sunAt(pv, location, this.at);
   }
 
   /** Each string's watts at the instant, null without a value. */

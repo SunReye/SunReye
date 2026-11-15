@@ -25,33 +25,12 @@ pub struct CarPlace {
     pub length: f64,
     /// Degrees clockwise about the corner, seen from above.
     pub rotation: f64,
-    /// The admin's pick, when no catalogue entry matches the vehicle.
+    /// The default body's paint, `#rrggbb`; the browser's own grey without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<Body>,
-    /// The uploaded GLB's id, its SHA-256 in hex.
+    pub colour: Option<String>,
+    /// The uploaded GLB's id, its SHA-256 in hex; it replaces the default body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-}
-
-/// A stylised body the browser draws.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Body {
-    pub class: BodyClass,
-    /// `#rrggbb`.
-    pub colour: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase")]
-pub enum BodyClass {
-    Sedan,
-    Hatchback,
-    Suv,
-    Van,
-    Pickup,
 }
 
 /// Where a car is drawn, in the shading frame.
@@ -81,7 +60,7 @@ impl Scene {
 
     fn stand(&self, place: &CarPlace) -> Option<Stand> {
         let sized = place.width > 0.0 && place.length > 0.0;
-        let coloured = place.body.as_ref().is_none_or(|b| colour(&b.colour));
+        let coloured = place.colour.as_deref().is_none_or(colour);
         let modelled = place.model.as_deref().is_none_or(digest);
         if !(sized && coloured && modelled) {
             return None;
@@ -98,7 +77,8 @@ impl Scene {
     }
 }
 
-fn colour(text: &str) -> bool {
+/// Whether `text` is `#rrggbb`.
+pub fn colour(text: &str) -> bool {
     text.strip_prefix('#')
         .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
 }

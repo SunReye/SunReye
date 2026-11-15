@@ -10,6 +10,8 @@ export interface Values {
    * milliseconds; absent while none is.
    */
   readonly stale?: ByDevice;
+  /** When the stream broke, in epoch milliseconds: these are its last values until it is back. */
+  readonly lost?: number;
 }
 
 /** A frame as sent: a stale value's age in seconds. */

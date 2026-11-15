@@ -11,4 +11,7 @@ await compile({
   // A choice outlives a reload; no prefix in the path, so the hash router and ingress hold.
   strategy: ["localStorage", "baseLocale"],
   emitReadme: false,
+  // One module per locale: a module per message made each browser test file fetch ~1000, and
+  // Chromium holds a handle per fetch until a GC, so a long session ran out of them (#729).
+  outputStructure: "locale-modules",
 });

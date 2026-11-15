@@ -1,4 +1,7 @@
 <script lang="ts">
+  import PageTitle from "../components/page-title.svelte";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import { Button } from "#lib/components/ui/button/index.js";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import Brokers from "./Brokers.svelte";
@@ -19,18 +22,20 @@
   }
 </script>
 
-<main>
-  <button type="button" onclick={refresh}>{m.status_refresh()}</button>
-  {#await problems then answer}
-    <Problems {answer} />
-  {/await}
+<!-- The settings drill-in's column and surfaces (ADR 21). -->
+<main class="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
+  <header class="flex items-center gap-3 px-1">
+    <PageTitle class="flex-1" title={m.nav_status()} />
+    <Button variant="ghost" size="sm" class="text-brand" onclick={refresh}>
+      <RefreshCw data-icon="inline-start" />{m.status_refresh()}
+    </Button>
+  </header>
+  <Problems answer={problems} />
   <!-- Connections are admin only; a viewer sees no brokers. -->
   {#await connections then answer}
     {#if !("problem" in answer)}
       <Brokers connections={answer} />
     {/if}
   {/await}
-  {#await logs then answer}
-    <Log {answer} />
-  {/await}
+  <Log answer={logs} />
 </main>

@@ -36,6 +36,14 @@ export function body({
       ),
       equipment: [...(scene.equipment ?? [])],
       carPlaces: [...(scene.carPlaces ?? [])],
+      chimneys: [...(scene.chimneys ?? [])],
+      surfaces: [...(scene.surfaces ?? [])],
+      fences: (scene.fences ?? []).map(({ points, height, finish }) => ({
+        points: [...points],
+        height,
+        finish,
+      })),
+      openings: [...(scene.openings ?? [])],
     },
   };
 }

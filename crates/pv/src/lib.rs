@@ -2,30 +2,41 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod chimney;
 mod clear_sky;
 mod diode;
 mod equipment;
 mod estimate;
 mod grid;
 mod mppt;
+mod opening;
 mod parking;
 mod perez;
 mod scene;
 mod shade;
 mod string;
 mod sun;
+mod surroundings;
 mod temperature;
 
+pub use chimney::Chimney;
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
 pub use equipment::{Equipment, EquipmentKind, Mount, Wall};
 pub use estimate::estimate;
 pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
 pub use mppt::{input_output, module_counts_differ};
-pub use parking::{Body, BodyClass, CarPlace, Stand};
+pub use opening::{Fitted, Opening, OpeningKind};
+pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
-pub use scene::{Block, Face, Obstacle, Roof, Scene, Surface};
+pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
 pub use sun::sun_position;
+pub use surroundings::{
+    Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
+};
 pub use temperature::cell_temperature;
+
+/// The cell temperature in °C a string's open-circuit voltage is checked at (ADR 20).
+pub const COLD: f64 = -10.0;
 
 /// A string's open-circuit voltage at a cell temperature in °C, by the datasheet's voltage
 /// coefficient: what sizing checks against an inverter's maximum DC input voltage (ADR 20).
@@ -120,8 +131,9 @@ pub struct Module {
     pub place: Option<Place>,
 }
 
-/// What casts beam shade: blocks, roofs and carports as triangles, tree crowns as spheres,
-/// chimneys, poles and trunks as upright cylinders.
+/// What casts beam shade: blocks, roofs, carports, boxes and hedges as triangles, broadleaf
+/// crowns as spheres, conifer crowns as upright cones, chimneys, poles and trunks as upright
+/// cylinders.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Occluder {
     Triangle([Point; 3]),
@@ -130,6 +142,12 @@ pub enum Occluder {
         radius: f64,
     },
     Cylinder {
+        base: Point,
+        radius: f64,
+        height: f64,
+    },
+    /// `radius` at its base, narrowing to its apex `height` above.
+    Cone {
         base: Point,
         radius: f64,
         height: f64,

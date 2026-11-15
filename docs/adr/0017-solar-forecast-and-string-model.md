@@ -1,6 +1,6 @@
 # 17. Solar forecast and string model
 
-Status: accepted (2026-11-08), amended (2026-11-09)
+Status: accepted (2026-11-08), amended (2026-11-09, 2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -12,7 +12,8 @@ Status: accepted (2026-11-08), amended (2026-11-09)
 
 - An MPPT input belongs to an inverter. Its count, maximum input current, voltage window and start voltage come from the inverter profile (ADR 5).
 - A string is a series of modules of one module type, with an optional loss in %. Each module has a plane (tilt, and azimuth with 0 = south, −90 = east, 90 = west) and may have an optimizer, so a string may span roof faces. Entered by form, a string has one plane for all its modules and a count of optimized modules; a scene (ADR 20) places each module. Strings on one MPPT input are in parallel.
-- A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them; there is no built-in catalogue.
+- A module type holds datasheet values: Pmax, Vmp, Imp, Voc, Isc, the temperature coefficients of power, voltage and current, width, height and the number of bypass diodes. The admin enters them or copies them from the module catalogue.
+- The module catalogue is bundled with the core, like the official profiles (ADR 8), one sheet per maker's datasheet: maker, series, the datasheet's title, revision and URL, and each power class it prints. Every value is copied from that datasheet; a power class or series whose datasheet lacks a value, the bypass diodes included, is left out, never estimated. The core refuses at build time, by test, a sheet without its source or with a value out of range or inconsistent (Vmp above Voc, Imp above Isc, Vmp × Imp more than 2 % off Pmax, a coefficient of the wrong sign, a size outside 0.2–3 m). Admins read it at `GET /api/v1/module-catalogue`. Picking an entry adds a module type with its values (`POST /api/v1/module-types`), so a layout never depends on the catalogue and keeps working when it changes.
 - kWp is derived: modules × Pmax.
 - A lint warns when parallel strings on one MPPT input differ in module count.
 - Strings and module types have stable ids that are never reused; `pv.string.power` is indexed by string id. A layout change applies from its date, and past estimates keep the layout they were computed with, as for topology (ADR 14).
@@ -24,7 +25,7 @@ Status: accepted (2026-11-08), amended (2026-11-09)
 **PV model.** The `pv` crate, whose `estimate(layout, weather)` returns series per string, MPPT input and inverter. It is pure: no I/O, no async runtime, no provider knowledge. The gate builds it for `wasm32-unknown-unknown`, so the 3D house builder (ADR 1) can run the same model in the browser; its browser glue arrives with the builder.
 
 - Sun position from the plant's location and the time: Meeus's low-precision solar coordinates, geometric and unrefracted, within 0.02° of NREL SPA (pvlib's golden values). SPA's tables of periodic terms buy nothing a PV estimate can see.
-- Per module: Perez transposition onto its plane; beam shading per bypass-diode substring from the scene (ADR 20), diffuse unshaded; the Martin–Ruiz incidence-angle loss on the beam and a constant factor on diffuse; cell temperature by Faiman with wind, by the NOCT rise without. A substring with any shaded sample point loses its beam, since its most shaded cell limits its current. The scene reaches the crate as triangles (blocks, roofs, carports), spheres (tree crowns) and upright cylinders (chimneys, poles, trunks).
+- Per module: Perez transposition onto its plane; beam shading per bypass-diode substring from the scene (ADR 20), diffuse unshaded; the Martin–Ruiz incidence-angle loss on the beam and a constant factor on diffuse; cell temperature by Faiman with wind, by the NOCT rise without. A substring with any shaded sample point loses its beam, since its most shaded cell limits its current. The scene reaches the crate as triangles (blocks, roofs with their overhangs, roof chimneys, carports, boxes, hedges), spheres (broadleaf crowns), upright cones (conifer crowns) and upright cylinders (poles, trunks).
 - Electrics: De Soto's single-diode model, fitted to Vmp, Imp, Voc, Isc and the voltage and current coefficients as pvlib's `fit_desoto`, split into equal substrings. Pmax and the power coefficient feed kWp and nothing else. A conducting bypass diode drops 0.5 V.
 - Per string: the current-voltage curve summed over its substrings, with bypass diodes, and its maximum power point; then the string's loss on its current. A module with an optimizer delivers its own maximum power, less 1 %, whatever the string current; a string of optimized modules alone runs at their own maximum power point's current.
 - Per MPPT input: parallel strings share one voltage and their currents add; the input runs at the summed curve's peak within its voltage window, at a current no higher than its maximum input current. When the open-circuit voltage stays below the window or the start voltage it yields nothing; a peak above the window is clipped to its top, one below it held at its bottom. Each parallel string's forecast is the input's power split by modelled current, the rule estimates use below, so a string's forecasts sum to its input's.
@@ -52,6 +53,8 @@ Status: accepted (2026-11-08), amended (2026-11-09)
 
 - **kWp arrays (3.x).** Rejected: they cannot express parallel strings or MPPT limits.
 - **Tilted irradiance from the provider (3.x).** Rejected: few providers deliver it; plain irradiance makes any weather source an adapter.
+- **No catalogue (2026-11-08).** Superseded: typing a whole datasheet by hand is the builder's slowest step.
+- **Layouts referencing catalogue entries.** Rejected: a catalogue fix would silently change past layouts; a copy keeps them as entered.
 - **Power-level providers (Forecast.Solar, Solcast).** Rejected: they bypass the string model, so per-string views vanish.
 - **Hay–Davies transposition.** Rejected: simpler, less precise.
 - **The PV model as a module inside the core.** Rejected: the 3D builder needs it in the browser, and a crate keeps I/O out by construction.

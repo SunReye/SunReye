@@ -251,3 +251,14 @@ async fn a_write_evcc_does_not_republish_is_a_mismatch() {
     );
     assert_eq!(loadpoint.published(), [published(LIMIT, "90")]);
 }
+
+#[tokio::test]
+async fn a_loadpoints_setting_reads_the_retained_state_and_publishes_nothing() {
+    let mut loadpoint = Loadpoint::new("pv", Evcc::Applies).await;
+
+    let uri = format!("/api/v1/devices/{}/settings/limitSoc", loadpoint.id);
+    let read = loadpoint.ask(get(&uri)).await;
+
+    assert_eq!(read, (StatusCode::OK, json!({ "value": 80.0 })));
+    assert_eq!(loadpoint.published(), []);
+}

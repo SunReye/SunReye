@@ -1,12 +1,12 @@
-import createClient from "openapi-fetch";
 import { carBodies, type CarBodies } from "./car-bodies";
-import { refusal, type Client, type Problem } from "./client";
+import { open, refusal, type Client, type Problem } from "./client";
 import { imports, type Imports } from "./imports";
 import { follow, type Live } from "./live";
-import { body, type LayoutChange } from "./layout-change";
+import { layouts, type Layouts } from "./layouts";
 import { pvModel, type PvModel } from "./model";
 import { setup, type Connection, type Setup } from "./setup";
-import type { components, paths } from "./schema";
+import type { components } from "./schema";
+import { plantRecords, type PlantRecords } from "./records";
 import { tariffs, type Tariffs } from "./tariff";
 
 export type History = components["schemas"]["History"];
@@ -15,16 +15,12 @@ export type Forecasts = components["schemas"]["Forecasts"];
 
 export type Statistics = components["schemas"]["Statistics"];
 
-/** A plant-local calendar period statistics are cut in (ADR 3). */
+/** A UTC hour or a plant-local calendar period statistics are cut in (ADR 3, 9). */
 export type Period = components["schemas"]["Period"];
-
-export type Layout = components["schemas"]["Layout"];
 
 export type StringDraft = components["schemas"]["StringDraft"];
 
 export type PvString = components["schemas"]["PvString"];
-
-export type ModuleType = components["schemas"]["ModuleType"];
 
 export type Capabilities = components["schemas"]["Support"];
 
@@ -45,9 +41,21 @@ export type WriteLog = components["schemas"]["WriteLog"];
 
 export type { Problem } from "./client";
 
+export type { CatalogueSheet, Datasheet, Layout, ModuleType } from "./layouts";
+
 export type { ImportStatus, SharedArchive } from "./imports";
 
-export type { Connection, Found, PointDraft } from "./setup";
+export type {
+  Connection,
+  ConnectionDraft,
+  CreatedToken,
+  Found,
+  Listing,
+  PointDraft,
+  Scope,
+  Token,
+  Viewer,
+} from "./setup";
 
 export type { Live, Values } from "./live";
 
@@ -71,7 +79,7 @@ export function http(base: string): Transport {
 }
 
 /** A core's API: what the SPA reads, through one transport. */
-export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
+export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs, PlantRecords, Layouts {
   /** Calls `listener` with every value on connect and after each change, until the returned stop. */
   live(listener: (live: Live) => void): () => void;
   /** Time-weighted means of one series from `from` to before `to`, at the tier the core picks. */
@@ -86,18 +94,14 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
   ): Promise<Statistics | Problem>;
   /** The latest forecast of each target of one series from `from` to before `to`. */
   forecasts(device: number, series: string, from: Date, to: Date): Promise<Forecasts | Problem>;
-  /** The PV layout in force now. */
-  layout(): Promise<Layout | Problem>;
-  /** Every module type. */
-  moduleTypes(): Promise<readonly ModuleType[] | Problem>;
-  /** Changes the PV layout from an instant on; admin only. */
-  changeLayout(change: LayoutChange): Promise<Layout | Problem>;
   /** Every registered device; admin only. */
   devices(): Promise<readonly Device[] | Problem>;
   /** What the core supports, and each device's settings. */
   capabilities(): Promise<Capabilities | Problem>;
   /** Writes `value` to a device's setting through the core's one funnel; admin only. */
   write(device: number, key: string, value: number): Promise<Attempt | Problem>;
+  /** A device's setting's current value, `null` when unknown; admin only, as it reaches the device. */
+  read(device: number, key: string): Promise<Readonly<{ value: number | null }> | Problem>;
   /** Every write attempt, oldest first; admin only. */
   writes(): Promise<WriteLog | Problem>;
   /** Enables a device's setting as declared now, or withdraws the enable; admin only. */
@@ -115,7 +119,7 @@ export interface Core extends Setup, CarBodies, Imports, PvModel, Tariffs {
 }
 
 export function connect(transport: Transport): Core {
-  const client = createClient<paths>({ baseUrl: transport.base, fetch: transport.fetch });
+  const client = open(transport.base, transport.fetch);
 
   return {
     live: (listener) => {
@@ -159,27 +163,7 @@ export function connect(transport: Transport): Core {
     ...pvModel(client),
     ...status(client),
     ...tariffs(client),
-  };
-}
-
-/** The PV layout and its module types (ADR 17, 20). */
-function layouts(client: Client): Pick<Core, "layout" | "moduleTypes" | "changeLayout"> {
-  return {
-    layout: async () => {
-      const { data, error, response } = await client.GET("/api/v1/layout");
-
-      return data ?? refusal(error, response.status);
-    },
-    moduleTypes: async () => {
-      const { data, error, response } = await client.GET("/api/v1/module-types");
-
-      return data ? data.moduleTypes : refusal(error, response.status);
-    },
-    changeLayout: async (change) => {
-      const { data, error, response } = await client.PUT("/api/v1/layout", { body: body(change) });
-
-      return data ?? refusal(error, response.status);
-    },
+    ...plantRecords(client),
   };
 }
 
@@ -212,7 +196,9 @@ function trust(client: Client): Pick<Core, "enable" | "updates" | "apply"> {
 }
 
 /** Devices, capabilities, setting writes and the write log. */
-function settings(client: Client): Pick<Core, "devices" | "capabilities" | "write" | "writes"> {
+function settings(
+  client: Client,
+): Pick<Core, "devices" | "capabilities" | "write" | "read" | "writes"> {
   return {
     devices: async () => {
       const { data, error, response } = await client.GET("/api/v1/devices");
@@ -231,6 +217,13 @@ function settings(client: Client): Pick<Core, "devices" | "capabilities" | "writ
       });
 
       return data ?? refusal(error, response.status);
+    },
+    read: async (device, key) => {
+      const { data, error, response } = await client.GET("/api/v1/devices/{id}/settings/{key}", {
+        params: { path: { id: device, key } },
+      });
+
+      return data ? { value: data.value ?? null } : refusal(error, response.status);
     },
     writes: async () => {
       const { data, error, response } = await client.GET("/api/v1/writes");

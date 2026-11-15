@@ -57,9 +57,9 @@ pub enum StorageClass {
 /// The kind of a named role; a role ADR 4 lacks is a measurement.
 pub fn kind(role: &str) -> RoleKind {
     match role {
-        "battery.mode" | "ev.connected" | "ev.charging" | "ev.mode" | "ev.battery.boost"
-        | "ev.vehicle.model" => RoleKind::Status,
-        "ev.session.energy" => RoleKind::Counter,
+        "battery.mode" | "inverter.status" | "ev.connected" | "ev.charging" | "ev.mode"
+        | "ev.battery.boost" => RoleKind::Status,
+        "ev.session.energy" | "battery.cycles" => RoleKind::Counter,
         role if role.rsplit('.').next() == Some("total") => RoleKind::Counter,
         _ => RoleKind::Measurement,
     }
@@ -68,9 +68,25 @@ pub fn kind(role: &str) -> RoleKind {
 /// The unit of a named role; none for a status or a role ADR 4 lacks.
 pub fn unit(role: &str) -> Option<Unit> {
     Some(match role {
-        "pv.power" | "pv.mppt.power" | "pv.string.power" | "battery.power" | "grid.power"
-        | "grid.phase.power" | "load.power" | "backup.power" | "generator.power"
-        | "inverter.power" | "ev.charge.power" => Unit::Watt,
+        "pv.power"
+        | "pv.mppt.power"
+        | "pv.string.power"
+        | "battery.power"
+        | "grid.power"
+        | "grid.phase.power"
+        | "load.power"
+        | "load.phase.power"
+        | "backup.power"
+        | "generator.power"
+        | "inverter.power"
+        | "inverter.loss.power"
+        | "ev.charge.power"
+        | "battery.charge.power"
+        | "battery.discharge.power"
+        | "grid.import.power"
+        | "grid.export.power"
+        | "self.consumption.power"
+        | "self.supply.power" => Unit::Watt,
         "pv.energy.total"
         | "battery.capacity"
         | "battery.energy.charged.total"
@@ -84,8 +100,8 @@ pub fn unit(role: &str) -> Option<Unit> {
         "pv.mppt.voltage" | "battery.voltage" | "grid.phase.voltage" => Unit::Volt,
         "pv.mppt.current" | "battery.current" | "grid.phase.current" => Unit::Ampere,
         "grid.frequency" => Unit::Hertz,
-        "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" => Unit::Percent,
-        "battery.temperature" => Unit::Celsius,
+        "battery.soc" | "ev.vehicle.soc" | "ev.limit.soc" | "inverter.efficiency" => Unit::Percent,
+        "battery.temperature" | "inverter.temperature" => Unit::Celsius,
         _ => return None,
     })
 }

@@ -21,10 +21,11 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::api::{Clock, Code, Problem, ProblemDetails, internal};
+use crate::api::{Clock, Code, Problem, ProblemDetails, Refused, internal};
 use crate::bus::DeviceId;
 use crate::storage::{Database, Error};
 
+mod catalogue;
 mod scene;
 
 const BODY: Problem = Problem {
@@ -39,8 +40,6 @@ const NONE: Problem = Problem {
     status: StatusCode::NOT_FOUND,
     code: Code::LayoutNone,
 };
-/// °C: the cell temperature strings are sized for (ADR 20).
-const COLD: f64 = -10.0;
 /// Who changes the layout: the one admin (ADR 9).
 const ACTOR: &str = "admin";
 
@@ -54,15 +53,35 @@ enum Refusal {
     /// An id no string ever had, or one named twice.
     String,
     ModuleType,
-    /// A value out of its physical range.
-    Value,
-    /// A scene's grid names no roof face, a module no string or one of another module type, or
-    /// an equipment marker lies off its wall.
+    /// A value out of its physical range: a string's by its position, else the datasheet's.
+    Value {
+        string: Option<usize>,
+        field: &'static str,
+    },
+    /// A scene's grid names no roof face, a module no string or one of another module type, an
+    /// equipment marker lies off its wall, or a car place, ground surface or fence is refused.
     Scene,
     /// A module crosses its face's setback.
     Setback,
     /// Two modules share a cell.
     Overlap,
+}
+
+impl From<Refusal> for Refused {
+    fn from(refusal: Refusal) -> Self {
+        let pointer = if let Refusal::Value { string, field } = refusal {
+            Some(string.map_or_else(
+                || format!("/{field}"),
+                |at| format!("/strings/{at}/{field}"),
+            ))
+        } else {
+            None
+        };
+        Self {
+            problem: refusal.into(),
+            pointer,
+        }
+    }
 }
 
 impl From<Refusal> for Problem {
@@ -72,7 +91,7 @@ impl From<Refusal> for Problem {
             Refusal::Input => Code::LayoutInput,
             Refusal::String => Code::LayoutString,
             Refusal::ModuleType => Code::LayoutModuleType,
-            Refusal::Value => Code::LayoutValue,
+            Refusal::Value { .. } => Code::LayoutValue,
             Refusal::Scene => Code::LayoutScene,
             Refusal::Setback => Code::LayoutSetback,
             Refusal::Overlap => Code::LayoutOverlap,
@@ -100,6 +119,16 @@ impl Inverters {
     pub fn profile(&self, device: DeviceId) -> Option<Arc<Profile>> {
         let inverters = crate::read(&self.0);
         inverters.get(&device).cloned()
+    }
+
+    /// Each inverter's maximum DC input voltage, by device, where its profile declares one.
+    #[must_use]
+    pub fn max_input_voltages(&self) -> Vec<(DeviceId, f64)> {
+        let inverters = crate::read(&self.0);
+        inverters
+            .iter()
+            .filter_map(|(id, profile)| Some((*id, profile.inverter()?.max_input_voltage)))
+            .collect()
     }
 
     /// Replaces the set for every clone.
@@ -293,9 +322,13 @@ impl Layouts {
     ///
     /// # Errors
     /// A datasheet value is not physical, or the file cannot be written.
-    pub async fn add_module_type(&self, datasheet: Datasheet) -> Result<ModuleType, Problem> {
-        if !physical(&datasheet) {
-            return Err(Refusal::Value.into());
+    pub async fn add_module_type(&self, datasheet: Datasheet) -> Result<ModuleType, Refused> {
+        if let Some(field) = unphysical(&datasheet) {
+            return Err(Refusal::Value {
+                string: None,
+                field,
+            }
+            .into());
         }
         let stored = datasheet.clone();
         let id = self
@@ -317,13 +350,13 @@ impl Layouts {
         mut strings: Vec<StringDraft>,
         scene: Option<Scene>,
         changed: SystemTime,
-    ) -> Result<Version, Problem> {
+    ) -> Result<Version, Refused> {
         if let Some(scene) = &scene {
             let module_types = self.module_types().await.map_err(internal)?;
-            scene::derive(scene, &mut strings, &module_types)?;
+            scene::derive(scene, &mut strings, &module_types).map_err(Problem::from)?;
         }
-        for draft in &strings {
-            self.check(&draft.wiring)?;
+        for (at, draft) in strings.iter().enumerate() {
+            self.check(at, &draft.wiring)?;
         }
         let stored = self
             .database
@@ -349,7 +382,8 @@ impl Layouts {
                 let module = module_types.iter().find(|m| m.id == w.module_type)?;
                 let profile = self.inverters.profile(DeviceId(w.device))?;
                 let limit = profile.inverter()?.max_input_voltage;
-                let voltage = pv::open_circuit_voltage(&module.datasheet.model(), w.modules, COLD);
+                let voltage =
+                    pv::open_circuit_voltage(&module.datasheet.model(), w.modules, pv::COLD);
                 (voltage > limit).then_some(Warning {
                     string: string.id,
                     open_circuit_voltage: voltage,
@@ -359,7 +393,8 @@ impl Layouts {
             .collect())
     }
 
-    fn check(&self, wiring: &Wiring) -> Result<(), Refusal> {
+    /// Refuses the wiring of the string at position `at`.
+    fn check(&self, at: usize, wiring: &Wiring) -> Result<(), Refusal> {
         let profile = self
             .inverters
             .profile(DeviceId(wiring.device))
@@ -370,32 +405,53 @@ impl Layouts {
         if input == 0 || input > inputs {
             return Err(Refusal::Input);
         }
-        let plane = (0.0..=90.0).contains(&wiring.tilt)
-            && (-180.0..=180.0).contains(&wiring.azimuth)
-            && (0.0..100.0).contains(&wiring.loss);
-        if wiring.modules == 0 || wiring.optimized > wiring.modules || !plane {
-            return Err(Refusal::Value);
+        let ranges = [
+            ("modules", wiring.modules > 0),
+            ("optimized", wiring.optimized <= wiring.modules),
+            ("tilt", (0.0..=90.0).contains(&wiring.tilt)),
+            ("azimuth", (-180.0..=180.0).contains(&wiring.azimuth)),
+            ("loss", (0.0..100.0).contains(&wiring.loss)),
+        ];
+        match ranges.into_iter().find(|(_, within)| !within) {
+            Some((field, _)) => Err(Refusal::Value {
+                string: Some(at),
+                field,
+            }),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     /// The module type and layout routes; viewers read them (ADR 20).
     pub fn routes(self, clock: Clock) -> OpenApiRouter {
         OpenApiRouter::new()
             .routes(routes!(list_module_types, add_module_type))
+            .routes(routes!(module_catalogue))
             .routes(routes!(layout, change_layout))
             .with_state((self, clock))
     }
 }
 
-fn physical(d: &Datasheet) -> bool {
-    let positive = [d.pmax, d.vmp, d.imp, d.voc, d.isc, d.width, d.height];
-    let coefficients = [
-        d.power_coefficient,
-        d.voltage_coefficient,
-        d.current_coefficient,
+/// The first datasheet value out of its physical range, by its field's name.
+fn unphysical(d: &Datasheet) -> Option<&'static str> {
+    let positive = [
+        ("pmax", d.pmax),
+        ("vmp", d.vmp),
+        ("imp", d.imp),
+        ("voc", d.voc),
+        ("isc", d.isc),
+        ("width", d.width),
+        ("height", d.height),
     ];
-    positive.iter().all(|v| v.is_finite() && *v > 0.0) && coefficients.iter().all(|v| v.is_finite())
+    let coefficients = [
+        ("powerCoefficient", d.power_coefficient),
+        ("voltageCoefficient", d.voltage_coefficient),
+        ("currentCoefficient", d.current_coefficient),
+    ];
+    let bad = positive
+        .into_iter()
+        .find(|(_, v)| !(v.is_finite() && *v > 0.0));
+    bad.or_else(|| coefficients.into_iter().find(|(_, v)| !v.is_finite()))
+        .map(|(field, _)| field)
 }
 
 fn seconds(time: SystemTime) -> i64 {
@@ -630,7 +686,22 @@ async fn list_module_types(State((layouts, _)): LayoutState) -> Result<Json<Modu
     Ok(Json(ModuleTypes { module_types }))
 }
 
-/// Adds a module type; the admin enters its datasheet, there is no catalogue.
+/// The module catalogue's sheets, as the admin picks a datasheet to add as a module type.
+#[derive(Serialize, ToSchema)]
+struct ModuleCatalogue {
+    sheets: Vec<catalogue::Sheet>,
+}
+
+#[utoipa::path(get, path = "/api/v1/module-catalogue", responses(
+    (status = 200, body = ModuleCatalogue),
+    (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
+))]
+async fn module_catalogue() -> Result<Json<ModuleCatalogue>, Problem> {
+    let sheets = catalogue::bundled().map_err(internal)?;
+    Ok(Json(ModuleCatalogue { sheets }))
+}
+
+/// Adds a module type from its datasheet, entered or copied from the module catalogue.
 #[utoipa::path(post, path = "/api/v1/module-types", request_body = Datasheet, responses(
     (status = 201, body = ModuleType),
     (status = "4XX", body = ProblemDetails, content_type = "application/problem+json"),
@@ -638,7 +709,7 @@ async fn list_module_types(State((layouts, _)): LayoutState) -> Result<Json<Modu
 async fn add_module_type(
     State((layouts, _)): LayoutState,
     body: Result<Json<Datasheet>, JsonRejection>,
-) -> Result<(StatusCode, Json<ModuleType>), Problem> {
+) -> Result<(StatusCode, Json<ModuleType>), Refused> {
     let Json(datasheet) = body.map_err(|_| BODY)?;
     let added = layouts.add_module_type(datasheet).await?;
     Ok((StatusCode::CREATED, Json(added)))
@@ -721,7 +792,7 @@ struct LayoutChange {
 async fn change_layout(
     State((layouts, clock)): LayoutState,
     body: Result<Json<LayoutChange>, JsonRejection>,
-) -> Result<Json<Layout>, Problem> {
+) -> Result<Json<Layout>, Refused> {
     let Json(change) = body.map_err(|_| BODY)?;
     let applies_from = instant(&change.applies_from).map_err(|_| BODY)?;
     let version = layouts

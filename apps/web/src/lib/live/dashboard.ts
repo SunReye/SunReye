@@ -4,9 +4,8 @@ import type { Scene } from "../builder/pv.ts";
 
 export type View = "3d" | "2d";
 
-/** Where each browser keeps its toggle and its low-power switch. */
+/** Where each browser keeps its toggle. */
 export const CHOICE = "sunreye.dashboard";
-export const LOW_POWER = "sunreye.low-power";
 
 /** The toggle as a browser kept it; null before it was first used. */
 export function keptChoice(value: string | null): View | null {

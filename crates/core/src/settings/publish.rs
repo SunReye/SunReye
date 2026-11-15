@@ -67,6 +67,16 @@ pub async fn run(mut writer: Writer, mut job: Job, wait: Duration) -> Result<App
     Ok(applied)
 }
 
+/// The value `setting`'s read-back holds in the retained state `writer` reads; `None` for a
+/// write-only setting or a state not held. Nothing is published.
+#[must_use]
+pub fn read(writer: &Writer, setting: &Setting) -> Option<f64> {
+    let Source::Quantity(at) = setting.read_back()? else {
+        return None;
+    };
+    writer.held(at)
+}
+
 /// Whether `value` is the one `words` encode: the equal-value skip compares words (ADR 7).
 fn fits(setting: &Setting, words: &[u16], value: f64) -> bool {
     setting.encode(value).as_deref() == Some(words)

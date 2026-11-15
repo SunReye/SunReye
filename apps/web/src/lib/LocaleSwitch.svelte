@@ -1,37 +1,32 @@
+<!-- The language, where Settings › Display is out of reach: sign-in and setup. -->
 <script lang="ts">
+  import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
+  import { haptics } from "./haptics.ts";
+  import { endonym, language } from "./i18n/language.svelte.ts";
   import { m } from "./paraglide/messages.js";
-  import { assertIsLocale, locales, setLocale, type Locale } from "./paraglide/runtime.js";
+  import { isLocale, locales, type Locale } from "./paraglide/runtime.js";
 
-  let { locale = $bindable() }: { locale: Locale } = $props();
-
-  /** Each language in its own name, so an owner finds theirs whatever is shown. */
-  function endonym(option: Locale): string {
-    return new Intl.DisplayNames([option], { type: "language" }).of(option) ?? option;
-  }
+  let { locale = $bindable(language.current) }: { locale?: Locale } = $props();
 
   async function choose(value: string): Promise<void> {
-    const next = assertIsLocale(value);
+    if (!isLocale(value) || value === locale) return;
 
+    haptics.selection();
     // No reload: the page renders anew on `locale`.
-    await setLocale(next, { reload: false });
-    locale = next;
+    await language.choose(value);
+    locale = value;
   }
-
-  $effect(() => {
-    document.documentElement.lang = locale;
-  });
 </script>
 
-<label>
-  {m.locale_label()}
-  <select
-    value={locale}
-    onchange={(event) => {
-      void choose(event.currentTarget.value);
-    }}
-  >
-    {#each locales as option (option)}
-      <option value={option}>{endonym(option)}</option>
-    {/each}
-  </select>
-</label>
+<ToggleGroup.Root
+  type="single"
+  size="sm"
+  spacing={1}
+  bind:value={() => locale, (next) => void choose(next)}
+  class="rounded-md p-0.5 ring-1 ring-border/60"
+  aria-label={m.locale_label()}
+>
+  {#each locales as option (option)}
+    <ToggleGroup.Item value={option} class="px-3 text-xs">{endonym(option)}</ToggleGroup.Item>
+  {/each}
+</ToggleGroup.Root>

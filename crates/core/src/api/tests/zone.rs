@@ -59,3 +59,17 @@ async fn a_zone_the_core_does_not_know_is_refused() {
     let (_, read) = core.ask(&set_cookie, get("/api/v1/timezone")).await;
     assert_eq!(read, json!({ "name": "UTC" }));
 }
+
+#[tokio::test]
+async fn a_viewer_reads_the_plant_timezone_to_cut_its_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, admin) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    core.viewer(&admin, "grandma", "sunny days").await;
+    let viewer = core
+        .sign_in(super::viewers::login("grandma", "sunny days"))
+        .await;
+
+    let (status, zone) = core.ask(&viewer, get("/api/v1/timezone")).await;
+
+    assert_eq!((status, zone), (StatusCode::OK, json!({ "name": "UTC" })));
+}

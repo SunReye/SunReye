@@ -1,6 +1,15 @@
 import type { Frozen, Inverter, Quantity } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
-import { FLOWS, HIGH_VOLTAGE, bounded, identify, inputs, settings, total } from "./shared.ts";
+import {
+  FLOWS,
+  HIGH_VOLTAGE,
+  RUNNING_STATE,
+  bounded,
+  identify,
+  inputs,
+  settings,
+  total,
+} from "./shared.ts";
 
 // The SUN-5K to SUN-25K-SG01HP3-EU-AM2 range: three-phase hybrids for a high-voltage battery. The
 // register map is v4's official SG01HP3 profiles', which scale PV and battery power by 10; v4 read
@@ -190,25 +199,22 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "ac.ups.l1.power",
-    role: "extra.ac_ups_l1_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 1,
     register: 650,
     type: "i16",
   },
   {
     key: "ac.ups.l2.power",
-    role: "extra.ac_ups_l2_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 2,
     register: 651,
     type: "i16",
   },
   {
     key: "ac.ups.l3.power",
-    role: "extra.ac_ups_l3_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 3,
     register: 652,
     type: "i16",
   },
@@ -305,16 +311,14 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "inverter.status",
-    role: "extra.inverter_status",
-    kind: "status",
+    role: "inverter.status",
     register: 500,
     type: "u16",
+    enum: RUNNING_STATE,
   },
   {
     key: "radiator_temp",
-    role: "extra.radiator_temp",
-    kind: "measurement",
-    unit: "°C",
+    role: "inverter.temperature",
     register: 540,
     type: "i16",
     scale: 0.1,
@@ -393,6 +397,7 @@ export function sg01hp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "storage",
       "unit",
       "variants",
+      "register-enum",
     ],
     identify: identify(HIGH_VOLTAGE, model.rated),
     inverter: model.inverter,

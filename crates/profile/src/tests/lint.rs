@@ -66,6 +66,7 @@ fn each_optional_field_of_a_quantity_needs_its_capability() {
         (with("scaleFactor", json!(2)), "scale-factor"),
         (with("resolution", json!(0.1)), "resolution"),
         (with("deadband", json!(2)), "deadband"),
+        (with("enum", json!({ "2": 1 })), "register-enum"),
     ];
     for (doc, capability) in cases {
         assert_eq!(

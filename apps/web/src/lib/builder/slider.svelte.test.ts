@@ -1,11 +1,14 @@
+import "../../app.css";
 import { beforeEach, expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type Corrections, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
 import { loadPv } from "./pv.ts";
+import { fill } from "./templates.ts";
+import { pickDay, savedFrom, scrub } from "./moment.harness.ts";
 
 // The builder's time slider (ADR 20): it reads history, forecasts and a clear sky, and never
 // changes the scene.
@@ -37,7 +40,7 @@ beforeEach(async () => {
 /** The default house with two modules of string 5 on its south face, saved. */
 const SAVED = {
   scene: {
-    ...emptyDraft().scene,
+    ...fill(emptyDraft(), "gable").scene,
     grids: [
       {
         block: 0,
@@ -121,8 +124,8 @@ test("the slider shows a past day's measured string power and changes nothing in
     location: BERLIN,
   });
 
-  await userEvent.fill(screen.getByLabelText("Tag"), "2026-11-01");
-  await userEvent.fill(screen.getByRole("slider", { name: "Uhrzeit" }), "750");
+  await pickDay("Tag", "2026-11-01");
+  await scrub(750);
 
   await expect.element(screen.getByText("12:30")).toBeVisible();
   await expect.element(screen.getByText("Gemessen oder geschätzt")).toBeVisible();
@@ -131,10 +134,8 @@ test("the slider shows a past day's measured string power and changes nothing in
     .toHaveTextContent("Süd: 812 W");
   await expect.element(screen.getByRole("button", { name: "Rückgängig" })).toBeDisabled();
 
-  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-11-01");
-  await screen.getByRole("button", { name: "Speichern" }).click();
+  await savedFrom("2026-11-01");
 
-  await expect.element(screen.getByRole("status")).toHaveTextContent("Gespeichert.");
   expect(transport.puts[0]).toMatchObject({ scene: SAVED.scene });
 });
 
@@ -148,13 +149,50 @@ test("a far day runs a clear sky in the browser", async () => {
     location: BERLIN,
   });
 
-  await userEvent.fill(screen.getByLabelText("Tag"), "2030-06-21");
-  await userEvent.fill(screen.getByRole("slider", { name: "Uhrzeit" }), "780");
+  await pickDay("Tag", "2030-06-21");
+  await scrub(780);
 
   await expect.element(screen.getByText("Klarer Himmel, berechnet")).toBeVisible();
   const list = screen.getByRole("list", { name: "Leistung je String" });
 
   await expect.poll(() => list.element().textContent).toMatch(/Süd: ≈[1-9][\d.]* W/u);
+});
+
+test("the scene's sky is the weather of the slider's day", async () => {
+  const asked: string[] = [];
+  const reading = readingCore(() => ({ inputs: [] }));
+
+  await render(Builder, {
+    pv,
+    core: connect({
+      ...reading,
+      fetch: (request) => {
+        asked.push(request.url);
+
+        return reading.fetch(request);
+      },
+    }),
+    start: SAVED,
+    moduleTypes: [MODULE],
+    devices: DEVICES,
+    location: BERLIN,
+  });
+
+  await pickDay("Tag", "2026-11-01");
+
+  // The day in the browser's calendar, midnight to midnight.
+  const day = new URLSearchParams({
+    from: new Date("2026-11-01T00:00").toISOString(),
+    to: new Date("2026-11-02T00:00").toISOString(),
+  }).toString();
+
+  const weather = (series: string) =>
+    asked.find(
+      (url) => url.includes(`/devices/4294967295/forecasts?series=${series}&`) && url.endsWith(day),
+    );
+
+  await expect.poll(() => weather("weather.ghi")).toBeDefined();
+  await expect.poll(() => weather("weather.dhi")).toBeDefined();
 });
 
 test("each MPPT input shows its learned correction at the slider's hour and its last 30 days", async () => {
@@ -178,8 +216,11 @@ test("each MPPT input shows its learned correction at the slider's hour and its 
     location: BERLIN,
   });
 
-  await userEvent.fill(screen.getByLabelText("Tag"), "2026-11-01");
-  await userEvent.fill(screen.getByRole("slider", { name: "Uhrzeit" }), "750");
+  await pickDay("Tag", "2026-11-01");
+  await scrub(750);
+
+  // Beside the strings it judges, in the inspector.
+  await screen.getByRole("button", { name: /^Strings/u }).click();
 
   await expect
     .element(screen.getByRole("list", { name: "Modell gegen Messung" }))

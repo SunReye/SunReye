@@ -347,6 +347,43 @@ async fn the_owners_plant_replays_in_sim_cycle_after_cycle() {
         .expect("twelve cycles at the cadence");
 }
 
+/// From the first cycle's replies: register 500 is 2, Deye's normal running state; 540 is
+/// `0x04e2` at scale 0.1, offset -100; 650 to 652 are 186, 433 and 32 W.
+#[tokio::test(start_paused = true)]
+async fn the_owners_plant_reads_its_inverter_state_and_load_per_phase() {
+    let recording = Recording::parse(PLANT).unwrap();
+    let bus = Bus::default();
+    let mut readings = bus.subscribe();
+    let device = Device {
+        id: DeviceId(1),
+        unit: recording.unit,
+        profile: deye(),
+    };
+    let task = spawn(Endpoint::Sim(recording.capture), vec![device], bus.clone());
+    readings.recv().await.unwrap();
+    let first = task.latest();
+    let value = |series: &str| {
+        first
+            .iter()
+            .find(|(r, _)| bus.series(r.series).unwrap().to_string() == series)
+            .map(|(r, _)| r.value)
+    };
+
+    let read = [
+        "inverter.status",
+        "inverter.temperature",
+        "load.phase.power[1]",
+        "load.phase.power[2]",
+        "load.phase.power[3]",
+    ]
+    .map(value);
+
+    assert_eq!(
+        read,
+        [Some(1.0), Some(25.0), Some(186.0), Some(433.0), Some(32.0)]
+    );
+}
+
 fn sunspec() -> Arc<Profile> {
     crate::profiles::Catalogue::bundled()
         .unwrap()

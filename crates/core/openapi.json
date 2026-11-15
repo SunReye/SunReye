@@ -118,6 +118,23 @@
         ],
         "type": "object"
       },
+      "BestView": {
+        "properties": {
+          "date": {
+            "description": "`YYYY-MM-DD`.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "value"
+        ],
+        "type": "object"
+      },
       "BiddingZone": {
         "description": "A day-ahead market area.",
         "enum": [
@@ -142,13 +159,30 @@
             "description": "A carport: a post at each corner instead of walls.",
             "type": "boolean"
           },
+          "overhang": {
+            "$ref": "#/components/schemas/Overhang",
+            "description": "How far the roof reaches past the walls; none when stored without it."
+          },
           "roof": {
             "$ref": "#/components/schemas/Roof"
+          },
+          "roofColour": {
+            "description": "`#rrggbb`; the generated finish's own colour without one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "rotation": {
             "description": "Degrees clockwise about the corner, seen from above.",
             "format": "double",
             "type": "number"
+          },
+          "wallColour": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "width": {
             "format": "double",
@@ -173,34 +207,6 @@
           "roof"
         ],
         "type": "object"
-      },
-      "Body": {
-        "additionalProperties": false,
-        "description": "A stylised body the browser draws.",
-        "properties": {
-          "class": {
-            "$ref": "#/components/schemas/BodyClass"
-          },
-          "colour": {
-            "description": "`#rrggbb`.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "class",
-          "colour"
-        ],
-        "type": "object"
-      },
-      "BodyClass": {
-        "enum": [
-          "sedan",
-          "hatchback",
-          "suv",
-          "van",
-          "pickup"
-        ],
-        "type": "string"
       },
       "Bounds": {
         "description": "The inclusive bounds of a setting's value.",
@@ -246,19 +252,101 @@
         ],
         "type": "object"
       },
+      "Capacity": {
+        "description": "The usable capacity inferred from the state of charge over each unbroken discharge of at\nleast 20 points; no vendor register reports it.",
+        "properties": {
+          "cycles": {
+            "description": "Full cycles: `discharged` over the nameplate, else over `now`.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "discharged": {
+            "description": "kWh discharged, summed per hour.",
+            "format": "double",
+            "type": "number"
+          },
+          "first": {
+            "description": "kWh: the median of the first five.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "measurements": {
+            "description": "In time order.",
+            "items": {
+              "$ref": "#/components/schemas/CapacityMeasurement"
+            },
+            "type": "array"
+          },
+          "nameplate": {
+            "description": "kWh, as the latest `battery.capacity` a device reports; `null` without one.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "now": {
+            "description": "kWh: the median of the latest five measurements; `null` before the first.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "perYear": {
+            "description": "The relative change a year, from half a year of measurements and more than five.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "since": {
+            "description": "RFC 3339: the first hour with battery power.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "measurements",
+          "discharged"
+        ],
+        "type": "object"
+      },
+      "CapacityMeasurement": {
+        "properties": {
+          "end": {
+            "description": "RFC 3339: when the discharge ended.",
+            "type": "string"
+          },
+          "kwh": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "end",
+          "kwh"
+        ],
+        "type": "object"
+      },
       "CarPlace": {
         "additionalProperties": false,
         "description": "A parking footprint: its width runs along x and its length along z from its corner, before\nit turns.",
         "properties": {
-          "body": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Body",
-                "description": "The admin's pick, when no catalogue entry matches the vehicle."
-              },
-              {
-                "type": "null"
-              }
+          "colour": {
+            "description": "The default body's paint, `#rrggbb`; the browser's own grey without one.",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "device": {
@@ -273,7 +361,7 @@
             "type": "number"
           },
           "model": {
-            "description": "The uploaded GLB's id, its SHA-256 in hex.",
+            "description": "The uploaded GLB's id, its SHA-256 in hex; it replaces the default body.",
             "type": [
               "string",
               "null"
@@ -307,6 +395,20 @@
         ],
         "type": "object"
       },
+      "Catalogue": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/Listing"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "profiles"
+        ],
+        "type": "object"
+      },
       "Cell": {
         "additionalProperties": false,
         "description": "A module in one cell: rows count up the slope, columns across it, both from 0.",
@@ -318,6 +420,15 @@
           },
           "optimized": {
             "type": "boolean"
+          },
+          "order": {
+            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "row": {
             "format": "int32",
@@ -358,6 +469,55 @@
         "required": [
           "appliesFrom",
           "points"
+        ],
+        "type": "object"
+      },
+      "Chimney": {
+        "additionalProperties": false,
+        "description": "An upright box standing on a block's roof face, placed in the face's outline like its module\ngrid: metres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Its level top stands this high over the roof where its upper side meets it.",
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its level size: across the slope, and along the fall line seen from above.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "depth",
+          "height"
         ],
         "type": "object"
       },
@@ -683,6 +843,14 @@
         ],
         "type": "object"
       },
+      "Crown": {
+        "description": "A tree's crown, by its leaves.",
+        "enum": [
+          "broadleaf",
+          "conifer"
+        ],
+        "type": "string"
+      },
       "Datasheet": {
         "description": "A PV module model's datasheet values.",
         "properties": {
@@ -831,6 +999,10 @@
             "format": "double",
             "type": "number"
           },
+          "time": {
+            "description": "The value is a time of day in minutes since midnight (ADR 5); absent for a number.",
+            "type": "boolean"
+          },
           "values": {
             "description": "The only values it takes, when the profile enumerates them.",
             "items": {
@@ -942,6 +1114,21 @@
             },
             "type": "array"
           },
+          "maxInputVoltage": {
+            "description": "An inverter's maximum DC input voltage in volts, from its profile: what a string's\nopen-circuit voltage at −10 °C is checked against (ADR 20).",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "series": {
+            "description": "The series its profile publishes, extras left out, such as `load.phase.power[2]`: what\nit can report, not what it reports now.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "settings": {
             "description": "What its profile lets the core write, in the profile's order.",
             "items": {
@@ -956,6 +1143,7 @@
         },
         "required": [
           "estimated",
+          "series",
           "writes",
           "settings"
         ],
@@ -1096,6 +1284,58 @@
         ],
         "type": "string"
       },
+      "Fence": {
+        "additionalProperties": false,
+        "description": "A polyline on the ground through `points`.",
+        "properties": {
+          "finish": {
+            "$ref": "#/components/schemas/FenceFinish"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FencePoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "points",
+          "height",
+          "finish"
+        ],
+        "type": "object"
+      },
+      "FenceFinish": {
+        "enum": [
+          "wood",
+          "metal",
+          "wall"
+        ],
+        "type": "string"
+      },
+      "FencePoint": {
+        "additionalProperties": false,
+        "description": "A point on the ground in the scene's frame.",
+        "properties": {
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z"
+        ],
+        "type": "object"
+      },
       "Figures": {
         "description": "One period's figures: a measurement's, or a counter's delta.",
         "properties": {
@@ -1114,6 +1354,14 @@
           "end": {
             "description": "RFC 3339, UTC.",
             "type": "string"
+          },
+          "hours": {
+            "description": "The hours with a value: gaps excluded.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "integral": {
             "description": "`Σ value·duration` in the unit times hours: Wh for power.",
@@ -1154,6 +1402,37 @@
           "date",
           "start",
           "end"
+        ],
+        "type": "object"
+      },
+      "FiguresView": {
+        "description": "kWh, and EUR saved. Autarky is `selfSupply / consumption`.",
+        "properties": {
+          "consumption": {
+            "format": "double",
+            "type": "number"
+          },
+          "production": {
+            "format": "double",
+            "type": "number"
+          },
+          "saved": {
+            "description": "`null` where no tariff priced a day.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "selfSupply": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "production",
+          "consumption",
+          "selfSupply"
         ],
         "type": "object"
       },
@@ -1265,6 +1544,55 @@
         },
         "required": [
           "devices"
+        ],
+        "type": "object"
+      },
+      "GroundFinish": {
+        "enum": [
+          "lawn",
+          "paving",
+          "driveway",
+          "gravel",
+          "path"
+        ],
+        "type": "string"
+      },
+      "GroundSurface": {
+        "additionalProperties": false,
+        "description": "A rectangle on the plot: its width runs along x and its depth along z from its corner,\nbefore it turns.",
+        "properties": {
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "finish": {
+            "$ref": "#/components/schemas/GroundFinish"
+          },
+          "rotation": {
+            "description": "Degrees clockwise about the corner, seen from above.",
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "z": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "z",
+          "width",
+          "depth",
+          "rotation",
+          "finish"
         ],
         "type": "object"
       },
@@ -1678,6 +2006,43 @@
         ],
         "type": "object"
       },
+      "Listing": {
+        "description": "A profile served, as an admin picks it for a device.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at the inverter's rating; a family's largest.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The model, or the family it covers.",
+            "type": "string"
+          },
+          "official": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "manufacturer",
+          "name",
+          "version",
+          "official"
+        ],
+        "type": "object"
+      },
       "Location": {
         "description": "The plant's location in degrees, north and east positive.",
         "properties": {
@@ -1749,6 +2114,21 @@
           "subject",
           "id",
           "action"
+        ],
+        "type": "object"
+      },
+      "ModuleCatalogue": {
+        "description": "The module catalogue's sheets, as the admin picks a datasheet to add as a module type.",
+        "properties": {
+          "sheets": {
+            "items": {
+              "$ref": "#/components/schemas/Sheet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sheets"
         ],
         "type": "object"
       },
@@ -1955,8 +2335,11 @@
             "type": "object"
           },
           {
-            "description": "A trunk under a sphere crown of `radius` whose top is at `height`.",
+            "description": "A trunk under a crown of `radius` whose top is at `height`: a broadleaf's a sphere, a\nconifer's a cone from a fifth of the height.",
             "properties": {
+              "crown": {
+                "$ref": "#/components/schemas/Crown"
+              },
               "height": {
                 "format": "double",
                 "type": "number"
@@ -1988,6 +2371,51 @@
               "kind"
             ],
             "type": "object"
+          },
+          {
+            "description": "A straight row: a box whose length runs along x and its depth along z from its corner.",
+            "properties": {
+              "depth": {
+                "format": "double",
+                "type": "number"
+              },
+              "height": {
+                "format": "double",
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "hedge"
+                ],
+                "type": "string"
+              },
+              "length": {
+                "format": "double",
+                "type": "number"
+              },
+              "rotation": {
+                "format": "double",
+                "type": "number"
+              },
+              "x": {
+                "format": "double",
+                "type": "number"
+              },
+              "z": {
+                "format": "double",
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "z",
+              "length",
+              "depth",
+              "height",
+              "rotation",
+              "kind"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -2011,6 +2439,59 @@
         ],
         "type": "object"
       },
+      "Opening": {
+        "additionalProperties": false,
+        "description": "A window or a door in a block's wall.",
+        "properties": {
+          "along": {
+            "description": "Metres from the wall's left end to the opening's left edge, seen from outside.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpeningKind"
+          },
+          "sill": {
+            "description": "Metres from the ground to its lower edge; a door's is 0.",
+            "format": "double",
+            "type": "number"
+          },
+          "wall": {
+            "$ref": "#/components/schemas/Wall"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "block",
+          "wall",
+          "along",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "OpeningKind": {
+        "enum": [
+          "window",
+          "frenchWindow",
+          "frontDoor",
+          "garageDoor"
+        ],
+        "type": "string"
+      },
       "Outcome": {
         "description": "How a write ended.",
         "enum": [
@@ -2022,6 +2503,25 @@
           "refused"
         ],
         "type": "string"
+      },
+      "Overhang": {
+        "additionalProperties": false,
+        "description": "Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable\nends or verges (Ortgang). A flat or hip roof has eaves all round.",
+        "properties": {
+          "eave": {
+            "format": "double",
+            "type": "number"
+          },
+          "verge": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "eave",
+          "verge"
+        ],
+        "type": "object"
       },
       "Override": {
         "description": "A deadband override, in the role's unit.",
@@ -2049,13 +2549,35 @@
         "type": "object"
       },
       "Payback": {
-        "description": "The savings so far against the investment, in EUR to the cent.",
+        "description": "The savings so far against the investment, in EUR to the cent, and when they reach it.",
         "properties": {
           "investment": {
             "description": "What the admin entered; `null` until then.",
             "format": "double",
             "type": [
               "number",
+              "null"
+            ]
+          },
+          "months": {
+            "description": "The savings so far at each month's last recorded day, in time order.",
+            "items": {
+              "$ref": "#/components/schemas/PaybackMonth"
+            },
+            "type": "array"
+          },
+          "pace": {
+            "description": "EUR saved a year: the last twelve months, or the record scaled to a year; `null` under\nthree months of record.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reached": {
+            "description": "The plant-local date, `YYYY-MM-DD`, the savings reach the investment at that pace; `null`\nwithout an investment or a pace, or once paid back.",
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -2074,13 +2596,33 @@
           }
         },
         "required": [
-          "savings"
+          "savings",
+          "months"
+        ],
+        "type": "object"
+      },
+      "PaybackMonth": {
+        "description": "The savings summed up to a plant-local date.",
+        "properties": {
+          "date": {
+            "description": "`YYYY-MM-DD`.",
+            "type": "string"
+          },
+          "saved": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "saved"
         ],
         "type": "object"
       },
       "Period": {
-        "description": "A plant-local calendar period.",
+        "description": "A UTC hour, as hourly rollups are cut, or a plant-local calendar period.",
         "enum": [
+          "hour",
           "day",
           "week",
           "month"
@@ -2214,6 +2756,13 @@
           "code": {
             "$ref": "#/components/schemas/Code",
             "description": "A stable machine code, such as `auth.required`."
+          },
+          "pointer": {
+            "description": "The request body's member at fault, as an RFC 6901 JSON pointer such as\n`/strings/0/modules`, where the core can name it.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "description": "The HTTP status.",
@@ -2382,6 +2931,54 @@
         "required": [
           "measured",
           "modelled"
+        ],
+        "type": "object"
+      },
+      "Records": {
+        "description": "Every recorded plant-local year, newest first, and the plant's records.",
+        "properties": {
+          "bestDay": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most kWh produced on a closed day."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bestMonth": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most kWh produced in a closed month, by its first date."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bestSaving": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BestView",
+                "description": "The most EUR saved on a closed day."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/YearView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "years"
         ],
         "type": "object"
       },
@@ -2599,10 +3196,24 @@
             },
             "type": "array"
           },
+          "chimneys": {
+            "description": "Rectangular chimneys standing on roof faces.",
+            "items": {
+              "$ref": "#/components/schemas/Chimney"
+            },
+            "type": "array"
+          },
           "equipment": {
             "description": "Markers for inverters and batteries.",
             "items": {
               "$ref": "#/components/schemas/Equipment"
+            },
+            "type": "array"
+          },
+          "fences": {
+            "description": "Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Fence"
             },
             "type": "array"
           },
@@ -2621,6 +3232,20 @@
           "obstacles": {
             "items": {
               "$ref": "#/components/schemas/Obstacle"
+            },
+            "type": "array"
+          },
+          "openings": {
+            "description": "Windows and doors on the blocks' walls. Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Opening"
+            },
+            "type": "array"
+          },
+          "surfaces": {
+            "description": "Drawn in order, each over the last; without any the plot is lawn. They never shade.",
+            "items": {
+              "$ref": "#/components/schemas/GroundSurface"
             },
             "type": "array"
           }
@@ -2717,6 +3342,20 @@
         ],
         "type": "object"
       },
+      "SettingNow": {
+        "description": "A setting's current value.",
+        "properties": {
+          "value": {
+            "description": "In the setting's unit; `null` when it cannot be read or the setting is write-only.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SettingSupport": {
         "allOf": [
           {
@@ -2796,6 +3435,64 @@
         ],
         "type": "object"
       },
+      "Sheet": {
+        "additionalProperties": false,
+        "description": "The power classes one maker's datasheet prints.",
+        "properties": {
+          "maker": {
+            "type": "string"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/Datasheet"
+            },
+            "type": "array"
+          },
+          "series": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "required": [
+          "maker",
+          "series",
+          "source",
+          "modules"
+        ],
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "description": "The maker's datasheet every value of a sheet was copied from.",
+        "properties": {
+          "note": {
+            "description": "Why this edition was chosen, where it matters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The revision or date printed on the datasheet.",
+            "type": "string"
+          },
+          "title": {
+            "description": "As printed on the datasheet.",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "revision",
+          "url"
+        ],
+        "type": "object"
+      },
       "SpotPriceZone": {
         "description": "Whether spot prices are fetched, and for which bidding zone.",
         "properties": {
@@ -2868,6 +3565,23 @@
             "type": "object"
           }
         ]
+      },
+      "SunTint": {
+        "description": "The sun tint over the plant, without its location.",
+        "properties": {
+          "tint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Tint",
+                "description": "`null` until the location is set."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
       },
       "Support": {
         "description": "What this core supports (ADR 9). The schemas and capabilities are the profile crate's table,\nthe one its WASM build reports.",
@@ -2967,6 +3681,16 @@
           "bucket",
           "hour",
           "day"
+        ],
+        "type": "string"
+      },
+      "Tint": {
+        "description": "The backdrop's tint for the sun over the plant.",
+        "enum": [
+          "dawn",
+          "noon",
+          "dusk",
+          "night"
         ],
         "type": "string"
       },
@@ -3283,6 +4007,38 @@
         ],
         "type": "object"
       },
+      "YearView": {
+        "properties": {
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FiguresView",
+                "description": "The year before over the same dates; `null` before the record began."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "figures": {
+            "$ref": "#/components/schemas/FiguresView"
+          },
+          "running": {
+            "description": "The year today is in, summed to the latest reading.",
+            "type": "boolean"
+          },
+          "year": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "running",
+          "figures"
+        ],
+        "type": "object"
+      },
       "Zone": {
         "description": "The plant timezone.",
         "properties": {
@@ -3389,6 +4145,32 @@
           }
         },
         "summary": "The residual per plant-local day (ADR 14): energy a consuming point gave out that its\nmeasured children do not explain, so a missing or misplaced point."
+      }
+    },
+    "/api/v1/battery/capacity": {
+      "get": {
+        "operationId": "capacity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capacity"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The battery's usable capacity over the whole record."
       }
     },
     "/api/v1/capabilities": {
@@ -3737,7 +4519,7 @@
             }
           }
         },
-        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day covers its closed hours."
+        "summary": "What the plant paid, earned and saved per plant-local day, from the daily rollups of the\n`cost.*` rates; the current day runs to the latest reading."
       }
     },
     "/api/v1/devices": {
@@ -4181,6 +4963,50 @@
       }
     },
     "/api/v1/devices/{id}/settings/{key}": {
+      "get": {
+        "operationId": "read_setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingNow"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Reads a setting's current value from its read-back (ADR 7), between polls. Nothing is written\nor logged."
+      },
       "put": {
         "operationId": "write_setting",
         "parameters": [
@@ -4381,7 +5207,7 @@
             }
           }
         },
-        "summary": "One series' figures for each plant-local period starting in the range, folded from its\ndaily rollups."
+        "summary": "One series' figures for each hour, or plant-local period, starting in the range, from its\nhourly rollups or folded from its daily ones."
       }
     },
     "/api/v1/import": {
@@ -4760,6 +5586,31 @@
         "summary": "The core's last 2,000 log lines, each at most 1 KiB (ADR 2)."
       }
     },
+    "/api/v1/module-catalogue": {
+      "get": {
+        "operationId": "module_catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleCatalogue"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/module-types": {
       "get": {
         "operationId": "list_module_types",
@@ -4816,7 +5667,7 @@
             }
           }
         },
-        "summary": "Adds a module type; the admin enters its datasheet, there is no catalogue."
+        "summary": "Adds a module type from its datasheet, entered or copied from the module catalogue."
       }
     },
     "/api/v1/payback": {
@@ -5016,6 +5867,58 @@
           }
         },
         "summary": "Applies the update waiting for a profile. Each setting it adds or changes is off until the\nadmin enables it again (ADR 8)."
+      }
+    },
+    "/api/v1/profiles": {
+      "get": {
+        "operationId": "catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalogue"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every profile the core serves, bundled and fetched alike, by id: what a device can be added\nwith."
+      }
+    },
+    "/api/v1/records": {
+      "get": {
+        "operationId": "records",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Records"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every recorded year with the same dates of the year before, and the best closed day and\nmonth of production and day of savings, from the daily rollups."
       }
     },
     "/api/v1/retention": {
@@ -5289,6 +6192,32 @@
           }
         },
         "summary": "Chooses the bidding zone spot prices are fetched for, or none; the device follows at once."
+      }
+    },
+    "/api/v1/sun-tint": {
+      "get": {
+        "operationId": "sun_tint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SunTint"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The backdrop's tint for the sun over the plant now; viewers read it, never the location."
       }
     },
     "/api/v1/tariff": {

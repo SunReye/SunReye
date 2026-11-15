@@ -1,123 +1,87 @@
+<!-- A car place's level in the inspector: its loadpoint, footprint, colour and body. -->
 <script lang="ts">
+  import * as Item from "#lib/components/ui/item/index.js";
   import type { Device } from "../api/core.ts";
+  import { PLAIN } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import CarModelField from "./CarModelField.svelte";
-  import NumberField from "./NumberField.svelte";
-  import type { BodyClass, CarPlace } from "./pv.ts";
+  import HexField from "./HexField.svelte";
+  import { choices, degrees, metres, REACH } from "./fields.ts";
+  import type { CarPlace } from "./pv.ts";
+  import RemoveButton from "./RemoveButton.svelte";
+  import ValueRow from "./ValueRow.svelte";
 
   let {
     place,
-    number,
     loadpoints,
     onchange,
     onremove,
   }: {
     place: CarPlace;
-    /** From 1, as the admin counts. */
-    number: number;
     /** The EVCC loadpoint devices it may name. */
     loadpoints: readonly Device[];
     onchange: (place: CarPlace) => void;
     onremove: () => void;
   } = $props();
 
-  /** The colour neither the catalogue nor the admin picked. */
-  const PLAIN = "#8a8f98";
-
   type Numeric = "x" | "z" | "width" | "length" | "rotation";
 
-  const fields: readonly (readonly [Numeric, () => string])[] = [
-    ["x", m.field_x],
-    ["z", m.field_z],
-    ["width", m.field_width],
-    ["length", m.field_length],
-    ["rotation", m.field_rotation],
-  ];
+  const fields = [
+    ["x", metres(m.field_x(), -REACH, REACH)],
+    ["z", metres(m.field_z(), -REACH, REACH)],
+    ["width", metres(m.field_width(), 1, 10)],
+    ["length", metres(m.field_length(), 2, 20)],
+    ["rotation", degrees(m.field_rotation(), 0, 359)],
+  ] as const satisfies readonly (readonly [Numeric, unknown])[];
 
-  const classes: readonly (readonly [BodyClass, () => string])[] = [
-    ["sedan", m.car_class_sedan],
-    ["hatchback", m.car_class_hatchback],
-    ["suv", m.car_class_suv],
-    ["van", m.car_class_van],
-    ["pickup", m.car_class_pickup],
-  ];
+  const loadpoint = $derived(
+    choices(
+      m.car_loadpoint(),
+      loadpoints.map(({ name }) => name),
+    ),
+  );
 
-  const body = $derived(place.body ?? ({ class: "sedan", colour: PLAIN } as const));
-
-  function chooseClass(value: string): void {
-    const kind = classes.find(([option]) => option === value)?.[0];
-
-    if (kind !== undefined) onchange({ ...place, body: { ...body, class: kind } });
-  }
+  const colour = $derived(place.colour ?? PLAIN);
 </script>
 
-<fieldset>
-  <legend>{m.car_place({ number })}</legend>
-  <label>
-    {m.car_loadpoint()}
-    <select
-      value={place.device}
-      onchange={(event) => {
-        onchange({ ...place, device: Number(event.currentTarget.value) });
-      }}
-    >
-      {#each loadpoints as device (device.id)}
-        <option value={device.id}>{device.name}</option>
-      {/each}
-    </select>
-  </label>
-  {#each fields as [key, label] (key)}
-    <NumberField
-      label={label()}
+<Item.Group class="gap-0 divide-y divide-border/60">
+  <ValueRow
+    edit={loadpoint}
+    value={loadpoints.findIndex(({ id }) => id === place.device)}
+    onchange={(index) => {
+      const chosen = loadpoints[index];
+
+      if (chosen !== undefined) onchange({ ...place, device: chosen.id });
+    }}
+  />
+  {#each fields as [key, edit] (key)}
+    <ValueRow
+      {edit}
       value={place[key]}
       onchange={(value) => {
         onchange({ ...place, [key]: value });
       }}
     />
   {/each}
-  <label>
-    {m.car_class()}
-    <select
-      value={body.class}
-      onchange={(event) => {
-        chooseClass(event.currentTarget.value);
-      }}
-    >
-      {#each classes as [kind, label] (kind)}
-        <option value={kind}>{label()}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    {m.car_colour()}
-    <input
-      type="color"
-      value={body.colour}
-      onchange={(event) => {
-        onchange({ ...place, body: { ...body, colour: event.currentTarget.value } });
-      }}
-    />
-  </label>
+  <Item.Root class="rounded-none border-0">
+    <Item.Content>
+      <Item.Title class="text-[15px] font-normal">{m.car_colour()}</Item.Title>
+    </Item.Content>
+    <Item.Actions>
+      <HexField
+        label={m.car_colour()}
+        value={colour}
+        onchange={(picked) => {
+          onchange({ ...place, colour: picked });
+        }}
+      />
+    </Item.Actions>
+  </Item.Root>
   <CarModelField
     model={place.model}
     onchange={(model) => {
       onchange({ ...place, model });
     }}
   />
-  <button type="button" onclick={onremove}>{m.builder_remove()}</button>
-</fieldset>
-
-<style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 0.75rem;
-  }
-
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-  }
-</style>
+</Item.Group>
+<RemoveButton {onremove} />

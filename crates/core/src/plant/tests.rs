@@ -132,6 +132,31 @@ async fn the_plant_publishes_the_house_load_and_each_points_own_consumption() {
 }
 
 #[tokio::test]
+async fn the_plant_publishes_what_is_bought_fed_in_and_met_on_site() {
+    let mut site = site();
+    site.topology(0, house()).await;
+
+    site.measure(0);
+
+    // 1200 W of the 3400 W house load bought, none of the 3000 W PV fed in.
+    site.published("grid.import.power", 1200.0, 0).await;
+    site.published("grid.export.power", 0.0, 0).await;
+    site.published("self.consumption.power", 3000.0, 0).await;
+    site.published("self.supply.power", 2200.0, 0).await;
+}
+
+#[tokio::test]
+async fn the_plant_publishes_what_charges_the_battery_and_what_it_gives() {
+    let mut site = site();
+    site.topology(0, house()).await;
+
+    site.measure(0);
+
+    site.published("battery.charge.power", 800.0, 0).await;
+    site.published("battery.discharge.power", 0.0, 0).await;
+}
+
+#[tokio::test]
 async fn a_topology_change_applies_from_its_date() {
     let mut site = site();
     let mut before = house();

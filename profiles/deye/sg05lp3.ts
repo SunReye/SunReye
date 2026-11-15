@@ -1,6 +1,15 @@
-import type { Frozen, Inverter, Quantity } from "../../packages/sdk/src/index.ts";
+import type { Frozen, Inverter, Quantity, Setting } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
-import { BATTERY, FLOWS, LOW_VOLTAGE, identify, inputs, settings, total } from "./shared.ts";
+import {
+  BATTERY,
+  FLOWS,
+  LOW_VOLTAGE,
+  RUNNING_STATE,
+  identify,
+  inputs,
+  settings,
+  total,
+} from "./shared.ts";
 
 // The SUN-5K to SUN-20K-SG05LP3-EU-SM2 range: three-phase hybrids for a low-voltage battery. The
 // register map is v4's official SG05LP3 profiles', the registers as Deye's three-phase protocol
@@ -32,10 +41,10 @@ export interface Model {
 const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.status",
-    role: "extra.inverter_status",
-    kind: "status",
+    role: "inverter.status",
     register: 500,
     type: "u16",
+    enum: RUNNING_STATE,
   },
   {
     key: "ac.relay_status",
@@ -46,9 +55,7 @@ const STATUS: readonly Frozen<Quantity>[] = [
   },
   {
     key: "radiator_temp",
-    role: "extra.radiator_temp",
-    kind: "measurement",
-    unit: "°C",
+    role: "inverter.temperature",
     register: 540,
     type: "i16",
     scale: 0.1,
@@ -503,25 +510,22 @@ const AC: readonly Frozen<Quantity>[] = [
   },
   {
     key: "ac.ups.l1.power",
-    role: "extra.ac_ups_l1_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 1,
     register: 650,
     type: "i16",
   },
   {
     key: "ac.ups.l2.power",
-    role: "extra.ac_ups_l2_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 2,
     register: 651,
     type: "i16",
   },
   {
     key: "ac.ups.l3.power",
-    role: "extra.ac_ups_l3_power",
-    kind: "measurement",
-    unit: "W",
+    role: "load.phase.power",
+    index: 3,
     register: 652,
     type: "i16",
   },
@@ -674,121 +678,6 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
     type: "u16",
   },
   {
-    key: "timeofuse.selling",
-    role: "extra.timeofuse_selling",
-    kind: "held",
-    register: 146,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.1",
-    role: "extra.timeofuse_time_1",
-    kind: "held",
-    register: 148,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.2",
-    role: "extra.timeofuse_time_2",
-    kind: "held",
-    register: 149,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.3",
-    role: "extra.timeofuse_time_3",
-    kind: "held",
-    register: 150,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.4",
-    role: "extra.timeofuse_time_4",
-    kind: "held",
-    register: 151,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.5",
-    role: "extra.timeofuse_time_5",
-    kind: "held",
-    register: 152,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.6",
-    role: "extra.timeofuse_time_6",
-    kind: "held",
-    register: 153,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.power.1",
-    role: "extra.timeofuse_power_1",
-    kind: "held",
-    register: 154,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.2",
-    role: "extra.timeofuse_power_2",
-    kind: "held",
-    register: 155,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.3",
-    role: "extra.timeofuse_power_3",
-    kind: "held",
-    register: 156,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.4",
-    role: "extra.timeofuse_power_4",
-    kind: "held",
-    register: 157,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.5",
-    role: "extra.timeofuse_power_5",
-    kind: "held",
-    register: 158,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.6",
-    role: "extra.timeofuse_power_6",
-    kind: "held",
-    register: 159,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
     key: "timeofuse.voltage.1",
     role: "extra.timeofuse_voltage_1",
     kind: "held",
@@ -836,115 +725,74 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
     type: "u16",
     scale: 0.01,
   },
-  {
-    key: "timeofuse.soc.1",
-    role: "extra.timeofuse_soc_1",
-    kind: "held",
-    register: 166,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.2",
-    role: "extra.timeofuse_soc_2",
-    kind: "held",
-    register: 167,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.3",
-    role: "extra.timeofuse_soc_3",
-    kind: "held",
-    register: 168,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.4",
-    role: "extra.timeofuse_soc_4",
-    kind: "held",
-    register: 169,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.5",
-    role: "extra.timeofuse_soc_5",
-    kind: "held",
-    register: 170,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.6",
-    role: "extra.timeofuse_soc_6",
-    kind: "held",
-    register: 171,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.enabled.1",
-    role: "extra.timeofuse_enabled_1",
-    kind: "held",
-    register: 172,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.2",
-    role: "extra.timeofuse_enabled_2",
-    kind: "held",
-    register: 173,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.3",
-    role: "extra.timeofuse_enabled_3",
-    kind: "held",
-    register: 174,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.4",
-    role: "extra.timeofuse_enabled_4",
-    kind: "held",
-    register: 175,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.5",
-    role: "extra.timeofuse_enabled_5",
-    kind: "held",
-    register: 176,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.6",
-    role: "extra.timeofuse_enabled_6",
-    kind: "held",
-    register: 177,
-    type: "u16",
-  },
 ];
+
+/** Bit 0 of register 146 switches the slots on; bits 1 to 7 are the weekdays they run on. */
+const SCHEDULE: Frozen<Setting> = {
+  key: "battery.time_of_use.enabled",
+  name: "Time-of-use schedule",
+  labels: { 0: "Off", 1: "On" },
+  type: "u16",
+  values: [0, 1],
+  minInterval: 60,
+  verified: false,
+  recipe: [{ rmw: { register: 146, mask: 1 } }],
+  readBack: { register: 146, mask: 1 },
+};
+
+/** Deye's six time-of-use slots, from registers 148 to 177; none checked on hardware yet (#636). */
+const SLOTS = [1, 2, 3, 4, 5, 6] as const;
+
+/**
+ * Slot `n`'s start (`HHMM`, the slot running until the next one's start), battery power in watts up
+ * to `rated`, SOC target and grid charge (bit 0 of its charge register; bit 1 is the generator's).
+ */
+function slot(n: number, rated: number): Frozen<Setting>[] {
+  const at = (first: number) => ({
+    minInterval: 60,
+    verified: false,
+    recipe: [{ write: { register: first + n - 1 } }],
+    readBack: { register: first + n - 1 },
+  });
+
+  return [
+    {
+      key: `battery.time_of_use.${n}.start`,
+      name: `Slot ${n} start`,
+      type: "u16",
+      time: { format: "hhmm", step: 5 },
+      range: { min: 0, max: 1435 },
+      ...at(148),
+    },
+    {
+      key: `battery.time_of_use.${n}.power`,
+      name: `Slot ${n} power`,
+      unit: "W",
+      type: "u16",
+      range: { min: 0, max: rated },
+      ...at(154),
+    },
+    {
+      key: `battery.time_of_use.${n}.soc`,
+      name: `Slot ${n} SOC target`,
+      unit: "%",
+      type: "u16",
+      range: { min: 0, max: 100 },
+      ...at(166),
+    },
+    {
+      key: `battery.time_of_use.${n}.grid_charge`,
+      name: `Slot ${n} grid charge`,
+      labels: { 0: "Off", 1: "On" },
+      type: "u16",
+      values: [0, 1],
+      minInterval: 60,
+      verified: false,
+      recipe: [{ rmw: { register: 172 + n - 1, mask: 1 } }],
+      readBack: { register: 172 + n - 1, mask: 1 },
+    },
+  ];
+}
 
 export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> {
   return defineProfile({
@@ -968,6 +816,10 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "storage",
       "unit",
       "variants",
+      "register-enum",
+      "rmw",
+      "verified",
+      "time",
     ],
     identify: identify(LOW_VOLTAGE, model.rated),
     inverter: model.inverter,
@@ -980,6 +832,10 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       BATTERY,
       ...FLOWS,
     ],
-    settings: settings(model.current),
+    settings: [
+      ...settings(model.current),
+      SCHEDULE,
+      ...SLOTS.flatMap((n) => slot(n, model.inverter.acRating)),
+    ],
   });
 }

@@ -59,16 +59,6 @@ const scene: Live3d = {
       string: null,
     },
   ],
-  faces: [
-    {
-      surface: "wall",
-      corners: [
-        [0, 0, 0],
-        [10, 0, 0],
-        [10, -8, 7],
-      ],
-    },
-  ],
   equipment: [],
   mounts: [],
   estimated: { "1": ["pv.string.power[12]"] },
@@ -84,91 +74,99 @@ const scene: Live3d = {
   },
 };
 
-test("a string is tinted by its share of its own peak and labelled at its modules' centre", () => {
-  const [south, west] = liveScene(scene).strings;
+const strings = (input: Live3d) => liveScene(input).chips.filter(({ kind }) => kind === "string");
 
-  // 600 W of 2 × 400 W; 100 W of 1 × 400 W.
+test("a string's chip points at its modules' centre and opens the string's sheet", () => {
+  const [south, west] = strings(scene);
+
   expect(south).toEqual({
+    key: "string-11",
+    id: "string-11",
+    kind: "string",
     name: "Süd",
     watts: 600,
-    share: 0.75,
+    soc: null,
     estimated: false,
-    centre: [1.5, -5.5, 4],
+    stale: false,
+    leader: [1.5, -5.5, 4],
   });
-  expect(west).toMatchObject({ watts: 100, share: 0.25, estimated: true, centre: [8.5, -5.5, 4] });
+  expect(west).toMatchObject({
+    id: "string-12",
+    watts: 100,
+    estimated: true,
+    leader: [8.5, -5.5, 4],
+  });
 });
 
-test("a string with no module placed has no centre", () => {
-  expect(liveScene({ ...scene, panels: [] }).strings[0]?.centre).toBeNull();
+test("a string with no module placed has no chip", () => {
+  expect(strings({ ...scene, panels: [] })).toEqual([]);
 });
 
-test("each module takes its string's share; an unassigned one none", () => {
+test("a stale string value is marked stale", () => {
+  const [south] = strings({ ...scene, stale: { "1": { "pv.string.power[11]": 40 } } });
+
+  expect(south?.stale).toBe(true);
+});
+
+test("each module takes its string's share of its own peak; an unassigned one none", () => {
+  // 600 W of 2 × 400 W; 100 W of 1 × 400 W.
   expect(liveScene(scene).shares).toEqual([0.75, 0.75, 0.25, null]);
 });
 
 test("a string without a live value has no share, and never more than its peak", () => {
   const silent = liveScene({ ...scene, values: { "1": { "pv.string.power[11]": 1000 } } });
 
-  expect(silent.strings.map(({ watts, share }) => [watts, share])).toEqual([
-    [1000, 1],
-    [null, null],
+  expect(silent.shares).toEqual([1, 1, null, null]);
+  expect(strings({ ...scene, values: {} }).map(({ watts }) => watts)).toEqual([null, null]);
+});
+
+const equipment = (input: Live3d) => liveScene(input).chips.filter(({ kind }) => kind !== "string");
+
+test("without markers, grid, house, battery and inverter chips have no leader line", () => {
+  const beside = {
+    leader: null,
+    name: null,
+    estimated: false,
+    stale: false,
+  };
+
+  expect(equipment(scene)).toEqual([
+    { ...beside, key: "grid", id: "grid", kind: "grid", watts: -1200, soc: null },
+    { ...beside, key: "house", id: "house", kind: "house", watts: 450, soc: null },
+    { ...beside, key: "battery", id: "battery", kind: "battery", watts: -350, soc: 64 },
+    { ...beside, key: "inverter-1", id: "inverter", kind: "inverter", watts: 700, soc: null },
   ]);
 });
 
-test("without markers, grid, house, battery and inverter sit in one label beside the house", () => {
-  const { labels } = liveScene(scene);
+test("a stale plant flow is marked stale", () => {
+  const [grid, house] = equipment({ ...scene, stale: { [PLANT]: { "grid.power": 40 } } });
 
-  expect(labels).toEqual([
-    {
-      // 2 m east of the house's eastmost point, at its middle and its top.
-      anchor: [12, -4, 7],
-      leader: null,
-      quantities: [
-        { kind: "grid", watts: -1200, stale: false },
-        { kind: "house", watts: 450, stale: false },
-        { kind: "battery", watts: -350, soc: 64, stale: false },
-        { kind: "inverter", device: 1, watts: 700, stale: false },
-      ],
-    },
-  ]);
+  expect([grid?.stale, house?.stale]).toEqual([true, false]);
 });
 
 function marker(kind: Equipment["kind"]): Equipment {
   return { device: 1, kind, block: 0, wall: "front", along: 2, inside: false };
 }
 
-test("a marker carries its device's label on a leader line; the rest stays beside the house", () => {
+test("a marker carries its device's chip on a leader line; the rest has none", () => {
   const mount: Mount = { at: [2, -8.1, 1.5], above: [2, -8.1, 8] };
 
-  const { labels } = liveScene({
+  const chips = equipment({
     ...scene,
     equipment: [marker("inverter"), marker("battery")],
     mounts: [mount, mount],
   });
 
-  expect(labels).toEqual([
-    {
-      anchor: [12, -4, 7],
-      leader: null,
-      quantities: [
-        { kind: "grid", watts: -1200, stale: false },
-        { kind: "house", watts: 450, stale: false },
-      ],
-    },
-    {
-      anchor: [2, -8.1, 8],
-      leader: [2, -8.1, 1.5],
-      quantities: [{ kind: "inverter", device: 1, watts: 700, stale: false }],
-    },
-    {
-      anchor: [2, -8.1, 8],
-      leader: [2, -8.1, 1.5],
-      quantities: [{ kind: "battery", watts: -350, soc: 64, stale: false }],
-    },
+  expect(chips.map(({ key, leader }) => [key, leader])).toEqual([
+    ["grid", null],
+    ["house", null],
+    ["inverter-1", [2, -8.1, 1.5]],
+    ["battery-1", [2, -8.1, 1.5]],
   ]);
+  expect(chips.at(-1)).toMatchObject({ id: "battery", watts: -350, soc: 64 });
 });
 
-test("a connected car carries its charge power and its vehicle's SOC above it", () => {
+test("a connected car carries its charge power and its vehicle's SOC on a line to it", () => {
   const place = { device: 7, x: 13, z: 0.5, width: 2, length: 5, rotation: 0 };
   const stand = { at: [14, -3, 0], forward: [0, 1, 0], above: [14, -3, 2.5] } as const;
 
@@ -177,13 +175,35 @@ test("a connected car carries its charge power and its vehicle's SOC above it", 
     "7": { "ev.connected": 1, "ev.charge.power": 7360, "ev.vehicle.soc": 63 },
   };
 
-  const { labels, cars } = liveScene({ ...scene, places: [place], stands: [stand], values });
+  const { chips, cars } = liveScene({ ...scene, places: [place], stands: [stand], values });
 
   expect(cars).toHaveLength(1);
 
-  expect(labels.at(-1)).toEqual({
-    anchor: [14, -3, 2.5],
+  expect(chips.at(-1)).toEqual({
+    key: "ev-7",
+    id: "ev-7",
+    kind: "ev",
+    name: null,
+    watts: 7360,
+    soc: 63,
+    estimated: false,
+    stale: false,
     leader: [14, -3, 0],
-    quantities: [{ kind: "car", device: 7, watts: 7360, soc: 63 }],
   });
+});
+
+test("an inverter's chip reads its AC power, as its sheet does, and its PV without one", () => {
+  const values = { ...scene.values, "1": { ...scene.values["1"], "inverter.power": 650 } };
+  const inverter = (input: Live3d) => equipment(input).find(({ kind }) => kind === "inverter");
+
+  expect(inverter({ ...scene, values })?.watts).toBe(650);
+  expect(inverter(scene)?.watts).toBe(700);
+  expect(
+    equipment({
+      ...scene,
+      values,
+      equipment: [marker("inverter")],
+      mounts: [{ at: [0, 0, 0], above: [0, 0, 1] }],
+    }).find(({ kind }) => kind === "inverter")?.watts,
+  ).toBe(650);
 });

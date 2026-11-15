@@ -16,7 +16,8 @@ use serde_json::Value;
 /// v4's oracle corpus, one line per profile: battery flows negated to ADR 4's charging-positive
 /// sign, day counters and the settings registers a declared setting reads back left out, and on
 /// the SG05LP3 range register 636, which v4 read but left unmapped, added as the signed inverter
-/// output power.
+/// output power. Register 500 reads through its enum as `inverter.status`: v4's raw running state 0
+/// as standby, a value past fault as no value.
 const V4_CASES: &str = include_str!("deye-v4-cases.ndjson");
 
 const LP3: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
@@ -301,12 +302,14 @@ fn identified(device: &Registers) -> Vec<(String, Option<String>)> {
         .collect()
 }
 
+/// A SUN-15K-SG05LP3 answered device type `0x0005` (read 2026-11-13, gateway, unit 0), not the
+/// protocol's `0x0500`.
 #[test]
 fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() {
     for watts in [
         5000, 6000, 8000, 10_000, 12_000, 14_000, 15_000, 16_000, 18_000, 20_000,
     ] {
-        let device = hybrid(0x0500, watts);
+        let device = hybrid(0x0005, watts);
         let model = format!("{}k", watts / 1000);
         assert_eq!(
             identified(&device),
@@ -316,10 +319,12 @@ fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() 
     }
 }
 
-/// Deye's protocol gives the high-voltage range two device types: 6 to 15 kW, and 20 kW up.
+/// Deye's protocol gives the high-voltage range two device types: 6 to 15 kW, and 20 kW up. The
+/// low-voltage range answers its type byte-swapped, so both forms of each are accepted until an
+/// SG01HP3 is read.
 #[test]
 fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_type() {
-    for kind in [0x0600, 0x0601] {
+    for kind in [0x0600, 0x0601, 0x0006, 0x0106] {
         for watts in [5000, 6000, 8000, 10_000, 12_000, 15_000, 20_000, 25_000] {
             let device = hybrid(kind, watts);
             let model = format!("{}k", watts / 1000);
@@ -335,7 +340,7 @@ fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_typ
 #[test]
 fn a_rating_no_variant_declares_is_read_as_the_familys_base() {
     assert_eq!(
-        identified(&hybrid(0x0500, 13_000)),
+        identified(&hybrid(0x0005, 13_000)),
         [("deye-sg05lp3".to_owned(), None)]
     );
     assert_eq!(
@@ -367,5 +372,49 @@ fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_
                 q.key
             );
         }
+    }
+}
+
+/// A family's reading of `role` while PV gives `pv` W on its first input, the battery `battery` W
+/// (Deye's own sign: discharging positive), the grid `grid` W (importing positive) and the loads
+/// `load` W. `tenths` is the high-voltage range's 10 W step on PV and battery power.
+fn flowing(json: &str, tenths: bool, [pv, battery, grid, load]: [i16; 4], role: &str) -> f64 {
+    let profile = Profile::load(json).unwrap();
+    let step = if tenths { 10 } else { 1 };
+    let word = |watts: i16| u16::from_ne_bytes(watts.to_ne_bytes());
+    let mut registers = Registers::default();
+    registers.answer(590, &[word(battery / step)]);
+    registers.answer(625, &[word(grid)]);
+    registers.answer(653, &[word(load)]);
+    registers.answer(672, &[word(pv / step), 0]);
+    let mut values = vec![None; profile.quantities().len()];
+    profile.decode(&registers, &mut values);
+    let at = profile.quantities().iter().position(|q| q.role == role);
+    values[at.unwrap_or_else(|| panic!("{} has no {role}", profile.id))].unwrap()
+}
+
+/// v3's definition: what reaches the loads, the battery and the grid over what comes in from PV,
+/// the battery and the grid (ADR 4).
+#[test]
+fn inverter_efficiency_is_output_over_input_whichever_way_the_battery_and_grid_flow() {
+    for (json, tenths) in [(LP3, false), (HP3, true)] {
+        let efficiency = |flows| flowing(json, tenths, flows, "inverter.efficiency");
+        // The battery discharging into the loads after sunset.
+        assert!((efficiency([0, 2000, 0, 1900]) - 95.0).abs() < 1e-9);
+        // PV and the battery feeding the loads and the grid at once.
+        assert!((efficiency([3000, 1000, -400, 3400]) - 95.0).abs() < 1e-9);
+        // The grid charging the battery at night.
+        assert!((efficiency([0, -3000, 3200, 100]) - 96.875).abs() < 1e-9);
+        // Nothing flows at night: the ratio reads 0, which the SPA does not show.
+        assert!(efficiency([0, 0, 0, 0]).abs() < 1e-9);
+    }
+}
+
+/// v3's own use: what comes in and does not come out.
+#[test]
+fn inverter_loss_is_input_not_output() {
+    for (json, tenths) in [(LP3, false), (HP3, true)] {
+        let loss = flowing(json, tenths, [0, -3000, 3200, 100], "inverter.loss.power");
+        assert!((loss - 100.0).abs() < 1e-9, "{loss}");
     }
 }

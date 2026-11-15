@@ -62,6 +62,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "ac-rating",
       "resolution",
       "text-enum",
+      "register-enum",
       "setting-text",
       "verified",
       "poll-group",
@@ -70,6 +71,7 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "storage",
       "unit",
       "variants",
+      "time",
     ],
   });
 });

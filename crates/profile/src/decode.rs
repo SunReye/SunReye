@@ -36,6 +36,7 @@ impl Profile {
         for (position, quantity) in self.quantities().iter().enumerate() {
             let value = match &quantity.read {
                 Read::Register(register) => read(register, registers)
+                    .and_then(|raw| mapped(&quantity.mapping, raw))
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
@@ -178,6 +179,17 @@ fn number(value: &Value) -> Option<f64> {
         Value::Bool(on) => Some(f64::from(u8::from(*on))),
         Value::Null | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
     }
+}
+
+/// What `raw` reads as through `mapping`; itself when there are none.
+fn mapped(mapping: &[(f64, f64)], raw: f64) -> Option<f64> {
+    if mapping.is_empty() {
+        return Some(raw);
+    }
+    mapping
+        .iter()
+        .find(|(from, _)| from.to_bits() == raw.to_bits())
+        .map(|(_, value)| *value)
 }
 
 fn parse(payload: &[u8], texts: &[(String, f64)]) -> Option<f64> {

@@ -1,80 +1,46 @@
+<!--
+  The builder's time slider (ADR 20): a day and a time that move the sun, on one line. The day is
+  picked on a calendar; the time scrubs, so it stays a slider (ADR 21).
+-->
 <script lang="ts">
+  import { Slider } from "#lib/components/ui/slider/index.js";
   import { m } from "../paraglide/messages.js";
-  import { getLocale } from "../paraglide/runtime.js";
-  import type { Source } from "./moment.ts";
+  import DateField from "./DateField.svelte";
 
   let {
     day = $bindable(),
     minutes = $bindable(),
-    source,
-    strings,
-    located,
   }: {
     /** `YYYY-MM-DD` in the browser's calendar. */
     day: string;
     /** Since the day's midnight. */
     minutes: number;
-    /** Undefined while the day loads. */
-    source: Source | undefined;
-    /** Each string's name and its watts at the instant, null without a value. */
-    strings: readonly { readonly name: string; readonly watts: number | null }[];
-    /** Whether the plant's location is known. */
-    located: boolean;
   } = $props();
 
-  const sources: Readonly<Record<Source, () => string>> = {
-    measured: m.builder_source_measured,
-    forecast: m.builder_source_forecast,
-    clearSky: m.builder_source_clear_sky,
-  };
-
-  const format = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 0 });
+  /** The last quarter hour of a day. */
+  const LAST = 1425;
 
   const clock = $derived(
     [Math.floor(minutes / 60), minutes % 60].map((part) => String(part).padStart(2, "0")).join(":"),
   );
-
-  // Only measured history is a reading; the forecast and a clear sky are estimates (ADR 20).
-  const prefix = $derived(source === "measured" ? "" : "≈");
 </script>
 
-<fieldset>
-  <label>
-    {m.builder_day()}
-    <input type="date" required bind:value={day} />
-  </label>
-  <label>
-    {m.builder_time()}
-    <input type="range" min="0" max="1425" step="15" bind:value={minutes} />
-  </label>
-  <span>{clock}</span>
-  {#if source !== undefined}
-    <p>{sources[source]()}</p>
-  {/if}
-  {#if !located}
-    <p>{m.builder_no_location()}</p>
-  {/if}
-  <ul aria-label={m.builder_strings_power()}>
-    {#each strings as { name, watts }, i (i)}
-      <li>
-        {watts === null
-          ? m.builder_string_dark({ name })
-          : m.builder_string_power({ name, power: `${prefix}${format.format(watts)} W` })}
-      </li>
-    {/each}
-  </ul>
-</fieldset>
+<div
+  role="group"
+  aria-label={m.builder_moment()}
+  class="glass-ambient flex h-11 items-center gap-2 rounded-lg pr-3 pl-1.5 ring-1 ring-border/60 elevation-1"
+>
+  <DateField bind:value={day} label={m.builder_day()} />
+  <Slider
+    type="single"
+    min={0}
+    max={LAST}
+    step={15}
+    aria-label={m.builder_time()}
+    aria-valuetext={clock}
+    class="h-11 min-w-0 flex-1"
+    bind:value={minutes}
+  />
+  <span class="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{clock}</span>
+</div>
 
-<style>
-  fieldset {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 0.5rem 1rem;
-  }
-
-  ul {
-    flex-basis: 100%;
-    margin: 0;
-  }
-</style>
