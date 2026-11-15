@@ -2,7 +2,7 @@
 //! role's default, else none.
 
 use std::collections::BTreeMap;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, params};
 use serde::Serialize;
@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 
 use super::{ChangeRefusal, entry};
 use crate::changes::{self, Action, Subject};
+use crate::endpoint;
 use crate::storage::Policy;
 
 /// Overrides of one device, by role.
@@ -39,13 +40,14 @@ pub struct RoleDeadband {
     pub source: DeadbandSource,
 }
 
-/// How `quantity` is stored, with the deadband `overrides` give its role; `None` when its storage
-/// class is `none`, so it is published live and never written (ADR 3).
-pub fn policy(quantity: &Quantity, overrides: &Overrides) -> Option<Policy> {
+/// How `quantity` is stored when its connection is polled every `cycle`, with the deadband
+/// `overrides` give its role; `None` when its storage class is `none`, so it is published live and
+/// never written (ADR 3).
+pub fn policy(quantity: &Quantity, overrides: &Overrides, cycle: Duration) -> Option<Policy> {
     if quantity.storage() == StorageClass::NoHistory {
         return None;
     }
-    let cadence = quantity.cadence();
+    let cadence = endpoint::cadence(cycle, quantity.cadence());
     let mut policy = Policy::new(quantity.kind(), quantity.unit(), quantity.step(), cadence);
     policy.deadband = resolve(quantity, overrides).deadband.unwrap_or(0.0);
     Some(policy)

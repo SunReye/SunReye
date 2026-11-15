@@ -470,21 +470,15 @@ async fn a_task_polls_at_its_connections_cycle_and_its_readings_carry_it() {
 async fn a_poll_group_rounds_up_to_whole_cycles_and_never_below_one() {
     let bus = Bus::default();
     let mut readings = bus.subscribe();
-    let exchanges = [
-        single(1, 500, 1),
-        single(2, 600, 2),
-        single(3, 700, 3),
-        single(4, 500, 4),
-        single(5, 600, 5),
-        single(6, 500, 6),
-        single(7, 600, 7),
-        single(8, 700, 8),
-    ]
-    .concat();
+    // Transaction n answers n.
+    let starts = [500, 600, 700, 500, 600, 500, 600, 700];
+    let exchanges: Vec<Exchange> = (1..)
+        .zip(starts)
+        .flat_map(|(tx, start)| single(tx, start, tx))
+        .collect();
     let device = Device {
-        id: DeviceId(7),
-        unit: 1,
         profile: Arc::new(Profile::load(TWO_GROUPS).unwrap()),
+        ..device()
     };
     let start = Instant::now();
     let _task = spawn(

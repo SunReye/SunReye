@@ -84,7 +84,7 @@ async fn a_connections_secrets_are_set_by_name_and_never_read_back() {
         listed,
         json!({ "connections": [{
             "id": id, "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
-            "port": 9, "secrets": ["password", "unlock"],
+            "port": 9, "pollSeconds": 5, "secrets": ["password", "unlock"],
         }] })
     );
 
@@ -318,7 +318,7 @@ async fn every_configuration_change_appends_to_the_change_log() {
         json!({ "changes": [
             entry("connection", &id, "add", json!({
                 "id": id, "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
-                "port": 9, "secrets": ["unlock"],
+                "port": 9, "pollSeconds": 5, "secrets": ["unlock"],
             })),
             entry("device", &device, "add", json!({
                 "id": device, "name": "Deye", "connection": id, "profile": "deye-sg05lp3",
@@ -497,4 +497,132 @@ async fn a_devices_writes_are_off_until_the_admin_turns_them_on() {
         )
         .await;
     assert_eq!(changed["writes"], json!(false));
+}
+
+#[tokio::test]
+async fn a_modbus_connection_carries_its_poll_cycle_5_s_until_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let id = core.connection(&set_cookie, &gateway()).await;
+    let put = |body: Value| send("PUT", &format!("/api/v1/connections/{id}"), &body);
+    let listed = async || {
+        let (_, listed) = core.ask(&set_cookie, get("/api/v1/connections")).await;
+        listed["connections"][0]["pollSeconds"].clone()
+    };
+    assert_eq!(listed().await, json!(5));
+
+    let mut slow = gateway();
+    slow["pollSeconds"] = json!(20);
+    let (status, changed) = core.ask(&set_cookie, put(slow)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(changed["pollSeconds"], json!(20));
+    assert_eq!(listed().await, json!(20));
+
+    // A change that names no cycle keeps it.
+    let mut renamed = gateway();
+    renamed["name"] = json!("stick");
+    let (_, changed) = core.ask(&set_cookie, put(renamed)).await;
+    assert_eq!(changed["pollSeconds"], json!(20));
+
+    let (_, log) = core.ask(&set_cookie, get("/api/v1/changes")).await;
+    let cycles: Vec<&Value> = log["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| &c["state"]["pollSeconds"])
+        .collect();
+    assert_eq!(cycles, [&json!(5), &json!(20), &json!(20)]);
+}
+
+#[tokio::test]
+async fn a_poll_cycle_outside_1_to_60_s_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let id = core.connection(&set_cookie, &gateway()).await;
+    let cycle = |seconds: u32| {
+        let mut connection = gateway();
+        connection["pollSeconds"] = json!(seconds);
+        connection
+    };
+
+    for seconds in [0, 61, 3600] {
+        let put = send("PUT", &format!("/api/v1/connections/{id}"), &cycle(seconds));
+        assert_eq!(
+            core.refused(&set_cookie, put).await,
+            unprocessable("connection.poll-seconds"),
+            "{seconds} s"
+        );
+        let post = send("POST", "/api/v1/connections", &cycle(seconds));
+        assert_eq!(
+            core.refused(&set_cookie, post).await,
+            unprocessable("connection.poll-seconds"),
+            "{seconds} s"
+        );
+    }
+    for seconds in [1, 60] {
+        let put = send("PUT", &format!("/api/v1/connections/{id}"), &cycle(seconds));
+        let (status, changed) = core.ask(&set_cookie, put).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(changed["pollSeconds"], json!(seconds));
+    }
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/connections")).await;
+    assert_eq!(listed["connections"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_broker_or_an_http_host_takes_no_poll_cycle() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let host = json!({ "name": "meter", "transport": "http", "host": "127.0.0.1", "port": 9 });
+    let id = core.connection(&set_cookie, &host).await;
+    let (_, listed) = core.ask(&set_cookie, get("/api/v1/connections")).await;
+    assert_eq!(listed["connections"][0].get("pollSeconds"), None);
+
+    let mut cycled = host;
+    cycled["pollSeconds"] = json!(10);
+    let put = send("PUT", &format!("/api/v1/connections/{id}"), &cycled);
+    assert_eq!(
+        core.refused(&set_cookie, put).await,
+        unprocessable("connection.poll-seconds")
+    );
+    let mut broker = json!({ "name": "broker", "transport": "mqtt", "host": "127.0.0.1",
+        "port": 9, "topicRoot": "evcc" });
+    broker["pollSeconds"] = json!(10);
+    let post = send("POST", "/api/v1/connections", &broker);
+    assert_eq!(
+        core.refused(&set_cookie, post).await,
+        unprocessable("connection.poll-seconds")
+    );
+}
+
+/// The task stops and its replacement connects with the new cycle: its first readings, read at
+/// once, carry it.
+#[tokio::test]
+async fn a_changed_poll_cycle_applies_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let mut device = fake::serve().await;
+    let mut gateway = json!({ "name": "gateway", "transport": "modbus-tcp", "host": "127.0.0.1",
+        "port": device.address.port() });
+    let connection = core.connection(&set_cookie, &gateway).await;
+    core.deye(&set_cookie, &connection, 0).await;
+    let mut readings = core.bus.subscribe();
+    let first = readings.recv().await.unwrap();
+    assert_eq!(first.cadence, Duration::from_secs(5));
+
+    gateway["pollSeconds"] = json!(60);
+    let put = send(
+        "PUT",
+        &format!("/api/v1/connections/{connection}"),
+        &gateway,
+    );
+    assert_eq!(core.ask(&set_cookie, put).await.0, StatusCode::OK);
+
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while device.reads.recv().await.unwrap().connection == 0 {}
+        // A group's seconds round up to the cycle, so every reading now carries a minute.
+        while readings.recv().await.unwrap().cadence != Duration::from_mins(1) {}
+    })
+    .await
+    .expect("a new task at the new cycle");
 }

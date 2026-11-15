@@ -519,6 +519,9 @@ pub enum Code {
     ConnectionNone,
     #[serde(rename = "connection.value")]
     ConnectionValue,
+    /// A poll cycle outside 1 to 60 s, or one on a broker or an HTTP host.
+    #[serde(rename = "connection.poll-seconds")]
+    ConnectionPollSeconds,
     #[serde(rename = "connection.in-use")]
     ConnectionInUse,
     #[serde(rename = "device.none")]
