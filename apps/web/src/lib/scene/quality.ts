@@ -113,6 +113,14 @@ export function capable(gpu: string | null): boolean {
   return STRONG.some((family) => family.test(gpu));
 }
 
+/** WebGL2's unmasked renderer, where the browser tells. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the browser's own, only asked.
+export function gpuOf(gl: WebGLRenderingContext | WebGL2RenderingContext): string | null {
+  const told = gl.getExtension("WEBGL_debug_renderer_info");
+
+  return told === null ? null : String(gl.getParameter(told.UNMASKED_RENDERER_WEBGL));
+}
+
 export function parseQuality(raw: string | null): Quality {
   return QUALITIES.find((quality) => quality === raw) ?? "auto";
 }

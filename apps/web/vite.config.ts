@@ -43,6 +43,8 @@ export default defineConfig({
       "three/addons/postprocessing/EffectComposer.js",
       "three/addons/postprocessing/GTAOPass.js",
       "three/addons/postprocessing/OutputPass.js",
+      "three/addons/postprocessing/Pass.js",
+      "three/addons/postprocessing/UnrealBloomPass.js",
       "three/addons/postprocessing/RenderPass.js",
       ...icons(),
       "svelte-sonner",

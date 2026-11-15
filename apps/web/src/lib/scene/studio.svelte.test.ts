@@ -1,11 +1,15 @@
 import { afterEach, expect, test } from "vitest";
 import {
+  BasicShadowMap,
+  BoxGeometry,
   Color,
   CubeCamera,
   DirectionalLight,
   FloatType,
   Fog,
+  Mesh,
   MeshStandardMaterial,
+  PCFShadowMap,
   PerspectiveCamera,
   Scene,
   Texture,
@@ -17,18 +21,22 @@ import {
 import { aim, sky } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { skylight } from "./skylight.ts";
-import type { MotionTier } from "../motion/tier.ts";
+import { drawn, type Level } from "./quality.ts";
+import { SAMPLES } from "./refine.ts";
 import { Studio } from "./studio.ts";
 import { weathered } from "./weather.ts";
 
 let studio: Studio | undefined;
 
-function open(tier: MotionTier = "full"): Studio {
+/** What a level draws, on any device. */
+const look = (level: Level) => drawn(level, { capable: false, steps: 0, tier: "full" });
+
+function open(level: Level = "medium"): Studio {
   const canvas = document.createElement("canvas");
 
   document.body.append(canvas);
   studio?.dispose();
-  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), tier);
+  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), () => look(level));
   studio.setSize(64, 64);
 
   return studio;
@@ -39,15 +47,197 @@ afterEach(() => {
   studio = undefined;
 });
 
-test("the ambient-occlusion pass runs on the full motion tier only", () => {
-  const opened = open();
+test("a studio is handed the GPU its canvas draws on, where the browser tells", () => {
+  const canvas = document.createElement("canvas");
+  let told: string | null | undefined;
 
-  opened.follow("full");
-  expect(opened.occlusion).toBe(true);
-  opened.follow("lite");
-  expect(opened.occlusion).toBe(false);
-  opened.follow("still");
-  expect(opened.occlusion).toBe(false);
+  studio = new Studio(canvas, new PerspectiveCamera(40, 1, 0.1, 5000), (gpu) => {
+    told = gpu;
+
+    return look("medium");
+  });
+
+  // This host draws in software, and says so.
+  expect(told).toMatch(/swiftshader|llvmpipe|angle/iu);
+});
+
+test("each level draws from its shadow map, with its occlusion and at its pixel ratio", () => {
+  const opened = open("low");
+  const device = window.devicePixelRatio;
+  const facts = () => [opened.shadowMap, opened.occlusion, opened.pixelRatio];
+
+  expect(facts()).toEqual([1024, false, Math.min(device, 1)]);
+  opened.follow(look("medium"));
+  expect(facts()).toEqual([2048, true, Math.min(device, 1.5)]);
+  opened.follow(look("high"));
+  expect(facts()).toEqual([4096, true, Math.min(device, 2)]);
+  opened.follow(look("ultra"));
+  expect(facts()).toEqual([4096, true, device]);
+});
+
+test("Mittel's shadow blurs by one radius; Hoch's widens with the caster's distance", () => {
+  const opened = open("medium");
+  const page = new Color(0.95, 0.95, 0.96);
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own objects.
+  const sun = () => opened.scene.children.find((child) => child instanceof DirectionalLight);
+
+  opened.frame(new Vector3(), 10);
+  opened.light(daylight([0, -0.5, 0.866]), theme(false), page);
+  // The radius the full tier drew with, in texels.
+  expect(sun()?.shadow.radius).toBe(3.5);
+  expect(opened.renderer.shadowMap.type).toBe(PCFShadowMap);
+
+  opened.follow(look("high"));
+  // Raw depths, for the sampling that looks for the caster; the radius is per unit of depth.
+  expect(opened.renderer.shadowMap.type).toBe(BasicShadowMap);
+  expect(sun()?.shadow.radius).toBeGreaterThan(100);
+});
+
+const SIDE = 256;
+
+/** A 6 m post on a pale floor under a low sun from the east, seen from straight above its shadow. */
+function post(level: Level): Studio {
+  const canvas = document.createElement("canvas");
+  const camera = new PerspectiveCamera(40, 1, 0.1, 500);
+
+  camera.position.set(-6, 30, 0);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(-6, 0, 0);
+  studio?.dispose();
+  studio = new Studio(canvas, camera, () => look(level));
+  studio.setSize(SIDE, SIDE);
+
+  const floor = new Mesh(
+    new BoxGeometry(60, 0.2, 60),
+    new MeshStandardMaterial({ color: 0xcccccc }),
+  );
+  const upright = new Mesh(new BoxGeometry(1, 6, 1), new MeshStandardMaterial());
+
+  floor.position.y = -0.1;
+  floor.receiveShadow = true;
+  upright.position.y = 3;
+  // Turned, so its edges run aslant across the pixels.
+  upright.rotation.y = 0.35;
+  upright.castShadow = true;
+  studio.scene.add(floor, upright);
+  studio.frame(new Vector3(-5, 0, 0), 10);
+  studio.light(daylight([1, 0, 0.5]), theme(false), new Color(0.95, 0.95, 0.96));
+  studio.render();
+
+  return studio;
+}
+
+/** The picture on the canvas, as its red channel row by row. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+function picture(opened: Studio): number[] {
+  const gl = opened.renderer.getContext();
+  const pixels = new Uint8Array(SIDE * SIDE * 4);
+
+  gl.readPixels(0, 0, SIDE, SIDE, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+  return Array.from({ length: SIDE * SIDE }, (_, i) => pixels[i * 4] ?? 0);
+}
+
+/** How many pixels the shadow's edge takes to fade, across the shadow `metres` west of the post. */
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js's own.
+function fade(opened: Studio, metres: number): number {
+  const pixels = picture(opened);
+
+  // The picture spans 2 × 30 m × tan 20° about x = -6; a column of it crosses the shadow.
+  const column = Math.round(SIDE / 2 + ((6 - metres) / (60 * Math.tan(Math.PI / 9))) * SIDE);
+  const light = Array.from({ length: SIDE }, (_, row) => pixels[row * SIDE + column] ?? 0);
+  const [dark, lit] = [Math.min(...light), Math.max(...light)];
+
+  // Half the pixels between dark and lit: the column crosses two edges.
+  return (
+    light.filter((v) => v > dark + (lit - dark) * 0.15 && v < lit - (lit - dark) * 0.15).length / 2
+  );
+}
+
+test("Hoch's shadow is sharp where it touches its caster and widens with the distance", () => {
+  const opened = post("high");
+  const [near, far] = [fade(opened, 1.5), fade(opened, 10)];
+
+  expect(near).toBeLessThanOrEqual(1);
+  expect(far).toBeGreaterThanOrEqual(near + 1);
+});
+
+test("Mittel's shadow blurs alike along its length", () => {
+  const opened = post("medium");
+
+  expect(Math.abs(fade(opened, 10) - fade(opened, 1.5))).toBeLessThanOrEqual(1);
+});
+
+test("a frame draws at every level, its programs sound", () => {
+  for (const level of ["low", "medium", "high", "ultra"] as const) {
+    const opened = open(level);
+    const failed: string[] = [];
+
+    const box = new Mesh(
+      new BoxGeometry(4, 3, 4),
+      weathered(new MeshStandardMaterial(), { colour: 0.2, rough: 0.1, relief: 0.01 }),
+    );
+
+    box.castShadow = box.receiveShadow = true;
+
+    opened.renderer.debug.onShaderError = () => {
+      failed.push(level);
+    };
+
+    opened.frame(new Vector3(), 10);
+    opened.light(daylight([0, -0.5, 0.866]), theme(false), new Color(0.95, 0.95, 0.96));
+    opened.scene.add(box);
+    opened.render();
+    opened.refine();
+
+    expect(failed).toEqual([]);
+    expect([level, opened.renderer.getContext().getError()]).toEqual([level, 0]);
+  }
+});
+
+test("Ultra refines a settled picture in a burst of frames, then stops; a draw starts it over", () => {
+  const opened = open("ultra");
+
+  const burst = () => {
+    let frames = 0;
+
+    while (opened.refine()) frames += 1;
+
+    return frames + 1;
+  };
+
+  opened.light(daylight([0, -0.5, 0.866]), theme(false), new Color(0.95, 0.95, 0.96));
+  opened.render();
+  expect(burst()).toBe(SAMPLES);
+  expect(opened.refine()).toBe(false);
+
+  opened.render();
+  expect(burst()).toBe(SAMPLES);
+  expect(opened.renderer.getContext().getError()).toBe(0);
+});
+
+test("Ultra's burst smooths the edges of the picture it settles on, and changes nothing else", () => {
+  const opened = post("ultra");
+  const settled = picture(opened);
+
+  while (opened.refine());
+
+  const refined = picture(opened);
+  const mean = (some: readonly number[]) => some.reduce((sum, v) => sum + v, 0) / some.length;
+  const shades = (some: readonly number[]) => new Set(some).size;
+
+  // The same picture: no brighter, no darker, nothing moved.
+  expect(Math.abs(mean(refined) - mean(settled))).toBeLessThan(0.5);
+  // Finer steps along its slanted edges than four samples a pixel give.
+  expect(shades(refined)).toBeGreaterThan(shades(settled) * 1.5);
+});
+
+test("below Ultra a settled picture is left as drawn", () => {
+  const opened = open("high");
+
+  opened.render();
+
+  expect(opened.refine()).toBe(false);
 });
 
 type Sources = Pick<WebGLProgramParametersWithUniforms, "fragmentShader">;
@@ -72,10 +262,9 @@ function weathers(opened: Studio): boolean {
   return shader.fragmentShader.includes("weatherNoise");
 }
 
-test("a studio is made on its motion tier, so its first frame already draws the finishes for it", () => {
-  expect(weathers(open("lite"))).toBe(false);
-  expect(weathers(open("still"))).toBe(false);
-  expect(weathers(open("full"))).toBe(true);
+test("a studio is made in its look, so its first frame already draws the finishes for it", () => {
+  expect(weathers(open("low"))).toBe(false);
+  expect(weathers(open("medium"))).toBe(true);
 });
 
 test("light and dark themes change the background, the fog and the exposure", () => {

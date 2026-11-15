@@ -40,8 +40,9 @@ export class QualityStore {
   #choice = $state(parseQuality(read(QUALITY)));
   #steps = $state(parseSteps(read(STEPS)));
   #gpu = $state(read(GPU));
-  /** Studios on show: only a strain measured over a drawn scene says anything about its cost. */
-  #shown = $state(0);
+  /** Studios on show: only a strain measured over a drawn scene says anything about its cost.
+   * Asked when a strain is measured, never rendered: plain, so a studio's set-up tracks nothing. */
+  #shown = 0;
 
   get choice(): Quality {
     return this.#choice;

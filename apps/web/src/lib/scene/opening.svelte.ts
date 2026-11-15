@@ -8,12 +8,19 @@ import type { Ghost } from "./stage.svelte.ts";
 import type { Studio } from "./studio.ts";
 import { idle } from "./warm.ts";
 
+/** A burst frame slower than this ends the burst: three frames at 60 Hz. */
+const BURST_FRAME_MS = 50;
+
 export class Opening {
   readonly #studio: Studio;
   /** The camera's flight to a new view; it lands at once on the still tier. */
   readonly flight = new Flight(() => motion.still);
   readonly #drawn: () => void;
   #frame = 0;
+  /** The pending frame of a settled picture's refining burst (ADR 20 Rendering quality). */
+  #refining = 0;
+  /** Counts the bursts begun and ended, so a frame can tell its own is still the current one. */
+  #burst = 0;
   #held = true;
   #gone = false;
   #later: ReturnType<typeof setTimeout> | undefined;
@@ -28,6 +35,8 @@ export class Opening {
   readonly render = (): void => {
     if (this.#held) return;
 
+    // The picture is about to change: what refined the last one is void.
+    this.#rest();
     this.#frame ||= requestAnimationFrame((now) => {
       const flying = this.flight.step(now);
 
@@ -103,6 +112,7 @@ export class Opening {
     this.#gone = true;
     clearTimeout(this.#later);
     cancelAnimationFrame(this.#frame);
+    this.#rest();
   }
 
   readonly #isGone = (): boolean => this.#gone;
@@ -110,6 +120,35 @@ export class Opening {
   #draw(): void {
     this.#studio.render();
     this.#drawn();
+    this.#rest();
+    this.#refine();
+  }
+
+  /** A frame of the burst in each of the next frames, until the studio has had its fill, the
+   * picture changes, or the GPU takes long over one: a device that cannot hold the burst keeps
+   * the picture it has. Where the look has no burst, none is asked for. */
+  #refine(): void {
+    const burst = (this.#burst += 1);
+
+    this.#refining = requestAnimationFrame((start) => {
+      this.#refining = 0;
+
+      if (this.#held || this.#gone || !this.#studio.refine()) return;
+
+      // Not before the GPU has drawn it: frames queued faster than they are drawn pile up.
+      void gpuIdle(this.#studio.renderer).then(() => {
+        const held = performance.now() - start < BURST_FRAME_MS;
+
+        if (held && burst === this.#burst) this.#refine();
+      });
+    });
+  }
+
+  /** Ends the burst: a frame of it still on the GPU starts no other. */
+  #rest(): void {
+    this.#burst += 1;
+    cancelAnimationFrame(this.#refining);
+    this.#refining = 0;
   }
 
   #hold(on: boolean): void {
