@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
   import type { BiddingZone, Core, Problem, SpotPriceZone } from "../api/core";
-  import { problemText } from "../i18n/problems";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
 
   /** The zone in force, or why it was refused. */
@@ -33,14 +33,14 @@
   }
 </script>
 
-<div class="flex flex-col gap-1.5 text-sm">
+<div class="flex items-center justify-between gap-3 border-y border-border/60 px-4 py-3 text-[15px]">
   <span id="{id}-zone">{m.tariff_zone()}</span>
   <ToggleGroup.Root
     type="single"
     variant="outline"
     bind:value={() => zone, (next) => void choose(next)}
     aria-labelledby="{id}-zone"
-    class="self-start"
+    class="shrink-0"
   >
     <ToggleGroup.Item value="none" class="px-4">{m.tariff_zone_none()}</ToggleGroup.Item>
     {#each ZONES as option (option)}
@@ -49,5 +49,5 @@
   </ToggleGroup.Root>
 </div>
 {#if problem}
-  <p role="alert">{problemText(problem.problem)}</p>
+  <div class="px-4 pt-2"><ProblemAlert problem={problem.problem} /></div>
 {/if}

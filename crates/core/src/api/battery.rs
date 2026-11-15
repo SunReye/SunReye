@@ -89,7 +89,7 @@ pub async fn capacity(State((reader, clock)): BatteryState) -> Result<Json<Capac
     let rated = rollups(&reader, "battery.capacity", Tier::Day, now).await?;
     let nameplate = rated.last().and_then(|r| match r.aggregate {
         Aggregate::Measurement { max, .. } => Some(max),
-        Aggregate::Counter { .. } => None,
+        Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
     });
     let found = battery::estimate(&soc, &power, nameplate);
     Ok(Json(Capacity {

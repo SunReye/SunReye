@@ -104,7 +104,7 @@ async fn daily(
         .iter()
         .filter_map(|r| match r.aggregate {
             Aggregate::Measurement { integral, .. } => Some((date(r.start, zone)?, integral)),
-            Aggregate::Counter { .. } => None,
+            Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
         })
         .collect())
 }

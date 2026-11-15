@@ -27,7 +27,7 @@ use crate::endpoint::{self, Task};
 use crate::http;
 use crate::layout::Inverters;
 use crate::mqtt;
-use crate::profiles::Catalogue;
+use crate::profiles::{Catalogue, Chosen};
 use crate::publisher::{self, Publisher, Publishing};
 use crate::scan::{self, Scanner};
 use crate::settings::{
@@ -233,12 +233,24 @@ pub struct DeviceDraft {
     pub connection: u32,
     /// The profile's id, such as `deye-sg05lp3`; fixed once the device is added.
     pub profile: String,
+    /// The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after
+    /// the common model, such as `103`; none for a family's base. Fixed with the profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
     /// The device address behind the connection: a Modbus unit id, or the index a broker's
     /// profile names, such as an EVCC loadpoint's.
     pub unit: u8,
     /// Whether settings may be written (ADR 7); off when left out.
     #[serde(default)]
     pub writes: bool,
+}
+
+impl DeviceDraft {
+    /// The profile and variant the device is read as.
+    #[must_use]
+    pub fn chosen(&self) -> Chosen {
+        Chosen::new(&self.profile, self.variant.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -249,12 +261,18 @@ pub struct Device {
     pub draft: DeviceDraft,
 }
 
+/// A device where it sits behind its connection, and what it is read as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Addressed {
+    id: u32,
+    unit: u8,
+    profile: Chosen,
+}
+
 /// A configured device as its endpoint task polls it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Polled {
-    id: u32,
-    unit: u8,
-    profile: String,
+    device: Addressed,
     endpoint: Endpoint,
 }
 
@@ -281,8 +299,7 @@ struct Brokering {
     id: u32,
     broker: mqtt::Broker,
     root: String,
-    /// Each device's id, address and profile.
-    devices: Vec<(u32, u8, String)>,
+    devices: Vec<Addressed>,
     publish: Option<Publish>,
 }
 
@@ -297,8 +314,7 @@ struct Brokered {
 #[derive(PartialEq, Eq)]
 struct Hosting {
     host: http::Host,
-    /// Each device's id, address and profile.
-    devices: Vec<(u32, u8, String)>,
+    devices: Vec<Addressed>,
 }
 
 /// An endpoint task and the devices it polls.
@@ -350,6 +366,17 @@ fn declared<'a>(profile: &'a Profile, key: &str) -> Result<&'a Setting, settings
 /// The file cannot be read.
 pub async fn registered(database: &Database) -> Result<Vec<Device>, storage::Error> {
     database.run(store::devices).await
+}
+
+/// Moves every device stored under the retired profile id `old` to `variant` of `family` (ADR 5);
+/// its id, by which its history is stored, stays.
+pub(crate) fn rehome(
+    db: &rusqlite::Connection,
+    old: &str,
+    family: &str,
+    variant: &str,
+) -> rusqlite::Result<()> {
+    store::rehome(db, old, family, variant)
 }
 
 impl Devices {
@@ -433,7 +460,7 @@ impl Devices {
     pub async fn writable(&self) -> Result<Vec<Writable>, storage::Error> {
         let mut writable = Vec::new();
         for device in self.devices().await? {
-            let Some(profile) = self.catalogue.get(&device.draft.profile) else {
+            let Some(profile) = self.resolved(&device.draft) else {
                 continue;
             };
             let mut settings = Vec::new();
@@ -464,7 +491,7 @@ impl Devices {
         changed: SystemTime,
     ) -> Result<(), Problem> {
         let device = self.device(id).await?;
-        let profile = self.profile(&device.draft.profile)?;
+        let profile = self.profile(&device.draft)?;
         let fingerprint = enable::fingerprint(declared(&profile, &key)?);
         let fingerprint = on.then_some(fingerprint);
         self.database
@@ -482,7 +509,7 @@ impl Devices {
     pub async fn read_setting(&self, id: u32, key: &str) -> Result<Option<f64>, Problem> {
         let running = self.running.lock().await;
         let device = self.device(id).await?;
-        let profile = self.profile(&device.draft.profile)?;
+        let profile = self.profile(&device.draft)?;
         let setting = declared(&profile, key)?;
         let Some(toggle) = setting.toggle() else {
             return Ok(self.read(&running, &device, setting.clone()).await);
@@ -499,7 +526,7 @@ impl Devices {
         let id = device.id;
         let task = running
             .iter()
-            .find(|r| r.devices.iter().any(|d| d.id == id))
+            .find(|r| r.devices.iter().any(|d| d.device.id == id))
             .map(|r| &r.task);
         match task {
             Some(task) => task.read(device.draft.unit, setting).await,
@@ -616,7 +643,7 @@ impl Devices {
     /// The device or its profile is unknown, or the file cannot be read.
     pub async fn deadbands(&self, id: u32) -> Result<Vec<RoleDeadband>, Problem> {
         let device = self.device(id).await?;
-        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        let profile = self.resolved(&device.draft).ok_or(INTERNAL)?;
         let overrides = self
             .database
             .run(move |db| deadband::overrides(db, id))
@@ -640,7 +667,7 @@ impl Devices {
     ) -> Result<(), Problem> {
         let running = self.running.lock().await;
         let device = self.device(id).await?;
-        let profile = self.catalogue.get(&device.draft.profile).ok_or(INTERNAL)?;
+        let profile = self.resolved(&device.draft).ok_or(INTERNAL)?;
         match deadband {
             Some(deadband) => deadband::check(&profile, &role, deadband)?,
             None if profile.quantities().iter().any(|q| q.role == role) => {}
@@ -709,7 +736,7 @@ impl Devices {
         request: Request,
         now: SystemTime,
     ) -> Result<log::Entry, Problem> {
-        let profile = self.profile(&device.draft.profile)?;
+        let profile = self.profile(&device.draft)?;
         let writing = Writing {
             running,
             device,
@@ -849,7 +876,7 @@ impl Devices {
         };
         let task = running
             .iter()
-            .find(|r| r.devices.iter().any(|d| d.id == id))
+            .find(|r| r.devices.iter().any(|d| d.device.id == id))
             .map(|r| &r.task);
         // A precondition that does not hold is a refusal: nothing was written.
         let applied = if let Some(task) = task {
@@ -922,17 +949,29 @@ impl Devices {
         self.database.run(log::entries).await
     }
 
-    /// Profile `id`; a device whose profile is gone has no settings.
-    fn profile(&self, id: &str) -> Result<Arc<Profile>, Problem> {
-        Ok(self.catalogue.get(id).ok_or(settings::Refusal::Unknown)?)
+    /// The device's profile as its variant reads; a device whose profile is gone has no settings.
+    fn profile(&self, draft: &DeviceDraft) -> Result<Arc<Profile>, Problem> {
+        Ok(self.resolved(draft).ok_or(settings::Refusal::Unknown)?)
     }
 
-    /// The binding the draft's profile reads through; refused when the profile is unknown.
+    fn resolved(&self, draft: &DeviceDraft) -> Option<Arc<Profile>> {
+        self.catalogue.resolve(&draft.chosen())
+    }
+
+    /// The binding the draft's profile reads through; refused when the profile or its variant is
+    /// unknown.
     fn check_profile(&self, draft: &DeviceDraft) -> Result<Reads, ChangeRefusal> {
         let profile = self
             .catalogue
             .get(&draft.profile)
             .ok_or(ChangeRefusal::Profile)?;
+        if !draft
+            .variant
+            .as_deref()
+            .is_none_or(|v| profile.has_variant(v))
+        {
+            return Err(ChangeRefusal::Profile);
+        }
         Ok(if profile.reads_topics() {
             Reads::Topics
         } else if profile.reads_http() {
@@ -1051,15 +1090,12 @@ impl Devices {
         Ok(())
     }
 
-    /// The known devices of `devices`, each id, address and profile, declared to storage.
+    /// The known devices of `devices`, declared to storage.
     async fn started(
         &self,
-        devices: &[(u32, u8, String)],
+        devices: &[Addressed],
     ) -> Result<Vec<endpoint::Device>, storage::Error> {
-        let devices: Vec<endpoint::Device> = devices
-            .iter()
-            .filter_map(|(id, unit, profile)| self.known(*id, *unit, profile))
-            .collect();
+        let devices: Vec<endpoint::Device> = devices.iter().filter_map(|d| self.known(d)).collect();
         for device in &devices {
             self.declare(device.id, &device.profile).await?;
         }
@@ -1070,24 +1106,25 @@ impl Devices {
     fn profiles(&self, devices: &[Polled]) -> Vec<endpoint::Device> {
         devices
             .iter()
-            .filter_map(|d| self.known(d.id, d.unit, &d.profile))
+            .filter_map(|d| self.known(&d.device))
             .collect()
     }
 
-    /// Device `id` with profile `profile`, unless the profile is not known.
-    fn known(&self, id: u32, unit: u8, profile: &str) -> Option<endpoint::Device> {
-        let Some(profile) = self.catalogue.get(profile) else {
-            tracing::warn!(device = id, profile, "unknown profile");
+    /// `device` with its profile as its variant reads, unless the profile is not known.
+    fn known(&self, device: &Addressed) -> Option<endpoint::Device> {
+        let Some(resolved) = self.catalogue.resolve(&device.profile) else {
+            let profile = &device.profile.profile;
+            tracing::warn!(device = device.id, profile, "unknown profile");
             return None;
         };
         Some(endpoint::Device {
-            id: DeviceId(id),
-            unit,
-            profile,
+            id: DeviceId(device.id),
+            unit: device.unit,
+            profile: resolved,
         })
     }
 
-    /// Declares every series of `device` in its profile's steps, with its deadbands. A series
+    /// Declares every stored series of `device` in its profile's steps, with its deadbands. A series
     /// storage refuses, such as one stored in another step, is logged and not stored.
     async fn declare(&self, device: DeviceId, profile: &Profile) -> Result<(), storage::Error> {
         let id = device.0;
@@ -1096,8 +1133,10 @@ impl Devices {
             .run(move |db| deadband::overrides(db, id))
             .await?;
         for q in profile.quantities() {
+            let Some(policy) = deadband::policy(q, &overrides) else {
+                continue;
+            };
             let series = self.bus.intern(&q.role, q.index);
-            let policy = deadband::policy(q, &overrides);
             match self.declarer.declare(device, series, policy).await {
                 Ok(()) => {}
                 Err(storage::Error::Stopped) => return Err(storage::Error::Stopped),

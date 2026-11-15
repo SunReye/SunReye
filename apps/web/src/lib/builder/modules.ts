@@ -1,8 +1,12 @@
 // Module placement on the roof faces' grids and string painting (ADR 20). Pure: each edit
 // returns a new scene; the pv crate decides what fits.
-import type { StringDraft } from "../api/core.ts";
-import type { Cell, CellPlace, Equipment, ModuleGrid, Scene } from "./pv.ts";
+import type { CatalogueSheet, Datasheet, ModuleType, Problem, StringDraft } from "../api/core.ts";
+import type { Cell, CellPlace, ModuleGrid, Scene } from "./pv.ts";
+import { following, ordered } from "./wiring.ts";
+import { withOpenings } from "./wall-openings.ts";
 import type { Panel } from "./scene.ts";
+
+export { wiring } from "./wiring.ts";
 
 /** What the builder edits and saves: the scene and the strings its modules are painted into. */
 export interface Draft {
@@ -57,14 +61,23 @@ export function editGrid(
   );
 }
 
+/** Grid `index` without its modules. */
+export function clearGrid(scene: Scene, index: number): Scene {
+  return withGrids(scene, (grids) =>
+    grids.map((grid, i) => (i === index ? changed(grid, { modules: [] }) : grid)),
+  );
+}
+
 export function removeGrid(scene: Scene, index: number): Scene {
   return withGrids(scene, (grids) => grids.toSpliced(index, 1));
 }
 
-/** Where a drag's steps go: each shown at once, the drag recorded as one undo step once let go. */
-export interface Strokes {
-  readonly drag: (scene: Scene) => void;
-  readonly drop: () => void;
+/** Where a face's module types come from: the core, or a test's fake. */
+export interface TypeSource {
+  /** Adds a module type to the core. */
+  addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem>;
+  /** The module catalogue's sheets. */
+  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem>;
 }
 
 /** What a drag does to every cell it crosses, as the cell it started on decides (ADR 20). */
@@ -96,9 +109,11 @@ export function strokeOf(scene: Scene, index: number, at: At, tool: Tool): Strok
 
 /** The stroke's effect on one cell of grid `index`; crossing a cell twice changes nothing more. */
 export function paint(scene: Scene, index: number, at: At, stroke: Stroke): Scene {
+  const next = stroke.kind === "paint" ? following(scene, stroke.string) : 0;
+
   return withGrids(scene, (grids) =>
     grids.map((grid, i) =>
-      i === index ? changed(grid, { modules: edit(grid.modules, at, stroke) }) : grid,
+      i === index ? changed(grid, { modules: edit(grid.modules, at, stroke, next) }) : grid,
     ),
   );
 }
@@ -108,9 +123,10 @@ export function apply(scene: Scene, index: number, at: At, tool: Tool): Scene {
   return paint(scene, index, at, strokeOf(scene, index, at, tool));
 }
 
-function edit(modules: readonly Cell[], at: At, stroke: Stroke): Cell[] {
+/** The cells after `stroke` crossed `at`; a module newly wired takes place `order` in its string. */
+function edit(modules: readonly Cell[], at: At, stroke: Stroke, order: number): Cell[] {
   const index = modules.findIndex((cell) => cell.row === at.row && cell.column === at.column);
-  const next = stroked(modules[index], at, stroke);
+  const next = ordered(modules[index], stroked(modules[index], at, stroke), order);
 
   if (index < 0) return next === undefined ? [...modules] : [...modules, next];
 
@@ -160,20 +176,24 @@ export function fillGrid(scene: Scene, index: number, cells: readonly At[]): Sce
   );
 }
 
-/** The scene without block `index`: its grids and equipment go, later blocks' follow it down. */
+/** The scene without block `index`: its grids, chimneys and equipment go, later blocks' follow it down. */
 export function withoutBlock(scene: Scene, index: number): Scene {
   const equipment = scene.equipment
     ?.filter((marker) => marker.block !== index)
     .map((marker) => (marker.block > index ? onBlock(marker, marker.block - 1) : marker));
 
-  const blocks = scene.blocks.toSpliced(index, 1);
+  const chimneys = scene.chimneys
+    ?.filter((item) => item.block !== index)
+    .map((item) => (item.block > index ? onBlock(item, item.block - 1) : item));
 
-  return withGrids(
-    equipment === undefined ? { ...scene, blocks } : { ...scene, blocks, equipment },
-    (grids) =>
-      grids
-        .filter((grid) => grid.block !== index)
-        .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
+  const blocks = scene.blocks.toSpliced(index, 1);
+  const glazed = withOpenings(scene, index);
+  const kept = chimneys === undefined ? { ...glazed, blocks } : { ...glazed, blocks, chimneys };
+
+  return withGrids(equipment === undefined ? kept : { ...kept, equipment }, (grids) =>
+    grids
+      .filter((grid) => grid.block !== index)
+      .map((grid) => (grid.block > index ? changed(grid, { block: grid.block - 1 }) : grid)),
   );
 }
 
@@ -187,7 +207,7 @@ export function withoutString(scene: Scene, index: number): Scene {
 
           if (string === index) return assigned(cell);
 
-          return string !== undefined && string > index ? assigned(cell, string - 1) : cell;
+          return string !== undefined && string > index ? { ...cell, string: string - 1 } : cell;
         }),
       }),
     ),
@@ -212,8 +232,8 @@ export function painted(scene: Scene, index: number): Painted {
   };
 }
 
-function onBlock(marker: Equipment, block: number): Equipment {
-  return { ...marker, block };
+function onBlock<T extends { readonly block: number }>(item: T, block: number): T {
+  return { ...item, block };
 }
 
 function changed(grid: ModuleGrid, fields: Partial<ModuleGrid>): ModuleGrid {

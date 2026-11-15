@@ -1,6 +1,6 @@
 # 21. Look, feel and navigation
 
-Status: accepted (2026-11-10), amended (2026-11-12)
+Status: accepted (2026-11-10), amended (2026-11-12, 2026-11-13)
 
 ## Context
 
@@ -12,7 +12,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 - Mouse or trackpad, any width: a slim floating glass **icon rail** (about 56 px) at the left edge, always visible. Hovering near it, or moving keyboard focus into it, expands it to labels over the content without pushing the content aside. It collapses about 300 ms after the cursor leaves. A pin keeps it open, kept per browser.
 - Touch and at least 768 px wide: the same rail, starting as icons. A tap on the logo opens it with labels, floating over the content like the mouse rail; a pin keeps it open, still floating. A tap outside closes an unpinned rail.
-- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with exactly five items: Dashboard · History · Forecast · Tariff · More. More opens a bottom sheet: Controls (admin only, first), Settings, Devices, Builder, Status.
+- Touch and narrower: a sticky floating glass **bottom bar** inside the safe area, never hiding on scroll, with at most three screens and More: Dashboard · History · Forecast · More. More opens a drawer: Controls (admin only, first), Tariff, Settings, Devices, Builder, Status. The rail lists every screen.
 - Controls has its own rail entry, visible to admins only.
 
 **Dashboard.** Master's layout:
@@ -22,13 +22,15 @@ The first integration build rendered browser defaults: plain links for navigatio
   - the today-energy cards (production, consumption, feed-in, purchase, with € and the autarky and self-consumption meters);
   - a small day chart, actual against forecast;
   - EV.
-- **Phone:** the same blocks scroll in that order, hero first.
-- **3D/2D toggle:** sits in the hero's corner.
+- **Phone:** the same blocks scroll in that order, hero first. The hero's height follows the screen's width, capped by the small viewport (`svh`), never the dynamic one: a browser bar that shows or hides while scrolling moves nothing below it.
+- **3D/2D toggle:** sits in the hero's corner, the 3D scene's camera lock (ADR 20) beside it.
 - **Headline:** the hero's large figure is PV power while PV produces and switches to house consumption while PV is idle.
 
 **Details by drilling down.** The dashboard answers "now and today". Every figure on it opens its detail:
-- **Detail sheets:** a glass side sheet on desktop and tablet, a bottom sheet on the phone. Each has its own hash route, so back closes it, and ends with "Open in history →" at the same range.
+- **Detail sheets:** a glass side sheet on desktop and tablet, a drawer on the phone. Each has its own hash route, so back closes it, and ends with "Open in history →" at the same range.
 - **Scrim:** an open sheet dims the page without blurring it.
+- **Drawers:** a drawer is shadcn-svelte's `Drawer` (vaul-svelte) from the bottom. It is open or closed, with no snap points: a pull down closes it.
+- **Forms and pickers** (adding a point, a profile, a builder object; editing a point; confirms): a `Dialog` where the shell shows its rail (a mouse, or touch from 768 px), a drawer under the bar. They choose on the shell's rule, so every caller agrees.
 - **Readings:** a device's sheet (string, inverter, PV, battery, grid, house, EV) lists its current readings right after the live graph, before the range analytics, grouped (Jetzt, MPPT inputs or phases as small tables, Zustand, Zähler). Only roles the device has appear. A reading older than its device's usual interval shows its age and dims; an offline device or a stalled stream is said once above the list. An estimated value carries "≈", and a string sharing an MPPT input says so in one sentence and links its siblings.
 - **Range control:** detail pages share one: day, week, month, year, custom, with swipe or arrows to step.
 - **Live graph:** a power figure's detail sheet opens with v3's live graph (`live-area`, `live-window`, `live-cursor`), restyled here. It shows a fixed two-minute window anchored to the newest sample, so its data, scales and tooltip index change only when a sample lands. Between samples one transform scrolls the marks, on a cursor that eases linearly across the feed's own sample spacing (clamped to 250 ms–5 s) with a slight overshoot, snapped to quarter pixels. The plot keeps a few samples of buffer past its left edge and is downsampled to its pixel budget. Grid power fills diverging around zero.
@@ -49,7 +51,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 
 **Drill-in navigation for Controls and Settings.**
 - **Pattern:** one component. A root list of groups, each row summarising its current values. Tapping a row slides its page in from the right while the parent shifts left and dims. Each level is a hash route, so browser back and the edge-swipe go back. At most two levels deep.
-- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right. Each group is still a hash route. Below 1024 px the drill-in slides.
+- **Phone layout:** below 1024 px each level is a screen of its own, as wide as the screen, and slides whole. No card holds both levels, so no surface changes size as they trade places. Inside a level the rows sit in inset glass cards, one per section, its label above the card. A page's header (back and title) is a glass bar that stays at the top of the screen. Each level keeps its own scroll position: a page opens at its top, and back returns the root to where it was.
+- **Wide screens:** from 1024 px, Controls and Settings show two panes instead: the groups on the left, the chosen group's settings on the right, each pane one card. Each group is still a hash route. Below 1024 px the drill-in slides.
 - **Control groups:** come from the role namespace (`battery.*` → Battery, `grid.*` → Grid & export), labelled by Paraglide. Settings without a role go into Advanced. Profiles carry no groups.
 - **Writes:** there is no page lock; ADR 7's writes switch is the lock. With writes off, every control is read-only, under a banner explaining why.
 
@@ -61,7 +64,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Motion and refusals:** the drill-in's slides follow the tiers and land at once on still. A refusal or failed sign-in uses the `error` treatment: the `error` haptic and a destructive alert beside the action, which stays for a fix.
 
 **Value editor.** No sliders in Controls or Settings.
-- **Opening:** tapping a setting row opens the value editor: a bottom drawer on touch at any width, an anchored glass popover with a mouse, beside the row in the drill-in and under the row's value in two panes.
+- **Opening:** tapping a setting row opens the value editor: a drawer on touch at any width, an anchored glass popover with a mouse, beside the row in the drill-in and under the row's value in two panes.
 - **Header:** the setting's name, its limits, and a large value whose digits roll up or down with the motion.
 - **Bounded stepped numbers** use a wheel. Bounds and step come from the profile for inverter settings and from the setting itself in the app.
   - A momentum drum: a fling coasts, then a spring snaps it to the nearest step. Off-centre rows shrink and fade.
@@ -75,13 +78,19 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **Enums** use a list with kbase's sliding `active-indicator`.
 - **Free-form values** (prices, coordinates, names) keep a text field.
 - **Applying:** "Apply 100 A → 80 A" runs ADR 7's write. The editor shows pending until the read-back, then closes with the outcome: confirmed, refused with its reason, or mismatch, linked to the write log. There is no separate confirmation step.
-- **Builder time slider:** stays, because it scrubs time rather than setting a value.
+- **Builder time slider:** stays, because it scrubs time rather than setting a value. Its day, like the day a layout applies from, is a button that opens a calendar in a popover; picking a day closes it.
+- **Builder controls** are the registry's components (`components/ui`): no browser-default date, time, range, colour or select control. A colour beyond the swatches is typed as `#rrggbb`, a free-form value.
 
 **Glass.**
 - **Two levels:**
   - *Overlay glass* (menus, dialogs, sheets) keeps kbase's tokens.
-  - *Ambient glass* (rail, bottom bar, dashboard cards, 3D label chips) is lighter, about 72 % opaque in light and 78 % in dark, with the strong blur.
-- **Backdrop:** both sit over kbase's `bg-spotlight`, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. The core computes the tint (±6° around the horizon is twilight), so viewers get it without the location (ADR 9). It is recomputed every 15 minutes and never animated; without a location it stays indigo. No grid pattern anywhere.
+  - *Ambient glass* (rail, bottom bar, dashboard cards, 3D label chips, toasts) is lighter, about 64 % opaque in light and 58 % in dark, with the strong blur: thin enough to show the backdrop's lights, with its text still at WCAG AA over the brightest of them.
+- **Backdrop:** both sit over four large, soft lights:
+  - *Sun:* kbase's `bg-spotlight` at the top, its tint following the sun at the plant: warm at dawn and dusk, clear by day, indigo at night. The core computes the tint (±6° around the horizon is twilight), so viewers get it without the location (ADR 9). It is recomputed every 15 minutes; without a location it stays indigo.
+  - *PV:* solar amber, top right. Its strength follows the plant's live PV power in steps, eased over seconds, and it is out while PV is idle.
+  - *Battery and grid:* battery green bottom left, export teal bottom right, so the bottom bar and the rail sit over a light.
+  - *Motion:* on the full tier the lights drift and breathe slowly, a step a second, by `transform` and `opacity` alone; a step is a pixel or two of a very soft edge. On lite and still they rest. Each move makes every glass surface over a light blur again, so no animation runs between the steps: one running there, even stepped, cost the 2D dashboard its smoothness budget.
+  - No grid pattern anywhere.
 - **Opaque fallback:** `prefers-reduced-transparency` and the low-power switch turn every glass surface opaque.
 
 **Colour.**
@@ -95,20 +104,23 @@ The first integration build rendered browser defaults: plain links for navigatio
 - a card must do something;
 - summary figures sit in a strip divided by hairlines;
 - a list is one surface with dividers;
-- no visible scrollbars, with edges that fade where more content waits;
+- no visible scrollbars, with edges that fade where more content waits. The fade is shadcn-svelte's `scroll-fade` utility (a mask on the scroller, driven by its scroll position, static where scroll timelines are missing), on every scroll container: sheets, pickers, menus, lists, tables, chip rows. The background and border sit on a wrapper and the fade on the scroller inside it, so glass keeps its edge. A `ScrollArea` keeps its scrollbar for the mouse; a text area and the page itself take no fade. The still tier and the low-power switch drop the fade, whose mask repaints with every scrolled frame;
 - a screen fetches its data when it mounts; there are no SvelteKit `load` functions. While its data fills in, the screen stands in its final layout: a number shows dashes, as the animated number does, and a chart or a sentence shows a skeleton or its own empty or loading state of the size it will take. A page never shows a blank or unstyled box.
 
 **Motion.**
 - **Source:** kbase's motion vocabulary, from `theme.css`, the motion parts of `app.css`, `animated-number`, and `active-indicator` (kbase `8e6db9e`), plus these curves:
-  - *Movement between two resting places* (drill-in, rail, sheet travel, camera flight, chart range change): `--motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)`, 280–350 ms.
+  - *Movement between two resting places* (drill-in, rail, sheet travel, route change, camera flight, chart range change): `--motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1)`, 280–350 ms.
   - *Entrances:* kbase's ease-out, 180–250 ms; a large surface (the 3D scene fading in, a sheet) about 350 ms.
   - *Exits:* ease-in, about 150 ms, shorter than their entrance.
   - *Presses:* kbase's 80 ms scale press, released with its spring.
-- **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Sheets and back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point.
+- **Interruptible:** anything a user can interrupt runs on Svelte `Spring`/`Tween` or CSS transitions, never keyframes. A reversed motion continues from where it is. Back-swipes follow the finger 1:1, then a spring takes over at the release velocity and settles at a snap point. Drawers follow the finger 1:1 and, let go, settle back open or close.
+- **Route changes** slide by the navigation's order (Dashboard · History · Forecast, then More's list): a later screen comes in from the right while the old one leaves to the left, an earlier one the other way, so back slides the way back. Both stay in one grid cell, the leaving screen keeps its scroll position, and a second change mid-slide goes on from where the screens are. A route outside that order fades in place.
 - **Jank rules:** animate only `transform` and `opacity`. The one exception is the lite tier's dashed flow cable, which moves its SVG `stroke-dashoffset`. Never animate `backdrop-filter` or layout properties. Numbers use tabular figures. Charts tween between data sets. Sizes are reserved before data arrives.
 - **Live ticks:** numbers, gauges and flow-line thickness ease to each tick for slightly longer than the tick interval, so values glide. 3D tints ease over about 400 ms (ADR 20), then rendering stops. When the stream stalls they stop, flow lines go still, and the connection chip shows the stall. The stream counts as stalled after about 30 s without any message, keep-alives included, as the core sends one every 15 s.
 - **Tiers:** v3's full, lite and still. A device starts on full. About 4 s after the page settles, a frame watch measures strain and drops a struggling device to lite. On lite, each flow rail is one travelling dashed cable instead of a comet chain, and the 3D ambient-occlusion pass is off. The measured strain is kept per device, so a slow wall tablet starts lean the next day. There is no motion setting.
 - **Off switches:** reduced motion and the low-power switch force still: all of it is instant and nothing moves.
+
+**Transient feedback.** What an action did and needs no answer ("Gespeichert", "Entfernt", a confirmed write) is a toast, not a line added under the form: shadcn-svelte's Sonner, one toaster in the shell, in the bottom bar's ambient glass, ring and elevation at the radius token, bottom right beside the rail and above the bottom bar on the phone. A toast's status shows in its icon, never in a coloured fill. It comes in success and error, with the haptics of the table below, and without animation on the still tier. An error the user fixes in a field, a refusal included, stays inline beside that field.
 
 **Smoothness is measured.** A deliberate e2e journey (outside the gate, ADR 11) runs each signature transition, and a tap during the 3D scene's background load, under 4× CPU throttling and records Long Animation Frames: drill-in, sheet, rail, route change, camera flight, live tick, value-editor fling. It fails if any frame exceeds 50 ms or the 95th percentile exceeds 20 ms. `bun run smoothness` runs every journey against a fake core (`apps/web/e2e/`), at 1× and 4× throttle so software rendering, which the throttle does not scale, shows apart from main-thread work; `bun run smoothness <words>` runs those whose names contain them.
 
@@ -118,7 +130,7 @@ The first integration build rendered browser defaults: plain links for navigatio
   | Event | Preset |
   |---|---|
   | Toggle, segment or tab change | `selection` |
-  | Sheet snap, drill-in commit, rail pin | `soft` |
+  | A drawer let go (settling open or closing), drill-in commit, rail pin | `soft` |
   | Press on a primary action | `light` |
   | Write confirmed by read-back | `success` |
   | Refusal, mismatch, failed sign-in | `error` |
@@ -131,6 +143,7 @@ The first integration build rendered browser defaults: plain links for navigatio
 ## Considered options
 
 - **An always-expanded rail on touch tablets.** Rejected: it costs the hero about 180 px for labels a tap on the logo shows.
+- **Five bar items, Tariff among them.** Rejected: at 320 px a fifth of the bar cannot hold "Tarif und Ersparnis", and labels collided; four items give each label room in every locale.
 - **Floating chart tooltips.** Rejected: on touch they hide what the finger points at; the legend is the readout.
 - **A fully hidden desktop sidebar.** Rejected: it can't be found, and it can't be reached by keyboard or by touch.
 - **KPI cards floating over a full-screen 3D scene.** Rejected for master's two-column layout, which the owner prefers.
@@ -140,6 +153,8 @@ The first integration build rendered browser defaults: plain links for navigatio
 - **A new 2D flow or new live charts.** Rejected: v3's encode magnitude against a remembered plant peak, glide at sample cadence, and survive slow devices. They took long tuning and are kept.
 - **v3's per-device motion setting (auto, full, lite, still).** Rejected: the frame watch decides, and the low-power switch is the manual override.
 - **Moving particles in the 3D scene.** Rejected: they need a continuous render loop (ADR 20). Particles stay in the 2D flow.
+- **Snap points on drawers** (a peeking half-open drawer). Rejected by the owner: a drawer is open or closed.
+- **Our own draggable bottom sheet.** Rejected for shadcn-svelte's responsive `Drawer`/`Dialog` pattern, which the registry maintains.
 - **Vendoring `web-haptics`.** Rejected for now: nothing to change. The wrapper keeps a later swap to one file.
 
 ## Consequences

@@ -1,0 +1,138 @@
+/// <reference types="bun" />
+import { expect, test } from "bun:test";
+import { loadPv, type Opening, type Scene } from "./pv.ts";
+import { fresh, refit, slide as slideOn, withOpenings, type OpeningGrip } from "./wall-openings.ts";
+
+// The release build the gate and the SPA build produce (crates/pv-wasm).
+const wasm = new URL(
+  "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm",
+  import.meta.url,
+);
+
+const pv = await loadPv(await Bun.file(wasm).bytes());
+
+/** A 10 × 8 m block with 3 m walls. */
+const house: Scene = {
+  north: 0,
+  blocks: [{ x: 0, z: 0, width: 10, depth: 8, eave: 3, rotation: 0, roof: { kind: "flat" } }],
+  obstacles: [],
+};
+
+const window: Opening = {
+  kind: "window",
+  block: 0,
+  wall: "front",
+  along: 2,
+  width: 1.2,
+  height: 1.4,
+  sill: 0.9,
+};
+
+const glazed = (...openings: readonly Opening[]): Scene => ({ ...house, openings });
+
+/** A ray straight at the front wall (z = 8) from the south, in three.js's frame. */
+const ray = (x: number, y = 1.5) => ({ origin: [x, y, 20], direction: [0, 0, -1] }) as const;
+
+type Aimed = ReturnType<typeof ray>;
+
+/** A drag of the scene's first opening, on the walls the crate lays out for it. */
+const slide = (scene: Scene, grip: OpeningGrip, grab: Aimed, now: Aimed) =>
+  slideOn(scene, 0, grip, [grab, now], { pv, laid: pv.modules(scene, {}) });
+
+test("a new opening takes the first free place on a wall, in its kind's usual size", () => {
+  const first = fresh(pv, house, "window");
+  const second = first && fresh(pv, glazed(first), "frontDoor");
+
+  expect(first).toEqual({
+    kind: "window",
+    block: 0,
+    wall: "front",
+    along: 0.5,
+    width: 1.2,
+    height: 1.4,
+    sill: 0.9,
+  });
+  // Past the window, a hand's breadth on.
+  expect(second).toMatchObject({
+    kind: "frontDoor",
+    wall: "front",
+    sill: 0,
+    width: 1,
+    height: 2.1,
+  });
+  expect(second?.along).toBeGreaterThanOrEqual(1.7);
+});
+
+test("a scene without a walled block takes no opening, and a low wall a lower one", () => {
+  const carport: Scene = {
+    ...house,
+    blocks: house.blocks.map((block) => ({ ...block, open: true })),
+  };
+
+  const shed: Scene = { ...house, blocks: house.blocks.map((block) => ({ ...block, eave: 1.8 })) };
+
+  expect(fresh(pv, carport, "window")).toBeNull();
+  expect(fresh(pv, shed, "frontDoor")).toMatchObject({ height: 1.8 });
+});
+
+test("a change is kept on its wall and under the eave, and refused over another opening", () => {
+  const scene = glazed(window, { ...window, along: 5 });
+
+  const moved = (change: Partial<Opening>) => {
+    const fitted = refit(pv, scene, 0, change);
+
+    return "unfit" in fitted ? fitted.unfit : fitted.openings?.[0];
+  };
+
+  expect(moved({ along: 9.5 })).toMatchObject({ along: 8.8 });
+  expect(moved({ along: -1 })).toMatchObject({ along: 0 });
+  expect(moved({ height: 5 })).toMatchObject({ height: 2.1 });
+  // The wall is 10 m long.
+  expect(moved({ width: 30 })).toBe("room");
+  // 4 m + 1.2 m overlaps the window at 5 m.
+  expect(moved({ along: 4 })).toBe("overlap");
+  // A door stands on the ground.
+  expect(moved({ kind: "frontDoor" })).toMatchObject({ sill: 0 });
+});
+
+test("dragging an opening slides it along its wall in 10 cm steps", () => {
+  const scene = glazed(window);
+  // 0.57 m to the right.
+  const dragged = slide(scene, "move", ray(2.5), ray(3.07));
+
+  expect(dragged?.scene.openings?.[0]).toMatchObject({ along: 2.6, width: 1.2 });
+  expect(dragged).toMatchObject({ value: [2.6], unit: "m" });
+});
+
+test("its width and height handles resize it, kept on the wall and under the eave", () => {
+  const scene = glazed(window);
+
+  expect(slide(scene, "width", ray(3.2, 1.5), ray(3.68, 1.5))?.scene.openings?.[0]).toMatchObject({
+    width: 1.7,
+    along: 2,
+  });
+  expect(slide(scene, "height", ray(2.5, 2.3), ray(2.5, 2.52))?.scene.openings?.[0]).toMatchObject({
+    height: 1.6,
+  });
+  // The eave is at 3 m: 0.9 m of sill leaves 2.1 m.
+  expect(slide(scene, "height", ray(2.5, 2.3), ray(2.5, 9))?.scene.openings?.[0]).toMatchObject({
+    height: 2.1,
+  });
+});
+
+test("a drag onto another opening stays where it was", () => {
+  const scene = glazed(window, { ...window, along: 4 });
+
+  expect(slide(scene, "move", ray(2.5), ray(3.5))).toBeNull();
+});
+
+test("a removed block takes its openings with it, and later blocks' follow it down", () => {
+  const two: Scene = {
+    ...house,
+    blocks: [...house.blocks, ...house.blocks],
+    openings: [window, { ...window, block: 1 }],
+  };
+
+  expect(withOpenings(two, 0).openings).toEqual([{ ...window, block: 0 }]);
+  expect(withOpenings(house, 0)).toEqual(house);
+});

@@ -128,10 +128,11 @@ export function crown(radius: number, seed: number): InstancedMesh {
         radius * shell * ring * Math.sin(phi),
       ],
       size: (0.6 + random() * 0.65) * Math.min(1, radius / 2.7 + 0.3),
+      // Deep inside and low, where the crown shades itself; sunlit and yellower outside.
       hsl: [
-        0.24 + random() * 0.05,
-        0.38 + random() * 0.14,
-        0.17 + u * shell * 0.05 + random() * 0.07,
+        0.22 + random() * 0.08,
+        0.4 + random() * 0.16,
+        0.07 + shell * 0.08 + u * shell * 0.05 + random() * 0.07,
       ],
     };
   });

@@ -13,6 +13,7 @@ use crate::transport::{Capture, Client, Endpoint, Error, Exchange};
 /// What `sunreye capture --help` prints: the flags [`Options::parse`] reads.
 pub const USAGE: &str = "\
 Usage: sunreye capture --endpoint <transport>://<host>:<port> --unit <id> --profile <id>
+                       [--variant <id>]
 
 Polls one device read-only and prints the capture to stdout.
 
@@ -20,6 +21,7 @@ Flags:
   --endpoint <url>   modbus-tcp://, rtu-over-tcp:// or solarman-v5://host:port
   --unit <id>        the unit id, 0 to 255
   --profile <id>     a bundled profile's id
+  --variant <id>     the variant of the profile the device is, such as 15k; its base when left out
 ";
 
 /// What `sunreye capture` records.
@@ -29,6 +31,8 @@ pub struct Options {
     pub unit: u8,
     /// A bundled profile's id.
     pub profile: String,
+    /// The variant of the profile the device is; its base when `None`.
+    pub variant: Option<String>,
 }
 
 /// Why the options were refused.
@@ -59,12 +63,12 @@ impl fmt::Display for OptionsError {
 impl std::error::Error for OptionsError {}
 
 impl Options {
-    /// Reads `--endpoint`, `--unit` and `--profile`, each required.
+    /// Reads `--endpoint`, `--unit` and `--profile`, each required, and `--variant`.
     ///
     /// # Errors
     /// A flag missing or malformed, or an argument that is not a flag.
     pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Self, OptionsError> {
-        let (mut endpoint, mut unit, mut profile) = (None, None, None);
+        let (mut endpoint, mut unit, mut profile, mut variant) = (None, None, None, None);
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             let (name, inline) = match arg.split_once('=') {
@@ -75,6 +79,7 @@ impl Options {
                 "--endpoint" => ("endpoint", &mut endpoint),
                 "--unit" => ("unit", &mut unit),
                 "--profile" => ("profile", &mut profile),
+                "--variant" => ("variant", &mut variant),
                 _ => return Err(OptionsError::Unknown(arg)),
             };
             *slot = Some(
@@ -89,6 +94,7 @@ impl Options {
             endpoint: parse_endpoint(&endpoint).ok_or(OptionsError::Endpoint(endpoint))?,
             unit: unit.parse().map_err(|_| OptionsError::Unit(unit))?,
             profile: profile.ok_or(OptionsError::Missing("profile"))?,
+            variant,
         })
     }
 }
@@ -114,6 +120,8 @@ fn parse_endpoint(url: &str) -> Option<Endpoint> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recording {
     pub profile: String,
+    /// The variant the device was read as; `None` for the profile's base.
+    pub variant: Option<String>,
     pub version: String,
     pub unit: u8,
     pub capture: Capture,
@@ -127,6 +135,8 @@ const FORMAT: u32 = 1;
 struct Header {
     capture: u32,
     profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    variant: Option<String>,
     version: String,
     framing: String,
     unit: u8,
@@ -149,6 +159,7 @@ impl Recording {
         let header = Header {
             capture: FORMAT,
             profile: self.profile.clone(),
+            variant: self.variant.clone(),
             version: self.version.clone(),
             framing: framing_name(self.capture.framing).to_owned(),
             unit: self.unit,
@@ -213,6 +224,7 @@ impl Recording {
             .collect::<Result<_, _>>()?;
         Ok(Self {
             profile: header.profile,
+            variant: header.variant,
             version: header.version,
             unit: header.unit,
             capture: Capture { framing, exchanges },
@@ -286,6 +298,11 @@ pub const CYCLES: usize = 12;
 #[derive(Debug)]
 pub enum RunError {
     Profile(String),
+    /// The profile lacks the variant.
+    Variant {
+        profile: String,
+        variant: String,
+    },
     Transport(Error),
 }
 
@@ -293,6 +310,9 @@ impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Profile(id) => write!(f, "no bundled profile `{id}`"),
+            Self::Variant { profile, variant } => {
+                write!(f, "profile `{profile}` has no variant `{variant}`")
+            }
             Self::Transport(e) => write!(f, "{e}"),
         }
     }
@@ -304,12 +324,20 @@ impl std::error::Error for RunError {}
 ///
 /// # Errors
 ///
-/// The profile is not bundled, or a read failed.
+/// The profile is not bundled or lacks the variant, or a read failed.
 pub async fn run(options: Options) -> Result<Recording, RunError> {
-    let profile = crate::profiles::Catalogue::bundled()
+    let family = crate::profiles::Catalogue::bundled()
         .ok()
         .and_then(|catalogue| catalogue.get(&options.profile))
         .ok_or(RunError::Profile(options.profile))?;
+    let profile = match options.variant {
+        None => family,
+        Some(variant) => {
+            let declared = family.declared(&variant).cloned();
+            let profile = family.id.clone();
+            declared.ok_or(RunError::Variant { profile, variant })?
+        }
+    };
     record(&options.endpoint, options.unit, profile, CYCLES)
         .await
         .map_err(RunError::Transport)
@@ -329,6 +357,7 @@ pub async fn record(
     let (mut client, tape) = Client::recording(endpoint, TIMEOUT).await?;
     let framing = endpoint.framing();
     let (id, version) = (profile.id.clone(), profile.version.clone());
+    let variant = profile.variant().map(str::to_owned);
     let device = Device {
         id: DeviceId(0),
         unit,
@@ -337,6 +366,7 @@ pub async fn record(
     endpoint::poll(&mut client, framing, device, cycles).await?;
     Ok(Recording {
         profile: id,
+        variant,
         version,
         unit,
         capture: Capture {

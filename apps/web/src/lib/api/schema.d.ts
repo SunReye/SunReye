@@ -537,6 +537,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/module-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["module_catalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/module-types": {
         parameters: {
             query?: never;
@@ -546,7 +562,7 @@ export interface paths {
         };
         get: operations["list_module_types"];
         put?: never;
-        /** Adds a module type; the admin enters its datasheet, there is no catalogue. */
+        /** Adds a module type from its datasheet, entered or copied from the module catalogue. */
         post: operations["add_module_type"];
         delete?: never;
         options?: never;
@@ -1073,12 +1089,17 @@ export interface components {
             eave: number;
             /** @description A carport: a post at each corner instead of walls. */
             open?: boolean;
+            /** @description How far the roof reaches past the walls; none when stored without it. */
+            overhang?: components["schemas"]["Overhang"];
             roof: components["schemas"]["Roof"];
+            /** @description `#rrggbb`; the generated finish's own colour without one. */
+            roofColour?: string | null;
             /**
              * Format: double
              * @description Degrees clockwise about the corner, seen from above.
              */
             rotation: number;
+            wallColour?: string | null;
             /** Format: double */
             width: number;
             /** Format: double */
@@ -1186,6 +1207,12 @@ export interface components {
             /** Format: int32 */
             column: number;
             optimized?: boolean;
+            /**
+             * Format: int32
+             * @description Its place along its string's wiring, which runs through the string's modules from the
+             *     lowest; a module without one follows them.
+             */
+            order?: number | null;
             /** Format: int32 */
             row: number;
             /**
@@ -1200,6 +1227,35 @@ export interface components {
             appliesFrom: string;
             /** @description The root first, each parent before its children. */
             points: components["schemas"]["PointDraft"][];
+        };
+        /**
+         * @description An upright box standing on a block's roof face, placed in the face's outline like its module
+         *     grid: metres across the slope and up it from the face's lowest corner on the left.
+         */
+        Chimney: {
+            /**
+             * Format: double
+             * @description Its centre on the face.
+             */
+            across: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            depth: number;
+            /** @description The roof face's index in its block, as module grids name it. */
+            face: number;
+            /**
+             * Format: double
+             * @description Its level top stands this high over the roof where its upper side meets it.
+             */
+            height: number;
+            /** Format: double */
+            up: number;
+            /**
+             * Format: double
+             * @description Its level size: across the slope, and along the fall line seen from above.
+             */
+            width: number;
         };
         /** @description A device measuring a point, by the power role it measures there. */
         Claim: {
@@ -1378,6 +1434,11 @@ export interface components {
              *     profile names, such as an EVCC loadpoint's.
              */
             unit: number;
+            /**
+             * @description The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after
+             *     the common model, such as `103`; none for a family's base. Fixed with the profile.
+             */
+            variant?: string | null;
             /** @description Whether settings may be written (ADR 7); off when left out. */
             writes?: boolean;
         };
@@ -1732,6 +1793,16 @@ export interface components {
             /** @description Oldest first, as written to stderr. */
             lines: string[];
         };
+        /** @description One variant of a family, as an admin picks it for a device. */
+        ListedVariant: {
+            /**
+             * Format: double
+             * @description Watts of AC output at this model's rating.
+             */
+            acRating?: number | null;
+            id: string;
+            name: string;
+        };
         /** @description A profile served, as an admin picks it for a device. */
         Listing: {
             /**
@@ -1744,6 +1815,11 @@ export interface components {
             /** @description The model, or the family it covers. */
             name: string;
             official: boolean;
+            /**
+             * @description A family's variants in file order (ADR 5); a device that is none of them is added
+             *     without one and read as the base.
+             */
+            variants: components["schemas"]["ListedVariant"][];
             version: string;
         };
         /** @description The plant's location in degrees, north and east positive. */
@@ -1774,6 +1850,10 @@ export interface components {
             state?: unknown;
             /** @description `connection`, `device`, `index`, `location`, `viewer`, `token`, `topology`, `enable`, `profile`, `tariff` or `investment`. */
             subject: string;
+        };
+        /** @description The module catalogue's sheets, as the admin picks a datasheet to add as a module type. */
+        ModuleCatalogue: {
+            sheets: components["schemas"]["Sheet"][];
         };
         /** @description The modules on one roof face. */
         ModuleGrid: {
@@ -1888,11 +1968,44 @@ export interface components {
             status: components["schemas"]["Status"];
             version: string;
         };
+        /** @description A window or a door in a block's wall. */
+        Opening: {
+            /**
+             * Format: double
+             * @description Metres from the wall's left end to the opening's left edge, seen from outside.
+             */
+            along: number;
+            /** @description The block's index in the scene. */
+            block: number;
+            /** Format: double */
+            height: number;
+            kind: components["schemas"]["OpeningKind"];
+            /**
+             * Format: double
+             * @description Metres from the ground to its lower edge; a door's is 0.
+             */
+            sill?: number;
+            wall: components["schemas"]["Wall"];
+            /** Format: double */
+            width: number;
+        };
+        /** @enum {string} */
+        OpeningKind: "window" | "frenchWindow" | "frontDoor" | "garageDoor";
         /**
          * @description How a write ended.
          * @enum {string}
          */
         Outcome: "verified" | "mismatch" | "unknown" | "partial" | "unchanged" | "refused";
+        /**
+         * @description Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable
+         *     ends or verges (Ortgang). A flat or hip roof has eaves all round.
+         */
+        Overhang: {
+            /** Format: double */
+            eave: number;
+            /** Format: double */
+            verge: number;
+        };
         /** @description A deadband override, in the role's unit. */
         Override: {
             /** Format: double */
@@ -1950,7 +2063,8 @@ export interface components {
             end: string;
             /**
              * Format: double
-             * @description The value weighted by the time it held between `start` and `end`.
+             * @description The value weighted by the time it held between `start` and `end`; for a status or a held
+             *     value in an `hour` or a `day`, the last value it held.
              */
             mean: number;
             /** @description RFC 3339, UTC. */
@@ -2004,6 +2118,11 @@ export interface components {
             /** @description A stable machine code, such as `auth.required`. */
             code: components["schemas"]["Code"];
             /**
+             * @description The request body's member at fault, as an RFC 6901 JSON pointer such as
+             *     `/strings/0/modules`, where the core can name it.
+             */
+            pointer?: string | null;
+            /**
              * Format: int32
              * @description The HTTP status.
              */
@@ -2015,15 +2134,16 @@ export interface components {
         };
         /** @description A device the identify probe of a profile found. */
         Proposal: {
+            /** @description What the homeowner is shown: the variant's name, else the profile's. */
+            name: string;
             profile: string;
             /** Format: int32 */
             unit: number;
             /**
-             * Format: int32
-             * @description The variant the probe found: for SunSpec, the device model after the common model, such
-             *     as 103 for a three-phase inverter.
+             * @description The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after
+             *     the common model, such as `103` for a three-phase inverter; none for a family's base.
              */
-            variant?: number | null;
+            variant?: string | null;
         };
         /**
          * @description The publisher of a broker connection: the `plant` device's role values and each device's
@@ -2142,6 +2262,8 @@ export interface components {
         Scene: {
             blocks: components["schemas"]["Block"][];
             carPlaces?: components["schemas"]["CarPlace"][];
+            /** @description Rectangular chimneys standing on roof faces. */
+            chimneys?: components["schemas"]["Chimney"][];
             /** @description Markers for inverters and batteries. */
             equipment?: components["schemas"]["Equipment"][];
             /** @description Drawn only; they never shade. */
@@ -2154,6 +2276,8 @@ export interface components {
              */
             north: number;
             obstacles: components["schemas"]["Obstacle"][];
+            /** @description Windows and doors on the blocks' walls. Drawn only; they never shade. */
+            openings?: components["schemas"]["Opening"][];
             /** @description Drawn in order, each over the last; without any the plot is lawn. They never shade. */
             surfaces?: components["schemas"]["GroundSurface"][];
         };
@@ -2218,6 +2342,23 @@ export interface components {
             devices: components["schemas"]["ArchiveDevice"][];
             /** @description Its path under `/share`. */
             path: string;
+        };
+        /** @description The power classes one maker's datasheet prints. */
+        Sheet: {
+            maker: string;
+            modules: components["schemas"]["Datasheet"][];
+            series: string;
+            source: components["schemas"]["Source"];
+        };
+        /** @description The maker's datasheet every value of a sheet was copied from. */
+        Source: {
+            /** @description Why this edition was chosen, where it matters. */
+            note?: string | null;
+            /** @description The revision or date printed on the datasheet. */
+            revision: string;
+            /** @description As printed on the datasheet. */
+            title: string;
+            url: string;
         };
         /** @description Whether spot prices are fetched, and for which bidding zone. */
         SpotPriceZone: {
@@ -3651,6 +3792,33 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    module_catalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleCatalogue"];
+                };
+            };
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };

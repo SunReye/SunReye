@@ -3,6 +3,8 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Transport } from "../api/core.ts";
 import "../../app.css";
+import { unfaded } from "../scroll-fade.harness.ts";
+import { tap } from "../builder/pointer.harness.ts";
 import ProfilePicker from "./ProfilePicker.svelte";
 
 /** A phone; the sheet lands at once. */
@@ -17,16 +19,24 @@ afterEach(async () => {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 });
 
-function listing(id: string, manufacturer: string, name: string, acRating: number | null) {
-  return { id, manufacturer, name, version: "1.0.0", official: true, acRating };
+function listing(
+  id: string,
+  manufacturer: string,
+  name: string,
+  acRating: number | null,
+  variants: readonly Readonly<{ id: string; name: string; acRating: number }>[] = [],
+) {
+  return { id, manufacturer, name, version: "1.0.0", official: true, acRating, variants };
 }
 
 const PROFILES = [
-  listing("deye-sg01hp3", "Deye", "SG01HP3", 25_000),
-  listing("deye-sg01hp3-12k", "Deye", "SUN-12K-SG01HP3", 12_000),
-  listing("deye-sg05lp3", "Deye", "SG05LP3", 20_000),
-  listing("deye-sun15k-sg05lp3", "Deye", "SUN-15K-SG05LP3-EU-SM2", 15_000),
-  listing("deye-sun5k-sg05lp3", "Deye", "SUN-5K-SG05LP3-EU-SM2", 5000),
+  listing("deye-sg01hp3", "Deye", "SG01HP3", 25_000, [
+    { id: "12k", name: "SUN-12K-SG01HP3", acRating: 12_000 },
+  ]),
+  listing("deye-sg05lp3", "Deye", "SG05LP3", 20_000, [
+    { id: "5k", name: "SUN-5K-SG05LP3-EU-SM2", acRating: 5000 },
+    { id: "15k", name: "SUN-15K-SG05LP3-EU-SM2", acRating: 15_000 },
+  ]),
   listing("shelly-pro-3em", "Shelly", "Pro 3EM", null),
 ];
 
@@ -35,7 +45,7 @@ function served(response: () => Response = () => Response.json({ profiles: PROFI
 }
 
 test("the admin finds their model by the family on its label and sees its rated power", async () => {
-  const pick = vi.fn<(id: string) => void>();
+  const pick = vi.fn<(profile: string, variant?: string) => void>();
 
   const screen = await render(ProfilePicker, {
     core: connect(served()),
@@ -54,16 +64,47 @@ test("the admin finds their model by the family on its label and sees its rated 
     .element(sheet.getByRole("button", { name: "SG05LP3 Ganze Baureihe, bis 20 kW" }))
     .toBeVisible();
   expect(sheet.getByRole("button", { name: /SG01HP3/u }).query()).toBeNull();
-  await sheet.getByRole("button", { name: "SUN-15K-SG05LP3-EU-SM2 15 kW" }).click();
+  // The list scrolls inside the sheet and fades its edges (ADR 21).
+  expect(unfaded()).toEqual([]);
+  await tap(sheet.getByRole("button", { name: "SUN-15K-SG05LP3-EU-SM2 15 kW" }));
 
-  expect(pick).toHaveBeenCalledWith("deye-sun15k-sg05lp3");
+  expect(pick).toHaveBeenCalledWith("deye-sg05lp3", "15k");
   await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("the chosen profile shows on the field by its name and power", async () => {
+test("a device that is none of its family's variants is added as the family", async () => {
+  const pick = vi.fn<(profile: string, variant?: string) => void>();
+
   const screen = await render(ProfilePicker, {
     core: connect(served()),
-    value: "deye-sun5k-sg05lp3",
+    value: "deye-sg05lp3",
+    variant: "15k",
+    label: "Profil",
+    onpick: pick,
+  });
+
+  await tap(screen.getByRole("button", { name: "Profil" }));
+  await userEvent.fill(page.getByRole("searchbox", { name: "Profil suchen" }), "SG05LP3");
+
+  const sheet = page.getByRole("dialog");
+
+  // The variant chosen before is the marked row, not its family.
+  await expect
+    .element(sheet.getByRole("button", { name: "SUN-15K-SG05LP3-EU-SM2 15 kW" }))
+    .toHaveAttribute("aria-current", "true");
+  await expect
+    .element(sheet.getByRole("button", { name: "SG05LP3 Ganze Baureihe, bis 20 kW" }))
+    .not.toHaveAttribute("aria-current");
+  await tap(sheet.getByRole("button", { name: "SG05LP3 Ganze Baureihe, bis 20 kW" }));
+
+  expect(pick).toHaveBeenCalledWith("deye-sg05lp3", undefined);
+});
+
+test("the chosen variant shows on the field by its name and power, a family by its own", async () => {
+  const screen = await render(ProfilePicker, {
+    core: connect(served()),
+    value: "deye-sg05lp3",
+    variant: "5k",
     label: "Profil",
     onpick: () => {},
   });
@@ -71,6 +112,12 @@ test("the chosen profile shows on the field by its name and power", async () => 
   await expect
     .element(screen.getByRole("button", { name: "Profil" }))
     .toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");
+
+  await screen.rerender({ variant: undefined });
+
+  await expect
+    .element(screen.getByRole("button", { name: "Profil" }))
+    .toHaveTextContent("SG05LP3 bis 20 kW");
 });
 
 test("a search nothing matches says so", async () => {

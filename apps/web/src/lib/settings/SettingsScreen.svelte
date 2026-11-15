@@ -3,6 +3,7 @@
   1024 px. A viewer sees only the display, which is the browser's own.
 -->
 <script lang="ts">
+  import PageTitle from "../components/page-title.svelte";
   import { userPrefersMode } from "mode-watcher";
   import type { Core } from "../api/core";
   import DrillIn from "../components/drill-in/drill-in.svelte";
@@ -17,12 +18,17 @@
     admin,
     open,
     onnavigate,
+    level,
+    onlevel,
   }: {
     core: Core;
     admin: boolean;
     /** The open group's id, from the hash route; null on the root. */
     open: string | null;
     onnavigate: (id: string | null) => void;
+    /** The level open inside the group, such as one device, from the hash route; null on the group's page. */
+    level: string | null;
+    onlevel: (id: string | null) => void;
   } = $props();
 
   /** The display's choices in a few words; the other groups have no summary. */
@@ -44,11 +50,12 @@
     back={m.nav_settings()}
     label={m.settings_groups()}
   >
-    {#snippet heading()}
-      <h1 class="px-1 text-2xl font-semibold tracking-tight">{m.nav_settings()}</h1>
+    {#snippet heading(level)}
+      <!-- A page's own header names it. -->
+      {#if level === "root"}<PageTitle title={m.nav_settings()} class="px-1" />{/if}
     {/snippet}
     {#snippet page(group)}
-      <SettingsPage {core} id={group.id} />
+      <SettingsPage {core} id={group.id} {level} {onlevel} />
     {/snippet}
   </DrillIn>
 </main>

@@ -28,6 +28,7 @@ import { toThree } from "../builder/scene.ts";
 import type { MotionTier } from "../motion/tier.ts";
 import { aim, backdrop, ground, sky } from "./backdrop.ts";
 import { occlusion, untone, type Daylight, type Theme } from "./light.ts";
+import { weatherFinishes } from "./weather.ts";
 
 /** Soft shadows: PCF with a radius, as r187 dropped PCFSoftShadowMap. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it up in place.
@@ -38,7 +39,6 @@ function soften(sun: DirectionalLight): void {
   shadow.mapSize.set(2048, 2048);
   shadow.bias = -0.00025;
   shadow.normalBias = 0.035;
-  shadow.radius = 3.5;
   shadow.blurSamples = 16;
 }
 
@@ -74,6 +74,8 @@ export class Studio {
   readonly #composer: EffectComposer;
   readonly #occlusion: GTAOPass;
   readonly #sun = new DirectionalLight(0xffffff, 3);
+  /** A faint sky and ground bounce on top of the image-based light; at night, the sky itself. */
+  readonly #fill = new HemisphereLight();
   readonly #pmrem: PMREMGenerator;
   readonly #sky = sky(1000);
   readonly #skyScene = new Scene();
@@ -93,7 +95,7 @@ export class Studio {
   #size: readonly [number, number] = [1, 1];
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on them.
-  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera) {
+  constructor(canvas: HTMLCanvasElement, camera: PerspectiveCamera, tier: MotionTier) {
     this.camera = camera;
     this.renderer = new WebGLRenderer({
       canvas,
@@ -108,13 +110,7 @@ export class Studio {
     this.#pmrem = new PMREMGenerator(this.renderer);
     this.#skyScene.add(this.#sky);
     soften(this.#sun);
-    // A faint sky and ground bounce on top of the image-based light.
-    this.scene.add(
-      this.#sun,
-      this.#sun.target,
-      new HemisphereLight(0xcfe0ff, 0x4b5b35, 0.15),
-      ground(this.#fade),
-    );
+    this.scene.add(this.#sun, this.#sun.target, this.#fill, ground(this.#fade));
 
     // Multisampled HDR, then ambient occlusion, then tone mapping and sRGB.
     this.#composer = new EffectComposer(
@@ -125,6 +121,8 @@ export class Studio {
     this.#composer.addPass(new RenderPass(this.scene, camera));
     this.#composer.addPass(this.#occlusion);
     this.#composer.addPass(new OutputPass());
+    // Before the first frame: a finish is compiled for the tier it is first drawn on.
+    this.follow(tier);
   }
 
   /** Whether the ambient-occlusion pass runs. */
@@ -132,9 +130,10 @@ export class Studio {
     return this.#occlusion.enabled;
   }
 
-  /** Ambient occlusion runs on the full motion tier only (ADR 21). */
+  /** Ambient occlusion and the finishes' extras run on the full motion tier only (ADR 21). */
   follow(tier: MotionTier): void {
     this.#occlusion.enabled = occlusion(tier);
+    weatherFinishes(tier === "full");
   }
 
   /** Fits the sun's shadow and the lawn's fade to the plot: `centre` in three.js's frame. */
@@ -159,6 +158,10 @@ export class Studio {
     this.#toward.set(...toThree(day.toward));
     this.#sun.color.setRGB(day.colour.r, day.colour.g, day.colour.b);
     this.#sun.intensity = day.intensity;
+    this.#sun.shadow.radius = day.shadow;
+    this.#fill.color.setRGB(day.fill.sky.r, day.fill.sky.g, day.fill.sky.b);
+    this.#fill.groundColor.setRGB(day.fill.ground.r, day.fill.ground.g, day.fill.ground.b);
+    this.#fill.intensity = day.fill.intensity;
     this.#place();
 
     if (this.#held === undefined) this.#environ(day, look);
@@ -247,17 +250,26 @@ export class Studio {
 
   /**
    * The sky model at the sun, as the scene's environment. Made again only once the sun has moved
-   * a degree or the theme changed: a dragged time slider moves it by far less per step.
+   * a degree, the clouds have changed or the theme has: a dragged time slider moves it by far
+   * less per step.
    */
   #environ(day: Daylight, { dark, environment }: Theme): void {
-    const environed = JSON.stringify([day.sun.map((v) => Math.round(v * 60)), dark]);
+    const environed = JSON.stringify([
+      day.sun.map((v) => Math.round(v * 60)),
+      dark,
+      Math.round(day.clouds.coverage * 20),
+    ]);
 
     this.scene.environmentIntensity = day.environment * environment;
 
     if (environed === this.#environed) return;
 
     this.#environed = environed;
-    aim(this.#sky, new Vector3(...toThree(day.sun)), dark, day.elevation < 10);
+    aim(this.#sky, new Vector3(...toThree(day.sun)), {
+      dark,
+      low: day.haze,
+      clouds: day.clouds,
+    });
     this.#environment?.dispose();
     this.#environment = this.#pmrem.fromScene(this.#skyScene, 0, 0.1, 2000);
     this.scene.environment = this.#environment.texture;

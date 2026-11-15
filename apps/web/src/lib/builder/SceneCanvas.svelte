@@ -10,11 +10,12 @@
   import type { Parked } from "../cars/parked.ts";
   import { m } from "../paraglide/messages.js";
   import { Ghost, lit, type Lit, type SceneFailure } from "../scene/stage.svelte.ts";
-  import type { View } from "./camera.ts";
+  import { FOV, type View } from "./camera.ts";
   import {
     Brush,
     Handled,
     keep,
+    overlaid,
     picking,
     projector,
     type Editing,
@@ -32,8 +33,10 @@
     shares,
     cars = [],
     sun = null,
+    diffuse = null,
     model,
     view,
+    locked = false,
     onview,
     onrender,
     onpick,
@@ -51,9 +54,13 @@
     cars?: readonly Parked[];
     /** Toward the sun, east, north, up: it lights and shadows the scene; null for a fixed sun. */
     sun?: Point | null | undefined;
+    /** How diffuse the sky's light is, 0 clear to 1 overcast: the weather; null for a clear sky. */
+    diffuse?: number | null | undefined;
     /** Reads an uploaded car body. */
     model?: ModelLoader | undefined;
     view: View;
+    /** The camera stays put and a finger on the canvas scrolls the page (ADR 20). */
+    locked?: boolean;
     /** The view the admin orbited to, once they let go. */
     onview: (view: View) => void;
     /** After each draw: where a point of the scene lands on the canvas, or null behind it. */
@@ -149,9 +156,18 @@
       flight.stop();
     });
     controls.addEventListener("end", () => {
+      // A scroll the browser takes from a locked canvas cancels the pointer, which also ends here.
+      if (!controls.enabled) return;
+
       onview({ position: camera.position.toArray(), target: controls.target.toArray() });
     });
     follow(camera, controls, flight, render);
+
+    $effect(() => {
+      controls.enabled = !locked;
+      // Over the controls' own inline "none".
+      canvas.style.touchAction = locked ? "pan-y" : "none";
+    });
 
     return controls;
   }
@@ -201,7 +217,7 @@
       return lit(
         canvas,
         camera,
-        () => sun ?? null,
+        () => ({ sun: sun ?? null, diffuse: diffuse ?? null }),
         () => {
           const project = projector(canvas, camera.clone());
 
@@ -235,7 +251,7 @@
   /** Draws on a change of geometry, view, sun or theme, a camera move or a resize; nothing before
    * the studio is prepared. Cars come once the house is on screen. */
   function stage(canvas: HTMLCanvasElement): () => void {
-    const camera = new PerspectiveCamera(40, 1, 0.1, 5000);
+    const camera = new PerspectiveCamera(FOV, 1, 0.1, 5000);
     const scene = studioOn(canvas, camera);
 
     if (scene === null) return () => {};
@@ -247,6 +263,7 @@
     const handling = { editing: () => editing, drawn: kept.drawn, panels: source.panels };
     // Before the picking and the orbit controls: a press on a handle never reaches them.
     const unhandle = handled.attach(canvas, camera, studio.scene, handling, render);
+    const unlay = overlaid(studio.scene, () => painting, render);
     const brush = brushOn(canvas, camera, kept.drawn);
 
     const unpick = picking(canvas, camera, kept.drawn, {
@@ -272,6 +289,7 @@
       resize.disconnect();
       unhandle();
       brush.dispose();
+      unlay();
       unpick();
       controls.dispose();
       parking.dispose();

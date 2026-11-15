@@ -10,6 +10,7 @@
   import Flow2d from "../flow/Flow2d.svelte";
   import { motion } from "../motion/tier.svelte.ts";
   import { m } from "../paraglide/messages.js";
+  import CameraLock from "./CameraLock.svelte";
   import Headline from "./Headline.svelte";
   import HeroScene from "./HeroScene.svelte";
   import { SceneLoad } from "./scene-load.svelte.ts";
@@ -57,6 +58,9 @@
   const mode = $derived(scene !== null && !failed ? "3d" : "2d");
 
   let height = $state(0);
+
+  /** The scene's camera stays put until asked; leaving the dashboard locks it again (ADR 20). */
+  let locked = $state(true);
 </script>
 
 <section class="relative isolate {className}" aria-label={m.dash_hero()}>
@@ -65,28 +69,23 @@
     <Staged><Flow2d {core} {live} top={height + 12} {onselect} /></Staged>
   {/if}
   {#if mode === "3d" && scene !== null}
-    <HeroScene {core} layout={scene} {load} {onselect} />
+    <HeroScene {core} layout={scene} {load} {locked} top={height} {onselect} />
   {/if}
 
-  <Headline {live} {plant} {plantStale} figures={!flowShown} {onselect} bind:height>
-    {#if failed}
-      <!-- Quiet, beside the figure it does not change: the flow below is the dashboard. -->
-      <span
-        class="pointer-events-auto mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground"
-        role="status"
-      >
-        {m.dash_scene_failed()}
-        <button
-          type="button"
-          class="rounded-sm font-medium text-brand outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onclick={() => {
-            load.retry();
-          }}>{m.dash_scene_retry()}</button
-        >
-      </span>
-    {/if}
-  </Headline>
+  <Headline
+    {live}
+    {plant}
+    {plantStale}
+    figures={!flowShown}
+    {onselect}
+    onretry={failed ? () => load.retry() : undefined}
+    bind:height
+  />
 
+  <div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+    {#if mode === "3d"}
+      <CameraLock bind:locked />
+    {/if}
   <ViewToggle
     shows={mode}
     toggles={shown.toggles}
@@ -100,4 +99,5 @@
       }
     }}
   />
+  </div>
 </section>

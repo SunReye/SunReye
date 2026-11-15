@@ -39,12 +39,8 @@ _Avoid_: Protocol, driver
 ## Profiles
 
 **Profile**:
-A declarative file describing one device model: its quantities, how to read them and which settings it may write.
+A declarative file describing one device model or family: its quantities, how to read them and which settings it may write.
 _Avoid_: Driver, template, map
-
-**Family**:
-A manufacturer's model range sharing one register map, such as Deye's SG05LP3. A family profile covers every model of it; a model's own profile adds its ratings.
-_Avoid_: Series, line
 
 **Official profile**:
 A profile signed by the profile key and backed by a replayable capture of a real device. Its settings are `verified` one by one, once written on real hardware.
@@ -82,8 +78,16 @@ _Avoid_: Poll list
 The read that tells which profile, and which variant of it, a device answers to: a magic register such as `SunS`, or a device-type register.
 _Avoid_: Fingerprint, detection
 
+**Family**:
+A manufacturer's model range that one profile describes together, because its models share one register map and differ only in ratings and limits, such as Deye's SG05LP3.
+_Avoid_: Series (a series is a stored role), range, product line
+
+**Base**:
+What every model of a family shares, with the family's largest limits. A device that matches no variant is read as the base.
+_Avoid_: Default, parent, generic profile
+
 **Variant**:
-The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases.
+The device type within one profile that an identify probe chooses, such as a SunSpec inverter's model 101, 102 or 103 by phases, or a Deye model by its rated power. A family's variant is its base with overrides.
 _Avoid_: Model (a SunSpec model is a register block)
 
 ## Quantities and storage
@@ -200,6 +204,10 @@ _Avoid_: PV1 (a vendor label), string
 Modules in series, wired to one MPPT input; they may sit on different roof faces. Strings on one input are in parallel.
 _Avoid_: Array, panel group
 
+**Wiring order**:
+The order a string runs through its modules, from its first.
+_Avoid_: Paint order
+
 **Substring**:
 The cells of one module behind one bypass diode. Shade bypasses a substring, not the whole module.
 _Avoid_: Cell string, diode group
@@ -207,6 +215,10 @@ _Avoid_: Cell string, diode group
 **Module type**:
 The datasheet values of one PV module model.
 _Avoid_: Panel model
+
+**Module catalogue**:
+Module types' datasheet values bundled with SunReye, each naming the maker's datasheet it was copied from. Picking one adds a module type.
+_Avoid_: Preset (a preset is a camera view), module database
 
 **Scene**:
 The 3D geometry of the plant: blocks, obstacles, equipment, car places and where each module sits. Part of the PV layout.
@@ -224,13 +236,25 @@ _Avoid_: Border, margin
 A rectangular building footprint with one roof.
 _Avoid_: Building, house
 
+**Overhang**:
+How far a block's roof reaches past its walls: at the eaves and at the verges.
+_Avoid_: Eave depth, soffit
+
+**Roof chimney**:
+An upright box standing on one roof face of a block; no module may stand on its footprint.
+_Avoid_: Chimney obstacle, stack
+
 **Obstacle**:
-An opaque box, cylinder, tree or hedge in the scene that casts shade on the modules.
+An opaque box, cylinder, tree or hedge standing on the ground in the scene that casts shade on the modules.
 _Avoid_: Shader, object
 
 **Equipment marker**:
 A place on a block's wall where an inverter or a battery stands, linked to its device; its live label hangs above it.
 _Avoid_: Pin, icon
+
+**Opening**:
+A window or a door in a block's wall: a window, a French window, a front door or a garage door. It is drawn and never shades.
+_Avoid_: Hole, cutout, aperture
 
 **Car place**:
 A parking spot in the scene, linked to one EVCC loadpoint device, optionally under a carport.

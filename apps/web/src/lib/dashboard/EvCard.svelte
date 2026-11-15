@@ -1,10 +1,12 @@
 <!-- One EVCC loadpoint (ADR 10): what it charges, the vehicle's state of charge and its target. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Staged from "../motion/Staged.svelte";
   import Car from "@lucide/svelte/icons/car";
   import * as Card from "#lib/components/ui/card/index.js";
   import { Progress } from "#lib/components/ui/progress/index.js";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import { formatFigure, type FigureId } from "../detail/figures.ts";
   import { tickGlideMs } from "../live/stream.svelte.ts";
   import { m } from "../paraglide/messages.js";
@@ -40,9 +42,9 @@
 <!-- Fills in a frame after the screen mounts (ADR 21). -->
 <Staged>
   <Card.Root size="sm" class="glass-ambient shrink-0 gap-0 py-0">
-    <button
-      type="button"
-      class="flex items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset active:bg-foreground/[0.08]"
+    <Pressable
+      feedback
+      class="flex items-center gap-3 px-4 py-3 text-left"
       onclick={() => {
         onopen(formatFigure({ kind: "ev", id: device }));
       }}
@@ -55,8 +57,10 @@
           <span class="min-w-0 truncate text-sm font-semibold">{name ?? m.evcc_title()}</span>
           <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{state}</span>
           <span class="text-base font-semibold whitespace-nowrap"
-            ><AnimatedNumber value={power === undefined ? null : power / 1000} />
-            <span class="text-xs font-medium text-muted-foreground">kW</span></span
+            ><PowerNumber
+              watts={power ?? null}
+              unitClass="text-xs font-medium text-muted-foreground"
+            /></span
           >
         </span>
         <Progress value={soc ?? 0} size="square" class="ev" aria-label={m.dash_ev_soc()} />
@@ -66,7 +70,7 @@
           ></span
         >
       </span>
-    </button>
+    </Pressable>
   </Card.Root>
 </Staged>
 

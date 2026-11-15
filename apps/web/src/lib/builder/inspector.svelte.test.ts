@@ -130,7 +130,8 @@ test("no level draws a default-styled form control; the time slider stays a slid
   await drill("Geräte", "Szene", "Gebäude", "Baukörper 1");
   expect(plain()).toEqual([]);
 
+  // The time still scrubs on a slider (ADR 21), the registry's, not the browser's.
   await expect
     .element(screen.getByRole("slider", { name: "Uhrzeit" }))
-    .toHaveAttribute("type", "range");
+    .toHaveAttribute("data-slot", "slider-thumb");
 });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { chip, frame, show, ticking } from "./live-scene.harness.ts";
-import { PLANT } from "./labels.ts";
+import { PLANT } from "../api/core.ts";
 
 beforeEach(async () => {
   localStorage.removeItem("sunreye.dashboard.view");
@@ -28,10 +28,14 @@ test("each string, the inverter, the grid and the house get a chip from the live
 
   await tick(frame(600, -1200));
 
-  await chip("Süd", "0,6");
-  await chip("Wechselrichter", "0,6");
-  await expect.element((await chip("Netz", "1,2")).getByText("↑")).toBeVisible();
-  await chip("Haus", "0,5");
+  await expect.element((await chip("Süd", "600")).getByText("W", { exact: true })).toBeVisible();
+  await expect
+    .element((await chip("Wechselrichter", "600")).getByText("W AC", { exact: true }))
+    .toBeVisible();
+  const grid = await chip("Netz", "1,2");
+  await expect.element(grid.getByText("↑")).toBeVisible();
+  await expect.element(grid.getByText("kW", { exact: true })).toBeVisible();
+  await chip("Haus", "450");
 });
 
 /** `colour` as the browser resolves it, through a probe like the chip's dot. */
@@ -64,7 +68,7 @@ test("chips never overlap and stay inside the canvas at phone width", async () =
   const screen = await show(core);
 
   await tick(frame(600, -1200));
-  await chip("Haus", "0,5");
+  await chip("Haus", "450");
 
   const canvas: Edges = screen
     .getByLabelText("3D-Szene des Hauses")
@@ -101,7 +105,7 @@ test("a stale flow's chip is marked stale", async () => {
   await tick({ ...frame(600, -1200), stale: { [PLANT]: { "grid.power": 40 } } });
 
   await expect.element(await chip("Netz", "1,2")).toHaveAttribute("title", "veraltet");
-  await expect.element(await chip("Haus", "0,5")).not.toHaveAttribute("title");
+  await expect.element(await chip("Haus", "450")).not.toHaveAttribute("title");
 });
 
 test("an estimated string carries ≈", async () => {
@@ -110,7 +114,7 @@ test("an estimated string carries ≈", async () => {
 
   await tick(frame(600, 0));
 
-  await expect.element((await chip("Süd", "0,6")).getByText("≈")).toBeVisible();
+  await expect.element((await chip("Süd", "600")).getByText("≈")).toBeVisible();
 });
 
 test("tapping a chip opens its detail sheet", async () => {
@@ -120,7 +124,7 @@ test("tapping a chip opens its detail sheet", async () => {
 
   await tick(frame(600, -1200));
 
-  await (await chip("Süd", "0,6")).click();
+  await (await chip("Süd", "600")).click();
   await (await chip("Netz", "1,2")).click();
 
   expect(onselect.mock.calls).toEqual([["string-11"], ["grid"]]);

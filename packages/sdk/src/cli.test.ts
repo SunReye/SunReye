@@ -98,6 +98,15 @@ test("capture runs the core's capture subcommand and prints the capture it write
   });
 });
 
+test("capture names the device's variant to the core", async () => {
+  const args = ["capture", "modbus-tcp://10.20.0.62:502", "0", "deye-sg05lp3", "15k"];
+  const { out } = await run(args, await core(false));
+
+  expect(out).toBe(
+    "capture --endpoint modbus-tcp://10.20.0.62:502 --unit 0 --profile deye-sg05lp3 --variant 15k\n",
+  );
+});
+
 test("capture fails with the core's reason", async () => {
   const { code, err } = await run(["capture", "sim://x:1", "0", "p"], await core(true));
 

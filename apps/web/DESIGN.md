@@ -4,7 +4,7 @@
 
 Checklist for every screen ([ADR 21](../../docs/adr/0021-look-feel-and-navigation.md)):
 
-- [ ] Built on `components/ui`; no hand-rolled control where one exists.
+- [ ] Built on `components/ui`, the whole shadcn-svelte registry (ADR 11); no native control outside it (`bun scripts/native-controls.ts`). `#/gallery` under `vite dev` shows every component; `bun run gallery` writes its screenshots.
 - [ ] Corners from `--radius` (2 px); no component sets a larger one.
 - [ ] Dark first; checked in light too.
 - [ ] Glass: overlays use `glass`/`glass-modal`, rail, bar, cards and chips `glass-ambient`; nothing blurs live content.

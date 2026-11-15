@@ -2,12 +2,10 @@
 //! owner's layout (`crates/pv/fixtures/estimate.csv`, the 2026-06-21 11:00 UTC row).
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use sunreye_profile::Profile;
-use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Roof, Scene};
+use sunreye_pv::{Block, Cell, ModuleGrid, Obstacle, Overhang, Roof, Scene};
 use tokio::sync::watch;
 
 use super::SolarForecast;
@@ -15,6 +13,7 @@ use crate::bus::{Bus, DeviceId};
 use crate::correction::{Cell as Learned, Grid};
 use crate::layout::{Datasheet, Inverters, Layouts, StringDraft, Wiring};
 use crate::location::Location;
+use crate::profiles::{Catalogue, Chosen};
 use crate::storage::{Issue, Storage};
 
 const INVERTER: DeviceId = DeviceId(1);
@@ -63,6 +62,11 @@ async fn store_weather(storage: &Storage, bus: &Bus, targets: &[u64]) {
 
 /// Berlin, the owner's Deye as device 1, and the fixture's noon weather at `targets`.
 async fn plant(targets: &[u64]) -> Plant {
+    plant_of(targets, None).await
+}
+
+/// [`plant`] with the Deye family's `variant`, or its base.
+async fn plant_of(targets: &[u64], variant: Option<&str>) -> Plant {
     let dir = tempfile::tempdir().unwrap();
     let bus = Bus::default();
     let storage = Storage::open(
@@ -73,8 +77,9 @@ async fn plant(targets: &[u64]) -> Plant {
     )
     .unwrap();
     store_weather(&storage, &bus, targets).await;
-    let deye = Profile::load(include_str!("../../../../profiles/deye-sg05lp3.json")).unwrap();
-    let inverters: Inverters = std::iter::once((INVERTER, Arc::new(deye))).collect();
+    let chosen = Chosen::new("deye-sg05lp3", variant);
+    let deye = Catalogue::bundled().unwrap().resolve(&chosen).unwrap();
+    let inverters: Inverters = std::iter::once((INVERTER, deye)).collect();
     let layouts = Layouts::new(storage.database(), inverters);
     let module_type = layouts
         .add_module_type(Datasheet {
@@ -192,6 +197,129 @@ async fn the_owners_strings_inputs_and_inverter_are_forecast() {
     assert_near(input(2).await, 5005.27, "input 2");
     let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
     assert_near(inverter, 13_444.54, "inverter");
+}
+
+/// The inverter is capped at its variant's AC rating (ADR 5, 17): the SUN-5K's 5 kW, not the
+/// family's 20 kW.
+#[tokio::test]
+async fn the_inverter_forecast_is_capped_at_its_variants_ac_rating() {
+    let plant = plant_of(&[NOON], Some("5k")).await;
+    plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 180.0, 16),
+                plant.string(None, 2, 180.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let inverter = plant.forecast("pv.power", None, &[NOON]).await[0];
+    assert_near(inverter, 5000.0, "inverter");
+}
+
+/// The forecast of input 1, input 2 and the inverter at noon, for 16 and 14 modules facing one
+/// way on the Deye family's `variant` with `grids` learned.
+async fn two_inputs(variant: Option<&str>, grids: &HashMap<(DeviceId, u32), Grid>) -> [f64; 3] {
+    let plant = plant_of(&[NOON], variant).await;
+    plant
+        .layouts
+        .change(
+            at(0),
+            vec![
+                plant.string(None, 1, 0.0, 16),
+                plant.string(None, 2, 0.0, 14),
+            ],
+            None,
+            at(0),
+        )
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+    forecast
+        .refresh(&plant.storage, grids, BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+    let mut values = [0.0; 3];
+    for (value, (role, index)) in values.iter_mut().zip([
+        ("pv.mppt.power", Some(1)),
+        ("pv.mppt.power", Some(2)),
+        ("pv.power", None),
+    ]) {
+        *value = plant.forecast(role, index, &[NOON]).await[0];
+    }
+    values
+}
+
+/// A capped inverter's inputs are scaled with it (ADR 17), keeping their shares, so they still
+/// sum to it. The family's 20 kW base caps nothing, so it gives the shares.
+#[tokio::test]
+async fn a_capped_inverters_inputs_keep_their_shares_and_sum_to_its_ac_rating() {
+    let [first, second, uncapped] = two_inputs(None, &HashMap::new()).await;
+    assert!(uncapped > 10_000.0, "{uncapped}");
+
+    let [capped_first, capped_second, inverter] = two_inputs(Some("5k"), &HashMap::new()).await;
+
+    assert_near(inverter, 5000.0, "inverter");
+    assert_near(capped_first, first * 5000.0 / uncapped, "input 1");
+    assert_near(capped_second, second * 5000.0 / uncapped, "input 2");
+}
+
+/// A string alone on its input is forecast as its input, capped or not.
+#[tokio::test]
+async fn a_capped_inputs_string_is_scaled_with_it() {
+    let plant = plant_of(&[NOON], Some("5k")).await;
+    let layout = plant
+        .layouts
+        .change(at(0), vec![plant.string(None, 1, 0.0, 16)], None, at(0))
+        .await
+        .unwrap();
+    let forecast = SolarForecast::new(plant.layouts.clone(), WEATHER, &plant.bus);
+
+    forecast
+        .refresh(&plant.storage, &HashMap::new(), BERLIN, at(NOON - HOUR))
+        .await
+        .unwrap();
+
+    let id = layout.strings[0].id;
+    let string = plant.forecast("pv.string.power", Some(id), &[NOON]).await[0];
+    assert_near(string, 5000.0, "string");
+}
+
+/// The cap follows the learned factors: an input's factor moves its share of the capped total,
+/// not the total.
+#[tokio::test]
+async fn the_ac_rating_caps_the_corrected_inputs() {
+    let [first, second, _] = two_inputs(None, &HashMap::new()).await;
+    // Noon UTC is 13:00 in Berlin's summer; 1 + (0.8 − 1) × 5 / (5 + 5) = 0.9.
+    let mut grid = Grid::default();
+    grid.set(
+        6,
+        13,
+        Learned {
+            ratio: 0.8,
+            weight: 5.0,
+        },
+    );
+    let grids: HashMap<_, _> = [((INVERTER, 1), grid)].into();
+
+    let [capped_first, capped_second, inverter] = two_inputs(Some("5k"), &grids).await;
+
+    let corrected = 0.9 * first;
+    let share = 5000.0 / (corrected + second);
+    assert_near(inverter, 5000.0, "inverter");
+    assert_near(capped_first, corrected * share, "input 1");
+    assert_near(capped_second, second * share, "input 2");
 }
 
 #[tokio::test]
@@ -343,6 +471,7 @@ fn walled_house(module_type: u32) -> Scene {
             column,
             string: Some(column / 4),
             optimized: false,
+            order: None,
         })
     });
     Scene {
@@ -356,6 +485,9 @@ fn walled_house(module_type: u32) -> Scene {
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
             open: false,
+            overhang: Overhang::default(),
+            roof_colour: None,
+            wall_colour: None,
         }],
         obstacles: vec![Obstacle::Box {
             x: -3.0,
@@ -375,8 +507,10 @@ fn walled_house(module_type: u32) -> Scene {
         }],
         equipment: vec![],
         car_places: vec![],
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
+        openings: vec![],
     }
 }
 

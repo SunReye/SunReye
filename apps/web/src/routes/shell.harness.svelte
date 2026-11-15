@@ -1,15 +1,16 @@
-<!-- Test harness: the root layout around the home page, as the router nests them, or around another screen first. -->
+<!-- Test harness: the root layout around the home page, as the router nests them. -->
 <script lang="ts">
   import Layout from "./+layout.svelte";
   import Page from "./+page.svelte";
 
-  let { home = true }: { home?: boolean } = $props();
+  /** Another screen is shown, as before a route change to the dashboard. */
+  let { away = false }: { away?: boolean } = $props();
 </script>
 
 <Layout>
-  {#if home}
-    <Page />
+  {#if away}
+    <main>away</main>
   {:else}
-    <main>Verlauf</main>
+    <Page />
   {/if}
 </Layout>

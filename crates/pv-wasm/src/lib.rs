@@ -5,19 +5,22 @@
 //! every buffer back to `release`.
 
 mod clear;
+mod edit;
 
 use std::collections::HashMap;
 
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sunreye_pv::{
-    COLD, CellPlace, Face, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene, Size,
-    Surface, open_circuit_voltage, sun_position,
+    COLD, CellPlace, Face, Footing, Location, Misplaced, ModuleGrid, Occluder, RoofFace, Scene,
+    Size, Surface, WallFrame, open_circuit_voltage, sun_position,
 };
 
-/// The faces, solids, equipment mounts, car stands, ground surfaces and fences of a scene, in the
-/// shading frame: east, north, up. The mounts are `null` while a marker lies off its wall, the
-/// stands while a car place is refused, the ground and the fences while one of theirs is.
+/// The faces, solids, equipment mounts, car stands, ground surfaces, fences and openings of a
+/// scene, in the shading frame: east, north, up. The mounts are `null` while a marker lies off its
+/// wall, the stands while a car place is refused, the ground, the fences and the openings while
+/// one of theirs is.
 fn geometry(scene: &[u8]) -> String {
     match serde_json::from_slice::<Scene>(scene) {
         Ok(scene) => json!({ "ok": {
@@ -39,6 +42,10 @@ fn geometry(scene: &[u8]) -> String {
                     "finish": f.finish, "height": f.height, "points": f.points,
                 })).collect::<Vec<_>>()
             }),
+            "openings": scene.fitted().ok().map(|fitted| {
+                fitted.iter().map(|f| json!({ "kind": f.kind, "corners": f.corners, "out": f.out }))
+                    .collect::<Vec<_>>()
+            }),
         }}),
         Err(error) => json!({ "error": error.to_string() }),
     }
@@ -52,7 +59,9 @@ struct Gridded {
     sizes: HashMap<u32, Size>,
 }
 
-/// The roof faces, each grid's cells inside its setback, and the first misplaced module.
+/// The roof faces, each grid's cells inside its setback, the first misplaced module, and what the
+/// builder's handles stand on: every block's walls and every chimney's footing, `null` for one
+/// that names no roof face.
 fn modules(input: &[u8]) -> String {
     let Gridded { scene, sizes } = match serde_json::from_slice(input) {
         Ok(gridded) => gridded,
@@ -80,6 +89,8 @@ fn modules(input: &[u8]) -> String {
         "roofs": roofs.iter().map(roof).collect::<Vec<_>>(),
         "grids": grids,
         "misplaced": misplaced,
+        "walls": scene.walls().iter().map(walls).collect::<Vec<_>>(),
+        "footings": scene.footings().iter().map(|f| f.as_ref().map(footing)).collect::<Vec<_>>(),
     }})
     .to_string()
 }
@@ -136,7 +147,26 @@ fn roof(face: &RoofFace) -> Value {
     json!({
         "block": face.block, "face": face.face, "tilt": face.plane.tilt,
         "azimuth": face.plane.azimuth, "outline": face.outline,
+        "origin": face.origin, "across": face.across, "up": face.up,
     })
+}
+
+fn walls([front, right, back, left]: &[WallFrame; 4]) -> Value {
+    let wall = |w: &WallFrame| json!({ "left": w.left, "right": w.right, "out": w.out });
+    json!({ "front": wall(front), "right": wall(right), "back": wall(back), "left": wall(left) })
+}
+
+fn footing(footing: &Footing) -> Value {
+    json!({ "foot": footing.foot, "top": footing.top })
+}
+
+/// The reply to an edit read from `input`.
+fn edited<T: DeserializeOwned>(input: &[u8], reply: impl Fn(&T) -> Value) -> String {
+    match serde_json::from_slice::<T>(input) {
+        Ok(edit) => json!({ "ok": reply(&edit) }),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+    .to_string()
 }
 
 fn cell(cell: &CellPlace) -> Value {
@@ -192,8 +222,12 @@ fn face(face: &Face) -> Value {
         Surface::Roof => "roof",
         Surface::Obstacle => "obstacle",
         Surface::Hedge => "hedge",
+        Surface::Chimney => "chimney",
     };
-    json!({ "surface": surface, "corners": face.corners })
+    face.colour.as_ref().map_or_else(
+        || json!({ "surface": surface, "corners": face.corners }),
+        |colour| json!({ "surface": surface, "corners": face.corners, "colour": colour }),
+    )
 }
 
 fn solid(occluder: &Occluder) -> Value {
@@ -281,6 +315,42 @@ mod exports {
         // SAFETY: the caller guarantees the buffer, written through `reserve`.
         let input = unsafe { std::slice::from_raw_parts(input, input_len) };
         leak(super::cold_voltages(input))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn refit(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Refit::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn place(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Place::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn glide(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Glide::reply))
+    }
+
+    /// # Safety
+    /// `input`/`input_len` name a live buffer from `reserve`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn chimney_at(input: *const u8, input_len: usize) -> u64 {
+        // SAFETY: the caller guarantees the buffer, written through `reserve`.
+        let input = unsafe { std::slice::from_raw_parts(input, input_len) };
+        leak(super::edited(input, super::edit::Strike::reply))
     }
 
     /// Hands a reply to the host as `ptr << 32 | len`; the host releases it.

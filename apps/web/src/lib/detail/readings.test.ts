@@ -19,6 +19,8 @@ function plant(patch: Partial<Source> = {}): Source {
       [INVERTER]: {
         "pv.power": 7800,
         "inverter.power": 7600,
+        "inverter.efficiency": 96.5,
+        "inverter.loss.power": 280,
         "inverter.status": 1,
         "inverter.temperature": 41,
         "pv.mppt.power[1]": 4300,
@@ -72,7 +74,7 @@ test("a string sharing its MPPT input is an estimate with its share and its sibl
     est: true,
     to: "string-2",
   });
-  expect(row("string-1", "pv.mppt.power[1]")).toMatchObject({ value: 4.3, unit: "kW" });
+  expect(row("string-1", "pv.mppt.power[1]")).toMatchObject({ value: 4300, unit: "W" });
 });
 
 test("a string alone on its input is measured and does not repeat the input's power", () => {
@@ -110,7 +112,7 @@ test("the house lists its phases from the per-phase load", () => {
   const phases = read("house")?.groups.find((g) => g.title === "Phasen")?.table;
 
   expect(phases?.rows.map((r) => r.label)).toEqual(["L1", "L2", "L3"]);
-  expect(phases?.rows[1]?.cells[0]?.value).toBe(0.4);
+  expect(phases?.rows[1]?.cells[0]?.value).toBe(400);
 });
 
 /** The grid connection, a wallbox the loadpoint measures, and a heat pump below it. */
@@ -144,9 +146,9 @@ test("the house lists each measured point's consumption, and what none explains"
   );
 
   expect(consumers?.rows.map((r) => [r.label, r.value, r.to])).toEqual([
-    ["Wallbox", 3.7, `ev-${LOADPOINT}`],
-    ["Wärmepumpe", 1.5, undefined],
-    ["Nicht einzeln gemessen", 0.6, undefined],
+    ["Wallbox", 3700, `ev-${LOADPOINT}`],
+    ["Wärmepumpe", 1500, undefined],
+    ["Nicht einzeln gemessen", 600, undefined],
   ]);
   // Without the topology no point can be named.
   expect(titles("house", plant({ values }))).not.toContain("Verbraucher");
@@ -213,8 +215,18 @@ test("a stopped stream marks no single row stale", () => {
   expect(row("battery", "battery.temperature", s)?.age).toBeUndefined();
 });
 
-test("efficiency is derived from the two powers", () => {
-  expect(row("inverter", "efficiency")?.value).toBeCloseTo(97.44, 1);
+test("the inverter's efficiency and own use are its profile's, not derived", () => {
+  expect(row("inverter", "inverter.efficiency")).toMatchObject({ value: 96.5, unit: "%" });
+  expect(row("inverter", "inverter.loss.power")).toMatchObject({ value: 280, unit: "W" });
+});
+
+test("efficiency hides while nothing goes through the inverter", () => {
+  const s = plant();
+  const idle = { ...s.values[INVERTER], "inverter.efficiency": 0 };
+
+  expect(
+    row("inverter", "inverter.efficiency", plant({ values: { ...s.values, [INVERTER]: idle } })),
+  ).toBeUndefined();
 });
 
 test("the device is named when the core names it", () => {

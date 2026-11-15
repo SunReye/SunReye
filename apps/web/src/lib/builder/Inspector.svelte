@@ -3,18 +3,24 @@
   slides in from the right while the one it leaves shifts left and fades; back reverses it.
 -->
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
-  import { cubicInOut } from "svelte/easing";
   import { Button } from "#lib/components/ui/button/index.js";
-  import type { ModuleType } from "../api/core.ts";
-  import { motionMs } from "../motion.ts";
+  import { shiftAside, slideIn } from "../motion/slide.ts";
   import Editor from "./Editor.svelte";
   import { depth, parent, type Level } from "./levels.ts";
   import { title } from "./outline.ts";
   import SaveBar from "./SaveBar.svelte";
   import type { Session } from "./session.svelte.ts";
 
-  let { session, moduleTypes }: { session: Session; moduleTypes: readonly ModuleType[] } = $props();
+  let {
+    session,
+    check,
+  }: {
+    session: Session;
+    /** What the strings' group shows under its rows. */
+    check: Snippet;
+  } = $props();
 
   const level = $derived(session.level);
 
@@ -24,9 +30,6 @@
   function go(at: Level): void {
     session.go(at);
   }
-
-  /** Ease-in-out between two resting places (ADR 21). */
-  const SLIDE_MS = 300;
 
   // The depth last shown: a deeper level enters from the right, a shallower one from the left.
   // svelte-ignore state_referenced_locally
@@ -42,17 +45,8 @@
   });
 
   /** In from the right going deeper, from the left going back; out the other way. */
-  function shift(_node: Element, { entering }: { entering: boolean }) {
-    const ahead = forward === entering;
-
-    return {
-      duration: motionMs(SLIDE_MS),
-      easing: cubicInOut,
-      css: (_t: number, u: number) =>
-        ahead
-          ? `transform: translateX(${u * 100}%)`
-          : `transform: translateX(${-30 * u}%); opacity: ${1 - 0.6 * u}`,
-    };
+  function shift(node: Element, { entering }: { entering: boolean }) {
+    return forward === entering ? slideIn(node, 1) : shiftAside(node);
   }
 
   const key = $derived(JSON.stringify(level));
@@ -79,7 +73,7 @@
     {/if}
   </header>
 
-  <div class="grid min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+  <div class="grid min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-fade-y">
     {#key key}
       <section
         class="col-start-1 row-start-1 flex flex-col"
@@ -89,14 +83,17 @@
       >
         <Editor
           plan={session.plan}
-          {moduleTypes}
+          moduleTypes={session.moduleTypes}
+          types={session}
           {level}
           onlevel={go}
-          strokes={session}
           onchange={(draft) => {
             session.change(draft);
           }}
         />
+        {#if level.kind === "section" && level.section === "strings"}
+          {@render check()}
+        {/if}
       </section>
     {/key}
   </div>

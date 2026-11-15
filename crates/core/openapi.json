@@ -159,13 +159,30 @@
             "description": "A carport: a post at each corner instead of walls.",
             "type": "boolean"
           },
+          "overhang": {
+            "$ref": "#/components/schemas/Overhang",
+            "description": "How far the roof reaches past the walls; none when stored without it."
+          },
           "roof": {
             "$ref": "#/components/schemas/Roof"
+          },
+          "roofColour": {
+            "description": "`#rrggbb`; the generated finish's own colour without one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "rotation": {
             "description": "Degrees clockwise about the corner, seen from above.",
             "format": "double",
             "type": "number"
+          },
+          "wallColour": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "width": {
             "format": "double",
@@ -404,6 +421,15 @@
           "optimized": {
             "type": "boolean"
           },
+          "order": {
+            "description": "Its place along its string's wiring, which runs through the string's modules from the\nlowest; a module without one follows them.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "row": {
             "format": "int32",
             "minimum": 0,
@@ -443,6 +469,55 @@
         "required": [
           "appliesFrom",
           "points"
+        ],
+        "type": "object"
+      },
+      "Chimney": {
+        "additionalProperties": false,
+        "description": "An upright box standing on a block's roof face, placed in the face's outline like its module\ngrid: metres across the slope and up it from the face's lowest corner on the left.",
+        "properties": {
+          "across": {
+            "description": "Its centre on the face.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "depth": {
+            "format": "double",
+            "type": "number"
+          },
+          "face": {
+            "description": "The roof face's index in its block, as module grids name it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "description": "Its level top stands this high over the roof where its upper side meets it.",
+            "format": "double",
+            "type": "number"
+          },
+          "up": {
+            "format": "double",
+            "type": "number"
+          },
+          "width": {
+            "description": "Its level size: across the slope, and along the fall line seen from above.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "block",
+          "face",
+          "across",
+          "up",
+          "width",
+          "depth",
+          "height"
         ],
         "type": "object"
       },
@@ -995,6 +1070,13 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "variant": {
+            "description": "The profile's variant the device is (ADR 5), such as `15k`, or for SunSpec its model after\nthe common model, such as `103`; none for a family's base. Fixed with the profile.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "writes": {
             "description": "Whether settings may be written (ADR 7); off when left out.",
@@ -1924,6 +2006,30 @@
         ],
         "type": "object"
       },
+      "ListedVariant": {
+        "description": "One variant of a family, as an admin picks it for a device.",
+        "properties": {
+          "acRating": {
+            "description": "Watts of AC output at this model's rating.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
       "Listing": {
         "description": "A profile served, as an admin picks it for a device.",
         "properties": {
@@ -1948,6 +2054,13 @@
           "official": {
             "type": "boolean"
           },
+          "variants": {
+            "description": "A family's variants in file order (ADR 5); a device that is none of them is added\nwithout one and read as the base.",
+            "items": {
+              "$ref": "#/components/schemas/ListedVariant"
+            },
+            "type": "array"
+          },
           "version": {
             "type": "string"
           }
@@ -1957,7 +2070,8 @@
           "manufacturer",
           "name",
           "version",
-          "official"
+          "official",
+          "variants"
         ],
         "type": "object"
       },
@@ -2032,6 +2146,21 @@
           "subject",
           "id",
           "action"
+        ],
+        "type": "object"
+      },
+      "ModuleCatalogue": {
+        "description": "The module catalogue's sheets, as the admin picks a datasheet to add as a module type.",
+        "properties": {
+          "sheets": {
+            "items": {
+              "$ref": "#/components/schemas/Sheet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sheets"
         ],
         "type": "object"
       },
@@ -2342,6 +2471,59 @@
         ],
         "type": "object"
       },
+      "Opening": {
+        "additionalProperties": false,
+        "description": "A window or a door in a block's wall.",
+        "properties": {
+          "along": {
+            "description": "Metres from the wall's left end to the opening's left edge, seen from outside.",
+            "format": "double",
+            "type": "number"
+          },
+          "block": {
+            "description": "The block's index in the scene.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OpeningKind"
+          },
+          "sill": {
+            "description": "Metres from the ground to its lower edge; a door's is 0.",
+            "format": "double",
+            "type": "number"
+          },
+          "wall": {
+            "$ref": "#/components/schemas/Wall"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "block",
+          "wall",
+          "along",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "OpeningKind": {
+        "enum": [
+          "window",
+          "frenchWindow",
+          "frontDoor",
+          "garageDoor"
+        ],
+        "type": "string"
+      },
       "Outcome": {
         "description": "How a write ended.",
         "enum": [
@@ -2353,6 +2535,25 @@
           "refused"
         ],
         "type": "string"
+      },
+      "Overhang": {
+        "additionalProperties": false,
+        "description": "Metres a roof reaches past the walls, measured level: at the eaves (Traufe) and at the gable\nends or verges (Ortgang). A flat or hip roof has eaves all round.",
+        "properties": {
+          "eave": {
+            "format": "double",
+            "type": "number"
+          },
+          "verge": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "eave",
+          "verge"
+        ],
+        "type": "object"
       },
       "Override": {
         "description": "A deadband override, in the role's unit.",
@@ -2467,7 +2668,7 @@
             "type": "string"
           },
           "mean": {
-            "description": "The value weighted by the time it held between `start` and `end`.",
+            "description": "The value weighted by the time it held between `start` and `end`; for a status or a held\nvalue in an `hour` or a `day`, the last value it held.",
             "format": "double",
             "type": "number"
           },
@@ -2588,6 +2789,13 @@
             "$ref": "#/components/schemas/Code",
             "description": "A stable machine code, such as `auth.required`."
           },
+          "pointer": {
+            "description": "The request body's member at fault, as an RFC 6901 JSON pointer such as\n`/strings/0/modules`, where the core can name it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "description": "The HTTP status.",
             "format": "int32",
@@ -2619,6 +2827,10 @@
       "Proposal": {
         "description": "A device the identify probe of a profile found.",
         "properties": {
+          "name": {
+            "description": "What the homeowner is shown: the variant's name, else the profile's.",
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
@@ -2628,17 +2840,16 @@
             "type": "integer"
           },
           "variant": {
-            "description": "The variant the probe found: for SunSpec, the device model after the common model, such\nas 103 for a three-phase inverter.",
-            "format": "int32",
-            "minimum": 0,
+            "description": "The variant the probe found (ADR 5), such as `15k`, or for SunSpec the device model after\nthe common model, such as `103` for a three-phase inverter; none for a family's base.",
             "type": [
-              "integer",
+              "string",
               "null"
             ]
           }
         },
         "required": [
           "profile",
+          "name",
           "unit"
         ],
         "type": "object"
@@ -3017,6 +3228,13 @@
             },
             "type": "array"
           },
+          "chimneys": {
+            "description": "Rectangular chimneys standing on roof faces.",
+            "items": {
+              "$ref": "#/components/schemas/Chimney"
+            },
+            "type": "array"
+          },
           "equipment": {
             "description": "Markers for inverters and batteries.",
             "items": {
@@ -3046,6 +3264,13 @@
           "obstacles": {
             "items": {
               "$ref": "#/components/schemas/Obstacle"
+            },
+            "type": "array"
+          },
+          "openings": {
+            "description": "Windows and doors on the blocks' walls. Drawn only; they never shade.",
+            "items": {
+              "$ref": "#/components/schemas/Opening"
             },
             "type": "array"
           },
@@ -3239,6 +3464,64 @@
         "required": [
           "path",
           "devices"
+        ],
+        "type": "object"
+      },
+      "Sheet": {
+        "additionalProperties": false,
+        "description": "The power classes one maker's datasheet prints.",
+        "properties": {
+          "maker": {
+            "type": "string"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/Datasheet"
+            },
+            "type": "array"
+          },
+          "series": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "required": [
+          "maker",
+          "series",
+          "source",
+          "modules"
+        ],
+        "type": "object"
+      },
+      "Source": {
+        "additionalProperties": false,
+        "description": "The maker's datasheet every value of a sheet was copied from.",
+        "properties": {
+          "note": {
+            "description": "Why this edition was chosen, where it matters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The revision or date printed on the datasheet.",
+            "type": "string"
+          },
+          "title": {
+            "description": "As printed on the datasheet.",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "revision",
+          "url"
         ],
         "type": "object"
       },
@@ -5335,6 +5618,31 @@
         "summary": "The core's last 2,000 log lines, each at most 1 KiB (ADR 2)."
       }
     },
+    "/api/v1/module-catalogue": {
+      "get": {
+        "operationId": "module_catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleCatalogue"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/module-types": {
       "get": {
         "operationId": "list_module_types",
@@ -5391,7 +5699,7 @@
             }
           }
         },
-        "summary": "Adds a module type; the admin enters its datasheet, there is no catalogue."
+        "summary": "Adds a module type from its datasheet, entered or copied from the module catalogue."
       }
     },
     "/api/v1/payback": {

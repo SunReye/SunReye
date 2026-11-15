@@ -29,17 +29,16 @@ test("a fresh core walks the owner through setup and ends on the live dashboard"
   await screen.getByRole("button", { name: "Passwort festlegen" }).click();
 
   await expect.element(screen.getByRole("combobox", { name: "Zeitzone der Anlage" })).toBeVisible();
-  await userEvent.selectOptions(
-    screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).element(),
-    "Europe/Berlin",
-  );
+  await screen.getByRole("combobox", { name: "Zeitzone der Anlage" }).click();
+  await userEvent.fill(page.getByPlaceholder("Zeitzone suchen"), "berlin");
+  await page.getByRole("option", { name: "Europe/Berlin", exact: true }).click();
   await userEvent.fill(screen.getByLabelText("Breitengrad"), "52.52");
   await userEvent.fill(screen.getByLabelText("Längengrad"), "13.38");
   await screen.getByRole("button", { name: "Weiter" }).click();
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
   await expect
-    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:502, Adresse 1" }))
+    .element(screen.getByRole("checkbox", { name: "SG05LP3 an 192.168.1.20:502, Adresse 1" }))
     .toBeChecked();
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 

@@ -3,8 +3,9 @@
   one bottom sheet, the More sheet's look. A tap adds the object and opens it in the inspector.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Plus from "@lucide/svelte/icons/plus";
-  import BottomSheet from "#lib/components/bottom-sheet.svelte";
+  import ResponsiveSheet from "#lib/components/responsive-sheet.svelte";
   import * as Item from "#lib/components/ui/item/index.js";
   import { m } from "../paraglide/messages.js";
   import { additions, type Addition } from "./additions.ts";
@@ -36,9 +37,9 @@
   );
 </script>
 
-<BottomSheet bind:open label={m.builder_add()}>
-  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2"
-    data-no-drag>
+<ResponsiveSheet bind:open label={m.builder_add()}>
+  <div class="flex min-h-0 touch-pan-y flex-col gap-3 overflow-y-auto px-4 pt-1 pb-2 scroll-fade-y no-scrollbar"
+    data-vaul-no-drag>
     <h2 class="px-1 text-lg font-semibold">{m.builder_add()}</h2>
     {#each groups as { section, adds } (section)}
       <section aria-labelledby="add-{section}" class="flex flex-col gap-1.5">
@@ -51,17 +52,16 @@
           {#each adds as add (add.label)}
             <Item.Root class="rounded-none border-0">
               {#snippet child({ props })}
-                <button
+                <Pressable
                   {...props}
-                  type="button"
-                  class={[props.class, "min-h-11 text-left active:bg-muted"]}
+                  class={[props.class, "min-h-11 text-left"]}
                   onclick={() => {
                     onadd(add);
                   }}
                 >
                   <Item.Media variant="icon"><Plus /></Item.Media>
                   <Item.Content><Item.Title class="text-[15px]">{add.label}</Item.Title></Item.Content>
-                </button>
+                </Pressable>
               {/snippet}
             </Item.Root>
           {/each}
@@ -69,4 +69,4 @@
       </section>
     {/each}
   </div>
-</BottomSheet>
+</ResponsiveSheet>

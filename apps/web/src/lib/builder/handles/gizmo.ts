@@ -100,7 +100,8 @@ function ring(handle: Handle, colour: Color): Object3D[] {
 }
 
 function outline(handle: Handle, colour: Color): Object3D[] {
-  const points = (handle.outline ?? []).map(([x, , z]) => new Vector3(x, 0.03, z));
+  // Just over what it lies on: the ground, or a chimney's roof.
+  const points = (handle.outline ?? []).map(([x, y, z]) => new Vector3(x, y + 0.03, z));
 
   return [
     new LineLoop(

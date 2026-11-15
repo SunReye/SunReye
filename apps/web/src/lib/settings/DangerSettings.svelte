@@ -6,6 +6,4 @@
   let { core }: { core: Core } = $props();
 </script>
 
-<div class="p-4">
-  <ImportPanel {core} />
-</div>
+<ImportPanel {core} />

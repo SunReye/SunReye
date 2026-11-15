@@ -4,7 +4,9 @@
 -->
 <script lang="ts">
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import Section from "../components/section.svelte";
   import Staged from "../motion/Staged.svelte";
+  import PageTitle from "../components/page-title.svelte";
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
@@ -22,7 +24,7 @@
 <main
   class="mx-auto flex w-full max-w-[1320px] flex-col gap-4 px-3 pt-4 pb-6 sm:px-4 lg:gap-5 lg:px-6 lg:pt-6"
 >
-  <h1 class="text-xl font-semibold tracking-tight lg:leading-8">{m.tariff_title()}</h1>
+  <PageTitle wide title={m.tariff_title()} />
   <!-- Each part in a frame of its own after the title's (ADR 21). -->
   <Staged>
     {#snippet skeleton()}<Skeleton class="h-28 rounded-lg" />{/snippet}
@@ -32,7 +34,9 @@
     {#snippet skeleton()}<Skeleton class="h-[420px] rounded-lg" />{/snippet}
     <RangeCard model={route}>
       <RangeControl model={route} />
-      <Costs {core} {route} />
+      <Section title={m.tariff_costs()}>
+        <Costs {core} {route} />
+      </Section>
     </RangeCard>
   </Staged>
   <a

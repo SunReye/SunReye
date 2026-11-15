@@ -46,6 +46,11 @@ export default defineConfig({
       "three/addons/postprocessing/RenderPass.js",
       ...icons(),
       "svelte-sonner",
+      "vaul-svelte",
+      "@internationalized/date",
+      "@tanstack/table-core",
+      "embla-carousel-svelte",
+      "paneforge",
     ],
   },
   test: {

@@ -14,7 +14,7 @@ fn quantities(case: &Value) -> Value {
     for span in spans.as_array().unwrap() {
         let (start, count) = (span[0].as_u64().unwrap(), span[1].as_u64().unwrap());
         for register in start..start + count {
-            out.push(json!({ "key": format!("r{register}"), "role": "extra.r", "register": register, "type": "u16" }));
+            out.push(json!({ "key": format!("r{register}"), "role": "extra.r", "kind": "measurement", "unit": "none", "register": register, "type": "u16" }));
         }
     }
     Value::Array(out)

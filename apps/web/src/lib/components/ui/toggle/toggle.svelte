@@ -2,8 +2,8 @@
 	import { type VariantProps, tv } from "tailwind-variants";
 
 	export const toggleVariants = tv({
-		// Local: the hover background fades, the press scales down in --motion-press and back up on the spring (upstream transitions only color and box-shadow); press scales only without reduced motion; a soft glow on hover (#37, #47).
-		base: "hover:text-foreground aria-pressed:bg-muted focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive gap-1 rounded-md text-sm font-medium transition-press glow-hover motion-safe:active:scale-(--press-scale) [&_svg:not([class*='size-'])]:size-4 group/toggle inline-flex items-center justify-center whitespace-nowrap outline-none hover:bg-muted focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		// Local: the hover background fades, the press scales down in --motion-press and back up on the spring (upstream transitions only color and box-shadow); press scales only without reduced motion; a soft glow on hover (#37, #47). touch-hit: a 44 px hit area on touch (ADR 21, #750).
+		base: "hover:text-foreground aria-pressed:bg-muted focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive gap-1 rounded-md text-sm font-medium transition-press glow-hover motion-safe:active:scale-(--press-scale) [&_svg:not([class*='size-'])]:size-4 group/toggle touch-hit inline-flex items-center justify-center whitespace-nowrap outline-none hover:bg-muted focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				default: "bg-transparent",

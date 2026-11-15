@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect, type Transport } from "../api/core.ts";
@@ -79,6 +79,8 @@ function opened(transport: Transport) {
     admin: true,
     open: "access",
     onnavigate: () => null,
+    level: null,
+    onlevel: () => null,
   });
 }
 
@@ -99,21 +101,25 @@ test("an added viewer joins the list, and a taken name says why", async () => {
   const screen = await opened(accounts([{ id: 1, name: "Oma" }], []));
   const viewers = screen.getByRole("region", { name: "Betrachter" });
 
-  await userEvent.fill(viewers.getByRole("textbox", { name: "Name" }), "Opa");
-  await userEvent.fill(viewers.getByLabelText("Passwort"), "sonnenschein");
+  // The form opens from the list's last row, in a sheet of its own.
+  expect(page.getByRole("textbox", { name: "Name" }).query()).toBeNull();
   await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
+  await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "Opa");
+  await userEvent.fill(page.getByLabelText("Passwort"), "sonnenschein");
+  await userEvent.click(page.getByRole("button", { name: "Betrachter hinzufügen" }).last());
 
   await expect.element(viewers.getByRole("list").getByText("Opa", { exact: true })).toBeVisible();
 
-  await userEvent.fill(viewers.getByRole("textbox", { name: "Name" }), "Oma");
-  await userEvent.fill(viewers.getByLabelText("Passwort"), "sonnenschein");
   await userEvent.click(viewers.getByRole("button", { name: "Betrachter hinzufügen" }));
+  await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "Oma");
+  await userEvent.fill(page.getByLabelText("Passwort"), "sonnenschein");
+  await userEvent.click(page.getByRole("button", { name: "Betrachter hinzufügen" }).last());
 
   await expect
-    .element(viewers.getByRole("alert"))
+    .element(page.getByRole("alert"))
     .toHaveTextContent("Ein Betrachter mit diesem Namen existiert bereits.");
   // The refused draft stays for a fix.
-  await expect.element(viewers.getByRole("textbox", { name: "Name" })).toHaveValue("Oma");
+  await expect.element(page.getByRole("textbox", { name: "Name" })).toHaveValue("Oma");
 });
 
 test("a viewer is removed only once the admin confirms", async () => {
@@ -135,11 +141,12 @@ test("a new token is shown once with a copy button, then only its name stays", a
   const screen = await opened(accounts([], []));
   const tokens = screen.getByRole("region", { name: "Zugangstokens" });
 
-  await userEvent.fill(tokens.getByRole("textbox", { name: "Name" }), "evcc");
-  await userEvent.click(tokens.getByRole("radio", { name: "Admin" }));
   await userEvent.click(tokens.getByRole("button", { name: "Token erstellen" }));
+  await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "evcc");
+  await userEvent.click(page.getByRole("radio", { name: "Admin" }));
+  await userEvent.click(page.getByRole("button", { name: "Token erstellen" }).last());
 
-  const shown = tokens.getByRole("status");
+  const shown = page.getByRole("status").filter({ hasText: "evcc" });
 
   await expect.element(shown.getByText(/Es wird nicht noch einmal angezeigt\./u)).toBeVisible();
   await expect.element(shown.getByText("f00d".repeat(16))).toBeVisible();
@@ -149,7 +156,7 @@ test("a new token is shown once with a copy button, then only its name stays", a
 
   await userEvent.click(shown.getByRole("button", { name: "Fertig" }));
 
-  await expect.element(tokens.getByText("f00d".repeat(16))).not.toBeInTheDocument();
+  await expect.element(page.getByText("f00d".repeat(16))).not.toBeInTheDocument();
   await expect.element(tokens.getByRole("list").getByText("evcc", { exact: true })).toBeVisible();
   await expect.element(tokens.getByRole("list").getByText("Admin", { exact: true })).toBeVisible();
   copied.mockRestore();

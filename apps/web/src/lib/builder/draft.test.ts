@@ -12,6 +12,10 @@ test("the first block stands at the origin and the next beside the last, 2 m apa
   expect([second.x, second.z]).toEqual([17, 0]);
 });
 
+test("a new block's roof reaches 0.5 m past its eaves and 0.3 m past its verges", () => {
+  expect(nextBlock([]).overhang).toEqual({ eave: 0.5, verge: 0.3 });
+});
+
 test("a flat roof drops its pitch and a pitched roof keeps the one it had", () => {
   expect(withRoof({ kind: "gable", pitch: 30 }, "flat")).toEqual({ kind: "flat" });
   expect(withRoof({ kind: "gable", pitch: 30 }, "hip")).toEqual({ kind: "hip", pitch: 30 });

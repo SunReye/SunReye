@@ -1,7 +1,7 @@
 <!-- One reading's value: words for a status, else the number in its unit; "≈" on an estimate. -->
 <script lang="ts">
-  import AnimatedNumber from "../components/animated-number.svelte";
   import { m } from "../paraglide/messages.js";
+  import Quantity from "./Quantity.svelte";
   import type { Row } from "./rows.ts";
 
   let { row, loading, dim }: { row: Row; loading: boolean; dim: boolean } = $props();
@@ -17,7 +17,13 @@
         class="me-1 font-normal text-muted-foreground"
         title={m.detail_estimated()}
         aria-label={m.detail_estimated()}>≈</span
-      >{/if}<span class="font-semibold"><AnimatedNumber {value} digits={row.digits} /></span
-    >{#if row.unit}<span class="ms-1 text-muted-foreground">{row.unit}</span>{/if}
+      >{/if}<span class="font-semibold"
+      ><Quantity
+        {value}
+        unit={row.unit}
+        digits={row.digits}
+        unitClass="font-normal text-muted-foreground"
+      /></span
+    >
   {/if}
 </span>

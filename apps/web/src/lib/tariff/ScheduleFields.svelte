@@ -1,38 +1,33 @@
+<!-- Bought or fed-in prices: the base price, then each band that overrides it on given days and hours. -->
 <script lang="ts">
-  import Plus from "@lucide/svelte/icons/plus";
-  import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
+  import Eyebrow from "../components/eyebrow.svelte";
   import { m } from "../paraglide/messages.js";
+  import AddRow from "../settings/AddRow.svelte";
   import BandFields from "./BandFields.svelte";
   import { newBand, type ScheduleDraft } from "./draft";
+  import PriceRow from "./PriceRow.svelte";
 
   let { legend, schedule = $bindable() }: { legend: string; schedule: ScheduleDraft } = $props();
-
-  const id = $props.id();
 </script>
 
-<fieldset class="flex flex-col gap-3">
-  <legend class="float-left mb-1 text-sm font-semibold">{legend}</legend>
-  <label class="clear-left flex flex-col gap-1.5 text-sm" for="{id}-price">
-    {m.tariff_base_price()}
-    <Input
-      id="{id}-price"
-      type="number"
-      step="0.001"
-      required
-      class="w-32"
-      bind:value={schedule.price}
-    />
-  </label>
-  {#each schedule.bands as band, index (band.key)}
-    <BandFields
-      bind:band={schedule.bands[index]!}
-      onremove={() => {
-        schedule.bands = schedule.bands.filter((other) => other !== band);
+<fieldset class="flex min-w-0 flex-col">
+  <Eyebrow element="legend" class="float-left w-full px-4 pt-5 pb-2">{legend}</Eyebrow>
+  <div class="clear-left flex flex-col divide-y divide-border/60 border-y border-border/60">
+    <PriceRow
+      name={m.tariff_base_price()}
+      price={schedule.price}
+      onchange={(price) => {
+        schedule.price = price;
       }}
     />
-  {/each}
-  <Button variant="outline" class="self-start" onclick={() => schedule.bands.push(newBand())}>
-    <Plus />{m.tariff_band_add()}
-  </Button>
+    {#each schedule.bands as band, index (band.key)}
+      <BandFields
+        bind:band={schedule.bands[index]!}
+        onremove={() => {
+          schedule.bands = schedule.bands.filter((other) => other !== band);
+        }}
+      />
+    {/each}
+    <AddRow label={m.tariff_band_add()} onclick={() => schedule.bands.push(newBand())} />
+  </div>
 </fieldset>

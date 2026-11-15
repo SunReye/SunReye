@@ -12,13 +12,13 @@ import {
   type Object3D,
   type PerspectiveCamera,
 } from "three";
-import type { Point } from "../builder/pv.ts";
 import type { Glow } from "../builder/scene.ts";
 import { motion } from "../motion/tier.svelte.ts";
 import { cssColour, flowRgb } from "./backdrop.ts";
 import { daylight, theme } from "./light.ts";
 import { easeGlow } from "./live-glow.svelte.ts";
 import { Opening } from "./opening.svelte.ts";
+import { lamps } from "./wall-openings.ts";
 import { Studio } from "./studio.ts";
 
 /** Follows mode-watcher's class on the root element. */
@@ -84,30 +84,26 @@ function free(part: Object3D): void {
   for (const child of part.children) free(child);
 }
 
-/** Casts and catches the sun's shadow. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-function shadowed(part: Object3D): void {
-  part.castShadow = true;
-  part.receiveShadow = true;
-
-  for (const child of part.children) shadowed(child);
-}
-
 /** Draws one group at a time in `studio`, freeing the last. */
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws in it.
-function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
+function stage(studio: Studio): Pick<Lit, "show" | "dispose"> & { lamp: (level: number) => void } {
   let drawn: Group | undefined;
+  let lamplight = 0;
 
   return {
+    lamp(level) {
+      lamplight = level;
+
+      if (drawn !== undefined) lamps(drawn, level);
+    },
     // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws it.
     show(group) {
-      shadowed(group);
-
       if (drawn !== undefined) {
         studio.scene.remove(drawn);
         free(drawn);
       }
 
+      lamps(group, lamplight);
       studio.scene.add(group);
       drawn = group;
 
@@ -123,26 +119,27 @@ function stage(studio: Studio): Pick<Lit, "show" | "dispose"> {
   };
 }
 
-/** A studio on `canvas`, lit by `sun` (null for a fixed one), drawn after each change; `drawn`
- * follows each draw. */
+/** A studio on `canvas`, lit by `sky`, drawn after each change; `drawn` follows each draw. The
+ * sky is the sun (null for a fixed one) and how diffuse its light is (null for a clear sky). */
 export function lit(
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws on it.
   canvas: HTMLCanvasElement,
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js draws with it.
   camera: PerspectiveCamera,
-  sun: () => Point | null,
+  sky: () => Readonly<{ sun: Parameters<typeof daylight>[0]; diffuse: number | null }>,
   drawn: () => void,
 ): Lit {
-  const studio = new Studio(canvas, camera);
+  const studio = new Studio(canvas, camera, motion.tier);
   const opened = new Opening(studio, drawn);
   const { flight } = opened;
   const { render } = opened;
   const shown = stage(studio);
-  const day = $derived(daylight(sun()));
+  const day = $derived(daylight(sky().sun, sky().diffuse));
   let colour = $state(0);
 
   $effect(() => {
     studio.light(day, theme(dark()), cssColour("var(--background)"));
+    shown.lamp(day.lamps);
     colour = flowRgb("solar").getHex();
     render();
   });

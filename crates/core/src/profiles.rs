@@ -43,26 +43,8 @@ pub const OFFICIAL_INDEX: &str = "https://sunreye.github.io/SunReye/index.json";
 
 /// The official profiles, as `profiles/` holds them at build time.
 const BUNDLED: &[&str] = &[
-    include_str!("../../../profiles/deye-sg01hp3-10k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-12k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-15k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-20k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-25k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-5k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-6k.json"),
-    include_str!("../../../profiles/deye-sg01hp3-8k.json"),
     include_str!("../../../profiles/deye-sg01hp3.json"),
     include_str!("../../../profiles/deye-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun10k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun12k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun14k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun15k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun16k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun18k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun20k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun5k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun6k-sg05lp3.json"),
-    include_str!("../../../profiles/deye-sun8k-sg05lp3.json"),
     include_str!("../../../profiles/evcc.json"),
     include_str!("../../../profiles/shelly-pro-3em.json"),
     include_str!("../../../profiles/sunspec.json"),
@@ -98,8 +80,34 @@ impl Held {
 
 type Served = HashMap<String, Held>;
 
+/// A retired profile id and the variant of a family that replaces it (ADR 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Retired {
+    old: String,
+    family: String,
+    variant: String,
+}
+
 /// Settings applied updates added or changed, as (profile, setting).
 type Changed = HashSet<(String, String)>;
+
+/// A device's profile id and variant, as stored: what it is read as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Chosen {
+    pub profile: String,
+    /// None for the family's base.
+    pub variant: Option<String>,
+}
+
+impl Chosen {
+    #[must_use]
+    pub fn new(profile: &str, variant: Option<&str>) -> Self {
+        Self {
+            profile: profile.to_owned(),
+            variant: variant.map(str::to_owned),
+        }
+    }
+}
 
 /// The profiles served, by id; clones share one catalogue, so a fetched profile reaches every
 /// holder.
@@ -162,6 +170,16 @@ impl Catalogue {
         self.held(id).map(|held| held.profile)
     }
 
+    /// The profile as `chosen`'s variant reads (ADR 5); the family's base for no variant or one
+    /// it does not declare, such as a SunSpec model's, which binds at connect.
+    #[must_use]
+    pub fn resolve(&self, chosen: &Chosen) -> Option<Arc<Profile>> {
+        let family = self.get(&chosen.profile)?;
+        let variant = chosen.variant.as_deref();
+        let declared = variant.and_then(|v| family.declared(v)).cloned();
+        Some(declared.unwrap_or(family))
+    }
+
     /// Whether profile `id` is official: bundled, or its signature verifies (ADR 8).
     #[must_use]
     pub fn official(&self, id: &str) -> bool {
@@ -171,6 +189,32 @@ impl Catalogue {
     fn held(&self, id: &str) -> Option<Held> {
         let profiles = crate::read(&self.served);
         profiles.get(id).cloned()
+    }
+
+    /// Every retired profile id a served variant replaces.
+    fn retired(&self) -> Vec<Retired> {
+        let variants = |family: Arc<Profile>| {
+            let replaced = |variant: &Arc<Profile>| {
+                let id = variant.variant().unwrap_or_default();
+                let retired = variant.replaces().iter().map(|old| Retired {
+                    old: old.clone(),
+                    family: family.id.clone(),
+                    variant: id.to_owned(),
+                });
+                retired.collect::<Vec<_>>()
+            };
+            family
+                .variants()
+                .iter()
+                .flat_map(replaced)
+                .collect::<Vec<_>>()
+        };
+        self.profiles().into_iter().flat_map(variants).collect()
+    }
+
+    fn forget(&self, retired: &[Retired]) {
+        let mut profiles = crate::write(&self.served);
+        profiles.retain(|id, _| !retired.iter().any(|r| r.old == *id));
     }
 
     fn replace(&self, profiles: Served) {
@@ -209,6 +253,19 @@ pub struct Listing {
     pub official: bool,
     /// Watts of AC output at the inverter's rating; a family's largest.
     pub ac_rating: Option<f64>,
+    /// A family's variants in file order (ADR 5); a device that is none of them is added
+    /// without one and read as the base.
+    pub variants: Vec<ListedVariant>,
+}
+
+/// One variant of a family, as an admin picks it for a device.
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedVariant {
+    pub id: String,
+    pub name: String,
+    /// Watts of AC output at this model's rating.
+    pub ac_rating: Option<f64>,
 }
 
 impl Listing {
@@ -221,6 +278,17 @@ impl Listing {
             version: profile.version.clone(),
             official: held.official,
             ac_rating: profile.inverter().and_then(|i| i.ac_rating),
+            variants: profile
+                .variants()
+                .iter()
+                .filter_map(|variant| {
+                    Some(ListedVariant {
+                        id: variant.variant()?.to_owned(),
+                        name: variant.name.clone(),
+                        ac_rating: variant.inverter().and_then(|i| i.ac_rating),
+                    })
+                })
+                .collect(),
         }
     }
 }
@@ -353,6 +421,7 @@ impl Profiles {
         };
         let trust = profiles.state.lock().await.trust;
         profiles.reload(trust).await?;
+        profiles.retire().await.map_err(Error::Storage)?;
         let changed = profiles
             .database
             .run(store::changed)
@@ -362,6 +431,19 @@ impl Profiles {
             profiles.catalogue.mark(&id, vec![setting]);
         }
         Ok(profiles)
+    }
+
+    /// Moves every device stored under a retired profile id to the variant that replaces it, with
+    /// its changed-setting marks, and drops the retired profile's stored copies.
+    async fn retire(&self) -> Result<(), storage::Error> {
+        let retired = self.catalogue.retired();
+        if retired.is_empty() {
+            return Ok(());
+        }
+        self.catalogue.forget(&retired);
+        self.database
+            .run(move |db| store::retire(db, &retired))
+            .await
     }
 
     /// The profiles served; it follows every check.

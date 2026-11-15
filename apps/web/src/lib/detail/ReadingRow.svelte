@@ -1,5 +1,6 @@
 <!-- One reading: its label, its age once stale, its value; a reading that is a node opens it. -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import ReadingValue from "./ReadingValue.svelte";
   import { ago } from "./readings.ts";
@@ -30,9 +31,9 @@
     <dd><ReadingValue {row} {loading} {dim} /></dd>
   </div>
 {:else}
-  <button
-    type="button"
-    class="group -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 text-left outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring"
+  <Pressable
+    feedback
+    class="group -mx-2 flex items-baseline gap-2 rounded-sm px-2 py-2 text-left"
     onclick={() => onopen(to)}
   >
     <dt class="flex min-w-0 flex-1 items-baseline gap-2">{@render label()}</dt>
@@ -41,5 +42,5 @@
         class="size-3.5 shrink-0 self-center text-muted-foreground transition-transform group-hover:translate-x-0.5"
       />
     </dd>
-  </button>
+  </Pressable>
 {/if}

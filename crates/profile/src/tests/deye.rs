@@ -8,18 +8,29 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Field, Framing, Inverter, Mppt, Profile, Registers, Source, Step};
+use crate::{
+    Field, Framing, Inverter, Mppt, Profile, Registers, RoleKind, Source, Step, StorageClass,
+};
 use serde_json::Value;
 
 /// v4's oracle corpus, one line per profile: battery flows negated to ADR 4's charging-positive
-/// sign, day counters left out, and on the SG05LP3 range register 636, which v4 read but left
-/// unmapped, added as the signed inverter output power. Register 500 reads through its enum as
-/// `inverter.status`: v4's raw running state 0 as standby, a value past fault as no value.
+/// sign, day counters and the settings registers a declared setting reads back left out, and on
+/// the SG05LP3 range register 636, which v4 read but left unmapped, added as the signed inverter
+/// output power. Register 500 reads through its enum as `inverter.status`: v4's raw running state 0
+/// as standby, a value past fault as no value.
 const V4_CASES: &str = include_str!("deye-v4-cases.ndjson");
 
-/// A profile and what Deye's datasheet (cited in `profiles/deye/`) and v4 say of its model.
+const LP3: &str = include_str!("../../../../profiles/deye-sg05lp3.json");
+const HP3: &str = include_str!("../../../../profiles/deye-sg01hp3.json");
+
+/// A family's base or variant and what Deye's datasheet (cited in `profiles/deye/`) and v4 say of
+/// its model.
+/// A family's file and one of its variants, or its base.
+type Member = (&'static str, Option<&'static str>);
+
 struct Model {
     json: &'static str,
+    variant: Option<&'static str>,
     /// Amperes: the bound of the battery current settings.
     current: f64,
     inverter: Inverter,
@@ -35,9 +46,10 @@ const fn input(max_current: f64, min_voltage: f64, max_voltage: f64, start_volta
 }
 
 /// An SG05LP3: 800 V, an MPPT window up to 650 V, starting at 160 V.
-fn low_voltage(json: &'static str, current: f64, amps: [f64; 2], min: f64, ac: f64) -> Model {
+fn low_voltage((json, variant): Member, current: f64, amps: [f64; 2], min: f64, ac: f64) -> Model {
     Model {
         json,
+        variant,
         current,
         inverter: Inverter {
             max_input_voltage: 800.0,
@@ -48,9 +60,10 @@ fn low_voltage(json: &'static str, current: f64, amps: [f64; 2], min: f64, ac: f
 }
 
 /// An SG01HP3: 1000 V, an MPPT window of 150 to 850 V, starting at 180 V.
-fn high_voltage(json: &'static str, current: f64, amps: [f64; 2], ac: f64) -> Model {
+fn high_voltage((json, variant): Member, current: f64, amps: [f64; 2], ac: f64) -> Model {
     Model {
         json,
+        variant,
         current,
         inverter: Inverter {
             max_input_voltage: 1000.0,
@@ -62,156 +75,60 @@ fn high_voltage(json: &'static str, current: f64, amps: [f64; 2], ac: f64) -> Mo
 
 /// Each SG05LP3 profile: its battery current, its inputs' current, its MPPT window's floor and its
 /// AC rating.
-const LOW_VOLTAGE: [(&str, f64, [f64; 2], f64, f64); 11] = [
-    (
-        include_str!("../../../../profiles/deye-sg05lp3.json"),
-        350.0,
-        [36.0, 36.0],
-        160.0,
-        20_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun5k-sg05lp3.json"),
-        120.0,
-        [20.0, 20.0],
-        200.0,
-        5000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun6k-sg05lp3.json"),
-        135.0,
-        [20.0, 20.0],
-        200.0,
-        6000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun8k-sg05lp3.json"),
-        190.0,
-        [26.0, 26.0],
-        200.0,
-        8000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun10k-sg05lp3.json"),
-        210.0,
-        [26.0, 26.0],
-        200.0,
-        10_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun12k-sg05lp3.json"),
-        240.0,
-        [26.0, 26.0],
-        200.0,
-        12_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun14k-sg05lp3.json"),
-        260.0,
-        [36.0, 36.0],
-        160.0,
-        14_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun15k-sg05lp3.json"),
-        280.0,
-        [36.0, 36.0],
-        160.0,
-        15_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun16k-sg05lp3.json"),
-        300.0,
-        [36.0, 36.0],
-        160.0,
-        16_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun18k-sg05lp3.json"),
-        330.0,
-        [36.0, 36.0],
-        160.0,
-        18_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sun20k-sg05lp3.json"),
-        350.0,
-        [36.0, 36.0],
-        160.0,
-        20_000.0,
-    ),
+const LOW_VOLTAGE: [(Member, f64, [f64; 2], f64, f64); 11] = [
+    ((LP3, None), 350.0, [36.0, 36.0], 160.0, 20_000.0),
+    ((LP3, Some("5k")), 120.0, [20.0, 20.0], 200.0, 5000.0),
+    ((LP3, Some("6k")), 135.0, [20.0, 20.0], 200.0, 6000.0),
+    ((LP3, Some("8k")), 190.0, [26.0, 26.0], 200.0, 8000.0),
+    ((LP3, Some("10k")), 210.0, [26.0, 26.0], 200.0, 10_000.0),
+    ((LP3, Some("12k")), 240.0, [26.0, 26.0], 200.0, 12_000.0),
+    ((LP3, Some("14k")), 260.0, [36.0, 36.0], 160.0, 14_000.0),
+    ((LP3, Some("15k")), 280.0, [36.0, 36.0], 160.0, 15_000.0),
+    ((LP3, Some("16k")), 300.0, [36.0, 36.0], 160.0, 16_000.0),
+    ((LP3, Some("18k")), 330.0, [36.0, 36.0], 160.0, 18_000.0),
+    ((LP3, Some("20k")), 350.0, [36.0, 36.0], 160.0, 20_000.0),
 ];
 
 /// Each SG01HP3 profile: its battery current, its inputs' current and its AC rating.
-const HIGH_VOLTAGE: [(&str, f64, [f64; 2], f64); 9] = [
-    (
-        include_str!("../../../../profiles/deye-sg01hp3.json"),
-        50.0,
-        [26.0, 26.0],
-        25_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-5k.json"),
-        30.0,
-        [20.0, 20.0],
-        5000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-6k.json"),
-        30.0,
-        [20.0, 20.0],
-        6000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-8k.json"),
-        37.0,
-        [20.0, 20.0],
-        8000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-10k.json"),
-        37.0,
-        [20.0, 20.0],
-        10_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-12k.json"),
-        37.0,
-        [26.0, 20.0],
-        12_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-15k.json"),
-        37.0,
-        [26.0, 20.0],
-        15_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-20k.json"),
-        50.0,
-        [26.0, 26.0],
-        20_000.0,
-    ),
-    (
-        include_str!("../../../../profiles/deye-sg01hp3-25k.json"),
-        50.0,
-        [26.0, 26.0],
-        25_000.0,
-    ),
+const HIGH_VOLTAGE: [(Member, f64, [f64; 2], f64); 9] = [
+    ((HP3, None), 50.0, [26.0, 26.0], 25_000.0),
+    ((HP3, Some("5k")), 30.0, [20.0, 20.0], 5000.0),
+    ((HP3, Some("6k")), 30.0, [20.0, 20.0], 6000.0),
+    ((HP3, Some("8k")), 37.0, [20.0, 20.0], 8000.0),
+    ((HP3, Some("10k")), 37.0, [20.0, 20.0], 10_000.0),
+    ((HP3, Some("12k")), 37.0, [26.0, 20.0], 12_000.0),
+    ((HP3, Some("15k")), 37.0, [26.0, 20.0], 15_000.0),
+    ((HP3, Some("20k")), 50.0, [26.0, 26.0], 20_000.0),
+    ((HP3, Some("25k")), 50.0, [26.0, 26.0], 25_000.0),
 ];
 
 fn models() -> Vec<Model> {
     let low = LOW_VOLTAGE
         .iter()
-        .map(|&(json, current, amps, min, ac)| low_voltage(json, current, amps, min, ac));
+        .map(|&(member, current, amps, min, ac)| low_voltage(member, current, amps, min, ac));
     let high = HIGH_VOLTAGE
         .iter()
-        .map(|&(json, current, amps, ac)| high_voltage(json, current, amps, ac));
+        .map(|&(member, current, amps, ac)| high_voltage(member, current, amps, ac));
     low.chain(high).collect()
 }
 
+fn profile(model: &Model) -> Profile {
+    let family = Profile::load(model.json).unwrap();
+    match model.variant {
+        Some(variant) => (**family.declared(variant).unwrap()).clone(),
+        None => family,
+    }
+}
+
 fn profiles() -> impl Iterator<Item = Profile> {
-    models().into_iter().map(|m| Profile::load(m.json).unwrap())
+    models().iter().map(profile).collect::<Vec<_>>().into_iter()
+}
+
+/// A base by its id, a variant by its family's and its own: how v4's cases are keyed.
+fn label(profile: &Profile) -> String {
+    profile
+        .variant()
+        .map_or_else(|| profile.id.clone(), |v| format!("{}/{v}", profile.id))
 }
 
 fn answered(case: &Value) -> Registers {
@@ -236,7 +153,10 @@ fn cases() -> BTreeMap<String, Vec<Value>> {
         .lines()
         .map(|line| {
             let mut entry: Value = serde_json::from_str(line).unwrap();
-            let id = entry["profile"].as_str().unwrap().to_owned();
+            let family = entry["profile"].as_str().unwrap();
+            let id = entry["variant"]
+                .as_str()
+                .map_or_else(|| family.to_owned(), |v| format!("{family}/{v}"));
             (id, serde_json::from_value(entry["cases"].take()).unwrap())
         })
         .collect()
@@ -253,7 +173,7 @@ fn every_profile_loads_as_deye_without_a_warning() {
 #[test]
 fn every_profile_declares_its_mppt_inputs_and_ac_rating_from_the_datasheet() {
     for model in models() {
-        let profile = Profile::load(model.json).unwrap();
+        let profile = profile(&model);
         assert_eq!(profile.inverter(), Some(&model.inverter), "{}", profile.id);
     }
 }
@@ -262,7 +182,7 @@ fn every_profile_declares_its_mppt_inputs_and_ac_rating_from_the_datasheet() {
 fn every_profile_decodes_each_v4_case_to_v4s_readings() {
     let mut cases = cases();
     for profile in profiles() {
-        let cases = cases.remove(&profile.id).unwrap();
+        let cases = cases.remove(&label(&profile)).unwrap();
         assert_eq!(cases.len(), 6, "{}", profile.id);
         let mut values = vec![None; profile.quantities().len()];
         for case in cases {
@@ -316,7 +236,7 @@ fn every_register_is_read_exactly_once_on_every_framing() {
 
 #[test]
 fn the_inputs_of_inverter_power_share_one_block() {
-    let family = Profile::load(models()[0].json).unwrap();
+    let family = profile(&models()[0]);
     let plan = family.read_plan(0);
     let block = plan.iter().find(|b| b.grouped).unwrap();
     assert_eq!(
@@ -329,7 +249,7 @@ fn the_inputs_of_inverter_power_share_one_block() {
 #[test]
 fn every_profiles_settings_write_with_function_16_and_read_back_their_own_register() {
     for model in models() {
-        let profile = Profile::load(model.json).unwrap();
+        let profile = profile(&model);
         let settings = [
             ("battery.max_charge_current", 108, model.current),
             ("battery.max_discharge_current", 109, model.current),
@@ -373,6 +293,18 @@ fn hybrid(kind: u16, watts: u32) -> Registers {
     registers
 }
 
+/// What each family identifies the device as: its id and variant.
+fn identified(device: &Registers) -> Vec<(String, Option<String>)> {
+    [LP3, HP3]
+        .into_iter()
+        .filter_map(|json| {
+            let family = Profile::load(json).unwrap();
+            let found = family.identify(device)?;
+            Some((found.id.clone(), found.variant().map(str::to_owned)))
+        })
+        .collect()
+}
+
 /// A SUN-15K-SG05LP3 answered device type `0x0005` (read 2026-11-13, gateway, unit 0), not the
 /// protocol's `0x0500`.
 #[test]
@@ -381,12 +313,12 @@ fn a_model_is_identified_by_its_rated_power_and_the_family_by_its_device_type() 
         5000, 6000, 8000, 10_000, 12_000, 14_000, 15_000, 16_000, 18_000, 20_000,
     ] {
         let device = hybrid(0x0005, watts);
-        let identified: Vec<String> = profiles()
-            .filter(|p| p.identifies(&device))
-            .map(|p| p.id)
-            .collect();
-        let model = format!("deye-sun{}k-sg05lp3", watts / 1000);
-        assert_eq!(identified, ["deye-sg05lp3".to_owned(), model], "{watts} W");
+        let model = format!("{}k", watts / 1000);
+        assert_eq!(
+            identified(&device),
+            [("deye-sg05lp3".to_owned(), Some(model))],
+            "{watts} W"
+        );
     }
 }
 
@@ -398,16 +330,94 @@ fn a_high_voltage_model_is_identified_by_its_rated_power_under_either_device_typ
     for kind in [0x0600, 0x0601, 0x0006, 0x0106] {
         for watts in [5000, 6000, 8000, 10_000, 12_000, 15_000, 20_000, 25_000] {
             let device = hybrid(kind, watts);
-            let identified: Vec<String> = profiles()
-                .filter(|p| p.identifies(&device))
-                .map(|p| p.id)
-                .collect();
-            let model = format!("deye-sg01hp3-{}k", watts / 1000);
+            let model = format!("{}k", watts / 1000);
             assert_eq!(
-                identified,
-                ["deye-sg01hp3".to_owned(), model],
+                identified(&device),
+                [("deye-sg01hp3".to_owned(), Some(model))],
                 "{kind:#x} {watts} W"
             );
         }
+    }
+}
+
+#[test]
+fn a_rating_no_variant_declares_is_read_as_the_familys_base() {
+    assert_eq!(
+        identified(&hybrid(0x0005, 13_000)),
+        [("deye-sg05lp3".to_owned(), None)]
+    );
+    assert_eq!(
+        identified(&hybrid(0x0601, 30_000)),
+        [("deye-sg01hp3".to_owned(), None)]
+    );
+}
+
+#[test]
+fn settings_registers_are_held_values_and_extras_repeating_a_role_are_kept_live_only() {
+    let repeats = [
+        "extra.grid_import_power",
+        "extra.grid_export_power",
+        "extra.battery_charge_power",
+        "extra.battery_discharge_power",
+        "extra.ac_total_internal_power",
+    ];
+    for profile in profiles() {
+        for q in profile.quantities() {
+            let held =
+                q.role.starts_with("extra.settings_") || q.role.starts_with("extra.timeofuse_");
+            assert_eq!(q.kind() == RoleKind::Held, held, "{} {}", profile.id, q.key);
+            let live = repeats.contains(&q.role.as_str());
+            assert_eq!(
+                q.storage() == StorageClass::NoHistory,
+                live,
+                "{} {}",
+                profile.id,
+                q.key
+            );
+        }
+    }
+}
+
+/// A family's reading of `role` while PV gives `pv` W on its first input, the battery `battery` W
+/// (Deye's own sign: discharging positive), the grid `grid` W (importing positive) and the loads
+/// `load` W. `tenths` is the high-voltage range's 10 W step on PV and battery power.
+fn flowing(json: &str, tenths: bool, [pv, battery, grid, load]: [i16; 4], role: &str) -> f64 {
+    let profile = Profile::load(json).unwrap();
+    let step = if tenths { 10 } else { 1 };
+    let word = |watts: i16| u16::from_ne_bytes(watts.to_ne_bytes());
+    let mut registers = Registers::default();
+    registers.answer(590, &[word(battery / step)]);
+    registers.answer(625, &[word(grid)]);
+    registers.answer(653, &[word(load)]);
+    registers.answer(672, &[word(pv / step), 0]);
+    let mut values = vec![None; profile.quantities().len()];
+    profile.decode(&registers, &mut values);
+    let at = profile.quantities().iter().position(|q| q.role == role);
+    values[at.unwrap_or_else(|| panic!("{} has no {role}", profile.id))].unwrap()
+}
+
+/// v3's definition: what reaches the loads, the battery and the grid over what comes in from PV,
+/// the battery and the grid (ADR 4).
+#[test]
+fn inverter_efficiency_is_output_over_input_whichever_way_the_battery_and_grid_flow() {
+    for (json, tenths) in [(LP3, false), (HP3, true)] {
+        let efficiency = |flows| flowing(json, tenths, flows, "inverter.efficiency");
+        // The battery discharging into the loads after sunset.
+        assert!((efficiency([0, 2000, 0, 1900]) - 95.0).abs() < 1e-9);
+        // PV and the battery feeding the loads and the grid at once.
+        assert!((efficiency([3000, 1000, -400, 3400]) - 95.0).abs() < 1e-9);
+        // The grid charging the battery at night.
+        assert!((efficiency([0, -3000, 3200, 100]) - 96.875).abs() < 1e-9);
+        // Nothing flows at night: the ratio reads 0, which the SPA does not show.
+        assert!(efficiency([0, 0, 0, 0]).abs() < 1e-9);
+    }
+}
+
+/// v3's own use: what comes in and does not come out.
+#[test]
+fn inverter_loss_is_input_not_output() {
+    for (json, tenths) in [(LP3, false), (HP3, true)] {
+        let loss = flowing(json, tenths, [0, -3000, 3200, 100], "inverter.loss.power");
+        assert!((loss - 100.0).abs() < 1e-9, "{loss}");
     }
 }

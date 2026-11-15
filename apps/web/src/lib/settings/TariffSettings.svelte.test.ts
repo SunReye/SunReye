@@ -1,10 +1,28 @@
 import { expect, test } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { page, userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import "../../app.css";
 import { connect } from "../api/core.ts";
 import { testCore } from "../tariff/tariff.harness.ts";
 import TariffSettings from "./TariffSettings.svelte";
+
+/** A row's text as read, its spaces (no-break ones too) made plain. */
+function text(row: Readonly<Locator>): string {
+  return (row.element().textContent ?? "").replaceAll(/\s+/gu, " ").trim();
+}
+
+/** Opens the row named `row` in `scope`, types `value` into the value editor and applies it. */
+async function enter(scope: Readonly<Locator>, row: string, value: string): Promise<void> {
+  await userEvent.click(
+    scope.getByRole("button", {
+      name: new RegExp(`^${row.replaceAll(/[()/]/gu, String.raw`\$&`)}`, "u"),
+    }),
+  );
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: `${row} eingeben` }), value);
+  await userEvent.keyboard("{Enter}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
+}
 
 test("payback shows the savings against the investment, which the admin enters", async () => {
   let investment = 10_000;
@@ -22,14 +40,22 @@ test("payback shows the savings against the investment, which the admin enters",
   const screen = await render(TariffSettings, { core: connect(core) });
   const payback = screen.getByRole("region", { name: "Amortisation" });
 
-  await expect.element(payback.getByRole("definition").nth(1)).toHaveTextContent("0,62 €");
-  await expect.element(payback.getByRole("definition").nth(2)).toHaveTextContent("9.999,38 €");
+  await expect.element(payback.getByRole("definition").nth(0)).toHaveTextContent("0,62 €");
+  await expect.element(payback.getByRole("definition").nth(1)).toHaveTextContent("9.999,38 €");
+  await expect
+    .element(payback.getByRole("button", { name: /^Investition/u }))
+    .toHaveTextContent("Investition 10.000,00 €");
 
-  await userEvent.fill(payback.getByRole("spinbutton", { name: "Investition (€)" }), "12000");
-  await userEvent.click(payback.getByRole("button", { name: "Speichern" }));
+  await userEvent.click(payback.getByRole("button", { name: /^Investition/u }));
+  await page.getByRole("button", { name: /tippen zum Eingeben/u }).click();
+  await userEvent.fill(page.getByRole("textbox", { name: "Investition (€) eingeben" }), "12000");
+  await userEvent.keyboard("{Enter}");
+  await page.getByRole("button", { name: /^Übernehmen/u }).click();
 
-  await expect.element(payback.getByRole("definition").nth(0)).toHaveTextContent("12.000,00 €");
-  await expect.element(payback.getByRole("definition").nth(2)).toHaveTextContent("11.999,38 €");
+  await expect
+    .element(payback.getByRole("button", { name: /^Investition/u }))
+    .toHaveTextContent("Investition 12.000,00 €");
+  await expect.element(payback.getByRole("definition").nth(1)).toHaveTextContent("11.999,38 €");
   expect(core.sent).toContainEqual({ route: "PUT /api/v1/investment", body: { amount: 12_000 } });
 });
 
@@ -52,13 +78,13 @@ test("the admin changes the tariff in force from now on", async () => {
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
-    .element(bought.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" }))
-    .toHaveValue(30);
+    .poll(() => text(bought.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
+    .toBe("Grundpreis (ct/kWh) 30");
   await expect.element(bought.getByRole("checkbox", { name: "Fr" })).toBeChecked();
   await expect.element(bought.getByRole("checkbox", { name: "Sa" })).not.toBeChecked();
   await expect.element(bought.getByRole("button", { name: "Bis 24:00" })).toBeVisible();
 
-  await userEvent.fill(bought.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" }), "31.5");
+  await enter(bought, "Grundpreis (ct/kWh)", "31,5");
   await userEvent.click(bought.getByRole("checkbox", { name: "Sa" }));
   await userEvent.click(
     screen.getByRole("region", { name: "Tarif" }).getByRole("button", { name: "Speichern" }),
@@ -103,23 +129,32 @@ test("the admin adds a band and reprices from a past date", async () => {
   const screen = await render(TariffSettings, { core: connect(core) });
   const fed = screen.getByRole("group", { name: "Einspeisung" });
 
-  await expect.element(fed.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" })).toHaveValue(8);
+  await expect
+    .poll(() => text(fed.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
+    .toBe("Grundpreis (ct/kWh) 8");
 
   await userEvent.click(fed.getByRole("button", { name: "Zeitfenster hinzufügen" }));
   await userEvent.click(fed.getByRole("checkbox", { name: "So" }));
   await wheelTo("Einspeisung", "Von 00:00", 10, "Von 10:00");
   // The end of the day reads 00:00 on the wheels, 24:00 in the band.
   await wheelTo("Einspeisung", "Bis 24:00", 14, "Bis 14:00");
-  await userEvent.fill(fed.getByRole("spinbutton", { name: "Preis (ct/kWh)" }), "0");
-  await userEvent.fill(screen.getByLabelText("Gilt ab"), "2026-10-01T00:00");
+  await enter(fed, "Preis (ct/kWh)", "0,5");
+
+  // The first of this month on the calendar, from its midnight.
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const day = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}-01`;
+
+  await userEvent.click(screen.getByRole("button", { name: /^Gilt ab/u }));
+  await userEvent.click(page.elementLocator(document.querySelector(`[data-value="${day}"]`)!));
   await userEvent.click(screen.getByRole("button", { name: "Rückwirkend neu berechnen" }));
 
   await expect
     .poll(() => core.sent.find(({ route }) => route === "POST /api/v1/tariff/reprice")?.body)
     .toEqual({
-      appliesFrom: new Date(2026, 9, 1).toISOString(),
+      appliesFrom: first.toISOString(),
       import: WEEKNIGHTS.import,
-      export: { price: 0.08, bands: [{ days: [7], from: "10:00", to: "14:00", price: 0 }] },
+      export: { price: 0.08, bands: [{ days: [7], from: "10:00", to: "14:00", price: 0.005 }] },
     });
 });
 
@@ -137,8 +172,8 @@ test("a tariff the core refuses shows why", async () => {
   const bought = screen.getByRole("group", { name: "Bezug" });
 
   await expect
-    .element(bought.getByRole("spinbutton", { name: "Grundpreis (ct/kWh)" }))
-    .toHaveValue(30);
+    .poll(() => text(bought.getByRole("button", { name: /^Grundpreis \(ct\/kWh\)/u })))
+    .toBe("Grundpreis (ct/kWh) 30");
 
   await userEvent.click(
     screen.getByRole("region", { name: "Tarif" }).getByRole("button", { name: "Speichern" }),

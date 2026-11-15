@@ -1,10 +1,11 @@
 // What each inspector group can add, and the level the new object opens at (ADR 20).
 import { m } from "../paraglide/messages.js";
-import { fence, nextBlock, obstacle, surface } from "./draft.ts";
+import { chimney, fence, nextBlock, obstacle, surface } from "./draft.ts";
 import type { Level, Section } from "./levels.ts";
 import { addString, type Draft } from "./modules.ts";
 import type { Plan } from "./outline.ts";
-import type { Equipment, Obstacle } from "./pv.ts";
+import type { Equipment, Obstacle, OpeningKind } from "./pv.ts";
+import { fresh } from "./wall-openings.ts";
 
 /** One add button: the draft with the new object, and its level. */
 export interface Addition {
@@ -13,16 +14,57 @@ export interface Addition {
   readonly level: Level;
 }
 
-function buildings({ draft }: Plan): Addition[] {
-  const { blocks } = draft.scene;
+/** A chimney goes on the first roof face; without a roof, none is added. Windows and doors go
+ * on the walls. */
+function buildings({ draft, laid, pv }: Plan): Addition[] {
+  const { blocks, chimneys = [] } = draft.scene;
+  const [face] = laid.roofs;
 
-  return [
-    {
-      label: m.builder_add_block(),
-      draft: { ...draft, scene: { ...draft.scene, blocks: [...blocks, nextBlock(blocks)] } },
-      level: { kind: "block", index: blocks.length },
-    },
-  ];
+  const block: Addition = {
+    label: m.builder_add_block(),
+    draft: { ...draft, scene: { ...draft.scene, blocks: [...blocks, nextBlock(blocks)] } },
+    level: { kind: "block", index: blocks.length },
+  };
+
+  const onRoof: Addition[] =
+    face === undefined
+      ? []
+      : [
+          {
+            label: m.builder_add_chimney(),
+            draft: { ...draft, scene: { ...draft.scene, chimneys: [...chimneys, chimney(face)] } },
+            level: { kind: "chimney", index: chimneys.length },
+          },
+        ];
+
+  return [block, ...onRoof, ...onWalls(draft, pv)];
+}
+
+const OPENINGS: readonly (readonly [OpeningKind, () => string])[] = [
+  ["window", m.builder_add_window],
+  ["frenchWindow", m.builder_add_french_window],
+  ["frontDoor", m.builder_add_front_door],
+  ["garageDoor", m.builder_add_garage_door],
+];
+
+/** A window or a door goes in the first free place on a wall; without room for it, none is
+ * added. */
+function onWalls(draft: Draft, pv: Plan["pv"]): Addition[] {
+  const openings = draft.scene.openings ?? [];
+
+  return OPENINGS.flatMap(([kind, label]): Addition[] => {
+    const made = fresh(pv, draft.scene, kind);
+
+    return made === null
+      ? []
+      : [
+          {
+            label: label(),
+            draft: { ...draft, scene: { ...draft.scene, openings: [...openings, made] } },
+            level: { kind: "opening", index: openings.length },
+          },
+        ];
+  });
 }
 
 const OBSTACLES: readonly (readonly [Obstacle["kind"], () => string])[] = [

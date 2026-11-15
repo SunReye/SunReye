@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { HAPTICS } from "../../haptics.ts";
 import { motion } from "../../motion/tier.svelte.ts";
 import Harness from "./drill-in.harness.svelte";
+import { child, frame, offset, rect, until } from "./drill-in.probe.ts";
 
 let vibrate: ReturnType<typeof vi.fn<() => boolean>>;
 
@@ -19,29 +20,6 @@ afterEach(async () => {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
   await page.viewport(414, 896);
 });
-
-function frame(): Promise<number> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(resolve);
-  });
-}
-
-function child(): HTMLElement | null {
-  return document.querySelector<HTMLElement>("[data-drill=page]");
-}
-
-/** How far the child page sits right of its place, in % of the width; 100 when it is gone. */
-function offset(): number {
-  const transform = child()?.style.transform;
-
-  return transform === undefined || transform === ""
-    ? 100
-    : Number(/translateX\(([-\d.]+)%\)/u.exec(transform)?.[1]);
-}
-
-async function until(done: () => boolean): Promise<void> {
-  await expect.poll(done, { timeout: 2000 }).toBe(true);
-}
 
 test("tapping a row slides its page in and the commit plays soft", async () => {
   const screen = await render(Harness);
@@ -199,4 +177,47 @@ test("from 1024 px the groups and the chosen group sit side by side", async () =
     .element(screen.getByRole("button", { name: /Netz/u }))
     .toHaveAttribute("aria-current", "page");
   expect(vibrate).toHaveBeenCalledOnce();
+});
+
+test("a pushed level hides its parent from the eye, the tab key and assistive tech", async () => {
+  await page.viewport(390, 844);
+  const screen = await render(Harness);
+  await screen.getByRole("button", { name: /Batterie/u }).click();
+  await until(() => offset() === 0);
+
+  const root = document.querySelector("[data-drill=box] > section:not([data-drill])");
+
+  await expect.element(screen.getByText("Netz & Einspeisung", { exact: true })).not.toBeVisible();
+  expect(screen.getByRole("button", { name: /Netz/u }).elements()).toHaveLength(0);
+
+  // Inert, and the tab key walks the page alone.
+  expect(root?.hasAttribute("inert")).toBe(true);
+  await userEvent.keyboard("{Tab}".repeat(6));
+  expect(document.activeElement).not.toBeNull();
+  expect(root?.contains(document.activeElement)).toBe(false);
+});
+
+test("the level header keeps the back label and the title apart at 320 px", async () => {
+  await page.viewport(320, 700);
+  await render(Harness, { initial: "long", width: 288, back: "Einstellungen" });
+
+  const box = rect(document.querySelector("[data-drill=box]"));
+  const header = child()?.querySelector("[data-drill=header]");
+  const back = rect(header?.querySelector("button"));
+  const title = rect(header?.querySelector("h2"));
+
+  expect(back.right).toBeLessThanOrEqual(title.left);
+  expect(title.left).toBeGreaterThanOrEqual(box.left);
+  expect(title.right).toBeLessThanOrEqual(box.right);
+});
+
+test("a level wider than the box neither widens it nor pushes its title away", async () => {
+  await page.viewport(390, 844);
+  await render(Harness, { initial: "battery", wide: true });
+
+  const box = document.querySelector<HTMLElement>("[data-drill=box]")!;
+  const title = rect(child()?.querySelector("[data-drill=header] h2"));
+
+  expect(rect(child()).width).toBeLessThanOrEqual(box.clientWidth);
+  expect(title.right).toBeLessThanOrEqual(rect(box).right);
 });

@@ -1,7 +1,7 @@
 //! Blocks, roofs and obstacles as faces and solids in the frame shading uses (ADR 20), checked
 //! against corners worked out by hand.
 
-use crate::{Block, Crown, Face, Obstacle, Occluder, Point, Roof, Scene, Surface};
+use crate::{Block, Crown, Face, Obstacle, Occluder, Overhang, Point, Roof, Scene, Surface};
 
 fn block(roof: Roof) -> Block {
     Block {
@@ -13,6 +13,9 @@ fn block(roof: Roof) -> Block {
         rotation: 0.0,
         roof,
         open: false,
+        overhang: Overhang::default(),
+        roof_colour: None,
+        wall_colour: None,
     }
 }
 
@@ -24,8 +27,10 @@ fn scene(blocks: Vec<Block>, obstacles: Vec<Obstacle>) -> Scene {
         grids: vec![],
         equipment: vec![],
         car_places: vec![],
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
+        openings: vec![],
     }
 }
 

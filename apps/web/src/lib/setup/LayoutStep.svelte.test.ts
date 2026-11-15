@@ -53,17 +53,27 @@ test.each([390, 320])("at %i px the step's title shows in full", async (width) =
   expect(shown.getBoundingClientRect().right).toBeLessThanOrEqual(width);
 });
 
-test("the canvas's notices stack apart from each other, the tools and the inspector", async () => {
+test("the canvas's status line keeps apart from the tools and the inspector", async () => {
   await step();
   await tap(page.getByRole("button", { name: "Einfamilienhaus mit Satteldach" }));
   await tap(page.getByRole("button", { name: "Hinzufügen" }));
   await tap(page.getByRole("button", { name: "String hinzufügen" }));
+
+  const handle = page.getByRole("button", { name: "Szene bearbeiten" });
+
+  // The new string's level pulls the sheet up; only then can the finger take it down.
+  await expect.element(handle).toHaveAttribute("aria-expanded", "true");
   // Down again, to look at the canvas.
-  await tap(page.getByRole("button", { name: "Szene bearbeiten" }));
+  await tap(handle);
+
+  // One status line holds the notices: what does not fit scrolls inside it.
+  const status = page.getByRole("group", { name: "Jetzt in der Szene" });
+
+  await expect.element(status.getByText(/^Ohne den Standort der Anlage/u)).toBeInTheDocument();
+  await expect.element(status.getByRole("list", { name: "Leistung je String" })).toBeVisible();
 
   const notices = [
-    page.getByText(/^Ohne den Standort der Anlage/u),
-    page.getByRole("list", { name: "Leistung je String" }),
+    status,
     page.getByRole("toolbar", { name: "Werkzeuge" }),
     page.getByRole("region", { name: "Szene bearbeiten" }),
   ];
@@ -73,9 +83,7 @@ test("the canvas's notices stack apart from each other, the tools and the inspec
     await expect.element(notice).toBeVisible();
   }
 
-  await expect
-    .element(page.getByRole("button", { name: "Szene bearbeiten" }))
-    .toHaveAttribute("aria-expanded", "false");
+  await expect.element(handle).toHaveAttribute("aria-expanded", "false");
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locators, read only.
   const boxes = notices.map((notice) => notice.element().getBoundingClientRect());

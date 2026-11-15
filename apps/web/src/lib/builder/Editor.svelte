@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
   import type { Level } from "./levels.ts";
-  import type { Draft, Strokes } from "./modules.ts";
+  import type { Draft, TypeSource } from "./modules.ts";
   import ObjectLevel from "./ObjectLevel.svelte";
   import type { Plan } from "./outline.ts";
   import RootLevel from "./RootLevel.svelte";
@@ -11,16 +11,17 @@
   let {
     plan,
     moduleTypes,
+    types,
     level,
     onlevel,
-    strokes,
     onchange,
   }: {
     plan: Plan;
     moduleTypes: readonly ModuleType[];
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
     level: Level;
     onlevel: (level: Level) => void;
-    strokes: Strokes;
     onchange: (draft: Draft) => void;
   } = $props();
 
@@ -33,5 +34,5 @@
 {:else if level.kind === "section"}
   <SectionLevel section={level.section} {plan} {moduleType} {onchange} {onlevel} />
 {:else}
-  <ObjectLevel {level} {plan} {moduleTypes} {moduleType} {strokes} {onchange} {onlevel} />
+  <ObjectLevel {level} {plan} {moduleTypes} {types} {onchange} {onlevel} />
 {/if}

@@ -3,7 +3,21 @@
   import "../../../app.css";
   import DrillIn from "./drill-in.svelte";
 
-  let { initial = null }: { initial?: string | null } = $props();
+  let {
+    initial = null,
+    width = 400,
+    back = "Steuerung",
+    wide = false,
+    tall = false,
+  }: {
+    initial?: string | null;
+    width?: number;
+    back?: string;
+    /** Pages hold content wider than the box, such as a table. */
+    wide?: boolean;
+    /** Both levels are taller than the screen. */
+    tall?: boolean;
+  } = $props();
 
   // The harness starts on `initial`, then owns the route as the app's history would.
   // svelte-ignore state_referenced_locally
@@ -16,9 +30,12 @@
   // svelte-ignore state_referenced_locally
   if (initial !== null) history.pushState({ drill: initial }, "");
 
+  // svelte-ignore state_referenced_locally
   const groups = [
     { id: "battery", label: "Batterie", summary: "20–100 % · 120 A" },
     { id: "grid", label: "Netz & Einspeisung", summary: "10.000 W" },
+    { id: "long", label: "Benachrichtigungen & Zugangsberechtigungen" },
+    ...(tall ? Array.from({ length: 20 }, (_, i) => ({ id: `g${i}`, label: `Gruppe ${i}` })) : []),
   ];
 
   function navigate(id: string | null): void {
@@ -32,10 +49,14 @@
 
 <svelte:window onpopstate={(e) => (open = (e.state as { drill?: string } | null)?.drill ?? null)} />
 
-<div style="width: 400px">
-  <DrillIn {groups} {open} onnavigate={navigate} back="Steuerung">
+<div style:width="{width}px">
+  <DrillIn {groups} {open} onnavigate={navigate} {back}>
     {#snippet page(group)}
-      <p>Seite {group.label}</p>
+      <div class="drill-card">
+        <p>Seite {group.label}</p>
+        {#if wide}<div style="width: 900px">breit</div>{/if}
+        {#if tall}<div style="height: 1600px">lang</div>{/if}
+      </div>
     {/snippet}
   </DrillIn>
 </div>

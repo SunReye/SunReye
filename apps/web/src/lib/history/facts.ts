@@ -1,10 +1,9 @@
 // What the statistics screen reads once, whatever the range: the strings, whether the plant has a
 // battery or an EV, the first day it recorded, and payback (admin only, ADR 12).
-import type { Core, PvString } from "../api/core.ts";
+import { PLANT, type Core, type PvString } from "../api/core.ts";
 import type { Payback } from "../api/tariff.ts";
 import { inputCorrections, modulePeaks } from "../analytics/string-energy.ts";
 import type { InputCorrection } from "../analytics/strings.ts";
-import { PLANT } from "../dashboard/day.ts";
 import { layoutStrings } from "../live/plant-facts.ts";
 import { dayOfIso } from "../range/calendar.ts";
 

@@ -36,7 +36,7 @@ impl Profile {
         for (position, quantity) in self.quantities().iter().enumerate() {
             let value = match &quantity.read {
                 Read::Register(register) => read(register, registers)
-                    .and_then(|raw| variant(&quantity.variants, raw))
+                    .and_then(|raw| mapped(&quantity.mapping, raw))
                     .filter(|value| value.is_finite())
                     .map(|value| clamped(quantity.range, value)),
                 Read::Compute(expr) => Some(clamped(quantity.range, evaluate(expr, values))),
@@ -181,12 +181,12 @@ fn number(value: &Value) -> Option<f64> {
     }
 }
 
-/// What `raw` reads as through `variants`; itself when there are none.
-fn variant(variants: &[(f64, f64)], raw: f64) -> Option<f64> {
-    if variants.is_empty() {
+/// What `raw` reads as through `mapping`; itself when there are none.
+fn mapped(mapping: &[(f64, f64)], raw: f64) -> Option<f64> {
+    if mapping.is_empty() {
         return Some(raw);
     }
-    variants
+    mapping
         .iter()
         .find(|(from, _)| from.to_bits() == raw.to_bits())
         .map(|(_, value)| *value)

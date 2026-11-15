@@ -5,21 +5,30 @@
   import type { SceneFailure } from "../scene/stage.svelte.ts";
   import { warm } from "../scene/warm.ts";
   import type { SceneLayout } from "./dashboard.ts";
+  import { LiveSky } from "./sky.svelte.ts";
 
   let {
     core,
     layout,
+    locked,
+    top,
     onselect,
     onready,
     onerror,
   }: {
     core: Core;
     layout: SceneLayout;
+    locked: boolean;
+    /** Pixels at the top the chips leave free. */
+    top: number;
     onselect: (id: string) => void;
     /** The first frame is on screen and the scene has started to fade in. */
     onready: () => void;
     onerror: (reason: SceneFailure) => void;
   } = $props();
+
+  /** The weather now lights the scene (ADR 20). */
+  const sky = new LiveSky(() => core);
 
   /** three.js, the crate, the worker's textures and what the scene needs: loaded once mounted.
    * Null when any of it failed, which the hero is told. */
@@ -73,6 +82,9 @@
         {capabilities}
         {model}
         {location}
+        diffuse={sky.diffuse}
+        {locked}
+        {top}
         {onselect}
         {onready}
         {onerror}

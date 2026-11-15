@@ -4,10 +4,10 @@
 -->
 <script lang="ts">
   import * as Sheet from "#lib/components/ui/sheet/index.js";
-  import type { Core, Live, PvString } from "../api/core.ts";
-  import BottomSheet from "../components/bottom-sheet.svelte";
+  import { SPOT, type Core, type Live, type PvString } from "../api/core.ts";
+  import DrawerSheet from "../components/drawer-sheet.svelte";
   import { estimatedSeries, layoutStrings } from "../live/plant-facts.ts";
-  import { SPOT, type Day } from "../dashboard/day.ts";
+  import type { Day } from "../dashboard/day.ts";
   import { RangeRoute, type Go } from "../range/route.svelte.ts";
   import { input } from "../shell/input.svelte.ts";
   import DetailBody from "./DetailBody.svelte";
@@ -172,14 +172,17 @@
         e.preventDefault();
         (document.querySelector("[data-detail-sheet]") as HTMLElement | null)?.focus();
       }}
-      class="glass-ambient w-full gap-0 overflow-y-auto p-0 outline-none no-scrollbar data-[side=right]:sm:max-w-[460px]"
+      class="glass-ambient w-full gap-0 overflow-hidden p-0 outline-none data-[side=right]:sm:max-w-[460px]"
     >
       <Sheet.Title class="sr-only">{title}</Sheet.Title>
-      {@render body()}
+      <!-- The glass keeps its edge; the sheet scrolls and fades inside it (ADR 21). -->
+      <div class="min-h-0 flex-1 overflow-y-auto scroll-fade-y no-scrollbar">
+        {@render body()}
+      </div>
     </Sheet.Content>
   </Sheet.Root>
 {:else}
-  <BottomSheet
+  <DrawerSheet
     bind:open={
       () => open,
       (v) => {
@@ -188,10 +191,10 @@
     }
     label={title}
   >
-    <div class="overflow-y-auto no-scrollbar" data-detail-sheet>
+    <div class="overflow-y-auto scroll-fade-y no-scrollbar" data-detail-sheet>
       {@render body()}
     </div>
-  </BottomSheet>
+  </DrawerSheet>
 {/if}
 
 <style>
@@ -199,7 +202,7 @@
      readable, and no full-screen blur fades in (ADR 21: never animate backdrop-filter). */
   :global(body:has([data-detail-sheet]) [data-slot="sheet-overlay"]) {
     background: color-mix(in oklab, var(--background) 55%, transparent);
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 </style>

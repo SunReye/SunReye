@@ -314,6 +314,32 @@ async fn a_scene_derives_its_strings_planes_and_module_counts() {
 }
 
 #[tokio::test]
+async fn a_strings_wiring_order_is_kept_with_its_modules() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let wired = |row, column, order| {
+        let mut wired = cell(row, column, Some(0), false);
+        wired["order"] = json!(order);
+        wired
+    };
+    let scene = house(&module, &[wired(1, 1, 0), wired(0, 0, 2), wired(0, 1, 1)]);
+
+    let (status, saved) = core
+        .put_scene(
+            &set_cookie,
+            &[string(None, "south", &module, 1, 0.0)],
+            &scene,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], scene);
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    assert_eq!(read["scene"], scene);
+}
+
+#[tokio::test]
 async fn saving_refuses_modules_outside_the_setback_or_overlapping_or_unknown() {
     let dir = tempfile::tempdir().unwrap();
     let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
@@ -475,4 +501,167 @@ async fn a_car_place_under_a_carport_is_saved_and_the_carports_modules_join_a_st
         (refused, &body["code"]),
         (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
     );
+}
+
+#[tokio::test]
+async fn the_module_catalogue_serves_each_sheet_with_its_datasheet() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+
+    let (status, body) = core
+        .call(&set_cookie, get("/api/v1/module-catalogue"))
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let sheets = body["sheets"].as_array().unwrap();
+    let aiko = sheets
+        .iter()
+        .find(|sheet| sheet["series"] == "Neostar 2S+")
+        .unwrap();
+    assert_eq!(aiko["maker"], "AIKO");
+    assert_eq!(aiko["source"]["revision"], "DS_EN_2405_V1.5");
+    // AIKO-A450-MAH54Db as the datasheet prints it.
+    assert_eq!(
+        aiko["modules"][2],
+        json!({ "name": "AIKO-A450-MAH54Db", "pmax": 450.0, "vmp": 34.5, "imp": 13.05,
+            "voc": 40.94, "isc": 14.12, "powerCoefficient": -0.26, "voltageCoefficient": -0.22,
+            "currentCoefficient": 0.05, "width": 1.134, "height": 1.757, "bypassDiodes": 3 })
+    );
+}
+
+#[tokio::test]
+async fn overhangs_chimneys_and_colours_are_saved_and_a_bad_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let with = |eave: f64, colour: &str, across: f64| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        let block = &mut scene["blocks"][0];
+        block["overhang"] = json!({ "eave": eave, "verge": 0.3 });
+        block["roofColour"] = json!(colour);
+        block["wallColour"] = json!("#f2f0eb");
+        scene["chimneys"] = json!([{
+            "block": 0, "face": 1, "across": across, "up": 3.0, "width": 0.6, "depth": 0.6,
+            "height": 1.2,
+        }]);
+        scene
+    };
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with(0.5, "#9c4a32", 5.0))
+        .await;
+    let (_, read) = core.call(&set_cookie, get("/api/v1/layout")).await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(read["scene"], with(0.5, "#9c4a32", 5.0));
+    // The south face is 10.6 m wide with the verges; a chimney at 10.5 m stands off it.
+    for scene in [
+        with(-0.1, "#9c4a32", 5.0),
+        with(0.5, "red", 5.0),
+        with(0.5, "#9c4a32", 10.5),
+    ] {
+        let (refused, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_string_no_module_is_painted_into_is_refused_naming_its_module_count() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    // The owner's save (#743): modules placed, a string added, none painted into it.
+    let scene = house(&module, &[cell(0, 0, None, false), cell(0, 1, None, false)]);
+    let strings = [string(None, "S1", &module, 1, 0.0)];
+
+    let (status, body) = core.put_scene(&set_cookie, &strings, &scene).await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        (&body["code"], &body["pointer"]),
+        (&json!("layout.value"), &json!("/strings/0/modules"))
+    );
+}
+
+#[tokio::test]
+async fn each_value_refusal_points_at_its_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let pointer = async |method: &str, uri: &str, body: Value| {
+        let (status, body) = core.call(&set_cookie, send(method, uri, &body)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["code"], json!("layout.value"));
+        body["pointer"].as_str().unwrap_or_default().to_owned()
+    };
+    let wired = async |field: &str, value: Value| {
+        let mut second = string(None, "b", &module, 1, 0.0);
+        second[field] = value;
+        let strings = [string(None, "a", &module, 1, 0.0), second];
+        let body = json!({ "appliesFrom": "2026-11-01T00:00:00Z", "strings": strings });
+        pointer("PUT", "/api/v1/layout", body).await
+    };
+
+    assert_eq!(wired("modules", json!(0)).await, "/strings/1/modules");
+    assert_eq!(wired("optimized", json!(17)).await, "/strings/1/optimized");
+    assert_eq!(wired("tilt", json!(91.0)).await, "/strings/1/tilt");
+    assert_eq!(wired("azimuth", json!(-181.0)).await, "/strings/1/azimuth");
+    assert_eq!(wired("loss", json!(100.0)).await, "/strings/1/loss");
+    for field in ["pmax", "vmp", "imp", "voc", "isc", "width", "height"] {
+        let mut sheet = datasheet();
+        sheet[field] = json!(0.0);
+        let at = pointer("POST", "/api/v1/module-types", sheet).await;
+        assert_eq!(at, format!("/{field}"));
+    }
+}
+
+#[tokio::test]
+async fn openings_are_saved_with_the_scene_and_one_off_its_wall_or_overlapping_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, set_cookie) = Core::signed_in(&dir.path().join("core.sqlite")).await;
+    let module = core.module_type(&set_cookie).await;
+    let strings = [string(None, "south", &module, 1, 0.0)];
+    let window = |along: f64| {
+        json!({
+            "kind": "window", "block": 0, "wall": "front",
+            "along": along, "width": 1.2, "height": 1.4, "sill": 0.9,
+        })
+    };
+    let with = |second: serde_json::Value| {
+        let mut scene = house(&module, &[cell(0, 0, Some(0), false)]);
+        scene["openings"] = json!([
+            { "kind": "frontDoor", "block": 0, "wall": "front",
+              "along": 4.0, "width": 1.0, "height": 2.1 },
+            window(1.0),
+            second,
+        ]);
+        scene
+    };
+
+    let (status, saved) = core
+        .put_scene(&set_cookie, &strings, &with(window(6.0)))
+        .await;
+    let (read, layout) = core.call(&set_cookie, get("/api/v1/layout")).await;
+    // The front wall is 10 m long; 1.5 m overlaps the window at 1 m.
+    let (off, off_body) = core
+        .put_scene(&set_cookie, &strings, &with(window(9.5)))
+        .await;
+    let (overlapping, overlapping_body) = core
+        .put_scene(&set_cookie, &strings, &with(window(1.5)))
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scene"], with(window(6.0)));
+    assert_eq!(read, StatusCode::OK);
+    assert_eq!(layout["scene"]["openings"], with(window(6.0))["openings"]);
+    for (refused, body) in [(off, off_body), (overlapping, overlapping_body)] {
+        assert_eq!(
+            (refused, &body["code"]),
+            (StatusCode::UNPROCESSABLE_ENTITY, &json!("layout.scene"))
+        );
+    }
 }

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
 import "../../app.css";
+import { pull } from "../components/drawer.harness.ts";
+import { unfaded } from "../scroll-fade.harness.ts";
 import { BATTERY, prepare, restore, served, show } from "./detail.harness.ts";
 
 beforeEach(prepare);
@@ -71,6 +73,8 @@ test("a device's sheet lists its readings by group", async () => {
 
   await expect.element(readings.getByText("Zyklen")).toBeVisible();
   await expect.element(readings.getByText("Zähler")).toBeVisible();
+  // The sheet scrolls inside its glass and fades its edges (ADR 21).
+  expect(unfaded()).toEqual([]);
 });
 
 test("a string sharing its input is estimated and opens its sibling", async () => {
@@ -147,7 +151,7 @@ test("a sheet enters in about 350 ms easing out and leaves faster, easing in", a
 });
 
 // Last: touch emulation cannot be undone (pointer stays `none`).
-test("on a desktop it is a side sheet, on a phone a bottom sheet", async () => {
+test("on a desktop it is a side sheet, on a phone a drawer that a pull down or back closes", async () => {
   const wide = await show("price");
 
   await expect.element(wide.screen.getByRole("dialog")).toHaveAttribute("data-side", "right");
@@ -157,9 +161,19 @@ test("on a desktop it is a side sheet, on a phone a bottom sheet", async () => {
   await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true });
 
   try {
-    const phone = await show("price");
+    const phone = await show();
 
-    await expect.element(phone.screen.getByRole("dialog")).toHaveAttribute("data-side", "bottom");
+    await phone.screen.rerender({ detail: "price" });
+
+    const sheet = phone.screen.getByRole("dialog", { name: "Spotpreis" });
+
+    await expect.element(sheet).toHaveAttribute("data-vaul-drawer-direction", "bottom");
+    await pull(sheet.element(), 300);
+    expect(phone.onclose).toHaveBeenCalledOnce();
+
+    // Back drops the hash route's figure.
+    await phone.screen.rerender({ detail: null });
+    await expect.element(sheet).not.toBeInTheDocument();
   } finally {
     await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
   }

@@ -1,6 +1,7 @@
 // What a handle drag makes of the scene (ADR 20): from the ray that grabbed it to the pointer's
 // ray now, snapped. Pure; the drag slides in a level plane, the pitch in an upright one.
-import type { Scene } from "../pv.ts";
+import type { Pv, Scene } from "../pv.ts";
+import { slide as slideOpening, type Fitter } from "../wall-openings.ts";
 import { bodyOf, on, ridge, type Body, type Rect, type Round, type Target } from "./body.ts";
 import {
   clamp,
@@ -177,9 +178,59 @@ function slid(grip: Grip, slide: Slide, body: Body): Dragged | null {
   return grip === "turn" ? spin(slide, body) : null;
 }
 
+/** What a chimney's or an opening's drag asks the crate: where it may be, and the walls it laid
+ * out. */
+export interface Crate extends Fitter {
+  readonly pv: Pick<Pv, "refit" | "glide">;
+}
+
+/** A chimney follows the pointer's level move along its roof face, where the crate lets it. */
+function climb({ scene, target, from, to }: Slide, pv: Pick<Pv, "glide">): Dragged | null {
+  const chimneys = scene.chimneys ?? [];
+  // The scene's frame turned back to east and north, the crate's.
+  const [east, south] = turn(to[0] - from[0], to[2] - from[2], scene.north);
+  const moved = pv.glide(scene, target.index, [east, -south]);
+
+  return moved
+    ? {
+        scene: { ...scene, chimneys: chimneys.with(target.index, moved) },
+        value: [moved.across, moved.up],
+        unit: "m",
+      }
+    : null;
+}
+
+/** A drag in a level plane: a fence's point, a chimney on its face, or a body. */
+function levelled(slide: Slide, grab: Grab, crate: Crate | undefined): Dragged | null {
+  if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
+
+  if (slide.target.kind === "chimney") {
+    return grab.grip === "move" && crate !== undefined ? climb(slide, crate.pv) : null;
+  }
+
+  const body = bodyOf(slide.scene, slide.target);
+
+  return body === undefined ? null : slid(grab.grip, slide, body);
+}
+
 /** What dragging `grab` to the pointer's ray `now` makes of the scene; null where the ray misses
- * the drag's plane or the grip has nothing to drag. */
-export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragged | null {
+ * the drag's plane or the grip has nothing to drag. A chimney and an opening go where the `crate`
+ * lets them, and nowhere without it. */
+export function drag(
+  scene: Scene,
+  target: Target,
+  grab: Grab,
+  now: Ray,
+  crate?: Crate,
+): Dragged | null {
+  // An opening slides in its wall's plane, not a level one.
+  if (target.kind === "opening") {
+    return crate !== undefined &&
+      (grab.grip === "move" || grab.grip === "width" || grab.grip === "height")
+      ? slideOpening(scene, target.index, grab.grip, [grab.ray, now], crate)
+      : null;
+  }
+
   const [start, end] = [inScene(scene.north, grab.ray), inScene(scene.north, now)];
 
   if (grab.grip === "pitch") {
@@ -190,11 +241,5 @@ export function drag(scene: Scene, target: Target, grab: Grab, now: Ray): Dragge
 
   if (from === null || to === null) return null;
 
-  const slide = { scene, target, from, to };
-
-  if (grab.grip === "point") return repoint(slide, grab.point ?? -1);
-
-  const body = bodyOf(scene, target);
-
-  return body === undefined ? null : slid(grab.grip, slide, body);
+  return levelled({ scene, target, from, to }, grab, crate);
 }

@@ -19,7 +19,8 @@ import {
   undesk,
   type Pointer,
 } from "./builder.harness.ts";
-import { connect } from "../api/core.ts";
+import { saveFrom } from "./moment.harness.ts";
+import { connect, type Transport } from "../api/core.ts";
 import { addGrid, fillGrid, panels, type Draft } from "./modules.ts";
 import { toThree } from "./scene.ts";
 
@@ -80,12 +81,12 @@ afterEach(async () => {
   await undesk();
 });
 
-async function opened(draft: Draft) {
+async function opened(draft: Draft, transport: Readonly<Transport> = testCore()) {
   const draws = vi.spyOn(EffectComposer.prototype, "render");
 
   await render(Builder, {
     pv,
-    core: connect(testCore()),
+    core: connect(transport),
     start: draft,
     moduleTypes: [MODULE, OTHER],
     devices: DEVICES,
@@ -130,4 +131,34 @@ test("painting a string of another module type in 3D is refused beside the point
     .element(page.getByRole("alert").filter({ hasText: "Ost hat einen anderen Modultyp" }))
     .toBeVisible();
   await expect.element(made(0)).toBeVisible();
+});
+
+test("a drag across modules wires them in the order it crosses them, and saves that order", async () => {
+  const transport = testCore();
+  const draft = filled([wired("Süd", MODULE.id)]);
+
+  await opened(draft, transport);
+
+  await expect.element(inspector().getByText(/^Ziehe auf dem Dach über Module/u)).toBeVisible();
+
+  await press("mouse", three(draft).toReversed());
+
+  await expect.element(made(3)).toBeVisible();
+
+  await saveFrom("2026-11-01");
+
+  await expect.poll(() => transport.puts).toHaveLength(1);
+
+  // The south face is the second grid, filled two rows of eight: its first row wired right to left.
+  const south = Array.from({ length: 16 }, (_, i) => {
+    const [row, column] = [Math.floor(i / 8), i % 8];
+
+    return row === 0 && column < 3
+      ? { row, column, string: 0, order: 2 - column }
+      : { row, column };
+  });
+
+  expect(transport.puts[0]).toMatchObject({
+    scene: { grids: [{ face: 0 }, { face: 1, modules: south }] },
+  });
 });

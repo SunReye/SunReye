@@ -10,11 +10,11 @@ const usage = `usage: sunreye-profile <command>
   decode <profile> <dump> each quantity's value from a register dump, [{ "start", "words" }]
   build <dir>             renders each profile module in <dir> to <id>.json and index.json,
                           bumping a profile's patch version when its content changed
-  capture <endpoint> <unit> <profile>
+  capture <endpoint> <unit> <profile> [variant]
                           a read-only capture of a device for sim, from the core's
                           \`sunreye capture\`: <endpoint> is modbus-tcp://,
                           rtu-over-tcp:// or solarman-v5://host:port, <profile> a
-                          bundled profile's id
+                          bundled profile's id, [variant] the variant the device is
 `;
 
 async function lint(path: string): Promise<string> {
@@ -47,10 +47,19 @@ async function build(dir: string): Promise<string> {
 async function capture(
   core: string,
   endpoint: string,
-  unit: string,
-  profile: string,
+  [unit, profile, variant]: readonly [string, string, string?],
 ): Promise<string> {
-  const args = ["capture", "--endpoint", endpoint, "--unit", unit, "--profile", profile];
+  const args = [
+    "capture",
+    "--endpoint",
+    endpoint,
+    "--unit",
+    unit,
+    "--profile",
+    profile,
+    ...(variant === undefined ? [] : ["--variant", variant]),
+  ];
+
   const child = Bun.spawn([core, ...args], { stdout: "pipe", stderr: "pipe" });
 
   const [out, err, code] = await Promise.all([
@@ -77,10 +86,14 @@ function commands(
     ["build", ([dir]) => (dir === undefined ? undefined : build(dir))],
     [
       "capture",
-      ([endpoint, unit, profile]) =>
+      ([endpoint, unit, profile, variant]) =>
         endpoint === undefined || unit === undefined || profile === undefined
           ? undefined
-          : capture(core, endpoint, unit, profile),
+          : capture(
+              core,
+              endpoint,
+              variant === undefined ? [unit, profile] : [unit, profile, variant],
+            ),
     ],
   ]);
 }

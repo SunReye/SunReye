@@ -66,6 +66,18 @@ export function problem(status: number, code: string): Response {
   );
 }
 
+/** What the test core always answers the same, by path. */
+const FIXED = new Map([
+  ["/api/v1/capabilities", () => Response.json(CAPABILITIES)],
+  ["/api/v1/devices", () => Response.json({ devices: [DEVICE] })],
+  ["/api/v1/connections", () => Response.json({ connections: [] })],
+  ["/api/v1/profiles", () => Response.json({ profiles: [] })],
+  ["/api/v1/profile-updates", () => Response.json({ updates: [] })],
+  // No import has run, and none is offered.
+  ["/api/v1/import", () => Response.json({ state: "idle", done: 0, total: 0 })],
+  ["/api/v1/import/files", () => Response.json({ files: [] })],
+]);
+
 /** A test core: capabilities as above, the write log and each write answered by the test. */
 export function testCore(
   log: () => Response,
@@ -83,18 +95,11 @@ export function testCore(
 
       if (answer !== undefined) return answer();
 
-      if (path === "/api/v1/capabilities") return Response.json(CAPABILITIES);
-
-      if (path === "/api/v1/devices") return Response.json({ devices: [DEVICE] });
-
       if (path === "/api/v1/writes") return log();
 
-      if (path === "/api/v1/profile-updates") return Response.json({ updates: [] });
+      const fixed = FIXED.get(path);
 
-      // No import has run, and none is offered.
-      if (path === "/api/v1/import") return Response.json({ state: "idle", done: 0, total: 0 });
-
-      if (path === "/api/v1/import/files") return Response.json({ files: [] });
+      if (fixed !== undefined) return fixed();
 
       writes.push(`${request.method} ${path} ${await request.text()}`);
 

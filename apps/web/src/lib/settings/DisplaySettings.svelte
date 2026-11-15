@@ -4,7 +4,7 @@
   import { MediaQuery } from "svelte/reactivity";
   import * as Item from "#lib/components/ui/item/index.js";
   import * as ToggleGroup from "#lib/components/ui/toggle-group/index.js";
-  import SwitchRow from "../builder/SwitchRow.svelte";
+  import ToggleRow from "./ToggleRow.svelte";
   import { HAPTICS, haptics, hapticsOn } from "../haptics.ts";
   import { endonym, language } from "../i18n/language.svelte.ts";
   import { motion } from "../motion/tier.svelte.ts";
@@ -80,35 +80,37 @@
   </Item.Root>
 {/snippet}
 
-<Item.Group class="gap-0 divide-y divide-border/60">
-  {@render segment(
-    m.display_theme(),
-    userPrefersMode.current === "light" ? "light" : "dark",
-    theme,
-    [
-      ["dark", m.display_dark()],
-      ["light", m.display_light()],
-    ],
-  )}
-  {@render segment(
-    m.locale_label(),
-    language.current,
-    speak,
-    locales.map((locale) => [locale, endonym(locale)] as const),
-  )}
-  <SwitchRow
-    label={m.display_low_power()}
-    hint={m.display_low_power_hint()}
-    checked={motion.lowPower}
-    onchange={(on) => {
-      motion.lowPower = on;
-    }}
-  />
-  <SwitchRow
-    label={m.display_haptics()}
-    hint={held ?? m.display_haptics_hint()}
-    checked={feel}
-    disabled={held !== undefined}
-    onchange={feelOn}
-  />
-</Item.Group>
+<div class="drill-card">
+  <Item.Group class="gap-0 divide-y divide-border/60">
+    {@render segment(
+      m.display_theme(),
+      userPrefersMode.current === "light" ? "light" : "dark",
+      theme,
+      [
+        ["dark", m.display_dark()],
+        ["light", m.display_light()],
+      ],
+    )}
+    {@render segment(
+      m.locale_label(),
+      language.current,
+      speak,
+      locales.map((locale) => [locale, endonym(locale)] as const),
+    )}
+    <ToggleRow
+      label={m.display_low_power()}
+      hint={m.display_low_power_hint()}
+      checked={motion.lowPower}
+      onchange={(on) => {
+        motion.lowPower = on;
+      }}
+    />
+    <ToggleRow
+      label={m.display_haptics()}
+      hint={held ?? m.display_haptics_hint()}
+      checked={feel}
+      disabled={held !== undefined}
+      onchange={feelOn}
+    />
+  </Item.Group>
+</div>

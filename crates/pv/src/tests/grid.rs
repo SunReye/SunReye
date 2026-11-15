@@ -2,6 +2,7 @@
 //! by hand: each roof face is 10 m wide and 4 m ÷ cos 35° = 4.883 m up the slope.
 
 use super::fixtures::MODULE;
+use crate::Overhang;
 use crate::shade::shaded_substrings;
 use crate::{
     Block, Cell, Misplaced, ModuleGrid, Obstacle, Place, Plane, Point, Roof, Scene, Size, Sun,
@@ -28,13 +29,18 @@ fn house(north: f64, grids: Vec<ModuleGrid>) -> Scene {
             rotation: 0.0,
             roof: Roof::Gable { pitch: 35.0 },
             open: false,
+            overhang: Overhang::default(),
+            roof_colour: None,
+            wall_colour: None,
         }],
         obstacles: vec![],
         grids,
         equipment: vec![],
         car_places: vec![],
+        chimneys: vec![],
         surfaces: vec![],
         fences: vec![],
+        openings: vec![],
     }
 }
 
@@ -55,6 +61,7 @@ const fn cell(row: u32, column: u32, string: Option<u32>) -> Cell {
         column,
         string,
         optimized: false,
+        order: None,
     }
 }
 

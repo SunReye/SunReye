@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import {
   addGrid,
+  clearGrid,
   addString,
   apply,
   fillGrid,
@@ -52,7 +53,9 @@ test("placing toggles a module in a cell, and painting assigns it to a string", 
 
   const into = apply(placed, 0, { row: 0, column: 2 }, { kind: "paint", string: 1 });
 
-  expect(into.grids?.[0]?.modules).toEqual([{ row: 0, column: 2, string: 1, optimized: false }]);
+  expect(into.grids?.[0]?.modules).toEqual([
+    { row: 0, column: 2, string: 1, optimized: false, order: 0 },
+  ]);
   expect(apply(placed, 0, { row: 0, column: 2 }, { kind: "place" }).grids?.[0]?.modules).toEqual(
     [],
   );
@@ -62,7 +65,9 @@ test("painting an empty cell places a module there, and unpainting keeps the mod
   const into = apply(gridded, 0, { row: 1, column: 0 }, { kind: "paint", string: 0 });
   const unpainted = apply(into, 0, { row: 1, column: 0 }, { kind: "paint" });
 
-  expect(into.grids?.[0]?.modules).toEqual([{ row: 1, column: 0, string: 0, optimized: false }]);
+  expect(into.grids?.[0]?.modules).toEqual([
+    { row: 1, column: 0, string: 0, optimized: false, order: 0 },
+  ]);
   expect(unpainted.grids?.[0]?.modules).toEqual([{ row: 1, column: 0, optimized: false }]);
 });
 
@@ -79,6 +84,20 @@ test("removing a block drops its grids and renumbers those of later blocks", () 
   const two = addGrid(addGrid(empty, 0, 0, 7), 1, 1, 7);
 
   expect(withoutBlock(two, 0).grids?.map((grid) => [grid.block, grid.face])).toEqual([[0, 1]]);
+});
+
+test("removing a block drops the chimneys on its roof and renumbers those of later blocks", () => {
+  const stack = { face: 0, across: 2, up: 2, width: 0.6, depth: 0.6, height: 1 } as const;
+
+  const stacked: Scene = {
+    ...empty,
+    chimneys: [
+      { ...stack, block: 0 },
+      { ...stack, block: 1 },
+    ],
+  };
+
+  expect(withoutBlock(stacked, 0).chimneys).toEqual([{ ...stack, block: 0 }]);
 });
 
 test("removing a block drops the equipment on its walls and renumbers that of later blocks", () => {
@@ -102,7 +121,7 @@ test("removing a string unassigns its modules and renumbers later strings", () =
 
   expect(withoutString(scene, 0).grids?.[0]?.modules).toEqual([
     { row: 0, column: 0, optimized: false },
-    { row: 0, column: 1, string: 0, optimized: false },
+    { row: 0, column: 1, string: 0, optimized: false, order: 0 },
   ]);
 });
 
@@ -188,6 +207,7 @@ test("fill face places a module in every cell the crate's grid holds, keeping pa
     column: 1,
     string: 0,
     optimized: false,
+    order: 0,
   });
   expect(pv.modules(filled, SIZES).misplaced).toBeNull();
 });
@@ -265,4 +285,10 @@ test("a stroke leaves each cell with a module or none, keeping what it does not 
     ...at,
     optimized: true,
   });
+});
+
+test("clearing a face takes its modules and keeps its grid", () => {
+  const placed = apply(gridded, 0, { row: 0, column: 0 }, { kind: "place" });
+
+  expect(clearGrid(placed, 0).grids).toEqual(gridded.grids);
 });

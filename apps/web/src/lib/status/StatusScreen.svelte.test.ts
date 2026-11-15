@@ -62,29 +62,106 @@ const lines =
   () =>
     Response.json({ lines: logged });
 
-test("the screen shows the core's problems, each broker's state and its log, oldest first", async () => {
-  const core = connect(testCore([lines("INFO serving", "WARN unreachable device=1")]));
+const SERVING = "2026-11-13T09:12:00.000001Z  INFO sunreye_core::api: serving";
+const UNREACHABLE = "2026-11-13T09:12:01.000001Z  WARN sunreye_core::poll: unreachable device=1";
+const FULL = "2026-11-13T09:12:02.000001Z ERROR sunreye_core::storage: disk full";
+
+/** No `pre`, native select, radio, checkbox or visible file input: every control is a ui component. */
+const BROWSER_DEFAULTS = "pre, select, input:not(.sr-only)";
+
+test("each problem is a row in the error treatment", async () => {
+  const core = connect(testCore([lines(SERVING)]));
 
   const screen = await render(StatusScreen, { core });
 
-  await expect.element(screen.getByRole("listitem").filter({ hasText: "Uhr" })).toBeInTheDocument();
+  const problems = screen.getByRole("region", { name: "Probleme" });
+  const row = problems.getByRole("listitem").filter({ hasText: "Uhr" });
+  await expect.element(row).toBeInTheDocument();
+  await expect.element(row.getByRole("img", { name: "Fehler" })).toBeInTheDocument();
+});
+
+test("each broker is a row with its state and last error; other connections are not listed", async () => {
+  const core = connect(testCore([lines(SERVING)]));
+
+  const screen = await render(StatusScreen, { core });
+
+  const brokers = screen.getByRole("region", { name: "MQTT-Broker" });
   await expect
-    .element(screen.getByRole("listitem").filter({ hasText: "hass" }))
-    .toHaveTextContent("hass: getrennt, connection refused");
+    .element(brokers.getByRole("listitem").filter({ hasText: "hass" }))
+    .toHaveTextContent("hass Getrennt · connection refused");
   await expect.element(screen.getByText("gateway")).not.toBeInTheDocument();
+});
+
+test("the log lists each line newest first with its level, time and message", async () => {
+  const core = connect(testCore([lines(SERVING, UNREACHABLE)]));
+
+  const screen = await render(StatusScreen, { core });
+
+  const rows = screen.getByRole("log").getByRole("listitem");
+  await expect.element(rows.first().getByText("WARN", { exact: true })).toBeVisible();
   await expect
-    .element(screen.getByRole("log"))
-    .toHaveTextContent("INFO serving WARN unreachable device=1");
+    .element(rows.first().getByText("sunreye_core::poll: unreachable device=1"))
+    .toBeVisible();
+  await expect
+    .element(rows.first().getByRole("time"))
+    .toHaveAttribute("datetime", "2026-11-13T09:12:01.000001Z");
+  await expect.element(rows.last().getByText("sunreye_core::api: serving")).toBeVisible();
+  expect(screen.container.querySelectorAll(BROWSER_DEFAULTS)).toHaveLength(0);
+});
+
+test("a line the core did not format stays whole", async () => {
+  const core = connect(testCore([lines("  at the end of the backtrace")]));
+
+  const screen = await render(StatusScreen, { core });
+
+  await expect
+    .element(screen.getByRole("log").getByRole("listitem"))
+    .toHaveTextContent("at the end of the backtrace");
+});
+
+test("the level filter keeps warnings and errors, then errors only", async () => {
+  const core = connect(testCore([lines(SERVING, UNREACHABLE, FULL)]));
+  const screen = await render(StatusScreen, { core });
+  const rows = screen.getByRole("log").getByRole("listitem");
+  await expect.element(rows.nth(2)).toBeInTheDocument();
+
+  await screen.getByRole("radio", { name: "Warnungen" }).click();
+
+  await expect.element(rows.nth(1).getByText(/unreachable/u)).toBeVisible();
+  await expect.element(rows.nth(2)).not.toBeInTheDocument();
+
+  await screen.getByRole("radio", { name: "Fehler" }).click();
+
+  await expect.element(rows.first().getByText(/disk full/u)).toBeVisible();
+  await expect.element(rows.nth(1)).not.toBeInTheDocument();
+});
+
+test("a filter that keeps no line says so", async () => {
+  const core = connect(testCore([lines(SERVING)]));
+  const screen = await render(StatusScreen, { core });
+  await expect.element(screen.getByRole("log").getByRole("listitem")).toBeInTheDocument();
+
+  await screen.getByRole("radio", { name: "Fehler" }).click();
+
+  await expect.element(screen.getByText("Keine Zeilen auf dieser Stufe.")).toBeVisible();
 });
 
 test("refreshing reads the log again", async () => {
-  const core = connect(testCore([lines("INFO serving"), lines("INFO serving", "INFO stopped")]));
+  const core = connect(testCore([lines(SERVING), lines(SERVING, FULL)]));
   const screen = await render(StatusScreen, { core });
-  await expect.element(screen.getByRole("log")).toHaveTextContent("INFO serving");
+  await expect.element(screen.getByRole("log").getByText(/serving/u)).toBeVisible();
 
   await userEvent.click(screen.getByRole("button", { name: "Aktualisieren" }));
 
-  await expect.element(screen.getByRole("log")).toHaveTextContent("INFO serving INFO stopped");
+  await expect
+    .element(
+      screen
+        .getByRole("log")
+        .getByRole("listitem")
+        .first()
+        .getByText(/disk full/u),
+    )
+    .toBeVisible();
 });
 
 test("without the admin's session the log is refused with its reason", async () => {

@@ -72,7 +72,7 @@ impl Tariffs {
                 .await?;
             let integrals = rollups.into_iter().filter_map(|r| match r.aggregate {
                 Aggregate::Measurement { integral, .. } => Some((r.start, r.end, integral)),
-                Aggregate::Counter { .. } => None,
+                Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
             });
             for (start, end, integral) in integrals {
                 let (_, costs) = days.entry(start).or_insert_with(|| (end, Costs::default()));

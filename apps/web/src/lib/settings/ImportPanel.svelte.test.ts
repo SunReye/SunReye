@@ -76,22 +76,29 @@ function testCore(
   };
 }
 
-test("an archive under /share imports into the chosen device, its progress then its result shown", async () => {
+/** No native select, radio, file input, progress or fieldset: every control is a ui component. */
+const BROWSER_DEFAULTS = "select, progress, fieldset, input:not([class*=sr-only])";
+
+test("an archive under /share imports into the chosen device once confirmed, its progress then its result shown", async () => {
   const running: ImportStatus = { state: "running", done: 1, total: 2 };
   const transport = testCore([IDLE, running, DONE]);
 
   const screen = await render(ImportPanel, { core: connect(transport) });
 
   await screen.getByRole("radio", { name: "v3/export.tar.gz" }).click();
-  await userEvent.selectOptions(
-    screen.getByRole("combobox", { name: SLUG }).element(),
-    "Wechselrichter (3)",
-  );
-  await screen.getByRole("button", { name: "Importieren" }).click();
+  await screen.getByRole("button", { name: `${SLUG} Nicht importieren` }).click();
+  await screen.getByRole("menuitemradio", { name: "Wechselrichter (3)" }).click();
+  await userEvent.keyboard("{Escape}");
+  await expect
+    .element(screen.getByRole("button", { name: `${SLUG} Wechselrichter (3)` }))
+    .toBeVisible();
+  expect(screen.container.querySelectorAll(BROWSER_DEFAULTS)).toHaveLength(0);
+  await screen.getByRole("button", { name: "Importieren", exact: true }).click();
+  await screen.getByRole("button", { name: "Jetzt importieren" }).click();
 
   await expect
     .element(screen.getByRole("progressbar", { name: "Importfortschritt" }))
-    .toHaveAttribute("value", "1");
+    .toHaveAttribute("aria-valuenow", "1");
   await expect
     .element(screen.getByRole("status"))
     .toHaveTextContent("Importiert: 2 Reihen, 120 Änderungspunkte, 4 Stunden, 3 Tage.");
@@ -99,6 +106,23 @@ test("an archive under /share imports into the chosen device, its progress then 
   expect(transport.sent).toEqual([
     `POST /api/v1/import {"devices":[{"slug":"${SLUG}","device":3}],"path":"v3/export.tar.gz"}`,
   ]);
+});
+
+test("the import asks first, and cancelling sends nothing", async () => {
+  const transport = testCore([IDLE]);
+  const screen = await render(ImportPanel, { core: connect(transport) });
+  await screen.getByRole("radio", { name: "v3/export.tar.gz" }).click();
+
+  await screen.getByRole("button", { name: "Importieren", exact: true }).click();
+
+  await expect
+    .element(screen.getByText("Importierter Verlauf lässt sich nicht wieder entfernen."))
+    .toBeVisible();
+  await screen.getByRole("button", { name: "Abbrechen" }).click();
+  await expect
+    .element(screen.getByRole("button", { name: "Jetzt importieren" }))
+    .not.toBeInTheDocument();
+  expect(transport.sent).toEqual([]);
 });
 
 test("an uploaded archive offers its devices, and one left unmapped is not sent", async () => {
@@ -113,8 +137,11 @@ test("an uploaded archive offers its devices, and one left unmapped is not sent"
     input.element(),
     new File([new Uint8Array([0x1f, 0x8b])], "export.tar.gz"),
   );
-  await expect.element(screen.getByRole("combobox", { name: SLUG })).toHaveValue("");
-  await screen.getByRole("button", { name: "Importieren" }).click();
+  await expect
+    .element(screen.getByRole("button", { name: `${SLUG} Nicht importieren` }))
+    .toBeVisible();
+  await screen.getByRole("button", { name: "Importieren", exact: true }).click();
+  await screen.getByRole("button", { name: "Jetzt importieren" }).click();
 
   await expect
     .element(screen.getByRole("status"))
@@ -133,7 +160,8 @@ test("a refused or failed import shows why", async () => {
   const refused = await render(ImportPanel, { core: connect(busy) });
 
   await refused.getByRole("radio", { name: "v3/export.tar.gz" }).click();
-  await refused.getByRole("button", { name: "Importieren" }).click();
+  await refused.getByRole("button", { name: "Importieren", exact: true }).click();
+  await refused.getByRole("button", { name: "Jetzt importieren" }).click();
 
   await expect
     .element(refused.getByRole("alert"))

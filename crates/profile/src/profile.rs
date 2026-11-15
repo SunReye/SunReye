@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -10,10 +11,13 @@ use crate::decode::Registers;
 use crate::document::{ExprDoc, Header, Kind, ProfileDoc, QuantityDoc, Range, SettingDoc, StepDoc};
 use crate::identify::{self, Field as IdentifyField};
 use crate::plan::{self, Block};
-use crate::role::RoleKind;
+use crate::role::{self, RoleKind, StorageClass, Unit};
 use crate::setting::{self, Setting};
 use crate::sunspec::Chain;
 use crate::{CADENCE, CAPABILITIES, SCHEMA};
+
+/// The role prefix of a quantity with no role (ADR 4).
+const EXTRA: &str = "extra.";
 
 /// A loaded profile: its quantities in file order and its compiled read plan.
 #[derive(Debug, Clone)]
@@ -32,6 +36,12 @@ pub struct Profile {
     warnings: Vec<String>,
     /// The SunSpec chain it is bound to, whose models its plan reads.
     chain: Option<Chain>,
+    /// Which of its family's variants it is; `None` for the base.
+    variant: Option<String>,
+    /// A family's variants, each loaded whole.
+    variants: Vec<Arc<Self>>,
+    /// Retired profile ids a variant replaces.
+    replaces: Vec<String>,
 }
 
 /// An inverter's DC side from its datasheet (ADR 5, 17).
@@ -69,8 +79,11 @@ pub struct Quantity {
     pub index: Option<u32>,
     pub(crate) read: Read,
     pub(crate) range: Option<Range>,
+    kind: RoleKind,
+    unit: Option<Unit>,
+    storage: StorageClass,
     /// A register's raw values and the values they read as; any other raw value is no value.
-    pub(crate) variants: Vec<(f64, f64)>,
+    pub(crate) mapping: Vec<(f64, f64)>,
     step: f64,
     deadband: Option<f64>,
     cadence: Duration,
@@ -79,7 +92,7 @@ pub struct Quantity {
 /// Why a deadband does not fit a quantity (ADR 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeadbandRefusal {
-    /// A counter or an enum stores every change.
+    /// Not a measurement: a counter, enum or held value stores every change.
     Kind,
     /// Below the quantisation step, or not a finite number.
     Step,
@@ -88,13 +101,31 @@ pub enum DeadbandRefusal {
 impl DeadbandRefusal {
     const fn problem(self) -> &'static str {
         match self {
-            Self::Kind => "a counter or enum has no deadband",
+            Self::Kind => "only a measurement has a deadband",
             Self::Step => "a deadband is below the quantisation step",
         }
     }
 }
 
 impl Quantity {
+    /// What its values are: its role's kind, or the one an extra declares (ADR 4).
+    #[must_use]
+    pub const fn kind(&self) -> RoleKind {
+        self.kind
+    }
+
+    /// Its role's unit, or the one an extra declares; none for a status or held value (ADR 4).
+    #[must_use]
+    pub const fn unit(&self) -> Option<Unit> {
+        self.unit
+    }
+
+    /// Where its readings go (ADR 3).
+    #[must_use]
+    pub const fn storage(&self) -> StorageClass {
+        self.storage
+    }
+
     /// The quantisation step it is stored in, in its role's unit (ADR 3): a register's scale; for a
     /// computed quantity the finest step of its inputs, and for a ratio a thousandth of its scale.
     #[must_use]
@@ -114,10 +145,10 @@ impl Quantity {
         self.deadband
     }
 
-    /// Whether `deadband` may apply to it: never below its step, and none for a counter or enum.
+    /// Whether `deadband` may apply to it: never below its step, and only on a measurement.
     ///
     /// # Errors
-    /// The quantity is a counter or enum, or `deadband` is below its step.
+    /// The quantity is not a measurement, or `deadband` is below its step.
     pub fn admits(&self, deadband: f64) -> Result<(), DeadbandRefusal> {
         if self.kind() != RoleKind::Measurement {
             return Err(DeadbandRefusal::Kind);
@@ -134,7 +165,7 @@ impl Quantity {
     #[must_use]
     pub const fn linear(&self) -> Option<(u16, f64, f64)> {
         match &self.read {
-            Read::Register(r) if r.scale_factor.is_none() && self.variants.is_empty() => {
+            Read::Register(r) if r.scale_factor.is_none() && self.mapping.is_empty() => {
                 Some((r.address, r.scale, r.offset))
             }
             Read::Register(_)
@@ -320,6 +351,11 @@ pub enum LoadError {
         register: u16,
         problem: &'static str,
     },
+    /// A variant, by its id.
+    Variant {
+        id: String,
+        problem: String,
+    },
 }
 
 impl fmt::Display for LoadError {
@@ -343,6 +379,7 @@ impl fmt::Display for LoadError {
             Self::Identify { register, problem } => {
                 write!(f, "identify register {register}: {problem}")
             }
+            Self::Variant { id, problem } => write!(f, "variant `{id}`: {problem}"),
         }
     }
 }
@@ -367,12 +404,46 @@ impl Profile {
         {
             return Err(LoadError::MissingCapability(missing));
         }
-        let doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
+        let mut doc: ProfileDoc = serde_json::from_str(json).map_err(|e| malformed(&e))?;
         if let Some(name) = unrequired(&doc).next() {
             return Err(LoadError::Unrequired(name.to_owned()));
         }
+        let Some(variants) = doc.variants.take() else {
+            return Self::compile(doc, false);
+        };
+        if doc.identify.is_none() {
+            return Err(LoadError::Malformed(
+                "variants need an identify probe".into(),
+            ));
+        }
+        let mut family = Self::compile(doc.clone(), true)?;
+        family.variants = crate::variant::compile(&doc, variants)?;
+        Ok(family)
+    }
+
+    /// Variant `id` of a family, from the base merged with its overrides.
+    pub(crate) fn load_variant(
+        doc: ProfileDoc,
+        id: &str,
+        replaces: Vec<String>,
+    ) -> Result<Self, LoadError> {
+        if let Some(name) = unrequired(&doc).next() {
+            return Err(LoadError::Unrequired(name.to_owned()));
+        }
+        let mut variant = Self::compile(doc, true)?;
+        variant.variant = Some(id.to_owned());
+        variant.replaces = replaces;
+        Ok(variant)
+    }
+
+    /// Whether one device could match both its identify probe and `other`'s.
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
+        identify::overlap(&self.identify, &other.identify)
+    }
+
+    fn compile(doc: ProfileDoc, family: bool) -> Result<Self, LoadError> {
         doc.inverter.as_ref().map_or(Ok(()), check)?;
-        let identify = identify::compile(doc.identify.unwrap_or_default())?;
+        let identify = identify::compile(doc.identify.unwrap_or_default(), family)?;
         let groups = group_cadences(doc.poll_groups.unwrap_or_default())?;
         let quantities = compile(doc.quantities, &groups)?;
         let plan = plan::compile(&quantities, |_| true);
@@ -385,6 +456,12 @@ impl Profile {
             .collect();
         let settings = setting::compile(doc.settings, &quantities)
             .map_err(|(key, problem)| LoadError::Setting { key, problem })?;
+        if let Some(extra) = duplicate(&quantities, &settings) {
+            return Err(LoadError::Quantity {
+                key: extra.key.clone(),
+                problem: "a setting already reads its register",
+            });
+        }
         Ok(Self {
             id: doc.id,
             name: doc.name,
@@ -398,7 +475,42 @@ impl Profile {
             settings,
             warnings: Vec::new(),
             chain: None,
+            variant: None,
+            variants: Vec::new(),
+            replaces: Vec::new(),
         })
+    }
+
+    /// Which of its family's variants it is; `None` for the base.
+    #[must_use]
+    pub fn variant(&self) -> Option<&str> {
+        self.variant.as_deref()
+    }
+
+    /// The ids of retired profiles a variant replaces (ADR 5): a device stored under one is this
+    /// variant of its family. Empty for a base.
+    #[must_use]
+    pub fn replaces(&self) -> &[String] {
+        &self.replaces
+    }
+
+    /// A family's variants in file order; empty for any other profile.
+    #[must_use]
+    pub fn variants(&self) -> &[Arc<Self>] {
+        &self.variants
+    }
+
+    /// Whether a device may be stored as variant `id`: one the family declares, or for a SunSpec
+    /// profile the id of the model after the common model (ADR 5).
+    #[must_use]
+    pub fn has_variant(&self, id: &str) -> bool {
+        self.declared(id).is_some() || (self.reads_sunspec() && id.parse::<u16>().is_ok())
+    }
+
+    /// The variant `id` the family declares.
+    #[must_use]
+    pub fn declared(&self, id: &str) -> Option<&Arc<Self>> {
+        self.variants.iter().find(|v| v.variant() == Some(id))
     }
 
     /// Whether it reads SunSpec models, so its read plan compiles at connect from the device's
@@ -443,11 +555,16 @@ impl Profile {
         identify::plan(&self.identify)
     }
 
-    /// Whether `registers`, read by [`Profile::identify_plan`], identify its device: each field
-    /// holds one of its values. A profile without a probe identifies nothing.
+    /// What `registers`, read by [`Profile::identify_plan`], identify: the variant whose fields
+    /// each hold one of its values, else the base when its fields do. A profile without a probe
+    /// identifies nothing.
     #[must_use]
-    pub fn identifies(&self, registers: &Registers) -> bool {
-        identify::matches(&self.identify, registers)
+    pub fn identify(&self, registers: &Registers) -> Option<&Self> {
+        self.variants
+            .iter()
+            .map(|v| &**v)
+            .find(|v| identify::matches(&v.identify, registers))
+            .or_else(|| identify::matches(&self.identify, registers).then_some(self))
     }
 
     /// The inverter's DC side, when the profile declares one.
@@ -509,6 +626,24 @@ impl Profile {
     }
 }
 
+/// The first extra reading a register a setting reads back: the setting is its record.
+fn duplicate<'a>(quantities: &'a [Quantity], settings: &[Setting]) -> Option<&'a Quantity> {
+    let read_back: Vec<u16> = settings
+        .iter()
+        .filter_map(|s| match s.read_back() {
+            Some(setting::Source::Register(field)) => Some(field.register),
+            Some(setting::Source::Quantity(_)) | None => None,
+        })
+        .collect();
+    quantities.iter().find(|q| {
+        let Read::Register(r) = &q.read else {
+            return false;
+        };
+        let words = u32::from(r.address)..u32::from(r.address) + u32::from(r.kind.words());
+        q.role.starts_with(EXTRA) && read_back.iter().any(|&at| words.contains(&u32::from(at)))
+    })
+}
+
 fn check(inverter: &Inverter) -> Result<(), LoadError> {
     inverter
         .mppt
@@ -543,6 +678,7 @@ fn unrequired(doc: &ProfileDoc) -> impl Iterator<Item = &'static str> + '_ {
         .flat_map(QuantityDoc::capabilities)
         .chain(doc.identify.as_ref().map(|_| "identify"))
         .chain(doc.poll_groups.as_ref().map(|_| "poll-group"))
+        .chain(doc.variants.as_ref().map(|_| "variants"))
         .chain(identify.map(|f| f.kind.map_or("u16", Kind::capability)))
         .chain(inverter.and_then(|i| i.ac_rating).map(|_| "ac-rating"))
         .chain(settings.clone().flat_map(SettingDoc::capabilities))
@@ -633,26 +769,24 @@ fn compile(
         }
         status(&doc).map_err(refuse)?;
         let read = read(&doc, &positions).map_err(refuse)?;
-        let first = quantities.iter().find_map(|q: &Quantity| q.read.binding());
-        if read
-            .binding()
-            .zip(first)
-            .is_some_and(|(this, first)| this != first)
-        {
-            return Err(refuse("a profile reads through one binding"));
-        }
-        let variants = variants(&doc, &read).map_err(refuse)?;
+        one_binding(&read, &quantities).map_err(refuse)?;
+        let mapping = mapping(&doc, &read).map_err(refuse)?;
         let step = doc.resolution.unwrap_or_else(|| step(&read, &quantities));
         let cadence =
             cadence(&read, doc.poll_group.as_deref(), groups, &quantities).map_err(refuse)?;
         positions.insert(doc.key.clone(), quantities.len());
+        let kind = kind(&doc).map_err(refuse)?;
+        let unit = unit(&doc, kind).map_err(refuse)?;
         let quantity = Quantity {
             key: doc.key,
             role: doc.role,
             index: doc.index,
+            kind,
+            unit,
+            storage: doc.storage.unwrap_or_default(),
             read,
             range: doc.range,
-            variants,
+            mapping,
             step,
             deadband: doc.deadband,
             cadence,
@@ -668,6 +802,41 @@ fn compile(
         quantities.push(quantity);
     }
     Ok(quantities)
+}
+
+/// `read` goes through the binding the quantities before it read through.
+fn one_binding(read: &Read, quantities: &[Quantity]) -> Result<(), &'static str> {
+    let first = quantities.iter().find_map(|q| q.read.binding());
+    if read
+        .binding()
+        .zip(first)
+        .is_some_and(|(this, first)| this != first)
+    {
+        return Err("a profile reads through one binding");
+    }
+    Ok(())
+}
+
+/// The kind an extra declares, or its named role's (ADR 4).
+fn kind(doc: &QuantityDoc) -> Result<RoleKind, &'static str> {
+    match (doc.role.starts_with(EXTRA), doc.role_kind) {
+        (true, Some(kind)) => Ok(kind),
+        (true, None) => Err("an extra declares its kind"),
+        (false, None) => Ok(role::kind(&doc.role)),
+        (false, Some(_)) => Err("a named role's kind is fixed by ADR 4"),
+    }
+}
+
+/// The unit a measurement or counter extra declares, or its named role's (ADR 4).
+fn unit(doc: &QuantityDoc, kind: RoleKind) -> Result<Option<Unit>, &'static str> {
+    let measured = matches!(kind, RoleKind::Measurement | RoleKind::Counter);
+    match (doc.role.starts_with(EXTRA), doc.unit) {
+        (false, None) => Ok(role::unit(&doc.role)),
+        (false, Some(_)) => Err("a named role's unit is fixed by ADR 4"),
+        (true, Some(_)) if !measured => Err("only a measurement or counter has a unit"),
+        (true, None) if measured => Err("an extra declares its unit"),
+        (true, unit) => Ok(unit),
+    }
 }
 
 /// `earlier` holds every input of a computed `read`.
@@ -746,7 +915,7 @@ fn status(doc: &QuantityDoc) -> Result<(), &'static str> {
 }
 
 /// The raw values a register's `enum` maps, each a decimal integer its type holds.
-fn variants(doc: &QuantityDoc, read: &Read) -> Result<Vec<(f64, f64)>, &'static str> {
+fn mapping(doc: &QuantityDoc, read: &Read) -> Result<Vec<(f64, f64)>, &'static str> {
     let (Some(texts), Read::Register(register)) = (&doc.texts, read) else {
         return Ok(Vec::new());
     };

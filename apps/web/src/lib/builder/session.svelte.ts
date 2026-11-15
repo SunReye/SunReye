@@ -1,11 +1,19 @@
 // One editing session of the builder (ADR 20): the draft with undo and redo until save, what the
 // crate makes of it, and the inspector's level.
-import type { Core, Device, Layout, ModuleType, Problem } from "../api/core.ts";
-import { coldStrings, type Limits } from "./checks.ts";
+import type {
+  CatalogueSheet,
+  Core,
+  Datasheet,
+  Device,
+  Layout,
+  ModuleType,
+  Problem,
+} from "../api/core.ts";
+import { coldStrings, stringRefusal, type Limits, type StringRefusal } from "./checks.ts";
 import { haptics } from "../haptics.ts";
 import { begin, record, redo, undo, type Edits } from "./history.ts";
-import { parent, picked, type Level } from "./levels.ts";
-import { painted, panels, type Draft } from "./modules.ts";
+import { faceCells, parent, picked, type Level } from "./levels.ts";
+import { painted, panels, wiring, type Draft } from "./modules.ts";
 import { exists, type Plan } from "./outline.ts";
 import type { Geometry, Modules, Pv, Scene } from "./pv.ts";
 import type { Editing, Hit, Painting, Panel } from "./drawing.svelte.ts";
@@ -64,6 +72,9 @@ export class Session {
   /** Whether the admin chose to start from nothing. */
   #empty = $state(false);
 
+  /** Module types added in this session; the core keeps them, no undo takes them back. */
+  #added = $state.raw<readonly ModuleType[]>([]);
+
   /** A handle drag's scene, shown but not yet recorded. */
   #dragged = $state.raw<Draft>();
 
@@ -73,9 +84,7 @@ export class Session {
     this.#history = $state.raw(begin(opening().start));
 
     const sizes = $derived(
-      Object.fromEntries(
-        opening().moduleTypes.map(({ id, width, height }) => [id, { width, height }]),
-      ),
+      Object.fromEntries(this.moduleTypes.map(({ id, width, height }) => [id, { width, height }])),
     );
 
     this.geometry = $derived(opening().pv.geometry(this.draft.scene));
@@ -84,9 +93,37 @@ export class Session {
     this.plan = $derived({
       draft: this.draft,
       laid: this.laid,
+      pv: opening().pv,
       devices: opening().devices,
-      cold: coldStrings(opening().pv, this.draft, opening().moduleTypes, opening().limits),
+      cold: coldStrings(opening().pv, this.draft, this.moduleTypes, opening().limits),
+      refused: this.#refused(),
     });
+  }
+
+  /** The plant's module types, the ones added here last. */
+  get moduleTypes(): readonly Readonly<ModuleType>[] {
+    return [...this.#opening().moduleTypes, ...this.#added];
+  }
+
+  /** Adds a module type to the core (ADR 17); the core's answer, a refusal kept for its text. */
+  async addModuleType(datasheet: Readonly<Datasheet>): Promise<ModuleType | Problem> {
+    const added = await this.#opening().core.addModuleType(datasheet);
+
+    if (!("problem" in added)) this.#added = [...this.#added, added];
+
+    return added;
+  }
+
+  /** The module catalogue's sheets (ADR 17), read anew each time a face asks. */
+  moduleCatalogue(): Promise<readonly CatalogueSheet[] | Problem> {
+    return this.#opening().core.moduleCatalogue();
+  }
+
+  #refused(): StringRefusal | null {
+    const { saved } = this;
+    const names = this.draft.strings.map(({ name }) => name);
+
+    return saved !== undefined && "problem" in saved ? stringRefusal(saved, names) : null;
   }
 
   get draft(): Draft {
@@ -134,7 +171,8 @@ export class Session {
     this.#history = redo(this.#history);
   }
 
-  /** A selected block, obstacle, ground surface or fence's handles, and where their drags go. */
+  /** A selected block, obstacle, ground surface, fence, car place, chimney or opening's handles,
+   * and where their drags go. */
   get editing(): Editing | undefined {
     const { level } = this;
 
@@ -142,7 +180,10 @@ export class Session {
       level.kind !== "block" &&
       level.kind !== "obstacle" &&
       level.kind !== "surface" &&
-      level.kind !== "fence"
+      level.kind !== "fence" &&
+      level.kind !== "place" &&
+      level.kind !== "chimney" &&
+      level.kind !== "opening"
     ) {
       return undefined;
     }
@@ -150,6 +191,8 @@ export class Session {
     return {
       scene: this.draft.scene,
       target: { kind: level.kind, index: level.index },
+      pv: this.#opening().pv,
+      laid: this.laid,
       ondrag: (scene) => {
         this.drag(scene);
       },
@@ -159,20 +202,40 @@ export class Session {
     };
   }
 
-  /** The picked string, which a drag across modules in 3D paints (ADR 20). */
+  /** The selected face's grid, whose free cells a drag in 3D lays modules in, or the picked
+   * string, which a drag across modules wires (ADR 20). */
   get painting(): Painting | undefined {
-    const { level } = this;
+    const { level, draft } = this;
 
-    if (level.kind !== "string") return undefined;
-
-    return {
-      draft: this.draft,
-      string: level.index,
-      ondrag: (scene) => {
+    const steps = {
+      draft,
+      ondrag: (scene: Scene) => {
         this.drag(scene);
       },
       ondrop: () => {
         this.drop();
+      },
+    };
+
+    if (level.kind === "string") {
+      const path = wiring(draft.scene, this.laid.grids, level.index);
+
+      return { ...steps, kind: "string", string: level.index, path };
+    }
+
+    if (level.kind !== "face" && level.kind !== "module") return undefined;
+
+    const cells = faceCells(draft.scene, this.laid, level);
+
+    if (cells === null) return undefined;
+
+    return {
+      ...steps,
+      ...cells,
+      kind: "modules",
+      laid: this.laid,
+      onselect: ({ row, column }) => {
+        this.go({ kind: "module", block: level.block, face: level.face, row, column });
       },
     };
   }
@@ -196,7 +259,7 @@ export class Session {
   /** Drills the inspector to what a click in 3D struck, and pulls it up unless it should `peek`: a
    * phone keeps the canvas in view, its handles at hand. */
   pick(hit: Hit, peek = false): void {
-    const level = picked(this.draft.scene, hit);
+    const level = picked(this.draft.scene, hit, this.#opening().pv, this.laid);
 
     if (level === null) return;
 
@@ -223,6 +286,10 @@ export class Session {
     });
 
     this.saved = saved;
+
+    const refused = this.#refused();
+
+    if (refused !== null) this.go({ kind: "string", index: refused.string });
 
     if (!("problem" in saved)) {
       this.#history = begin({ scene: saved.scene ?? draft.scene, strings: saved.strings });

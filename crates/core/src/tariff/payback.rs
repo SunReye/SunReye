@@ -110,7 +110,7 @@ impl Tariffs {
             .iter()
             .filter_map(|day| match day.aggregate {
                 Aggregate::Measurement { integral, .. } => Some((date(day.start)?, integral)),
-                Aggregate::Counter { .. } => None,
+                Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
             })
             .collect();
         let savings = days.iter().map(|(_, saved)| saved).sum();

@@ -1,64 +1,75 @@
 <!--
-  The builder's canvas (ADR 20): the scene at the slider's instant, the slider over its top edge,
-  preset views on its right, and what the instant produces at its lower left. No glass behind the
-  scene itself (ADR 11).
+  The builder's canvas (ADR 20) and its zones: the time slider along the top with the views'
+  button at its right, one status line at the lower left and the tools at the lower right. The
+  rest is the camera's. No glass behind the scene itself (ADR 11).
 -->
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { Core, Device, ModuleType } from "../api/core.ts";
-  import { m } from "../paraglide/messages.js";
-  import ModelCheck from "./ModelCheck.svelte";
-  import { Moment } from "./moment.svelte.ts";
+  import type { Core, Device, ModuleType, Values } from "../api/core.ts";
+  import { parked } from "../cars/parked.ts";
+  import { laying, type Level } from "./levels.ts";
+  import type { Moment } from "./moment.svelte.ts";
   import type { Draft } from "./modules.ts";
-  import type { Geometry, Location, Pv } from "./pv.ts";
+  import type { Geometry, Location, RoofFace } from "./pv.ts";
   import Stage, { type Editing, type Hit, type Painting, type Panel } from "./Stage.svelte";
-  import StringPowers from "./StringPowers.svelte";
+  import StatusStrip from "./StatusStrip.svelte";
   import TimeSlider from "./TimeSlider.svelte";
 
   let {
-    pv,
     core,
     draft,
     geometry,
     panels,
-    moduleTypes,
     devices,
     location,
+    moment,
     clear = 0,
+    covered = false,
     onpick,
     editing,
     painting,
+    roofs = [],
+    facing,
     tools,
   }: {
-    pv: Pv;
     core: Core;
     /** Read, never written: the slider changes nothing in the scene (ADR 20). */
     draft: Draft;
     geometry: Geometry;
     panels: readonly Panel[];
-    moduleTypes: readonly ModuleType[];
     devices: readonly Device[];
     location: Location | undefined;
-    /** Pixels at the bottom a sheet keeps covered. */
+    /** The slider's instant. */
+    moment: Moment;
+    /** Pixels at the bottom a peeking sheet keeps covered. */
     clear?: number;
+    /** Whether a pulled-up sheet covers the lower zones: they go, instead of lying under it. */
+    covered?: boolean;
     onpick?: ((hit: Hit) => void) | undefined;
     /** The selected object's handles. */
     editing?: Editing | undefined;
     /** The picked string, painted by a drag across modules. */
     painting?: Painting | undefined;
-    /** Buttons at the lower right, beside the notices. */
+    roofs?: readonly RoofFace[];
+    /** A phone's inspector level: from afar a roof cell is too small for a finger, so the camera
+     * flies onto the face whose modules it lays (ADR 20). */
+    facing?: Level | undefined;
+    /** Buttons at the lower right, beside the status line. */
     tools?: Snippet | undefined;
   } = $props();
-
-  /** The tools' height, which the cars' list keeps clear of. */
-  let toolsHeight = $state(0);
 
   let width = $state(0);
   let height = $state(0);
 
-  const moment = new Moment(() => ({ core, pv, draft, moduleTypes, location }));
+  let values = $state.raw<Values["devices"]>({});
 
-  const local = $derived(new Date(moment.at));
+  $effect(() =>
+    core.live((live) => {
+      if ("devices" in live) values = live.devices;
+    }),
+  );
+
+  const cars = $derived(parked(draft.scene.carPlaces ?? [], geometry.stands, values));
 </script>
 
 <!-- Edge to edge on a phone. -->
@@ -74,46 +85,43 @@
       {geometry}
       {panels}
       sun={moment.sun}
-      places={draft.scene.carPlaces ?? []}
-      {devices}
+      diffuse={moment.diffuse}
+      {cars}
       {onpick}
       {editing}
       {painting}
-      clear={clear + toolsHeight}
+      onto={facing && laying(roofs, facing)}
       aspect={width / height}
     />
   {/if}
 
-  <div class="pointer-events-none absolute inset-x-3 top-3 flex">
-    <div class="pointer-events-auto w-full max-w-xl">
-      <TimeSlider
-        bind:day={moment.day}
-        bind:minutes={moment.minutes}
-        source={moment.production?.source}
-      />
+  <!-- Beside the views' button, which the stage keeps at the top right. -->
+  <div class="pointer-events-none absolute top-3 right-16 left-3 flex">
+    <div class="pointer-events-auto w-full max-w-md">
+      <TimeSlider bind:day={moment.day} bind:minutes={moment.minutes} />
     </div>
   </div>
 
-  <!-- The notices stack upward; the tools keep their own column, so nothing overlaps. -->
+  <!-- One row: the status line takes what the tools leave, so the two never overlap. -->
   <div
-    class="pointer-events-none absolute inset-x-3 bottom-3 flex items-end gap-2"
+    class={[
+      "pointer-events-none absolute inset-x-3 bottom-3 flex items-end gap-2 transition-[opacity,visibility] duration-(--motion-fast) ease-(--motion-ease)",
+      covered && "invisible opacity-0",
+    ]}
     style:margin-bottom="{clear}px"
   >
-    <div class="flex max-w-[min(28rem,70%)] min-w-0 flex-col gap-1 text-xs text-muted-foreground">
-    {#if location === undefined}
-      <p class="glass-ambient rounded-md px-2.5 py-1.5">{m.builder_no_location()}</p>
-    {/if}
-    {#if draft.strings.length > 0}
-      <StringPowers
+    <div class="flex min-w-0 flex-1">
+      <StatusStrip
         strings={draft.strings}
         watts={moment.watts}
-        measured={moment.production?.source === "measured"}
+        source={moment.production?.source}
+        {cars}
+        {devices}
+        located={location !== undefined}
       />
-    {/if}
-    <ModelCheck {core} {devices} month={local.getMonth() + 1} hour={local.getHours()} />
     </div>
     {#if tools}
-      <div class="pointer-events-auto ml-auto" bind:clientHeight={toolsHeight}>
+      <div class="pointer-events-auto shrink-0">
         {@render tools()}
       </div>
     {/if}

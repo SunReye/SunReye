@@ -1,5 +1,17 @@
 // The builder inspector's levels and what a click in 3D drills it to (ADR 20). Pure.
-import type { FencePoint, Point, Scene } from "./pv.ts";
+import { cellAt } from "./cells.ts";
+import type { At } from "./modules.ts";
+import type {
+  Block,
+  Cell,
+  CellPlace,
+  FencePoint,
+  Modules,
+  Point,
+  Pv,
+  RoofFace,
+  Scene,
+} from "./pv.ts";
 import type { Hit } from "./scene.ts";
 
 /** The inspector's root groups. */
@@ -10,25 +22,47 @@ export type Level =
   | { readonly kind: "root" }
   | { readonly kind: "section"; readonly section: Section }
   | {
-      readonly kind: "block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string";
+      readonly kind:
+        | "block"
+        | "chimney"
+        | "opening"
+        | "obstacle"
+        | "surface"
+        | "fence"
+        | "marker"
+        | "place"
+        | "string";
       readonly index: number;
     }
-  | { readonly kind: "face"; readonly block: number; readonly face: number };
+  | { readonly kind: "face"; readonly block: number; readonly face: number }
+  /** One module on a face, by its cell. */
+  | {
+      readonly kind: "module";
+      readonly block: number;
+      readonly face: number;
+      readonly row: number;
+      readonly column: number;
+    };
 
 const SECTIONS: Readonly<Record<Exclude<Level["kind"], "root" | "section">, Section>> = {
   block: "buildings",
+  chimney: "buildings",
+  opening: "buildings",
   obstacle: "surroundings",
   surface: "surroundings",
   fence: "surroundings",
   marker: "equipment",
   place: "equipment",
   face: "modules",
+  module: "modules",
   string: "strings",
 };
 
 /** The level its back button returns to. */
 export function parent(level: Level): Level {
   if (level.kind === "root" || level.kind === "section") return { kind: "root" };
+
+  if (level.kind === "module") return { kind: "face", block: level.block, face: level.face };
 
   return { kind: "section", section: SECTIONS[level.kind] };
 }
@@ -53,11 +87,24 @@ function turn(x: number, z: number, degrees: number): readonly [number, number] 
 /** A rectangle on the ground: a block's or a box's. */
 type Footprint = Readonly<Record<"x" | "z" | "width" | "depth" | "rotation", number>>;
 
-/** Whether scene point `x`, `z` lies on the footprint. */
-function within([x, z]: readonly [number, number], footprint: Footprint): boolean {
+/** Whether scene point `x`, `z` lies on the footprint, grown by `across` and `deep` metres. */
+function within(
+  [x, z]: readonly [number, number],
+  footprint: Footprint,
+  [across, deep]: readonly [number, number] = [0, 0],
+): boolean {
   const [u, w] = turn(x - footprint.x, z - footprint.z, -footprint.rotation);
+  const [side, end] = [across + EDGE, deep + EDGE];
 
-  return u >= -EDGE && u <= footprint.width + EDGE && w >= -EDGE && w <= footprint.depth + EDGE;
+  return u >= -side && u <= footprint.width + side && w >= -end && w <= footprint.depth + end;
+}
+
+/** How far a block's roof reaches past its walls across and along its depth, as the crate
+ * widens it: a flat or hip roof by its eave overhang all round. */
+function reach({ overhang, roof }: Block): readonly [number, number] {
+  const { eave, verge } = overhang ?? { eave: 0, verge: 0 };
+
+  return [roof.kind === "flat" || roof.kind === "hip" ? eave : verge, eave];
 }
 
 /** How far scene point `p` lies from the segment from `a` to `b`. */
@@ -79,54 +126,159 @@ function placed(scene: Scene, point: readonly [number, number]): number {
   );
 }
 
-/** The object at a point: what stands before the blocks it stands by, a car place before the
- * roof over it, the ground last, the latest surface first as it is drawn over the others. */
-function at(scene: Scene, [east, north, up]: Point): Level | null {
-  const point = turn(east, -north, -scene.north);
-
-  const obstacle = scene.obstacles.findIndex((item) => {
+/** The index of the obstacle under scene point `x`, `z`; −1 for none. */
+function obstacleAt(scene: Scene, point: readonly [number, number]): number {
+  return scene.obstacles.findIndex((item) => {
     if (item.kind === "box") return within(point, item);
 
     if (item.kind === "hedge") return within(point, { ...item, width: item.length });
 
     return Math.hypot(point[0] - item.x, point[1] - item.z) <= item.radius + EDGE;
   });
-
-  if (obstacle >= 0) return { kind: "obstacle", index: obstacle };
-
-  const fence = (scene.fences ?? []).findIndex(({ points }) =>
-    points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
-  );
-
-  if (fence >= 0) return { kind: "fence", index: fence };
-
-  const place = up < CAR ? placed(scene, point) : -1;
-
-  if (place >= 0) return { kind: "place", index: place };
-
-  const block = scene.blocks.findIndex((item) => within(point, item));
-
-  if (block >= 0) return { kind: "block", index: block };
-
-  const surface = (scene.surfaces ?? []).findLastIndex((item) => within(point, item));
-
-  return surface >= 0 ? { kind: "surface", index: surface } : null;
 }
 
-/** The level a click in 3D drills the inspector to; null for open ground. */
-export function picked(scene: Scene, hit: Hit): Level | null {
+/** The object of kind `kind` at `index`; null for −1, none. */
+function indexed(kind: Extract<Level, { index: number }>["kind"], index: number): Level | null {
+  return index >= 0 ? { kind, index } : null;
+}
+
+/** What a strike is found on: the crate, which finds a chimney, and its layout, whose cells find
+ * a grid's face. */
+interface Found {
+  readonly pv?: Pick<Pv, "chimneyAt"> | undefined;
+  readonly laid?: Pick<Modules, "roofs" | "grids"> | undefined;
+}
+
+/** The face whose grid holds a cell at `point`, when the cells are known. */
+function faceAt(scene: Scene, laid: Found["laid"], point: Point): Level | null {
+  const hit = laid && cellAt(scene, laid, point);
+  const grid = hit && scene.grids?.[hit.grid];
+
+  return grid ? { kind: "face", block: grid.block, face: grid.face } : null;
+}
+
+/** The object at a point: a chimney on its roof, a grid's cell on its face, what stands before the
+ * blocks it stands by, a car place before the roof over it, the ground last, the latest surface
+ * first as it is drawn over the others. */
+function at(scene: Scene, { pv, laid }: Found, [east, north, up]: Point): Level | null {
+  const point = turn(east, -north, -scene.north);
+
+  // The first finder that finds wins.
+  const finders: readonly (() => Level | null)[] = [
+    () =>
+      indexed(
+        "chimney",
+        // No chimney, no question to the crate.
+        (scene.chimneys?.length ?? 0) > 0 ? (pv?.chimneyAt(scene, [east, north, up]) ?? -1) : -1,
+      ),
+    () => faceAt(scene, laid, [east, north, up]),
+    () => indexed("obstacle", obstacleAt(scene, point)),
+    () =>
+      indexed(
+        "fence",
+        (scene.fences ?? []).findIndex(({ points }) =>
+          points.some((to, i) => i > 0 && distance(point, points[i - 1] ?? to, to) <= NEAR),
+        ),
+      ),
+    () => indexed("place", up < CAR ? placed(scene, point) : -1),
+    () =>
+      indexed(
+        "block",
+        scene.blocks.findIndex((item) => within(point, item, reach(item))),
+      ),
+    () =>
+      indexed(
+        "surface",
+        (scene.surfaces ?? []).findLastIndex((item) => within(point, item)),
+      ),
+  ];
+
+  for (const find of finders) {
+    const level = find();
+
+    if (level !== null) return level;
+  }
+
+  return null;
+}
+
+/** The level a click in 3D drills the inspector to; null for open ground. A chimney is found by
+ * the crate `pv`, a grid's face on the cells the crate `laid` out. */
+export function picked(
+  scene: Scene,
+  hit: Hit,
+  pv?: Pick<Pv, "chimneyAt">,
+  laid?: Pick<Modules, "roofs" | "grids">,
+): Level | null {
   if (hit.kind === "equipment") return { kind: "marker", index: hit.index };
 
-  if (hit.kind === "point") return at(scene, hit.point);
+  if (hit.kind === "opening") return { kind: "opening", index: hit.index };
+
+  if (hit.kind === "point") return at(scene, { pv, laid }, hit.point);
 
   const grid = scene.grids?.[hit.grid];
 
   return grid === undefined ? null : { kind: "face", block: grid.block, face: grid.face };
 }
 
-/** How deep a level lies: the root 0, a group 1, an object or a face 2. */
+/** How deep a level lies: the root 0, a group 1, an object or a face 2, a face's module 3. */
 export function depth(level: Level): number {
   if (level.kind === "root") return 0;
 
+  if (level.kind === "module") return 3;
+
   return level.kind === "section" ? 1 : 2;
+}
+
+/** The module a module level names, and its grid's position in the scene. */
+export function moduleOf(
+  scene: Scene,
+  { block, face, row, column }: Extract<Level, { kind: "module" }>,
+): { readonly grid: number; readonly cell: Cell } | undefined {
+  const grid = (scene.grids ?? []).findIndex((item) => item.block === block && item.face === face);
+
+  const cell = scene.grids?.[grid]?.modules.find(
+    (item) => item.row === row && item.column === column,
+  );
+
+  return cell === undefined ? undefined : { grid, cell };
+}
+
+/** Whether two cells are the same. */
+function same(a: Readonly<At>, b: Readonly<At>): boolean {
+  return a.row === b.row && a.column === b.column;
+}
+
+/** A selected face's or module's grid: its position in the scene, the cells free to place a module
+ * in, and the selected module's cell; null for a face without a grid. */
+export function faceCells(
+  scene: Readonly<Scene>,
+  { grids }: Readonly<Pick<Modules, "grids">>,
+  level: Extract<Level, { kind: "face" | "module" }>,
+): {
+  readonly grid: number;
+  readonly free: readonly CellPlace[];
+  readonly selected: CellPlace | undefined;
+} | null {
+  const grid = (scene.grids ?? []).findIndex(
+    (item) => item.block === level.block && item.face === level.face,
+  );
+
+  if (grid < 0) return null;
+
+  const modules = scene.grids?.[grid]?.modules ?? [];
+  const cells = grids[grid] ?? [];
+
+  return {
+    grid,
+    free: cells.filter((cell) => !modules.some((module) => same(module, cell))),
+    selected: level.kind === "module" ? cells.find((cell) => same(level, cell)) : undefined,
+  };
+}
+
+/** The roof face whose modules `level` lays, if it is a face's or a module's level. */
+export function laying(roofs: readonly RoofFace[], level: Level): RoofFace | undefined {
+  return level.kind === "face" || level.kind === "module"
+    ? roofs.find((roof) => roof.block === level.block && roof.face === level.face)
+    : undefined;
 }

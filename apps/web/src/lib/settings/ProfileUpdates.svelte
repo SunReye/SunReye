@@ -1,8 +1,10 @@
 <script lang="ts">
+  import Refusal from "../setup/Refusal.svelte";
   import type { Core, Declared, Problem, Update } from "../api/core";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { boundsText } from "./bounds";
+  import { settingLabel } from "./setting-label.ts";
 
   let { core, onapplied }: { core: Core; onapplied: () => void } = $props();
 
@@ -33,9 +35,14 @@
 
 {#await updates then answer}
   {#if !("problem" in answer) && answer.length > 0}
-    <section>
-      <h2>{m.updates_title()}</h2>
-      <p>{m.updates_note()}</p>
+    <section
+      aria-labelledby="updates-title"
+      class="drill-card flex flex-col gap-3 border-t border-border/60 p-4 drill:mt-4"
+    >
+      <header class="flex flex-col gap-1">
+        <h3 id="updates-title" class="text-[15px] font-medium">{m.updates_title()}</h3>
+        <p class="text-sm text-muted-foreground">{m.updates_note()}</p>
+      </header>
       {#each answer as update (update.id)}
         {@render diff(update)}
       {/each}
@@ -43,56 +50,31 @@
   {/if}
 {/await}
 {#if problem}
-  <p role="alert">{problemText(problem.problem)}</p>
+  <div class="px-4"><Refusal refused={problem} /></div>
 {/if}
 
 {#snippet diff(update: Update)}
   {@const title = m.updates_profile({ id: update.id, from: update.from, to: update.to })}
-  <table aria-label={title}>
-    <caption>{title}</caption>
-    <thead>
-      <tr>
-        <th>{m.updates_key()}</th>
-        <th>{m.updates_change()}</th>
-        <th>{m.updates_before()}</th>
-        <th>{m.updates_after()}</th>
-      </tr>
-    </thead>
-    <tbody>
+  <div class="flex flex-col gap-2">
+    <h4 class="text-sm font-medium">{title}</h4>
+    <ul aria-label={title} class="divide-y divide-border/60 rounded-md border border-border/60">
       {#each update.settings as setting (setting.key)}
-        <tr>
-          <th scope="row">{setting.key}</th>
-          <td>{CHANGES[setting.change]()}</td>
-          <td>{bounds(setting.before)}</td>
-          <td>{bounds(setting.after)}</td>
-        </tr>
+        <li class="flex flex-col gap-0.5 px-3 py-2">
+          <span class="text-[15px]">{settingLabel(setting)}</span>
+          <span class="text-sm text-muted-foreground">
+            {CHANGES[setting.change]()} · {bounds(setting.before)} → {bounds(setting.after)}
+          </span>
+        </li>
       {/each}
       {#each update.quantities as quantity (quantity.key)}
-        <tr>
-          <th scope="row">{quantity.key}</th>
-          <td>{CHANGES[quantity.change]()}</td>
-        </tr>
+        <li class="flex flex-col gap-0.5 px-3 py-2">
+          <span class="text-[15px]">{settingLabel(quantity)}</span>
+          <span class="text-sm text-muted-foreground">{CHANGES[quantity.change]()}</span>
+        </li>
       {/each}
-    </tbody>
-  </table>
-  <button disabled={pending} onclick={() => apply(update.id)}>
-    {m.updates_apply({ id: update.id })}
-  </button>
+    </ul>
+    <Button class="self-start" disabled={pending} onclick={() => apply(update.id)}>
+      {m.updates_apply({ id: update.id })}
+    </Button>
+  </div>
 {/snippet}
-
-<style>
-  table {
-    border-collapse: collapse;
-  }
-
-  caption {
-    text-align: start;
-    font-weight: bold;
-  }
-
-  th,
-  td {
-    padding: 0.25rem 0.5rem;
-    text-align: start;
-  }
-</style>

@@ -1,12 +1,12 @@
 <!-- One object's level in the inspector; a face's level is its module-grid editor (ADR 20). -->
 <script lang="ts">
   import type { ModuleType } from "../api/core.ts";
-  import BlockFieldset from "./BlockFieldset.svelte";
+  import BuildingLevel from "./BuildingLevel.svelte";
   import CarPlaceFieldset from "./CarPlaceFieldset.svelte";
   import EquipmentFieldset from "./EquipmentFieldset.svelte";
   import FaceLevel from "./FaceLevel.svelte";
   import { parent, type Level } from "./levels.ts";
-  import { painted, withoutBlock, withoutString, type Draft, type Strokes } from "./modules.ts";
+  import { painted, withoutString, type Draft, type TypeSource } from "./modules.ts";
   import type { Plan } from "./outline.ts";
   import StringFieldset from "./StringFieldset.svelte";
   import SurroundingLevel from "./SurroundingLevel.svelte";
@@ -15,17 +15,15 @@
     level,
     plan,
     moduleTypes,
-    moduleType,
-    strokes,
+    types,
     onchange,
     onlevel,
   }: {
     level: Exclude<Level, { kind: "root" | "section" }>;
     plan: Plan;
     moduleTypes: readonly ModuleType[];
-    /** A new grid's module type; without one no grid is laid. */
-    moduleType: number | undefined;
-    strokes: Strokes;
+    /** Adds module types to the core, and its catalogue to add them from. */
+    types: TypeSource;
     onchange: (draft: Draft) => void;
     onlevel: (level: Level) => void;
   } = $props();
@@ -35,7 +33,6 @@
   const index = $derived("index" in level ? level.index : -1);
 
   /** The object the level names, by its kind; undefined for every other kind. */
-  const block = $derived(level.kind === "block" ? scene.blocks[index] : undefined);
   const equipment = $derived(scene.equipment ?? []);
   const marker = $derived(level.kind === "marker" ? equipment[index] : undefined);
   const places = $derived(scene.carPlaces ?? []);
@@ -43,10 +40,13 @@
   const string = $derived(level.kind === "string" ? draft.strings[index] : undefined);
 
   const roof = $derived(
-    level.kind === "face"
+    level.kind === "face" || level.kind === "module"
       ? plan.laid.roofs.find((r) => r.block === level.block && r.face === level.face)
       : undefined,
   );
+
+  /** A module of the face, tapped in 3D. */
+  const tapped = $derived(level.kind === "module" ? level : undefined);
 
   const loadpoints = $derived(plan.devices.filter(({ profile }) => profile === "evcc"));
 
@@ -54,41 +54,54 @@
     onchange({ ...draft, scene: { ...scene, ...next } });
   }
 
-  /** The draft without this object, back at its group. */
-  function remove(next: Draft): void {
-    onchange(next);
-    onlevel(parent(level));
+  /** A building or a surrounding object's level: the kinds that edit the scene alone. */
+  const building = $derived(
+    level.kind === "block" || level.kind === "chimney" || level.kind === "opening"
+      ? level.kind
+      : null,
+  );
+
+  const surrounding = $derived(
+    level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"
+      ? level.kind
+      : null,
+  );
+
+  function sceneEdit(next: Draft["scene"]): void {
+    onchange({ ...draft, scene: next });
   }
 
-  // A scene keeps at least one block.
-  const removeBlock = $derived(
-    scene.blocks.length > 1
-      ? () => {
-          remove({ ...draft, scene: withoutBlock(scene, index) });
-        }
-      : undefined,
-  );
+  function sceneRemove(next: Draft["scene"]): void {
+    remove({ ...draft, scene: next });
+  }
+
+  /** The draft without this object, back at its group. */
+  function remove(next: Draft): void {
+    // Read first: once the object is gone, the level shown is already its parent.
+    const up = parent(level);
+
+    onchange(next);
+    onlevel(up);
+  }
 </script>
 
-{#if block !== undefined}
-  <BlockFieldset
-    {block}
-    onchange={(next) => {
-      sceneChange({ blocks: scene.blocks.with(index, next) });
-    }}
-    onremove={removeBlock}
-  />
-{:else if level.kind === "obstacle" || level.kind === "surface" || level.kind === "fence"}
-  <SurroundingLevel
-    kind={level.kind}
+{#if building !== null}
+  <BuildingLevel
+    kind={building}
     {index}
     {scene}
-    onchange={(next) => {
-      onchange({ ...draft, scene: next });
-    }}
-    onremove={(next) => {
-      remove({ ...draft, scene: next });
-    }}
+    roofs={plan.laid.roofs}
+    pv={plan.pv}
+    onchange={sceneEdit}
+    onremove={sceneRemove}
+  />
+{:else if surrounding !== null}
+  <SurroundingLevel
+    kind={surrounding}
+    {index}
+    {scene}
+    onchange={sceneEdit}
+    onremove={sceneRemove}
   />
 {:else if marker !== undefined}
   <EquipmentFieldset
@@ -119,6 +132,7 @@
     position={index}
     made={painted(scene, index)}
     warning={plan.cold.find((cold) => cold.string === index)?.text}
+    refused={plan.refused?.string === index ? plan.refused.text : undefined}
     {moduleTypes}
     devices={plan.devices}
     onchange={(next) => {
@@ -129,5 +143,13 @@
     }}
   />
 {:else if roof !== undefined}
-  <FaceLevel {roof} {plan} {moduleTypes} {moduleType} {strokes} {onchange} />
+  <FaceLevel
+    {roof}
+    module={tapped}
+    {plan}
+    {moduleTypes}
+    {types}
+    {onchange}
+    onremove={remove}
+  />
 {/if}

@@ -159,7 +159,7 @@ test("while PV is idle the hero leads with house consumption", async () => {
   const screen = await open();
 
   await expect.element(screen.getByText("Verbrauch jetzt")).toBeVisible();
-  await expect.poll(lead).toBe("0,9 kW");
+  await expect.poll(lead).toBe("900 W");
 });
 
 test("without a scene the hero shows the power flow, whose nodes open their details", async () => {

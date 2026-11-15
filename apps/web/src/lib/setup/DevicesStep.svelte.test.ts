@@ -3,6 +3,7 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { connect, type Device, type Transport } from "../api/core.ts";
 import "../../app.css";
+import { tap } from "../builder/pointer.harness.ts";
 import DevicesStep from "./DevicesStep.svelte";
 
 /** A phone; the value editor lands at once. */
@@ -31,35 +32,34 @@ const ADDED = {
   connection: 5,
   name: "Wechselrichter",
   profile: "deye-sg05lp3",
+  variant: "15k",
   unit: 1,
 };
 
-/** The profiles the test core serves. */
+/** A profile the test core serves. */
+const served = (
+  id: string,
+  manufacturer: string,
+  name: string,
+  variants: readonly string[] = [],
+) => ({
+  id,
+  manufacturer,
+  name,
+  version: "1.0.0",
+  official: true,
+  acRating: variants.length > 0 ? 20_000 : null,
+  variants: variants.map((kw) => ({
+    id: `${kw}k`,
+    name: `SUN-${kw}K-SG05LP3-EU-SM2`,
+    acRating: Number(kw) * 1000,
+  })),
+});
+
 const PROFILES = [
-  {
-    id: "deye-sg05lp3",
-    manufacturer: "Deye",
-    name: "SG05LP3",
-    version: "1.0.0",
-    official: true,
-    acRating: 20_000,
-  },
-  {
-    id: "shelly-pro-3em",
-    manufacturer: "Shelly",
-    name: "Pro 3EM",
-    version: "1.0.0",
-    official: true,
-    acRating: null,
-  },
-  {
-    id: "sunspec",
-    manufacturer: "SunSpec",
-    name: "SunSpec device",
-    version: "1.0.0",
-    official: false,
-    acRating: null,
-  },
+  served("deye-sg05lp3", "Deye", "SG05LP3", ["5", "15"]),
+  served("shelly-pro-3em", "Shelly", "Pro 3EM"),
+  served("sunspec", "SunSpec", "SunSpec device"),
 ];
 
 /** Picks the profile named `name` for the device at `at` from the catalogue, by searching for `search`. */
@@ -76,7 +76,9 @@ const REPORT = {
       transport: "solarman-v5",
       host: "192.168.1.20",
       port: 8899,
-      devices: [{ profile: "deye-sg05lp3", unit: 1 }],
+      devices: [
+        { profile: "deye-sg05lp3", variant: "15k", name: "SUN-15K-SG05LP3-EU-SM2", unit: 1 },
+      ],
     },
     { transport: "modbus-tcp", host: "192.168.1.30", port: 502, devices: [] },
   ],
@@ -130,16 +132,20 @@ test("the admin confirms a scanned device under a name of their own", async () =
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
 
   await expect
-    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" }))
+    .element(
+      screen.getByRole("checkbox", {
+        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
+      }),
+    )
     .toBeChecked();
-  await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
+  await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
   await screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }).click();
 
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls).toEqual([
     "/api/v1/scan {}",
     '/api/v1/connections {"name":"192.168.1.20","host":"192.168.1.20","port":8899,"transport":"solarman-v5"}',
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
   ]);
   expect(done.mock.calls[0]?.[0]).toEqual([ADDED]);
 });
@@ -150,7 +156,7 @@ test("adding again after a refused device does not add its connection twice", as
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
-  await userEvent.fill(screen.getByLabelText("Name von deye-sg05lp3"), "Wechselrichter");
+  await userEvent.fill(screen.getByLabelText("Name von SUN-15K-SG05LP3-EU-SM2"), "Wechselrichter");
 
   const add = screen.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" });
 
@@ -161,8 +167,8 @@ test("adding again after a refused device does not add its connection twice", as
   await expect.poll(() => done.mock.calls.length).toBe(1);
   expect(transport.calls.filter((call) => call.startsWith("/api/v1/connections"))).toHaveLength(1);
   expect(transport.calls.filter((call) => call.startsWith("/api/v1/devices"))).toEqual([
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
-    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
+    '/api/v1/devices {"connection":5,"name":"Wechselrichter","profile":"deye-sg05lp3","variant":"15k","unit":1}',
   ]);
   expect(done.mock.calls[0]?.[0]).toEqual([ADDED]);
 });
@@ -174,7 +180,7 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
 
   await screen.getByRole("button", { name: "Netzwerk durchsuchen" }).click();
   await screen
-    .getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" })
+    .getByRole("checkbox", { name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1" })
     .click();
   await screen.getByRole("button", { name: /^Weitere Geräte im Netzwerk/u }).click();
   await screen.getByRole("button", { name: "192.168.1.30:502 von Hand hinzufügen" }).click();
@@ -190,16 +196,42 @@ test("the admin enters by hand an endpoint no profile recognises", async () => {
   ]);
 });
 
+/** Enters the RTU gateway at 192.168.1.40:4196 by hand, up to choosing its device's profile. */
+async function gateway(): Promise<void> {
+  await tap(page.getByRole("button", { name: "Endpunkt von Hand eingeben" }));
+  await userEvent.fill(page.getByLabelText("Host"), "192.168.1.40");
+  await enter("Port", "4196");
+  await tap(page.getByRole("radio", { name: "rtu-over-tcp" }));
+  await tap(page.getByRole("button", { name: "Endpunkt hinzufügen" }));
+}
+
+test("a device entered by hand is added as the variant of its family the admin picks", async () => {
+  const transport = testCore();
+  const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
+  const profile = page.getByRole("button", { name: "Profil für 192.168.1.40:4196" });
+
+  await render(DevicesStep, { core: connect(transport), ondone: done });
+
+  await gateway();
+  await pick("192.168.1.40:4196", "sg05", "SUN-5K-SG05LP3-EU-SM2");
+  await expect.element(profile).toHaveTextContent("SUN-5K-SG05LP3-EU-SM2 5 kW");
+  await userEvent.fill(page.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Keller");
+  await tap(page.getByRole("button", { name: "Ausgewählte Geräte hinzufügen" }));
+
+  await expect.poll(() => done.mock.calls.length).toBe(1);
+  expect(transport.calls[1]).toBe(
+    '/api/v1/devices {"connection":5,"name":"Keller","profile":"deye-sg05lp3","variant":"5k","unit":1}',
+  );
+});
+
 test("the admin enters an RTU gateway the scan does not probe by hand", async () => {
   const transport = testCore();
   const done = vi.fn<(devices: readonly Readonly<Device>[]) => void>();
   const screen = await render(DevicesStep, { core: connect(transport), ondone: done });
 
-  await screen.getByRole("button", { name: "Endpunkt von Hand eingeben" }).click();
-  await userEvent.fill(screen.getByLabelText("Host"), "192.168.1.40");
-  await enter("Port", "4196");
-  await screen.getByRole("radio", { name: "rtu-over-tcp" }).click();
-  await screen.getByRole("button", { name: "Endpunkt hinzufügen" }).click();
+  await gateway();
+  // Another profile drops the variant picked before it.
+  await pick("192.168.1.40:4196", "sg05", "SUN-5K-SG05LP3-EU-SM2");
   await pick("192.168.1.40:4196", "3em", "Pro 3EM");
   await enter("Adresse für 192.168.1.40:4196", "2");
   await userEvent.fill(screen.getByLabelText("Name des Geräts an 192.168.1.40:4196"), "Zähler");
@@ -258,6 +290,10 @@ test("a running scan shows its progress", async () => {
     .toBeVisible();
   report.resolve(Response.json(REPORT));
   await expect
-    .element(screen.getByRole("checkbox", { name: "deye-sg05lp3 an 192.168.1.20:8899, Adresse 1" }))
+    .element(
+      screen.getByRole("checkbox", {
+        name: "SUN-15K-SG05LP3-EU-SM2 an 192.168.1.20:8899, Adresse 1",
+      }),
+    )
     .toBeChecked();
 });

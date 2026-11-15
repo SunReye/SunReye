@@ -1,0 +1,82 @@
+{
+  "maker": "LONGi",
+  "series": "Hi-MO 6",
+  "source": {
+    "title": "Hi-MO 6 Explorer LR5-54HTH 415~435M (LGiLE（PM）-T-PMD-059-F130)",
+    "revision": "20230210V17 DG",
+    "url": "https://static.longi.com/20230210_LON_Gi_Data_Sheet_LR_5_54_HTH_415_435_M_Explorer_DG_V17_French_a9d53ed111.pdf",
+    "note": "French-language edition; the only Hi-MO 6 (LR5-54HT*) datasheet on longi.com that states the bypass diode count ('IP68, trois diodes'); the V19 English sheets omit it. Image-only PDF, values read from the rendered page."
+  },
+  "modules": [
+    {
+      "name": "LR5-54HTH-415M",
+      "pmax": 415,
+      "vmp": 32.24,
+      "imp": 12.88,
+      "voc": 38.53,
+      "isc": 13.92,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-420M",
+      "pmax": 420,
+      "vmp": 32.44,
+      "imp": 12.95,
+      "voc": 38.73,
+      "isc": 14.0,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-425M",
+      "pmax": 425,
+      "vmp": 32.64,
+      "imp": 13.03,
+      "voc": 38.93,
+      "isc": 14.07,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-430M",
+      "pmax": 430,
+      "vmp": 32.84,
+      "imp": 13.1,
+      "voc": 39.13,
+      "isc": 14.15,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    },
+    {
+      "name": "LR5-54HTH-435M",
+      "pmax": 435,
+      "vmp": 33.04,
+      "imp": 13.17,
+      "voc": 39.33,
+      "isc": 14.22,
+      "powerCoefficient": -0.29,
+      "voltageCoefficient": -0.23,
+      "currentCoefficient": 0.05,
+      "width": 1.134,
+      "height": 1.722,
+      "bypassDiodes": 3
+    }
+  ]
+}

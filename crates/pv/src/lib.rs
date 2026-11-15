@@ -2,12 +2,15 @@
 //!
 //! Angles are in degrees. Azimuths follow ADR 17: 0 = south, −90 = east, 90 = west.
 
+mod chimney;
 mod clear_sky;
 mod diode;
 mod equipment;
 mod estimate;
+mod fitting;
 mod grid;
 mod mppt;
+mod opening;
 mod parking;
 mod perez;
 mod scene;
@@ -17,14 +20,17 @@ mod sun;
 mod surroundings;
 mod temperature;
 
+pub use chimney::{Chimney, Footing};
 pub use clear_sky::{Irradiance, clear_sky, clear_weather};
-pub use equipment::{Equipment, EquipmentKind, Mount, Wall};
+pub use equipment::{Equipment, EquipmentKind, Mount, Wall, WallFrame};
 pub use estimate::estimate;
+pub use fitting::Unfit;
 pub use grid::{Cell, CellPlace, GAP, Misplaced, ModuleGrid, Placed, RoofFace, Size};
 pub use mppt::{input_output, module_counts_differ};
+pub use opening::{Fitted, Opening, OpeningKind};
 pub use parking::{CarPlace, Stand};
 pub use perez::plane_irradiance;
-pub use scene::{Block, Crown, Face, Obstacle, Roof, Scene, Surface};
+pub use scene::{Block, Crown, Face, Obstacle, Overhang, Roof, Scene, Surface};
 pub use sun::sun_position;
 pub use surroundings::{
     Fence, FenceFinish, FencePoint, Fencing, Ground, GroundFinish, GroundSurface,
@@ -208,8 +214,6 @@ pub struct Layout {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Inverter {
-    /// Watts; without it the output is not capped.
-    pub ac_rating: Option<f64>,
     pub inputs: Vec<Input>,
 }
 
@@ -243,7 +247,8 @@ pub struct Estimate {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InverterEstimate {
-    /// Watts, capped at the AC rating.
+    /// Watts, the sum of its inputs. The AC rating caps a forecast, not the model, so a
+    /// learner sees what a clipped hour would have produced (ADR 17).
     pub power: f64,
     pub inputs: Vec<InputEstimate>,
 }

@@ -31,7 +31,7 @@ const BATCH: usize = 256;
 /// Expired blocks deleted per tick, so a shortened retention never holds the thread for long.
 const PRUNE: usize = 16 * BATCH;
 /// Forward-only, applied in order; `user_version` counts those applied.
-const MIGRATIONS: &[&str] = &[
+pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
     include_str!("migrations/0002.sql"),
     include_str!("migrations/0003.sql"),
@@ -58,6 +58,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0024.sql"),
     include_str!("migrations/0025.sql"),
     include_str!("migrations/0026.sql"),
+    include_str!("migrations/0027.sql"),
+    include_str!("migrations/0028.sql"),
 ];
 
 /// The schema version this build writes: the number of migrations.
@@ -617,6 +619,10 @@ impl Store {
     ) -> Result<(), Error> {
         let id = self.series_id(name)?;
         self.step(device, id, policy.step)?;
+        self.db.execute(
+            "UPDATE step SET kind = ?3 WHERE device = ?1 AND series = ?2",
+            params![device.0, id, kind_name(policy.kind)],
+        )?;
         let track = if let Some(declared) = self.tracks.get(&(device, series)) {
             let track = declared.track.retune(policy);
             // Points pending under the old policy are written before it changes.
@@ -841,6 +847,16 @@ impl Store {
                 value: p.value.map(|v| v as f64 * step),
             })
             .collect())
+    }
+}
+
+/// A kind as the `step` table spells it.
+const fn kind_name(kind: RoleKind) -> &'static str {
+    match kind {
+        RoleKind::Measurement => "measurement",
+        RoleKind::Counter => "counter",
+        RoleKind::Status => "status",
+        RoleKind::Held => "held",
     }
 }
 

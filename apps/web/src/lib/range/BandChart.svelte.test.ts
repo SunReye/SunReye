@@ -1,6 +1,6 @@
 import { flushSync } from "svelte";
 import { afterEach, expect, test, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { userEvent, type Locator } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 // The chart is laid out and moved by the SPA's utilities and motion tokens.
 import "../../app.css";
@@ -174,4 +174,91 @@ test("many bars arrive a share per frame, so no one frame restyles them all", as
   frame();
   frame();
   expect(bars(screen.container)).toHaveLength(80);
+});
+
+/** Two days measured against their forecast, then one still to come. */
+function forecastProps() {
+  const bands: Band[] = [
+    Object.assign(band("b0", 2), { mark: 3 }),
+    Object.assign(band("b1", 4), { mark: 3 }),
+    Object.assign(band("b2", 0), { state: "future" as const, up: [], ghost: 5 }),
+  ];
+
+  return Object.assign(props(bands), {
+    markLabel: "Prognose",
+    ghostLabel: "erwartet",
+    summary: { title: "Summe", up: [6], down: [], mark: 6, ghost: 5 },
+  });
+}
+
+/** Points at band `i` of `n`. */
+async function hoverBand(plot: Readonly<Locator>, i: number, n: number) {
+  const box = plot.element().getBoundingClientRect();
+
+  await userEvent.hover(plot, { position: { x: (box.width * (i + 0.5)) / n, y: box.height / 2 } });
+}
+
+test("a band still to come reads its forecast and no measurement", async () => {
+  const screen = await render(BandChart, forecastProps());
+
+  await hoverBand(screen.getByRole("group"), 2, 3);
+
+  await expect.element(screen.getByText(/Band b2/u)).toBeVisible();
+
+  const measured = screen.getByRole("term").filter({ hasText: "PV" }).element().nextElementSibling;
+
+  // What shows: the figure under the dash keeps its width, hidden.
+  await expect
+    .poll(() => (measured instanceof HTMLElement ? measured.innerText.trim() : null))
+    .toBe("–");
+  await expect.element(screen.getByText("5.0 kWh")).toBeVisible();
+});
+
+test("the range's sum names what is still expected beside what was measured", async () => {
+  const screen = await render(BandChart, forecastProps());
+
+  const value = (term: string) =>
+    screen.getByRole("term").filter({ hasText: term }).element().nextElementSibling?.textContent;
+
+  await expect.poll(() => value("erwartet")).toBe("5.0 kWh");
+  await expect.poll(() => value("Prognose")).toBe("6.0 kWh");
+});
+
+test("hatched bands are named in the legend, only while there are some", async () => {
+  const gap = Object.assign(band("b9", 0), { state: "gap" as const, up: [] });
+  const screen = await render(BandChart, props([gap, band("b1", 4)]));
+
+  await expect.element(screen.getByRole("term").filter({ hasText: "keine Daten" })).toBeVisible();
+
+  await screen.rerender(props([band("b0", 2), band("b1", 4)], 2));
+
+  await expect
+    .element(screen.getByRole("term").filter({ hasText: "keine Daten" }))
+    .not.toBeInTheDocument();
+});
+
+test("the axis names its unit above the top gridline's figure, not under it", async () => {
+  const screen = await render(BandChart, props([band("b0", 2), band("b1", 4)]));
+
+  const unit = screen.getByText("kWh", { exact: true });
+  const top = screen.getByText("5", { exact: true });
+
+  await expect.element(top).toBeVisible();
+  expect(unit.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    top.element().getBoundingClientRect().top,
+  );
+});
+
+test("a series that runs both ways keeps a legend row for each side", async () => {
+  const signed = { label: "battery.power", colour: "var(--e-battery)" };
+
+  const screen = await render(BandChart, {
+    ...props([{ ...band("b0", 2), down: [3] }]),
+    up: [signed],
+    down: [signed],
+    summary: { title: "Summe", up: [2], down: [3] },
+  });
+
+  await expect.element(screen.getByText("2.0 kWh")).toBeVisible();
+  await expect.element(screen.getByText("3.0 kWh")).toBeVisible();
 });

@@ -15,9 +15,10 @@ import {
 } from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { flowColour, type Flow } from "../energy-colours.ts";
-import { untone } from "./light.ts";
+import { untone, type Clouds } from "./light.ts";
 import { lawn } from "./materials.ts";
 import { backdropAt } from "./vignette.ts";
+import { patched } from "./weather.ts";
 
 /** Metres of lawn each way; it fades long before its edge. */
 const LAWN = 400;
@@ -100,7 +101,7 @@ export function ground(fade: Fade): Mesh {
 
   material.transparent = true;
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js patches it in place.
-  material.onBeforeCompile = (shader) => {
+  patched(material, "fade", (shader) => {
     shader.uniforms["uFadeCentre"] = fade.centre;
     shader.uniforms["uFadeRadius"] = fade.radius;
     shader.vertexShader = shader.vertexShader
@@ -118,7 +119,7 @@ export function ground(fade: Fade): Mesh {
         "#include <alphatest_fragment>",
         "#include <alphatest_fragment>\ndiffuseColor.a *= 1.0 - smoothstep(uFadeRadius, uFadeRadius + 10.0, length(vFadeWorld.xz - uFadeCentre));",
       );
-  };
+  });
 
   const mesh = new Mesh(geometry, material);
 
@@ -137,8 +138,6 @@ export function sky(scale: number): Sky {
   made.scale.setScalar(scale);
   uniforms["mieCoefficient"]!.value = 0.004;
   uniforms["mieDirectionalG"]!.value = 0.82;
-  uniforms["cloudCoverage"]!.value = 0.32;
-  uniforms["cloudDensity"]!.value = 0.35;
   uniforms["time"]!.value = 120;
   uniforms["showSunDisc"]!.value = 0;
 
@@ -151,16 +150,27 @@ interface Haze {
   readonly rayleigh: number;
 }
 
-/** The dark theme's sky is deeper and moodier at the same sun, a low sun's hazier. */
-function haze(dark: boolean, low: boolean): Haze {
+const HIGH_SUN: Haze = { turbidity: 2.4, rayleigh: 1.1 };
+const LOW_SUN: Haze = { turbidity: 5, rayleigh: 2.2 };
+
+/** The dark theme's sky is deeper and moodier at the same sun; a low sun's is hazier, `low` of
+ * the way: blended, as a switch would step the sky's light. */
+function haze(dark: boolean, low: number): Haze {
   if (dark) return { turbidity: 6, rayleigh: 2.4 };
 
-  return low ? { turbidity: 5, rayleigh: 2.2 } : { turbidity: 2.4, rayleigh: 1.1 };
+  return {
+    turbidity: HIGH_SUN.turbidity + (LOW_SUN.turbidity - HIGH_SUN.turbidity) * low,
+    rayleigh: HIGH_SUN.rayleigh + (LOW_SUN.rayleigh - HIGH_SUN.rayleigh) * low,
+  };
 }
 
-/** Points the sky at the sun, `toward` in three.js's frame. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
-export function aim(made: Sky, toward: Readonly<Vector3>, dark: boolean, low: boolean): void {
+/** Points the sky at the sun, `toward` in three.js's frame, under `clouds`. */
+export function aim(
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- three.js sets it in place.
+  made: Sky,
+  toward: Readonly<Vector3>,
+  { dark, low, clouds }: { readonly dark: boolean; readonly low: number; readonly clouds: Clouds },
+): void {
   const uniforms = made.material.uniforms;
   const sunPosition: unknown = uniforms["sunPosition"]?.value;
   const { turbidity, rayleigh } = haze(dark, low);
@@ -169,4 +179,6 @@ export function aim(made: Sky, toward: Readonly<Vector3>, dark: boolean, low: bo
 
   Object.assign(uniforms["turbidity"] ?? {}, { value: turbidity });
   Object.assign(uniforms["rayleigh"] ?? {}, { value: rayleigh });
+  Object.assign(uniforms["cloudCoverage"] ?? {}, { value: clouds.coverage });
+  Object.assign(uniforms["cloudDensity"] ?? {}, { value: clouds.density });
 }

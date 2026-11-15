@@ -45,6 +45,10 @@ pub struct Cell {
     pub string: Option<u32>,
     #[serde(default)]
     pub optimized: bool,
+    /// Its place along its string's wiring, which runs through the string's modules from the
+    /// lowest; a module without one follows them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<u32>,
 }
 
 /// A module's outline in metres: `height` is its long side.
@@ -62,9 +66,12 @@ pub struct RoofFace {
     pub plane: Plane,
     /// Metres across the slope and up it, from the lowest corner on the left seen from the front.
     pub outline: Vec<[f64; 2]>,
-    origin: Point,
-    across: Point,
-    up: Point,
+    /// The footprints of the chimneys standing on it, as `CellPlace::area`.
+    pub chimneys: Vec<[[f64; 2]; 2]>,
+    /// The outline's frame: its origin, and the unit directions across the slope and up it.
+    pub origin: Point,
+    pub across: Point,
+    pub up: Point,
 }
 
 /// Where a cell's module sits.
@@ -120,7 +127,16 @@ impl Scene {
     #[must_use]
     pub fn roofs(&self) -> Vec<RoofFace> {
         self.roof_faces()
-            .map(|(block, face, corners, width)| RoofFace::new(block, face, &corners, width))
+            .map(|(block, face, corners, width)| {
+                let mut roof = RoofFace::new(block, face, &corners, width);
+                roof.chimneys = self
+                    .chimneys
+                    .iter()
+                    .filter(|c| (c.block, c.face) == (block, face))
+                    .map(|c| c.area(&roof))
+                    .collect();
+                roof
+            })
             .collect()
     }
 
@@ -186,13 +202,15 @@ impl RoofFace {
                 },
             },
             outline,
+            chimneys: Vec::new(),
             origin: offset(offset(first, across, left), up, bottom),
             across,
             up,
         }
     }
 
-    /// Every cell of `grid` whose module fits inside the setback, row by row.
+    /// Every cell of `grid` whose module fits inside the setback and clear of the chimneys, row by
+    /// row.
     #[must_use]
     pub fn cells(&self, grid: &ModuleGrid, size: Size) -> Vec<CellPlace> {
         (0..LIMIT)
@@ -201,19 +219,20 @@ impl RoofFace {
                 let area = grid.area(size, row, column);
                 let [[l, b], [r, t]] = area;
                 let square = [[l, b], [r, b], [r, t], [l, t]];
-                square
+                let clear = !self
+                    .chimneys
                     .iter()
-                    .all(|p| self.inside(*p, grid.setback))
-                    .then(|| CellPlace {
-                        row,
-                        column,
-                        area,
-                        corners: square.map(|p| self.point(p)),
-                        place: Place {
-                            centre: self.point([f64::midpoint(l, r), f64::midpoint(b, t)]),
-                            landscape: grid.landscape,
-                        },
-                    })
+                    .any(|[[cl, cb], [cr, ct]]| l < *cr && r > *cl && b < *ct && t > *cb);
+                (clear && square.iter().all(|p| self.inside(*p, grid.setback))).then(|| CellPlace {
+                    row,
+                    column,
+                    area,
+                    corners: square.map(|p| self.point(p)),
+                    place: Place {
+                        centre: self.point([f64::midpoint(l, r), f64::midpoint(b, t)]),
+                        landscape: grid.landscape,
+                    },
+                })
             })
             .collect()
     }
@@ -254,7 +273,7 @@ impl RoofFace {
     }
 
     /// Whether `p` lies at least `margin` inside every edge.
-    fn inside(&self, [u, v]: [f64; 2], margin: f64) -> bool {
+    pub(crate) fn inside(&self, [u, v]: [f64; 2], margin: f64) -> bool {
         let next = self.outline.iter().cycle().skip(1);
         self.outline.iter().zip(next).all(|([au, av], [bu, bv])| {
             let (du, dv) = (bu - au, bv - av);
@@ -263,7 +282,7 @@ impl RoofFace {
         })
     }
 
-    const fn point(&self, [u, v]: [f64; 2]) -> Point {
+    pub(crate) const fn point(&self, [u, v]: [f64; 2]) -> Point {
         offset(offset(self.origin, self.across, u), self.up, v)
     }
 }

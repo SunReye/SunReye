@@ -1,15 +1,17 @@
 // Shared by the builder's component tests: the crate, a module type, the plant's devices, a core
 // that answers layout changes, and the inspector's moves.
 import { PerspectiveCamera, Vector3 } from "three";
-import { cdp, page, userEvent, type Locator } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import wasm from "../../../../../target/wasm32-unknown-unknown/release/sunreye_pv_wasm.wasm?url";
 import { connect, type ModuleType, type Transport } from "../api/core.ts";
 import Builder from "./Builder.svelte";
 import { emptyDraft } from "./modules.ts";
-import { presetView } from "./camera.ts";
+import { faceView, presetView, type View } from "./camera.ts";
 import { loadPv, type Scene } from "./pv.ts";
 import { fill } from "./templates.ts";
+
+export { press, tap, type Pointer } from "./pointer.harness.ts";
 
 export const pv = await loadPv(new Uint8Array(await (await fetch(wasm)).arrayBuffer()));
 
@@ -120,11 +122,6 @@ export async function choose(row: string, option: string): Promise<void> {
   await page.getByRole("button", { name: /^Übernehmen/u }).click();
 }
 
-export async function saveFrom(day: string): Promise<void> {
-  await userEvent.fill(inspector().getByLabelText("Gilt ab"), day);
-  await inspector().getByRole("button", { name: "Speichern" }).click();
-}
-
 export async function gridOnTheSouthFace(transport: Transport) {
   const screen = await render(Builder, {
     pv,
@@ -134,7 +131,7 @@ export async function gridOnTheSouthFace(transport: Transport) {
     devices: DEVICES,
   });
 
-  await drill("Module", SOUTH, "Modulraster auf diese Fläche legen");
+  await drill("Module", SOUTH, MODULE.name);
 
   return screen;
 }
@@ -152,64 +149,14 @@ export async function undesk(): Promise<void> {
   await cdp().send("Emulation.setEmulatedMedia", { features: [] });
 }
 
-export type Pointer = "mouse" | "pen" | "touch";
-
-/** A real pointer, through the browser's input pipeline, from `from` to `to` in page pixels. */
-export async function press(
-  kind: Pointer,
-  path: readonly (readonly [number, number])[],
-): Promise<void> {
-  const [first, ...rest] = path;
-
-  if (first === undefined) return;
-
-  if (kind === "touch") {
-    await cdp().send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: first[0], y: first[1] }],
-    });
-
-    for (const [x, y] of rest) {
-      // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-      await cdp().send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y }] });
-    }
-
-    await cdp().send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-
-    return;
-  }
-
-  const mouse = { button: "left", pointerType: kind, clickCount: 1 } as const;
-
-  await cdp().send("Input.dispatchMouseEvent", {
-    ...mouse,
-    type: "mousePressed",
-    x: first[0],
-    y: first[1],
-  });
-
-  for (const [x, y] of rest) {
-    // oxlint-disable-next-line no-await-in-loop -- a pointer moves one step at a time.
-    await cdp().send("Input.dispatchMouseEvent", {
-      ...mouse,
-      type: "mouseMoved",
-      buttons: 1,
-      x,
-      y,
-    });
-  }
-
-  const [x, y] = rest.at(-1) ?? first;
-
-  await cdp().send("Input.dispatchMouseEvent", { ...mouse, type: "mouseReleased", x, y });
-}
-
-/** Where a point lands on the builder's canvas, seen from its first view: the isometric preset. */
+/** Where a point lands on the builder's canvas, seen from `kept` or else its first view: the
+ * isometric preset. */
 export function onCanvas(
   start: Scene,
+  kept?: View,
 ): (at: readonly [number, number, number]) => [number, number] {
   const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
-  const view = presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
+  const view = kept ?? presetView("isometric", pv.geometry(start), canvas.width / canvas.height);
   const camera = new PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 5000);
 
   camera.position.set(...view.position);
@@ -226,18 +173,55 @@ export function onCanvas(
   };
 }
 
-/** One finger taps the middle of what `locator` finds, through the browser's touch input. */
-// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- vitest's locator, read only.
-export async function tap(locator: Locator): Promise<void> {
-  const box = (await locator.findElement()).getBoundingClientRect();
-
-  await press("touch", [[box.left + box.width / 2, box.top + box.height / 2]]);
-}
-
 /** A phone held upright, its inspector levels landing at once. */
 export async function phone(): Promise<void> {
   await page.viewport(390, 844);
   await cdp().send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-reduced-motion", value: "reduce" }],
   });
+}
+
+/** The module type's size, by its id, as the crate lays cells out. */
+const SIZES = { [MODULE.id]: { width: MODULE.width, height: MODULE.height } };
+
+/** The view a phone flies to when grid `grid`'s face is opened for its modules. */
+export function ontoFace(start: Scene, grid: number): View {
+  const at = start.grids?.[grid];
+
+  const roof = pv
+    .modules(start, SIZES)
+    .roofs.find((r) => r.block === at?.block && r.face === at.face);
+
+  const canvas = page.getByLabelText("3D-Szene des Hauses").element().getBoundingClientRect();
+
+  if (roof === undefined) throw new Error(`no face under grid ${String(grid)}`);
+
+  return faceView(roof, canvas.width / canvas.height);
+}
+
+/** Where cell `row.column` of grid `grid` of `start` lands on the page, seen from `kept` or else
+ * its first view. */
+export function cellsOnPage(
+  start: Scene,
+  grid: number,
+  kept?: View,
+): (key: string) => [number, number] {
+  const onPage = onCanvas(start, kept);
+
+  const cells = new Map(
+    (pv.modules(start, SIZES).grids[grid] ?? []).map(({ row, column, corners }) => {
+      const sum = corners.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]);
+
+      // East, north, up to three.js's x, y up, z south.
+      return [`${row}.${column}`, onPage([sum[0] / 4, sum[2] / 4, -sum[1] / 4])];
+    }),
+  );
+
+  return (key) => {
+    const at = cells.get(key);
+
+    if (at === undefined) throw new Error(`no cell ${key}`);
+
+    return at;
+  };
 }

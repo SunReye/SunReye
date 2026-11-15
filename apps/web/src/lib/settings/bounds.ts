@@ -15,6 +15,7 @@ export function boundsText(
   values: readonly number[] | null | undefined,
   step: number,
   labels?: readonly Readonly<{ value: number; text: string }>[],
+  unit?: string | null,
 ): string {
   const number = new Intl.NumberFormat(getLocale());
 
@@ -25,7 +26,7 @@ export function boundsText(
 
   return m.settings_range({
     min: number.format(range?.min ?? Number.NaN),
-    max: number.format(range?.max ?? Number.NaN),
+    max: [number.format(range?.max ?? Number.NaN), unit].filter(Boolean).join(" "),
     step: number.format(step),
   });
 }

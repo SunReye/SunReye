@@ -3,9 +3,11 @@
   so rails pass underneath, and a ring that beats with the plant on `full`. Tapping opens its sheet.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Cpu from "@lucide/svelte/icons/cpu";
   import Gauge from "@lucide/svelte/icons/gauge";
   import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import type { Hub } from "./reading.ts";
@@ -41,8 +43,7 @@
     >
       <div class="flex flex-col items-center">
         <dd class="text-sm font-semibold text-solar">
-          <AnimatedNumber value={hub.dc / 1000} />
-          <span class="text-xs font-normal text-muted-foreground">kW</span>
+          <PowerNumber watts={hub.dc} unitClass="text-xs font-normal text-muted-foreground" />
         </dd>
         <dt class="text-xs text-muted-foreground">{m.flow_dc()}</dt>
       </div>
@@ -58,17 +59,15 @@
       {#if hub.own !== undefined}
         <div class="flex flex-col items-center max-sm:hidden">
           <dd class="text-sm font-medium">
-            <AnimatedNumber value={hub.own} digits={0} />
-            <span class="text-xs font-normal text-muted-foreground">W</span>
+            <PowerNumber watts={hub.own} unitClass="text-xs font-normal text-muted-foreground" />
           </dd>
           <dt class="text-xs text-muted-foreground">{m.rd_own_use()}</dt>
         </div>
       {/if}
     </dl>
   {/if}
-  <button
-    type="button"
-    class="relative flex size-14 cursor-pointer items-center justify-center rounded-md border-2 border-foreground/70 bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+  <Pressable
+    class="relative flex size-14 items-center justify-center rounded-md border-2 border-foreground/70 bg-card active:scale-[0.97] sm:size-16"
     aria-label={m.flow_details({ name: m.detail_inverter() })}
     onclick={() => {
       onselect("inverter");
@@ -82,7 +81,7 @@
       style="--plant-level:{plantLevel}"
     ></span>
     <Cpu class="size-6 sm:size-7" />
-  </button>
+  </Pressable>
 </div>
 
 <style>

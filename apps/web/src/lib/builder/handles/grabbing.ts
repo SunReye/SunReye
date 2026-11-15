@@ -5,7 +5,7 @@
 /* oxlint-disable typescript/prefer-readonly-parameter-types -- three.js and the DOM, used in place. */
 import { type Group, type PerspectiveCamera, Raycaster, Vector2 } from "three";
 import { picked } from "../levels.ts";
-import type { Scene } from "../pv.ts";
+import type { Pv, Scene } from "../pv.ts";
 import { strike, type Panel } from "../scene.ts";
 import { handleOf } from "./gizmo.ts";
 import {
@@ -14,16 +14,21 @@ import {
   type Dragged,
   type Grab,
   type Handle,
+  type Laid,
   type Ray,
   type Target,
   type Triple,
 } from "./grips.ts";
-import { listen } from "../pointer.ts";
+import { Handover, listen, ndc } from "../pointer.ts";
 
 /** What the handles edit, and where a drag goes. */
 export interface Editing {
   readonly scene: Scene;
   readonly target: Target;
+  /** The crate, which keeps a chimney on its face and an opening on its wall and finds the
+   * chimney a press strikes; and what it laid out for `scene`, which their handles stand on. */
+  readonly pv: Pick<Pv, "refit" | "glide" | "chimneyAt">;
+  readonly laid: Laid;
   /** Each step of a drag, shown at once. */
   readonly ondrag: (scene: Scene) => void;
   /** The drag let go: one undo step. */
@@ -77,8 +82,7 @@ export class Grabbing {
   readonly #sources: Sources;
   #held: Held | undefined;
 
-  /** The first finger's press, given again to the orbit controls once a second one comes. */
-  #handed: PointerEvent | undefined;
+  readonly #handover = new Handover();
 
   /** Stops listening. */
   readonly dispose: () => void;
@@ -90,20 +94,12 @@ export class Grabbing {
     this.dispose = listen(canvas, { press: this.#press, move: this.#move, release: this.#release });
   }
 
-  #ndc(event: PointerEvent): [number, number] {
-    const box = this.#canvas.getBoundingClientRect();
-
-    return [
-      ((event.clientX - box.left) / box.width) * 2 - 1,
-      1 - ((event.clientY - box.top) / box.height) * 2,
-    ];
-  }
-
   #handleAt(at: readonly [number, number]): Handle | null {
     const shown = this.#sources.handles();
 
-    // A press may come before the first draw has placed the camera's matrices.
+    // A press may come before the next draw has placed the camera's and the handles' matrices.
     this.#camera.updateMatrixWorld();
+    shown?.updateMatrixWorld();
 
     return shown === undefined ? null : handleOf(shown, this.#camera, at, this.#canvas);
   }
@@ -117,14 +113,24 @@ export class Grabbing {
       return { grip: handle.grip, point: handle.point, ray, height: handle.at[1] };
 
     // A fence has no footprint to drag.
-    if (editing.target.kind === "fence") return undefined;
+    return editing.target.kind === "fence" ? undefined : this.#bodyGrabbed(at, editing, ray);
+  }
 
+  /** The selected object's own surface under the press, which moves it whole. */
+  #bodyGrabbed(at: readonly [number, number], editing: Editing, ray: Ray): Grab | undefined {
     const group = this.#sources.drawn();
     const hit = group && strike(group, this.#sources.panels(), this.#camera, at);
 
+    // An opening is grabbed by its own leaf.
+    if (hit?.kind === "opening") {
+      return same(editing.target, { kind: "opening", index: hit.index })
+        ? { grip: "move", ray, height: 0 }
+        : undefined;
+    }
+
     if (hit?.kind !== "point") return undefined;
 
-    const level = picked(editing.scene, hit);
+    const level = picked(editing.scene, hit, editing.pv);
 
     return level !== null && same(editing.target, level)
       ? { grip: "move", ray, height: hit.point[2] }
@@ -132,7 +138,7 @@ export class Grabbing {
   }
 
   readonly #press = (event: PointerEvent): void => {
-    if (event === this.#handed) return;
+    if (this.#handover.handed(event)) return;
 
     if (this.#held !== undefined) {
       if (event.pointerType === "touch") this.#handOver(this.#held);
@@ -146,7 +152,7 @@ export class Grabbing {
     const grab =
       editing === undefined || event.button !== 0
         ? undefined
-        : this.#grabbed(this.#ndc(event), editing);
+        : this.#grabbed(ndc(this.#canvas, event), editing);
 
     if (editing === undefined || grab === undefined) return;
 
@@ -169,7 +175,7 @@ export class Grabbing {
 
     if (held === undefined) {
       if (event.pointerType === "mouse") {
-        this.#canvas.style.cursor = this.#handleAt(this.#ndc(event)) === null ? "" : "grab";
+        this.#canvas.style.cursor = this.#handleAt(ndc(this.#canvas, event)) === null ? "" : "grab";
       }
 
       return;
@@ -181,19 +187,23 @@ export class Grabbing {
     held.at = [event.clientX, event.clientY];
     held.moving ||= Math.hypot(event.clientX - held.down[0], event.clientY - held.down[1]) >= CLICK;
 
-    if (held.moving) this.#step(held, rayAt(this.#camera, this.#ndc(event)));
+    if (held.moving) this.#step(held, rayAt(this.#camera, ndc(this.#canvas, event)));
   };
 
   #step({ editing, grab }: Held, ray: Ray): void {
-    const dragged = drag(editing.scene, editing.target, grab, ray);
+    const dragged = drag(editing.scene, editing.target, grab, ray, editing);
 
     if (dragged === null) return;
 
-    const at = handles(dragged.scene, editing.target).find(
+    editing.ondrag(dragged.scene);
+
+    // Once the step is shown, its handles stand on what the crate laid out for it.
+    const shown = this.#sources.editing();
+    const laid = shown?.scene === dragged.scene ? shown.laid : editing.laid;
+
+    const at = handles(dragged.scene, editing.target, laid).find(
       (item) => item.grip === grab.grip && item.point === grab.point,
     )?.at;
-
-    editing.ondrag(dragged.scene);
 
     if (at !== undefined) this.#sources.onreading({ value: dragged.value, unit: dragged.unit, at });
   }
@@ -210,19 +220,7 @@ export class Grabbing {
     this.#sources.onreading();
     this.#canvas.style.cursor = "";
 
-    const [clientX, clientY] = held.at;
-
-    this.#handed = new PointerEvent("pointerdown", {
-      pointerId: held.pointer,
-      pointerType: "touch",
-      isPrimary: true,
-      button: 0,
-      buttons: 1,
-      clientX,
-      clientY,
-    });
-    this.#canvas.dispatchEvent(this.#handed);
-    this.#handed = undefined;
+    this.#handover.give(this.#canvas, held.pointer, held.at);
   }
 
   readonly #release = (event: PointerEvent): void => {

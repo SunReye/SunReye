@@ -77,7 +77,8 @@ impl Scene {
     }
 }
 
-fn colour(text: &str) -> bool {
+/// Whether `text` is `#rrggbb`.
+pub fn colour(text: &str) -> bool {
     text.strip_prefix('#')
         .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Section from "../components/section.svelte";
   import type { Core } from "../api/core";
   import { m } from "../paraglide/messages.js";
   import LoadingRows from "../components/loading-rows.svelte";
@@ -6,16 +7,14 @@
 
   let { core }: { core: Core } = $props();
 
-  const id = $props.id();
 
   const zone = $derived(core.spotZone());
 </script>
 
-<section aria-labelledby="{id}-title" class="flex flex-col gap-3">
-  <h2 id="{id}-title" class="text-[15px] font-medium">{m.spot_title()}</h2>
+<Section eyebrow title={m.spot_title()}>
   {#await zone}
     <LoadingRows rows={1} />
   {:then answer}
     <ZoneSelect {core} {answer} />
   {/await}
-</section>
+</Section>

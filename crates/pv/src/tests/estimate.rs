@@ -15,14 +15,13 @@ fn string(azimuth: f64, modules: u16) -> PvString {
 }
 
 /// Input 1: 16 south and 16 north in parallel; input 2: 14 south.
-fn owner(limits: [Option<MpptLimits>; 2], ac_rating: Option<f64>) -> Layout {
+fn owner(limits: [Option<MpptLimits>; 2]) -> Layout {
     Layout {
         location: Location {
             latitude: 52.52,
             longitude: 13.38,
         },
         inverters: vec![Inverter {
-            ac_rating,
             inputs: vec![
                 Input {
                     limits: limits[0],
@@ -81,7 +80,7 @@ fn strings(estimate: &Estimate) -> Vec<f64> {
 
 #[test]
 fn inputs_and_strings_match_pvlib_through_the_day() {
-    let layout = owner([None, None], None);
+    let layout = owner([None, None]);
     for (i, row) in rows(include_str!("../../fixtures/estimate.csv"))
         .iter()
         .enumerate()
@@ -114,7 +113,7 @@ fn inputs_and_strings_match_pvlib_through_the_day() {
 
 #[test]
 fn inputs_and_the_inverter_sum_their_strings_without_limits() {
-    let estimate = estimate(&owner([None, None], None), &noon());
+    let estimate = estimate(&owner([None, None]), &noon());
 
     let inverter = &estimate.inverters[0];
     let [first, second] = [&inverter.inputs[0], &inverter.inputs[1]];
@@ -137,7 +136,7 @@ fn parallel_strings_share_a_capped_input_by_their_modelled_current() {
         max_voltage: 850.0,
         start_voltage: 180.0,
     };
-    let mut layout = owner([Some(limits), None], None);
+    let mut layout = owner([Some(limits), None]);
     layout.inverters[0].inputs[0].strings = vec![string(0.0, 16), lossy];
 
     let estimate = estimate(&layout, &noon());
@@ -157,13 +156,6 @@ fn parallel_strings_share_a_capped_input_by_their_modelled_current() {
 }
 
 #[test]
-fn the_inverter_is_capped_at_its_ac_rating() {
-    let estimate = estimate(&owner([None, None], Some(5000.0)), &noon());
-
-    assert_near(estimate.inverters[0].power, 5000.0, "inverter");
-}
-
-#[test]
 fn at_night_nothing_is_produced() {
     let night = Weather {
         unix: 1_782_079_200,
@@ -173,7 +165,7 @@ fn at_night_nothing_is_produced() {
         ..noon()
     };
 
-    let estimate = estimate(&owner([None, None], None), &night);
+    let estimate = estimate(&owner([None, None]), &night);
 
     assert_eq!(strings(&estimate), [0.0, 0.0, 0.0]);
     assert!(estimate.inverters[0].power.abs() < f64::EPSILON);

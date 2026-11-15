@@ -1,12 +1,11 @@
-import type { Frozen, Inverter, Quantity, Setting } from "../../packages/sdk/src/index.ts";
+import type { Frozen, Quantity, Setting } from "../../packages/sdk/src/index.ts";
 import { defineProfile } from "../../packages/sdk/src/index.ts";
 import {
   BATTERY,
-  CURRENTS,
   FLOWS,
   LOW_VOLTAGE,
+  type Model,
   RUNNING_STATE,
-  bounded,
   identify,
   inputs,
   settings,
@@ -25,20 +24,8 @@ import {
 //   (the 2024-06 sheet gives 20 A on input 2:
 //   https://www.deyeinverter.com/deyeinverter/2024/06/01/datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf)
 
-/** One profile of the range: a model, or the whole family. */
-export interface Model {
-  readonly id: string;
-  readonly name: string;
-  readonly version: string;
-  /** The PV inputs whose registers it reads, as v4 did: 2 up to 12 kW, 4 above. */
-  readonly inputs: 2 | 4;
-  /** Amperes: the bound of the battery current settings, from v4's profile of the model. */
-  readonly current: number;
-  /** From the datasheet, with the rated AC output. */
-  readonly inverter: Frozen<Inverter> & { readonly acRating: number };
-  /** Watts, as registers 20 and 21 report it; the family profile identifies by type alone. */
-  readonly rated?: number;
-}
+/** The PV inputs whose registers a model reads, as v4 did: 2 up to 12 kW, 4 above. */
+export type Inputs = 2 | 4;
 
 const STATUS: readonly Frozen<Quantity>[] = [
   {
@@ -51,6 +38,7 @@ const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.relay_status",
     role: "extra.ac_relay_status",
+    kind: "status",
     register: 552,
     type: "u16",
   },
@@ -65,6 +53,8 @@ const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "ac.temperature",
     role: "extra.ac_temperature",
+    kind: "measurement",
+    unit: "°C",
     register: 541,
     type: "i16",
     scale: 0.1,
@@ -73,36 +63,42 @@ const STATUS: readonly Frozen<Quantity>[] = [
   {
     key: "inverter.warning.1",
     role: "extra.inverter_warning_1",
+    kind: "status",
     register: 553,
     type: "u16",
   },
   {
     key: "inverter.warning.2",
     role: "extra.inverter_warning_2",
+    kind: "status",
     register: 554,
     type: "u16",
   },
   {
     key: "inverter.fault.1",
     role: "extra.inverter_fault_1",
+    kind: "status",
     register: 555,
     type: "u16",
   },
   {
     key: "inverter.fault.2",
     role: "extra.inverter_fault_2",
+    kind: "status",
     register: 556,
     type: "u16",
   },
   {
     key: "inverter.fault.3",
     role: "extra.inverter_fault_3",
+    kind: "status",
     register: 557,
     type: "u16",
   },
   {
     key: "inverter.fault.4",
     role: "extra.inverter_fault_4",
+    kind: "status",
     register: 558,
     type: "u16",
   },
@@ -155,24 +151,33 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l1.ct.internal",
     role: "extra.ac_l1_ct_internal",
+    kind: "measurement",
+    unit: "W",
     register: 604,
     type: "i16",
   },
   {
     key: "ac.l2.ct.internal",
     role: "extra.ac_l2_ct_internal",
+    kind: "measurement",
+    unit: "W",
     register: 605,
     type: "i16",
   },
   {
     key: "ac.l3.ct.internal",
     role: "extra.ac_l3_ct_internal",
+    kind: "measurement",
+    unit: "W",
     register: 606,
     type: "i16",
   },
   {
     key: "ac.total_internal_power",
     role: "extra.ac_total_internal_power",
+    kind: "measurement",
+    unit: "W",
+    storage: "none",
     register: 607,
     type: "i16",
   },
@@ -214,6 +219,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l1.current",
     role: "extra.ac_l1_current",
+    kind: "measurement",
+    unit: "A",
     register: 630,
     type: "i16",
     scale: 0.01,
@@ -221,6 +228,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l2.current",
     role: "extra.ac_l2_current",
+    kind: "measurement",
+    unit: "A",
     register: 631,
     type: "i16",
     scale: 0.01,
@@ -228,6 +237,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l3.current",
     role: "extra.ac_l3_current",
+    kind: "measurement",
+    unit: "A",
     register: 632,
     type: "i16",
     scale: 0.01,
@@ -235,24 +246,32 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l1.power",
     role: "extra.ac_l1_power",
+    kind: "measurement",
+    unit: "W",
     register: 633,
     type: "i16",
   },
   {
     key: "ac.l2.power",
     role: "extra.ac_l2_power",
+    kind: "measurement",
+    unit: "W",
     register: 634,
     type: "i16",
   },
   {
     key: "ac.l3.power",
     role: "extra.ac_l3_power",
+    kind: "measurement",
+    unit: "W",
     register: 635,
     type: "i16",
   },
   {
     key: "ac.l1.ct.internal_current",
     role: "extra.ac_l1_ct_internal_current",
+    kind: "measurement",
+    unit: "A",
     register: 610,
     type: "i16",
     scale: 0.01,
@@ -268,6 +287,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l2.ct.internal_current",
     role: "extra.ac_l2_ct_internal_current",
+    kind: "measurement",
+    unit: "A",
     register: 611,
     type: "i16",
     scale: 0.01,
@@ -283,6 +304,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.l3.ct.internal_current",
     role: "extra.ac_l3_ct_internal_current",
+    kind: "measurement",
+    unit: "A",
     register: 612,
     type: "i16",
     scale: 0.01,
@@ -336,6 +359,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "battery.1.current",
     role: "extra.battery_1_current",
+    kind: "measurement",
+    unit: "A",
     register: 591,
     type: "i16",
     scale: -0.01,
@@ -343,6 +368,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "battery.2.current",
     role: "extra.battery_2_current",
+    kind: "measurement",
+    unit: "A",
     register: 594,
     type: "i16",
     scale: -0.01,
@@ -364,6 +391,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "battery.2.soc",
     role: "extra.battery_2_soc",
+    kind: "measurement",
+    unit: "%",
     register: 589,
     type: "u16",
     range: {
@@ -374,6 +403,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "battery.2.voltage",
     role: "extra.battery_2_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 593,
     type: "u16",
     scale: 0.01,
@@ -381,6 +412,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "battery.2.power",
     role: "extra.battery_2_power",
+    kind: "measurement",
+    unit: "W",
     register: 595,
     type: "i16",
     scale: -1,
@@ -388,6 +421,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.a.voltage",
     role: "extra.ac_generator_a_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 661,
     type: "u16",
     scale: 0.1,
@@ -395,6 +430,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.b.voltage",
     role: "extra.ac_generator_b_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 662,
     type: "u16",
     scale: 0.1,
@@ -402,6 +439,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.c.voltage",
     role: "extra.ac_generator_c_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 663,
     type: "u16",
     scale: 0.1,
@@ -409,18 +448,24 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.a.power",
     role: "extra.ac_generator_a_power",
+    kind: "measurement",
+    unit: "W",
     register: 664,
     type: "u16",
   },
   {
     key: "ac.generator.b.power",
     role: "extra.ac_generator_b_power",
+    kind: "measurement",
+    unit: "W",
     register: 665,
     type: "u16",
   },
   {
     key: "ac.generator.c.power",
     role: "extra.ac_generator_c_power",
+    kind: "measurement",
+    unit: "W",
     register: 666,
     type: "u16",
   },
@@ -440,6 +485,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.generator.total_runtime",
     role: "extra.ac_generator_total_runtime",
+    kind: "counter",
+    unit: "h",
     register: 512,
     type: "u32",
     scale: 0.1,
@@ -474,6 +521,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l1.voltage",
     role: "extra.ac_ups_l1_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 644,
     type: "u16",
     scale: 0.1,
@@ -481,6 +530,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l2.voltage",
     role: "extra.ac_ups_l2_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 645,
     type: "u16",
     scale: 0.1,
@@ -488,6 +539,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.l3.voltage",
     role: "extra.ac_ups_l3_voltage",
+    kind: "measurement",
+    unit: "V",
     register: 646,
     type: "u16",
     scale: 0.1,
@@ -495,6 +548,8 @@ const AC: readonly Frozen<Quantity>[] = [
   {
     key: "ac.ups.daily_energy",
     role: "extra.ac_ups_daily_energy",
+    kind: "counter",
+    unit: "kWh",
     register: 526,
     type: "u16",
     scale: 0.1,
@@ -508,61 +563,33 @@ const AC: readonly Frozen<Quantity>[] = [
   },
 ];
 
-/** The settings registers, read as extras; the battery currents are bounded per model. */
+/** The settings registers no declared setting reads back, read as extras. */
 const REGISTERS: readonly Frozen<Quantity>[] = [
-  {
-    key: "settings.battery.maximum_charge_current",
-    role: "extra.settings_battery_maximum_charge_current",
-    register: 108,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 350,
-    },
-  },
-  {
-    key: "settings.battery.maximum_discharge_current",
-    role: "extra.settings_battery_maximum_discharge_current",
-    register: 109,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 350,
-    },
-  },
   {
     key: "settings.battery.maximum_grid_charge_current",
     role: "extra.settings_battery_maximum_grid_charge_current",
+    kind: "held",
     register: 128,
-    type: "u16",
-  },
-  {
-    key: "settings.battery.grid_charge",
-    role: "extra.settings_battery_grid_charge",
-    register: 130,
-    type: "u16",
-  },
-  {
-    key: "settings.workmode",
-    role: "extra.settings_workmode",
-    register: 142,
     type: "u16",
   },
   {
     key: "settings.solar_sell_max_power",
     role: "extra.settings_solar_sell_max_power",
+    kind: "held",
     register: 143,
     type: "u16",
   },
   {
     key: "settings.solar_sell",
     role: "extra.settings_solar_sell",
+    kind: "held",
     register: 145,
     type: "u16",
   },
   {
     key: "settings.battery.capacity",
     role: "extra.settings_battery_capacity",
+    kind: "held",
     register: 102,
     type: "u16",
     range: {
@@ -573,6 +600,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.shutdown_soc",
     role: "extra.settings_battery_shutdown_soc",
+    kind: "held",
     register: 115,
     type: "u16",
     range: {
@@ -583,6 +611,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.restart_soc",
     role: "extra.settings_battery_restart_soc",
+    kind: "held",
     register: 116,
     type: "u16",
     range: {
@@ -593,6 +622,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.low_soc",
     role: "extra.settings_battery_low_soc",
+    kind: "held",
     register: 117,
     type: "u16",
     range: {
@@ -603,6 +633,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge_start_soc",
     role: "extra.settings_battery_generator_charge_start_soc",
+    kind: "held",
     register: 124,
     type: "u16",
     range: {
@@ -613,12 +644,14 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge_current",
     role: "extra.settings_battery_generator_charge_current",
+    kind: "held",
     register: 125,
     type: "u16",
   },
   {
     key: "settings.battery.grid_charge_start_soc",
     role: "extra.settings_battery_grid_charge_start_soc",
+    kind: "held",
     register: 127,
     type: "u16",
     range: {
@@ -629,114 +662,14 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "settings.battery.generator_charge",
     role: "extra.settings_battery_generator_charge",
+    kind: "held",
     register: 129,
     type: "u16",
   },
   {
-    key: "timeofuse.selling",
-    role: "extra.timeofuse_selling",
-    register: 146,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.1",
-    role: "extra.timeofuse_time_1",
-    register: 148,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.2",
-    role: "extra.timeofuse_time_2",
-    register: 149,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.3",
-    role: "extra.timeofuse_time_3",
-    register: 150,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.4",
-    role: "extra.timeofuse_time_4",
-    register: 151,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.5",
-    role: "extra.timeofuse_time_5",
-    register: 152,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.time.6",
-    role: "extra.timeofuse_time_6",
-    register: 153,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.power.1",
-    role: "extra.timeofuse_power_1",
-    register: 154,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.2",
-    role: "extra.timeofuse_power_2",
-    register: 155,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.3",
-    role: "extra.timeofuse_power_3",
-    register: 156,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.4",
-    role: "extra.timeofuse_power_4",
-    register: 157,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.5",
-    role: "extra.timeofuse_power_5",
-    register: 158,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
-    key: "timeofuse.power.6",
-    role: "extra.timeofuse_power_6",
-    register: 159,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 20000,
-    },
-  },
-  {
     key: "timeofuse.voltage.1",
     role: "extra.timeofuse_voltage_1",
+    kind: "held",
     register: 160,
     type: "u16",
     scale: 0.01,
@@ -744,6 +677,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.2",
     role: "extra.timeofuse_voltage_2",
+    kind: "held",
     register: 161,
     type: "u16",
     scale: 0.01,
@@ -751,6 +685,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.3",
     role: "extra.timeofuse_voltage_3",
+    kind: "held",
     register: 162,
     type: "u16",
     scale: 0.01,
@@ -758,6 +693,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.4",
     role: "extra.timeofuse_voltage_4",
+    kind: "held",
     register: 163,
     type: "u16",
     scale: 0.01,
@@ -765,6 +701,7 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.5",
     role: "extra.timeofuse_voltage_5",
+    kind: "held",
     register: 164,
     type: "u16",
     scale: 0.01,
@@ -772,105 +709,10 @@ const REGISTERS: readonly Frozen<Quantity>[] = [
   {
     key: "timeofuse.voltage.6",
     role: "extra.timeofuse_voltage_6",
+    kind: "held",
     register: 165,
     type: "u16",
     scale: 0.01,
-  },
-  {
-    key: "timeofuse.soc.1",
-    role: "extra.timeofuse_soc_1",
-    register: 166,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.2",
-    role: "extra.timeofuse_soc_2",
-    register: 167,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.3",
-    role: "extra.timeofuse_soc_3",
-    register: 168,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.4",
-    role: "extra.timeofuse_soc_4",
-    register: 169,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.5",
-    role: "extra.timeofuse_soc_5",
-    register: 170,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.soc.6",
-    role: "extra.timeofuse_soc_6",
-    register: 171,
-    type: "u16",
-    range: {
-      min: 0,
-      max: 100,
-    },
-  },
-  {
-    key: "timeofuse.enabled.1",
-    role: "extra.timeofuse_enabled_1",
-    register: 172,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.2",
-    role: "extra.timeofuse_enabled_2",
-    register: 173,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.3",
-    role: "extra.timeofuse_enabled_3",
-    register: 174,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.4",
-    role: "extra.timeofuse_enabled_4",
-    register: 175,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.5",
-    role: "extra.timeofuse_enabled_5",
-    register: 176,
-    type: "u16",
-  },
-  {
-    key: "timeofuse.enabled.6",
-    role: "extra.timeofuse_enabled_6",
-    register: 177,
-    type: "u16",
   },
 ];
 
@@ -941,7 +783,7 @@ function slot(n: number, rated: number): Frozen<Setting>[] {
   ];
 }
 
-export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> {
+export function sg05lp3(model: Model<Inputs>): Frozen<ReturnType<typeof defineProfile>> {
   return defineProfile({
     schema: 1,
     id: model.id,
@@ -959,6 +801,10 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       "identify",
       "ac-rating",
       "setting-text",
+      "kind",
+      "storage",
+      "unit",
+      "variants",
       "register-enum",
       "rmw",
       "verified",
@@ -970,7 +816,7 @@ export function sg05lp3(model: Model): Frozen<ReturnType<typeof defineProfile>> 
       ...STATUS,
       ...inputs(model.inputs, 1),
       ...AC,
-      ...bounded(REGISTERS, CURRENTS, model.current),
+      ...REGISTERS,
       total(model.inputs),
       BATTERY,
       ...FLOWS,

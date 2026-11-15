@@ -2,7 +2,7 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
   import type { Problem } from "../api/core";
-  import { problemText } from "../i18n/problems";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import { m } from "../paraglide/messages.js";
 
   let { answer, items }: { answer: readonly T[] | Problem; items: Snippet<[readonly T[]]> } =
@@ -10,7 +10,7 @@
 </script>
 
 {#if "problem" in answer}
-  <p role="alert" class="p-4">{problemText(answer.problem)}</p>
+  <div class="p-4"><ProblemAlert problem={answer.problem} /></div>
 {:else if answer.length === 0}
   <p class="p-4 text-sm text-muted-foreground">{m.settings_none()}</p>
 {:else}

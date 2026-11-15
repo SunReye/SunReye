@@ -1,12 +1,12 @@
-// The object the handles sit on (ADR 20): a block, a box, a hedge or a ground surface as a turned
-// rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
-// fence's handles sit on its points instead. Pure.
+// The object the handles sit on (ADR 20): a block, a box, a hedge, a ground surface or a car place
+// as a turned rectangle, a cylinder or a tree as a circle, each able to write a change back into the scene; a
+// fence's handles sit on its points instead, a chimney's on its footing (grips.ts). Pure.
 import type { Block, Obstacle, Scene } from "../pv.ts";
 import { turn, world, type Triple } from "./frame.ts";
 
 /** The object the handles sit on. */
 export interface Target {
-  readonly kind: "block" | "obstacle" | "surface" | "fence";
+  readonly kind: "block" | "obstacle" | "surface" | "fence" | "place" | "chimney" | "opening";
   readonly index: number;
 }
 
@@ -63,30 +63,42 @@ function obstacleIn(scene: Scene, index: number, item: Obstacle): Body {
   return { ...item, kind: "round", apply: (change) => put({ ...item, ...change }) };
 }
 
-export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
-  if (kind === "fence") return undefined;
+/** A car place: its length is a rectangle's depth; it lies on the ground. */
+function placeIn(scene: Scene, index: number): Body | undefined {
+  const places = scene.carPlaces ?? [];
+  const item = places[index];
 
-  if (kind === "obstacle") {
-    const item = scene.obstacles[index];
+  return (
+    item && {
+      ...item,
+      kind: "rect",
+      depth: item.length,
+      height: 0,
+      shortest: 1,
+      apply: ({ depth = item.length, ...change }) => ({
+        ...scene,
+        carPlaces: places.with(index, { ...item, ...change, length: depth }),
+      }),
+    }
+  );
+}
 
-    return item && obstacleIn(scene, index, item);
-  }
+function surfaceIn(scene: Scene, index: number): Body | undefined {
+  const surfaces = scene.surfaces ?? [];
+  const item = surfaces[index];
 
-  if (kind === "surface") {
-    const surfaces = scene.surfaces ?? [];
-    const item = surfaces[index];
+  return (
+    item && {
+      ...item,
+      kind: "rect",
+      height: 0,
+      shortest: 0.1,
+      apply: (change) => ({ ...scene, surfaces: surfaces.with(index, { ...item, ...change }) }),
+    }
+  );
+}
 
-    return (
-      item && {
-        ...item,
-        kind: "rect",
-        height: 0,
-        shortest: 0.1,
-        apply: (change) => ({ ...scene, surfaces: surfaces.with(index, { ...item, ...change }) }),
-      }
-    );
-  }
-
+function blockIn(scene: Scene, index: number): Body | undefined {
   const block = scene.blocks[index];
 
   return (
@@ -98,6 +110,27 @@ export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined 
       apply: (change) => ({ ...scene, blocks: scene.blocks.with(index, { ...block, ...change }) }),
     }
   );
+}
+
+/** Each kind's footprint the handles drag; fences, chimneys and openings have none. */
+const BODIES: Readonly<
+  Record<Target["kind"], ((scene: Scene, index: number) => Body | undefined) | undefined>
+> = {
+  place: placeIn,
+  obstacle: (scene, index) => {
+    const item = scene.obstacles[index];
+
+    return item && obstacleIn(scene, index, item);
+  },
+  surface: surfaceIn,
+  block: blockIn,
+  fence: undefined,
+  chimney: undefined,
+  opening: undefined,
+};
+
+export function bodyOf(scene: Scene, { kind, index }: Target): Body | undefined {
+  return BODIES[kind]?.(scene, index);
 }
 
 /** The scene-frame point at `u` across, `w` deep in a rectangle, at height `y`. */

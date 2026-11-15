@@ -1,6 +1,8 @@
 <!-- "Verschieben nach …": every point the open one may hang under, indented as in the tree. -->
 <script lang="ts">
+  import Eyebrow from "../components/eyebrow.svelte";
   import type { PointDraft } from "../api/core.ts";
+  import * as RadioGroup from "../components/ui/radio-group/index.js";
   import { haptics } from "../haptics.ts";
   import { m } from "../paraglide/messages.js";
   import { roleOf } from "./point-look.ts";
@@ -25,26 +27,25 @@
 </script>
 
 <fieldset class="flex flex-col gap-1">
-  <legend class="pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-    {m.topology_move()}
-  </legend>
-  {#each options as { at, name, role } (at)}
-    <label
-      class="flex min-h-12 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-foreground/[0.04] has-checked:bg-foreground/[0.06]"
-      style:padding-left="{8 + Math.min(depth[at] ?? 0, 4) * 16}px"
-    >
-      <input
-        type="radio"
-        name="parent"
-        class="size-4 accent-primary"
-        checked={points[index]?.parent === at}
-        onchange={() => {
-          haptics.selection();
-          onmove(at);
-        }}
-      />
-      <PointTile {role} active={false} />
-      <span class="truncate text-[15px]">{name}</span>
-    </label>
-  {/each}
+  <Eyebrow element="legend" class="pb-2">{m.topology_move()}</Eyebrow>
+  <RadioGroup.Root
+    class="gap-1"
+    aria-label={m.topology_move()}
+    value={String(points[index]?.parent ?? "")}
+    onValueChange={(at) => {
+      haptics.selection();
+      onmove(Number(at));
+    }}
+  >
+    {#each options as { at, name, role } (at)}
+      <label
+        class="flex min-h-12 cursor-pointer items-center gap-3 rounded-md px-2 hover:bg-foreground/[0.04] has-data-[state=checked]:bg-foreground/[0.06]"
+        style:padding-left="{8 + Math.min(depth[at] ?? 0, 4) * 16}px"
+      >
+        <RadioGroup.Item value={String(at)} />
+        <PointTile {role} active={false} />
+        <span class="truncate text-[15px]">{name}</span>
+      </label>
+    {/each}
+  </RadioGroup.Root>
 </fieldset>

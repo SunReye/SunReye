@@ -5,9 +5,10 @@
   the node's detail sheet.
 -->
 <script lang="ts">
+  import { Pressable } from "../components/ui/pressable/index.js";
   import Staged from "../motion/Staged.svelte";
   import { KIND_ICONS } from "../equipment-kinds.ts";
-  import AnimatedNumber from "../components/animated-number.svelte";
+  import PowerNumber from "../components/power-number.svelte";
   import type { MotionTier } from "../motion/tier.ts";
   import { m } from "../paraglide/messages.js";
   import { nodeGlow } from "./flow-pulse.ts";
@@ -77,9 +78,8 @@
     ]}
     style="left:{node.at.x * 100}%;top:{node.at.y * 100}%"
   >
-    <button
-      type="button"
-      class="relative block size-14 cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] sm:size-16"
+    <Pressable
+      class="relative block size-14 rounded-md active:scale-[0.97] sm:size-16"
       aria-label={m.flow_details({ name: label })}
       onclick={() => {
         onselect(node.id);
@@ -126,7 +126,7 @@
           />
         </svg>
       {/if}
-    </button>
+    </Pressable>
     <div
       class={[
         "pointer-events-none absolute left-1/2 flex w-24 -translate-x-1/2 flex-col items-center gap-0.5 leading-tight",
@@ -139,8 +139,10 @@
             class="me-0.5 font-normal text-muted-foreground"
             title={m.detail_estimated()}
             aria-label={m.detail_estimated()}>≈</span
-          >{/if}<AnimatedNumber value={watts === null ? null : Math.abs(watts) / 1000} />
-        <span class="text-xs font-normal text-muted-foreground">kW</span>
+          >{/if}<PowerNumber
+          watts={watts === null ? null : Math.abs(watts)}
+          unitClass="text-xs font-normal text-muted-foreground"
+        />
       </span>
       <span
         class="flex items-center gap-0.5 text-xs whitespace-nowrap"

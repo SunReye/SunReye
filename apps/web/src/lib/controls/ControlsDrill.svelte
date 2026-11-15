@@ -52,23 +52,33 @@
       back={m.controls_title()}
       label={m.controls_groups()}
     >
-      {#snippet heading()}
-        <ControlsHeading {writes} />
+      {#snippet heading(level)}
+        <ControlsHeading {writes} title={level === "root"} />
       {/snippet}
       {#snippet page(group)}
         {@const shown = groups.find((g) => g.id === group.id)}
         {#if shown?.id === "schedule"}
-          <ScheduleRows
-            group={shown}
-            {value}
-            {text}
-            owner={(c) => names.get(c.device)}
-            {editing}
-            {onedit}
-            {onset}
-          />
+          <div class="drill-card">
+            <ScheduleRows
+              group={shown}
+              {value}
+              {text}
+              owner={(c) => names.get(c.device)}
+              {editing}
+              {onedit}
+              {onset}
+            />
+          </div>
         {:else if shown}
-          <ControlRows group={shown} {text} owner={(c) => names.get(c.device)} {editing} {onedit} />
+          <div class="drill-card">
+            <ControlRows
+              group={shown}
+              {text}
+              owner={(c) => names.get(c.device)}
+              {editing}
+              {onedit}
+            />
+          </div>
         {/if}
       {/snippet}
     </DrillIn>

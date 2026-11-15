@@ -3,7 +3,7 @@
   "id": "deye-sg01hp3",
   "name": "SG01HP3",
   "manufacturer": "Deye",
-  "version": "1.0.3",
+  "version": "1.0.7",
   "requires": [
     "modbus",
     "u16",
@@ -15,6 +15,10 @@
     "identify",
     "ac-rating",
     "setting-text",
+    "kind",
+    "storage",
+    "unit",
+    "variants",
     "register-enum"
   ],
   "identify": [
@@ -26,6 +30,10 @@
         6,
         262
       ]
+    },
+    {
+      "register": 20,
+      "type": "u32"
     }
   ],
   "inverter": {
@@ -236,6 +244,8 @@
     {
       "key": "ac.l1.current",
       "role": "extra.ac_l1_current",
+      "kind": "measurement",
+      "unit": "A",
       "register": 630,
       "type": "i16",
       "scale": 0.01
@@ -243,6 +253,8 @@
     {
       "key": "ac.l2.current",
       "role": "extra.ac_l2_current",
+      "kind": "measurement",
+      "unit": "A",
       "register": 631,
       "type": "i16",
       "scale": 0.01
@@ -250,6 +262,8 @@
     {
       "key": "ac.l3.current",
       "role": "extra.ac_l3_current",
+      "kind": "measurement",
+      "unit": "A",
       "register": 632,
       "type": "i16",
       "scale": 0.01
@@ -257,18 +271,24 @@
     {
       "key": "ac.l1.power",
       "role": "extra.ac_l1_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 633,
       "type": "i16"
     },
     {
       "key": "ac.l2.power",
       "role": "extra.ac_l2_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 634,
       "type": "i16"
     },
     {
       "key": "ac.l3.power",
       "role": "extra.ac_l3_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 635,
       "type": "i16"
     },
@@ -316,6 +336,8 @@
     {
       "key": "ac.ups.l1.voltage",
       "role": "extra.ac_ups_l1_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 644,
       "type": "u16",
       "scale": 0.1
@@ -323,6 +345,8 @@
     {
       "key": "ac.ups.l2.voltage",
       "role": "extra.ac_ups_l2_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 645,
       "type": "u16",
       "scale": 0.1
@@ -330,6 +354,8 @@
     {
       "key": "ac.ups.l3.voltage",
       "role": "extra.ac_ups_l3_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 646,
       "type": "u16",
       "scale": 0.1
@@ -350,24 +376,32 @@
     {
       "key": "ac.generator.l1.power",
       "role": "extra.ac_generator_l1_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 664,
       "type": "i16"
     },
     {
       "key": "ac.generator.l2.power",
       "role": "extra.ac_generator_l2_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 665,
       "type": "i16"
     },
     {
       "key": "ac.generator.l3.power",
       "role": "extra.ac_generator_l3_power",
+      "kind": "measurement",
+      "unit": "W",
       "register": 666,
       "type": "i16"
     },
     {
       "key": "ac.generator.l1.voltage",
       "role": "extra.ac_generator_l1_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 661,
       "type": "u16",
       "scale": 0.1
@@ -375,6 +409,8 @@
     {
       "key": "ac.generator.l2.voltage",
       "role": "extra.ac_generator_l2_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 662,
       "type": "u16",
       "scale": 0.1
@@ -382,6 +418,8 @@
     {
       "key": "ac.generator.l3.voltage",
       "role": "extra.ac_generator_l3_voltage",
+      "kind": "measurement",
+      "unit": "V",
       "register": 663,
       "type": "u16",
       "scale": 0.1
@@ -410,6 +448,8 @@
     {
       "key": "ac.temperature",
       "role": "extra.ac_temperature",
+      "kind": "measurement",
+      "unit": "°C",
       "register": 541,
       "type": "i16",
       "scale": 0.1,
@@ -422,28 +462,9 @@
       "type": "u16"
     },
     {
-      "key": "settings.battery.maximum_charge_current",
-      "role": "extra.settings_battery_maximum_charge_current",
-      "register": 108,
-      "type": "u16",
-      "range": {
-        "min": 0,
-        "max": 50
-      }
-    },
-    {
-      "key": "settings.battery.maximum_discharge_current",
-      "role": "extra.settings_battery_maximum_discharge_current",
-      "register": 109,
-      "type": "u16",
-      "range": {
-        "min": 0,
-        "max": 50
-      }
-    },
-    {
       "key": "settings.battery.maximum_grid_charge_current",
       "role": "extra.settings_battery_maximum_grid_charge_current",
+      "kind": "held",
       "register": 128,
       "type": "u16",
       "range": {
@@ -452,20 +473,9 @@
       }
     },
     {
-      "key": "settings.battery.grid_charge",
-      "role": "extra.settings_battery_grid_charge",
-      "register": 130,
-      "type": "u16"
-    },
-    {
-      "key": "settings.workmode",
-      "role": "extra.settings_workmode",
-      "register": 142,
-      "type": "u16"
-    },
-    {
       "key": "settings.solar_sell_max_power",
       "role": "extra.settings_solar_sell_max_power",
+      "kind": "held",
       "register": 143,
       "type": "u16",
       "scale": 10,
@@ -477,6 +487,7 @@
     {
       "key": "settings.solar_sell",
       "role": "extra.settings_solar_sell",
+      "kind": "held",
       "register": 145,
       "type": "u16"
     },
@@ -495,6 +506,9 @@
     {
       "key": "grid.import_power",
       "role": "extra.grid_import_power",
+      "kind": "measurement",
+      "unit": "W",
+      "storage": "none",
       "compute": {
         "clamp": {
           "key": "ac.total_power",
@@ -505,6 +519,9 @@
     {
       "key": "grid.export_power",
       "role": "extra.grid_export_power",
+      "kind": "measurement",
+      "unit": "W",
+      "storage": "none",
       "compute": {
         "diff": [
           "grid.import_power",
@@ -515,6 +532,9 @@
     {
       "key": "battery.charge_power",
       "role": "extra.battery_charge_power",
+      "kind": "measurement",
+      "unit": "W",
+      "storage": "none",
       "compute": {
         "clamp": {
           "key": "battery.power",
@@ -525,6 +545,9 @@
     {
       "key": "battery.discharge_power",
       "role": "extra.battery_discharge_power",
+      "kind": "measurement",
+      "unit": "W",
+      "storage": "none",
       "compute": {
         "diff": [
           "battery.charge_power",
@@ -534,7 +557,7 @@
     },
     {
       "key": "inverter.power",
-      "role": "extra.inverter_power",
+      "role": "inverter.loss.power",
       "compute": {
         "combine": {
           "add": [
@@ -550,7 +573,7 @@
     },
     {
       "key": "inverter.efficiency",
-      "role": "extra.inverter_efficiency",
+      "role": "inverter.efficiency",
       "compute": {
         "ratio": {
           "num": [
@@ -684,6 +707,603 @@
             "target": "battery.max_discharge_current",
             "locked": 0
           }
+        }
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "id": "5k",
+      "name": "SUN-5K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-5k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            50000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 5000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 30
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 30
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 30
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 5000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "6k",
+      "name": "SUN-6K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-6k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            60000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 6000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 30
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 30
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 30
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 6000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "8k",
+      "name": "SUN-8K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-8k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            80000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 8000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 37
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 37
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 37
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 8000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "10k",
+      "name": "SUN-10K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-10k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            100000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 10000,
+        "mppt": [
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 37
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 37
+        }
+      },
+      "drop": [
+        "dc.pv3.power",
+        "dc.pv3.voltage",
+        "dc.pv3.current",
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 37
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 10000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "12k",
+      "name": "SUN-12K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-12k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            120000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 12000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 37
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 37
+        }
+      },
+      "drop": [
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 37
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 12000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power",
+              "dc.pv3.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "15k",
+      "name": "SUN-15K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-15k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            150000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 15000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 20,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "settings": {
+        "battery.max_charge_current": {
+          "min": 0,
+          "max": 37
+        },
+        "battery.max_discharge_current": {
+          "min": 0,
+          "max": 37
+        }
+      },
+      "drop": [
+        "dc.pv4.power",
+        "dc.pv4.voltage",
+        "dc.pv4.current",
+        "settings.battery.maximum_grid_charge_current",
+        "settings.solar_sell_max_power",
+        "dc.total_power"
+      ],
+      "add": [
+        {
+          "key": "settings.battery.maximum_grid_charge_current",
+          "role": "extra.settings_battery_maximum_grid_charge_current",
+          "kind": "held",
+          "register": 128,
+          "type": "u16",
+          "range": {
+            "min": 0,
+            "max": 37
+          }
+        },
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 15000
+          }
+        },
+        {
+          "key": "dc.total_power",
+          "role": "pv.power",
+          "compute": {
+            "sum": [
+              "dc.pv1.power",
+              "dc.pv2.power",
+              "dc.pv3.power"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "20k",
+      "name": "SUN-20K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-20k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            200000
+          ]
+        }
+      ],
+      "inverter": {
+        "maxInputVoltage": 1000,
+        "acRating": 20000,
+        "mppt": [
+          {
+            "maxCurrent": 26,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          },
+          {
+            "maxCurrent": 26,
+            "minVoltage": 150,
+            "maxVoltage": 850,
+            "startVoltage": 180
+          }
+        ]
+      },
+      "drop": [
+        "settings.solar_sell_max_power"
+      ],
+      "add": [
+        {
+          "key": "settings.solar_sell_max_power",
+          "role": "extra.settings_solar_sell_max_power",
+          "kind": "held",
+          "register": 143,
+          "type": "u16",
+          "scale": 10,
+          "range": {
+            "min": 0,
+            "max": 20000
+          }
+        }
+      ]
+    },
+    {
+      "id": "25k",
+      "name": "SUN-25K-SG01HP3",
+      "replaces": [
+        "deye-sg01hp3-25k"
+      ],
+      "identify": [
+        {
+          "register": 20,
+          "values": [
+            250000
+          ]
         }
       ]
     }

@@ -15,22 +15,20 @@
   const shell = access();
 
   /** The open detail sheet as `?detail=` on the hash route: back closes it, a link opens it (ADR 21). */
-  const detail = drillRoute({ page, goto }, "detail");
+  const detail = drillRoute({ page, goto }, "detail", { overlay: true });
 
   /** The hash route's query: a sheet's range lives beside `detail`. */
   const params = $derived(routeParams());
 
   /** The entry, with the shell told whether to frame it and whether Controls is listed. */
   async function open(): Promise<Entry> {
-    // Bare while it checks, unless a screen already showed in the shell: dropping the rail on the
-    // way back to the dashboard would flash it and mount it again.
-    if (shell && !shell.framed) shell.bare = true;
+    shell?.opening();
 
     const shown = await entry(core);
 
-    if (shell) shell.bare = shown.screen !== "dashboard";
-
     if (shell && shown.screen === "dashboard") shell.admin = shown.admin;
+
+    shell?.opened(shown.screen === "dashboard");
 
     return shown;
   }

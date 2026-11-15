@@ -148,7 +148,7 @@ pub fn estimate(soc: &[Rollup], power: &[Rollup], nameplate: Option<f64>) -> Est
         .iter()
         .filter_map(|p| match p.aggregate {
             Aggregate::Measurement { integral, .. } => Some((-integral).max(0.0)),
-            Aggregate::Counter { .. } => None,
+            Aggregate::Counter { .. } | Aggregate::Held { .. } => None,
         })
         .sum::<f64>()
         / 1000.0;

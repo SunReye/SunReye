@@ -7,7 +7,7 @@
   let { core }: { core: Core } = $props();
 </script>
 
-<div class="flex flex-col divide-y divide-border/60">
+<div class="flex flex-col divide-y divide-border/60 drill:divide-y-0">
   <ViewerAccess {core} />
   <TokenAccess {core} />
 </div>

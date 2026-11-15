@@ -1,13 +1,12 @@
 <!-- The devices step's scan: an optional network, the scan with its progress, and what it found nothing or was refused. -->
 <script lang="ts">
+  import TextField from "../components/text-field.svelte";
   import LoaderCircle from "@lucide/svelte/icons/loader-circle";
   import Search from "@lucide/svelte/icons/search";
   import type { Core, Problem } from "../api/core.ts";
   import type { ScanReport } from "../api/setup.ts";
   import { Button } from "#lib/components/ui/button/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import { m } from "../paraglide/messages.js";
-  import { FIELD } from "./fields.ts";
   import Refusal from "./Refusal.svelte";
 
   let { core, onscanned }: { core: Core; onscanned: (endpoints: ScanReport["endpoints"]) => void } =
@@ -38,10 +37,11 @@
 
 <div class="flex flex-col gap-3">
   <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-    <label class={[FIELD, "flex-1"]}>
-      {m.devices_subnet()}
-      <Input placeholder="192.168.1.0/24" autocomplete="off" bind:value={subnet} />
-    </label>
+    <TextField
+      label={m.devices_subnet()}
+      class="flex-1"
+      placeholder="192.168.1.0/24" autocomplete="off" bind:value={subnet}
+    />
     <!-- Primary until it found something: then adding is. -->
     <Button
       variant={found === undefined ? "default" : "outline"}

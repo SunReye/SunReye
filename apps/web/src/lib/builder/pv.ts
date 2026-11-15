@@ -1,10 +1,19 @@
 // The `pv` crate in the browser through its glue crate, crates/pv-wasm (ADR 2, 20).
 import type { ModuleType, StringDraft } from "../api/core.ts";
 import type { Fence, Fencing, Ground, GroundSurface, Obstacle } from "./obstacles.ts";
+import type { Chimney, Overhang } from "./roofing.ts";
+import type { Equipment, Fitted, Opening, OpeningKind, Unfit } from "./walls.ts";
+
+export type { Equipment, Fitted, Opening, OpeningKind, Unfit, Wall, WallFrame } from "./walls.ts";
+
 import {
+  isChimney,
   isExports,
   isGeometry,
+  isIndex,
   isModules,
+  isOpening,
+  isRefit,
   isSun,
   isVolts,
   isWatts,
@@ -22,6 +31,12 @@ export type {
   GroundSurface,
   Obstacle,
 } from "./obstacles.ts";
+
+export type { Chimney, Footing, Overhang } from "./roofing.ts";
+
+import type { Modules } from "./laid.ts";
+
+export type { CellPlace, Misplaced, Modules, RoofFace } from "./laid.ts";
 
 /** A string as the core's API wires it. */
 export type Wiring = Readonly<Omit<StringDraft, "id">>;
@@ -45,6 +60,11 @@ export interface Block {
   readonly roof: Roof;
   /** A carport: a post at each corner instead of walls. */
   readonly open?: boolean;
+  /** Metres the roof reaches past the walls, level: at the eaves and at the verges. */
+  readonly overhang?: Overhang;
+  /** `#rrggbb`; the finish's own colour without one. */
+  readonly roofColour?: string | null;
+  readonly wallColour?: string | null;
 }
 
 /** A module in one cell: rows count up the slope, columns across it, from 0. */
@@ -54,6 +74,8 @@ export interface Cell {
   /** The string it is painted into; unassigned, it produces nothing. */
   readonly string?: number | null;
   readonly optimized?: boolean;
+  /** Its place along its string's wiring, from the lowest; one without follows them. */
+  readonly order?: number | null;
 }
 
 /** The modules on one roof face; cells are the module type's size plus a gap. */
@@ -67,21 +89,6 @@ export interface ModuleGrid {
   /** Metres kept free along every edge. */
   readonly setback: number;
   readonly modules: readonly Cell[];
-}
-
-/** A side of a block's footprint: the front along +z, the right along +x. */
-export type Wall = "front" | "right" | "back" | "left";
-
-/** A marker for an inverter or a battery, on a block's wall. */
-export interface Equipment {
-  readonly device: number;
-  readonly kind: "inverter" | "battery";
-  readonly block: number;
-  readonly wall: Wall;
-  /** Metres from the wall's left end, seen from outside. */
-  readonly along: number;
-  /** Behind the wall, in the building. */
-  readonly inside: boolean;
 }
 
 /** A parking footprint linked to an EVCC loadpoint; width along x, length along z. */
@@ -107,9 +114,11 @@ export interface Scene {
   readonly grids?: readonly ModuleGrid[];
   readonly equipment?: readonly Equipment[];
   readonly carPlaces?: readonly CarPlace[];
+  readonly chimneys?: readonly Chimney[];
   /** Each drawn over the last; without any the plot is lawn. */
   readonly surfaces?: readonly GroundSurface[];
   readonly fences?: readonly Fence[];
+  readonly openings?: readonly Opening[];
 }
 
 /** A module's outline in metres; `height` is its long side. */
@@ -118,48 +127,12 @@ export interface Size {
   readonly height: number;
 }
 
-/** A roof face as a module grid sees it. */
-export interface RoofFace {
-  readonly block: number;
-  readonly face: number;
-  readonly tilt: number;
-  readonly azimuth: number;
-  /** Metres across and up the slope from the lowest corner on the left, seen from the front. */
-  readonly outline: readonly (readonly [number, number])[];
-}
-
-/** A cell whose module fits inside the setback. */
-export interface CellPlace {
-  readonly row: number;
-  readonly column: number;
-  /** Lower left and upper right corner in the face's outline. */
-  readonly area: readonly [readonly [number, number], readonly [number, number]];
-  readonly corners: readonly Point[];
-}
-
-/** Why the core would refuse to save the grids. */
-export type Misplaced =
-  | { readonly kind: "face" | "moduleType"; readonly grid: number }
-  | {
-      readonly kind: "setback" | "overlap";
-      readonly grid: number;
-      readonly row: number;
-      readonly column: number;
-      /** The module's cell on its face, as `CellPlace.area`; null without a module size. */
-      readonly area: CellPlace["area"] | null;
-    };
-
-/** The roofs, each grid's cells (null for a missing face or module type) and the first misfit. */
-export interface Modules {
-  readonly roofs: readonly RoofFace[];
-  readonly grids: readonly (readonly CellPlace[] | null)[];
-  readonly misplaced: Misplaced | null;
-}
-
 export interface Face {
-  readonly surface: "wall" | "roof" | "obstacle" | "hedge";
+  readonly surface: "wall" | "roof" | "obstacle" | "hedge" | "chimney";
   /** A flat convex polygon. */
   readonly corners: readonly Point[];
+  /** Its block's wall or roof colour, `#rrggbb`. */
+  readonly colour?: string;
 }
 
 export type Solid =
@@ -192,6 +165,8 @@ export interface Geometry {
   /** By ground surface and by fence, placed on the ground; null while one is refused. */
   readonly ground?: readonly Ground[] | null;
   readonly fences?: readonly Fencing[] | null;
+  /** By opening, fitted on its wall; null while one is refused. */
+  readonly openings?: readonly Fitted[] | null;
 }
 
 /** North and east positive, in degrees. */
@@ -230,6 +205,24 @@ export interface Pv {
     moduleTypes: readonly Readonly<ModuleType>[],
     strings: readonly Wiring[],
   ) => (number | null)[];
+  /** Opening `index` as `opening`, kept on its wall and under its eave, or why it cannot be. */
+  readonly refit: (
+    scene: Scene,
+    index: number,
+    opening: Opening,
+  ) => { readonly opening: Opening } | { readonly unfit: Unfit };
+  /** A new opening of `kind` and its usual size in the first free place on a wall: a wall at a
+   * time from the front, each from its left end; null when none takes it. */
+  readonly place: (
+    scene: Scene,
+    kind: OpeningKind,
+    usual: Readonly<Required<Pick<Opening, "width" | "height" | "sill">>>,
+  ) => Opening | null;
+  /** Chimney `index` moved by a level east and north, in metres, along its face: in 10 cm steps,
+   * stopped at the face's edge and sliding along it; null without it or its face. */
+  readonly glide: (scene: Scene, index: number, shift: readonly [number, number]) => Chimney | null;
+  /** The index of the chimney a strike at `point` lands on; null for none. */
+  readonly chimneyAt: (scene: Scene, point: Point) => number | null;
 }
 
 /** Instantiates the glue crate's release build. */
@@ -265,6 +258,14 @@ export async function loadPv(bytes: Uint8Array<ArrayBuffer>): Promise<Pv> {
     clearSky: (run) => unwrap(call("clear_sky", JSON.stringify(run)), isWatts),
     coldVoltages: (moduleTypes, strings) =>
       unwrap(call("cold_voltages", JSON.stringify({ moduleTypes, strings })), isVolts),
+    refit: (scene, index, opening) =>
+      unwrap(call("refit", JSON.stringify({ scene, index, opening })), isRefit),
+    place: (scene, kind, usual) =>
+      unwrap(call("place", JSON.stringify({ scene, kind, ...usual })), isOpening),
+    glide: (scene, index, shift) =>
+      unwrap(call("glide", JSON.stringify({ scene, index, shift })), isChimney),
+    chimneyAt: (scene, point) =>
+      unwrap(call("chimney_at", JSON.stringify({ scene, point })), isIndex),
   };
 }
 

@@ -1,7 +1,6 @@
 // What the 2D power flow reads (ADR 21): the `plant` device's roles (ADR 14), the loadpoints' `ev`
 // roles (ADR 10) and the layout's strings, signs per ADR 4. Pure.
-import type { Live, PvString, Values } from "../api/core.ts";
-import { PLANT } from "../live/labels.ts";
+import { PLANT, type Live, type PvString, type Values } from "../api/core.ts";
 import { formatFigure } from "../detail/figures.ts";
 
 /** The layout's strings, as far as the flow needs them. */
@@ -85,30 +84,30 @@ function charger(values: Values["devices"], power: number | undefined): ChargerD
 
 /** Every device's values but the plant's. */
 function devices(values: Values["devices"]): Readonly<Record<string, number>>[] {
-  return Object.keys(values).flatMap((id) => (id === PLANT ? [] : [values[id] ?? {}]));
+  return Object.keys(values).flatMap((id) => (Number(id) === PLANT ? [] : [values[id] ?? {}]));
 }
 
-/** In watts and percent; efficiency and own use only while the array produces. */
+/** In watts and percent; efficiency and own use only while power goes through the inverter. */
 export interface Hub {
   readonly dc: number | undefined;
   readonly efficiency: number | undefined;
   readonly own: number | undefined;
 }
 
-/** The hub's figures: DC in, and while it produces its efficiency and own use. */
+/**
+ * The hub's figures: DC in, and the inverter's efficiency and own use as its profile computes them
+ * (ADR 4). A ratio has no plant total, so they show only while one inverter reports them.
+ */
 export function hubMetrics(values: Values["devices"]): Hub {
   const dc = values[PLANT]?.["pv.power"];
+  const inverters = devices(values).filter((series) => "inverter.efficiency" in series);
+  const efficiency = inverters.length === 1 ? inverters[0]?.["inverter.efficiency"] : undefined;
 
-  const acs = devices(values).flatMap((series) =>
-    series["inverter.power"] === undefined ? [] : [series["inverter.power"]],
-  );
-
-  if (dc === undefined || acs.length === 0 || dc <= 50)
+  // The profile's ratio reads 0 while nothing goes in.
+  if (efficiency === undefined || efficiency <= 0)
     return { dc, efficiency: undefined, own: undefined };
 
-  const ac = acs.reduce((t, w) => t + w, 0);
-
-  return { dc, efficiency: (ac / dc) * 100, own: Math.abs(dc - ac) };
+  return { dc, efficiency, own: inverters[0]?.["inverter.loss.power"] };
 }
 
 /** Whether the stream is lost or any of the plant's values is past its gap threshold (ADR 3). */

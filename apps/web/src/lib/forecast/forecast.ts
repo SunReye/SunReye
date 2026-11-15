@@ -1,25 +1,111 @@
 // What the solar forecast screen shows (ADR 17): each inverter's total, each MPPT input and its
 // strings, with estimated strings marked.
 import type { Core, Forecasts, PvString } from "../api/core.ts";
-import { flowColour } from "../energy-colours.ts";
+import { flowColour, mpptColour } from "../energy-colours.ts";
 import { m } from "../paraglide/messages.js";
 import { intervals, spread, type Span } from "../range/fill.ts";
 
 /** The measured production's bars, in the solar flow. */
-export function measuredBar() {
+function measuredBar() {
   return { label: m.forecast_measured(), colour: flowColour("solar") };
 }
 
-/** One forecast series and its legend label. */
+/** One stacked part: a series measured, less the parts stacked beside it from the same input. */
+export interface Part {
+  readonly series: string;
+  readonly minus: readonly string[];
+  /** Shown only while it holds energy: what an input measured before its strings were laid out. */
+  readonly optional: boolean;
+}
+
+interface Stacked {
+  readonly part: Part;
+  readonly label: string;
+  readonly input: number;
+}
+
+/**
+ * One input's parts: the input whole, or each of its parallel strings (estimated) plus what the
+ * input measured that its strings do not hold, such as before they were laid out.
+ */
+function inputParts(input: Readonly<Line>, lines: readonly Readonly<Line>[]): Stacked[] {
+  const at = input.input ?? 1;
+  const strings = lines.filter((l) => l.kind === "string" && l.input === input.input);
+
+  if (strings.length < 2)
+    return [
+      { part: { series: input.series, minus: [], optional: false }, label: input.label, input: at },
+    ];
+
+  const split = strings.map((l) => ({
+    part: { series: l.series, minus: [], optional: false },
+    label: l.estimated ? `${l.label} ≈` : l.label,
+    input: at,
+  }));
+
+  const rest = {
+    part: { series: input.series, minus: strings.map((l) => l.series), optional: true },
+    label: m.forecast_unsplit({ input: input.label }),
+    input: at,
+  };
+
+  return [...split, rest];
+}
+
+/** The colour of the `nth` part on MPPT input `input`: the input's colour, lightened per string. */
+function partColour(input: number, nth: number): string {
+  const base = mpptColour(input);
+
+  return nth === 0 ? base : `color-mix(in oklab, ${base} ${100 - nth * 30}%, white)`;
+}
+
+/**
+ * What `line`'s bars stack: an inverter's total with two or more parts stacks them, an MPPT input
+ * shared by parallel strings split into its (estimated) strings; anything else is one measured bar.
+ */
+export function stackOf(line: Readonly<Line>, lines: readonly Readonly<Line>[]) {
+  const stacked =
+    line.kind === "total"
+      ? lines.filter((l) => l.kind === "input").flatMap((input) => inputParts(input, lines))
+      : [];
+
+  if (stacked.filter((s) => !s.part.optional).length < 2)
+    return { parts: [], up: [{ ...measuredBar(), optional: false }] };
+
+  return {
+    parts: stacked.map((s) => s.part),
+    up: stacked.map((s, i) => ({
+      label: s.label,
+      colour: partColour(s.input, stacked.slice(0, i).filter((p) => p.input === s.input).length),
+      optional: s.part.optional,
+    })),
+  };
+}
+
+/** One forecast series: the inverter's total, an MPPT input or a string on one. */
 export interface Line {
   readonly series: string;
   readonly label: string;
+  /** The MPPT input a string or an input line is on. */
+  readonly input: number | null;
+  readonly kind: "total" | "input" | "string";
+  /** Measured together with its parallel strings and split by the model (ADR 17). */
+  readonly estimated: boolean;
 }
 
 /** An inverter's forecast lines: its total, then each MPPT input followed by its strings. */
 export interface InverterLines {
   readonly device: number;
   readonly lines: readonly Line[];
+}
+
+/** A line as its picker shows it: a string under its input. */
+export function lineName(line: Readonly<Line>): string {
+  const mark = line.estimated ? " ≈" : "";
+
+  return line.kind === "string"
+    ? `${m.forecast_input({ input: line.input ?? 0 })} · ${line.label}${mark}`
+    : line.label;
 }
 
 /** Two days past today, as far as the solar forecast reaches (ADR 17). */
@@ -35,19 +121,29 @@ function linesOf(
   strings: readonly Readonly<PvString>[],
   estimated: readonly string[],
 ): InverterLines {
-  const lines: Line[] = [{ series: "pv.power", label: m.forecast_total() }];
+  const lines: Line[] = [
+    { series: "pv.power", label: m.forecast_total(), input: null, kind: "total", estimated: false },
+  ];
 
   for (const input of sorted(strings.map((s) => s.input))) {
-    lines.push({ series: `pv.mppt.power[${input}]`, label: m.forecast_input({ input }) });
+    lines.push({
+      series: `pv.mppt.power[${input}]`,
+      label: m.forecast_input({ input }),
+      input,
+      kind: "input",
+      estimated: false,
+    });
 
     for (const s of strings.filter((wired) => wired.input === input)) {
       const series = `pv.string.power[${s.id}]`;
 
-      const label = estimated.includes(series)
-        ? m.forecast_string_estimated({ name: s.name })
-        : s.name;
-
-      lines.push({ series, label });
+      lines.push({
+        series,
+        label: s.name,
+        input,
+        kind: "string",
+        estimated: estimated.includes(series),
+      });
     }
   }
 

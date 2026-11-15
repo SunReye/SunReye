@@ -1,6 +1,7 @@
 // What a node's detail sheet reads, beyond its figure and graph (ADR 21). Pure: the sheet renders,
 // this decides. A role the device does not publish gives no row, and a group without rows is
 // dropped. `groups.ts` maps v3's node dialogs onto v5's roles.
+import { PLANT, registered } from "../api/computed-devices.ts";
 import { m } from "../paraglide/messages.js";
 import {
   battery,
@@ -18,10 +19,6 @@ import type { MeasurementPoint } from "./consumers.ts";
 import { parseFigure } from "./figures.ts";
 import { pointsOf, type LivePoint, type LiveSeries } from "../live-graph/series.ts";
 import { reader, type Group, type Reader, type Readings } from "./rows.ts";
-
-/** The computed devices count down from here (ADR 15); a node reads a registered device. */
-const COMPUTED = 4_294_967_292;
-const PLANT = 4_294_967_294;
 
 /** What the readings are resolved from: the live stream, the layout and capabilities. */
 export interface Source extends Readings {
@@ -59,7 +56,7 @@ function deviceFor(source: Source, prefixes: readonly string[]): number | null {
     const device = Number(id);
     const count = Object.keys(values).filter((k) => prefixes.some((p) => k.startsWith(p))).length;
 
-    if (device < COMPUTED && count > most) {
+    if (registered(device) && count > most) {
       best = device;
       most = count;
     }

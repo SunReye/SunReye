@@ -2,19 +2,34 @@
 import type { Device } from "../api/core.ts";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
-import type { Cold } from "./checks.ts";
-import { parent, type Level, type Section } from "./levels.ts";
+import type { Cold, StringRefusal } from "./checks.ts";
+import { moduleOf, parent, type Level, type Section } from "./levels.ts";
 import { painted, type Draft } from "./modules.ts";
-import type { Fence, FenceFinish, GroundFinish, Modules, Obstacle, Roof } from "./pv.ts";
+import {
+  FENCE_FINISHES,
+  GROUND_FINISHES,
+  named,
+  OBSTACLES,
+  OPENING_KINDS,
+  ROOFS,
+  WALL_NAMES,
+} from "./names.ts";
+import type { Fence, Modules, Pv } from "./pv.ts";
+
+export { FENCE_FINISHES, GROUND_FINISHES, OPENING_KINDS, ROOFS, WALL_NAMES } from "./names.ts";
 
 /** What the inspector reads besides the level. */
 export interface Plan {
   readonly draft: Draft;
   /** The crate's layout of the draft's grids. */
   readonly laid: Modules;
+  /** The crate, which places a new opening and keeps a changed one on its wall. */
+  readonly pv: Pick<Pv, "place" | "refit">;
   readonly devices: readonly Readonly<Device>[];
   /** The strings over their inverter's limit in the cold, as the crate reckons them. */
   readonly cold: readonly Cold[];
+  /** The string the last save was refused for, until the next edit. */
+  readonly refused: StringRefusal | null;
 }
 
 /** A row that drills to `level`. */
@@ -32,36 +47,8 @@ export const SECTIONS: Readonly<Record<Section, () => string>> = {
   strings: m.builder_strings,
 };
 
-export const ROOFS: readonly (readonly [Roof["kind"], () => string])[] = [
-  ["flat", m.roof_flat],
-  ["monoPitch", m.roof_monoPitch],
-  ["gable", m.roof_gable],
-  ["hip", m.roof_hip],
-];
-
-const OBSTACLES: Readonly<Record<Obstacle["kind"], () => string>> = {
-  box: m.obstacle_box,
-  cylinder: m.obstacle_cylinder,
-  tree: m.obstacle_tree,
-  hedge: m.obstacle_hedge,
-};
-
-export const GROUND_FINISHES: readonly (readonly [GroundFinish, () => string])[] = [
-  ["lawn", m.finish_lawn],
-  ["paving", m.finish_paving],
-  ["driveway", m.finish_driveway],
-  ["gravel", m.finish_gravel],
-  ["path", m.finish_path],
-];
-
-export const FENCE_FINISHES: readonly (readonly [FenceFinish, () => string])[] = [
-  ["wood", m.finish_wood],
-  ["metal", m.finish_metal],
-  ["wall", m.finish_wall],
-];
-
-const named = <T>(list: readonly (readonly [T, () => string])[], key: T): string =>
-  list.find(([kind]) => kind === key)?.[1]() ?? "";
+/** How long a list the scene may leave out is. */
+const many = (list: readonly unknown[] | undefined): number => list?.length ?? 0;
 
 /** A fence's length along its points, in metres. */
 function length({ points }: Fence): number {
@@ -103,8 +90,8 @@ const SUMMARIES: Readonly<Record<Section, (plan: Plan) => string>> = {
     }),
   equipment: ({ draft }) =>
     m.builder_summary_equipment({
-      markers: draft.scene.equipment?.length ?? 0,
-      places: draft.scene.carPlaces?.length ?? 0,
+      markers: many(draft.scene.equipment),
+      places: many(draft.scene.carPlaces),
     }),
   modules: ({ draft }) => m.builder_summary_modules(placed(draft)),
   strings: ({ draft }) => m.builder_summary_strings({ count: draft.strings.length }),
@@ -118,7 +105,28 @@ export function summary(section: Section, plan: Plan): string {
 function buildings({ draft }: Plan): Entry[] {
   const number = format();
 
-  return draft.scene.blocks.map((block, index) => ({
+  const chimneys = (draft.scene.chimneys ?? []).map((item, index): Entry => ({
+    level: { kind: "chimney", index },
+    label: m.builder_item({ name: m.chimney(), number: index + 1 }),
+    summary: m.builder_chimney_summary({
+      block: item.block + 1,
+      face: item.face + 1,
+      height: number.format(item.height),
+    }),
+  }));
+
+  const openings = (draft.scene.openings ?? []).map((item, index): Entry => ({
+    level: { kind: "opening", index },
+    label: m.builder_item({ name: named(OPENING_KINDS, item.kind), number: index + 1 }),
+    summary: m.builder_opening_summary({
+      block: item.block + 1,
+      wall: named(WALL_NAMES, item.wall),
+      width: number.format(item.width),
+      height: number.format(item.height),
+    }),
+  }));
+
+  const blocks = draft.scene.blocks.map((block, index): Entry => ({
     level: { kind: "block", index },
     label: m.builder_block({ number: index + 1 }),
     summary: m.builder_block_summary({
@@ -127,6 +135,8 @@ function buildings({ draft }: Plan): Entry[] {
       depth: number.format(block.depth),
     }),
   }));
+
+  return [...blocks, ...chimneys, ...openings];
 }
 
 function surroundings({ draft }: Plan): Entry[] {
@@ -221,6 +231,9 @@ export function title(level: Level, plan: Plan): string {
 
   if (level.kind === "section") return SECTIONS[level.section]();
 
+  if (level.kind === "module")
+    return m.builder_cell({ row: level.row + 1, column: level.column + 1 });
+
   const up = parent(level);
   const key = JSON.stringify(level);
   const rows = up.kind === "section" ? entries(up.section, plan) : [];
@@ -232,17 +245,30 @@ export function title(level: Level, plan: Plan): string {
 function counts({
   draft,
 }: Plan): Readonly<
-  Record<"block" | "obstacle" | "surface" | "fence" | "marker" | "place" | "string", number>
+  Record<
+    | "block"
+    | "chimney"
+    | "opening"
+    | "obstacle"
+    | "surface"
+    | "fence"
+    | "marker"
+    | "place"
+    | "string",
+    number
+  >
 > {
   const { scene } = draft;
 
   return {
     block: scene.blocks.length,
+    chimney: many(scene.chimneys),
+    opening: many(scene.openings),
     obstacle: scene.obstacles.length,
-    surface: scene.surfaces?.length ?? 0,
-    fence: scene.fences?.length ?? 0,
-    marker: scene.equipment?.length ?? 0,
-    place: scene.carPlaces?.length ?? 0,
+    surface: many(scene.surfaces),
+    fence: many(scene.fences),
+    marker: many(scene.equipment),
+    place: many(scene.carPlaces),
     string: draft.strings.length,
   };
 }
@@ -254,6 +280,8 @@ export function exists(level: Level, plan: Plan): boolean {
   if (level.kind === "face") {
     return plan.laid.roofs.some(({ block, face }) => block === level.block && face === level.face);
   }
+
+  if (level.kind === "module") return moduleOf(plan.draft.scene, level) !== undefined;
 
   return level.index < counts(plan)[level.kind];
 }

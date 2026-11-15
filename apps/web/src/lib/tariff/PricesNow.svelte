@@ -1,7 +1,9 @@
 <script lang="ts">
+  import StatStrip from "../components/stat-strip.svelte";
+  import Section from "../components/section.svelte";
+  import ProblemAlert from "../components/problem-alert.svelte";
   import type { Core, Values } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
-  import { problemText } from "../i18n/problems";
   import { m } from "../paraglide/messages.js";
   import SpotPriceCard from "../SpotPriceCard.svelte";
   import { ctPerKwh } from "./format";
@@ -13,8 +15,6 @@
 
   /** No live frame yet: the prices stand in skeleton rows. */
   let waiting = $state(true);
-
-  const id = $props.id();
 
   $effect(() =>
     core.live((next) => {
@@ -30,27 +30,22 @@
   const spot = $derived(Object.values(devices).find((values) => "price.spot" in values));
 </script>
 
-<section aria-labelledby="{id}-title">
-  <h2 id="{id}-title">{m.tariff_prices_now()}</h2>
+<Section title={m.tariff_prices_now()}>
   {#if waiting}
     <LoadingRows />
   {/if}
   {#if refused !== undefined}
-    <p role="alert">{problemText(refused)}</p>
+    <ProblemAlert problem={refused} />
   {/if}
   {#if tariff !== undefined}
-    <dl>
-      <div>
-        <dt>{m.tariff_import()}</dt>
-        <dd>{ctPerKwh(tariff["price.import"])}</dd>
-      </div>
-      <div>
-        <dt>{m.tariff_export()}</dt>
-        <dd>{ctPerKwh(tariff["price.export"])}</dd>
-      </div>
-    </dl>
+    <StatStrip
+      stats={[
+        { label: m.tariff_import(), value: ctPerKwh(tariff["price.import"]) },
+        { label: m.tariff_export(), value: ctPerKwh(tariff["price.export"]) },
+      ]}
+    />
   {/if}
   {#if spot !== undefined}
     <SpotPriceCard values={spot} />
   {/if}
-</section>
+</Section>

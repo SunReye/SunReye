@@ -1,6 +1,7 @@
 <!-- A screen over one range: its title, the range control on the page's centre line, then the content. -->
 <script lang="ts">
   import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+  import PageTitle from "../components/page-title.svelte";
   import Staged from "../motion/Staged.svelte";
   import type { Snippet } from "svelte";
   import type { Ranged } from "./range.ts";
@@ -15,7 +16,7 @@
   <header
     class="flex flex-wrap items-center gap-x-6 gap-y-3 lg:grid lg:grid-cols-[1fr_540px_1fr] lg:items-start"
   >
-    <h1 class="text-xl font-semibold tracking-tight lg:leading-8">{title}</h1>
+    <PageTitle wide {title} />
     <div class="w-full">
       <RangeControl {model} />
     </div>

@@ -14,11 +14,11 @@ use crate::transport::{Capture, Endpoint, Exchange};
 /// Three quantities in one block: registers 500 to 502.
 const PROFILE: &str = r#"{
     "schema": 1, "id": "case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-    "requires": ["modbus", "u16", "i16"],
+    "requires": ["modbus", "u16", "i16", "kind", "unit"],
     "quantities": [
         { "key": "pv1", "role": "pv.mppt.power", "index": 1, "register": 500, "type": "u16" },
         { "key": "battery", "role": "battery.power", "register": 501, "type": "i16" },
-        { "key": "temp", "role": "extra.radiator_temp", "register": 502, "type": "u16", "scale": 0.1 }
+        { "key": "temp", "role": "extra.radiator_temp", "kind": "measurement", "unit": "°C", "register": 502, "type": "u16", "scale": 0.1 }
     ]
 }"#;
 
@@ -71,7 +71,13 @@ fn first_cycle() -> Vec<Seen> {
     vec![
         (7, "pv.mppt.power".into(), Some(1), 1234.0, Some(Unit::Watt)),
         (7, "battery.power".into(), None, -1000.0, Some(Unit::Watt)),
-        (7, "extra.radiator_temp".into(), None, 2.5, None),
+        (
+            7,
+            "extra.radiator_temp".into(),
+            None,
+            2.5,
+            Some(Unit::Celsius),
+        ),
     ]
 }
 
@@ -250,9 +256,9 @@ async fn a_merged_block_refused_with_exception_2_is_split_and_stays_split() {
 /// A SunSpec profile's one quantity: the first register of a vendor model 64000.
 const SUNSPEC: &str = r#"{
     "schema": 1, "id": "sunspec-case", "name": "case", "manufacturer": "test", "version": "1.0.0",
-    "requires": ["sunspec", "u16"],
+    "requires": ["sunspec", "u16", "kind", "unit"],
     "quantities": [
-        { "key": "x", "role": "extra.x", "model": [64000], "register": 2, "type": "u16" }
+        { "key": "x", "role": "extra.x", "kind": "measurement", "unit": "none", "model": [64000], "register": 2, "type": "u16" }
     ]
 }"#;
 
@@ -346,10 +352,10 @@ async fn polling_the_bundled_deye_profile_sends_only_reads() {
 /// Register 500 every cycle, register 600 in a poll group every second cycle.
 const GROUPED: &str = r#"{
     "schema": 1, "id": "grouped", "name": "case", "manufacturer": "test", "version": "1.0.0",
-    "requires": ["modbus", "u16", "poll-group"], "pollGroups": { "slow": 10 },
+    "requires": ["modbus", "u16", "poll-group", "kind", "unit"], "pollGroups": { "slow": 10 },
     "quantities": [
-        { "key": "fast", "role": "extra.fast", "register": 500, "type": "u16" },
-        { "key": "slow", "role": "extra.slow", "register": 600, "type": "u16", "pollGroup": "slow" }
+        { "key": "fast", "role": "extra.fast", "kind": "measurement", "unit": "none", "register": 500, "type": "u16" },
+        { "key": "slow", "role": "extra.slow", "kind": "measurement", "unit": "none", "register": 600, "type": "u16", "pollGroup": "slow" }
     ]
 }"#;
 

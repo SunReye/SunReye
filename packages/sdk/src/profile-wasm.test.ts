@@ -22,6 +22,8 @@ function fromSpans(spans: readonly (readonly number[])[]): object[] {
     Array.from({ length: count }, (_, i) => ({
       key: `r${start + i}`,
       role: "extra.r",
+      kind: "measurement",
+      unit: "none",
       register: start + i,
       type: "u16",
     })),
@@ -65,6 +67,10 @@ test("the profile WASM reports the schemas and capabilities it loads", () => {
       "verified",
       "poll-group",
       "live-control",
+      "kind",
+      "storage",
+      "unit",
+      "variants",
       "time",
     ],
   });
@@ -88,7 +94,10 @@ test("a refused profile throws the loader's reason", () => {
 });
 
 test("the profile WASM refuses an unrequired capability with the loader's text", () => {
-  const doc = document([{ key: "a", role: "extra.a", register: 1, type: "u32" }]);
+  const doc = document([
+    { key: "a", role: "extra.a", kind: "measurement", unit: "none", register: 1, type: "u32" },
+  ]);
+
   const unrequired = doc.replace(/"requires":\[[^\]]*\]/u, '"requires":["modbus"]');
 
   expect(() => profile.lint(unrequired)).toThrow("`requires` lacks `u32`, which the profile uses");
@@ -131,9 +140,9 @@ test("a dump of v4's recorded Deye cases decodes to v4's readings", async () => 
 
 test("a dump that lacks one register of a planned block decodes nothing from that block", () => {
   const doc = document([
-    { key: "a", role: "extra.a", register: 1, type: "u16" },
-    { key: "b", role: "extra.b", register: 2, type: "u16" },
-    { key: "c", role: "extra.c", register: 9, type: "u16" },
+    { key: "a", role: "extra.a", kind: "measurement", unit: "none", register: 1, type: "u16" },
+    { key: "b", role: "extra.b", kind: "measurement", unit: "none", register: 2, type: "u16" },
+    { key: "c", role: "extra.c", kind: "measurement", unit: "none", register: 9, type: "u16" },
   ]);
 
   const dump = JSON.stringify([

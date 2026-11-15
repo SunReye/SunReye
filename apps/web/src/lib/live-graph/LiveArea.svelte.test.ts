@@ -146,3 +146,33 @@ test("pointing at the plot floats no tooltip: the legend is the readout (ADR 21)
 
   expect(document.querySelector(".lc-tooltip-root")).toBeNull();
 });
+
+/** The value axis' tick labels for a minute around `level` watts. */
+async function axisLabels(level: number): Promise<(string | undefined)[]> {
+  const screen = await render(LiveArea, {
+    points: feed(T0, level),
+    accent: IMPORT,
+    below: EXPORT,
+    still: true,
+    stalled: false,
+    diverging: false,
+  });
+
+  const texts = () =>
+    [...screen.container.querySelectorAll(".lc-axis text")].map((t) => t.textContent?.trim());
+
+  await expect.poll(() => texts().length).toBeGreaterThan(1);
+
+  const shown = texts();
+
+  await screen.unmount();
+
+  return shown;
+}
+
+test("the value axis writes its ticks in the shared power format", async () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+
+  expect(await axisLabels(10)).toContain("200 W");
+  expect(await axisLabels(2000)).toContain("2,0 kW");
+});

@@ -1,5 +1,6 @@
 <!-- Settings › Plant: the plant timezone and location, as set up on the first run. -->
 <script lang="ts">
+  import { toast } from "svelte-sonner";
   import type { Core } from "../api/core";
   import LoadingRows from "../components/loading-rows.svelte";
   import { m } from "../paraglide/messages.js";
@@ -17,11 +18,9 @@
   }
 
   const current = $derived.by(() => load());
-
-  let saved = $state(false);
 </script>
 
-<div class="flex flex-col">
+<div class="drill-card flex flex-col">
   {#await current}
     <LoadingRows rows={3} />
   {:then plant}
@@ -30,11 +29,8 @@
       current={plant}
       action={m.settings_save()}
       ondone={() => {
-        saved = true;
+        toast.success(m.settings_saved());
       }}
     />
   {/await}
-  {#if saved}<p role="status" class="px-4 pb-4 text-sm text-muted-foreground">
-      {m.settings_saved()}
-    </p>{/if}
 </div>
