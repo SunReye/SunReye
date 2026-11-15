@@ -10,7 +10,7 @@ import {
   MeshStandardMaterial,
   type Object3D,
 } from "three";
-import type { Fitted, OpeningKind } from "../builder/pv.ts";
+import type { Face, Fitted, OpeningKind } from "../builder/pv.ts";
 import { lamps, openings } from "./wall-openings.ts";
 
 /** An opening on a wall facing south at north 0, `east` metres along it; a window's sill is
@@ -32,10 +32,10 @@ function fitted(kind: OpeningKind, east: number, sill = 0.9): Fitted {
 
 const street = Array.from({ length: 12 }, (_, i) => fitted("window", i * 2));
 
-function drawn(made: readonly Fitted[]): Group {
+function drawn(made: readonly Fitted[], roofs: readonly Face[] = []): Group {
   const group = new Group();
 
-  group.add(...openings(made));
+  group.add(...openings(made, roofs));
 
   return group;
 }
@@ -147,12 +147,15 @@ interface Patch {
   readonly far: number;
   readonly left: number;
   readonly right: number;
+  /** Its lowest and highest point, in metres up. */
+  readonly bottom: number;
+  readonly top: number;
   readonly strength: number;
 }
 
 /** The light an opening spills, when it spills any. */
-function patch(opening: Fitted): Patch | undefined {
-  const spill = drawn([opening]).getObjectByName("spill");
+function patch(opening: Fitted, roofs: readonly Face[] = []): Patch | undefined {
+  const spill = drawn([opening], roofs).getObjectByName("spill");
 
   if (!(spill instanceof Mesh) || !(spill.geometry instanceof BufferGeometry)) return undefined;
 
@@ -165,6 +168,8 @@ function patch(opening: Fitted): Patch | undefined {
     far: max.z,
     left: min.x,
     right: max.x,
+    bottom: min.y,
+    top: max.y,
     strength: colour instanceof BufferAttribute ? colour.getX(0) : Number.NaN,
   };
 }
@@ -224,4 +229,57 @@ test("a front door's light lies in front of the door, nearer than a window's", (
   expect(door?.near).toBeGreaterThan(0);
   expect(door?.near).toBeLessThan(window?.near ?? 0);
   expect(door?.strength).toBe(1);
+});
+
+/** A lower roof against the wall, wider than it: `up` metres high at the wall, `deep` metres out
+ * from it, and `drop` metres lower at its far edge. */
+function lowerRoof(up: number, deep: number, drop = 0): Face {
+  return {
+    surface: "roof",
+    corners: [
+      [-5, 0 - deep, up - drop],
+      [100, 0 - deep, up - drop],
+      [100, 0, up],
+      [-5, 0, up],
+    ],
+  };
+}
+
+test("a window above a lower roof lights that roof, not the lawn", () => {
+  // Its sill is 2.5 m above the lawn, yet only 0.3 m above the roof under it.
+  const [lawn, roof] = [patch(litWindow(2.5)), patch(litWindow(2.5), [lowerRoof(2.2, 6)])];
+
+  expect(lawn?.top).toBeLessThan(0.1);
+  expect(roof?.bottom).toBeGreaterThan(2.2);
+  expect(roof?.top).toBeLessThan(2.3);
+  // A low sill throws its light close by and bright.
+  expect(roof?.near).toBeLessThan(0.5);
+  expect(roof?.strength).toBeGreaterThan(lawn?.strength ?? 1);
+});
+
+test("a window higher than a storey above the lawn still lights a roof just under it", () => {
+  expect(patch(litWindow(3.6), [lowerRoof(3.2, 6)])?.bottom).toBeGreaterThan(3.2);
+});
+
+test("its light ends where that roof does, and none falls past it onto the lawn", () => {
+  const thrown = patch(litWindow(2.5), [lowerRoof(2.2, 1)]);
+
+  expect(thrown?.far).toBeCloseTo(1);
+  expect(thrown?.bottom).toBeGreaterThan(2.2);
+  // The light of a window 1.2 m above the roof would land past its edge.
+  expect(patch(litWindow(3.4), [lowerRoof(2.2, 0.5)])).toBeUndefined();
+});
+
+test("on a pitched roof the light lies on the slope", () => {
+  // The roof falls 1 m over its 4 m.
+  const thrown = patch(litWindow(2.5), [lowerRoof(2.2, 4, 1)]);
+
+  if (thrown === undefined) throw new Error("no spill");
+
+  expect(thrown.top).toBeCloseTo(2.2 - thrown.near / 4 + 0.04, 2);
+  expect(thrown.bottom).toBeCloseTo(2.2 - thrown.far / 4 + 0.04, 2);
+});
+
+test("a roof above the window, such as its own eave, takes none of its light", () => {
+  expect(patch(litWindow(0.9), [lowerRoof(3, 1)])?.top).toBeLessThan(0.1);
 });

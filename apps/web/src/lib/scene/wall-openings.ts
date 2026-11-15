@@ -9,8 +9,9 @@ import {
   MeshStandardMaterial,
   type Object3D,
 } from "three";
-import type { Fitted, OpeningKind, Point } from "../builder/pv.ts";
-import { glazed, spilled } from "./materials.ts";
+import type { Face, Fitted, OpeningKind, Point } from "../builder/pv.ts";
+import { glazed } from "./materials.ts";
+import { spill } from "./spill.ts";
 
 /** Metres an opening's frame stands proud of its wall. */
 const PROUD = 0.05;
@@ -19,22 +20,6 @@ const PROUD = 0.05;
  * its depth, in metres. */
 const SILL = { past: 0.06, thick: 0.04, deep: 0.12 } as const;
 const CANOPY = { past: 0.25, thick: 0.06, deep: 0.8, over: 0.12 } as const;
-
-/** The spill, in metres and metres per metre of sill height. Light leaves through the opening and
- * falls at an angle, so its patch begins `start` out from the wall and `slope` further per metre
- * of sill, is `reach` deep and `past` wider than the opening on each side, deeper by `stretch` and
- * wider by `spread` per metre, and fainter until none reaches the ground from `ceiling` up.
- * `lift` holds it clear of every ground surface. */
-const SPILL = {
-  start: 0.15,
-  slope: 0.6,
-  reach: 2.2,
-  stretch: 1,
-  past: 0.5,
-  spread: 0.5,
-  ceiling: 3,
-  lift: 0.04,
-} as const;
 
 /** An emissive map at full strength: a lit room seen from the garden, not a lamp. */
 const GLOW = 1.8;
@@ -169,75 +154,9 @@ function lit(opening: Fitted): boolean {
   return opening.kind === "frontDoor" || chance(opening) < LIT;
 }
 
-/** Where an opening's light lands: from `near` to `far` out from the wall, `past` beyond the
- * opening on each side, at `strength` of a ground-level opening's. */
-interface Cast {
-  readonly near: number;
-  readonly far: number;
-  readonly past: number;
-  readonly strength: number;
-}
-
-/** The light an opening throws on the ground, or none from too high up. */
-function cast({ corners: [low] }: Fitted): Cast | undefined {
-  const sill = Math.max(0, low[2]);
-  const strength = 1 - sill / SPILL.ceiling;
-
-  if (strength <= 0) return undefined;
-
-  const near = SPILL.start + sill * SPILL.slope;
-
-  return {
-    near,
-    far: near + SPILL.reach + sill * SPILL.stretch,
-    past: SPILL.past + sill * SPILL.spread,
-    strength,
-  };
-}
-
-/** The ground the lit openings light, out from their walls: one mesh. */
-function spill(made: readonly (readonly [Fitted, Cast])[]): Mesh {
-  const drawn: Triangles = { position: [], uv: [] };
-  const colour: number[] = [];
-
-  for (const [opening, { near, far, past, strength }] of made) {
-    const { width, along } = span(opening);
-    const [low] = opening.corners;
-    const foot: Point = [low[0], low[1], SPILL.lift];
-    const [left, right] = [add(foot, along, -past), add(foot, along, width + past)];
-    const at = (side: Point, out: number): Point => add(side, opening.out, out);
-
-    // Its map's first row is the edge nearest the wall.
-    drawn.position.push(
-      ...[
-        at(left, near),
-        at(left, far),
-        at(right, far),
-        at(left, near),
-        at(right, far),
-        at(right, near),
-      ].flatMap((point) => toThree(point)),
-    );
-    drawn.uv.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);
-    colour.push(...Array.from({ length: 18 }, () => strength));
-  }
-
-  const patches = geometry(drawn);
-
-  patches.setAttribute("color", new Float32BufferAttribute(colour, 3));
-
-  const mesh = new Mesh(patches, spilled());
-
-  mesh.name = "spill";
-  mesh.visible = false;
-  // Over the lawn, which is transparent where it fades.
-  mesh.renderOrder = 1;
-
-  return mesh;
-}
-
-/** Each opening as a mesh named "opening", in order, then the spill of those lit at night. */
-export function openings(fitted: readonly Fitted[]): Object3D[] {
+/** Each opening as a mesh named "opening", in order, then the spill of those lit at night, on
+ * the lawn or on the one of `roofs` under them. */
+export function openings(fitted: readonly Fitted[], roofs: readonly Face[]): Object3D[] {
   const finishes = new Map<string, MeshStandardMaterial>();
 
   const finish = (kind: OpeningKind, on: boolean): MeshStandardMaterial => {
@@ -257,13 +176,12 @@ export function openings(fitted: readonly Fitted[]): Object3D[] {
     return mesh;
   });
 
-  const spilling = fitted.flatMap((opening) => {
-    const thrown = lit(opening) ? cast(opening) : undefined;
+  const spilt = spill(
+    fitted.filter((opening) => lit(opening)),
+    roofs,
+  );
 
-    return thrown === undefined ? [] : [[opening, thrown] as const];
-  });
-
-  return spilling.length === 0 ? meshes : [...meshes, spill(spilling)];
+  return spilt === undefined ? meshes : [...meshes, spilt];
 }
 
 /** Turns the lamps of `drawn` on by `level`, 0 by day to 1 at night. */
